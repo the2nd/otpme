@@ -1,0 +1,581 @@
+# -*- coding: utf-8 -*-
+# Copyright (C) 2014 the2nd <the2nd@otpme.org>
+# Distributed under the terms of the GNU General Public License v2
+import os
+
+try:
+    if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
+        print(_("Loading module: %s") % __name__)
+except:
+    pass
+
+from . import register_cmd_help
+
+def register():
+    register_cmd_help(command="user", help_dict=cmd_help)
+
+cmd_help = {
+    '_need_command'             : True,
+    '_include_global_opts'      : True,
+    '_usage_help'               : "Usage: otpme-user {command} [user]",
+
+    'show'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-user show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [user] [token]',
+                    'cmd'   :   '--fields :output_fields: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: [|object|] [token_name]',
+                    '_help' :   {
+                                    'cmd'                   : 'show user(s)',
+                                    '-a'                    : 'Show all users.',
+                                    '-t'                    : 'Show user templates.',
+                                    '-z <limit>'            : 'limit output size',
+                                    '--fields f1,f2,f3'     : 'output only given fields',
+                                    '--reverse'             : 'Reverse the output order.',
+                                    '--sort-by <attribute>' : 'Sort output by <attribute>.',
+                                    '--raw'                 : 'Output table without any headers/borders.',
+                                    '--csv'                 : 'Output table as CSV.',
+                                    '--csv-sep <separator>' : 'Output table as CSV.',
+                                },
+                },
+
+    'list'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user list [--attribute attribute] [-a] [regex]',
+                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
+                    '_help' :   {
+                                    'cmd'                       : 'List users.',
+                                    '-a'                        : 'List all users.',
+                                    '--attribute <attribute>'   : 'Output given attribute.'
+                                },
+                },
+
+    'add'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user add [--no-default-token] [--default-token <default_token>] [--default-token-type] [--group <group>] [--groups <group1,group2>] [--roles <role1,role2>] [-t] [--template <template_name>] [--no-qrcode] {user}',
+                    'cmd'   :   '--group :group: --groups :[groups]: --roles :[default_roles]: --no-default-token :add_default_token=False: --default-token :default_token: --default-token-type :default_token_type: -t :template_object=True: --template :template_name: --no-qrcode :gen_qrcode=False: <|object|>',
+                    '_help' :   {
+                                    'cmd'                               : 'Add new user.',
+                                    '--group <group>'                   : 'Users default group.',
+                                    '--groups <group1,group2>'          : 'Groups to add user to.',
+                                    '--roles <role1,role2>'             : 'Default role to add user to.',
+                                    '--no-default-token'                : 'Do not create default token.',
+                                    '--no-qrcode'                       : 'Do not gen default token qrcode.',
+                                    '--default-token <token_name>'      : 'Get default token from TOKENSTORE.',
+                                    '--default-token-type <token_type>' : 'Add default token of type <token_type>.',
+                                    '--template'                        : 'Add user from template.',
+                                    '-t'                                : 'Add user template.',
+                                },
+                },
+
+    'del'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user del {user}',
+                    'cmd'   :   '<|objects|>',
+                    '_help' :   {
+                                    'cmd'                   : 'delete user',
+                                },
+                },
+
+
+    'get_sign_mode'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user get_sign_mode {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Get user key sign mode (client or server)',
+                                },
+                },
+
+
+    'gen_keys'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user gen_keys {user}',
+                    'cmd'   :   '-b :key_len: --server :sign_mode=server: --pass-hash-type :pass_hash_type: -n :encrypt_key=False: --stdin-pass :stdin_pass=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                               : 'Generate users RSA key pair',
+                                    '-b <bits>'                         : 'Key len in bits (e.g. 2048)',
+                                    '--server'                          : 'Generate key pair on server',
+                                    '-n'                                : 'Do not encrypt server side private key',
+                                    '--pass-hash-type <pass_hash_type>' : 'Hash type used to derive encryption key from password.',
+                                    '--stdin-pass'                      : 'Read passphrase for RSA private key from stdin',
+                                },
+                },
+
+
+    'del_keys'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user del_keys {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                               : 'Delete users RSA key pair',
+                                },
+                },
+
+
+    'key_pass'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user key_pass {user}',
+                    'cmd'   :   '--stdin-pass :stdin_pass=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Change password of users private key.',
+                                    '--stdin-pass'          : 'Read passphrase from stdin',
+                                },
+                },
+
+
+    'private_key'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user private_key {user}',
+                    'cmd'   :   '<|object|> <private_key>',
+                    '_help' :   {
+                                    'cmd'                   : 'set users RSA private key',
+                                },
+                },
+
+
+    'public_key'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user public_key {user}',
+                    'cmd'   :   '<|object|> <public_key>',
+                    '_help' :   {
+                                    'cmd'                   : 'set users RSA public key',
+                                },
+                },
+
+
+    'dump_key'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user dump_key {user}',
+                    'cmd'   :   '-p :private=True: -n :decrypt=True: --stdin-pass :stdin_pass=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Dump users RSA key to stdout',
+                                    '-p'                    : 'Dump private key (or pointer)',
+                                    '-n'                    : 'Dump private key unencrypted (if possible)',
+                                    '--stdin-pass'          : 'Read passphrase for RSA private key from stdin',
+                                },
+
+                },
+
+    'gen_cert'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user gen_cert {user}',
+                    'cmd'   :   '--stdin-pass :stdin_pass=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Generate user certificate',
+                                    '--stdin-pass'          : 'Read passphrase for RSA private key from stdin',
+                                },
+                },
+
+
+    'sign_data'    : {
+                    # This command is not intended to be used by the user directly.
+                    # It is called internally when running otpme-token sign command.
+                    'cmd'   :   '--data :data: --digest :digest: --stdin-pass :stdin_pass=True: <|object|>',
+                },
+
+
+    'encrypt'    : {
+                    # This command is not intended to be used by the user directly.
+                    # It is called internally when running otpme-token encrypt command.
+                    'cmd'   :   '--data :data: --stdin-pass :stdin_pass=True: <|object|>',
+                },
+
+
+    'decrypt'    : {
+                    # This command is not intended to be used by the user directly.
+                    # It is called internally when running otpme-token decrypt command.
+                    'cmd'   :   '--data :data: --stdin-pass :stdin_pass=True: <|object|>',
+                },
+
+
+    'deploy_token'    : {
+                    # This command is not intended to be used by the user directly.
+                    # It is called internally when running otpme-token deploy command.
+                    'cmd'   :   '<|object|> <token_name> <token_type>',
+                },
+
+    'add_token'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user add_token [-r] [--type <token_type>] [--name <token_name>] [--destination <dst_token>] {user}',
+                    'cmd'   :   '-r :replace=True: --name :token_name: --type :token_type: --destination :destination_token: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Add new token.',
+                                    '--name'                : 'Token name.',
+                                    '--type'                : 'Token type.',
+                                    '-r'                    : 'Replace existing token and keep its UUID.',
+                                },
+                },
+
+    'del_token'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user del_token {user} {token}',
+                    'cmd'   :   '<|object|> <token_name>',
+                    '_help' :   {
+                                    'cmd'                   : 'delete token',
+                                },
+                },
+
+
+    'enable'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user enable {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'enable user',
+                                },
+                },
+
+    'disable'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user disable {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'disable user',
+                                },
+                },
+
+    'rename'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user rename {user} {new_name}',
+                    'cmd'   :   '<|object|> <new_name>',
+                    '_help' :   {
+                                    'cmd'                   : 'rename user',
+                                },
+                },
+
+     'config'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user config {user} {param} [value]',
+                    'cmd'   :   '<|object|> <parameter> [value]',
+                    '_help' :   {
+                                    'cmd'                   : 'Add config parameter to user.',
+                                },
+                },
+
+     'add_extension'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user add_extension {user} {extension}',
+                    'cmd'   :   '<|object|> <extension>',
+                    '_help' :   {
+                                    'cmd'                   : 'add extension to user',
+                                },
+                },
+
+     'remove_extension'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user remove_extension {user} {extension}',
+                    'cmd'   :   '<|object|> <extension>',
+                    '_help' :   {
+                                    'cmd'                   : 'remove extension from user',
+                                },
+                },
+
+     'add_attribute'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user add_attribute {user} {attribute}=[value]',
+                    'cmd'   :   '<|object|> <attribute>=[value]',
+                    '_help' :   {
+                                    'cmd'                   : 'add (ldap) attribute to user',
+                                },
+                },
+
+     'del_attribute'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user del_attribute {user} {attribute}=[value]',
+                    'cmd'   :   '<|object|> <attribute>=[value]',
+                    '_help' :   {
+                                    'cmd'                   : 'delete (ldap) attribute from user',
+                                },
+                },
+
+     'add_object_class'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user add_object_class {user} {object_class}',
+                    'cmd'   :   '<|object|> <object_class>',
+                    '_help' :   {
+                                    'cmd'                   : 'add (ldap) object class to user',
+                                },
+                },
+
+     'del_object_class'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user del_object_class {user} {object_class}',
+                    'cmd'   :   '<|object|> <object_class>',
+                    '_help' :   {
+                                    'cmd'                   : 'delete (ldap) object class from user',
+                                },
+                },
+
+     'show_ldif'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user show_ldif {user} -a attribute1,attribute2',
+                    'cmd'   :   '<|object|> -a :[attributes]:',
+                    '_help' :   {
+                                    'cmd'                   : 'show LDIF representation of user',
+                                    '-a'                    : 'show only given LDIF attributes',
+                                },
+                },
+
+    'add_acl'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-user add_acl [-r -a] {user} {role|token} {role_path|token_path} {acl[:value]}',
+                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: <|object|> <owner_type> <owner_name> <acl>',
+                    '_help' :   {
+                                    'cmd'                   : 'add ACL to user',
+                                    '-r'                    : 'set ACL recursive (to user tokens)',
+                                    '-a'                    : 'apply default ACLs to existing tokens',
+                                },
+                },
+
+    'del_acl'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-user del_acl  [-r -a] {user} {acl}',
+                    'cmd'   :   '-r :recursive_acls=True: -a :apply_default_acls=True: <|object|> <acl>',
+                    '_help' :   {
+                                    'cmd'                   : 'delete ACL from user',
+                                    '-r'                    : 'delete ACL recursive (from user tokens)',
+                                    '-a'                    : 'delete default ACLs from existing tokens',
+                                },
+                },
+
+    'show_acls'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user show_acls {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'show ACLs of user',
+                                },
+                },
+
+
+    'enable_acl_inheritance'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user enable_acl_inheritance {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'enable ACL inheritance for user',
+                                },
+                },
+
+
+    'disable_acl_inheritance'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user disable_acl_inheritance {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'disable ACL inheritance for user',
+                                },
+                },
+
+    'move'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user move [--keep-acls] {user} {unit}',
+                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <new_unit>',
+                    '_help' :   {
+                                    'cmd'                   : 'change users unit',
+                                    '--keep-acls'           : 'Keep object ACLs.'
+                                },
+                },
+
+
+    'remove_orphans'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-user remove_orphans {user}',
+                    'cmd'   :   '-r :recursive=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'remove orphan UUIDs',
+                                    '-r'                    : 'remove orphan UUIDs recursive',
+                                },
+                },
+
+
+    'description'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user description {user} [description]',
+                    'cmd'   :   '<|object|> [description]',
+                    '_help' :   {
+                                    'cmd'                   : 'set user description',
+                                },
+                },
+
+    '_list_valid_object_classes'    : {
+                    'cmd'   :   '<|object|>',
+                },
+
+    '_list_valid_attributes'    : {
+                    'cmd'   :   '<|object|>',
+                },
+
+    '_show_attributes'    : {
+                    'cmd'   :   '<|object|>',
+                },
+
+    '_show_object_classes'    : {
+                    'cmd'   :   '<|object|>',
+                },
+
+    '_show_supported_acls'    : {
+                    'cmd'   :   '<|object|>',
+                },
+
+    '_show_supported_default_acls'    : {
+                    'cmd'   :   '<|object|>',
+                },
+
+    '_show_supported_recursive_default_acls'    : {
+                    'cmd'   :   '<|object|>',
+                },
+
+    '_show_config'    : {
+                    'cmd'   :   '<|object|>',
+                },
+
+    'export'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user export --password <password> {user}',
+                    'cmd'   :   '--password :password: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Export user config to stdout.',
+                                    '--password <password>' : 'Encrypt object config with password.',
+                                },
+                },
+
+    'add_policy'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user add_policy {user} {policy}',
+                    'cmd'   :   '<|object|> <policy_name>',
+                    '_help' :   {
+                                    'cmd'                   : 'add policy to user',
+                                },
+                },
+
+    'remove_policy'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user remove_policy {user} {policy}',
+                    'cmd'   :   '<|object|> <policy_name>',
+                    '_help' :   {
+                                    'cmd'                   : 'remove policy from user',
+                                },
+                },
+
+    'list_policies'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-user list_policies {user}',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                           : 'List assigned policies.',
+                                    '--return-type'                 : 'Attribute to return.',
+                                    '--policy-types <type1,type2>'  : 'Policy types to list.',
+                                },
+                },
+    'group'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user group {user} {group}',
+                    'cmd'   :   '<|object|> <new_group>',
+                    '_help' :   {
+                                    'cmd'                   : 'change users default group',
+                                },
+                },
+
+
+    'unblock'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user unblock {user} [accessgroup]',
+                    'cmd'   :   '<|object|> [access_group]',
+                    '_help' :   {
+                                    'cmd'                   : 'Unblock user for an given accessgroup or for all',
+                                },
+                },
+
+
+    'auth_script'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user auth_script {user} {auth_script}',
+                    'cmd'   :   '<|object|> <auth_script> [script_options]',
+                    '_help' :   {
+                                    'cmd'                   : 'change users authorization script',
+                                },
+                },
+
+
+    'enable_auth_script'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user enable_auth_script {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'enable users authorization script',
+                                },
+                },
+
+
+    'disable_auth_script'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user disable_auth_script {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'disable users authorization script',
+                                },
+                },
+
+
+
+    'get_key_script'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user get_key_script {user} [name|uuid]',
+                    'cmd'   :   '<|object|> [return_type]',
+                    '_help' :   {
+                                    'cmd'                   : 'get users key script name or UUID',
+                                },
+                },
+
+    'key_script'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user key_script {user} [key_script]',
+                    'cmd'   :   '<|object|> [key_script] [script_options]',
+                    '_help' :   {
+                                    'cmd'                   : 'change users key script',
+                                },
+                },
+
+    'agent_script'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user agent_script {user} [agent_script]',
+                    'cmd'   :   '<|object|> [agent_script] [script_options]',
+                    '_help' :   {
+                                    'cmd'                   : 'change users agent script',
+                                },
+                },
+
+    'login_script'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user login_script {user} [login_script]',
+                    'cmd'   :   '<|object|> [login_script] [script_options]',
+                    '_help' :   {
+                                    'cmd'                   : 'change users login script',
+                                },
+                },
+
+    'enable_login_script'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user enable_login_script {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'enable users login script',
+                                },
+                },
+
+
+    'disable_login_script'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user disable_login_script {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'disable users login script',
+                                },
+                },
+
+    'enable_autosign'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user enable_autosign {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Enable auto-sign feature of user.',
+                                },
+                },
+
+
+    'disable_autosign'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user disable_autosign {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Disable auto-sign feature of user.',
+                                },
+                },
+    'list_groups'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-user list_groups {user}',
+                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                       : 'List users groups.',
+                                    '--return-type'             : 'Attribute to return.',
+                                },
+                },
+    'list_tokens'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-user list_tokens {user}',
+                    'cmd'   :   '--return-type :return_type: --token-types :[token_types]: [|object|]',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                       : 'List users tokens.',
+                                    '--return-type'             : 'Attribute to return.',
+                                    '--token-types <hotp,totp>' : 'Token types to list.',
+                                },
+                },
+    'list_roles'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-user list_roles {user}',
+                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                   : 'List users roles.',
+                                    '--return-type'         : 'Attribute to return.',
+                                },
+                },
+    }

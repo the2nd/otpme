@@ -1,0 +1,351 @@
+# OTPme config file
+# Timezone to use (e.g. certificates).
+TIMEZONE="Europe/Berlin"
+
+# Start freeradius.
+START_FREERADIUS="True"
+# Path to freeradius binary.
+FREERADIUS_BIN="/usr/sbin/freeradius"
+
+# How long to wait for second node in two node clusters to appear.
+TWO_NODE_TIMEOUT="3"
+
+# Index DB type. If you have a lot of users an experience
+# bad performance consider switching to mysql or postgres.
+# NOTE: Please make sure you run "otpme-tool index stop" BEFORE changing this parameter!
+INDEX="sqlite3"
+#INDEX="postgres"
+# Autostart index DB on daemon start.
+AUTOSTART_INDEX="True"
+
+# SQLite3 settings
+SQLITE3_BIN="sqlite3"
+# https://www.sqlite.org/pragma.html#pragma_synchronous
+SQLITE3_PRAGMA_SYNCHRONOUS="NORMAL"
+
+# Mysql settings. If you want to use a custom config save
+# it to /etc/otpme/mysql.conf.
+#MYSQL_DBAPI = "cymysql"
+#MYSQL_BIN = "/usr/bin/mysql"
+#MYSQLD_BIN = "/usr/sbin/mysqld"
+#MYSQL_ADMIN_BIN = "/usr/bin/mysqladmin"
+#MYSQL_INSTALL_DB = "/usr/bin/mysql_install_db"
+#MYSQL_SOCKET_DIR = "/var/run/otpme/sockets/mysql/mysqld.sock"
+#MYSQL_MAX_CONNECTIONS = 500
+#MYSQL_KEY_BUFFER_SIZE = "160M"
+#MYSQL_THREAD_STACK = "192K"
+#MYSQL_MAX_ALLOWED_PACKET = "512M"
+#MYSQL_THREAD_CACHE_SIZE = 8
+#MYSQL_MAX_CONNECTIONS = 512
+#MYSQL_QUERY_CACHE_LIMIT = "10M"
+#MYSQL_QUERY_CACHE_SIZE = "160M"
+#MYSQL_EXPIRE_LOGS_DAYS = 10
+#MYSQL_MAX_BINLOG_SIZE = "100M"
+#MYSQL_CHARACTER_SET_SERVER = "utf8mb4"
+#MYSQL_COLLATION_SERVER = "utf8mb4_general_ci"
+#MYSQL_MYISAM_RECOVER_OPTIONS = "BACKUP"
+
+# Postgres settings. If you want to use a custom config save
+# it to /etc/otpme/postgresql.conf.
+#POSTGRES_PSQL_BIN="psql"
+#POSTGRES_CREATEDB_BIN="createdb"
+#POSTGRES_CREATEUSER_BIN="createuser"
+#POSTGRES_PG_ISREADY_BIN= "pg_isready"
+#POSTGRES_DBAPI = "psycopg2"
+POSTGRES_PG_CTL_BIN="/usr/lib/postgresql/13/bin/pg_ctl"
+#POSTGRES_SOCKET_DIR="/var/run/otpme/sockets/postgres/"
+#POSTGRES_DEFAULT_TEXT_SEARCH_CONFIG="pg_catalog.english"
+# Postgres tuning parameters.
+#POSTGRES_WORK_MEM="-1"
+#POSTGRES_SHARED_BUFFERS="128MB"
+#POSTGRES_EFFECTIVE_CACHE_SIZE="128MB"
+#POSTGRES_MAINTENANCE_WORK_MEM="64MB"
+#POSTGRES_DYNAMIC_SHARED_MEMORY_TYPE="posix"
+#POSTGRES_MAX_CONNECTIONS="500"
+#POSTGRES_FSYNC="off"
+#POSTGRES_SYNCHRONOUS_COMMIT="off"
+#POSTGRES_RANDOM_PAGE_COST="1.0"
+#POSTGRES_ENABLE_HASHJOIN="off"
+# Postgres autovacuum settings.
+#POSTGRES_AUTOVACUUM="on"
+#POSTGRES_AUTOVACUUM_WORK_MEM="-1"
+#POSTGRES_AUTOVACUUM_NAPTIME="1min"
+#POSTGRES_AUTOVACUUM_MAX_WORKERS="5"
+#POSTGRES_AUTOVACUUM_FREEZE_MAX_AGE="100000"
+#POSTGRES_AUTOVACUUM_VACUUM_THRESHOLD="50"
+#POSTGRES_AUTOVACUUM_ANALYZE_THRESHOLD="50"
+# Postres localization.
+#POSTGRES_LC_TIME="en_US.UTF-8"
+#POSTGRES_LC_NUMERIC="en_US.UTF-8"
+#POSTGRES_LC_MESSAGES="en_US.UTF-8"
+#POSTGRES_LC_MONETARY="en_US.UTF-8"
+#POSTGRES_DATESTYLE="iso, mdy"
+#POSTGRES_TIMEZONE="Europe/Berlin"
+#POSTGRES_LOG_TIMEZONE="Europe/Berlin"
+
+# Pickle module used for caching. Currently
+# Run root scripts as this user.
+ROOT_SCRIPT_USER="nobody"
+ROOT_SCRIPT_GROUP="nobody"
+
+# supported are "pickle" and "larch"
+PICKLE_CACHE_MODULE="pickle"
+
+# Cache daemon to use. Currently supported is redis, memcached and memcachedb.
+# Please note that memcachedb stores sensitive data on disk (see MEMCACHEDB_CACHE_DIR).
+# NOTE: Please make sure you run "otpme-tool cache stop" BEFORE changing this parameter!
+CACHE="redis"
+# Autostart cache on daemon start.
+AUTOSTART_CACHE="True"
+# Flush cache on daemon start.
+FLUSH_CACHE_ON_START="True"
+
+# Cache objects. This must be a comma separated list of object_type:cache_size pairs.
+#OBJECT_CACHES="user:2048,group:512"
+
+# Redis settings. If you want to use a custom config save
+# it to /etc/otpme/redis.conf.
+# Redis binaries.
+#REDIS_CLI_BIN="redis-cli"
+#REDIS_SERVER_BIN="redis-server"
+# Redis maxmemory to use.
+#REDIS_MAXMEMORY="128M"
+# Redis maxmemory policy to use.
+# LFU is preferred but only available since redis 4.0.
+# In LRU mode OTPme starts redis with maxmemory-policy volatile-lru.
+#REDIS_MAXMEMORY_POLICY="lru"
+# Redis LRU settings.
+#REDIS_MAXMEMORY_SAMPLES=5
+# In LFU mode OTPme starts redis with maxmemory-policy volatile-lfu.
+#REDIS_MAXMEMORY_POLICY="lfu"
+# Redis LFU settings.
+#REDIS_LFU_DECAY_TIME=1"
+#REDIS_LFU_LOG_FACTOR="10"
+# Redis loglevel.
+#REDIS_LOGLEVEL="notice"
+#REDIS_DATABASES="16"
+#REDIS_SOCKET="/var/run/otpme/sockets/redis/redis.sock"
+# Enable redis persistence. Please note that redis stores sensitive data
+# on disk (see REDIS_CACHE_DIR) if this option is enabled.
+#REDIS_PERSISTENCE="False"
+#REDIS_CACHE_DIR="/var/cache/otpme/redis"
+
+# Memcached binary.
+#MEMCACHED_BIN="memcached"
+# Memcache settings.
+#MEMCACHED_MAXMEM="128"
+#MEMCACHED_THREADS="32"
+# Maximum object size. If you have a lot of users, role and group objects
+# will increase in size and you may reach this limit. The following error
+# message indicates you reached the limit:
+# "Memcache set error: error 37 from memcached_set: SUCCESS"
+#MEMCACHED_MAX_OBJECT_SIZE="8m"
+#MEMCACHED_SOCKET="/var/run/otpme/sockets/memcached/memcached.sock"
+# Please note. If you uncomment MEMCACHED_OPTS any other memcached option is ignored.
+#MEMCACHED_OPTS="-d -P /var/run/otpme/pidfiles/memcached.pid -I 8m -m 128 -t 32 -U off -s /var/run/otpme/sockets/memcached.sock -a 700 -o lru_maintainer,lru_crawler,hash_algorithm=murmur3 -o expirezero_does_not_evict -v"
+
+# Memcachedb binary.
+#MEMCACHEDB_BIN="memcachedb"
+# Memcache settings.
+#MEMCACHEDB_MAXMEM="128"
+#MEMCACHEDB_THREADS="32"
+#MEMCACHEDB_CACHE_DIR="/var/cache/otpme/memcachedb"
+#MEMCACHEDB_SOCKET="/var/run/otpme/sockets/memcachedb/memcachedb.sock"
+# Please note. If you uncomment MEMCACHEDB_OPTS any other memcachedb option is ignored.
+#MEMCACHEDB_OPTS="-d -m 128 -t 32 -A 4096 -H /var/cache/otpme/memcachedb -U off -s /var/run/otpme/sockets/memcachedb/memcachedb.sock -a 700 -v"
+
+# Posix message queues max message size. On linux you can get/set it via
+# /proc/sys/fs/mqueue/msgsize_max. If you set it to "auto" it will be read
+# from /proc/sys/fs/mqueue/msgsize_max.
+POSIX_MSGSIZE_MAX="8192"
+# Posix message queues max size (see getrlimit(2)). OTPme uses posix message queues
+# for interprocess communication. If you have a lot of users you may increase it
+# to a proper value. It will be set on daemon start.
+RLIMIT_MSGQUEUE="2621440000"
+
+# Max interval in seconds the backend executes object policies (e.g. autodisable).
+# Setting this value to low will result in poor performance because the backend
+# will call policies to frequently. Setting it to high will prevent policies with
+# short times to work correctly. E.g. a autodisable policy with a <auto_disable>
+# time of 10 seconds will take a maximum of <BACKEND_POLICY_INTERVAL> seconds to
+# get executed.
+BACKEND_POLICY_INTERVAL="60"
+
+# Logging to use.
+PAM_USE_SYSLOG="False"
+PAM_USE_SYSTEMD="True"
+PAM_USE_LOGFILE="False"
+PAM_LOGFILE="/var/log/otpme/pam.log"
+
+# Command to get encryption key
+# KEY_COMMAND can be one of:
+#   - A path to the file containing the hex encoded encyption key (file://path/to/key/file)
+#   - A command to be executed that provides the encyption key via stdout.
+KEY_COMMAND="file://etc/otpme/otpme.key"
+
+# Hash type used to generate master key from password.
+MASTER_KEY_HASH_TYPE="Argon2_i"
+
+# OTPme user and group.
+USER="otpme"
+GROUP="otpme"
+
+# Handle missing dirs/files and their permissions.
+# Disabling this options requires the admin/package system to make sure all
+# required dirs/files exist and have the correct permissions.
+HANDLE_FILES_DIRS="True"
+
+# Configure which pinentry to use. The default is otpme-pinentry.
+PINENTRY="otpme-pinentry"
+
+# Hash type used to derive encryption key for offline tokens from passsword.
+OFFLINE_TOKEN_HASH_TYPE="Argon2_i"
+# Hash type used to derive encryption key for object exports from passsword.
+OBJECT_EXPORT_HASH_TYPE="Argon2_i"
+
+# Use DNS to get login realm/site?
+# You need to add the following DNS records to your zone.
+#   _otpme-realm    TXT "otpme.org"
+#   _otpme-site     TXT "berlin"
+#   _otpme-login    SRV 10 1 2020 login.otpme.org.
+#   _otpme-join     SRV 10 1 2024 login.otpme.org.
+#   login		A 192.168.1.1
+#
+# This feature is at least needed if you want to login with
+# a host (e.g. a notebook) from site A on site B. But its also
+# a good idea to use DNS in case you need to change the site
+# address.
+LOGIN_USE_DNS="False"
+
+# Use DNS to resolve site address. If this is set to False
+# all OTPme daemons, agents and tools use the IP address
+# that is configured for the site directly. You may want to
+# enable DNS resolution to make changing of the site IP
+# easier or to allow login over the internet if the master
+# node is behind a NAT gateway.
+USE_DNS="False"
+
+# Files to store SSL cert/key to.
+SSL_SITE_CERT_FILE="/etc/otpme/ssl/site_cert.pem"
+SSL_CERT_FILE="/etc/otpme/ssl/cert.pem"
+SSL_KEY_FILE="/etc/otpme/ssl/key.pem"
+SSL_CA_FILE="/etc/otpme/ssl/ca.pem"
+
+# Host/Node RSA key file.
+HOST_KEY_FILE="/etc/otpme/ssl/hostkey.pem"
+
+# File backend settings.
+#
+# Directory for object configs.
+DATA_DIR="/var/lib/otpme"
+# Directory for sessions etc.
+SPOOL_DIR="/var/spool/otpme"
+# Directory for cached logins etc.
+CACHE_DIR="/var/cache/otpme"
+# Directory for pidfiles sockets etc.
+RUN_DIR="/var/run/otpme"
+# Directory for logfiles.
+LOG_DIR="/var/log/otpme"
+
+# Comma separated list of users allowed to login (used by pam_otpme, SSH etc.).
+# If you add the users UUID separated by a colon (username:uuid) the user is
+# valid if one of username or UUID matches.
+VALID_LOGIN_USERS=""
+# Comma separated list of users NOT allowed to login (used by pam_otpme, SSH etc.).
+# If you add the users UUID separated by a colon (username:uuid) the user is denied
+# if one of username or UUID matches.
+DENY_LOGIN_USERS=""
+
+# If set to True, user defined signers are ignored (default).
+# If set to False users can define their own token signers.
+# If set to a comma separated list of usernames, the private
+# signers of the listed users are ignored and the global ones
+# are used instead.
+FORCE_TOKEN_SIGNERS="True"
+
+# Same rules as for FORCE_TOKEN_SIGNERS.
+FORCE_KEY_SCRIPT_SIGNERS="True"
+
+# Same rules as for FORCE_TOKEN_SIGNERS.
+FORCE_AGENT_SCRIPT_SIGNERS="True"
+
+# Length for logout passwords (SLP).
+LOGOUT_PASS_LEN="6"
+
+# Length for refresh passwords (SRP).
+REFRESH_PASS_LEN="6"
+
+# FIXME: not implemented yet
+## ldap server to get user mobile numbers from
+#LDAP_URI="ldaps://ldap.domain.intern"
+#LDAP_BASE="dc=domain,dc=intern"
+#LDAP_DN="uid=user,ou=people,dc=domain,dc=intern"
+#LDAP_PASS="ldappass"
+
+# Set path to pwgen binary used for password generation.
+PWGEN="/usr/bin/pwgen"
+
+# Set "authentication ok" and "authentication failed" strings that will be send
+# to stdout when using OTPme as a replacement for ntlm_auth (otpme-auth verify).
+AUTH_OK_STRING="Accept"
+AUTH_FAILED_STRING="Reject"
+
+# Print python tracebacks.
+TRACEBACKS="False"
+
+# Loglevel [CRITICAL,ERROR,WARNING,INFO,DEBUG]
+LOGLEVEL="INFO"
+
+# Log authentication data of requests (e.g. password, challenge/response etc.).
+# This option can be True, False or a comma separated list of usernames for
+# which auth data should be logged.
+LOG_AUTH_DATA="False"
+
+# Show job title in process name.
+SHOW_JOB_TITLE="False"
+
+# Cache objects in memory while syncing?
+SYNC_MEM_CACHE="True"
+
+# Interval in seconds we will try to sync with (master) node.
+SYNC_INTERVAL="180"
+# Retry interval if sync failed (e.g. network problems) in seconds.
+SYNC_RETRY_INTERVAL="10"
+# To prevent our local objects from beeing in an inconsistent state (e.g. token
+# is synced but not its second factor token) we need to be in an consistent
+# state with the master node at least at one point while doing a sync. The
+# hostd_sync_retry_count paramter configures how many times we will try to get
+# a consistent state until we wait for SYNC_INTERVAL before retrying.
+SYNC_RETRY_COUNT="5"
+# Ignore if objects change while sync is running. If set to False (default) syncd
+# retries sync if an object has changed while syncing. If set to True objects are
+# synced as they are received. This may lead to an inconsistend objects state but
+# will help with sync problems if objects do change to frequently on the master
+# node to get to an consistend sync state.
+SYNC_IGNORE_CHANGED_OBJECTS="False"
+
+# Heartbeat interval in seconds controld sends a 'ping' message to all child deamons.
+CONTROLD_HEARTBEAT_INTERVAL="15"
+# Timeout for sending heartbeat messages.
+CONTROLD_HEARTBEAT_TIMEOUT="15"
+# Interval in seconds controld tries to resend failed heartbeat messages.
+CONTROLD_HEARTBEAT_RETRY_INTERVAL="3"
+# Max retry for failed heartbeat messages before controld restarts a child daemon.
+CONTROLD_HEARTBEAT_RETRY="3"
+
+# Timeout for inter-daemon communication. This timeout applies e.g. to the heartbeat
+# messages controld sends to all child deamons. Normally you do not need to adjust
+# this value. But if you see "Daemon <name> is not responding. Trying to restart..."
+# messages in the log you may want to increase this value. It may happen on high
+# system load.
+INTER_DAEMON_COMM_TIMEOUT="1"
+
+# Time in seconds after otpme-agent closes open connections to daemons.
+AGENT_CONNECTION_IDLE_TIMEOUT="300"
+# Time interval in seconds otpme-agent sends keepalive messages to keep up
+# daemon connections.
+AGENT_KEEPALIVE_INTERVAL="5"
+
+# Interval in seconds we will check if config file or reload file has changed
+# and a reload is needed.
+RELOAD_CONFIG_INTERVAL="10"

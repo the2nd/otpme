@@ -1,0 +1,21 @@
+[Unit]
+Description=OTPme daemon
+After=network.target
+
+[Service]
+Type=forking
+#Type=simple
+ExecStart=/usr/local/bin/otpme-controld start
+ExecStop=/usr/local/bin/otpme-controld stop
+ExecReload=/usr/local/bin/otpme-controld reload
+PIDFile=/var/run/otpme/pidfiles/otpme-controld.pid
+KillMode=none
+# cannot set user via systemd because otpme-controld
+# is designed to restart child deamons on demand and
+# running it as non-root leads to problems when binding
+# to well known ports (<1024).
+#User=otpme
+#Group=otpme
+
+[Install]
+WantedBy=multi-user.target

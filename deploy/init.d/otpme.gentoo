@@ -1,0 +1,28 @@
+#!/sbin/runscript
+# Copyright 1999-2015 Gentoo Foundation
+# Distributed under the terms of the GNU General Public License v2
+# $Header: /var/cvsroot/gentoo-x86/net-misc/openssh/files/sshd.rc6.4,v 1.5 2015/05/04 02:56:25 vapier Exp $
+
+extra_started_commands="reload"
+
+depend() {
+	use dns net
+}
+
+start() {
+	ebegin "Starting ${SVCNAME}"
+	/usr/local/bin/otpme-controld start
+	eend $?
+}
+
+stop() {
+	ebegin "Stopping ${SVCNAME}"
+	/usr/local/bin/otpme-controld stop
+	eend $?
+}
+
+reload() {
+	ebegin "Reloading ${SVCNAME}"
+	/usr/local/bin/otpme-controld reload
+	eend $?
+}

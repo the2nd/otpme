@@ -1,0 +1,142 @@
+# -*- coding: utf-8 -*-
+# Copyright (C) 2014 the2nd <the2nd@otpme.org>
+# Distributed under the terms of the GNU General Public License v2
+import os
+
+try:
+    if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
+        print(_("Loading module: %s") % __name__)
+except:
+    pass
+
+from otpme.lib.cli import register_cli
+from otpme.lib.cli import get_unit_string
+from otpme.lib.cli import get_policies_string
+
+from otpme.lib.exceptions import *
+
+table_headers = [
+                "policy",
+                "unit",
+                "type",
+                "status",
+                "policies",
+                "inherit",
+                "description",
+                ]
+
+REGISTER_BEFORE = []
+REGISTER_AFTER = ["otpme.lib.filetools"]
+
+def register():
+    return_attributes = [
+                        'name',
+                        'enabled',
+                        'unit',
+                        'description',
+                        'policy_type',
+                        'acl_inheritance_enabled',
+                        ]
+    register_cli(name="policy",
+                table_headers=table_headers,
+                return_attributes=return_attributes,
+                row_getter=row_getter,
+                max_len=30)
+
+def row_getter(realm, site, policy_order, policy_data, acls,
+    output_fields=[], acl_checker=None, **kwargs):
+    """ Build table rows for policies. """
+    _result = []
+    for policy_uuid in policy_order:
+        row = []
+        policy_name = policy_data[policy_uuid]['name']
+        unit_uuid = policy_data[policy_uuid]['unit'][0]
+        try:
+            enabled = policy_data[policy_uuid]['enabled'][0]
+        except:
+            enabled = False
+        try:
+            policy_type = policy_data[policy_uuid]['policy_type'][0]
+        except:
+            policy_type = False
+        try:
+            description = policy_data[policy_uuid]['description'][0]
+        except:
+            description = None
+        try:
+            acl_inheritance_enabled = policy_data[policy_uuid]['acl_inheritance_enabled'][0]
+        except:
+            acl_inheritance_enabled = False
+
+        # Get object ACLs.
+        try:
+            policy_acls = acls[policy_uuid]
+        except:
+            policy_acls = {}
+
+        # Get ACL checker.
+        check_acl = acl_checker(policy_acls)
+
+        # Policyname.
+        if "policy" in output_fields:
+            row.append(policy_name)
+        # Unit.
+        if "unit" in output_fields:
+            unit_string = get_unit_string(unit_uuid)
+            row.append(unit_string)
+        # Policy type.
+        if "type" in output_fields:
+            row.append(policy_type)
+        # Status.
+        if "status" in output_fields:
+            if check_acl("view:status") \
+            or check_acl("enable:object") \
+            or check_acl("disable:object"):
+                if enabled:
+                    enabled_string = "Enabled"
+                else:
+                    enabled_string = "Disabled"
+                row.append(enabled_string)
+            else:
+                row.append("-")
+        # Policies.
+        if "policies" in output_fields:
+            if check_acl("view:policy") \
+            or check_acl("add:policy") \
+            or check_acl("remove:policy"):
+                policies_string = get_policies_string(object_type="policy",
+                                                    object_uuid=policy_uuid)
+                row.append(policies_string)
+            else:
+                row.append("-")
+        # Inherit.
+        if "inherit" in output_fields:
+            if check_acl("view:acl_inheritance") \
+            or check_acl("enable:acl_inheritance") \
+            or check_acl("disable:acl_inheritance"):
+                if acl_inheritance_enabled:
+                    acl_inheritance_string = "Enabled"
+                else:
+                    acl_inheritance_string = "Disabled"
+                row.append(acl_inheritance_string)
+            else:
+                row.append("-")
+        # Description.
+        if "description" in output_fields:
+            if check_acl("view:description") \
+            or check_acl("edit:description"):
+                if description is None:
+                    description_string = ""
+                else:
+                    description_string = description
+                row.append(description_string)
+            else:
+                row.append("-")
+        # Build row entry.
+        entry = {
+                'uuid'              : policy_uuid,
+                'name'              : policy_name,
+                'row'               : row,
+                }
+        _result.append(entry)
+    return _result

@@ -1,0 +1,3 @@
+account	[success=1 new_authtok_reqd=done default=ignore]	pam_python.so pam_otpme.py
+account	requisite						pam_deny.so
+account	required						pam_permit.so

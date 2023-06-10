@@ -1,0 +1,32 @@
+diff -ru pam-python-1.0.8.org/src/pam_python.c pam-python-1.0.8/src/pam_python.c
+--- pam-python-1.0.8.org/src/pam_python.c	2020-11-10 10:58:10.000000000 +0100
++++ pam-python-1.0.8/src/pam_python.c	2022-03-17 14:44:43.922883927 +0100
+@@ -104,7 +104,8 @@
+ #define	Py23_String_FromStringAndSize PyUnicode_FromStringAndSize
+ #define	Py23_String_GET_SIZE	PyUnicode_GET_SIZE
+ #define	Py23_String_Parse_Char	"U"
+-#define	Py23_String_Size	PyUnicode_Size
++//#define	Py23_String_Size	PyUnicode_Size
++#define    Py23_String_Size    PyBytes_Size
+ #define	Py23_String_Type	PyUnicode_Type
+ #define	Py23_TYPE(p)		Py_TYPE(p)
+ #endif
+@@ -434,7 +435,7 @@
+    * Just print the exception in some recognisable form, hopefully.
+    */
+   syslog_open(module_path);
+-  if (PyClass_Check(ptype))
++  if (PyType_Check(ptype))
+     stype = PyObject_GetAttrString(ptype, "__name__");
+   else
+   {
+diff -ru pam-python-1.0.8.org/src/setup.py pam-python-1.0.8/src/setup.py
+--- pam-python-1.0.8.org/src/setup.py	2020-11-10 10:58:10.000000000 +0100
++++ pam-python-1.0.8/src/setup.py	2022-03-17 14:44:57.870497980 +0100
+@@ -1,4 +1,4 @@
+-#!/usr/bin/python2 -W default
++#!/usr/bin/python3 -W default
+ import warnings; warnings.simplefilter('default')
+ 
+ import distutils.sysconfig
+Nur in pam-python-1.0.8/src: tags.
