@@ -361,6 +361,12 @@ class OTPmeClient(OTPmeClientBase):
                         except ConnectionError as e:
                             msg = "Unable to get site address: %s" % e
                             raise ConnectionError(msg)
+                        if not site_address:
+                            try:
+                                site_address = stuff.get_site_address(realm, site, fqdn=False)
+                            except ConnectionError as e:
+                                msg = "Unable to get site address: %s" % e
+                                raise ConnectionError(msg)
                     else:
                         site_address = config.site_fqdn
                         if not site_address:

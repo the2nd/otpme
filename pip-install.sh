@@ -2,7 +2,7 @@
 
 useradd -r -U -d /var/lib/otpme otpme
 
-apt-get install python3-scapy python3-systemd python3-fido2 python3-dev python3-pip libpq-dev libacl1-dev libre2-9 libre2-dev pkg-config git python3-jwt liboath0 liboath-dev redis redis-tools postgresql libnss-cache python3-pyotp pwgen python3-pylibmc libsystemd-dev freeradius
+apt-get install python3-scapy python3-systemd python3-fido2 python3-dev python3-pip libpq-dev libacl1-dev libre2-9 libre2-dev pkg-config git python3-jwt liboath0 liboath-dev redis redis-tools postgresql libnss-cache python3-pyotp pwgen python3-pylibmc libsystemd-dev dbus-x11 freeradius
 
 systemctl stop redis
 systemctl disable redis
@@ -20,4 +20,5 @@ pip3 install otpme
 mkdir /etc/otpme
 cp -i /usr/local/lib/python3.9/dist-packages/etc/otpme/otpme.conf.dist /etc/otpme/otpme.conf
 cp -a /usr/local/lib/python3.9/dist-packages/etc/otpme/schema /etc/otpme/
+cp -a /usr/local/lib/python3.9/dist-packages/etc/otpme/dicts/ /etc/otpme/
 cp -a /usr/local/lib/python3.9/dist-packages/etc/bash_completion.d/otpme /etc/bash_completion.d/

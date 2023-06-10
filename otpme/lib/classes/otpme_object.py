@@ -128,6 +128,7 @@ global_write_value_acls = {
                                 "policy",
                                 ],
                     "edit"      : [
+                                "attribute",
                                 "description",
                                 ],
 }
@@ -4078,6 +4079,67 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
+    @check_acls(acls=['edit:attribute'])
+    @object_lock()
+    def modify_attribute(self, attribute, old_value, new_value,
+        run_policies=True, ignore_ro=False, verbose_level=0,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Add attribute to object. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("modify_attribute",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        # Search extension to add attribute.
+        extension = None
+        for x in self._extensions:
+            e = self._extensions[x]
+            if self.type not in e.object_types:
+                continue
+            ext_attrs = config.get_ldif_attributes(e.name, self.type)
+            if attribute not in ext_attrs:
+                continue
+            if verbose_level > 0:
+                msg = (_("Using extension '%(ext)s' to modify attribute "
+                        "'%(attribute)s' of object.")
+                        % {"ext":e.name, "attribute":attribute})
+                callback.send(msg)
+            extension = e
+
+        if not extension:
+            msg = ("Unable to find extension to modify attribute of object: %s"
+                    % attribute)
+            # FIXME: log user messages?
+            #logger.critical(msg)
+            return callback.error(msg)
+
+        # Try to add attribute.
+        try:
+            extension.modify_attribute(self, attribute, old_value,
+                                        new_value, ignore_ro=ignore_ro,
+                                        verbose_level=verbose_level)
+        except Exception as e:
+            config.raise_exception()
+            msg = (_("Unable to add attribute: %s: %s") % (attribute, e))
+            return callback.error(msg)
+
+        # Update extensions.
+        self.update_extensions("modify_attribute",
+                            attribute=attribute,
+                            old_value=old_value,
+                            new_value=new_value,
+                            verbose_level=verbose_level,
+                            callback=callback)
+
+        return self._cache(callback=callback)
+
     @check_acls(acls=['delete:attribute'])
     @object_lock()
     def del_attribute(self, attribute, value=None, run_policies=True,
@@ -7219,6 +7281,9 @@ class OTPmeClientObject(OTPmeObject):
         and self.type != "host":
             msg = (_("Invalid object type: %s" % self.type))
             raise OTPmeException(msg)
+
+        if token.is_admin():
+            return True
 
         if self.type != "client":
             if login_interface is not None:

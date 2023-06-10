@@ -257,6 +257,14 @@ cmd_help = {
                                 },
                 },
 
+     'modify_attribute'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user modify_attribute {user} {attribute} {old_value} {new_value}',
+                    'cmd'   :   '<|object|> <attribute> <old_value> <new_value>',
+                    '_help' :   {
+                                    'cmd'                   : 'modify (ldap) attribute of user',
+                                },
+                },
+
      'del_attribute'    : {
                     '_cmd_usage_help' : 'Usage: otpme-user del_attribute {user} {attribute}=[value]',
                     'cmd'   :   '<|object|> <attribute>=[value]',

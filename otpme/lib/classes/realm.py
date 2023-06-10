@@ -264,6 +264,15 @@ commands = {
                     },
                 },
             },
+    'modify_attribute'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'modify_attribute',
+                    'args'              : ['attribute', 'old_value', 'new_value'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'del_attribute'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {

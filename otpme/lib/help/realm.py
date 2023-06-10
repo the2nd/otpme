@@ -144,6 +144,14 @@ cmd_help = {
                                 },
                 },
 
+     'modify_attribute'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-realm modify_attribute {realm} {attribute} {old_value} {new_value}',
+                    'cmd'   :   '<|object|> <attribute> <old_value> <new_value>',
+                    '_help' :   {
+                                    'cmd'                   : 'modify (ldap) attribute of realm',
+                                },
+                },
+
      'del_attribute'    : {
                     '_cmd_usage_help' : 'Usage: otpme-realm del_attribute {realm} {attribute}=[value]',
                     'cmd'   :   '<|object|> <attribute>=[value]',

@@ -233,7 +233,6 @@ def get_help(command, subcommand=None, command_map=None,
         glob_opt_table.append([ '', '' ])
         glob_opt_table.append([ ' global:', '' ])
         for x in global_opts:
-            print(x)
             help_text = "\t- %s" % x[1]
             row = [ "   %s" % x[0], help_text ]
             glob_opt_table.append(row)

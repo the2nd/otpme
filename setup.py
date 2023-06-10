@@ -184,6 +184,12 @@ data_files = [
                         'bash_completion/otpme',
                     ]
                 ),
+                ('/etc/deploy/',
+                    [
+                        'deploy/pam/pam_otpme.py',
+                        'deploy/pam/pam-python/README',
+                    ]
+                ),
                 #('share/man/man1',
                 #    [
                 #        "man/otpme-controld.1",

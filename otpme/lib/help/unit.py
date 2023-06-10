@@ -125,6 +125,14 @@ cmd_help = {
                                 },
                 },
 
+     'modify_attribute'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-unit modify_attribute {unit} {attribute} {old_value} {new_value}',
+                    'cmd'   :   '<|object|> <attribute> <old_value> <new_value>',
+                    '_help' :   {
+                                    'cmd'                   : 'modify (ldap) attribute of unit',
+                                },
+                },
+
      'del_attribute'    : {
                     '_cmd_usage_help' : 'Usage: otpme-unit del_attribute {unit} {attribute}=[value]',
                     'cmd'   :   '<|object|> <attribute>=[value]',

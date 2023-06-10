@@ -86,7 +86,6 @@ def show_compgen():
         found_subcommand = True
         word_counter += 1
 
-    print("fou", found_subcommand)
     # Check for global options.
     global_opts_done = True
     if not found_subcommand:

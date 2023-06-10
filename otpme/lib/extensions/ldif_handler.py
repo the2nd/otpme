@@ -570,6 +570,58 @@ class OTPmeLDIFHandler(object):
 
         return val_list
 
+    def modify_attribute(self, o, a, old_value, new_value, ignore_ro=False,
+        verify=True, auto_value=False, verbose_level=0, callback=default_callback):
+        """ Add attribute to object. """
+        # FIXME: what are valid chars for attributes and values?
+        if "\\" in str(a) or "\\" in str(new_value):
+            msg = ("Invalid character in attribute.")
+            return callback.error(msg)
+
+        if not ignore_ro:
+            if a in self.read_only_attributes[o.type]:
+                msg = (_("Attribute '%s' is readonly.") % a)
+                return callback.error(msg)
+
+        if not o.type in self.object_types:
+            msg = (_("Object type not supported by this extension: %s")
+                    % o.type)
+            return callback.error(msg)
+
+        x_attrs = config.get_ldif_attributes(self.name, o.type)
+        if not a in x_attrs:
+            msg = (_("Cannot modify unknown attribute: %s: %s") % (self.name, a))
+            return callback.error(msg)
+
+        current_values = self.get_attribute(o, a)
+        if old_value not in current_values:
+            msg = "No attribute value found: %s=%s" % (a, old_value)
+            return callback.error(msg)
+
+        # Remove attribute value
+        self.del_attribute(o, a, v=old_value, ignore_deps=True, ignore_ro=ignore_ro)
+
+        # Add new attribute value.
+        try:
+            self.add_attribute_value(o=o,
+                                attribute=a,
+                                value=new_value,
+                                verify=verify,
+                                auto_value=auto_value,
+                                callback=callback)
+        except Exception as e:
+            config.raise_exception()
+            msg = (_("Unable to add attribute: %s: %s") % (a, e))
+            return callback.error(msg)
+
+        # Reload extension.
+        if verify:
+            return self.load(o=o,
+                            verify=verify,
+                            verbose_level=verbose_level,
+                            callback=callback)
+        return callback.ok()
+
     def add_attribute(self, o, a, v=None, ignore_ro=False, verify=True,
         auto_value=False, verbose_level=0, callback=default_callback):
         """ Add attribute to object. """

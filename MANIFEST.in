@@ -7,6 +7,8 @@ include LICENSE
 
 include deploy/otpme.conf.dist
 include bash_completion/otpme
+include deploy/pam/pam_otpme.py
+include deploy/pam/pam-python/README
 
 # Include schema files.
 recursive-include deploy/schema *

@@ -133,6 +133,14 @@ cmd_help = {
                                 },
                 },
 
+     'modify_attribute'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-site modify_attribute {site} {attribute} {old_value} {new_value}',
+                    'cmd'   :   '<|object|> <attribute> <old_value> <new_value>',
+                    '_help' :   {
+                                    'cmd'                   : 'modify (ldap) attribute of site',
+                                },
+                },
+
      'del_attribute'    : {
                     '_cmd_usage_help' : 'Usage: otpme-site del_attribute {site} {attribute}=[value]',
                     'cmd'   :   '<|object|> <attribute>=[value]',
