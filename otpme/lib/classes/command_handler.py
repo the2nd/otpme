@@ -446,6 +446,8 @@ class CommandHandler(object):
             from otpme.lib.register import register_modules
             # Register modules.
             register_modules()
+            # We need to do a realm init in API mode.
+            config.use_api = True
             # Mark ongoing realm init.
             config.realm_init = True
             # Disable locking on realm init.

@@ -284,7 +284,7 @@ def start():
                             close_fds=True,
                             return_proc=True,
                             shell=False,
-                            call=False)
+                            call=True)
     finally:
         lock.release_lock(lock_caller=lock_caller)
 
