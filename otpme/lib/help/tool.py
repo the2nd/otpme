@@ -476,21 +476,4 @@ cmd_help = {
                                     'cmd'                   : 'Reset auth_on_action reauth.',
                                 },
                 },
-
-    'master_failover'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-tool master_failover --random --to <new_master>',
-                    'cmd'   :   '--random :random_node=True: --to :new_master_node:',
-                    '_help' :   {
-                                    'cmd'                   : 'Make the current node the master.',
-                                    '--to <node>'           : 'Switch master to the given node.',
-                                    '--random'              : 'Switch master to a random node.',
-                                },
-                },
-
-    'cluster_status'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-tool cluster_status',
-                    '_help' :   {
-                                    'cmd'                   : 'Get cluster status.',
-                                },
-                },
     }

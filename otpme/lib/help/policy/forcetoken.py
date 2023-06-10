@@ -15,6 +15,7 @@ def register():
     register_cmd_help(command="policy", help_dict=cmd_help, mod_name="forcetoken")
 
 cmd_help = {
+    '_need_command'             : True,
     'force_token_types'          : {
                     '_cmd_usage_help' : 'Usage: otpme-policy force_token_types {policy} {token_types}',
                     'cmd'   :   '<|object|> <token_types>',

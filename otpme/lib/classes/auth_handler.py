@@ -1226,8 +1226,9 @@ class AuthHandler(object):
                     self.password_hash = self.verify_token.temp_password_hash
                     self.pass_hash_params = self.verify_token.temp_password_hash_params
             elif self.verify_token.password_hash is not None:
-                self.password_hash = self.verify_token.password_hash
-                self.pass_hash_params= self.verify_token.password_hash_params
+                if not self.verify_token.second_factor_token_enabled:
+                    self.password_hash = self.verify_token.password_hash
+                    self.pass_hash_params= self.verify_token.password_hash_params
             if not self.password_hash:
                 self.gen_pass_hash()
 

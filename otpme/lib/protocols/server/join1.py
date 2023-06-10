@@ -1080,7 +1080,6 @@ class OTPmeJoinP1(OTPmeServer1):
             return join_result
 
         if command == "leave":
-            print("LLLLLLLLLLLLLLLLLLLLLLLLLLL", command)
             try:
                 leave_result = self.handle_leave_command(host_fqdn,
                                                         host,

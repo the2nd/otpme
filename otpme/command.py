@@ -60,15 +60,11 @@ from otpme.lib.messages import error_message
 
 from otpme.lib.exceptions import *
 
-#if (len(sys.argv) > 1 and (sys.argv[1] == "--compgen")):
-for x in sys.argv:
-    if x == "--compgen":
-        from otpme.lib.compgen import show_compgen
-        show_compgen()
-        sys.exit(0)
-
 # Get tool name.
 tool_name = str(os.path.basename(sys.argv[0]))
+# Get command from system command (e.g. otpme-user -> user).
+command = "-".join(tool_name.split("-")[1:])
+
 # Set proctitle.
 current_proctitle = setproctitle.getproctitle()
 new_proctitle = current_proctitle.split()
@@ -82,18 +78,35 @@ sys.argv.pop(0)
 from otpme.lib.otpme_config import OTPmeConfig
 config = OTPmeConfig(tool_name, quiet=True)
 
-# Get command from system command (e.g. otpme-user -> user).
-command = "-".join(tool_name.split("-")[1:])
-
 # Register help.
 from otpme.lib.help.register import register_help
 register_help()
 
-# Handle arguments.
-argv = []
+help_needed = False
+help_message = None
+
+# Set cli object type.
+subcommand = None
+object_type = "main"
+if "--type" in sys.argv:
+    opt_pos = sys.argv.index("--type")
+    type_pos = opt_pos + 1
+    try:
+        object_type = sys.argv[type_pos]
+        sys.argv.pop(opt_pos)
+        sys.argv.pop(opt_pos)
+    except IndexError:
+        help_message = "Missing object type: --type"
+        help_msg = get_help(command, error=help_message)
+        error_message(help_msg)
+        sys.exit(0)
+config.cli_object_type = object_type
+
 for x in sys.argv:
-    argv.append(x)
-sys.argv = argv
+    if x == "--compgen":
+        from otpme.lib.compgen import show_compgen
+        show_compgen()
+        sys.exit(0)
 
 # Only root can control OTPme daemons.
 if command == "controld":
@@ -111,27 +124,23 @@ if len(sys.argv) > 1 and sys.argv[1] == "--version":
     message(config.my_name + "_" + config.my_version)
     sys.exit(0)
 
-# Parse main options.
-help_needed = False
-help_message = None
+# Check if we have to print the help screen.
 try:
     get_main_opts()
 except OTPmeException as e:
     help_needed = True
     help_message = str(e)
 
-# Check if we have to print the help screen.
-subcommand = None
-need_command = command_map[command]['_need_command']
+need_command = command_map[command][object_type]['_need_command']
 if need_command:
     if len(sys.argv) == 0:
         help_needed = True
     else:
         subcommand = sys.argv[0]
-        if subcommand in command_map[command]:
+        if subcommand in command_map[command][object_type]:
             command_min_args = 0
             try:
-                cmd_line = command_map[command][subcommand]['cmd'].split(" ")
+                cmd_line = command_map[command][object_type][subcommand]['cmd'].split(" ")
             except:
                 cmd_line = []
             for x in cmd_line:
@@ -151,7 +160,7 @@ if need_command:
             help_needed = True
 if help_needed:
     message(get_help(command, subcommand, error=help_message))
-    sys.exit(0)
+    sys.exit(1)
 
 # Print warning if API mode is requested and daemon is running.
 if config.use_api:

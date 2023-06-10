@@ -15,6 +15,7 @@ def register():
     register_cmd_help(command="policy", help_dict=cmd_help, mod_name="logintimes")
 
 cmd_help = {
+    '_need_command'             : True,
     'login_times'          : {
                     '_cmd_usage_help' : 'Usage: otpme-policy login_times {policy} {login_times}',
                     'cmd'   :   '<|object|> <login_times>',

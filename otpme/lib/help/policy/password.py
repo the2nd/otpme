@@ -15,6 +15,7 @@ def register():
     register_cmd_help(command="policy", help_dict=cmd_help, mod_name="password")
 
 cmd_help = {
+    '_need_command'             : True,
     'pin_min_len'   : {
                     '_cmd_usage_help' : 'Usage: otpme-policy pin_min_len {policy} {pin_min_len}',
                     'cmd'   :   '<|object|> <pin_min_len>',

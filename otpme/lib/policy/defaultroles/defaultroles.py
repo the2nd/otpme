@@ -59,7 +59,7 @@ default_acls = []
 recursive_default_acls = []
 
 commands = {
-    'add_role'   : {
+    'add_default_role'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'add_role',
@@ -68,7 +68,7 @@ commands = {
                     },
                 },
             },
-    'remove_role'   : {
+    'remove_default_role'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'remove_role',

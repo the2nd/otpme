@@ -102,7 +102,7 @@ commands = {
     'password'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'change_password',
+                    'method'            : 'change_key_password',
                     'oargs'             : ['auto_password', 'password'],
                     'job_type'          : 'process',
                     },
@@ -624,8 +624,8 @@ class SshToken(Token):
 
         if status:
             return callback.ok(ok_message)
-        else:
-            return callback.error(error_message)
+
+        return callback.error(error_message)
 
     def verify(self, challenge=None, response=None,
         otp=None, session_uuid=None, **kwargs):
@@ -860,7 +860,7 @@ class SshToken(Token):
     @check_acls(['edit:password'])
     @object_lock()
     @backend.transaction
-    def change_password(self, force=False, run_policies=True,
+    def change_key_password(self, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change private key encryption password. """
         if run_policies:

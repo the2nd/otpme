@@ -150,6 +150,7 @@ def register_backend():
     config.register_index_attribute('client')
     config.register_index_attribute('session_id')
     config.register_index_attribute('session_type')
+    config.register_index_attribute('creation_time')
     def oid_getter(session_file):
         session_name = ".".join(session_file.split(".")[:-1])
         session_oid = oid.OTPmeOid(object_type="session",
@@ -1246,6 +1247,7 @@ class Session(object):
         """ Add a session. """
         # Set session creation time.
         self.creation_time = time.time()
+        self.add_index('creation_time', self.creation_time)
         # Set session last used time.
         self.last_used = time.time()
 

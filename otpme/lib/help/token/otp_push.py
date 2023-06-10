@@ -12,9 +12,10 @@ except:
 from . import register_cmd_help
 
 def register():
-    register_cmd_help(command="token", help_dict=cmd_help, mod_name="otp-push")
+    register_cmd_help(command="token", help_dict=cmd_help, mod_name="otp_push")
 
 cmd_help = {
+    '_need_command'             : True,
     'password'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token password --generate {token} [password]',
                     'cmd'   :   '--generate :auto_password=True: <|object|> [password]',

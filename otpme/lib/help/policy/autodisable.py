@@ -15,6 +15,7 @@ def register():
     register_cmd_help(command="policy", help_dict=cmd_help, mod_name="autodisable")
 
 cmd_help = {
+    '_need_command'             : True,
     'auto_disable'          : {
                     '_cmd_usage_help' : 'Usage: otpme-policy auto_disable {policy} {time}',
                     'cmd'   :   '<|object|> <auto_disable> -u :unused=True:',

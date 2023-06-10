@@ -31,8 +31,10 @@ from otpme.lib.freeradius import reload as freeradius_reload
 
 from otpme.lib.exceptions import *
 
-node_checksums = []
 LOCK_TYPE = "cluster_journal"
+
+node_checksums = []
+processed_events = []
 processed_journal_entries = []
 last_node_check = time.time()
 default_callback = config.get_callback()
@@ -145,8 +147,6 @@ def cluster_sync_object(object_uuid, object_id, action, object_config=None,
         object_event_name = "/%s" % cluster_journal_entry.timestamp
         object_event = multiprocessing.Event(object_event_name)
         object_event.wait()
-        object_event.clear()
-        object_event.unlink()
         if config.debug_level() > 2:
             msg = ("Finished cluster data write: %s %s %s"
                     % (config.daemon_name, action, object_id))
@@ -320,6 +320,7 @@ class ClusterDaemon(OTPmeDaemon):
     """ ClusterDaemon. """
     def __init__(self, *args, **kwargs):
         self.node_conn = None
+        self.member_candidate = False
         self.cluster_connections = {}
         self.cluster_comm_child = None
         self.interprocess_comm_child = None
@@ -394,10 +395,17 @@ class ClusterDaemon(OTPmeDaemon):
         return cluster_journal_dirs
 
     def handle_events(self):
+        global processed_events
+        if len(processed_events) > 102400:
+            processed_events = processed_events[51200:]
         for cluster_entry_dir in self.get_cluster_journal():
+            if cluster_entry_dir in processed_events:
+                continue
+            processed_events.append(cluster_entry_dir)
             object_event_name = "/%s" % os.path.basename(cluster_entry_dir)
             object_event = multiprocessing.Event(object_event_name)
             object_event.set()
+            object_event.unlink()
 
     def node_leave(self, node_name):
         self.node_conn = None
@@ -947,7 +955,7 @@ class ClusterDaemon(OTPmeDaemon):
                 self.node_leave(node_name)
 
         # Node joined the cluster.
-        multiprocessing.member_nodes[node_name] = True
+        self.member_candidate = True
 
         return True
 
@@ -1122,6 +1130,19 @@ class ClusterDaemon(OTPmeDaemon):
             config.cluster_status = True
             time.sleep(quorum_check_interval)
 
+    def handle_two_node_setup(self):
+        # Two node setups require some special handling if second node is down.
+        if not config.two_node_setup:
+            return
+        if len(multiprocessing.member_nodes) != 0:
+            return
+        try:
+            self.handle_events()
+        except Exception as e:
+            msg = "Failed to handle events: %s" % e
+            self.logger.critical(msg)
+            #print(msg)
+
     def start_cluster_connection(self, *args, **kwargs):
         """ Start cluster connection. """
         try:
@@ -1170,15 +1191,9 @@ class ClusterDaemon(OTPmeDaemon):
                 conn_event.clear()
                 #print("got event", node_name)
 
-            # Two node setups require some special handling if second node is down.
-            if config.two_node_setup:
-                if len(multiprocessing.member_nodes) == 0:
-                    try:
-                        self.handle_events()
-                    except Exception as e:
-                        msg = "Failed to handle events: %s" % e
-                        self.logger.critical(msg)
-                        #print(msg)
+            # Handle two node cluster stuff.
+            self.handle_two_node_setup()
+
             # If the node is not online but we have a sane cluster status
             # we can delete cluster journal entries that were written to
             # all member nodes.
@@ -1222,6 +1237,11 @@ class ClusterDaemon(OTPmeDaemon):
                 self.logger.critical(msg)
                 #print(msg)
 
+            # Add node to cluster.
+            if self.member_candidate:
+                self.member_candidate = False
+                multiprocessing.member_nodes[node_name] = True
+
             try:
                 self.handle_nsscache_sync(node_name)
             except Exception as e:
@@ -1264,25 +1284,30 @@ class ClusterDaemon(OTPmeDaemon):
                         % (entry_timestamp, e))
                 config.logger.critical(msg)
                 continue
-            uuids_to_process.append(cluster_journal_entry.object_uuid)
             entries_to_process.append(cluster_journal_entry.timestamp)
+            if cluster_journal_entry.action != "delete":
+                uuids_to_process.append(cluster_journal_entry.object_uuid)
 
-        done_entries = []
+        written_entries = []
         unsync_status_set = False
         objects_sync_started = True
         objects_sync_successful = False
-        for cluster_journal_entry in list(cluster_journal):
+        for entry_timestamp in entries_to_process:
             if not config.cluster_status:
                 return True
-            if cluster_journal_entry.timestamp in processed_journal_entries:
+            if entry_timestamp in processed_journal_entries:
                 continue
-            # Skip duplicated entries. We only need to write the first
-            # and the last occurence.
-            cluster_journal.remove(cluster_journal_entry)
-            if cluster_journal_entry.object_uuid in done_entries:
-                if cluster_journal_entry in cluster_journal:
-                    cluster_journal_entry.delete()
-                    continue
+            self.handle_two_node_setup()
+            cluster_journal_entry = ClusterJournalEntry(timestamp=entry_timestamp)
+            try:
+                cluster_journal_entry.load()
+            except NotFound:
+                continue
+            except Exception as e:
+                msg = ("Failed to load cluster journal entry: %s: %s"
+                        % (entry_timestamp, e))
+                config.logger.critical(msg)
+                continue
             #print(node_name, cluster_journal_entry.action, cluster_journal_entry.object_id)
             action = cluster_journal_entry.action
             object_id = cluster_journal_entry.object_id
@@ -1290,6 +1315,27 @@ class ClusterDaemon(OTPmeDaemon):
             object_uuid = cluster_journal_entry.object_uuid
             object_config = cluster_journal_entry.object_config
             object_checksum = cluster_journal_entry.object_checksum
+
+            # Skip duplicated entries we've already written.
+            # We only need to write the first and the last occurence.
+            if action == "delete":
+                try:
+                    uuids_to_process.remove(object_uuid)
+                except ValueError:
+                    pass
+            else:
+                if object_uuid in written_entries:
+                    if object_uuid in uuids_to_process:
+                        msg = ("Skipping duplicated cluster journal entry: %s"
+                                % (object_id))
+                        self.logger.debug(msg)
+                        try:
+                            uuids_to_process.remove(object_uuid)
+                        except ValueError:
+                            pass
+                        cluster_journal_entry.delete()
+                        continue
+
             if object_checksum in node_checksums:
                 node_checksums.append(object_checksum)
                 cluster_journal_entry.add_node(node_name)
@@ -1361,8 +1407,11 @@ class ClusterDaemon(OTPmeDaemon):
                     if write_status != "done":
                         objects_sync_successful = False
                         continue
-                    done_entries.append(cluster_journal_entry.object_uuid)
-                    uuids_to_process.remove(cluster_journal_entry.object_uuid)
+                    written_entries.append(object_uuid)
+                    try:
+                        uuids_to_process.remove(object_uuid)
+                    except ValueError:
+                        pass
                     msg = ("Written object to node: %s: %s (%s)"
                             % (node_name, object_id, object_checksum))
                     self.logger.debug(msg)
@@ -1389,8 +1438,11 @@ class ClusterDaemon(OTPmeDaemon):
                     if rename_status != "done":
                         objects_sync_successful = False
                         continue
-                    done_entries.append(cluster_journal_entry.object_uuid)
-                    uuids_to_process.remove(cluster_journal_entry.object_uuid)
+                    written_entries.append(object_uuid)
+                    try:
+                        uuids_to_process.remove(object_uuid)
+                    except ValueError:
+                        pass
                     msg = ("Renamed object on node: %s: %s: %s"
                             % (node_name, object_id, new_object_id))
                     self.logger.debug(msg)
@@ -1413,8 +1465,6 @@ class ClusterDaemon(OTPmeDaemon):
                     if del_status != "done":
                         objects_sync_successful = False
                         continue
-                    done_entries.append(cluster_journal_entry.object_uuid)
-                    uuids_to_process.remove(cluster_journal_entry.object_uuid)
                     msg = ("Deleted object on node: %s: %s"
                             % (node_name, object_id))
                     self.logger.debug(msg)
@@ -1490,6 +1540,7 @@ class ClusterDaemon(OTPmeDaemon):
         object_event_name = "/%s" % cluster_journal_entry.timestamp
         object_event = multiprocessing.Event(object_event_name)
         object_event.set()
+        object_event.unlink()
         return True
 
     def handle_nsscache_sync(self, node_name):

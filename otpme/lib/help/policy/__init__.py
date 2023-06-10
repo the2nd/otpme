@@ -194,7 +194,6 @@ cmd_help = {
                                 },
                 },
 
-
     'add_policy'    : {
                     '_cmd_usage_help' : 'Usage: otpme-policy add_policy {policy} {policy}',
                     'cmd'   :   '<|object|> <policy_name>',

@@ -15,6 +15,7 @@ def register():
     register_cmd_help(command="token", help_dict=cmd_help, mod_name="motp")
 
 cmd_help = {
+    '_need_command'             : True,
     'secret'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token secret {token} [secret]',
                     'cmd'   :   '<|object|> [secret]',

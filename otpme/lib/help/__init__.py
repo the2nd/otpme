@@ -4,6 +4,7 @@
 import os
 import re
 import sys
+from prettytable import PrettyTable
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -50,25 +51,24 @@ def register_cmd_help(command, help_dict, mod_name=None):
     global command_map
     if command not in command_map:
         command_map[command] = {}
+    if mod_name is None:
+        mod_name = "main"
     for x in help_dict:
-        x_help = help_dict[x]
-        try:
-            current_mods = command_map[command][x]['mods']
-        except:
-            current_mods = []
-        if mod_name:
-            current_mods.append(mod_name)
-            x_help['mods'] = current_mods
-        command_map[command][x] = help_dict[x]
+        if mod_name not in command_map[command]:
+            command_map[command][mod_name] = {}
+        command_map[command][mod_name][x] = help_dict[x]
 
 def register_global_opt(opt, help_text):
     global global_opts
     global_opts.append((opt, help_text))
 
 def get_cmd_help(command, mod_name=None):
+    from otpme.lib import config
     global command_map
+    if mod_name is None:
+        mod_name = config.cli_object_type
     try:
-        help_dict = command_map[command]
+        help_dict = command_map[command][mod_name]
     except:
         help_dict = {}
     return help_dict
@@ -77,6 +77,7 @@ def get_cmd_help(command, mod_name=None):
 register_global_opt("-r <realm>", "Connect to realm")
 register_global_opt("-s <site>", "Connect to site")
 register_global_opt("-u <user>", "Connect as user")
+register_global_opt("--type <object_type>", "Object type to act on (e.g. token type).")
 register_global_opt("-t <timeout>", "Connect timeout in seconds")
 register_global_opt("-tt <timeout>", "Connection timeout in seconds")
 register_global_opt("-c <config_file>", "Use alternative config file")
@@ -138,15 +139,29 @@ register_global_opt("--debug-counter-limit <call_count>", "Print warning if func
 #        the import time compared to putting it into e.g. cli.py.
 #        Showing help should be as fast as possible because its
 #        used for bash completion stuff.
-def get_help(command, subcommand=None, command_map=None, error=None):
+def get_help(command, subcommand=None, command_map=None,
+    error=None, mod_name=None, include_main_usage_help=True):
     """ Show command help. """
+    #from otpme.lib import debug
+    #x = debug.trace()
+    #import json
+    #x = json.dumps(x)
+    #fd = open("/tmp/log", "w")
+    #fd.write(x)
+    #fd.close()
+    from otpme.lib import config
     # Get default command map if none was given
     if not command_map:
         from otpme.lib.help import command_map
 
+    if mod_name is None:
+        mod_name = config.cli_object_type
+    if mod_name is None:
+        mod_name = "main"
+
     if subcommand:
         try:
-            return command_map[command][subcommand]['_cmd_usage_help']
+            return command_map[command][mod_name][subcommand]['_cmd_usage_help']
         except:
             subcommand = None
 
@@ -160,41 +175,29 @@ def get_help(command, subcommand=None, command_map=None, error=None):
 
     # Get main command help
     try:
-        main_command_help = command_map[command]['_help']
+        main_command_help = command_map[command][mod_name]['_help']
     except:
         main_command_help = None
 
-    mod_cmd_map = {}
     command_count = 0
-    for c in sorted(command_map[command]):
+    for c in sorted(command_map[command][mod_name]):
         opt_count = 0
         if c == "_need_command":
+            continue
+        if c == "_include_main_opts":
             continue
         if c == "_include_global_opts":
             continue
         if c == "_usage_help":
-            main_usage_help = command_map[command][c]
+            main_usage_help = command_map[command][mod_name][c]
             continue
-        if not '_help' in command_map[command][c]:
+        if not '_help' in command_map[command][mod_name][c]:
             continue
-        try:
-            mods = command_map[command][c]['mods']
-        except:
-            mods = None
-        for f in command_map[command][c]['_help']:
+        for f in command_map[command][mod_name][c]['_help']:
             if f == "cmd":
-                help_text = "\t- %s" % command_map[command][c]['_help'][f]
-                if mods:
-                    for mod_name in mods:
-                        row = [ "  %s" % c, help_text ]
-                        if not command in mod_cmd_map:
-                            mod_cmd_map[command] = {}
-                        if not mod_name in mod_cmd_map[command]:
-                            mod_cmd_map[command][mod_name] = []
-                        mod_cmd_map[command][mod_name].append(row)
-                else:
-                    row = [ " %s" % c, help_text ]
-                    cmd_table.append(row)
+                help_text = "\t- %s" % command_map[command][mod_name][c]['_help'][f]
+                row = [ " %s" % c, help_text ]
+                cmd_table.append(row)
             else:
                 if opt_count == 0:
                     if command_count != 0:
@@ -202,27 +205,26 @@ def get_help(command, subcommand=None, command_map=None, error=None):
                         opt_table.append(row)
                     row = [ " %s:" % c, "" ]
                     opt_table.append(row)
-                help_text = "\t- %s" % command_map[command][c]['_help'][f]
+                help_text = "\t- %s" % command_map[command][mod_name][c]['_help'][f]
                 row = [ "   %s" % f, help_text ]
                 opt_table.append(row)
                 opt_count += 1
             command_count += 1
 
     try:
-        mod_cmds = mod_cmd_map[command]
+        include_main_opts = command_map[command][mod_name]['_include_main_opts']
     except:
-        mod_cmds = []
+        include_main_opts = False
 
-    for mod_name in mod_cmds:
-        row = [ "", "" ]
-        cmd_table.append(row)
-        row = [ " %s:" % mod_name, "" ]
-        cmd_table.append(row)
-        for row in mod_cmds[mod_name]:
-            cmd_table.append(row)
+    main_command_opts = None
+    if include_main_opts:
+        main_command_opts = get_help(command=command,
+                                    subcommand=subcommand,
+                                    mod_name="main",
+                                    include_main_usage_help=False)
 
     try:
-        include_global_opts = command_map[command]['_include_global_opts']
+        include_global_opts = command_map[command][mod_name]['_include_global_opts']
     except:
         include_global_opts = False
 
@@ -231,6 +233,7 @@ def get_help(command, subcommand=None, command_map=None, error=None):
         glob_opt_table.append([ '', '' ])
         glob_opt_table.append([ ' global:', '' ])
         for x in global_opts:
+            print(x)
             help_text = "\t- %s" % x[1]
             row = [ "   %s" % x[0], help_text ]
             glob_opt_table.append(row)
@@ -244,8 +247,6 @@ def get_help(command, subcommand=None, command_map=None, error=None):
                 help_text = main_command_help[opt]
                 row = [ "   %s" % opt, help_text ]
                 opt_table.insert(0, row)
-            row = [ " main:", "" ]
-            opt_table.insert(0, row)
             row = [ "", "" ]
             opt_table.insert(0, row)
         row = [ "Options:", "" ]
@@ -253,7 +254,6 @@ def get_help(command, subcommand=None, command_map=None, error=None):
         row = [ "", "" ]
         opt_table.insert(0, row)
 
-    from prettytable import PrettyTable
     table_headers = [ "command", "help" ]
     table = PrettyTable(table_headers, header_style="title")
     table.align = "l"
@@ -268,12 +268,14 @@ def get_help(command, subcommand=None, command_map=None, error=None):
     output = table.get_string(header=False, border=False)
 
     message = []
-    if main_usage_help:
+    if include_main_usage_help and main_usage_help:
         message.append(main_usage_help)
     if output:
         message.append("")
         message.append("Commands:")
         message.append(output)
+    if main_command_opts:
+        message.append(main_command_opts)
     if error is not None:
         message.append("")
         message.append(error)
@@ -282,13 +284,17 @@ def get_help(command, subcommand=None, command_map=None, error=None):
 
 main_opts = {}
 
-def get_main_opts(clear_cache=False):
+def get_main_opts(clear_cache=False, mod_name=None):
     """ Get main options from sys.argv. """
+    from otpme.lib import config
     # We need global var to cache main opts. This is required because we call
     # this function before we import the config module in otpme.py. We do this
     # for performance reasons because our bash-completion stuff often calls
     # the otpme-* command with just -h.
     global main_opts
+
+    if mod_name is None:
+        mod_name = config.cli_object_type
 
     if clear_cache:
         main_opts = {}

@@ -15,6 +15,7 @@ def register():
     register_cmd_help(command="policy", help_dict=cmd_help, mod_name="defaultgroups")
 
 cmd_help = {
+    '_need_command'             : True,
     'add_group'      : {
                     '_cmd_usage_help' : 'Usage: otpme-policy add_group {policy} {group}',
                     'cmd'   :   '<|object|> <group_name>',

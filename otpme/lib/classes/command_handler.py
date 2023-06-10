@@ -139,6 +139,15 @@ class CommandHandler(object):
                                         aes_pass=self.user_aes_pass)
         return self.mgmt_client
 
+    def get_command_syntax(self, command, subcommand):
+        """ Get command syntax. """
+        try:
+            command_syntax = self.command_map[command]['main'][subcommand]['cmd']
+        except KeyError:
+            mod_name = config.cli_object_type
+            command_syntax = self.command_map[command][mod_name][subcommand]['cmd']
+        return command_syntax
+
     def send_command(self, daemon="mgmtd", socket_uri=None,
         realm=config.realm, site=config.site, command=None, subcommand=None,
         command_line=None, command_args=None, username=None, password=None,
@@ -183,9 +192,15 @@ class CommandHandler(object):
 
             # Get command syntax.
             try:
-                command_syntax = self.command_map[command][subcommand]['cmd']
-            except:
-                help_text = self.get_help(_("Unknown command: %s") % subcommand)
+                command_syntax = self.get_command_syntax(command, subcommand)
+            except Exception as e:
+                #help_text = self.get_help(_("Unknown command: %s") % subcommand)
+                help_text = "fuck"
+                print("CCCC:%s" % command)
+                print("LLLL:%s" % subcommand)
+                print("cccc:%s" % config.cli_object_type)
+                from otpme.lib import debug
+                debug.trace()
                 raise OTPmeException(help_text)
 
             # Parse command line.
@@ -328,7 +343,7 @@ class CommandHandler(object):
         self.get_default_object = None
 
         try:
-            need_command = self.command_map[command]['_need_command']
+            need_command = self.command_map[command][config.cli_object_type]['_need_command']
         except:
             need_command = False
 
@@ -361,7 +376,7 @@ class CommandHandler(object):
 
             if subcommand == "master_failover":
                 try:
-                    command_syntax = self.command_map[command][subcommand]['cmd']
+                    command_syntax = self.get_command_syntax(command, subcommand)
                 except:
                     return self.get_help(_("Unknown command: %s") % subcommand)
                 object_cmd, \
@@ -697,7 +712,7 @@ class CommandHandler(object):
         if subcommand == "stop":
             # Get command syntax.
             try:
-                command_syntax = self.command_map[command][subcommand]['cmd']
+                command_syntax = self.get_command_syntax(command, subcommand)
             except:
                 return self.get_help(_("Unknown command: %s") % subcommand)
 
@@ -763,7 +778,7 @@ class CommandHandler(object):
 
             # Get command syntax.
             try:
-                command_syntax = self.command_map[command][subcommand]['cmd']
+                command_syntax = self.get_command_syntax(command, subcommand)
             except:
                 return self.get_help(_("Unknown command: %s") % subcommand)
 
@@ -1378,7 +1393,7 @@ class CommandHandler(object):
     def handle_import_command(self, command, subcommand):
         """ Handle import command. """
         try:
-            command_syntax = self.command_map[command][subcommand]['cmd']
+            command_syntax = self.get_command_syntax(command, subcommand)
         except:
             return self.get_help(_("Unknown command: %s") % subcommand)
 
@@ -1485,7 +1500,7 @@ class CommandHandler(object):
         """ Handle sync command. """
         # Get command syntax.
         try:
-            command_syntax = self.command_map[command][subcommand]['cmd']
+            command_syntax = self.get_command_syntax(command, subcommand)
         except:
             return self.get_help(_("Unknown command: %s") % subcommand)
 
@@ -1546,7 +1561,7 @@ class CommandHandler(object):
         #   - otpme-tool add_signer --type key_script "user|hboss.intern/koblenz/users/test1"
 
         try:
-            command_syntax = self.command_map[command][subcommand]['cmd']
+            command_syntax = self.get_command_syntax(command, subcommand)
         except:
             return self.get_help(_("Unknown command: %s") % subcommand)
 
@@ -1582,7 +1597,7 @@ class CommandHandler(object):
             raise OTPmeException(msg)
         # Get command syntax.
         try:
-            command_syntax = self.command_map[command][subcommand]['cmd']
+            command_syntax = self.get_command_syntax(command, subcommand)
         except:
             return self.get_help(_("Unknown command: %s") % subcommand)
 
@@ -3757,7 +3772,7 @@ class CommandHandler(object):
 
         # Get command syntax
         try:
-            command_syntax = self.command_map[command][subcommand]['cmd']
+            command_syntax = self.get_command_syntax(command, subcommand)
         except:
             return self.get_help(_("Unknown command: %s") % subcommand)
 
@@ -3877,7 +3892,7 @@ class CommandHandler(object):
 
         # Get command syntax.
         try:
-            command_syntax = self.command_map[command][subcommand]['cmd']
+            command_syntax = self.get_command_syntax(command, subcommand)
         except:
             return self.get_help(_("Unknown command: %s") % subcommand)
 
@@ -3931,7 +3946,7 @@ class CommandHandler(object):
 
         # Get command syntax.
         try:
-            command_syntax = self.command_map[command][subcommand]['cmd']
+            command_syntax = self.get_command_syntax(command, subcommand)
         except:
             return self.get_help(_("Unknown command: %s") % subcommand)
 
@@ -3969,7 +3984,7 @@ class CommandHandler(object):
 
         # Get command syntax.
         try:
-            command_syntax = self.command_map[command][subcommand]['cmd']
+            command_syntax = self.get_command_syntax(command, subcommand)
         except:
             return self.get_help(_("Unknown command: %s") % subcommand)
 
@@ -4052,7 +4067,7 @@ class CommandHandler(object):
                 pass
 
         try:
-            command_syntax = self.command_map[command][subcommand]['cmd']
+            command_syntax = self.get_command_syntax(command, subcommand)
         except:
             return self.get_help(_("Unknown command: %s") % subcommand)
 
@@ -4088,7 +4103,7 @@ class CommandHandler(object):
     def handle_user_gen_cert_command(self, command, subcommand):
         # Get command syntax.
         try:
-            command_syntax = self.command_map[command][subcommand]['cmd']
+            command_syntax = self.get_command_syntax(command, subcommand)
         except:
             return self.get_help(_("Unknown command: %s") % subcommand)
 
@@ -4355,7 +4370,7 @@ class CommandHandler(object):
 
         # Try to get token type from command line.
         try:
-            command_syntax = self.command_map["token"]["deploy"]['cmd']
+            command_syntax = self.get_command_syntax(command="token", subcommand="deploy")
         except:
             return self.get_help(_("Unknown command: %s") % "deploy")
 
@@ -4539,7 +4554,7 @@ class CommandHandler(object):
         if sign_mode == "client":
             # Get command syntax.
             try:
-                command_syntax = self.command_map[command][subcommand]['cmd']
+                command_syntax = self.get_command_syntax(command, subcommand)
             except:
                 return self.get_help(_("Unknown command: %s") % subcommand)
 
@@ -5278,7 +5293,7 @@ class CommandHandler(object):
             cache.enable()
         # Get command syntax.
         try:
-            command_syntax = self.command_map[command][subcommand]['cmd']
+            command_syntax = self.get_command_syntax(command, subcommand)
         except:
             return self.get_help(_("Unknown command: %s") % subcommand)
         object_cmd, \
@@ -5345,7 +5360,8 @@ class CommandHandler(object):
 
         # Get command syntax.
         try:
-            command_syntax = self.command_map[self.command][subcommand]['cmd']
+            command_syntax = self.get_command_syntax(command=self.command,
+                                                    subcommand=subcommand)
         except:
             return self.get_help(_("Unknown command: %s") % subcommand)
 

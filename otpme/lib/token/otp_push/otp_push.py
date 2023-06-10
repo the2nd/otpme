@@ -162,7 +162,7 @@ def get_recursive_default_acls():
     return _acls
 
 REGISTER_BEFORE = []
-REGISTER_AFTER = []
+REGISTER_AFTER = ["otpme.lib.classes.script"]
 
 def register():
     """ Register object. """

@@ -184,6 +184,8 @@ class OTPmeConfig(object):
         self.register_config_var("disk_encryption", str, "FERNET")
         self.register_config_var("disk_encryption_mod", object, None)
 
+        self.register_config_var("cli_object_type", str, "main")
+
         # Force operation (-f).
         self.register_config_var("force", bool, False)
         # Indicates we run in daemon mode.

@@ -15,28 +15,13 @@ def register():
     register_cmd_help(command="token", help_dict=cmd_help, mod_name="ssh")
 
 cmd_help = {
+    '_need_command'             : True,
     'password'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token password --generate {token} [password]',
                     'cmd'   :   '--generate :auto_password=True: <|object|> [password]',
                     '_help' :   {
                                     'cmd'                   : 'change token password',
                                     '--generate'            : 'generate password',
-                                },
-                },
-
-    'enable_mschap'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token enable_mschap {token}',
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : 'enable MSCHAP authentication',
-                                },
-                },
-
-    'disable_mschap'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token disable_mschap {token}',
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : 'disable MSCHAP authentication',
                                 },
                 },
 
@@ -68,7 +53,7 @@ cmd_help = {
                     '_cmd_usage_help' : 'Usage: otpme-token 2f_token {token} {2f_token}',
                     'cmd'   :   '<|object|> <second_factor_token>',
                     '_help' :   {
-                                    'cmd'                   : 'change second factor OTP token',
+                                    'cmd'                   : 'change second factor token',
                                 },
                 },
 
@@ -76,7 +61,7 @@ cmd_help = {
                     '_cmd_usage_help' : 'Usage: otpme-token enable_2f {token}',
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'enable second factor OTP token',
+                                    'cmd'                   : 'enable second factor token',
                                 },
                 },
 
@@ -84,10 +69,9 @@ cmd_help = {
                     '_cmd_usage_help' : 'Usage: otpme-token disable_2f {token}',
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'disable second factor OTP token',
+                                    'cmd'                   : 'disable second factor token',
                                 },
                 },
-
 
     'sign'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token sign --stdin-pass [--tags tag1,tag2...] {name}',

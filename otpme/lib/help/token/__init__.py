@@ -39,7 +39,7 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token add {token} [token_type]',
+                    '_cmd_usage_help' : 'Usage: otpme-token add [-r] {token} [token_type]',
                     'cmd'   :   '-r :replace=True: <|object|> [token_type]',
                     '_help' :   {
                                     'cmd'                   : 'add new token',

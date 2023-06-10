@@ -132,6 +132,15 @@ commands = {
                     },
                 },
             },
+    'test'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'test',
+                    'args'              : ['object_type', 'test_object', 'token'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     }
 
 def get_acls():
@@ -251,8 +260,8 @@ class LogintimesPolicy(Policy):
                         },
                     }
 
-        # Allow more than one policy of this type per object.
-        self.allow_multiple = True
+        # Allow not more than one policy of this type per object.
+        self.allow_multiple = False
         self.roles = []
         self.tokens = []
         self.token_options = {}
@@ -360,10 +369,38 @@ class LogintimesPolicy(Policy):
                             % (self.name, hook_object.rel_path))
         return callback.error(msg, exception=self.policy_exception)
 
-    def test(self, force=False, verbose_level=0,
-        _caller="API", callback=default_callback):
+    def test(self, object_type, test_object, token, force=False,
+        verbose_level=0, _caller="API", callback=default_callback):
         """ Test the policy """
-        return callback.ok(self.login_times)
+        # Get test object.
+        search_attribute = "name"
+        if object_type == "token":
+            search_attribute = "rel_path"
+        result = backend.search(object_type=object_type,
+                                attribute=search_attribute,
+                                value=test_object,
+                                return_type="instance")
+        if not result:
+            msg = "Unknown object: %s" % test_object
+            return callback.error(msg)
+        hook_object = result[0]
+        # Get token.
+        result = backend.search(object_type="token",
+                                attribute="rel_path",
+                                value=token,
+                                return_type="instance")
+        if not result:
+            msg = "Unknown token: %s" % token
+            return callback.error(msg)
+        _token = result[0]
+        test_result = self.handle_hook(hook_object=hook_object,
+                                        hook_name="authorize",
+                                        token=_token,
+                                        callback=callback)
+        if test_result:
+            msg = "Policy verfied successful."
+            return callback.ok(msg)
+        return test_result
 
     def handle_hook(self, hook_object, hook_name, token,
         callback=default_callback, **kwargs):
@@ -390,7 +427,9 @@ class LogintimesPolicy(Policy):
             if not token_match and not role_match:
                 if self.ignore_empty:
                     return callback.ok()
-            return self.check_login_times(hook_object, self.login_times)
+            return self.check_login_times(hook_object=hook_object,
+                                        login_times=self.login_times,
+                                        callback=callback)
         msg = (_("Unknown policy hook: %s") % hook_name)
         return callback.error(msg)
 
@@ -533,7 +572,6 @@ class LogintimesPolicy(Policy):
         or self.verify_acl("enable:ignore_empty") \
         or self.verify_acl("disable:ignore_empty"):
             ignore_empty = self.ignore_empty
-        print(ignore_empty)
         lines.append('IGNORE_EMPTY="%s"' % ignore_empty)
         return Policy.show_config(self,
                                 config_lines=lines,

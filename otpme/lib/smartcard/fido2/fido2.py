@@ -33,7 +33,7 @@ def register():
 class Fido2ClientHandler(object):
     deploy_commmand_map = {
         'fido2' : {
-                        '_cmd_usage_help' : 'Usage: otpme-tokend deploy -t {token_type} [-d] [token]',
+                        '_cmd_usage_help' : 'Usage: otpme-token deploy -t {token_type} [-d] [token]',
                         'cmd'   :   '-t ::token_type:: -d :debug=True: [|object|]',
                         '_help' :   {
                                         'cmd'                   : 'deploy fido2 token',

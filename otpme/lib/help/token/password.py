@@ -15,6 +15,8 @@ def register():
     register_cmd_help(command="token", help_dict=cmd_help, mod_name="password")
 
 cmd_help = {
+    '_need_command'             : True,
+    '_usage_help'               : "Usage: otpme-token --type password {command} [token]",
     'password'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token password [--generate] {token} [password]',
                     'cmd'   :   '--generate :auto_password=True: <|object|> [password]',
@@ -36,7 +38,7 @@ cmd_help = {
                     '_cmd_usage_help' : 'Usage: otpme-token 2f_token {token} {2f_token}',
                     'cmd'   :   '<|object|> <second_factor_token>',
                     '_help' :   {
-                                    'cmd'                   : 'change second factor OTP token',
+                                    'cmd'                   : 'change second factor token',
                                 },
                 },
 
@@ -44,7 +46,7 @@ cmd_help = {
                     '_cmd_usage_help' : 'Usage: otpme-token enable_2f {token}',
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'enable second factor OTP token',
+                                    'cmd'                   : 'enable second factor token',
                                 },
                 },
 
@@ -53,7 +55,7 @@ cmd_help = {
                     '_cmd_usage_help' : 'Usage: otpme-token disable_2f {token}',
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'disable second factor OTP token',
+                                    'cmd'                   : 'disable second factor token',
                                 },
                 },
 
@@ -82,7 +84,7 @@ cmd_help = {
                     '_cmd_usage_help' : 'Usage: otpme-token gen_mschap {token}',
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'generate MSCHAP challenge/response from token OTP',
+                                    'cmd'                   : 'generate MSCHAP challenge/response from second factor token',
                                 },
                 },
     }

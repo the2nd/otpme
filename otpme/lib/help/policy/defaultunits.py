@@ -15,6 +15,7 @@ def register():
     register_cmd_help(command="policy", help_dict=cmd_help, mod_name="defaultunits")
 
 cmd_help = {
+    '_need_command'             : True,
     'add_unit'      : {
                     '_cmd_usage_help' : 'Usage: otpme-policy add_unit {policy} {object_type} {unit}',
                     'cmd'   :   '<|object|> <object_type> <unit_path>',

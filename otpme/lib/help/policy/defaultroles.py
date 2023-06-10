@@ -15,16 +15,17 @@ def register():
     register_cmd_help(command="policy", help_dict=cmd_help, mod_name="defaultroles")
 
 cmd_help = {
-    'add_role'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy add_role {policy} {role}',
+    '_need_command'             : True,
+    'add_default_role'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-policy add_default_role {policy} {role}',
                     'cmd'   :   '<|object|> <role_name>',
                     '_help' :   {
                                     'cmd'                   : 'Add role.',
                                 },
                 },
 
-    'remove_role'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy remove_role {policy} {role}',
+    'remove_default_role'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-policy remove_default_role {policy} {role}',
                     'cmd'   :   '<|object|> <role_name>',
                     '_help' :   {
                                     'cmd'                   : 'Remove role.',

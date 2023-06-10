@@ -15,6 +15,7 @@ def register():
     register_cmd_help(command="resolver", help_dict=cmd_help, mod_name="ldap")
 
 cmd_help = {
+    '_need_command'             : True,
     'ldap_base'   : {
                     '_cmd_usage_help' : 'Usage: otpme-resolver ldap_base {resolver} {ldap_base}',
                     'cmd'   :   '<|object|> <ldap_base>',

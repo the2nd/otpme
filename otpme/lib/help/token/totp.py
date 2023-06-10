@@ -15,6 +15,7 @@ def register():
     register_cmd_help(command="token", help_dict=cmd_help, mod_name="totp")
 
 cmd_help = {
+    '_need_command'             : True,
     'secret'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token secret {token} [secret]',
                     'cmd'   :   '<|object|> [secret]',
@@ -64,6 +65,14 @@ cmd_help = {
                                 },
                 },
 
+    'gen'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-token gen {token}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'generate token OTP',
+                                },
+                },
+
     'enable_mschap'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token enable_mschap {token}',
                     'cmd'   :   '<|object|>',
@@ -77,14 +86,6 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : 'disable MSCHAP authentication',
-                                },
-                },
-
-    'gen'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token gen {token}',
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : 'generate token OTP',
                                 },
                 },
 

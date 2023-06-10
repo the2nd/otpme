@@ -985,7 +985,7 @@ class AccessGroup(OTPmeObject):
                 if not role.enabled:
                     continue
             if role.is_assigned_token(token_uuid):
-                return True
+                return role
             role_roles = get_roles(role_uuid=role_uuid,
                                     parent=True,
                                     recursive=True,
@@ -997,7 +997,7 @@ class AccessGroup(OTPmeObject):
                     if not role.enabled:
                         continue
                 if role.is_assigned_token(token_uuid):
-                    return True
+                    return role
         if not check_parent_groups:
             return False
         parent_groups = self.parents(recursive=False,
@@ -1008,7 +1008,7 @@ class AccessGroup(OTPmeObject):
                 if not group.enabled:
                     continue
             if group.is_assigned_token(token_uuid):
-                return True
+                return group
         return False
 
     def parents(self, recursive=False, sessions=None,

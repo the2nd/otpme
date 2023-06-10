@@ -1240,6 +1240,34 @@ def show_objects(object_type, realm=config.realm, site=None, search_regex=None,
         output = "%s\n\n%s" % (output, footer)
     return callback.ok(output)
 
+class SessionEntry(object):
+    def __init__(self, sessions, order_by):
+        self.sessions = sessions
+        self.order_by = order_by
+
+    def __str__(self):
+        return self.order_by
+
+    def __repr__(self):
+        # We need a string when object is used as dict key!
+        return self.__str__()
+
+    def __hash__(self):
+        return hash(self.__str__())
+
+    def __eq__(self, other):
+        return self.order_by == other.order_by
+
+    def __ne__(self, other):
+        return self.order_by != other.order_by
+
+    def __lt__(self, other):
+        return self.__str__() < other.__str__()
+
+    def __gt__(self, other):
+        return self.__str__() > other.__str__()
+
+
 def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False,
     max_len=30, output_fields=[], header=True, border=True, csv=False, csv_sep=";",
     show_all=False, callback=default_callback, **kwargs):
@@ -1468,7 +1496,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
         parent_session_list = parent_session_list[:max_len]
 
     # Dictionary to hold all session instances grouped by parent session.
-    session_list = {}
+    session_list = []
     session_count = 0
     session_add_count = 0
 
@@ -1526,10 +1554,9 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
         # Make sure we do not process more sessions than max_len.
         session_count += len(slist)
         if session_count <= max_len:
-            # Append session list to dictionary.
-            dict_key = "%s %s" % (sort_key, parent_session.session_id)
-            dict_entry = {dict_key : slist}
-            session_list.update(dict_entry)
+            # Append session entry to session list..
+            session_entry = SessionEntry(slist, sort_key)
+            session_list.append(session_entry)
             session_add_count = session_count
 
     if session_count > max_len:
@@ -1539,9 +1566,9 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
         footer = (_("Total %s sessions.") % session_add_count)
 
     # Walk through sorted list of sessions grouped by parent/child relation.
-    for dict_key in sorted(session_list, reverse=reverse_sort):
+    for session_entry in sorted(session_list, reverse=reverse_sort):
         # Get list of child sessions for this sessions.
-        sessions = session_list[dict_key]
+        sessions = session_entry.sessions
         # Helper variable to check if current session is the parent session.
         count = 0
         # Walk through list of child sessions.
