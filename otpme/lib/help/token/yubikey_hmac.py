@@ -12,10 +12,21 @@ except:
 from . import register_cmd_help
 
 def register():
-    register_cmd_help(command="token", help_dict=cmd_help, mod_name="yubikey-hmac")
+    register_cmd_help(command="token", help_dict=cmd_help, mod_name="yubikey_hmac")
 
 cmd_help = {
     '_need_command'             : True,
+    'deploy' : {
+                    '_cmd_usage_help' : 'Usage: otpme-token deploy [-d] [-r] [-s <slot>] [token]',
+                    'cmd'   :   '-n :no_token_write=True: -s :slot: -r :replace=True: -d :debug=True: [|object|]',
+                    '_help' :   {
+                                    'cmd'                   : 'write HMAC-SHA1 config to given yubikey slot',
+                                    '-s <slot>'             : 'write new config to given slot',
+                                    '-r'                    : 'Replace existing token.',
+                                    '-n'                    : 'do NOT reconfigure yubikey, just add token data to OTPme token',
+                                    '-d'                    : 'enable token related debug output',
+                                },
+                    },
     'secret'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token secret {token} [secret]',
                     'cmd'   :   '<|object|> [secret]',

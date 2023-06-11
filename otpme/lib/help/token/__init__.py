@@ -430,17 +430,6 @@ cmd_help = {
                                 },
                 },
 
-
-    'deploy'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-token deploy [--list-token-types|-t <token_type>] [token]',
-                    'cmd'   :   '-t ::token_type:: [|object|]',
-                    '_help' :   {
-                                    'cmd'                   : 'deploy hardware token',
-                                    '-t token_type'         : 'token type (e.g. yubikey-hmac)',
-                                    '--list-token-types'    : 'list supported token types',
-                                },
-                },
-
     'temp_password'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token temp_password [--generate] [--duration 1h] [--remove] {token} [password]',
                     'cmd'   :   '--generate :auto_password=True: --duration :duration: --remove :remove=True: <|object|> [password]',

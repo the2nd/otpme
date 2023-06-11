@@ -192,7 +192,7 @@ def register():
     register_config_params()
     register_commands("token",
                     commands,
-                    sub_type="yubikey-hmac",
+                    sub_type="yubikey_hmac",
                     sub_type_attribute="token_type")
 
 def register_hooks():
@@ -201,7 +201,7 @@ def register_hooks():
 
 def register_token_type():
     """ Register token type. """
-    config.register_sub_object_type("token", "yubikey-hmac")
+    config.register_sub_object_type("token", "yubikey_hmac")
 
 def register_config_params():
     """ Register config params. """
@@ -241,7 +241,7 @@ class YubikeyhmacToken(Token):
         self._default_acls = get_default_acls()
         self._recursive_default_acls = get_recursive_default_acls()
         # Set token type.
-        self.token_type = "yubikey-hmac"
+        self.token_type = "yubikey_hmac"
         # Set password type.
         self.pass_type = "smartcard"
         self.otp_type = "time"
@@ -266,7 +266,7 @@ class YubikeyhmacToken(Token):
         self.slot = default_slot
         self.need_password = True
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
-        self.supported_hardware_tokens = [ 'yubikey-hmac' ]
+        self.supported_hardware_tokens = [ 'yubikey_hmac' ]
 
     def _get_object_config(self):
         """ Merge token config with config from parent class. """
@@ -434,7 +434,7 @@ class YubikeyhmacToken(Token):
 
     def test(self, callback=default_callback, **kwargs):
         """ Test if smartcard connected to the client can be verfied. """
-        ok_message = "Token verified successful."
+        ok_message = "Token verified successful: %s" % self.rel_path
         error_message = "Token verification failed."
 
         # Get optme OTP via HMAC challenge/response.
@@ -445,7 +445,7 @@ class YubikeyhmacToken(Token):
                     'otp_len'       : self.otp_len,
                     'pass_required' : True,
                     }
-        otp = callback.scauth(smartcard_type="yubikey-hmac",
+        otp = callback.scauth(smartcard_type="yubikey_hmac",
                             smartcard_data=smartcard_data)
         # Verify OTP.
         status = self.verify_otp(otp=str(otp),

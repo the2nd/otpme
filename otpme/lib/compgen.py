@@ -14,6 +14,7 @@ except:
 from otpme.lib import help
 #from otpme.lib import config
 from otpme.lib.help import global_opts
+from otpme.lib.help import command_map
 from otpme.lib.help.register import register_help
 
 register_help()
@@ -113,12 +114,15 @@ def show_compgen():
                         if x_para:
                             if x_opt == "--type":
                                 if main_command == "token":
-                                    glob_str = "%s/*/[!_]*.py" % config.token_dir
-                                    token_files = glob.glob(glob_str)
-                                    for x in token_files:
-                                        token_type = os.path.basename(x)
-                                        token_type = token_type.replace(".py", "")
-                                        print(token_type)
+                                    token_types = list(command_map['token'])
+                                    token_types = " ".join(token_types)
+                                    print(token_types)
+                                    #glob_str = "%s/*/[!_]*.py" % config.token_dir
+                                    #token_files = glob.glob(glob_str)
+                                    #for x in token_files:
+                                    #    token_type = os.path.basename(x)
+                                    #    token_type = token_type.replace(".py", "")
+                                    #    print(token_type)
                                     return
                                 if main_command == "policy":
                                     glob_str = "%s/*/[!_]*.py" % config.policy_dir

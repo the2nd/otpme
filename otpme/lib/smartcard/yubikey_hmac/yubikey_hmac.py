@@ -15,6 +15,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib.otp.otpme import otpme
 from otpme.lib.messages import message
+from otpme.lib.help import command_map
 #from otpme.lib.messages import error_message
 from otpme.lib.smartcard.yubikey.yubikey import Yubikey
 
@@ -26,24 +27,13 @@ REGISTER_BEFORE = []
 REGISTER_AFTER = []
 
 def register():
-    config.register_smartcard_type("yubikey-hmac", YubikeyHmacClientHandler, YubikeyHmacServerHandler)
+    config.register_smartcard_type("yubikey_hmac", YubikeyHmacClientHandler, YubikeyHmacServerHandler)
 
 class YubikeyHmacClientHandler(object):
-    deploy_commmand_map = {
-        'yubikey-hmac' : {
-                        '_cmd_usage_help' : 'Usage: otpme-token deploy -t yubikey-hmac [-d -s <slot>] [token]',
-                        'cmd'   :   '-t ::token_type:: -n :no_token_write=True: -s :slot: -d :debug=True: [|object|]',
-                        '_help' :   {
-                                        'cmd'                   : 'write HMAC-SHA1 config to given yubikey slot',
-                                        '-s <slot>'             : 'write new config to given slot',
-                                        '-n'                    : 'do NOT reconfigure yubikey, just add token data to OTPme token',
-                                        '-d'                    : 'enable token related debug output',
-                                    },
-                        },
-        }
-
     def __init__(self, sc_type, token_rel_path, token_options=None,
         message_method=print, error_message_method=print):
+        # The token type used on server side.
+        self.token_type = "yubikey_hmac"
         self.smartcard_type = sc_type
         self.token_rel_path = token_rel_path
         self.token_options = token_options
@@ -58,13 +48,10 @@ class YubikeyHmacClientHandler(object):
     def handle_deploy(self, command_handler, no_token_write=False, **kwargs):
         # Get command syntax.
         try:
-            command_syntax = self.deploy_commmand_map[self.smartcard_type]['cmd']
+            command_syntax = command_map['token']['yubikey_hmac']['deploy']['cmd']
         except:
             msg = (_("Unknown token type: %s") % self.smartcard_type)
             raise OTPmeException(msg)
-
-        # Set token command help.
-        token_command_map = {'token' : self.deploy_commmand_map}
 
         # Parse command line.
         local_command_args = {}
@@ -77,12 +64,11 @@ class YubikeyHmacClientHandler(object):
                                             command_args=local_command_args)
         except Exception as e:
             if str(e) == "help":
-                exception = command_handler.get_help(command_map=token_command_map)
+                exception = command_handler.get_help()
                 raise ShowHelp(exception)
             elif str(e) != "":
                 msg = str(e)
-                exception = command_handler.get_help(message=msg,
-                                            command_map=token_command_map)
+                exception = command_handler.get_help(message=msg)
                 raise ShowHelp(exception)
 
         # Try to find yubikey
@@ -309,5 +295,5 @@ class YubikeyHmacServerHandler(object):
 class Yubikeyhmac(Yubikey):
     """ Class for yubikey HMAC tokens. """
     # Set supported auth types
-    otpme_auth_types = [ "yubikey-hmac" ]
+    otpme_auth_types = [ "yubikey_hmac" ]
 

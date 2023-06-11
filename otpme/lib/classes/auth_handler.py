@@ -470,8 +470,11 @@ class AuthHandler(object):
         realm_access_group_uuid = result[0]
         user_sessions = backend.get_sessions(user=self.user.uuid,
                                     access_group=realm_access_group_uuid,
-                                    return_attributes=return_attributes,
-                                    session_type=self.auth_type)
+                                    return_attributes=return_attributes)
+                                    # We have to check all sessions here because
+                                    # e.g. a smartcard session will do SOTP auth
+                                    # when connecting to mgmtd.
+                                    #session_type=self.auth_type)
         # Get realm session IDs.
         realm_session_ids = []
         for session_uuid in user_sessions:

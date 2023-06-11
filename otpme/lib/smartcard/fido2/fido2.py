@@ -17,6 +17,7 @@ except:
 
 from otpme.lib import cli
 from otpme.lib import config
+from otpme.lib.help import command_map
 #from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 
@@ -31,19 +32,10 @@ def register():
     config.register_smartcard_type("fido2", Fido2ClientHandler, Fido2ServerHandler)
 
 class Fido2ClientHandler(object):
-    deploy_commmand_map = {
-        'fido2' : {
-                        '_cmd_usage_help' : 'Usage: otpme-token deploy -t {token_type} [-d] [token]',
-                        'cmd'   :   '-t ::token_type:: -d :debug=True: [|object|]',
-                        '_help' :   {
-                                        'cmd'                   : 'deploy fido2 token',
-                                        '-d'                    : 'enable token related debug output',
-                                    },
-                        },
-        }
-
     def __init__(self, sc_type, token_rel_path, token_options=None,
         message_method=print, error_message_method=print):
+        # The token type used on server side.
+        self.token_type = "fido2"
         self.smartcard_type = sc_type
         self.token_rel_path = token_rel_path
         self.token_options = token_options
@@ -58,13 +50,10 @@ class Fido2ClientHandler(object):
     def handle_deploy(self, command_handler, no_token_write=False, pre_deploy_result=None):
         # Get command syntax.
         try:
-            command_syntax = self.deploy_commmand_map[self.smartcard_type]['cmd']
+            command_syntax = command_map['token']['fido2']['deploy']['cmd']
         except:
             msg = (_("Unknown token type: %s") % self.smartcard_type)
             raise OTPmeException(msg)
-
-        # Set token command help.
-        token_command_map = {'token' : self.deploy_commmand_map}
 
         # Parse command line.
         local_command_args = {}
@@ -77,12 +66,11 @@ class Fido2ClientHandler(object):
                                             command_args=local_command_args)
         except Exception as e:
             if str(e) == "help":
-                exception = command_handler.get_help(command_map=token_command_map)
+                exception = command_handler.get_help()
                 raise ShowHelp(exception)
             elif str(e) != "":
                 msg = str(e)
-                exception = command_handler.get_help(message=msg,
-                                            command_map=token_command_map)
+                exception = command_handler.get_help(message=msg)
                 raise ShowHelp(exception)
 
         # Try to find a locally connected U2F token.

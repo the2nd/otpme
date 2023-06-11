@@ -1588,11 +1588,15 @@ class Token(OTPmeObject):
             # used OTP was used before the last token counter resync).
             if self.counter_sync_time:
                 remove_otp = False
-                if used_otp.sync_time < self.counter_sync_time:
-                    msg = ("Removing outdated (by token sync time) "
-                            "used OTP from backend: %s" % self.rel_path)
-                    logger.debug(msg)
-                    remove_otp = True
+                # Used OTP may not have a sync time. This may happen e.g.
+                # if the token was replaced by a new one and the previous one
+                # did not support a sync time.
+                if used_otp.sync_time is not None:
+                    if used_otp.sync_time < self.counter_sync_time:
+                        msg = ("Removing outdated (by token sync time) "
+                                "used OTP from backend: %s" % self.rel_path)
+                        logger.debug(msg)
+                        remove_otp = True
                 if remove_otp:
                     try:
                         if self.offline:
@@ -1712,13 +1716,12 @@ class Token(OTPmeObject):
 
         counter_list = self._get_token_counter()
 
-        # Without counter we assume token counter is 0.
         if len(counter_list) == 0:
-            return 0
+            return -1
 
         # Get highest counter and delete all others.
         prev_counter = None
-        highest_counter_data = (0, 0)
+        highest_counter_data = (0, -1)
         for token_counter in counter_list:
             if token_counter.sync_time >= highest_counter_data[0]:
                 if token_counter.counter >= highest_counter_data[1]:
@@ -1739,7 +1742,10 @@ class Token(OTPmeObject):
 
         # Check if counter from token config is higher than the highest
         # backend counter.
-        config_counter = self.object_config['COUNTER']
+        try:
+            config_counter = self.object_config['COUNTER']
+        except KeyError:
+            config_counter = None
         if isinstance(config_counter, int):
             if self.counter_sync_time >= highest_counter_data[0]:
                 if config_counter > highest_counter_data[1]:
@@ -3032,6 +3038,20 @@ class Token(OTPmeObject):
 
         return self._write(callback=callback)
 
+    def delete_used_data_objects(self):
+        """ Delete 'used' objects (e.g. token counter). """
+        if self.pass_type != "otp":
+            return
+        # Used OTPs must be deleted for counter based tokens too.
+        used_otps = self._get_used_otps()
+        for used_otp in used_otps:
+            used_otp.delete()
+        if self.otp_type != "counter":
+            return
+        counter_list = self._get_token_counter()
+        for token_counter in counter_list:
+            token_counter.delete()
+
     @object_lock()
     @backend.transaction
     def delete(self, force=False, remove_default_token=False,
@@ -3150,15 +3170,7 @@ class Token(OTPmeObject):
             x.remove_token(self.uuid, verify_acls=False, callback=callback)
 
         # Delete used OTPs and counters of this token.
-        if self.pass_type == "otp":
-            # Used OTPs must be deleted for counter based tokens too.
-            used_otps = self._get_used_otps()
-            for used_otp in used_otps:
-                used_otp.delete()
-            if self.otp_type == "counter":
-                counter_list = self._get_token_counter()
-                for counter_oid in counter_list:
-                    backend.delete_object(counter_oid)
+        self.delete_used_data_objects()
 
         # Delete object using parent class.
         return super(Token, self).delete(verbose_level=verbose_level,

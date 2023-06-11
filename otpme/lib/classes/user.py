@@ -389,7 +389,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'deploy_token',
-                    'oargs'             : ['token_name', 'token_type', 'deploy_data', 'pre_deploy'],
+                    'oargs'             : ['token_name', 'token_type', 'smartcard_type', 'deploy_data', 'pre_deploy', 'replace'],
                     'job_type'          : 'process',
                     },
                 },
@@ -2780,10 +2780,11 @@ class User(OTPmeObject):
 
     @check_acls(['deploy:token'])
     @object_lock()
-    #@backend.transaction
-    def deploy_token(self, token_name, token_type, deploy_data=None,
-        pre_deploy=False, force=False, run_policies=True,verbose_level=0,
-        _caller="API", callback=default_callback, **kwargs):
+    @backend.transaction
+    def deploy_token(self, token_name, token_type, smartcard_type,
+        replace=False, deploy_data=None, pre_deploy=False, force=False,
+        run_policies=True,verbose_level=0, _caller="API",
+        callback=default_callback, **kwargs):
         """ Deploy existing or new token. """
         if not deploy_data and not pre_deploy:
             msg = ("Need at least 'pre_deploy' or 'deploy_data'!")
@@ -2812,13 +2813,17 @@ class User(OTPmeObject):
                 try:
                     token_module = x.replace("-", "_")
                     token_class = get_class(token_module)
-                    _token = token_class(name=token_name,
-                                        user=self.name,
-                                        realm=self.realm,
-                                        site=self.site)
+                    try:
+                        _token = token_class(name=token_name,
+                                            user=self.name,
+                                            realm=self.realm,
+                                            site=self.site)
+                    except Exception as e:
+                        msg = "Failed to load token class: %s" % e
+                        return callback.error(msg)
                     # Stop if we found a token class that supports the given
                     # hardware token type.
-                    if token_type in _token.supported_hardware_tokens:
+                    if smartcard_type in _token.supported_hardware_tokens:
                         token = _token
                         break
                 except Exception as e:
@@ -2827,19 +2832,28 @@ class User(OTPmeObject):
                     return callback.error(msg)
 
         if not token:
-            msg = (_("Unable to find token class to deploy hardware token: ")
+            msg = (_("Unable to find token class to deploy hardware token: %s")
                         % token_type)
             return callback.error(msg)
 
         if token.exists():
-            if not token_type in token.supported_hardware_tokens:
-                msg = (_("Existing token '%s' does not support hardware token "
-                        "type: %s") % (token.rel_path, token_type))
-                return callback.error(msg)
-            if not force:
-                ask = callback.ask("Re-deploy existing token? ")
-                if str(ask).lower() != "y":
-                    return callback.abort()
+            if replace:
+                if not self.add_token(token_name=token_name,
+                                    token_type=token_type,
+                                    replace=replace,
+                                    force=True,
+                                    _caller=_caller,
+                                    callback=callback):
+                    return callback.error("Error replacing token.")
+            else:
+                if not smartcard_type in token.supported_hardware_tokens:
+                    msg = (_("Existing token '%s (%s)' does not support hardware token "
+                            "type: %s") % (token.rel_path, token.token_type, smartcard_type))
+                    return callback.error(msg)
+                if not force:
+                    ask = callback.ask("Re-deploy existing token? ")
+                    if str(ask).lower() != "y":
+                        return callback.abort()
         else:
             if pre_deploy:
                 if not self.verify_acl("add:token"):
@@ -2850,8 +2864,10 @@ class User(OTPmeObject):
                         "token: %s") % (token.token_type, token_type))
                 callback.send(msg)
             if not self.add_token(token_name=token_name,
-                                token_type=token.token_type,
-                                _caller=_caller):
+                                token_type=token_type,
+                                force=True,
+                                _caller=_caller,
+                                callback=callback):
                 return callback.error("Error creating token object.")
             # Override token test instance with new created token.
             token = self.token(token_name)
@@ -2968,6 +2984,8 @@ class User(OTPmeObject):
             # On replace we have to use the token UUID from the replaced token
             # to create the new one.
             token_uuid = cur_token.uuid
+            # Delete used OTPs and counters of the old token.
+            cur_token.delete_used_data_objects()
             # Remove token object from backend WITHOUT removing its UUID from
             # any role etc.
             try:

@@ -1107,8 +1107,9 @@ class OTPmeAgent(UnixDaemon):
                                         connect_timeout=self.connect_timeout,
                                         timeout=self.timeout, endpoint=False,
                                         use_agent=False, username=login_user,
-                                        rsp=rsp, autoconnect=True, auto_auth=True,
-                                        allow_untrusted=True, sync_token_data=False)
+                                        rsp=rsp, autoconnect=True,
+                                        auto_auth=True, allow_untrusted=True,
+                                        sync_token_data=False)
             except AuthFailed as e:
                 msg = (_("Authentication failed while connecting to daemon: "
                         "%s: %s") % (daemon, e))

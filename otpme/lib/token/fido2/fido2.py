@@ -306,7 +306,8 @@ class Fido2Token(Token):
         except Exception as e:
             msg = "Fido2 token response verification failed: %s" % e
             return callback.error(msg)
-        return callback.ok()
+        msg = "Token verified successful: %s" % self.rel_path
+        return callback.ok(msg)
 
     def verify(self, smartcard_data, callback=default_callback, **kwargs):
         """ Verify signature. """

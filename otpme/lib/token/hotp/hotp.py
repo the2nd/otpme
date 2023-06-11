@@ -381,7 +381,7 @@ class HotpToken(Token):
         self.sync_offline_token_counter = True
         self.server_secret = None
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
-        self.supported_hardware_tokens = [ 'yubikey-hotp' ]
+        self.supported_hardware_tokens = [ 'yubikey_hotp' ]
         # This dict is filled with used OTP(s) and its counters and read by
         # self.add_used_otp() to get the token counter that needs to be saved.
         self.otp_cache = {}

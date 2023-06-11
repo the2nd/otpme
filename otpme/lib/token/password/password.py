@@ -439,7 +439,7 @@ class PasswordToken(Token):
 
     def test(self, password=None, callback=default_callback, **kwargs):
         """ Test if the given password/OTP can be verified by this token. """
-        ok_message = "Token verified successful."
+        ok_message = "Token verified successful: %s" % self.rel_path
         error_message = "Password verification failed."
 
         pass_prompt = "Password: "

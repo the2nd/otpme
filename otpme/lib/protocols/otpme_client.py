@@ -86,9 +86,10 @@ def register_config():
 class OTPmeClientBase(object):
     """ Class that implements OTPme client base methods. """
     def __init__(self, daemon, socket_uri=None, endpoint=True,
-        interactive=False, print_messages=None, handle_response=None,
-        message_method=None, error_message_method=None,
-        use_agent=False, site_cert=None, **kwargs):
+        auth_type=None, interactive=False, print_messages=None,
+        handle_response=None, message_method=None,
+        error_message_method=None, use_agent=False,
+        site_cert=None, **kwargs):
 
         # Make sure we got connect infos.
         if not daemon and not socket_uri:
@@ -117,6 +118,8 @@ class OTPmeClientBase(object):
         # Socket we will connect to.
         self.socket_uri = socket_uri
         self.endpoint = endpoint
+        # Auth type to send to server.
+        self.auth_type = auth_type
         # Get logger.
         self.logger = config.logger
         # Indicates if we should handle user questions.
@@ -1998,6 +2001,7 @@ class OTPmeClient1(OTPmeClientBase):
                             #error_message_method=self.error_message_method,
                             connect_timeout=self.connection.connect_timeout,
                             timeout=self.connection.timeout,
+                            auth_type=self.auth_type,
                             use_smartcard=self.use_smartcard,
                             use_ssh_agent=self.use_ssh_agent,
                             ssh_agent_method=self.ssh_agent_method,
@@ -3037,24 +3041,32 @@ class OTPmeClient1(OTPmeClientBase):
             else:
                 self.use_ssh_agent = True
 
-        command_args['auth_type'] = "clear-text"
+        if self.auth_type is None:
+            if self.use_smartcard:
+                self.auth_type = "smartcard"
+        if self.auth_type is None:
+            self.auth_type = "clear-text"
         # If we got SSH keys from agent try SSH authentication.
         if self.use_ssh_agent:
             for key in agent_keys:
                 public_key = key.get_base64()
                 public_keys.append(public_key)
+            if self.auth_type is None:
+                self.auth_type = "ssh"
             # Set command args.
-            command_args['auth_type'] = "ssh"
             command_args['public_keys'] = public_keys
 
         # Add JWT to do redirected authentication.
         elif self.jwt:
-            command_args['auth_type'] = "jwt"
+            if self.auth_type is None:
+                self.auth_type = "jwt"
             command_args['redirect_response'] = self.jwt
 
         # Last but not least we can try OTP/password authentication.
         else:
             command_args['password'] = password
+
+        command_args['auth_type'] = self.auth_type
 
         # Build auth command.
         if self.login:

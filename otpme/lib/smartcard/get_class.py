@@ -13,7 +13,7 @@ except:
 def get_class(sc_type):
     """ get smartcard class by type """
     # build smartcard class name from smartcard type
-    class_name = sc_type.replace("-", "")
+    class_name = sc_type.replace("_", "")
     class_name = "%s%s" % (class_name[0].upper(), class_name[1:])
     # build module path to smartcard module
     smartcard_module_path = "otpme.lib.smartcard.%s.%s" % (sc_type, sc_type)

@@ -4363,6 +4363,7 @@ class CommandHandler(object):
 
     def handle_token_deploy_command(self):
         """ Handle token deploy command. """
+        from otpme.lib.help import command_map
         # FIXME: make this a config.register_token_deploy(token_type)!!!  
         supported_token_types = config.get_supported_smartcards()
 
@@ -4388,11 +4389,7 @@ class CommandHandler(object):
                                             command_line=command_line,
                                             command_args=local_command_args)
         except Exception as e:
-            try:
-                token_type = local_command_args['token_type']
-            except:
-                token_type = None
-            if token_type:
+            if config.cli_object_type != "main":
                 show_token_help = True
             else:
                 if str(e) == "help":
@@ -4400,11 +4397,7 @@ class CommandHandler(object):
                 elif str(e) != "":
                     return self.get_help(str(e))
 
-        try:
-            token_type = local_command_args['token_type']
-        except:
-            msg = "Incomplete command: Missing token type"
-            raise OTPmeException(msg)
+        smartcard_type = config.cli_object_type
 
         # Indicates if we have to configure the hardware token
         # or just re-configure the OTPme token for the connected
@@ -4415,18 +4408,22 @@ class CommandHandler(object):
             no_token_write = False
 
         try:
-            smartcard_client_handler = config.get_smartcard_handler(token_type)[0]
+            replace = local_command_args['replace']
+        except:
+            replace = False
+
+        try:
+            smartcard_client_handler = config.get_smartcard_handler(smartcard_type)[0]
         except NotRegistered:
             raise
 
         if show_token_help:
             # Set token command help.
-            token_command_map = {'token' : smartcard_client_handler.deploy_commmand_map}
             # Get command syntax.
             try:
-                command_syntax = smartcard_client_handler.deploy_commmand_map[token_type]['cmd']
+                command_syntax = command_map['token'][smartcard_type]['deploy']['cmd']
             except:
-                msg = (_("Unknown token type: %s") % token_type)
+                msg = (_("Unknown token type: %s") % smartcard_type)
                 raise OTPmeException(msg)
 
             # Parse command line.
@@ -4440,13 +4437,13 @@ class CommandHandler(object):
                                                 command_args=local_command_args)
             except Exception as e:
                 if str(e) == "help":
-                    return self.get_help(command_map=token_command_map)
+                    return self.get_help()
                 elif str(e) != "":
                     msg = str(e)
-                    return self.get_help(message=msg, command_map=token_command_map)
+                    return self.get_help(message=msg)
 
         try:
-            smartcard_client_handler = smartcard_client_handler(sc_type=token_type,
+            smartcard_client_handler = smartcard_client_handler(sc_type=smartcard_type,
                                                         token_rel_path=object_identifier)
         except ShowHelp as e:
             return str(e)
@@ -4462,7 +4459,11 @@ class CommandHandler(object):
         # Build command line for "user deploy_token" command
         user_name = object_identifier.split("/")[0]
         token_name = object_identifier.split("/")[1]
+        # Get token type to deploy on server side.
+        token_type = smartcard_client_handler.token_type
 
+        self.command_args['replace'] = replace
+        self.command_args['smartcard_type'] = smartcard_type
         command_line = [ user_name, token_name, token_type ]
         try:
             pre_deploy_result = self.send_command(daemon="mgmtd",
@@ -4486,6 +4487,7 @@ class CommandHandler(object):
         deploy_data = json.encode(deploy_args, encoding="hex")
         self.command_args['deploy_data'] = deploy_data
         self.command_args['pre_deploy'] = False
+        self.command_args['replace'] = False
         self.command_args['force'] = True
         command_line = [ user_name, token_name, token_type ]
         deploy_message = self.send_command(daemon="mgmtd",
@@ -4494,7 +4496,6 @@ class CommandHandler(object):
                                         command_line=command_line,
                                         command_args=self.command_args)
         return deploy_message
-        #return self.deploy_token(object_identifier, token_type, no_token_write)
 
     def handle_token_resync_command(self):
         """ Handle token resync command. """
