@@ -38,14 +38,6 @@ cmd_help = {
                                 },
                 },
 
-    'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy add {policy} {policy_type}',
-                    'cmd'   :   '<|object|> <policy_type>',
-                    '_help' :   {
-                                    'cmd'                   : 'add new policy',
-                                },
-                },
-
     'del'    : {
                     '_cmd_usage_help' : 'Usage: otpme-policy del {policy}',
                     'cmd'   :   '<|object|>',

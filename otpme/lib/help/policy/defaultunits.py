@@ -16,6 +16,14 @@ def register():
 
 cmd_help = {
     '_need_command'             : True,
+    'add'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-policy add {policy}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'add new policy',
+                                },
+                },
+
     'add_unit'      : {
                     '_cmd_usage_help' : 'Usage: otpme-policy add_unit {policy} {object_type} {unit}',
                     'cmd'   :   '<|object|> <object_type> <unit_path>',

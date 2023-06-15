@@ -472,22 +472,35 @@ class OTPmeClusterP1(OTPmeServer1):
                 logger.critical(msg)
 
         elif command == "start_master_failover":
-            running_jobs = self.get_running_jobs()
-            if running_jobs:
+            missing_nodes = []
+            member_nodes = multiprocessing.member_nodes.keys()
+            online_nodes = multiprocessing.online_nodes.keys()
+            for node_name in online_nodes:
+                if node_name in member_nodes:
+                    continue
+                missing_nodes.append(node_name)
+            if missing_nodes:
                 status = False
-                message = "Cannot do master failover because of running jobs"
-                message = "%s\n%s" % (message, running_jobs)
+                missing_nodes = " ".join(missing_nodes)
+                message = ("Waiting for node(s) to join cluster: %s"
+                            % missing_nodes)
             else:
-                status = True
-                message = "Master failover started."
-                config.master_failover = True
-                time.sleep(1)
                 running_jobs = self.get_running_jobs()
                 if running_jobs:
                     status = False
-                    config.master_failover = False
                     message = "Cannot do master failover because of running jobs"
                     message = "%s\n%s" % (message, running_jobs)
+                else:
+                    status = True
+                    message = "Master failover started."
+                    config.master_failover = True
+                    time.sleep(3)
+                    running_jobs = self.get_running_jobs()
+                    if running_jobs:
+                        status = False
+                        config.master_failover = False
+                        message = "Cannot do master failover because of running jobs"
+                        message = "%s\n%s" % (message, running_jobs)
 
         elif command == "set_master_failover":
             status = True
@@ -603,22 +616,20 @@ class OTPmeClusterP1(OTPmeServer1):
                         logger.warning(msg)
                         sync_status = False
                     if sync_status is not False:
-                        sync_time = time.time()
-                        config.touch_node_sync_file(sync_time)
+                        status = True
                         break
 
             if status:
-                new_master_vote = calc_node_vote()
-                multiprocessing.node_votes[config.host_data['name']] = new_master_vote
                 while True:
+                    config.touch_node_sync_file()
+                    new_master_vote = calc_node_vote()
+                    multiprocessing.node_votes[config.host_data['name']] = new_master_vote
                     try:
                         master_node = multiprocessing.master_node['master']
                     except:
                         time.sleep(0.01)
                         continue
                     if master_node != self.host_name:
-                        print("master node", master_node)
-                        print("node_votes", multiprocessing.node_votes)
                         logger.info("Waiting for node to get master node...")
                         time.sleep(1)
                         continue

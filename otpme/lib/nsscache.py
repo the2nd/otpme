@@ -483,8 +483,6 @@ def update(resync=False, cache_resync=False, lock=None):
                 map_entry.passwd = 'x'
                 map_entry.gid = gidnumber
                 if group_members is not None:
-                    if object_name == "management":
-                        print("UUUUUUUUUUU", object_name, group_members)
                     map_entry.members = group_members
             nsscache_update_entries[object_type][map_entry.name] = map_entry
 

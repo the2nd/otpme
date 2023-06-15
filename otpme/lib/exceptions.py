@@ -78,6 +78,9 @@ class UnknownCommand(OTPmeException):
 class UnknownLoginSession(OTPmeException):
     pass
 
+class UnknownObjectType(OTPmeException):
+    pass
+
 class AlreadyLoggedIn(OTPmeException):
     pass
 

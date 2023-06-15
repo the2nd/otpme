@@ -241,6 +241,12 @@ def cleanup():
     for sem_name in dict(posix_semaphores):
         sem = posix_semaphores[sem_name]
         try:
+            sem.close()
+        except posix_ipc.ExistentialError:
+            pass
+        except posix_ipc.PermissionsError:
+            pass
+        try:
             sem.unlink()
         except posix_ipc.ExistentialError:
             pass
@@ -509,9 +515,9 @@ class Event(object):
         self._semaphore = None
         self.keep = keep
 
-    def open_semaphore(self, name):
+    def open_semaphore(self):
         global posix_semaphores
-        semaphore = posix_ipc.Semaphore(name=name,
+        semaphore = posix_ipc.Semaphore(name=self.name,
                                         flags=posix_ipc.O_CREAT,
                                         mode=0o600)
         if not self.keep:
@@ -524,10 +530,10 @@ class Event(object):
             if self._semaphore:
                 self.close()
                 self.unlink()
-        self._semaphore = self.open_semaphore(self.name)
+        self._semaphore = self.open_semaphore()
 
     def wait(self, timeout=None):
-        self._semaphore = self.open_semaphore(self.name)
+        self._semaphore = self.open_semaphore()
         try:
             self._semaphore.acquire(timeout=timeout)
         except posix_ipc.BusyError:
@@ -536,7 +542,7 @@ class Event(object):
             pass
 
     def set(self):
-        self._semaphore = self.open_semaphore(self.name)
+        self._semaphore = self.open_semaphore()
         self._semaphore.release()
 
     def close(self):
@@ -547,7 +553,7 @@ class Event(object):
     def unlink(self):
         global posix_semaphores
         if self._semaphore is None:
-            self._semaphore = self.open_semaphore(self.name)
+            self._semaphore = self.open_semaphore()
         try:
             self._semaphore.unlink()
         except posix_ipc.ExistentialError:

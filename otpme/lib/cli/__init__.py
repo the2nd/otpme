@@ -1479,12 +1479,18 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
 
     # Walk through child sessions to add child session object to all_sessions.
     for session_id in child_session_list:
-        child_session = backend.get_object(uuid=session_uuid)
+        result = backend.get_sessions(session_id=session_id,
+                                    return_type="instance")
+        if not result:
+            continue
+        child_session = result[0]
         all_sessions[session_id] = child_session
 
     # Create list with parent sessions.
     for session_uuid in session_list:
         session_id = session_list[session_uuid]['session_id'][0]
+        if session_id in parent_session_list:
+            continue
         if session_id in child_session_list:
             continue
         if session_id not in all_sessions:
@@ -1514,7 +1520,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
             # Set tree level for normal or reverse order.
             tree_level = int(child_list[child_session_id]) \
                         * tree_level_multiplier
-            # Get child_sessions instance.
+            # Get child session instance.
             child_session = all_sessions[child_session_id]
             # Set sort key based sort_by.
             if sort_by == "user":

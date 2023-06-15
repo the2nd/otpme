@@ -64,6 +64,9 @@ def init(init_file_dir_perms=False):
 
 def get_class(otype):
     """ Get class for object type. """
+    if otype not in classes:
+        msg = "Unknown object type: %s" % otype
+        raise UnknownObjectType(msg)
     object_class = classes[otype]['object']
     attr_class = classes[otype]['attr']
     acl_class = classes[otype]['acl']

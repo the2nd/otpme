@@ -410,7 +410,8 @@ class Session(object):
                             "used_pass_salt parameter"))
             raise OTPmeException(msg)
         # Generate session ID.
-        session_id = encryption.derive_key(self.pass_hash,
+        hash_value = "%s:%s" % (self.access_group, self.pass_hash)
+        session_id = encryption.derive_key(hash_value,
                                             hash_type="HKDF",
                                             hash_algo="SHA256",
                                             salt=salt,
@@ -1048,7 +1049,7 @@ class Session(object):
                                                                         challenge,
                                                                         response)
                 except Exception as e:
-                    verify_status = None
+                    mschap_verify_status = None
                     msg = ("Error verifying MSCHAP request: %s: %s"
                             % (self.session_id, e))
                     logger.critical(msg)
@@ -1303,10 +1304,11 @@ class Session(object):
         child_sessions = {}
         if self.child_sessions:
             for c in self.child_sessions:
-                s = backend.get_sessions(session_id=c,
-                            return_type="instance")[0]
-                if not s:
+                result = backend.get_sessions(session_id=c,
+                                            return_type="instance")
+                if not result:
                     continue
+                s = result[0]
                 child_sessions[s.name] = s
 
         if not force:

@@ -702,6 +702,7 @@ class OTPmeAgent(UnixDaemon):
         """ Try to logout given login_pid (user). """
         # If we got no realm/site logout all sessions.
         if not realm:
+            msg = None
             # Get all server sessions of login_pid.
             try:
                 server_sessions = self.login_sessions[login_pid]['server_sessions']

@@ -20,7 +20,7 @@ cmd_help = {
     '_usage_help'               : "Usage: otpme-host {command} [host]",
 
     'show'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-host show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [host]',
+                    '_cmd_usage_help' : 'Usage: otpme-host show [--fields <field1,field2,field3>] [-z <size_limit>] [-t] [-a] [host]',
                     'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
                     '_help' :   {
                                     'cmd'                   : 'show host(s)',

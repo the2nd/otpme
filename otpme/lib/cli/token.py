@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 # Distributed under the terms of the GNU General Public License v2
 import os
+import importlib
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -16,6 +17,8 @@ from otpme.lib.cli import get_policies_string
 from otpme.lib.cli import get_auth_script_string
 from otpme.lib.classes.user import user_failcount
 from otpme.lib.classes.user import user_is_blocked
+from otpme.lib.classes.policy import get_acls
+from otpme.lib.classes.policy import get_value_acls
 
 from otpme.lib.exceptions import *
 
@@ -36,29 +39,6 @@ table_headers = [
             "description",
             ]
 
-write_acls = [
-            "all",
-            "enable:offline",
-            "disable:offline",
-            "enable:session_keep",
-            "disable:session_keep",
-            ]
-
-read_acls = [
-            "view",
-            "view_all",
-            "view_public",
-            "view:session_keep",
-            "view:offline_status",
-            "view:roles",
-            "view:accessgroups",
-            "view:groups",
-            "view:auth_script",
-            "view:description",
-            "enable:auth_script",
-            "disable:auth_script",
-            ]
-
 REGISTER_BEFORE = []
 REGISTER_AFTER = ["otpme.lib.filetools"]
 
@@ -76,6 +56,34 @@ def register():
                         'auth_script_enabled',
                         'acl_inheritance_enabled',
                         ]
+    read_acls, write_acls = get_acls(split=True)
+    read_value_acls, write_value_acls = get_value_acls(split=True)
+    for acl in read_value_acls:
+        for x in read_value_acls[acl]:
+            x_acl = "%s:%s" % (acl, x)
+            read_acls.append(x_acl)
+    for acl in write_value_acls:
+        for x in write_value_acls[acl]:
+            x_acl = "%s:%s" % (acl, x)
+            write_acls.append(x_acl)
+    for sub_type in config.get_sub_object_types("token"):
+        x_module_path = "otpme.lib.token.%s.%s" % (sub_type, sub_type)
+        x_module = importlib.import_module(x_module_path)
+        x_get_acls = getattr(x_module, "get_acls")
+        x_get_value_acls = getattr(x_module, "get_value_acls")
+        x_read_acls, x_write_acls = x_get_acls(split=True)
+        read_acls += x_read_acls
+        write_acls += x_write_acls
+        x_read_value_acls, x_write_value_acls = x_get_value_acls(split=True)
+        for acl in x_read_value_acls:
+            for x in x_read_value_acls[acl]:
+                x_acl = "%s:%s" % (acl, x)
+                read_acls.append(x_acl)
+        for acl in x_write_value_acls:
+            for x in x_write_value_acls[acl]:
+                x_acl = "%s:%s" % (acl, x)
+                write_acls.append(x_acl)
+
     register_cli(name="token",
                 id_attr="rel_path",
                 table_headers=table_headers,
@@ -343,7 +351,7 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
             if check_acl("view:auth_script") \
             or check_acl("enable:auth_script") \
             or check_acl("disable:auth_script"):
-                if token_type == "otp-push" or "script-" in token_type:
+                if token_type == "otp_push" or "script_" in token_type:
                     row.append("N/A")
                 else:
                     if auth_script_uuid:

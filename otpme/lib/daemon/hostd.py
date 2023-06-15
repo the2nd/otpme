@@ -1261,31 +1261,22 @@ class HostDaemon(OTPmeDaemon):
         # Do some cleanup.
         multiprocessing.cleanup()
 
-    def _start_sync_jobs(self):
+    def wait_for_syncd(self):
+        """ Wait for syncd to get ready. """
+        try:
+            syncd_status = config.read_daemon_status("syncd")['status']
+        except:
+            syncd_status = False
+        return syncd_status
+
+    def start_sync_jobs(self):
         """ Wait for syncd to come up. """
         # On nodes we have to wait for the local syncd to come up.
         if self.host_type == "node":
-            max_wait = 100
-            wait_counter = 0
-            wait_success = False
-            while True:
-                try:
-                    syncd_status = config.read_daemon_status("syncd")['status']
-                except:
-                    syncd_status = False
-                if syncd_status:
-                    wait_success = True
-                    break
-                if wait_counter == 0:
-                    self.logger.debug("Waiting for syncd to come up.")
-                if wait_counter >= max_wait:
-                    msg = ("Stopped waiting for syncd, terminating.")
-                    self.logger.info(msg)
-                    break
-                time.sleep(0.1)
-                wait_counter += 1
-            if not wait_success:
-                return
+            if not self.wait_for_syncd():
+                return False
+            if not config.cluster_status:
+                return False
 
         # Start initial sync.
         if self.host_type == "node":
@@ -1305,6 +1296,8 @@ class HostDaemon(OTPmeDaemon):
             self.start_sync(sync_type="ssh_authorized_keys", resync=False)
             self.start_sync(sync_type="used_otps", resync=False, offline=True)
             self.start_sync(sync_type="token_counters", resync=False, offline=True)
+
+        return True
 
     def _run(self, **kwargs):
         """ Start daemon loop. """
@@ -1449,16 +1442,9 @@ class HostDaemon(OTPmeDaemon):
         ## Reply keepalive packet.
         #self.comm_handler.send("controld", "pong")
 
-        # Start initial sync jobs.
-        try:
-            self._start_sync_jobs()
-        except Exception as e:
-            msg = "Failed to start sync jobs: %s" % e
-            self.logger.error(msg)
-            #config.raise_exception()
-
         # Run in loop until we get signal.
         recv_timeout = None
+        init_sync_started = False
         cache_outdate_interval = 30
         host_object_reload_interval = 30
         token_data_removal_interval = 30
@@ -1466,6 +1452,17 @@ class HostDaemon(OTPmeDaemon):
         last_host_object_reload = time.time()
         last_token_data_removal = time.time()
         while True:
+            # Start initial sync jobs.
+            if not init_sync_started:
+                try:
+                    sync_start_status = self.start_sync_jobs()
+                except Exception as e:
+                    sync_start_status = False
+                    msg = "Failed to start sync jobs: %s" % e
+                    self.logger.error(msg)
+                if sync_start_status:
+                    init_sync_started = True
+
             try:
                 # Calculate new recv timeout.
                 new_timeout = min(cache_outdate_interval,

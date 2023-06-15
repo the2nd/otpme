@@ -34,9 +34,8 @@ from otpme.lib.exceptions import *
 LOCK_TYPE = "cluster_journal"
 
 node_checksums = []
-processed_events = []
-processed_journal_entries = []
 last_node_check = time.time()
+processed_journal_entries = []
 default_callback = config.get_callback()
 
 REGISTER_BEFORE = ['otpme.lib.daemon.controld']
@@ -131,9 +130,9 @@ def cluster_sync_object(object_uuid, object_id, action, object_config=None,
                                             new_object_id=new_object_id,
                                             last_modified=last_modified)
     try:
-        cluster_journal_entry.add()
+        cluster_journal_entry.commit()
     except Exception as e:
-        msg = ("Failed to add cluster journal entry: %s: %s"
+        msg = ("Failed to commit cluster journal entry: %s: %s"
                 % (object_id, e))
         config.logger.critical(msg)
         #print(msg)
@@ -165,18 +164,42 @@ class ClusterJournalEntry(object):
     def __init__(self, timestamp, object_uuid=None, action=None,
         object_id=None, checksum=None, object_config=None,
         new_object_id=None, last_modified=None):
+        self.logger = config.logger
         self.timestamp = timestamp
-        self.action = action
-        self.object_id = object_id
-        self.object_uuid = object_uuid
-        self.object_checksum = checksum
-        self.new_object_id = new_object_id
-        self.object_config = object_config
-        self.last_modified = last_modified
         self.entry_dir = os.path.join(config.cluster_journal_dir,
                                     str(self.timestamp))
         self.nodes_dir = os.path.join(self.entry_dir, "nodes")
-        self.logger = config.logger
+        self.action_file = os.path.join(self.entry_dir, "action")
+        self.object_id_file = os.path.join(self.entry_dir, "object_id")
+        self.object_uuid_file = os.path.join(self.entry_dir, "object_uuid")
+        self.new_object_id_file = os.path.join(self.entry_dir, "new_object_id")
+        self.object_config_file = os.path.join(self.entry_dir, "object_config")
+        self.object_checksum_file = os.path.join(self.entry_dir, "object_checksum")
+        self.last_modified_file = os.path.join(self.entry_dir, "last_modified")
+        self.commit_file = os.path.join(self.entry_dir, "ready")
+        if action is not None:
+            try:
+                filetools.create_dir(self.entry_dir)
+            except FileExistsError:
+                pass
+            try:
+                filetools.create_dir(self.nodes_dir)
+            except FileExistsError:
+                pass
+        if action is not None:
+            self.action = action
+        if object_id is not None:
+            self.object_id = object_id
+        if object_uuid is not None:
+            self.object_uuid = object_uuid
+        if checksum is not None:
+            self.object_checksum = checksum
+        if new_object_id is not None:
+            self.new_object_id = new_object_id
+        if object_config is not None:
+            self.object_config = object_config
+        if last_modified is not None:
+            self.last_modified = last_modified
 
     def __str__(self):
         return self.object_uuid
@@ -200,10 +223,6 @@ class ClusterJournalEntry(object):
     def __gt__(self, other):
         return self.__str__() > other.__str__()
 
-    def get_journal_file(self):
-        _file = os.path.join(self.entry_dir, "data.json")
-        return _file
-
     def lock(self):
         self._lock = locking.acquire_lock(lock_type=LOCK_TYPE,
                                         lock_id=self.timestamp)
@@ -212,71 +231,119 @@ class ClusterJournalEntry(object):
             return
         self._lock.release_lock()
 
-    def load(self):
-        journal_file = self.get_journal_file()
-        self.lock()
-        if not os.path.exists(journal_file):
-            self.release()
-            msg = "Cluster journal entry not found."
-            raise NotFound(msg)
-        try:
-            file_content = filetools.read_file(path=journal_file)
-        finally:
-            self.release()
-        object_data = json.loads(file_content)
-        self.action = object_data['action']
-        self.object_id = object_data['object_id']
-        self.timestamp = object_data['time']
-        self.object_uuid = object_data['uuid']
-        self.object_checksum = object_data['checksum']
-        self.new_object_id = object_data['new_object_id']
-        self.last_modified = object_data['last_modified']
-        object_config = object_data['object_config']
-        # Load object data.
-        if not object_config:
+    @property
+    def action(self):
+        if not os.path.exists(self.action_file):
             return
-        object_config = ObjectConfig(object_id=self.object_id,
+        action = filetools.read_file(self.action_file)
+        return action
+
+    @action.setter
+    def action(self, action):
+        filetools.create_file(path=self.action_file,
+                                content=action)
+
+    @property
+    def object_id(self):
+        if not os.path.exists(self.object_id_file):
+            return
+        object_id = filetools.read_file(self.object_id_file)
+        return object_id
+
+    @object_id.setter
+    def object_id(self, object_id):
+        filetools.create_file(path=self.object_id_file,
+                                content=object_id.full_oid)
+
+    @property
+    def new_object_id(self):
+        if not os.path.exists(self.new_object_id_file):
+            return
+        new_object_id = filetools.read_file(self.new_object_id_file)
+        return new_object_id
+
+    @new_object_id.setter
+    def new_object_id(self, new_object_id):
+        filetools.create_file(path=self.new_object_id_file,
+                                content=new_object_id.full_oid)
+
+    @property
+    def object_uuid(self):
+        if not os.path.exists(self.object_uuid_file):
+            return
+        object_uuid = filetools.read_file(self.object_uuid_file)
+        return object_uuid
+
+    @object_uuid.setter
+    def object_uuid(self, object_uuid):
+        filetools.create_file(path=self.object_uuid_file,
+                                content=object_uuid)
+
+    @property
+    def object_checksum(self):
+        if not os.path.exists(self.object_checksum_file):
+            return
+        object_checksum = filetools.read_file(self.object_checksum_file)
+        return object_checksum
+
+    @object_checksum.setter
+    def object_checksum(self, object_checksum):
+        filetools.create_file(path=self.object_checksum_file,
+                                content=object_checksum)
+
+    @property
+    def last_modified(self):
+        if not os.path.exists(self.last_modified_file):
+            return
+        last_modified = filetools.read_file(self.last_modified_file)
+        return last_modified
+
+    @last_modified.setter
+    def last_modified(self, last_modified):
+        filetools.create_file(path=self.last_modified_file,
+                                content=last_modified)
+
+    @property
+    def object_config(self):
+        if not os.path.exists(self.object_config_file):
+            return
+        object_id = oid.get(self.object_id, resolve=True)
+        object_config = filetools.read_file(self.object_config_file)
+        object_config = json.loads(object_config)
+        object_config = ObjectConfig(object_id=object_id,
                                     object_config=object_config,
                                     encrypted=True)
         object_config = object_config.decrypt(config.master_key)
-        self.object_config = object_config.copy()
+        object_config = object_config.copy()
+        return object_config
 
-    def add(self):
-        journal_file = self.get_journal_file()
-        if os.path.exists(journal_file):
-            msg = "Cluster data entry already exists: %s" % self.timestamp
-            raise OTPmeException(msg)
-        object_id = self.object_id
-        object_uuid = self.object_uuid
-        object_config = self.object_config
-        new_object_id = self.new_object_id
-        object_checksum = self.object_checksum
-        last_modified = self.last_modified
-        timestamp = self.timestamp
-        if object_id.full_oid is None:
-            object_id = oid.get(object_id.read_oid, resolve=True)
-        if timestamp is None:
-            timestamp = time.time()
-        if object_config:
+    @object_config.setter
+    def object_config(self, object_config):
+        self.lock()
+        try:
+            object_id = oid.get(self.object_id, resolve=True)
             object_config = ObjectConfig(object_id=object_id,
                                         object_config=object_config,
                                         encrypted=False)
             object_config = object_config.encrypt(config.master_key)
             object_config = object_config.copy()
-        object_data = {}
-        object_data['time'] = timestamp
-        object_data['uuid'] = object_uuid
-        object_data['action'] = self.action
-        object_data['checksum'] = object_checksum
-        object_data['object_id'] = object_id.full_oid
-        object_data['new_object_id'] = new_object_id
-        object_data['object_config'] = object_config
-        object_data['last_modified'] = last_modified
+            object_config = json.dumps(object_config)
+            filetools.create_file(path=self.object_config_file,
+                                    content=object_config)
+        finally:
+            self.release()
+
+    @property
+    def committed(self):
+        if os.path.exists(path=self.commit_file):
+            return True
+        return False
+
+    def commit(self):
         self.lock()
         try:
-            filetools.create_dir(self.entry_dir)
-            file_content = json.dumps(object_data, sort_keys=True)
-            filetools.create_file(path=journal_file, content=file_content)
+            filetools.create_file(path=self.commit_file,
+                                content=str(time.time()))
         finally:
             self.release()
 
@@ -284,10 +351,6 @@ class ClusterJournalEntry(object):
         self.lock()
         try:
             node_file = os.path.join(self.nodes_dir, node_name)
-            try:
-                filetools.create_dir(self.nodes_dir)
-            except FileExistsError:
-                pass
             fd = open(node_file, "w")
             fd.close()
         finally:
@@ -320,6 +383,7 @@ class ClusterDaemon(OTPmeDaemon):
     """ ClusterDaemon. """
     def __init__(self, *args, **kwargs):
         self.node_conn = None
+        self.online_nodes = []
         self.member_candidate = False
         self.cluster_connections = {}
         self.cluster_comm_child = None
@@ -395,16 +459,11 @@ class ClusterDaemon(OTPmeDaemon):
         return cluster_journal_dirs
 
     def handle_events(self):
-        global processed_events
-        if len(processed_events) > 102400:
-            processed_events = processed_events[51200:]
         for cluster_entry_dir in self.get_cluster_journal():
-            if cluster_entry_dir in processed_events:
-                continue
-            processed_events.append(cluster_entry_dir)
             object_event_name = "/%s" % os.path.basename(cluster_entry_dir)
             object_event = multiprocessing.Event(object_event_name)
             object_event.set()
+            object_event.close()
             object_event.unlink()
 
     def node_leave(self, node_name):
@@ -1134,7 +1193,7 @@ class ClusterDaemon(OTPmeDaemon):
         # Two node setups require some special handling if second node is down.
         if not config.two_node_setup:
             return
-        if len(multiprocessing.member_nodes) != 0:
+        if len(multiprocessing.member_nodes) > 0:
             return
         try:
             self.handle_events()
@@ -1184,7 +1243,7 @@ class ClusterDaemon(OTPmeDaemon):
         while True:
             # Wait for cluster event.
             if start_over:
-                time.sleep(0.0001)
+                time.sleep(0.01)
             else:
                 #print("waiting for cluster event: %s" % node_name)
                 conn_event.wait(timeout=3)
@@ -1202,14 +1261,7 @@ class ClusterDaemon(OTPmeDaemon):
                     for journal_entry_dir in self.get_cluster_journal():
                         entry_timestamp = os.path.basename(journal_entry_dir)
                         cluster_journal_entry = ClusterJournalEntry(timestamp=entry_timestamp)
-                        try:
-                            cluster_journal_entry.load()
-                        except NotFound:
-                            continue
-                        except Exception as e:
-                            msg = ("Failed to load cluster journal entry: %s: %s"
-                                    % (entry_timestamp, e))
-                            config.logger.critical(msg)
+                        if not cluster_journal_entry.committed:
                             continue
                         if not self.check_member_nodes(cluster_journal_entry):
                             continue
@@ -1236,6 +1288,7 @@ class ClusterDaemon(OTPmeDaemon):
                 msg = "Failed to handle cluster journal: %s" % e
                 self.logger.critical(msg)
                 #print(msg)
+                config.raise_exception()
 
             # Add node to cluster.
             if self.member_candidate:
@@ -1259,6 +1312,10 @@ class ClusterDaemon(OTPmeDaemon):
     def handle_cluster_journal(self, node_name):
         global node_checksums
         global processed_journal_entries
+        # If online nodes changed we have to re-check all cluster entries.
+        if self.online_nodes != sorted(multiprocessing.online_nodes.keys()):
+            processed_journal_entries.clear()
+            self.online_nodes = sorted(multiprocessing.online_nodes.keys())
         if len(node_checksums) > 102400:
             node_checksums = node_checksums[51200:]
         if len(processed_journal_entries) > 102400:
@@ -1275,18 +1332,22 @@ class ClusterDaemon(OTPmeDaemon):
             if entry_timestamp in processed_journal_entries:
                 continue
             cluster_journal_entry = ClusterJournalEntry(timestamp=entry_timestamp)
+            cluster_journal_entry.lock()
             try:
-                cluster_journal_entry.load()
-            except NotFound:
-                continue
-            except Exception as e:
-                msg = ("Failed to load cluster journal entry: %s: %s"
-                        % (entry_timestamp, e))
-                config.logger.critical(msg)
-                continue
-            entries_to_process.append(cluster_journal_entry.timestamp)
-            if cluster_journal_entry.action != "delete":
-                uuids_to_process.append(cluster_journal_entry.object_uuid)
+                if not cluster_journal_entry.committed:
+                    continue
+                if node_name in cluster_journal_entry.get_nodes():
+                    processed_journal_entries.append(cluster_journal_entry.timestamp)
+                    # Check if object was written to member nodes
+                    if self.check_member_nodes(cluster_journal_entry):
+                        # Check if object was written to all online nodes.
+                        self.check_online_nodes(cluster_journal_entry)
+                    continue
+                entries_to_process.append(cluster_journal_entry.timestamp)
+                if cluster_journal_entry.action != "delete":
+                    uuids_to_process.append(cluster_journal_entry.object_uuid)
+            finally:
+                cluster_journal_entry.release()
 
         written_entries = []
         unsync_status_set = False
@@ -1295,26 +1356,20 @@ class ClusterDaemon(OTPmeDaemon):
         for entry_timestamp in entries_to_process:
             if not config.cluster_status:
                 return True
-            if entry_timestamp in processed_journal_entries:
-                continue
             self.handle_two_node_setup()
             cluster_journal_entry = ClusterJournalEntry(timestamp=entry_timestamp)
+            cluster_journal_entry.lock()
             try:
-                cluster_journal_entry.load()
-            except NotFound:
-                continue
-            except Exception as e:
-                msg = ("Failed to load cluster journal entry: %s: %s"
-                        % (entry_timestamp, e))
-                config.logger.critical(msg)
-                continue
-            #print(node_name, cluster_journal_entry.action, cluster_journal_entry.object_id)
-            action = cluster_journal_entry.action
-            object_id = cluster_journal_entry.object_id
-            object_id = oid.get(object_id)
-            object_uuid = cluster_journal_entry.object_uuid
-            object_config = cluster_journal_entry.object_config
-            object_checksum = cluster_journal_entry.object_checksum
+                #print(node_name, cluster_journal_entry.action, cluster_journal_entry.object_id)
+                action = cluster_journal_entry.action
+                object_id = cluster_journal_entry.object_id
+                object_id = oid.get(object_id)
+                object_uuid = cluster_journal_entry.object_uuid
+                object_config = cluster_journal_entry.object_config
+                object_checksum = cluster_journal_entry.object_checksum
+                last_modified = cluster_journal_entry.last_modified
+            finally:
+                cluster_journal_entry.release()
 
             # Skip duplicated entries we've already written.
             # We only need to write the first and the last occurence.
@@ -1324,6 +1379,7 @@ class ClusterDaemon(OTPmeDaemon):
                 except ValueError:
                     pass
             else:
+                # Skip duplicate object writes.
                 if object_uuid in written_entries:
                     if object_uuid in uuids_to_process:
                         msg = ("Skipping duplicated cluster journal entry: %s"
@@ -1333,143 +1389,145 @@ class ClusterDaemon(OTPmeDaemon):
                             uuids_to_process.remove(object_uuid)
                         except ValueError:
                             pass
+                        # Check if object was written to member nodes
+                        if self.check_member_nodes(cluster_journal_entry):
+                            # Check if object was written to all online nodes.
+                            self.check_online_nodes(cluster_journal_entry)
                         cluster_journal_entry.delete()
                         continue
+                if object_checksum in node_checksums:
+                    cluster_journal_entry.add_node(node_name)
+                    processed_journal_entries.append(cluster_journal_entry.timestamp)
+                    # Check if object was written to member nodes
+                    if self.check_member_nodes(cluster_journal_entry):
+                        # Check if object was written to all online nodes.
+                        self.check_online_nodes(cluster_journal_entry)
+                    continue
 
-            if object_checksum in node_checksums:
+            # Mark node as out of sync (tree objects).
+            if object_id.object_type in config.tree_object_types:
+                objects_sync_started = True
+                objects_sync_successful = True
+                # Make sure node we will write tree data to has the right master node.
+                try:
+                    master_node = self.node_conn.get_master_node()
+                except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                    self.node_leave(node_name)
+                    msg = ("Failed to get master node: %s: %s"
+                            % (node_name, e))
+                    self.logger.warning(msg)
+                    return False
+                except Exception as e:
+                    msg = ("Failed to get master node: %s: %s"
+                            % (node_name, e))
+                    self.logger.warning(msg)
+                    return True
+                if master_node != self.host_name:
+                    try:
+                        cluster_journal_entry.delete()
+                    except Exception as e:
+                        msg = "Failed to delete cluster journal entry."
+                        self.logger.critical(msg)
+                    break
+                if not unsync_status_set:
+                    unsync_status_set = True
+                    self.unset_node_sync(node_name)
+            # Write object to peer.
+            if action == "write":
+                try:
+                    last_used = backend.get_last_used(object_id.realm,
+                                                    object_id.site,
+                                                    object_id.object_type,
+                                                    object_uuid)
+                except Exception as e:
+                    msg = "Failed to get last used time: %s" % object_id
+                    self.logger.warning(msg)
+                    continue
+                try:
+                    write_status = self.node_conn.write(object_id.full_oid,
+                                                        object_config,
+                                                        last_modified,
+                                                        last_used)
+                except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                    self.node_leave(node_name)
+                    msg = ("Failed to send object: %s: %s: %s"
+                            % (node_name, object_id, e))
+                    self.logger.warning(msg)
+                    return True
+                except Exception as e:
+                    msg = ("Failed to send object: %s: %s: %s"
+                            % (node_name, object_id, e))
+                    self.logger.warning(msg)
+                    return True
+                if write_status != "done":
+                    objects_sync_successful = False
+                    continue
+                written_entries.append(object_uuid)
+                try:
+                    uuids_to_process.remove(object_uuid)
+                except ValueError:
+                    pass
+                msg = ("Written object to node: %s: %s (%s)"
+                        % (node_name, object_id, object_checksum))
+                self.logger.debug(msg)
                 node_checksums.append(object_checksum)
                 cluster_journal_entry.add_node(node_name)
                 processed_journal_entries.append(cluster_journal_entry.timestamp)
-                # Check if object was written to member nodes
-                if self.check_member_nodes(cluster_journal_entry):
-                    # Check if object was written to all online nodes.
-                    self.check_online_nodes(cluster_journal_entry)
-                continue
-            # Write object to peer.
-            if node_name in cluster_journal_entry.get_nodes():
+            # Rename object on peer.
+            if action == "rename":
+                new_object_id = cluster_journal_entry.new_object_id
+                new_object_id = oid.get(new_object_id)
+                try:
+                    rename_status = self.node_conn.rename(object_id.full_oid,
+                                                        new_object_id.full_oid)
+                except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                    self.node_leave(node_name)
+                    msg = ("Failed to rename object: %s: %s: %s"
+                            % (node_name, object_id, e))
+                    self.logger.warning(msg)
+                    return True
+                except Exception as e:
+                    msg = ("Failed to rename object: %s: %s: %s"
+                            % (node_name, object_id, e))
+                    self.logger.warning(msg)
+                    return True
+                if rename_status != "done":
+                    objects_sync_successful = False
+                    continue
+                written_entries.append(object_uuid)
+                try:
+                    uuids_to_process.remove(object_uuid)
+                except ValueError:
+                    pass
+                msg = ("Renamed object on node: %s: %s: %s"
+                        % (node_name, object_id, new_object_id))
+                self.logger.debug(msg)
+                node_checksums.append(object_checksum)
+                cluster_journal_entry.add_node(node_name)
                 processed_journal_entries.append(cluster_journal_entry.timestamp)
-            else:
-                # Mark node as out of sync (tree objects).
-                if object_id.object_type in config.tree_object_types:
-                    objects_sync_started = True
-                    objects_sync_successful = True
-                    # Make sure node we will write tree data to has the right master node.
-                    try:
-                        master_node = self.node_conn.get_master_node()
-                    except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_leave(node_name)
-                        msg = ("Failed to get master node: %s: %s"
-                                % (node_name, e))
-                        self.logger.warning(msg)
-                        return False
-                    except Exception as e:
-                        msg = ("Failed to get master node: %s: %s"
-                                % (node_name, e))
-                        self.logger.warning(msg)
-                        return True
-                    if master_node != self.host_name:
-                        try:
-                            cluster_journal_entry.delete()
-                        except Exception as e:
-                            msg = "Failed to delete cluster journal entry."
-                            self.logger.critical(msg)
-                        break
-                    if not unsync_status_set:
-                        unsync_status_set = True
-                        self.unset_node_sync(node_name)
-                if action == "write":
-                    last_modified = cluster_journal_entry.last_modified
-                    try:
-                        last_used = backend.get_last_used(object_id.realm,
-                                                        object_id.site,
-                                                        object_id.object_type,
-                                                        object_uuid)
-                    except Exception as e:
-                        msg = "Failed to get last used time: %s" % object_id
-                        self.logger.warning(msg)
-                        continue
-                    try:
-                        write_status = self.node_conn.write(object_id.full_oid,
-                                                            object_config,
-                                                            last_modified,
-                                                            last_used)
-                    except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_leave(node_name)
-                        msg = ("Failed to send object: %s: %s: %s"
-                                % (node_name, object_id, e))
-                        self.logger.warning(msg)
-                        return True
-                    except Exception as e:
-                        msg = ("Failed to send object: %s: %s: %s"
-                                % (node_name, object_id, e))
-                        self.logger.warning(msg)
-                        return True
-                    if write_status != "done":
-                        objects_sync_successful = False
-                        continue
-                    written_entries.append(object_uuid)
-                    try:
-                        uuids_to_process.remove(object_uuid)
-                    except ValueError:
-                        pass
-                    msg = ("Written object to node: %s: %s (%s)"
-                            % (node_name, object_id, object_checksum))
-                    self.logger.debug(msg)
-                    cluster_journal_entry.add_node(node_name)
-                    processed_journal_entries.append(cluster_journal_entry.timestamp)
-                # Rename object on peer.
-                if action == "rename":
-                    new_object_id = cluster_journal_entry.new_object_id
-                    new_object_id = oid.get(new_object_id)
-                    try:
-                        rename_status = self.node_conn.rename(object_id.full_oid,
-                                                            new_object_id.full_oid)
-                    except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_leave(node_name)
-                        msg = ("Failed to rename object: %s: %s: %s"
-                                % (node_name, object_id, e))
-                        self.logger.warning(msg)
-                        return True
-                    except Exception as e:
-                        msg = ("Failed to rename object: %s: %s: %s"
-                                % (node_name, object_id, e))
-                        self.logger.warning(msg)
-                        return True
-                    if rename_status != "done":
-                        objects_sync_successful = False
-                        continue
-                    written_entries.append(object_uuid)
-                    try:
-                        uuids_to_process.remove(object_uuid)
-                    except ValueError:
-                        pass
-                    msg = ("Renamed object on node: %s: %s: %s"
-                            % (node_name, object_id, new_object_id))
-                    self.logger.debug(msg)
-                    cluster_journal_entry.add_node(node_name)
-                    processed_journal_entries.append(cluster_journal_entry.timestamp)
-                # Delete object on peer.
-                if action == "delete":
-                    try:
-                        del_status = self.node_conn.delete(object_uuid,
-                                                        object_id.full_oid)
-                    except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_leave(node_name)
-                        msg = "Failed to delete object: %s: %s" % (object_id, e)
-                        self.logger.warning(msg)
-                        return True
-                    except Exception as e:
-                        msg = "Failed to delete object: %s: %s" % (object_id, e)
-                        self.logger.warning(msg)
-                        return True
-                    if del_status != "done":
-                        objects_sync_successful = False
-                        continue
-                    msg = ("Deleted object on node: %s: %s"
-                            % (node_name, object_id))
-                    self.logger.debug(msg)
-                    cluster_journal_entry.add_node(node_name)
-                    processed_journal_entries.append(cluster_journal_entry.timestamp)
+            # Delete object on peer.
+            if action == "delete":
+                try:
+                    del_status = self.node_conn.delete(object_uuid,
+                                                    object_id.full_oid)
+                except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                    self.node_leave(node_name)
+                    msg = "Failed to delete object: %s: %s" % (object_id, e)
+                    self.logger.warning(msg)
+                    return True
+                except Exception as e:
+                    msg = "Failed to delete object: %s: %s" % (object_id, e)
+                    self.logger.warning(msg)
+                    return True
+                if del_status != "done":
+                    objects_sync_successful = False
+                    continue
+                msg = ("Deleted object on node: %s: %s"
+                        % (node_name, object_id))
+                self.logger.debug(msg)
+                node_checksums.append(object_checksum)
+                cluster_journal_entry.add_node(node_name)
+                processed_journal_entries.append(cluster_journal_entry.timestamp)
 
             # Check if object was written to member nodes.
             if self.check_member_nodes(cluster_journal_entry):

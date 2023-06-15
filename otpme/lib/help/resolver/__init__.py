@@ -38,14 +38,6 @@ cmd_help = {
                                 },
                 },
 
-    'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-resolver add {resolver} {resolver_type}',
-                    'cmd'   :   '<|object|> <resolver_type>',
-                    '_help' :   {
-                                    'cmd'                   : 'add new resolver',
-                                },
-                },
-
     'del'    : {
                     '_cmd_usage_help' : 'Usage: otpme-resolver del {resolver}',
                     'cmd'   :   '<|object|>',

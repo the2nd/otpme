@@ -13,6 +13,8 @@ from otpme.lib import backend
 from otpme.lib.humanize import units
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_policies_string
+from otpme.lib.classes.accessgroup import get_acls
+from otpme.lib.classes.accessgroup import get_value_acls
 
 from otpme.lib.exceptions import *
 
@@ -36,48 +38,6 @@ table_headers = [
                 "description",
                 ]
 
-write_acls = [
-            "all"
-            "edit"
-            "add:group",
-            "remove:group",
-            "add:child_group",
-            "remove:child_group",
-            "add:child_session",
-            "remove:child_session",
-            "edit:max_fail",
-            "edit:max_fail_reset",
-            "enable:sessions",
-            "disable:sessions",
-            "edit:max_sessions",
-            "edit:relogin_timeout",
-            "enable:session_master",
-            "disable:session_master",
-            "edit:max_use",
-            "edit:timeout_pass_on",
-            "edit:session_timeout",
-            "edit:unused_session_timeout",
-            ]
-
-read_acls = [
-            "view",
-            "view_all",
-            "view_public",
-            "view:group",
-            "view:child_group",
-            "view:max_fail",
-            "view:max_fail_reset",
-            "view:sessions_enabled",
-            "view:max_sessions",
-            "view:relogin_timeout",
-            "view:child_session",
-            "view:session_master",
-            "view:max_use",
-            "view:timeout_pass_on",
-            "view:session_timeout",
-            "view:unused_session_timeout",
-            ]
-
 REGISTER_BEFORE = []
 REGISTER_AFTER = ["otpme.lib.filetools"]
 
@@ -98,6 +58,16 @@ def register():
                         'unused_session_timeout',
                         'acl_inheritance_enabled',
                         ]
+    read_acls, write_acls = get_acls(split=True)
+    read_value_acls, write_value_acls = get_value_acls(split=True)
+    for acl in read_value_acls:
+        for x in read_value_acls[acl]:
+            x_acl = "%s:%s" % (acl, x)
+            read_acls.append(x_acl)
+    for acl in write_value_acls:
+        for x in write_value_acls[acl]:
+            x_acl = "%s:%s" % (acl, x)
+            write_acls.append(x_acl)
     register_cli(name="accessgroup",
                 table_headers=table_headers,
                 return_attributes=return_attributes,

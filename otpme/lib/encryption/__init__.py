@@ -110,7 +110,7 @@ def hash_password(password, salt=None, iterations=None,
 
     duration = time.time() - start_time
     if not quiet:
-        logger.debug("Duration: %s" % duration)
+        logger.debug("Duration: %f" % duration)
 
     return result
 

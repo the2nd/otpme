@@ -11,6 +11,8 @@ except:
 
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_policies_string
+from otpme.lib.classes.group import get_acls
+from otpme.lib.classes.group import get_value_acls
 
 from otpme.lib.exceptions import *
 
@@ -36,10 +38,22 @@ def register():
                         'auth_script_enabled',
                         'acl_inheritance_enabled',
                         ]
+    read_acls, write_acls = get_acls(split=True)
+    read_value_acls, write_value_acls = get_value_acls(split=True)
+    for acl in read_value_acls:
+        for x in read_value_acls[acl]:
+            x_acl = "%s:%s" % (acl, x)
+            read_acls.append(x_acl)
+    for acl in write_value_acls:
+        for x in write_value_acls[acl]:
+            x_acl = "%s:%s" % (acl, x)
+            write_acls.append(x_acl)
     register_cli(name="unit",
                 table_headers=table_headers,
                 return_attributes=return_attributes,
                 row_getter=row_getter,
+                write_acls=write_acls,
+                read_acls=read_acls,
                 max_len=None)
 
 def row_getter(realm, site, unit_order, unit_data, acls,

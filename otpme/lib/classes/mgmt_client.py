@@ -29,6 +29,11 @@ class OTPmeMgmtClient(object):
 
     def __getattr__(self, name):
         """ Forward method call to protocol handler. """
+        try:
+            attr = self.__getattribute__(name)
+            return attr
+        except AttributeError:
+            pass
         def handler_function(*args, **kwargs):
             realm = config.connect_realm
             site = config.connect_site

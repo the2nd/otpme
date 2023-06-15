@@ -73,8 +73,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'args'              : ['add_default_token', 'default_token', 'address'],
-                    'oargs'             : ['unit'],
+                    'args'              : [],
+                    'oargs'             : ['address', 'unit'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
@@ -945,10 +945,10 @@ class Client(OTPmeClientObject):
             msg = "Failed to add client."
             return callback.error(msg)
 
+        msg = ""
         if address:
             self.add_address(address)
-
-        msg = "Radius secret: %s" % self.secret
+            msg = "Radius secret: %s" % self.secret
         # Make sure radius gets reloaded
         self.radius_reload = True
         return callback.ok(msg)

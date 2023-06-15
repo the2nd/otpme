@@ -238,7 +238,6 @@ class Cache(object):
                         self._stats[cache_name][0] += 1
                     except:
                         pass
-                    return result
                 except KeyError:
                     try:
                         self._stats[cache_name][1] += 1
@@ -269,7 +268,6 @@ class Cache(object):
                         self._stats[cache_name][0] += 1
                     except:
                         pass
-                    return result
                 except KeyError:
                     try:
                         self._stats[cache_name][1] += 1
@@ -278,11 +276,13 @@ class Cache(object):
 
             # Run func/method if no cache hit was available.
             if result is None:
+                result = func(*args, **kwargs)
+
+            if result is not None:
                 if cache_name is not None:
                     update_cache = True
                     if use_shared_cache:
                         update_shared_cache = True
-                result = func(*args, **kwargs)
 
             if update_shared_cache:
                 if _shared_cache is None:
@@ -438,8 +438,12 @@ class FuncCache(object):
         def wrapper(f):
             @wraps(f)
             def wrapped(*f_args, **f_kwargs):
+                try:
+                    no_func_cache = f_kwargs['_no_func_cache']
+                except KeyError:
+                    no_func_cache = False
                 # Just run the function if caching is disabled.
-                if not config.cache_enabled:
+                if no_func_cache or not config.cache_enabled:
                     # Get method/function name.
                     try:
                         result = f(*f_args, **f_kwargs)

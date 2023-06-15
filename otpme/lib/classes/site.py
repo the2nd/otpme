@@ -1470,14 +1470,11 @@ class Site(OTPmeObject):
 
     @object_lock()
     def create_master_node(self, node_name, cert_req=None,
-        cert_valid=None, uuid=None, public_key=None,
+        gen_jotp=True, cert_valid=None, uuid=None, public_key=None,
         _caller="API", callback=default_callback, **kwargs):
         """ Creating master node object for this site. """
         if cert_valid is None:
             cert_valid = config.default_node_validity
-        msg = (_("Adding node '%s' as site master.") % node_name)
-        callback.send(msg)
-
         # Create node instance.
         node = Node(name=node_name,
                     realm=config.realm,
@@ -1493,6 +1490,7 @@ class Site(OTPmeObject):
                     cert_valid=cert_valid,
                     public_key=public_key,
                     enabled=True,
+                    gen_jotp=gen_jotp,
                     callback=callback)
         except Exception as e:
             config.raise_exception()
@@ -1938,9 +1936,6 @@ class Site(OTPmeObject):
             word_list = spsc.dump(d)
             dictionary.add_words(word_list)
 
-        # Create base policies.
-        #self.add_base_policies(callback=callback)
-
         # If we got some dicts add them to the password_strength policy.
         if dictionaries_sorted:
             call_methods = []
@@ -2214,6 +2209,18 @@ class Site(OTPmeObject):
                 policy_method_args['callback'] = callback
                 policy_method(verify_acls=False, **policy_method_args)
 
+        # Add default policies to base policies.
+        base_policies = config.get_base_objects("policy")
+        for policy_name in base_policies:
+            result = backend.search(object_type="policy",
+                                    attribute="name",
+                                    value=policy_name,
+                                    return_type="instance")
+            if not result:
+                continue
+            policy = result[0]
+            policy.add_default_policies()
+
         # Write objects.
         cache.flush()
 
@@ -2335,7 +2342,6 @@ class Site(OTPmeObject):
 
             # Check if object exists.
             if policy.exists():
-                policy.add_default_policies()
                 continue
 
             if not policy.add(verify_acls=False, callback=callback):

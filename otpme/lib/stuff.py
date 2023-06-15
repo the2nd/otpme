@@ -479,9 +479,7 @@ def wait_pid(pid, timeout=10, recursive=False, message_method=None):
         wait_time = int(count / 100)
         if not status_method():
             if message_method:
-                if wait_time > 0:
-                    if wait_msg_sent > 0:
-                        message_method("\n")
+                if wait_time > 3:
                     msg = ("PID %s (%s) terminated after %s seconds.\n"
                             % (proc.pid, proc_name, wait_time))
                     message_method(msg)
@@ -502,8 +500,6 @@ def wait_pid(pid, timeout=10, recursive=False, message_method=None):
                 message_method(msg)
                 wait_msg_sent = time.time()
         time.sleep(0.01)
-    #if wait_msg_sent > 0:
-    #    message_method("\n")
     return pid_status
 
 def kill_pid(pid, signal=15, timeout=None, kill_timeout=None,

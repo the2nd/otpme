@@ -238,18 +238,32 @@ commands = {
             },
     }
 
-def get_acls():
+def get_acls(split=False, **kwargs):
     """ Get all supported object ACLs """
-    token_acls = _get_acls()
+    if split:
+        otpme_token_read_acls, \
+        otpme_token_write_acls = _get_acls(split=split, **kwargs)
+        _read_acls = otpme_acl.merge_acls(read_acls, otpme_token_read_acls)
+        _write_acls = otpme_acl.merge_acls(write_acls, otpme_token_write_acls)
+        return _read_acls, _write_acls
+    otpme_token_acls = _get_acls(**kwargs)
     _acls = otpme_acl.merge_acls(read_acls, write_acls)
-    _acls = otpme_acl.merge_acls(_acls, token_acls)
+    _acls = otpme_acl.merge_acls(_acls, otpme_token_acls)
     return _acls
 
-def get_value_acls():
+def get_value_acls(split=False, **kwargs):
     """ Get all supported object value ACLs """
-    token_value_acls = _get_value_acls()
+    if split:
+        otpme_token_read_value_acls, \
+        otpme_token_write_value_acls = _get_value_acls(split=split, **kwargs)
+        _read_value_acls = otpme_acl.merge_value_acls(read_value_acls,
+                                                    otpme_token_read_value_acls)
+        _write_value__acls = otpme_acl.merge_value_acls(write_value_acls,
+                                                        otpme_token_write_value_acls)
+        return _read_value_acls, _write_value__acls
+    otpme_token_value_acls = _get_value_acls(**kwargs)
     _acls = otpme_acl.merge_value_acls(read_value_acls, write_value_acls)
-    _acls = otpme_acl.merge_value_acls(_acls, token_value_acls)
+    _acls = otpme_acl.merge_value_acls(_acls, otpme_token_value_acls)
     return _acls
 
 def get_default_acls():
@@ -553,8 +567,6 @@ class HotpToken(Token):
     def change_mode(self, new_mode, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change token operation mode. """
-        return_message = None
-
         # Make sure new mode is of type string.
         new_mode = str(new_mode)
 
@@ -578,6 +590,7 @@ class HotpToken(Token):
         if new_mode == "mode1":
             self.secret = self.get_secret()
             self.pin_mandatory = False
+            return_message = (_("Token switched to mode1."))
 
         if new_mode == "mode2":
             # if we have a server secret we can try to switch back to mode2
@@ -608,6 +621,7 @@ class HotpToken(Token):
                     return callback.error(msg)
 
                 self.secret = None
+                return_message = (_("Token switched to mode2."))
             else:
                 msg = (_("WARNING: Changing token mode to 'mode2' requires "
                         "re-deployment of the token!"))

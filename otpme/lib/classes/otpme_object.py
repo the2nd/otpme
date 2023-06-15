@@ -154,10 +154,10 @@ def get_value_acls(read_value_acls, write_value_acls, split=False):
     """ Get all supported object value ACLs """
     if split:
         otpme_object_read_value_acls, \
-        otpme_object_write_value_acls = _get_value_acls(split=True)
-        _read_value_acls = otpme_acl.merge_acls(read_value_acls,
+        otpme_object_write_value_acls = get_global_value_acls(split=True)
+        _read_value_acls = otpme_acl.merge_value_acls(read_value_acls,
                                     otpme_object_read_value_acls)
-        _write_value_acls = otpme_acl.merge_acls(write_value_acls,
+        _write_value_acls = otpme_acl.merge_value_acls(write_value_acls,
                                     otpme_object_write_value_acls)
         return _read_value_acls, _write_value_acls
     global_value_acls = get_global_value_acls()
@@ -4434,10 +4434,12 @@ class OTPmeObject(OTPmeBaseObject):
                                 _caller=_caller)
                 self.run_policies("enable",
                                 callback=callback,
-                                _caller=_caller)
+                                _caller=_caller,
+                                force=force)
             except Exception as e:
                 msg = str(e)
-                return callback.error(msg)
+                self.logger.warning(msg)
+                return callback.error()
 
         self.enabled = True
         # Update index.
@@ -4980,6 +4982,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if _caller == "CLIENT":
             acls = "\n".join(acls)
+            return callback.ok(acls)
 
         return callback.ok(acls)
 
@@ -5202,24 +5205,30 @@ class OTPmeObject(OTPmeBaseObject):
             object_modified = False
             if object_match:
                 if action == "add":
-                    msg = (_("Adding ACL %(resolved_acl)s to %(object_id)s")
-                            % {"resolved_acl":resolved_acl,
-                            "object_id":self.oid})
-                    if raw_acl not in self.acls:
-                        object_modified = True
-                        if verbose_level > 0:
-                            callback.send(msg)
-                        # Add ACL.
-                        self.acls.append(raw_acl)
-                else:
-                    msg = (_("Removing ACL %(resolved_acl)s from %(object_id)s")
-                            % {"resolved_acl":resolved_acl,
-                            "object_id":self.oid})
+                    # Add ACL.
                     if raw_acl in self.acls:
+                        msg = "ACL already exists."
+                        callback.error(msg)
+                    else:
+                        self.acls.append(raw_acl)
+                        msg = (_("Adding ACL %(resolved_acl)s to %(object_id)s")
+                                % {"resolved_acl":resolved_acl,
+                                "object_id":self.oid})
                         object_modified = True
                         if verbose_level > 0:
                             callback.send(msg)
-                        # Remove ACL.
+                else:
+                    # Remove ACL.
+                    if raw_acl not in self.acls:
+                        msg = "ACL does not exist."
+                        callback.error(msg)
+                    else:
+                        msg = (_("Removing ACL %(resolved_acl)s from %(object_id)s")
+                                % {"resolved_acl":resolved_acl,
+                                "object_id":self.oid})
+                        object_modified = True
+                        if verbose_level > 0:
+                            callback.send(msg)
                         self.acls.remove(raw_acl)
 
             # Add this object to be written at the end of this

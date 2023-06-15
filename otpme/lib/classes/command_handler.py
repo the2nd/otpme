@@ -53,8 +53,14 @@ class CommandHandler(object):
             self.exit_on_signal = False
         self.mgmt_client = None
         self.command_map = command_map
+        self.command = None
+        self.subcommand = None
+        self.help_command = None
+        self.command_line = []
         # May hold users private key password.
         self.user_key_pass = None
+        # May hold user password.
+        self.user_password = None
         # May hold a password to decrypt some AES data (e.g. users private RSA key)
         self.user_aes_pass = None
         self.init_done = False
@@ -67,6 +73,11 @@ class CommandHandler(object):
 
     def __getattr__(self, name):
         """ Forward method call to OTPmeMgmtClient(). """
+        try:
+            attr = self.__getattribute__(name)
+            return attr
+        except AttributeError:
+            pass
         def handler_function(*args,**kwargs):
             mgmt_client = self.get_mgmt_client()
             try:
@@ -102,7 +113,7 @@ class CommandHandler(object):
         subcommand=None, command_map=None):
         """ Handle help stuff. """
         if not command:
-            command = self.command
+            command = self.help_command
         if not subcommand:
             subcommand = self.subcommand
         if not command_map:
@@ -194,13 +205,7 @@ class CommandHandler(object):
             try:
                 command_syntax = self.get_command_syntax(command, subcommand)
             except Exception as e:
-                #help_text = self.get_help(_("Unknown command: %s") % subcommand)
-                help_text = "fuck"
-                print("CCCC:%s" % command)
-                print("LLLL:%s" % subcommand)
-                print("cccc:%s" % config.cli_object_type)
-                from otpme.lib import debug
-                debug.trace()
+                help_text = self.get_help(_("Unknown command: %s") % subcommand)
                 raise OTPmeException(help_text)
 
             # Parse command line.
@@ -332,7 +337,7 @@ class CommandHandler(object):
 
         return reply
 
-    def handle_command(self, command, command_line):
+    def handle_command(self, command, command_line, client_type="CLIENT"):
         """ Handle given command. """
         register_module("otpme.lib.protocols.otpme_client")
         # Add newline to command output?
@@ -358,6 +363,8 @@ class CommandHandler(object):
 
         # Set commands to be re-used in other methods.
         self.command = command
+        if self.help_command is None:
+            self.help_command = command
         self.subcommand = subcommand
         self.command_line = command_line
 
@@ -393,8 +400,13 @@ class CommandHandler(object):
                     new_master = command_args['new_master_node']
                 except KeyError:
                     new_master = False
+                try:
+                    wait = command_args['wait']
+                except KeyError:
+                    wait = False
                 return self.handle_master_failover(new_master=new_master,
-                                                    random_node=random_node)
+                                                    random_node=random_node,
+                                                    wait=wait)
 
         # For some commands make sure debug log goes to stderr and not to
         # stdout. (e.g. a signature)
@@ -532,6 +544,11 @@ class CommandHandler(object):
         if command == "dictionary" and subcommand == "word_learning":
             self.handle_dictionary_word_learning_command(command, subcommand)
 
+        if subcommand == "add":
+            if config.cli_object_type != "main":
+                object_type = "%s_type" % command
+                self.command_args[object_type] = config.cli_object_type
+
         # Rewrite "token add" command to "user add_token". This is a workaround
         # to be backward compatible with OTPme commands before v0.3 handling
         # this in mgmtd would make things much more complicated.
@@ -628,7 +645,8 @@ class CommandHandler(object):
 
         # Send command.
         try:
-            result = self.send_command(daemon="mgmtd")
+            result = self.send_command(daemon="mgmtd",
+                                    client_type=client_type)
             status = True
         except OTPmeException as e:
             status = False
@@ -1052,16 +1070,17 @@ class CommandHandler(object):
             if "--mschap" in command_line:
                 mschap = True
                 command_line.remove("--mschap")
-            usage_help = "Usage: otpme-tool radius test [--mschap] <username> <password> <nas_ip> <secret>"
+            usage_help = "Usage: otpme-tool radius test [--mschap] <username> <password> <nas_id> <secret>"
             if "-h" in command_line:
                 print(usage_help)
                 return
 
             radius_host = "127.0.0.1"
+            radius_nas_ip = "127.0.0.1"
             try:
                 username = command_line[1]
                 password = command_line[2]
-                radius_nas_ip = command_line[3]
+                radius_nas_id = command_line[3]
                 radius_secret = command_line[4]
             except IndexError:
                 print(usage_help)
@@ -1069,7 +1088,6 @@ class CommandHandler(object):
             if mschap:
                 msg = "Sending MSCHAP radius request."
                 print(msg)
-                radius_nas_id = None
                 r = RADIUS(radius_host, radius_secret, radius_nas_ip, radius_nas_id, eap=True)
                 status = r.is_credential_valid(username, password)
             else:
@@ -1078,7 +1096,9 @@ class CommandHandler(object):
                 status = radius.authenticate(username=username,
                                     password=password,
                                     secret=radius_secret,
-                                    host=radius_host, port=1812)
+                                    host=radius_host,
+                                    nas_id=radius_nas_id,
+                                    port=1812)
             if not status:
                 msg = "Radius request failed."
                 raise OTPmeException(msg)
@@ -3703,6 +3723,7 @@ class CommandHandler(object):
     def handle_token_add_del_command(self, command, subcommand):
         """ Handle token add/del command. """
         self.command = "user"
+        self.help_command = "token"
         if subcommand == "add":
             self.subcommand = "add_token"
         else:
@@ -5089,9 +5110,11 @@ class CommandHandler(object):
         finally:
             clusterd_conn.close()
 
-    def handle_master_failover(self, new_master=None, random_node=False):
+    def handle_master_failover(self, new_master=None,
+        random_node=False, wait=False):
         """ Handle auth command. """
         import random
+        from termcolor import colored
         register_module("otpme.lib.classes.realm")
         register_module("otpme.lib.daemon.clusterd")
         if config.system_user() != "root":
@@ -5136,6 +5159,7 @@ class CommandHandler(object):
                     return msg
 
         msg = "Checking for cluster quorum..."
+        msg = colored(msg, 'green')
         print(msg)
         try:
             hostd_conn = connections.get("hostd")
@@ -5170,9 +5194,11 @@ class CommandHandler(object):
             return msg
         if not this_node_quorum:
             msg = "No cluster quorum."
+            msg = colored(msg, 'red')
             return msg
         if random_node:
             msg = "Trying to find a node to switch to..."
+            msg = colored(msg, 'green')
             print(msg)
             # Get all member nodes
             try:
@@ -5190,6 +5216,7 @@ class CommandHandler(object):
             while True:
                 if len(member_nodes) == 0:
                     msg = "Master failover failed: Unable to find node to switch to."
+                    msg = colored(msg, 'red')
                     return msg
                 new_master_node = random.choice(member_nodes)
                 member_nodes.remove(new_master_node)
@@ -5203,18 +5230,31 @@ class CommandHandler(object):
                 break
 
             msg = ("Will switch to node: %s" % new_master_node)
+            msg = colored(msg, 'green')
             print(msg)
 
             if master_node:
                 msg = ("Setting master failover status on current master node: %s"
                         % master_node)
+                msg = colored(msg, 'green')
                 print(msg)
-                try:
-                    self.start_master_failover(master_node)
-                except Exception as e:
-                    msg = "Failed to start master failover on master node: %s" % e
-                    return msg
+                while True:
+                    try:
+                        self.start_master_failover(master_node)
+                        msg = "Master node ready..."
+                        msg = colored(msg, 'green')
+                        print(msg)
+                        break
+                    except Exception as e:
+                        msg = str(e)
+                        if wait:
+                            msg = colored(msg, 'red')
+                            print(msg)
+                            continue
+                        else:
+                            return msg
             msg = "Trying to switch to new master node: %s" % new_master_node
+            msg = colored(msg, 'green')
             print(msg)
             try:
                 socket_uri = hostd_conn.get_daemon_socket("clusterd", new_master_node)
@@ -5234,53 +5274,71 @@ class CommandHandler(object):
             try:
                 # Do master failover.
                 failover_status = clusterd_conn.do_master_failover()
-                return failover_status
+                failover_status = colored(failover_status, 'green')
             except Exception as e:
                 failover_status = "Master failover failed: %s" % e
-        else:
-            new_master_node = this_node.name
-            if new_master:
-                new_master_node = new_master
-            msg = ("Checking node sync status: %s" % new_master_node)
+                failover_status = colored(failover_status, 'red')
+            return failover_status
+
+        new_master_node = this_node.name
+        if new_master:
+            new_master_node = new_master
+        msg = ("Checking node sync status: %s" % new_master_node)
+        msg = colored(msg, 'green')
+        print(msg)
+        try:
+            self.check_node_sync_status(new_master_node)
+        except Exception as e:
+            msg = ("Will not switch to unsync node: %s: %s"
+                    % (new_master_node, e))
+            self.logger.debug(msg)
+            msg = colored(msg, 'red')
+            return msg
+        try:
+            socket_uri = hostd_conn.get_daemon_socket("clusterd", new_master_node)
+        except Exception as e:
+            msg = "Failed to get daemon socket from hostd: %s" % e
+            self.logger.warning(msg)
+            return msg
+        try:
+            clusterd_conn = connections.get("clusterd",
+                                            timeout=None,
+                                            socket_uri=socket_uri)
+        except Exception as e:
+            msg = ("Failed to get cluster connection: %s: %s"
+                    % (new_master_node, e))
+            self.logger.warning(msg)
+            return msg
+        if master_node:
+            msg = ("Setting master failover status on current master node: %s"
+                    % master_node)
+            msg = colored(msg, 'green')
             print(msg)
-            try:
-                self.check_node_sync_status(new_master_node)
-            except Exception as e:
-                msg = ("Will not switch to unsync node: %s: %s"
-                        % (new_master_node, e))
-                self.logger.debug(msg)
-                return msg
-            try:
-                socket_uri = hostd_conn.get_daemon_socket("clusterd", new_master_node)
-            except Exception as e:
-                msg = "Failed to get daemon socket from hostd: %s" % e
-                self.logger.warning(msg)
-                return msg
-            try:
-                clusterd_conn = connections.get("clusterd",
-                                                timeout=None,
-                                                socket_uri=socket_uri)
-            except Exception as e:
-                msg = ("Failed to get cluster connection: %s: %s"
-                        % (new_master_node, e))
-                self.logger.warning(msg)
-                return msg
-            if master_node:
-                msg = ("Setting master failover status on current master node: %s"
-                        % master_node)
-                print(msg)
+            while True:
                 try:
                     self.start_master_failover(master_node)
+                    msg = "Master node ready..."
+                    msg = colored(msg, 'green')
+                    print(msg)
+                    break
                 except Exception as e:
-                    msg = "Failed to start master failover on master node: %s" % e
-                    return msg
-            msg = "Trying to switch to new master node: %s" % new_master_node
-            print(msg)
-            try:
-                # Do master failover.
-                failover_status = clusterd_conn.do_master_failover()
-            except Exception as e:
-                failover_status = "Master failover failed: %s" % e
+                    msg = str(e)
+                    if wait:
+                        msg = colored(msg, 'red')
+                        print(msg)
+                        continue
+                    else:
+                        return msg
+        msg = "Trying to switch to new master node: %s" % new_master_node
+        msg = colored(msg, 'green')
+        print(msg)
+        try:
+            # Do master failover.
+            failover_status = clusterd_conn.do_master_failover()
+            failover_status = colored(failover_status, 'green')
+        except Exception as e:
+            failover_status = "Master failover failed: %s" % e
+            failover_status = colored(failover_status, 'red')
 
         return failover_status
 

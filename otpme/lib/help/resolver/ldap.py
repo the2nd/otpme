@@ -16,6 +16,14 @@ def register():
 
 cmd_help = {
     '_need_command'             : True,
+    'add'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-resolver add {resolver}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'add new resolver',
+                                },
+                },
+
     'ldap_base'   : {
                     '_cmd_usage_help' : 'Usage: otpme-resolver ldap_base {resolver} {ldap_base}',
                     'cmd'   :   '<|object|> <ldap_base>',

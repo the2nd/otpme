@@ -1095,22 +1095,22 @@ class AccessGroup(OTPmeObject):
         session_master=False, return_type='name', skip_disabled=True):
         """ Get all child groups of this group. """
         result = []
-        child_objects = list(self.child_groups)
+        join_attribute = "child_group"
         if sessions:
-            child_objects = list(self.child_sessions)
-        if not child_objects:
-            return result
+            join_attribute = "child_session"
         return_attrs = ['uuid', 'enabled']
         if session_master:
             return_attrs.append("session_master")
         if return_type != "instance":
             return_attrs.append(return_type)
-        # Get child accessgroups.
-        childs = backend.search(realm=self.realm,
-                                site=self.site,
-                                object_type="accessgroup",
+        # Get child accessgroups/sessions.
+        childs = backend.search(object_type="accessgroup",
+                                join_object_type="accessgroup",
+                                join_search_attr="uuid",
+                                join_search_val=self.uuid,
+                                join_attribute=join_attribute,
                                 attribute="uuid",
-                                values=child_objects,
+                                value="*",
                                 return_attributes=return_attrs)
         if recursive and childs:
             child_childs = list(childs)
@@ -1118,12 +1118,14 @@ class AccessGroup(OTPmeObject):
                 check_childs = list(child_childs)
                 child_childs = []
                 for uuid in check_childs:
-                    x_childs = backend.search(realm=self.realm,
-                                                site=self.site,
-                                                object_type="accessgroup",
-                                                attribute="uuid",
-                                                values=list(check_childs),
-                                                return_attributes=return_attrs)
+                    x_childs = backend.search(object_type="accessgroup",
+                                            join_object_type="accessgroup",
+                                            join_search_attr="uuid",
+                                            join_search_val=uuid,
+                                            join_attribute=join_attribute,
+                                            attribute="uuid",
+                                            value="*",
+                                            return_attributes=return_attrs)
                     if not x_childs:
                         continue
                     for x_uuid in x_childs:
@@ -1184,17 +1186,17 @@ class AccessGroup(OTPmeObject):
 
         # Try to get session master from parent sessions.
         session_master = self.parents(recursive=True,
-                                        sessions=True,
-                                        session_master=True,
-                                        return_type=return_type)
+                                    sessions=True,
+                                    session_master=True,
+                                    return_type=return_type)
         if session_master:
             return session_master
 
         # Try to get session master from child sessions.
         session_master = self.childs(recursive=True,
-                                        sessions=True,
-                                        session_master=True,
-                                        return_type=return_type)
+                                    sessions=True,
+                                    session_master=True,
+                                    return_type=return_type)
         if session_master:
             return session_master
 

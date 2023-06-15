@@ -970,7 +970,7 @@ def register_config_parameters():
     # Default token type to add.
     config.register_config_parameter(name="default_token_type",
                                     ctype=str,
-                                    default_value="totp",
+                                    default_value="hotp",
                                     object_types=object_types)
     # Length for user RSA keys.
     object_types = [

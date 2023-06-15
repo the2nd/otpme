@@ -42,6 +42,8 @@ valid_commands = [
                 'dump_object',
                 'reset_reauth',
                 'delete_object',
+                'get_token_type',
+                'get_policy_type',
                 ]
 
 REGISTER_BEFORE = []
@@ -725,6 +727,9 @@ class OTPmeMgmtP1(OTPmeServer1):
             except SearchException as e:
                 response = "Error running search: %s" % e
                 status = False
+            except UnknownObjectType as e:
+                response = "Error running search: %s" % e
+                status = False
             except Exception as e:
                 config.raise_exception()
                 response = "Internal server error."
@@ -816,6 +821,48 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Check if we got a "object command" (e.g. user, group ...)
         if command in config.tree_object_types or command == "session":
             object_type = command
+
+        # Handle get token type command.
+        if command == "get_token_type":
+            try:
+                token_path = command_args['token_path']
+            except KeyError:
+                status = False
+                response = "Missing <token_path>"
+                return self.build_response(status, response)
+            return_attrs = ['token_type']
+            result = backend.search(object_type="token",
+                                    attribute="rel_path",
+                                    value=token_path,
+                                    return_attributes=return_attrs)
+            if not result:
+                status = False
+                response = "Unknown token: %s" % token_path
+                return self.build_response(status, response)
+            status = True
+            response = result[0]
+            return self.build_response(status, response)
+
+        # Handle get policy type command.
+        if command == "get_policy_type":
+            try:
+                policy_name = command_args['policy_name']
+            except KeyError:
+                status = False
+                response = "Missing <policy_name>"
+                return self.build_response(status, response)
+            return_attrs = ['policy_type']
+            result = backend.search(object_type="policy",
+                                    attribute="name",
+                                    value=policy_name,
+                                    return_attributes=return_attrs)
+            if not result:
+                status = False
+                response = "Unknown policy: %s" % policy_name
+                return self.build_response(status, response)
+            status = True
+            response = result[0]
+            return self.build_response(status, response)
 
         # Handle clear reauth command.
         if command == "reset_reauth":

@@ -79,12 +79,13 @@ class UnixDaemon(object):
         # Run daemon.
         self.run()
 
-    def stop(self, timeout=60, kill=False):
+    def stop(self, timeout=60, kill=False, quiet=False):
         """ Stop the daemon. """
         status, pid = self.status(quiet=True)
         if not status:
-            message =  "Not running.\n"
-            sys.stderr.write(message)
+            if not quiet:
+                message = "Not running.\n"
+                sys.stderr.write(message)
             return False
 
         # Try killing the daemon process
@@ -147,12 +148,11 @@ class UnixDaemon(object):
             message = "Failed to send SIGHUP to daemon: %s" % e
             sys.stderr.write(message)
 
-
     def restart(self):
         """
         Restart the daemon
         """
-        self.stop()
+        self.stop(quiet=True)
         while True:
             time.sleep(0.001)
             daemon_status = self.status(quiet=True)[0]

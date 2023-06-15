@@ -46,8 +46,8 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-client add {client} {address}',
-                    'cmd'   :   '<|object|> <address>',
+                    '_cmd_usage_help' : 'Usage: otpme-client add {client} [address]',
+                    'cmd'   :   '<|object|> [address]',
                     '_help' :   {
                                     'cmd'                   : 'add new client',
                                 },

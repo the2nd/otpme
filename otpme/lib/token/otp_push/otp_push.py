@@ -134,18 +134,32 @@ commands = {
             },
     }
 
-def get_acls():
+def get_acls(split=False, **kwargs):
     """ Get all supported object ACLs """
-    token_acls = _get_acls()
+    if split:
+        otpme_token_read_acls, \
+        otpme_token_write_acls = _get_acls(split=split, **kwargs)
+        _read_acls = otpme_acl.merge_acls(read_acls, otpme_token_read_acls)
+        _write_acls = otpme_acl.merge_acls(write_acls, otpme_token_write_acls)
+        return _read_acls, _write_acls
+    otpme_token_acls = _get_acls(**kwargs)
     _acls = otpme_acl.merge_acls(read_acls, write_acls)
-    _acls = otpme_acl.merge_acls(_acls, token_acls)
+    _acls = otpme_acl.merge_acls(_acls, otpme_token_acls)
     return _acls
 
-def get_value_acls():
+def get_value_acls(split=False, **kwargs):
     """ Get all supported object value ACLs """
-    token_value_acls = _get_value_acls()
+    if split:
+        otpme_token_read_value_acls, \
+        otpme_token_write_value_acls = _get_value_acls(split=split, **kwargs)
+        _read_value_acls = otpme_acl.merge_value_acls(read_value_acls,
+                                                    otpme_token_read_value_acls)
+        _write_value__acls = otpme_acl.merge_value_acls(write_value_acls,
+                                                        otpme_token_write_value_acls)
+        return _read_value_acls, _write_value__acls
+    otpme_token_value_acls = _get_value_acls(**kwargs)
     _acls = otpme_acl.merge_value_acls(read_value_acls, write_value_acls)
-    _acls = otpme_acl.merge_value_acls(_acls, token_value_acls)
+    _acls = otpme_acl.merge_value_acls(_acls, otpme_token_value_acls)
     return _acls
 
 def get_default_acls():
@@ -171,7 +185,7 @@ def register():
     register_config_params()
     register_commands("token",
                     commands,
-                    sub_type="otp-push",
+                    sub_type="otp_push",
                     sub_type_attribute="token_type")
 
 def register_hooks():
@@ -181,7 +195,7 @@ def register_hooks():
 
 def register_token_type():
     """ Register token type. """
-    config.register_sub_object_type("token", "otp-push")
+    config.register_sub_object_type("token", "otp_push")
 
 def register_config_params():
     """ Register config params. """
@@ -232,9 +246,9 @@ class OtppushToken(Token):
         self._default_acls = get_default_acls()
         self._recursive_default_acls = get_recursive_default_acls()
         # Set token type.
-        self.token_type = "otp-push"
+        self.token_type = "otp_push"
         # Set password type.
-        self.pass_type = "otp-push"
+        self.pass_type = "otp_push"
         # Set default values.
         self.phone_number = None
         self.push_script = None

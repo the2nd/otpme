@@ -103,10 +103,11 @@ if "--type" in sys.argv:
 config.cli_object_type = object_type
 
 for x in sys.argv:
-    if x == "--compgen":
-        from otpme.lib.compgen import show_compgen
-        show_compgen()
-        sys.exit(0)
+    if x != "--compgen":
+        continue
+    from otpme.lib.compgen import show_compgen
+    show_compgen()
+    sys.exit(0)
 
 # Only root can control OTPme daemons.
 if command == "controld":

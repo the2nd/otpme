@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 # Distributed under the terms of the GNU General Public License v2
 import os
+import importlib
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -9,9 +10,12 @@ try:
 except:
     pass
 
+from otpme.lib import config
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_unit_string
 from otpme.lib.cli import get_policies_string
+from otpme.lib.classes.resolver import get_acls
+from otpme.lib.classes.resolver import get_value_acls
 
 from otpme.lib.exceptions import *
 
@@ -39,10 +43,39 @@ def register():
                         'sync_deletions',
                         'acl_inheritance_enabled',
                         ]
+    read_acls, write_acls = get_acls(split=True)
+    read_value_acls, write_value_acls = get_value_acls(split=True)
+    for acl in read_value_acls:
+        for x in read_value_acls[acl]:
+            x_acl = "%s:%s" % (acl, x)
+            read_acls.append(x_acl)
+    for acl in write_value_acls:
+        for x in write_value_acls[acl]:
+            x_acl = "%s:%s" % (acl, x)
+            write_acls.append(x_acl)
+    for sub_type in config.get_sub_object_types("resolver"):
+        x_module_path = "otpme.lib.resolver.%s.%s" % (sub_type, sub_type)
+        x_module = importlib.import_module(x_module_path)
+        x_get_acls = getattr(x_module, "get_acls")
+        x_get_value_acls = getattr(x_module, "get_value_acls")
+        x_read_acls, x_write_acls = x_get_acls(split=True)
+        read_acls += x_read_acls
+        write_acls += x_write_acls
+        x_read_value_acls, x_write_value_acls = x_get_value_acls(split=True)
+        for acl in x_read_value_acls:
+            for x in x_read_value_acls[acl]:
+                x_acl = "%s:%s" % (acl, x)
+                read_acls.append(x_acl)
+        for acl in x_write_value_acls:
+            for x in x_write_value_acls[acl]:
+                x_acl = "%s:%s" % (acl, x)
+                write_acls.append(x_acl)
     register_cli(name="resolver",
                 table_headers=table_headers,
                 return_attributes=return_attributes,
                 row_getter=row_getter,
+                write_acls=write_acls,
+                read_acls=read_acls,
                 max_len=30)
 
 def row_getter(realm, site, resolver_order, resolver_data, acls,

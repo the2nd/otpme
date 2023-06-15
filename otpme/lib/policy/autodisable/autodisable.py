@@ -73,18 +73,32 @@ commands = {
             },
     }
 
-def get_acls():
+def get_acls(split=False, **kwargs):
     """ Get all supported object ACLs """
-    policy_acls = _get_acls()
+    if split:
+        otpme_policy_read_acls, \
+        otpme_policy_write_acls = _get_acls(split=split, **kwargs)
+        _read_acls = otpme_acl.merge_acls(read_acls, otpme_policy_read_acls)
+        _write_acls = otpme_acl.merge_acls(write_acls, otpme_policy_write_acls)
+        return _read_acls, _write_acls
+    otpme_policy_acls = _get_acls(**kwargs)
     _acls = otpme_acl.merge_acls(read_acls, write_acls)
-    _acls = otpme_acl.merge_acls(_acls, policy_acls)
+    _acls = otpme_acl.merge_acls(_acls, otpme_policy_acls)
     return _acls
 
-def get_value_acls():
+def get_value_acls(split=False, **kwargs):
     """ Get all supported object value ACLs """
-    policy_value_acls = _get_value_acls()
+    if split:
+        otpme_policy_read_value_acls, \
+        otpme_policy_write_value_acls = _get_value_acls(split=split, **kwargs)
+        _read_value_acls = otpme_acl.merge_value_acls(read_value_acls,
+                                                    otpme_policy_read_value_acls)
+        _write_value__acls = otpme_acl.merge_value_acls(write_value_acls,
+                                                        otpme_policy_write_value_acls)
+        return _read_value_acls, _write_value__acls
+    otpme_policy_value_acls = _get_value_acls(**kwargs)
     _acls = otpme_acl.merge_value_acls(read_value_acls, write_value_acls)
-    _acls = otpme_acl.merge_value_acls(_acls, policy_value_acls)
+    _acls = otpme_acl.merge_value_acls(_acls, otpme_policy_value_acls)
     return _acls
 
 def get_default_acls():
@@ -322,7 +336,9 @@ class AutodisablePolicy(Policy):
                                     exception=self.policy_exception)
         if not hook_object.enabled and not force:
             msg = (_("%s disabled by policy.") % hook_object.type)
-            return callback.error(msg, exception=self.policy_exception)
+            return callback.error(message=msg,
+                                raise_exception=True,
+                                exception=self.policy_exception)
         # If the object gets re-enabled we have to re-activate the policy.
         try:
             hook_object.update_policy(policy_name=self.name,
@@ -341,7 +357,7 @@ class AutodisablePolicy(Policy):
         if not policy_add_time:
             return True
         if self.unused_disable:
-            check_time = self.get_last_used_time()
+            check_time = hook_object.get_last_used_time()
         else:
             check_time = policy_add_time
         disable_time = self.string2unixtime(self.auto_disable, check_time)
@@ -351,21 +367,18 @@ class AutodisablePolicy(Policy):
                 try:
                     hook_object.disable(force=True, verify_acls=False)
                     object_disabled = True
-                except BackendUnavailable as e:
-                    hook_object.enabled = False
-                    object_disabled = True
-                    logger.warning("Unable to save object disabled state: %s" % e)
+                    hook_object._write()
                 except Exception as e:
                     exception = e
                     object_disabled = False
                 if object_disabled:
-                    msg = (_("%s disabled by policy: %s")
-                            % (hook_object.type, hook_object.rel_path))
-                    logger.info(msg)
+                    msg = (_("%s disabled by policy: %s: %s")
+                            % (hook_object.type, self.name, hook_object.name))
+                    logger.warning(msg)
                 else:
                     msg = (_("Cannot disable object by policy: %s: %s: %s")
                             % (self.name, hook_object.rel_path, exception))
-                    logger.warning(msg)
+                    logger.critical(msg)
                     return False
         return True
 
@@ -380,7 +393,8 @@ class AutodisablePolicy(Policy):
             # Check if given date string is valid.
             self.string2unixtime(auto_disable, time.time())
         except Exception as e:
-            return callback.error("Invalid date string.")
+            msg = "Invalid date string: %s" % e
+            return callback.error(msg)
 
         if run_policies:
             try:

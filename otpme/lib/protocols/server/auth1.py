@@ -312,7 +312,9 @@ class OTPmeAuthP1(OTPmeServer1):
         # Check if user exists.
         user = backend.get_object(object_type="user",
                                 name=username,
-                                realm=config.realm)
+                                realm=config.realm,
+                                run_policies=True,
+                                _no_func_cache=True)
         if not user:
             message = "AUTH_FAILED"
             status = False

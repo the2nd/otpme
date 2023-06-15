@@ -249,18 +249,32 @@ commands = {
             },
     }
 
-def get_acls():
+def get_acls(split=False, **kwargs):
     """ Get all supported object ACLs """
-    token_acls = _get_acls()
+    if split:
+        otpme_token_read_acls, \
+        otpme_token_write_acls = _get_acls(split=split, **kwargs)
+        _read_acls = otpme_acl.merge_acls(read_acls, otpme_token_read_acls)
+        _write_acls = otpme_acl.merge_acls(write_acls, otpme_token_write_acls)
+        return _read_acls, _write_acls
+    otpme_token_acls = _get_acls(**kwargs)
     _acls = otpme_acl.merge_acls(read_acls, write_acls)
-    _acls = otpme_acl.merge_acls(_acls, token_acls)
+    _acls = otpme_acl.merge_acls(_acls, otpme_token_acls)
     return _acls
 
-def get_value_acls():
+def get_value_acls(split=False, **kwargs):
     """ Get all supported object value ACLs """
-    token_value_acls = _get_value_acls()
+    if split:
+        otpme_token_read_value_acls, \
+        otpme_token_write_value_acls = _get_value_acls(split=split, **kwargs)
+        _read_value_acls = otpme_acl.merge_value_acls(read_value_acls,
+                                                    otpme_token_read_value_acls)
+        _write_value__acls = otpme_acl.merge_value_acls(write_value_acls,
+                                                        otpme_token_write_value_acls)
+        return _read_value_acls, _write_value__acls
+    otpme_token_value_acls = _get_value_acls(**kwargs)
     _acls = otpme_acl.merge_value_acls(read_value_acls, write_value_acls)
-    _acls = otpme_acl.merge_value_acls(_acls, token_value_acls)
+    _acls = otpme_acl.merge_value_acls(_acls, otpme_token_value_acls)
     return _acls
 
 def get_default_acls():
@@ -562,8 +576,6 @@ class TotpToken(Token):
     def change_mode(self, new_mode, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change token operation mode. """
-        # FIXME: do we need return_message and token_secret???
-        #return_message = ""
         # Make sure new mode is of type string.
         new_mode = str(new_mode)
 
@@ -587,6 +599,7 @@ class TotpToken(Token):
         if new_mode == "mode1":
             self.secret = self.get_secret()
             self.pin_mandatory = False
+            return_message = (_("Token switched to mode1."))
 
         if new_mode == "mode2":
             # If we have a server secret we can try to switch back to mode2
@@ -620,6 +633,7 @@ class TotpToken(Token):
                     return callback.error(msg)
 
                 self.secret = None
+                return_message = (_("Token switched to mode2."))
             else:
                 msg = (_("WARNING: Changing token mode to 'mode2' requires "
                         "re-deployment of the token!"))
@@ -643,14 +657,17 @@ class TotpToken(Token):
                         self.pin = str(new_pin1)
                         break
                 self.server_secret = stuff.gen_secret(self.secret_len)
-                #token_secret = self.get_secret(pin=self.pin,
-                #                                mode="mode2")
-                #return_message = (_("New token secret: %s") % token_secret)
+                token_secret = self.get_secret(pin=self.pin,
+                                                mode="mode2")
+                return_message = (_("New token secret: %s") % token_secret)
                 self.pin_enabled = True
                 self.pin_mandatory = True
 
         # Set new mode.
         self.mode = new_mode
+
+        callback.send(return_message)
+
         return self._cache(callback=callback)
 
     def _enable_pin(self, pre=False, callback=default_callback, **kwargs):

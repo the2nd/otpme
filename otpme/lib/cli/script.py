@@ -13,6 +13,8 @@ from otpme.lib import backend
 from otpme.lib.classes import signing
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_policies_string
+from otpme.lib.classes.group import get_acls
+from otpme.lib.classes.group import get_value_acls
 
 from otpme.lib.exceptions import *
 
@@ -27,19 +29,6 @@ table_headers = [
                 "description",
                 ]
 
-write_acls = [
-            "all",
-            "add:signature",
-            "delete:signature",
-            ]
-
-read_acls = [
-            "view",
-            "view_all",
-            "view_public",
-            "view:signature",
-            ]
-
 REGISTER_BEFORE = []
 REGISTER_AFTER = ["otpme.lib.filetools"]
 
@@ -53,6 +42,16 @@ def register():
                         'sync_deletions',
                         'acl_inheritance_enabled',
                         ]
+    read_acls, write_acls = get_acls(split=True)
+    read_value_acls, write_value_acls = get_value_acls(split=True)
+    for acl in read_value_acls:
+        for x in read_value_acls[acl]:
+            x_acl = "%s:%s" % (acl, x)
+            read_acls.append(x_acl)
+    for acl in write_value_acls:
+        for x in write_value_acls[acl]:
+            x_acl = "%s:%s" % (acl, x)
+            write_acls.append(x_acl)
     register_cli(name="script",
                 table_headers=table_headers,
                 return_attributes=return_attributes,

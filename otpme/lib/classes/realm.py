@@ -1361,6 +1361,7 @@ class Realm(OTPmeObject):
                                             public_key=host_public_key,
                                             cert_req=cert_req,
                                             uuid=config.uuid,
+                                            gen_jotp=False,
                                             callback=callback,
                                             **kwargs):
             msg = ("Unable to create master node.")
@@ -1484,6 +1485,8 @@ class Realm(OTPmeObject):
             first_node.add_policy(policy.name, verify_acls=False)
 
         # Make sure DB indices are created after adding all objects.
+        msg = "Creating DB indexes..."
+        callback.send(msg)
         _index = config.get_index_module()
         _index.command("create_db_indices")
 

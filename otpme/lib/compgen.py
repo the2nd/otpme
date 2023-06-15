@@ -3,7 +3,7 @@
 # Distributed under the terms of the GNU General Public License v2
 import os
 import sys
-import glob
+import importlib
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -13,9 +13,12 @@ except:
 
 from otpme.lib import help
 #from otpme.lib import config
+from otpme.lib import backend
 from otpme.lib.help import global_opts
 from otpme.lib.help import command_map
+from otpme.lib.register import register_modules
 from otpme.lib.help.register import register_help
+from otpme.lib.classes.command_handler import CommandHandler
 
 register_help()
 
@@ -44,11 +47,19 @@ def show_compgen():
     tool_name = comp_words[0]
     main_command  = tool_name.split("-")[1]
 
-    # Check for stdout redirection.
+    # Get previous word.
     prev_word_pos = len(comp_words) - 1
     if comp_words[-1] == cur:
         prev_word_pos -= 1
     prev_word = comp_words[prev_word_pos]
+
+    ## Get previous previous word.
+    #prev_prev_word_pos = len(comp_words) - 2
+    #if comp_words[-1] == cur:
+    #    prev_prev_word_pos -= 1
+    #prev_prev_word = comp_words[prev_prev_word_pos]
+
+    # Check for stdout redirection.
     if prev_word == ">":
         return
 
@@ -75,9 +86,6 @@ def show_compgen():
             word_counter += 1
             continue
         prev_subcommand_word = comp_words_rev[word_counter+1]
-        #print(reversed(comp_words_rev))
-        #print(word_counter)
-        #print(prev_subcommand_word)
         # Parameter to the --type option may conflict with subcommands.
         if prev_subcommand_word == "--type":
             break
@@ -117,21 +125,10 @@ def show_compgen():
                                     token_types = list(command_map['token'])
                                     token_types = " ".join(token_types)
                                     print(token_types)
-                                    #glob_str = "%s/*/[!_]*.py" % config.token_dir
-                                    #token_files = glob.glob(glob_str)
-                                    #for x in token_files:
-                                    #    token_type = os.path.basename(x)
-                                    #    token_type = token_type.replace(".py", "")
-                                    #    print(token_type)
-                                    return
                                 if main_command == "policy":
-                                    glob_str = "%s/*/[!_]*.py" % config.policy_dir
-                                    policy_files = glob.glob(glob_str)
-                                    for x in policy_files:
-                                        policy_type = os.path.basename(x)
-                                        policy_type = policy_type.replace(".py", "")
-                                        print(policy_type)
-                                    return
+                                    policy_types = list(command_map['policy'])
+                                    policy_types = " ".join(policy_types)
+                                    print(policy_types)
                             global_opts_done = False
                 else:
                     print(x_opt)
@@ -192,18 +189,349 @@ def show_compgen():
                         object_type = x_type
             break
 
-    from otpme.lib.register import register_modules
     register_modules()
     if object_type in config.tree_object_types:
         need_objects = True
+    if object_type == "token":
+        need_objects = True
+
+    if sub_command == "add_acl":
+        show_acls = False
+        acl_object = None
+        found_add_acl = False
+        found_subcommand = False
+        found_add_acl_role = False
+        found_add_acl_token = False
+        found_add_acl_role_cmd = False
+        found_add_acl_token_cmd = False
+        # Remove options.
+        check_words = list(comp_words)
+        for word in list(check_words):
+            if not word.startswith("-"):
+                continue
+            check_words.remove(word)
+        found_object = False
+        word_counter = -1
+        for word in check_words:
+            word_counter += 1
+            if word == sub_command:
+                found_subcommand = True
+            if not found_subcommand:
+                continue
+            if sub_command == "add_acl":
+                found_add_acl = True
+            if found_add_acl:
+                if word == "add_acl":
+                    try:
+                        next_word = check_words[word_counter+1]
+                    except IndexError:
+                        next_word = None
+                    if next_word:
+                        if next_word != cur:
+                            found_object = True
+                if word == "token":
+                    found_add_acl_token_cmd = True
+                    found_add_acl_token = True
+                    acl_object = check_words[word_counter-1]
+                if word == "role":
+                    found_add_acl_role_cmd = True
+                    found_add_acl_role = True
+                    acl_object = check_words[word_counter-1]
+            if found_add_acl_token_cmd:
+                _cur = check_words[word_counter]
+                if cur != _cur:
+                    _prev_word = check_words[word_counter-1]
+                    if _prev_word == "token":
+                        show_acls = True
+            if found_add_acl_role_cmd:
+                _cur = check_words[word_counter]
+                if cur != _cur:
+                    _prev_word = check_words[word_counter-1]
+                    if _prev_word == "role":
+                        show_acls = True
+
+        if config.use_api:
+            backend.init()
+
+        if show_acls:
+            if main_command == "token":
+                command_args = {'token_path':acl_object}
+                command_handler = CommandHandler()
+                token_type = command_handler.send_command(daemon="mgmtd",
+                                                    command="get_token_type",
+                                                    command_args=command_args,
+                                                    parse_command_syntax=False)
+                token_mod = "otpme.lib.token.%s.%s" % (token_type, token_type)
+                token_module = importlib.import_module(token_mod)
+                token_get_acls = getattr(token_module, "get_acls")
+                token_get_value_acls = getattr(token_module, "get_value_acls")
+                token_get_default_acls = getattr(token_module, "get_default_acls")
+                token_get_recursive_default_acls = getattr(token_module, "get_recursive_default_acls")
+                token_acls = token_get_acls()
+                for acl in token_acls:
+                    print(acl)
+                token_value_acls = token_get_value_acls()
+                for acl in token_value_acls:
+                    for x in token_value_acls[acl]:
+                        acl_str = "%s:%s" % (acl, x)
+                        print(acl_str)
+                token_default_acls = token_get_default_acls()
+                for acl in token_default_acls:
+                    object_type = acl.split("+")[1]
+                    sub_types = config.get_sub_object_types(object_type)
+                    if sub_types:
+                        default_acls = []
+                        for sub_type in sub_types:
+                            object_module_path = ("otpme.lib.%s.%s.%s"
+                                                % (object_type, sub_type, sub_type))
+                            object_module = importlib.import_module(object_module_path)
+                            for a in object_module.get_acls():
+                                default_acl = "+%s:%s" % (object_type, a)
+                                if default_acl in default_acls:
+                                    continue
+                                default_acls.append(default_acl)
+                        default_acls = "\n".join(default_acls)
+                        print(default_acls)
+                    else:
+                        object_module_path = "otpme.lib.classes.%s" % object_type
+                        object_module = importlib.import_module(object_module_path)
+                        for a in object_module.get_acls():
+                            default_acl = "+%s:%s" % (object_type, a)
+                            print(default_acl)
+                token_recursive_default_acls = token_get_recursive_default_acls()
+                for acl in token_recursive_default_acls:
+                    if acl.startswith("+"):
+                        object_type = acl.split("+")[1]
+                        sub_types = config.get_sub_object_types(object_type)
+                        if sub_types:
+                            default_acls = []
+                            for sub_type in sub_types:
+                                object_module_path = ("otpme.lib.%s.%s.%s"
+                                                    % (object_type, sub_type, sub_type))
+                                object_module = importlib.import_module(object_module_path)
+                                for a in object_module.get_acls():
+                                    default_acl = "++%s:%s" % (object_type, a)
+                                    if default_acl in default_acls:
+                                        continue
+                                    default_acls.append(default_acl)
+                            default_acls = "\n".join(default_acls)
+                            print(default_acls)
+                        else:
+                            object_module_path = "otpme.lib.classes.%s" % object_type
+                            object_module = importlib.import_module(object_module_path)
+                            for a in object_module.get_acls():
+                                default_acl = "++%s:%s" % (object_type, a)
+                                print(default_acl)
+                    else:
+                        default_acl = "++%s" % acl
+                        print(default_acl)
+                return
+
+            elif main_command == "policy":
+                command_args = {'policy_name':acl_object}
+                command_handler = CommandHandler()
+                policy_type = command_handler.send_command(daemon="mgmtd",
+                                                    command="get_policy_type",
+                                                    command_args=command_args,
+                                                    parse_command_syntax=False)
+                policy_mod = "otpme.lib.policy.%s.%s" % (policy_type, policy_type)
+                policy_module = importlib.import_module(policy_mod)
+                policy_get_acls = getattr(policy_module, "get_acls")
+                policy_get_value_acls = getattr(policy_module, "get_value_acls")
+                policy_get_default_acls = getattr(policy_module, "get_default_acls")
+                policy_get_recursive_default_acls = getattr(policy_module, "get_recursive_default_acls")
+                policy_acls = policy_get_acls()
+                for acl in policy_acls:
+                    print(acl)
+                policy_value_acls = policy_get_value_acls()
+                for acl in policy_value_acls:
+                    for x in policy_value_acls[acl]:
+                        acl_str = "%s:%s" % (acl, x)
+                        print(acl_str)
+                policy_default_acls = policy_get_default_acls()
+                for acl in policy_default_acls:
+                    object_type = acl.split("+")[1]
+                    sub_types = config.get_sub_object_types(object_type)
+                    if sub_types:
+                        default_acls = []
+                        for sub_type in sub_types:
+                            object_module_path = ("otpme.lib.%s.%s.%s"
+                                                % (object_type, sub_type, sub_type))
+                            object_module = importlib.import_module(object_module_path)
+                            for a in object_module.get_acls():
+                                default_acl = "+%s:%s" % (object_type, a)
+                                if default_acl in default_acls:
+                                    continue
+                                default_acls.append(default_acl)
+                        default_acls = "\n".join(default_acls)
+                        print(default_acls)
+                    else:
+                        object_module_path = "otpme.lib.classes.%s" % object_type
+                        object_module = importlib.import_module(object_module_path)
+                        for a in object_module.get_acls():
+                            default_acl = "+%s:%s" % (object_type, a)
+                            print(default_acl)
+                policy_recursive_default_acls = policy_get_recursive_default_acls()
+                for acl in policy_recursive_default_acls:
+                    if acl.startswith("+"):
+                        object_type = acl.split("+")[1]
+                        sub_types = config.get_sub_object_types(object_type)
+                        if sub_types:
+                            default_acls = []
+                            for sub_type in sub_types:
+                                object_module_path = ("otpme.lib.%s.%s.%s"
+                                                    % (object_type, sub_type, sub_type))
+                                object_module = importlib.import_module(object_module_path)
+                                for a in object_module.get_acls():
+                                    default_acl = "++%s:%s" % (object_type, a)
+                                    if default_acl in default_acls:
+                                        continue
+                                    default_acls.append(default_acl)
+                            default_acls = "\n".join(default_acls)
+                            print(default_acls)
+                        else:
+                            object_module_path = "otpme.lib.classes.%s" % object_type
+                            object_module = importlib.import_module(object_module_path)
+                            for a in object_module.get_acls():
+                                default_acl = "++%s:%s" % (object_type, a)
+                                print(default_acl)
+                    else:
+                        default_acl = "++%s" % acl
+                        print(default_acl)
+                return
+            else:
+                x_mod = "otpme.lib.classes.%s" % object_type
+                x_module = importlib.import_module(x_mod)
+                x_get_acls = getattr(x_module, "get_acls")
+                x_get_value_acls = getattr(x_module, "get_value_acls")
+                x_get_default_acls = getattr(x_module, "get_default_acls")
+                x_get_recursive_default_acls = getattr(x_module, "get_recursive_default_acls")
+                x_acls = x_get_acls()
+                for acl in x_acls:
+                    print(acl)
+                x_value_acls = x_get_value_acls()
+                for acl in x_value_acls:
+                    for x in x_value_acls[acl]:
+                        acl_str = "%s:%s" % (acl, x)
+                        print(acl_str)
+                x_default_acls = x_get_default_acls()
+                for acl in x_default_acls:
+                    if acl.startswith("+"):
+                        object_type = acl.split("+")[1]
+                        sub_types = config.get_sub_object_types(object_type)
+                        if sub_types:
+                            default_acls = []
+                            for sub_type in sub_types:
+                                object_module_path = ("otpme.lib.%s.%s.%s"
+                                                    % (object_type, sub_type, sub_type))
+                                object_module = importlib.import_module(object_module_path)
+                                for a in object_module.get_acls():
+                                    default_acl = "+%s:%s" % (object_type, a)
+                                    if default_acl in default_acls:
+                                        continue
+                                    default_acls.append(default_acl)
+                            default_acls = "\n".join(default_acls)
+                            print(default_acls)
+                        else:
+                            object_module_path = "otpme.lib.classes.%s" % object_type
+                            object_module = importlib.import_module(object_module_path)
+                            for a in object_module.get_acls():
+                                default_acl = "+%s:%s" % (object_type, a)
+                                print(default_acl)
+                    else:
+                        default_acl = "+%s" % acl
+                        print(default_acl)
+                x_recursive_default_acls = x_get_recursive_default_acls()
+                for acl in x_recursive_default_acls:
+                    if acl.startswith("+"):
+                        object_type = acl.split("+")[1]
+                        sub_types = config.get_sub_object_types(object_type)
+                        if sub_types:
+                            default_acls = []
+                            for sub_type in sub_types:
+                                object_module_path = ("otpme.lib.%s.%s.%s"
+                                                    % (object_type, sub_type, sub_type))
+                                object_module = importlib.import_module(object_module_path)
+                                for a in object_module.get_acls():
+                                    default_acl = "++%s:%s" % (object_type, a)
+                                    if default_acl in default_acls:
+                                        continue
+                                    default_acls.append(default_acl)
+                            default_acls = "\n".join(default_acls)
+                            print(default_acls)
+                        else:
+                            object_module_path = "otpme.lib.classes.%s" % object_type
+                            object_module = importlib.import_module(object_module_path)
+                            for a in object_module.get_acls():
+                                default_acl = "++%s:%s" % (object_type, a)
+                                print(default_acl)
+                    else:
+                        default_acl = "++%s" % acl
+                        print(default_acl)
+                return
+
+        if found_add_acl_token:
+            need_objects = True
+            object_type = "token"
+        elif found_add_acl_role:
+            need_objects = True
+            object_type = "role"
+        elif found_object:
+            print("role")
+            print("token")
+            return
+
+    if sub_command == "del_acl":
+        # Remove options.
+        check_words = list(comp_words)
+        for word in list(check_words):
+            if not word.startswith("-"):
+                continue
+            check_words.remove(word)
+        show_acls = False
+        acl_object = None
+        word_counter = -1
+        for word in check_words:
+            word_counter += 1
+            if word != "del_acl":
+                continue
+            try:
+                acl_object = check_words[word_counter+1]
+            except IndexError:
+                acl_object = None
+            if acl_object:
+                if cur == acl_object:
+                    acl_object = None
+                    break
+            break
+        if acl_object:
+            show_acls = True
+        if show_acls:
+            command_handler = CommandHandler()
+            cmd_line = ["show_acls", acl_object]
+            object_acls = command_handler.handle_command(command=object_type,
+                                                    command_line=cmd_line,
+                                                    client_type="RAPI")
+            object_acls = "\n".join(object_acls)
+            print(object_acls)
+            return
 
     if need_objects:
-        from otpme.lib.classes.command_handler import CommandHandler
+        if object_type == "user":
+            config.cli_object_type = "main"
         command_handler = CommandHandler()
         cmd_line = ["list"]
         if cur:
             cmd_line.append("%s*" % cur)
         objects = command_handler.handle_command(command=object_type,
                                                 command_line=cmd_line)
-        print(objects)
+        if main_command == "token":
+            if sub_command == "add":
+                for x in objects.split():
+                    x_str = "%s/" % x
+                    print(x_str)
+            else:
+                print(objects)
+        else:
+            print(objects)
 

@@ -815,7 +815,9 @@ class OTPmeServer1(object):
         if username:
             self.user = backend.get_object(object_type="user",
                                             realm=config.realm,
-                                            name=username)
+                                            name=username,
+                                            run_policies=True,
+                                            _no_func_cache=True)
         # Get accessgroup to auth with.
         if client:
             try:
@@ -1284,7 +1286,9 @@ class OTPmeServer1(object):
             auth_client = backend.get_object(object_type="client",
                                             realm=config.realm,
                                             site=config.site,
-                                            name=client)
+                                            name=client,
+                                            run_policies=True,
+                                            _no_func_cache=True)
 
         # If client is not set in this request but client_ip is set try to find
         # client by IP.
@@ -1324,7 +1328,9 @@ class OTPmeServer1(object):
             auth_client = backend.get_object(object_type="client",
                                             realm=config.realm,
                                             site=config.site,
-                                            name=auth_client)
+                                            name=auth_client,
+                                            run_policies=True,
+                                            _no_func_cache=True)
             msg = ("Found client '%s' via IP '%s'."
                     % (auth_client.name, client_ip))
             self.logger.debug(msg)
@@ -1393,7 +1399,9 @@ class OTPmeServer1(object):
         auth_group = backend.get_object(object_type="accessgroup",
                                         realm=config.realm,
                                         site=config.site,
-                                        name=self.access_group)
+                                        name=self.access_group,
+                                        run_policies=True,
+                                        _no_func_cache=True)
         # Get possible user auth tokens
         valid_tokens = user.get_tokens(token_type=token_type,
                                         pass_type=pass_type,

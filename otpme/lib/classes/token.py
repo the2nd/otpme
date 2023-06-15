@@ -48,10 +48,10 @@ default_callback = config.get_callback()
 
 write_acls =  [
             "set_temp_password",
+            "force_password",
         ]
 
 read_acls = []
-write_acls = []
 
 read_value_acls = {
                 "view"  : [
@@ -577,7 +577,7 @@ def register_oid():
     read_oid_schema = [ 'realm', 'user', 'name' ]
     # OID regex stuff.
     user_path_re = oid.object_regex['user']['path']
-    token_name_re = '([0-9a-z]([0-9a-z_.-:]*[0-9a-z]){0,})'
+    token_name_re = '([0-9a-z]([0-9a-z_.\-:]*[0-9a-z]){0,})'
     token_path_re = '%s[/]%s' % (user_path_re, token_name_re)
     token_oid_re = 'token|%s' % token_path_re
     oid.register_oid_schema(object_type="token",
@@ -2350,6 +2350,10 @@ class Token(OTPmeObject):
         temp=False, run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
         """ Change token password. """
+        if force:
+            if not self.verify_acl("force_password"):
+                msg = "You are not allowed to force a unsecure password."
+                return callback.error(msg)
         # Use destination token if we have one.
         if self.destination_token:
             # Before changing password of the destination token we have to run
@@ -2391,18 +2395,12 @@ class Token(OTPmeObject):
                 self.run_policies("change_password",
                                 callback=callback,
                                 _caller=_caller)
-            except Exception as e:
+            except Exception:
                 return callback.error()
 
         if auto_password:
             pass_len = self.get_config_parameter("default_static_pass_len")
             password = stuff.gen_password(pass_len)
-
-        is_admin = False
-        if config.auth_token:
-            is_admin = config.auth_token.is_admin()
-        elif config.use_api:
-            is_admin = True
 
         if verify_current_pass and self.password_hash:
             current_pass = callback.askpass("Current password: ")
@@ -2444,7 +2442,7 @@ class Token(OTPmeObject):
 
                 if new_password1 == new_password2:
                     password = new_password1
-                    if not force or not is_admin:
+                    if not force:
                         if not self.check_password(new_password1,
                                                 callback=callback):
                             return callback.error()
@@ -2459,7 +2457,7 @@ class Token(OTPmeObject):
         if password == "":
             return callback.error("Cannot set empty password.")
 
-        if not force or not is_admin:
+        if not force:
             if not password_checked:
                 if not self.check_password(password, callback=callback):
                     return callback.error()
@@ -3219,9 +3217,15 @@ class Token(OTPmeObject):
 
         if self.password_hash:
             if self.verify_acl("view_all:password"):
-                lines.append('PASSWORD="%s"' % self.password_hash)
+                lines.append('PASSWORD_HASH="%s"' % self.password_hash)
             else:
-                lines.append('PASSWORD=""')
+                lines.append('PASSWORD_HASH=""')
+
+        if self.temp_password_hash:
+            if self.verify_acl("view_all:password"):
+                lines.append('TEMP_PASSWORD_HASH="%s"' % self.temp_password_hash)
+            else:
+                lines.append('TEMP_PASSWORD_HASH=""')
 
         if isinstance(self.mschap_enabled, bool):
             if self.verify_acl("view:mschap") \

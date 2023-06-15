@@ -891,6 +891,8 @@ class Unit(OTPmeObject):
                         _caller=_caller)
             if keep_acls is not False:
                 _new_unit.acls = self.acls
+            _new_unit.policies = self.policies
+            _new_unit.policy_options = self.policy_options
             _new_unit.description = self.description
             _new_unit._write(callback=callback)
 
@@ -1008,6 +1010,7 @@ class Unit(OTPmeObject):
             token_roles = config.auth_token.get_roles(return_type="uuid")
 
             # Check if ACL matches the current login user.
+            acl_match = False
             if config.auth_token.uuid == _acl.owner_uuid:
                 acl_match = True
 

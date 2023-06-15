@@ -350,7 +350,9 @@ class AuthHandler(object):
         token = backend.get_object(object_type="token",
                                     uuid=session.auth_token,
                                     realm=self.user.realm,
-                                    site=self.user.site)
+                                    site=self.user.site,
+                                    run_policies=True,
+                                    _no_func_cache=True)
         if not token:
             msg = ("WARNING: Token '%s' does not exists anymore. Maybe it was "
                     "deleted while this sessions exists?" % session.auth_token)
@@ -733,7 +735,9 @@ class AuthHandler(object):
         self.auth_client = backend.get_object(object_type="client",
                                                 realm=config.realm,
                                                 site=config.site,
-                                                name=self.client)
+                                                name=self.client,
+                                                run_policies=True,
+                                                _no_func_cache=True)
 
         # If client is set it must exist for authentication to proceed.
         if not self.auth_client:
@@ -792,7 +796,9 @@ class AuthHandler(object):
         self.auth_group = backend.get_object(object_type="accessgroup",
                                             realm=config.realm,
                                             site=config.site,
-                                            name=self.access_group)
+                                            name=self.access_group,
+                                            run_policies=True,
+                                            _no_func_cache=True)
         # Check if group exists.
         if not self.auth_group:
             self.logger.warning("Access group '%s' does not exist."
@@ -942,11 +948,11 @@ class AuthHandler(object):
                 self.valid_user_tokens_static = [ token ]
             if token_pass_type == "otp":
                 self.valid_user_tokens_otp = [ token ]
-            if token_pass_type == "script-static":
+            if token_pass_type == "script_static":
                 self.valid_user_tokens_script_static = [ token ]
-            if token_pass_type == "script-otp":
+            if token_pass_type == "script_otp":
                 self.valid_user_tokens_script_otp = [ token ]
-            if token_pass_type == "otp-push":
+            if token_pass_type == "otp_push":
                 self.valid_user_tokens_otp_push = [ token ]
 
         else:
@@ -985,7 +991,7 @@ class AuthHandler(object):
                                                 client=self.auth_client,
                                                 return_type="instance", quiet=False)
                 self.valid_user_tokens_script_static += self.user.get_tokens(
-                                                pass_type="script-static",
+                                                pass_type="script_static",
                                                 access_group=self.auth_group,
                                                 check_parent_groups=True,
                                                 token_types=self.require_token_types,
@@ -1003,7 +1009,7 @@ class AuthHandler(object):
                                                 client=self.auth_client,
                                                 return_type="instance", quiet=False)
                 self.valid_user_tokens_script_otp += self.user.get_tokens(
-                                                pass_type="script-otp",
+                                                pass_type="script_otp",
                                                 access_group=self.auth_group,
                                                 check_parent_groups=True,
                                                 token_types=self.require_token_types,
@@ -1011,7 +1017,7 @@ class AuthHandler(object):
                                                 client=self.auth_client,
                                                 return_type="instance", quiet=False)
                 self.valid_user_tokens_otp_push += self.user.get_tokens(
-                                                pass_type="otp-push",
+                                                pass_type="otp_push",
                                                 access_group=self.auth_group,
                                                 check_parent_groups=True,
                                                 token_types=self.require_token_types,
@@ -1128,7 +1134,7 @@ class AuthHandler(object):
                     'otp'               : self.password,
                     }
 
-        if _verify_token.token_type.startswith("script-"):
+        if _verify_token.token_type.startswith("script_"):
             token_verify_parms = {
                     'auth_type'         : self.auth_type,
                     'auth_user'         : self.user.name,
@@ -1138,15 +1144,15 @@ class AuthHandler(object):
                     'auth_client_ip'    : self.client_ip,
                     }
             if self.auth_type == "clear-text":
-                if _verify_token.token_type == "script-otp":
+                if _verify_token.token_type == "script_otp":
                     token_verify_parms['auth_otp'] = self.password
-                if _verify_token.token_type == "script-static":
+                if _verify_token.token_type == "script_static":
                     token_verify_parms['auth_pass'] = self.password
             if self.auth_type == "mschap":
                 token_verify_parms['auth_challenge'] = self.challenge
                 token_verify_parms['auth_response'] = self.response
 
-        if _verify_token.pass_type == "otp-push":
+        if _verify_token.pass_type == "otp_push":
             token_verify_parms = {
                     'auth_type'         : self.auth_type,
                     'challenge'         : self.challenge,
@@ -1256,8 +1262,8 @@ class AuthHandler(object):
                 self.auth_message = "AUTH_INTERNAL_SERVER_ERROR"
                 return False
 
-        # otp-push tokens need special handling.
-        if self.verify_token.pass_type == "otp-push" and verify_status:
+        # otp_push tokens need special handling.
+        if self.verify_token.pass_type == "otp_push" and verify_status:
             self.logger.debug("Token '%s' verified successful. Sending OTP to user..."
                         % token.name)
             # Make sure auth will fail.
@@ -1275,7 +1281,7 @@ class AuthHandler(object):
             self.reset_user_fail_counter()
             if otp_sent:
                 self.auth_message = "AUTH_OTP_PUSH"
-                # Authentication with otp-push tokens always fails but if
+                # Authentication with otp_push tokens always fails but if
                 # the OTP was sent successful loglevel INFO is sufficient.
                 self.error_log_method = self.logger.info
             else:
@@ -1288,7 +1294,7 @@ class AuthHandler(object):
             # And thus no more verification should be done.
             self.auth_failed = True
             # And we want this request to be counted as failed login, but only
-            # if self.count_fails was not set before (e.g. by otp-push token)
+            # if self.count_fails was not set before (e.g. by otp_push token)
             if self.count_fails is None:
                 self.count_fails = True
             return False
@@ -1296,9 +1302,9 @@ class AuthHandler(object):
         # If token was verified successful set session parameters. Set auth mode
         # based on token type if needed.
         if self.auth_mode == "auto":
-            if self.verify_token.pass_type in [ 'otp', 'otp-push', 'script-otp' ]:
+            if self.verify_token.pass_type in [ 'otp', 'otp_push', 'script_otp' ]:
                 self.auth_mode = "otp"
-            if self.verify_token.pass_type in [ 'static', 'script-static' ]:
+            if self.verify_token.pass_type in [ 'static', 'script_static' ]:
                 self.auth_mode = "static"
             if self.verify_token.pass_type in [ 'smartcard' ]:
                 self.auth_mode = "smartcard"
@@ -1445,7 +1451,7 @@ class AuthHandler(object):
         self.logger.debug("Token '%s' verified successful."
                     % self.auth_token.name)
         if self.auth_mode == "otp":
-            if self.verify_token.pass_type == "script-otp":
+            if self.verify_token.pass_type == "script_otp":
                 if self.realm_login:
                     self.auth_message = "LOGIN_OK_SCRIPT_OTP"
                 else:
@@ -1456,7 +1462,7 @@ class AuthHandler(object):
                 else:
                     self.auth_message = "AUTH_OK_OTP"
         if self.auth_mode == "static":
-            if self.verify_token.pass_type == "script-static":
+            if self.verify_token.pass_type == "script_static":
                 if self.realm_login:
                     self.auth_message = "LOGIN_OK_SCRIPT_STATIC"
                 else:
@@ -1665,7 +1671,9 @@ class AuthHandler(object):
         if not self.auth_failed:
             # Get user token used to request JWT from his site.
             self.auth_token = backend.get_object(object_type="token",
-                                                uuid=login_token_uuid)
+                                                uuid=login_token_uuid,
+                                                run_policies=True,
+                                                _no_func_cache=True)
 
         # Verify auth token (group membership etc.)
         if not self.auth_failed:
@@ -1797,7 +1805,7 @@ class AuthHandler(object):
             return
 
         # Cannot create sessions for script OTP token when doing MSCHAP auth.
-        if self.verify_token.pass_type == "script-otp":
+        if self.verify_token.pass_type == "script_otp":
             if self.auth_type == "mschap":
                 self.logger.warning("Cannot create sessions for MSCHAP "
                                 "request with token/password type: %s"
@@ -1812,14 +1820,15 @@ class AuthHandler(object):
         # Check if there is a session master for auth_group configured.
         session_master = self.auth_group.parents(recursive=True,
                                                 sessions=True,
-                                                session_master=True)
+                                                session_master=True,
+                                                return_type="instance")
 
         # If we found the session master and it has sessions enabled it must be
         # used as session_start_group.
         if session_master and session_master.sessions_enabled:
             self.logger.debug("Found a valid session master: '%s'."
                         % session_master)
-            self.session_start_group = session_master
+            self.session_start_group = session_master.name
 
         else:
             # If there is no session master use accessgroup from request as
@@ -2043,13 +2052,13 @@ class AuthHandler(object):
         # Will hold a list of user OTP tokens that could be used to authenticate
         # this request.
         self.valid_user_tokens_otp = []
-        # Will hold a list of user script-static tokens that could be used to
+        # Will hold a list of user script_static tokens that could be used to
         # authenticate this request.
         self.valid_user_tokens_script_static = []
-        # Will hold a list of user script-otp tokens that could be used to
+        # Will hold a list of user script_otp tokens that could be used to
         # authenticate this request.
         self.valid_user_tokens_script_otp = []
-        # Will hold a list of user otp-push tokens that could be used to
+        # Will hold a list of user otp_push tokens that could be used to
         # authenticate this request.
         self.valid_user_tokens_otp_push = []
         # Will hold a list of user ssh tokens that could be used to
@@ -2324,7 +2333,7 @@ class AuthHandler(object):
         # Verify OTP push tokens second.
         if not self.auth_failed and self.auth_status is False:
             if self.valid_user_tokens_otp_push:
-                self.logger.debug("Verifying otp-push tokens...")
+                self.logger.debug("Verifying otp_push tokens...")
                 self.verify_user_tokens(tokens=self.valid_user_tokens_otp_push)
 
         # Verify OTP tokens
@@ -2359,16 +2368,16 @@ class AuthHandler(object):
                 self.logger.debug("Verifying smartcard tokens...")
                 self.verify_user_tokens(tokens=self.valid_user_tokens_smartcard)
 
-        # Verify script-static tokens.
+        # Verify script_static tokens.
         if not self.auth_failed and self.auth_status is False:
             if self.valid_user_tokens_script_static:
-                self.logger.debug("Verifying script-static tokens...")
+                self.logger.debug("Verifying script_static tokens...")
                 self.verify_user_tokens(tokens=self.valid_user_tokens_script_static)
 
-        # Verify script-otp tokens.
+        # Verify script_otp tokens.
         if not self.auth_failed and self.auth_status is False:
             if self.valid_user_tokens_script_otp:
-                self.logger.debug("Verifying script-otp tokens...")
+                self.logger.debug("Verifying script_otp tokens...")
                 self.verify_user_tokens(tokens=self.valid_user_tokens_script_otp)
 
         # Check token role/group policies.

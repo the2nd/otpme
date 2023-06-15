@@ -106,18 +106,32 @@ commands = {
             },
     }
 
-def get_acls():
+def get_acls(split=False, **kwargs):
     """ Get all supported object ACLs """
-    policy_acls = _get_acls()
+    if split:
+        otpme_policy_read_acls, \
+        otpme_policy_write_acls = _get_acls(split=split, **kwargs)
+        _read_acls = otpme_acl.merge_acls(read_acls, otpme_policy_read_acls)
+        _write_acls = otpme_acl.merge_acls(write_acls, otpme_policy_write_acls)
+        return _read_acls, _write_acls
+    otpme_policy_acls = _get_acls(**kwargs)
     _acls = otpme_acl.merge_acls(read_acls, write_acls)
-    _acls = otpme_acl.merge_acls(_acls, policy_acls)
+    _acls = otpme_acl.merge_acls(_acls, otpme_policy_acls)
     return _acls
 
-def get_value_acls():
+def get_value_acls(split=False, **kwargs):
     """ Get all supported object value ACLs """
-    policy_value_acls = _get_value_acls()
+    if split:
+        otpme_policy_read_value_acls, \
+        otpme_policy_write_value_acls = _get_value_acls(split=split, **kwargs)
+        _read_value_acls = otpme_acl.merge_value_acls(read_value_acls,
+                                                    otpme_policy_read_value_acls)
+        _write_value__acls = otpme_acl.merge_value_acls(write_value_acls,
+                                                        otpme_policy_write_value_acls)
+        return _read_value_acls, _write_value__acls
+    otpme_policy_value_acls = _get_value_acls(**kwargs)
     _acls = otpme_acl.merge_value_acls(read_value_acls, write_value_acls)
-    _acls = otpme_acl.merge_value_acls(_acls, policy_value_acls)
+    _acls = otpme_acl.merge_value_acls(_acls, otpme_policy_value_acls)
     return _acls
 
 def get_default_acls():
@@ -159,10 +173,10 @@ def register_policy_type():
 
 def register_policy_object():
     """ Registger policy object. """
-    ## Register base policy.
-    #config.register_base_object(object_type="policy",
-    #                            name=BASE_POLICY_NAME,
-    #                            stype=POLICY_TYPE)
+    # Register base policy.
+    config.register_base_object(object_type="policy",
+                                name=BASE_POLICY_NAME,
+                                stype=POLICY_TYPE)
     # Register policy as default policy for new objects.
     config.register_default_policy("site", BASE_POLICY_NAME)
 

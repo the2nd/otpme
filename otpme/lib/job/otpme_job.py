@@ -184,8 +184,6 @@ class OTPmeJob(object):
         # Set job start time.
         self.start_time = time.time()
 
-        from otpme.lib import debug
-        debug.start_timing()
         # Start the job.
         if job_status:
             # For methods with object lock decorator we force not to
@@ -229,7 +227,6 @@ class OTPmeJob(object):
         quiet = True
         if job_status:
             quiet = False
-        debug.end_timing(quiet=quiet)
 
         # In debug mode we also send the job log to the client.
         if config.debug_enabled:

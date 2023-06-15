@@ -14,6 +14,8 @@ from otpme.lib import backend
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_unit_string
 from otpme.lib.cli import get_policies_string
+from otpme.lib.classes.client import get_acls
+from otpme.lib.classes.client import get_value_acls
 
 from otpme.lib.exceptions import *
 
@@ -31,29 +33,6 @@ table_headers = [
                 "description",
                 ]
 
-write_acls = [
-            "all",
-            "add:group",
-            "remove:group",
-            "edit:accessgroup",
-            "add:address",
-            "remove:address",
-            "limit_logins",
-            "unlimit_logins",
-            ]
-
-read_acls = [
-            "view",
-            "view_all",
-            "view_public",
-            "view:accessgroup",
-            "view:token",
-            "view:group",
-            "view:client",
-            "view:address",
-            "view:logins_limited",
-            ]
-
 REGISTER_BEFORE = []
 REGISTER_AFTER = ["otpme.lib.filetools"]
 
@@ -68,6 +47,16 @@ def register():
                         'logins_limited',
                         'acl_inheritance_enabled',
                         ]
+    read_acls, write_acls = get_acls(split=True)
+    read_value_acls, write_value_acls = get_value_acls(split=True)
+    for acl in read_value_acls:
+        for x in read_value_acls[acl]:
+            x_acl = "%s:%s" % (acl, x)
+            read_acls.append(x_acl)
+    for acl in write_value_acls:
+        for x in write_value_acls[acl]:
+            x_acl = "%s:%s" % (acl, x)
+            write_acls.append(x_acl)
     register_cli(name="client",
                 table_headers=table_headers,
                 return_attributes=return_attributes,
