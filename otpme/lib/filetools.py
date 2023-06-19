@@ -299,7 +299,7 @@ def list_dir(directory, sort_by="name"):
     def sort_by_mtime(x):
         try:
             mtime = os.path.getmtime(os.path.join(directory, x))
-        except OSError:
+        except FileNotFoundError:
             mtime = 0
         return mtime
     if sort_by == "name":
@@ -905,6 +905,7 @@ def write_tinydb_file(filename, object_config, full_data_update=None,
     from tinydb.storages import JSONStorage
     from tinydb.middlewares import CachingMiddleware
     from otpme.lib import config
+    from otpme.lib import backend
     # Get file real path to ensure working locking (e.g. on symlink).
     file_real_path = os.path.realpath(filename)
 
@@ -945,7 +946,10 @@ def write_tinydb_file(filename, object_config, full_data_update=None,
                 if current_checksum != old_checksum:
                     full_data_update = True
                     if current_checksum and old_checksum:
-                        msg = "Local object out of sync. Will do a full data update..."
+                        object_uuid = object_config['UUID']
+                        object_id = backend.get_oid(object_uuid)
+                        msg = ("Local object out of sync. Will do a full data "
+                                "update: %s" % object_id)
                         config.logger.info(msg)
             # Do full data update
             if full_data_update:

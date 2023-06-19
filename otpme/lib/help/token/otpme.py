@@ -16,6 +16,15 @@ def register():
 
 cmd_help = {
     '_need_command'             : True,
+    'add'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-token add [-r] {token}',
+                    'cmd'   :   '-r :replace=True: <|object|>:',
+                    '_help' :   {
+                                    'cmd'                   : 'add new token',
+                                    '-r'                    : 'replace existing token and keep its UUID',
+                                },
+                },
+
     'secret'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token secret {token} [secret]',
                     'cmd'   :   '<|object|> [secret]',

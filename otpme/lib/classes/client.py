@@ -945,7 +945,7 @@ class Client(OTPmeClientObject):
             msg = "Failed to add client."
             return callback.error(msg)
 
-        msg = ""
+        msg = None
         if address:
             self.add_address(address)
             msg = "Radius secret: %s" % self.secret

@@ -511,7 +511,7 @@ class AuthHandler(object):
                 continue
             # Check if session exists (e.g. expired sessions get removed when
             # they are loaded).
-            if not session.exists():
+            if not session.exists(outdate=True):
                 continue
 
             ## We can only verify sessions that match the requests auth type.

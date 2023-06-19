@@ -373,6 +373,11 @@ class ControlDaemon(UnixDaemon):
                 % config._site_init.name)
             self.logger.critical(msg)
         try:
+            multiprocessing.cluster_lock_event.unlink()
+        except Exception as e:
+            msg = "Failed to remove cluster event: %s" % e
+            self.logger.critical(msg)
+        try:
             multiprocessing.cluster_event.unlink()
         except Exception as e:
             msg = "Failed to remove cluster event: %s" % e
@@ -510,6 +515,7 @@ class ControlDaemon(UnixDaemon):
         #            blacklist_methods=blacklist_methods,
         #            blacklist_functions=blacklist_functions)
         multiprocessing.cluster_event = multiprocessing.Event(keep=True)
+        multiprocessing.cluster_lock_event = multiprocessing.Event(keep=True)
 
         cluster_quorum = "otpme-cluster-quorum"
         try:

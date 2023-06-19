@@ -31,7 +31,6 @@ from otpme.lib.classes.object_config import ObjectConfig
 
 from otpme.lib.exceptions import *
 
-logger = config.logger
 OID_LOCK_TYPE = "oid"
 SYNC_MAP_LOCK_TYPE = "sync_map"
 
@@ -164,6 +163,8 @@ def get_class_getter(object_type):
 def read_config(object_id, read_from_cache=True,
     checksum_only=False, decrypt=True):
     """ Read object config from backend. """
+    # Get logger.
+    logger = config.logger
     # Replay any leftover transaction.
     replay_transactions()
     object_config = None
@@ -234,6 +235,8 @@ def write_config(object_id, instance=None, object_config=None, cluster=False,
     index_auto_update=True, full_index_update=False, full_data_update=None,
     index_journal={}, index_journal_start_id=None, no_transaction=False):
     """ Write object config to backend and update config cache. """
+    # Get logger.
+    logger = config.logger
     if not config.master_key:
         msg = "Missing AES master key. Unable to encrypt config data."
         logger.critical(msg)
@@ -349,6 +352,8 @@ def rename_object(object_id, new_object_id,
 #@oid_lock(args_oid_pos=[0], write=True)
 def delete_object(object_id, no_transaction=False, cluster=False):
     """ Delete object. """
+    # Get logger.
+    logger = config.logger
     # Replay any leftover transaction.
     replay_transactions()
     # Get objects UUID before deleting from backend.
@@ -714,6 +719,8 @@ def get_sync_list(realm, site, object_types=None, skip_users=None,
     checksum_only_types=None, include_templates=False, quiet=False):
     """ Get sync list. """
     sync_list = {}
+    # Get logger.
+    logger = config.logger
 
     if not object_types:
         object_types = [
@@ -889,6 +896,8 @@ def get_sync_list(realm, site, object_types=None, skip_users=None,
 
 def get_instance_from_oid(object_id, object_config=None):
     """ Load instance from oid. """
+    # Get logger.
+    logger = config.logger
     # Get object type.
     object_type = object_id.object_type
     # Get object class stuff.
@@ -953,6 +962,8 @@ def get_object(object_id=None, uuid=None, object_type=None,
     name=None, run_policies=False, use_cache=True, **kwargs):
     """ Get object from backend. """
     instance = None
+    # Get logger.
+    logger = config.logger
 
     if use_cache:
         instance = get_object_from_cache(object_id=object_id,
@@ -1050,6 +1061,8 @@ def get_object_from_cache(object_id=None, uuid=None, object_type=None,
     path=None, rel_path=None, realm=None, site=None, unit=None,
     name=None, run_policies=False, **kwargs):
     """ Get object from cache. """
+    # Get logger.
+    logger = config.logger
     instance = None
     read_oid = None
 

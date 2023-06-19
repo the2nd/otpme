@@ -661,7 +661,10 @@ class OfflineToken(object):
                     self.logger.info("Removing outdated offline tokens...")
                     self.clear()
                     break
-                last_token_usage = os.path.getmtime(self.login_token_uuid_file)
+                try:
+                    last_token_usage = os.path.getmtime(self.login_token_uuid_file)
+                except FileNotFoundError:
+                    continue
                 unused_age = int((time.time() - last_token_usage))
                 if instance.offline_unused_expiry > 0 \
                 and unused_age >= instance.offline_unused_expiry:

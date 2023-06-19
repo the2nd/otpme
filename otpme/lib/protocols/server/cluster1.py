@@ -19,6 +19,7 @@ from otpme.lib import stuff
 #from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib import locking
 from otpme.lib import connections
 from otpme.lib import sign_key_cache
 from otpme.lib import multiprocessing
@@ -30,6 +31,7 @@ from otpme.lib.freeradius import reload as freeradius_reload
 from otpme.lib.exceptions import *
 
 logger = config.logger
+
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
@@ -109,6 +111,8 @@ class OTPmeClusterP1(OTPmeServer1):
                             "write",
                             "rename",
                             "delete",
+                            "acquire_lock",
+                            "release_lock",
                             "get_checksums",
                             "get_node_vote",
                             "set_node_sync",
@@ -120,6 +124,7 @@ class OTPmeClusterP1(OTPmeServer1):
                             "get_member_nodes",
                             "do_master_failover",
                             "get_cluster_quorum",
+                            "get_cluster_status",
                             "set_master_failover",
                             "get_init_sync_status",
                             "get_node_sync_status",
@@ -171,6 +176,10 @@ class OTPmeClusterP1(OTPmeServer1):
             except KeyError:
                 message = None
                 status = False
+
+        elif command == "get_cluster_status":
+            status = True
+            message = config.cluster_status
 
         elif command == "get_cluster_quorum":
             status = True
@@ -326,69 +335,72 @@ class OTPmeClusterP1(OTPmeServer1):
             except:
                 last_used = None
             if status:
-                #status = True
-                #message = "done"
                 object_id = oid.get(object_id)
                 object_checksum = object_config['CHECKSUM']
-                msg = "Writing object: %s (%s)" % (object_id, object_checksum)
-                logger.debug(msg)
-                if last_used is not None:
-                    object_uuid = object_config['UUID']
-                    if last_used is not None:
-                        backend.set_last_used(object_id.realm,
-                                            object_id.site,
-                                            object_id.object_type,
-                                            object_uuid, last_used)
-                try:
-                    backend.write_config(object_id=object_id,
-                                        cluster=False,
-                                        index_auto_update=True,
-                                        #full_data_update=True,
-                                        object_config=object_config)
+                current_checksum = backend.get_checksum(object_id)
+                if current_checksum == object_checksum:
                     status = True
                     message = "done"
-                except Exception as e:
-                    message = "Failed to write object: %s: %s" % (object_id, e)
-                    logger.warning(message)
-
-                # Update signers cache.
-                if object_id.object_type == "user":
-                    #new_object = backend.get_object(object_id)
-                    # Load instance.
+                else:
+                    msg = "Writing object: %s (%s)" % (object_id, object_checksum)
+                    logger.debug(msg)
+                    if last_used is not None:
+                        object_uuid = object_config['UUID']
+                        if last_used is not None:
+                            backend.set_last_used(object_id.realm,
+                                                object_id.site,
+                                                object_id.object_type,
+                                                object_uuid, last_used)
                     try:
-                        new_object = backend.get_instance_from_oid(object_id,
-                                                                object_config)
+                        backend.write_config(object_id=object_id,
+                                            cluster=False,
+                                            index_auto_update=True,
+                                            #full_data_update=True,
+                                            object_config=object_config)
+                        status = True
+                        message = "done"
                     except Exception as e:
-                        msg = "Failed to load new object: %s: %s" % (object_id, e)
-                        self.logger.critical(msg)
-                        new_object = None
+                        message = "Failed to write object: %s: %s" % (object_id, e)
+                        logger.warning(message)
 
-                    if new_object and new_object.public_key:
+                    # Update signers cache.
+                    if object_id.object_type == "user":
+                        #new_object = backend.get_object(object_id)
+                        # Load instance.
                         try:
-                            public_key = sign_key_cache.get_cache(object_id)
+                            new_object = backend.get_instance_from_oid(object_id,
+                                                                    object_config)
                         except Exception as e:
-                            msg = "Unable to read signer cache: %s: %s" % (object_id, e)
+                            msg = "Failed to load new object: %s: %s" % (object_id, e)
                             self.logger.critical(msg)
-                            public_key = None
-                        if new_object.public_key != public_key:
+                            new_object = None
+
+                        if new_object and new_object.public_key:
                             try:
-                                sign_key_cache.add_cache(object_id, new_object.public_key)
+                                public_key = sign_key_cache.get_cache(object_id)
                             except Exception as e:
-                                msg = "Unable to add signer cache: %s: %s" % (object_id, e)
+                                msg = "Unable to read signer cache: %s: %s" % (object_id, e)
                                 self.logger.critical(msg)
-                    else:
-                        try:
-                            public_key = sign_key_cache.get_cache(object_id)
-                        except Exception as e:
-                            msg = "Unable to read signer cache: %s: %s" % (object_id, e)
-                            self.logger.critical(msg)
-                            public_key = None
-                        if public_key:
+                                public_key = None
+                            if new_object.public_key != public_key:
+                                try:
+                                    sign_key_cache.add_cache(object_id, new_object.public_key)
+                                except Exception as e:
+                                    msg = "Unable to add signer cache: %s: %s" % (object_id, e)
+                                    self.logger.critical(msg)
+                        else:
                             try:
-                                sign_key_cache.del_cache(object_id)
+                                public_key = sign_key_cache.get_cache(object_id)
                             except Exception as e:
-                                msg = "Unable to add signer cache: %s: %s" % (object_id, e)
+                                msg = "Unable to read signer cache: %s: %s" % (object_id, e)
                                 self.logger.critical(msg)
+                                public_key = None
+                            if public_key:
+                                try:
+                                    sign_key_cache.del_cache(object_id)
+                                except Exception as e:
+                                    msg = "Unable to add signer cache: %s: %s" % (object_id, e)
+                                    self.logger.critical(msg)
 
         elif command == "rename":
             status = True
@@ -457,6 +469,52 @@ class OTPmeClusterP1(OTPmeServer1):
                 except Exception as e:
                     message = "Failed to delete object: %s: %s" % (object_id, e)
                     logger.warning(message)
+
+        elif command == "acquire_lock":
+            status = True
+            message = "done"
+            try:
+                lock_type = command_args['lock_type']
+            except:
+                message = "Missing lock type."
+                status = False
+            try:
+                lock_id = command_args['lock_id']
+            except:
+                message = "Missing lock ID."
+                status = False
+            try:
+                write = command_args['write']
+            except:
+                message = "Missing write lock flag."
+                status = False
+            if status:
+                try:
+                    lock = locking.acquire_lock(lock_type=lock_type,
+                                                lock_id=lock_id,
+                                                write=write,
+                                                timeout=0)
+                    multiprocessing.cluster_locks[lock_id] = lock
+                except LockWaitTimeout:
+                    status = False
+                    message = "Failed to acquire lock."
+
+        elif command == "release_lock":
+            status = True
+            message = "done"
+            try:
+                lock_id = command_args['lock_id']
+            except:
+                message = "Missing lock ID."
+                status = False
+            if status:
+                try:
+                    lock = multiprocessing.cluster_locks.pop(lock_id)
+                except KeyError:
+                    status = False
+                    message = "Unknown lock."
+                if status:
+                    lock.release_lock()
 
         elif command == "deconfigure_floating_ip":
             status = True
@@ -607,7 +665,16 @@ class OTPmeClusterP1(OTPmeServer1):
                 command_handler = CommandHandler()
                 while True:
                     try:
+                        socket_uri = stuff.get_daemon_socket("syncd", master_node)
+                    except Exception as e:
+                        msg = "Failed to get syncd socket: %s" % e
+                        self.logger.warning(msg)
+                        time.sleep(1)
+                        continue
+                    try:
                         sync_status = command_handler.do_sync(sync_type="objects",
+                                                            skip_object_deletion=True,
+                                                            socket_uri=socket_uri,
                                                             realm=config.realm,
                                                             site=config.site,
                                                             max_tries=3)

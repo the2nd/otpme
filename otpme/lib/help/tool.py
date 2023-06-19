@@ -348,12 +348,14 @@ cmd_help = {
 
 
     'leave'     : {
-                    '_cmd_usage_help' : 'Usage: otpme-tool leave [ --lotp <lotp> --offline --keep-data --keep-cache --keep-cert ] [domain]',
-                    'cmd'   :   '--lotp :lotp: --offline :offline=True: --keep-data :keep_data=True: --keep-cache :keep_cache=True: --keep-cert :keep_cert=True: --keep-auth-key :keep_auth_key=True: [|object|]',
+                    '_cmd_usage_help' : 'Usage: otpme-tool leave [ --lotp <lotp> --offline --keep-host --no-keep-host --keep-data --keep-cache --keep-cert ] [domain]',
+                    'cmd'   :   '--lotp :lotp: --offline :offline=True: --keep-host :keep_host=True: --no-keep-host :keep_host=False, --keep-data :keep_data=True: --keep-cache :keep_cache=True: --keep-cert :keep_cert=True: --keep-auth-key :keep_auth_key=True: [|object|]',
                     '_help' :   {
                                     'cmd'                   : 'Leave OTPme realm',
                                     '--lotp <lotp>'         : 'Leave using the given LOTP.',
                                     '--offline'             : 'Leave realm without talking to OTPme servers.',
+                                    '--keep-host'           : 'Do not delete node/host object on server side.',
+                                    '--no-keep-host'        : 'Delete node/host object on server side.',
                                     '--keep-data'           : 'Keep all data (e.g realm data, certs, offline tokens...)',
                                     '--keep-cache'          : 'Keep cached data (offline tokens, nsscache etc.)',
                                     '--keep-cert'           : 'Do not revoke host certficiate when leaving.',

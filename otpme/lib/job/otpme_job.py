@@ -224,10 +224,6 @@ class OTPmeJob(object):
             # Clear caches.
             cache.flush(commit=False)
 
-        quiet = True
-        if job_status:
-            quiet = False
-
         # In debug mode we also send the job log to the client.
         if config.debug_enabled:
             job_reply += job_log

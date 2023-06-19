@@ -17,8 +17,6 @@ from otpme.lib.protocols.response import build_response
 
 from otpme.lib.exceptions import *
 
-logger = config.logger
-
 class ConnHandler(object):
     """
     Class to handle connections and
@@ -35,6 +33,7 @@ class ConnHandler(object):
         self.protocols = protocols
         # Arguments we will pass on to protocol handler
         self.handler_args = handler_args
+        self.logger = config.logger
 
     def run(self):
         """ Run handler loop. """
@@ -51,18 +50,18 @@ class ConnHandler(object):
             except ConnectionQuit:
                 self.connection._close()
                 msg = "Client closed connection."
-                logger.debug(msg)
+                self.logger.debug(msg)
                 break
             except Exception as e:
                 msg = "Failed to receive data from client: %s" % e
-                logger.warning(msg, exc_info=True)
+                self.logger.warning(msg)
                 self.connection.close()
                 break
 
             if len(data) == 0:
                 msg = ("Received null data from client, closing connection: %s"
                         % self.client)
-                logger.warning(msg)
+                self.logger.warning(msg)
                 break
 
             # If we already have a protocol handler use it
@@ -83,7 +82,7 @@ class ConnHandler(object):
                     break
                 except Exception as e:
                     msg = ("Exception in protocol handler: %s" % e)
-                    logger.critical(msg)
+                    self.logger.critical(msg)
                     final_response = "Internal server error"
                     status = status_codes.SERVER_QUIT
                     config.raise_exception()
@@ -132,7 +131,7 @@ class ConnHandler(object):
                     except Exception as e:
                         msg = ("Failed to load protocol handler: %s: %s"
                                 % (proto_class, e))
-                        logger.critical(msg, exc_info=True)
+                        self.logger.critical(msg, exc_info=True)
                         final_response = "Internal server error."
                         status = status_codes.SERVER_QUIT
                         break
@@ -144,21 +143,21 @@ class ConnHandler(object):
                     except CertVerifyFailed as e:
                         msg = ("Client certificate verification failed: "
                                 "%s: %s" % (client_ip, e))
-                        logger.warning(msg)
+                        self.logger.warning(msg)
                         final_response = "%s" % e
                         status = status_codes.SERVER_QUIT
                         break
                     except Exception as e:
                         msg = ("Unknown exception in protocol handler: %s: %s"
                                 % (proto_class, e))
-                        logger.critical(msg, exc_info=True)
+                        self.logger.critical(msg, exc_info=True)
                         final_response = "Internal server error."
                         status = status_codes.SERVER_QUIT
                         #config.raise_exception()
                         break
                     msg = ("Using protocol %s for client: %s"
                             % (self.protocol, client_ip))
-                    logger.debug(msg)
+                    self.logger.debug(msg)
 
                 elif command == "quit":
                     final_response = "Bye bye..."
@@ -178,11 +177,11 @@ class ConnHandler(object):
             except ConnectionQuit:
                 self.connection._close()
                 msg = "Client closed connection while sending data."
-                logger.debug(msg)
+                self.logger.debug(msg)
                 break
             except Exception as e:
                 msg = "Failed to send response: %s" % e
-                logger.warning(msg)
+                self.logger.warning(msg)
                 break
 
         # Send final response to peer.
@@ -193,10 +192,10 @@ class ConnHandler(object):
             except ConnectionQuit:
                 self.connection._close()
                 msg = "Client closed connection while sending final response."
-                logger.debug(msg)
+                self.logger.debug(msg)
             except Exception as e:
                 msg = "Failed to send final response: %s" % e
-                logger.warning(msg)
+                self.logger.warning(msg)
         # Close connection.
         self.connection.close()
         # Do multiprocessing cleanup.

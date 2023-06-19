@@ -34,7 +34,7 @@ class OTPmeClusterP1(OTPmeClient1):
         super(OTPmeClusterP1, self).__init__(self.daemon, **kwargs)
 
     def ping(self):
-        """ Send 'get_user_uuid' command to clusterd. """
+        """ Send 'ping' command to clusterd. """
         command = "ping"
         command_args = {}
         status, \
@@ -83,6 +83,35 @@ class OTPmeClusterP1(OTPmeClient1):
         if not status:
             msg = "Failed to reanem object: %s: %s" % (object_id, reply)
             raise OTPmeException(msg)
+        return reply
+
+    def acquire_lock(self, lock_type, lock_id, write):
+        """ Acquire lock on peer. """
+        command = "acquire_lock"
+        command_args = {}
+        command_args['lock_type'] = lock_type
+        command_args['lock_id'] = lock_id
+        command_args['write'] = write
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args)
+        if not status:
+            msg = "Failed to send lock request: %s: %s" % (lock_id, reply)
+            raise LockWaitAbort(msg)
+        return reply
+
+    def release_lock(self, lock_id):
+        """ Release lock on peer. """
+        command = "release_lock"
+        command_args = {}
+        command_args['lock_id'] = lock_id
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args)
+        if not status:
+            msg = ("Failed to send lock release request: %s: %s"
+                    % (lock_id, reply))
+            raise UnknownLock(msg)
         return reply
 
     def get_checksums(self):
@@ -250,6 +279,18 @@ class OTPmeClusterP1(OTPmeClient1):
         reply = self.connection.send(command, command_args, timeout=None)
         return status
 
+    def get_cluster_status(self):
+        """ Get cluster status. """
+        command = "get_cluster_status"
+        command_args = {}
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args, timeout=None)
+        if not status:
+            msg = "Failed to get cluster status: %s" % reply
+            raise OTPmeException(msg)
+        return reply
+
     def get_cluster_quorum(self):
         """ Get cluster quorum. """
         command = "get_cluster_quorum"
@@ -318,8 +359,7 @@ class OTPmeClusterP1(OTPmeClient1):
         status_code, \
         reply = self.connection.send(command, command_args, timeout=None)
         if not status:
-            msg = "Master failover failed: %s" % reply
-            raise OTPmeException(msg)
+            raise OTPmeException(reply)
         return reply
 
     def get_master_failover_status(self):

@@ -1310,7 +1310,7 @@ class HotpToken(Token):
 
     @object_lock()
     @backend.transaction
-    def _add(self, callback=default_callback, **kwargs):
+    def _add(self, gen_qrcode=True, callback=default_callback, **kwargs):
         """ Add a token. """
         # Get default HOTP settings.
         self.otp_format = self.get_config_parameter("hotp_format")
@@ -1327,6 +1327,9 @@ class HotpToken(Token):
         self.used_otp_salt = stuff.gen_secret(32)
         return_message = None
         if self.verify_acl("view:secret"):
+            if gen_qrcode:
+                term_qrcode = self.gen_qrcode(run_policies=False)
+                callback.send(term_qrcode)
             return_message = "Token secret: %s" % token_secret
         if self.verify_acl("view:pin"):
             message = "Token PIN: %s" % self.pin

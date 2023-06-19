@@ -216,6 +216,9 @@ class LockWaitAbort(OTPmeException):
 class LockWaitTimeout(OTPmeException):
     pass
 
+class UnknownLock(OTPmeException):
+    pass
+
 class OTPmeTypeError(OTPmeException):
     pass
 

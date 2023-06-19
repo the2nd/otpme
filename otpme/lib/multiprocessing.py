@@ -46,9 +46,13 @@ posix_semaphores = {}
 # Python multiprocessing manager to use. This is only used within otpme-agent.
 manager = None
 
+# Clusterd events.
 cluster_event = None
+cluster_lock_event = None
 # Shared dict to handle objects to sync with peers.
 cluster_votes = None
+# Cluster locks acquired by clusterd.
+cluster_locks = {}
 
 # PID of the current process.
 def register():
@@ -224,6 +228,9 @@ def cleanup():
         msg = "Backend cleanup failed: %s: %s" % (pid, e)
         logger.critical(msg)
         config.raise_exception()
+    for x in cluster_locks:
+        x_lock = cluster_locks[x]
+        x_lock.release_lock(force=True)
     for x in list(message_queues):
         try:
             x.close()

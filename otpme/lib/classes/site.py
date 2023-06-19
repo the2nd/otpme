@@ -2097,10 +2097,10 @@ class Site(OTPmeObject):
                 msg = (_("Problem adding base client '%s'.") % c)
                 return callback.error(msg)
 
-            # Set accessgroup of client.
-            access_group = base_clients[c]['attributes']['accessgroup']
-            client.change_access_group(access_group=access_group,
-                                        verify_acls=False)
+            ## Set accessgroup of client.
+            #access_group = base_clients[c]['attributes']['accessgroup']
+            #client.change_access_group(access_group=access_group,
+            #                            verify_acls=False)
         # Create scripts.
         from otpme.lib.classes.script import Script
         for script_name in os.listdir(config.script_dir):

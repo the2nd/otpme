@@ -261,8 +261,9 @@ def forget_lock(lock_id):
         pass
 
 def acquire_lock(lock_type, lock_id, write=True, timeout=None,
-    lock_caller=None, callback=None):
+    lock_caller=None, cluster=False, callback=None):
     """ Get lock object. """
+    from otpme.lib.daemon.clusterd import cluster_object_lock
     global registered_lock_types
     if lock_type not in registered_lock_types:
         msg = "Lock type not registered: %s" % lock_type
@@ -278,6 +279,11 @@ def acquire_lock(lock_type, lock_id, write=True, timeout=None,
                                     lock_id=lock_id,
                                     write=write,
                                     callback=callback)
+                if cluster:
+                    cluster_object_lock(action="lock",
+                                        lock_type=lock_type,
+                                        lock_id=_lock.lock_id,
+                                        timeout=timeout)
             else:
                 _lock = OTPmeFakeLock(lock_type=lock_type, lock_id=lock_id)
         except Exception as e:
@@ -360,7 +366,7 @@ class OTPmeFakeLock(object):
         if add_lock_caller:
             self.lock_callers.append(lock_caller)
 
-    def release_lock(self, lock_caller=None, _forget_lock=True):
+    def release_lock(self, lock_caller=None, _forget_lock=True, **kwargs):
         """ Release lock caller. """
         # Set default lock caller.
         if lock_caller is None:
@@ -466,14 +472,23 @@ class OTPmeLock(OTPmeFakeLock):
     def get_lock_age(self):
         """ Get age of the current lock. """
         now = time.time()
-        last_mod_time = os.path.getmtime(self.lock_file)
+        try:
+            last_mod_time = os.path.getmtime(self.lock_file)
+        except FileNotFoundError:
+            last_mod_time = time.time()
         lock_age = now - last_mod_time
         return lock_age
 
-    def release_lock(self, lock_caller=None, force=False):
+    def release_lock(self, lock_caller=None, force=False, cluster=False):
         """ Release lock"""
+        from otpme.lib.daemon.clusterd import cluster_object_lock
         if lock_caller is None:
             if force:
+                # Release cluster lock.
+                if cluster:
+                    cluster_object_lock(action="release",
+                                        lock_type=self.lock_type,
+                                        lock_id=self.lock_id)
                 # Make sure we empty lock callers on force.
                 self.lock_callers = []
                 return self.flock.release_lock()
@@ -493,6 +508,11 @@ class OTPmeLock(OTPmeFakeLock):
         # Close flock.
         self.flock.close()
 
+        # Release cluster lock.
+        if cluster:
+            cluster_object_lock(action="release",
+                                lock_type=self.lock_type,
+                                lock_id=self.lock_id)
         # Release flock.
         self.flock.release_lock()
         # We dont want the released lock to be re-used.

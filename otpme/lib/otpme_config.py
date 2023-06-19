@@ -947,7 +947,10 @@ class OTPmeConfig(object):
             if not self.master_key:
                 self.master_key = self.get_master_key()
             # Set current reload file modification time
-            self.last_reload_file_mtime = os.path.getmtime(self.reload_file_path)
+            try:
+                self.last_reload_file_mtime = os.path.getmtime(self.reload_file_path)
+            except FileNotFoundError:
+                self.last_reload_file_mtime = time.time()
 
         # Try to get password salt.
         if not self.password_hash_salt:
@@ -2124,10 +2127,16 @@ class OTPmeConfig(object):
         # Check if config age is greater than configured interval.
         if config_age > self.reload_config_interval:
             # Get current config file modification time.
-            config_file_mtime = os.path.getmtime(self.config_file)
+            try:
+                config_file_mtime = os.path.getmtime(self.config_file)
+            except FileNotFoundError:
+                config_file_mtime = time.time()
 
             # Get current reload file modification time.
-            reload_file_mtime = os.path.getmtime(self.reload_file_path)
+            try:
+                reload_file_mtime = os.path.getmtime(self.reload_file_path)
+            except FileNotFoundError:
+                reload_file_mtime = time.time()
 
             # If current config file modification time differs from timstamp saved
             # in config module a reload is needed.
@@ -2231,7 +2240,10 @@ class OTPmeConfig(object):
         # Timestamp of the last reload check.
         self.last_config_reload_check = time.time()
         # Remember config file mtime from last read.
-        self.last_config_file_mtime =  os.path.getmtime(self.config_file)
+        try:
+            self.last_config_file_mtime =  os.path.getmtime(self.config_file)
+        except FileNotFoundError:
+            self.last_config_file_mtime = time.time()
         return main_config
 
     def set_realm(self, name, uuid):

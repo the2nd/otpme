@@ -734,6 +734,7 @@ class OTPmeBaseObject(object):
                                     lock_caller=lock_caller,
                                     write=write,
                                     timeout=timeout,
+                                    cluster=True,
                                     callback=callback)
             except LockWaitTimeout:
                 raise
@@ -785,7 +786,8 @@ class OTPmeBaseObject(object):
         if not self._object_lock:
             return
         # Release lock.
-        self._object_lock.release_lock(lock_caller=lock_caller)
+        self._object_lock.release_lock(lock_caller=lock_caller,
+                                        cluster=True)
 
     def is_locked(self):
         """ Check if the instance is locked. """
@@ -5206,10 +5208,7 @@ class OTPmeObject(OTPmeBaseObject):
             if object_match:
                 if action == "add":
                     # Add ACL.
-                    if raw_acl in self.acls:
-                        msg = "ACL already exists."
-                        callback.error(msg)
-                    else:
+                    if raw_acl not in self.acls:
                         self.acls.append(raw_acl)
                         msg = (_("Adding ACL %(resolved_acl)s to %(object_id)s")
                                 % {"resolved_acl":resolved_acl,
@@ -5219,10 +5218,7 @@ class OTPmeObject(OTPmeBaseObject):
                             callback.send(msg)
                 else:
                     # Remove ACL.
-                    if raw_acl not in self.acls:
-                        msg = "ACL does not exist."
-                        callback.error(msg)
-                    else:
+                    if raw_acl in self.acls:
                         msg = (_("Removing ACL %(resolved_acl)s from %(object_id)s")
                                 % {"resolved_acl":resolved_acl,
                                 "object_id":self.oid})

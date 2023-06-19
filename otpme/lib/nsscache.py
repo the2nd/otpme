@@ -14,11 +14,8 @@ from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import filetools
 from otpme.lib import multiprocessing
-from otpme.lib.daemon.clusterd import cluster_nsscache_sync
 
 from otpme.lib.exceptions import *
-
-logger = config.logger
 
 LOCK_TYPE = "nsscache"
 UPDATE_EXT = "update"
@@ -71,6 +68,8 @@ def update_sync_map(lock=None, syncing=False):
     """
     from otpme.lib import backend
     from otpme.lib.protocols.server.sync1 import add_sync_list_checksum
+    # Get logger.
+    logger = config.logger
 
     if lock is None:
         lock = locking.OTPmeFakeLock(lock_type=LOCK_TYPE, lock_id="fake")
@@ -144,6 +143,8 @@ def update_sync_map(lock=None, syncing=False):
 
 def update_object(object_id, action):
     """ Add object ID to nsscache spool directory. """
+    # Get logger.
+    logger = config.logger
     if action not in valid_actions:
         msg = "Invalid action: %s" % action
         raise OTPmeException(msg)
@@ -184,6 +185,9 @@ def update(resync=False, cache_resync=False, lock=None):
     from otpme.lib.third_party.nss_cache.maps import group
     from otpme.lib.third_party.nss_cache.maps import passwd
     from otpme.lib.third_party.nss_cache.caches import files
+    from otpme.lib.daemon.clusterd import cluster_nsscache_sync
+    # Get logger.
+    logger = config.logger
 
     if lock is None:
         lock = locking.OTPmeFakeLock(lock_type=LOCK_TYPE, lock_id="fake")
@@ -328,7 +332,10 @@ def update(resync=False, cache_resync=False, lock=None):
         nss_cache_files = filetools.list_dir(config.nsscache_spool_dir)
         for f in nss_cache_files:
             file_path = os.path.join(config.nsscache_spool_dir, f)
-            files_to_remove[file_path] = os.path.getmtime(file_path)
+            try:
+                files_to_remove[file_path] = os.path.getmtime(file_path)
+            except FileNotFoundError:
+                continue
             action = f.split(".")[-1]
             if action not in valid_actions:
                 continue
@@ -603,7 +610,10 @@ def update(resync=False, cache_resync=False, lock=None):
         if not os.path.exists(file_path):
             continue
         old_mtime = files_to_remove[file_path]
-        new_mtime = os.path.getmtime(file_path)
+        try:
+            new_mtime = os.path.getmtime(file_path)
+        except FileNotFoundError:
+            continue
         if new_mtime != old_mtime:
             continue
         try:
@@ -626,6 +636,8 @@ def update(resync=False, cache_resync=False, lock=None):
 
 def enable():
     """ Create OTPme nsscache symlinks. """
+    # Get logger.
+    logger = config.logger
     nsscache_links = {}
     for x in NSSCACHE_FILES:
         link_src = "%s/%s" % (config.nsscache_dir, x)
@@ -647,6 +659,8 @@ def enable():
 
 def disable():
     """ Remove OTPme nsscache symlinks. """
+    # Get logger.
+    logger = config.logger
     for x in NSSCACHE_FILES:
         link_src = "%s/%s" % (config.nsscache_dir, x)
         link_dst = "/etc/%s" % x

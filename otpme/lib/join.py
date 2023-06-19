@@ -391,7 +391,9 @@ class JoinHandler(object):
         # Add empty list to add_list dict for each object type.
         for i in add_order: add_list[i] = {}
 
-        logger.debug("Processing base objects from joind...")
+        msg = ("Processing base objects from joind...")
+        message(msg)
+        logger.debug(msg)
         # Build list with objects to add grouped by object type.
         for x in object_configs:
             object_id = oid.get(object_id=x)
@@ -718,6 +720,8 @@ class JoinHandler(object):
             host_cert = join_reply['host_cert']
             self._my_host.cert = host_cert
 
+        self._my_host.enable(force=True,
+                            verify_acls=False)
         self._my_host._write()
 
         # Update nsscache:
@@ -734,13 +738,17 @@ class JoinHandler(object):
         # Close all connections.
         connections.close_connections()
 
-        # Make sure DB indices are created after adding all objects.
-        _index = config.get_index_module()
-        _index.command("create_db_indices")
-
         # Start OTPme daemons.
         if not no_daemon_start:
+            msg = "Starting OTPme daemons..."
+            message(msg)
             stuff.start_otpme_daemon()
+
+        # Make sure DB indices are created after adding all objects.
+        msg = "Creating DB indexes..."
+        message(msg)
+        _index = config.get_index_module()
+        _index.command("create_db_indices")
 
         # FIXME: wait for  sync of authorized_key (the last sync????) to finish????
         #       - make this an option???
@@ -748,8 +756,9 @@ class JoinHandler(object):
         return join_message
 
     def leave_realm(self, domain=None, host_type="host", username=None,
-        password=None, lotp=None, keep_data=False, keep_cache=None,
-        keep_cert=None, keep_auth_key=None, offline=False, socket_uri=None):
+        password=None, lotp=None, keep_host=False, keep_data=False,
+        keep_cache=None, keep_cert=None, keep_auth_key=None,
+        offline=False, socket_uri=None):
         """ Leave realm. """
         if not os.path.exists(config.uuid_file):
             msg = ("Host is not a realm member.")
@@ -855,6 +864,7 @@ class JoinHandler(object):
             leave_request['host_name'] = self.host_name
             leave_request['host_fqdn'] = self.host_fqdn
             leave_request['keep_cert'] = keep_cert
+            leave_request['keep_host'] = keep_host
 
             logger.debug("Sending realm leave request...")
             # Send leave command.

@@ -35,8 +35,6 @@ from otpme.lib.exceptions import *
 
 from otpme.lib import nsscache
 
-default_callback = config.get_callback()
-
 LOCK_TYPE = "hostd.sync"
 
 REGISTER_BEFORE = ['otpme.lib.daemon.controld']
@@ -557,10 +555,6 @@ class HostDaemon(OTPmeDaemon):
                 x_oid = o.oid
                 # Get object config to write to backend.
                 object_config = o.object_config.copy()
-                # Lock the object while writing.
-                lock_caller = "hostd_sync_sites"
-                o.acquire_lock(lock_caller=lock_caller,
-                            callback=default_callback)
                 # Get current object.
                 x_object = backend.get_object(object_id=x_oid)
                 if x_object:
@@ -568,8 +562,6 @@ class HostDaemon(OTPmeDaemon):
                     object_type = o.type
                     # No need to update object if checksum matches.
                     if x_object.checksum == o.checksum:
-                        o.release_lock(lock_caller=lock_caller,
-                                        callback=default_callback)
                         continue
                     # Realm/site objects need some special handling (e.g.
                     # preserve auth/sync settings.
@@ -602,10 +594,6 @@ class HostDaemon(OTPmeDaemon):
                     msg = "Failed to write object: %s: %s" % (x_oid, e)
                     self.logger.critical(msg)
                     config.raise_exception()
-                finally:
-                    o.release_lock(lock_caller=lock_caller,
-                                    callback=default_callback)
-                    default_callback.enable()
 
         # Remove remote missing sites.
         local_sites = backend.search(object_type="site",

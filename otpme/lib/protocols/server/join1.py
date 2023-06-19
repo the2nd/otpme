@@ -191,17 +191,6 @@ class OTPmeJoinP1(OTPmeServer1):
             status = False
             return self.build_response(status, message)
 
-        # Make sure host is enabled.
-        try:
-            host.enable(force=True,
-                        verify_acls=verify_acls,
-                        callback=callback)
-        except Exception as e:
-            message = (_("Error enabling %s: %s") % (host.type, e))
-            self.logger.debug(message)
-            status = False
-            return self.build_response(status, message)
-
         # Write changed objects.
         cache.flush()
 
@@ -508,6 +497,20 @@ class OTPmeJoinP1(OTPmeServer1):
                 # Add cert to reply.
                 join_reply['ca_cert'] = cert
 
+        # Make sure host is enabled.
+        try:
+            host.enable(force=True,
+                        verify_acls=False,
+                        callback=callback)
+        except Exception as e:
+            message = (_("Error enabling %s: %s") % (host.type, e))
+            self.logger.debug(message)
+            status = False
+            return self.build_response(status, message)
+
+        # Write changed objects.
+        cache.flush()
+
         # Build join message.
         msg = []
         host_desc = "%s%s" % (host.type[0].upper(), host.type[1:])
@@ -658,22 +661,22 @@ class OTPmeJoinP1(OTPmeServer1):
                                     host_cert_req=host_cert_req,
                                     site_cert_req=site_cert_req,
                                     callback=self.callback)
-        else:
-            # If we got a JOTP the host must already exist to proceed.
-            if jotp and not host:
-                msg = (_("Access denied."))
-                self.logger.debug("Join phase 1 error: Unknown %s: %s"
-                                    % (host_type, host_fqdn))
-                raise OTPmeException(msg)
 
-            # Try to join host.
-            return self.join_realm(self.request_site,
-                                host_type,
-                                host_name,
-                                host_unit,
-                                host,
-                                self.callback,
-                                force=force)
+        # If we got a JOTP the host must already exist to proceed.
+        if jotp and not host:
+            msg = (_("Access denied."))
+            self.logger.debug("Join phase 1 error: Unknown %s: %s"
+                                % (host_type, host_fqdn))
+            raise OTPmeException(msg)
+
+        # Try to join host.
+        return self.join_realm(self.request_site,
+                            host_type,
+                            host_name,
+                            host_unit,
+                            host,
+                            self.callback,
+                            force=force)
 
     def handle_leave_command(self, host_fqdn, host, lotp, _request):
         """ Handle leave command. """
@@ -722,6 +725,11 @@ class OTPmeJoinP1(OTPmeServer1):
         except:
             keep_cert = False
 
+        try:
+            keep_host = _request['keep_host']
+        except:
+            keep_host = False
+
         # If the user is authenticated (not used a LOTP) we have to verify
         # ACLs when calling leave_realm().
         if self.authenticated:
@@ -730,21 +738,29 @@ class OTPmeJoinP1(OTPmeServer1):
             verify_acls = False
 
         # Make host leave the realm.
-        try:
-            host.leave_realm(keep_cert=keep_cert,
-                            verify_acls=verify_acls,
-                            callback=self.callback)
-        except Exception as e:
-            msg = (_("Error leaving realm: %s") % e)
-            raise OTPmeException(msg)
+        if keep_host:
+            try:
+                host.leave_realm(keep_cert=keep_cert,
+                                verify_acls=verify_acls,
+                                callback=self.callback)
+            except Exception as e:
+                msg = (_("Error leaving realm: %s") % e)
+                raise OTPmeException(msg)
 
-        try:
-            host.disable(force=True,
-                        verify_acls=False,
-                        callback=self.callback)
-        except Exception as e:
-            msg = (_("Error disabling %s: %s") % (host.type, e))
-            raise OTPmeException(msg)
+            try:
+                host.disable(force=True,
+                            verify_acls=False,
+                            callback=self.callback)
+            except Exception as e:
+                msg = (_("Error disabling %s: %s") % (host.type, e))
+                raise OTPmeException(msg)
+        else:
+            try:
+                host.delete(force=True,
+                            verify_acls=False,
+                            callback=self.callback)
+            except Exception as e:
+                msg = (_("Error deleting %s: %s") % (host.type, e))
 
         # Write changed objects.
         cache.flush()
@@ -823,6 +839,31 @@ class OTPmeJoinP1(OTPmeServer1):
             host_type = command_args['host_type']
         except:
             host_type = "host"
+
+        if host_type == "node":
+            search_attrs = {
+                            'uuid'      : {'value':"*"},
+                            'enabled'   : {'value':True},
+                        }
+            enabled_nodes = backend.search(object_type="node",
+                                        attributes=search_attrs,
+                                        realm=config.realm,
+                                        site=config.site,
+                                        return_type="name")
+            missing_nodes = []
+            member_nodes = multiprocessing.member_nodes
+            for node_name in enabled_nodes:
+                if node_name == config.host_data['name']:
+                    continue
+                if node_name in member_nodes:
+                    continue
+                missing_nodes.append(node_name)
+            if missing_nodes:
+                status = False
+                missing_nodes = " ".join(missing_nodes)
+                message = ("Please wait for nodes to join the cluster: %s"
+                            % missing_nodes)
+                return self.build_response(status, message)
 
         # Get hostname from FQDN.
         host_name = host_fqdn.split(".")[0]

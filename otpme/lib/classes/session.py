@@ -513,20 +513,8 @@ class Session(object):
         object_config = json.dumps(self.object_config, indent=4, sort_keys=True)
         return callback.ok(object_config)
 
-    def _load_object(self):
-        """ Do anything to load the object from the object config. """
-        # Set instance variables
-        self.set_variables()
-
-    def exists(self, **kwargs):
-        """ Check if session exists. """
-        # Without config we do not exist :)
-        if not self._load():
-            return False
-
-        # Load object.
-        self._load_object()
-
+    def outdate(self):
+        """ Delete expired session. """
         # FIXME: IS THIS STILL THE CASE?
         # FIXME: how and when to run a function or method to remove expired sessions from backend?
         #       there may be orphan session (those who have expired without beeing reused after expiry)
@@ -537,7 +525,6 @@ class Session(object):
             logger.debug(msg)
             self.delete(force=True, recursive=True, verify_acls=False)
             return False
-
         # If session is expired remove it and all childs that exist.
         if time.time() > self.unused_expire_time():
             msg = ("Session '%s' is expired by unused session timeout. "
@@ -545,7 +532,22 @@ class Session(object):
             logger.debug(msg)
             self.delete(force=True, recursive=True, verify_acls=False)
             return False
+        return True
 
+    def _load_object(self):
+        """ Do anything to load the object from the object config. """
+        # Set instance variables
+        self.set_variables()
+
+    def exists(self, outdate=False, **kwargs):
+        """ Check if session exists. """
+        # Without config we do not exist :)
+        if not self._load():
+            return False
+        # Load object.
+        self._load_object()
+        if outdate:
+            return self.outdate()
         return True
 
     def _load(self, read_from_cache=True):
