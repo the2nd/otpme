@@ -2322,8 +2322,8 @@ class OTPmeClient1(OTPmeClientBase):
                 try:
                     _reply_key = decode(reply_key, "hex")
                     _reply_key = host_key.decrypt(_reply_key)
-                except:
-                    msg = (_("Failed to decrypt preauth reply key."))
+                except Exception as e:
+                    msg = (_("Failed to decrypt preauth reply key: %s" % e))
                     self.logger.warning(msg)
                     config.raise_exception()
                     raise OTPmeException(msg)

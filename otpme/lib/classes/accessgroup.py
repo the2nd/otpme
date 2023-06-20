@@ -1750,24 +1750,25 @@ class AccessGroup(OTPmeObject):
 
     @object_lock()
     @backend.transaction
-    def delete(self, force=False, run_policies=True,
+    def delete(self, force=False, run_policies=True, verify_acls=True,
         verbose_level=0, callback=default_callback,
         _caller="API", **kwargs):
         """ Delete accessgroup. """
-        if self.unit_uuid:
-            unit = backend.get_object(uuid=self.unit_uuid,
-                                        object_type="unit")
-            if not unit.verify_acl("delete:accessgroup"):
-                if not self.verify_acl("delete:object"):
-                    msg = ("Permission denied.")
-                    return callback.error(msg, exception=PermissionDenied)
-
         if not self.exists():
             return callback.error("Accessgroup does not exist exists.")
 
         base_access_groups = config.get_base_objects("accessgroup")
         if self.name in base_access_groups:
             return callback.error("Cannot delete base accessgroup.")
+
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = "delete:%s" % self.type
+                if not parent_object.verify_acl(del_acl):
+                    msg = (_("Permission denied: %s") % self.name)
+                    return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
             try:

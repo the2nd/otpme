@@ -32,7 +32,6 @@ from otpme.lib.exceptions import *
 
 logger = config.logger
 
-
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
 PROTOCOL_VERSION = "OTPme-cluster-1.0"
@@ -582,6 +581,9 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = (_("Error queueing sync nsscache command: %s") % e)
                 logger.warning(message)
                 status = True
+            else:
+                msg = "nsscache sync started."
+                logger.info(msg)
 
         elif command == "do_radius_reload":
             try:
@@ -591,6 +593,9 @@ class OTPmeClusterP1(OTPmeServer1):
             except Exception as e:
                 message = "Radius reload failed: %s" % e
                 status = False
+            else:
+                msg = "Freeradius reloaded."
+                logger.info(msg)
 
         elif command == "do_master_failover":
             status = True

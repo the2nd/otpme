@@ -444,6 +444,7 @@ class OTPmeBaseObject(object):
         self._public_key_oid = None
         self.pickable = True
         self.cache_expire = 30
+        self.sub_type = None
         self.index = []
         self.index_journal = []
         self.index_journal_id = None
@@ -725,6 +726,9 @@ class OTPmeBaseObject(object):
             self._object_lock.acquire_lock(lock_caller=lock_caller,
                                     skip_same_caller=skip_same_caller)
         else:
+            cluster = False
+            if self.type in config.tree_object_types:
+                cluster = True
             old_uuid = backend.get_uuid(self.oid)
             old_checksum = backend.get_checksum(self.oid)
             object_existed = backend.object_exists(self.oid)
@@ -734,7 +738,7 @@ class OTPmeBaseObject(object):
                                     lock_caller=lock_caller,
                                     write=write,
                                     timeout=timeout,
-                                    cluster=True,
+                                    cluster=cluster,
                                     callback=callback)
             except LockWaitTimeout:
                 raise
@@ -785,9 +789,12 @@ class OTPmeBaseObject(object):
             return
         if not self._object_lock:
             return
+        cluster = False
+        if self.type in config.tree_object_types:
+            cluster = True
         # Release lock.
         self._object_lock.release_lock(lock_caller=lock_caller,
-                                        cluster=True)
+                                        cluster=cluster)
 
     def is_locked(self):
         """ Check if the instance is locked. """
@@ -3116,13 +3123,17 @@ class OTPmeObject(OTPmeBaseObject):
             msg = (_("Token is already assigned to %s '%s'.")
                     % (self.type, self.name))
             if current_opts != token_options:
-                token_modify = True
-                msg = (_("Would you like to modify current token options? "))
+                if token_options:
+                    token_modify = True
+                    callback.error(msg)
+                    msg = (_("Would you like to modify current token options? "))
 
             if current_login_interfaces != login_interfaces:
-                token_modify = True
-                msg = (_("Would you like to modify current token "
-                        "login interfaces? "))
+                if login_interfaces:
+                    token_modify = True
+                    callback.error(msg)
+                    msg = (_("Would you like to modify current token "
+                            "login interfaces? "))
 
             if not token_modify:
                 return callback.error(msg, exception=exception)
@@ -6433,14 +6444,18 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = (_("Cannot verify ACLs without parent object: %s")
                         % self.oid)
                 return callback.error(msg)
-
             if add_acl is None:
                 add_acl = "add:%s" % self.type
-
             if not parent_object.verify_acl(add_acl,
                         need_exact_acl=need_exact_acl):
-                msg = (_("Permission denied: %s") % parent_object.path)
-                return callback.error(msg, exception=PermissionDenied)
+                if not self.sub_type:
+                    msg = (_("Permission denied: %s") % parent_object.path)
+                    return callback.error(msg, exception=PermissionDenied)
+                sub_type_acl = "add:%s:%s" % (self.type, self.sub_type)
+                if not parent_object.verify_acl(sub_type_acl,
+                                need_exact_acl=need_exact_acl):
+                    msg = (_("Permission denied: %s") % parent_object.path)
+                    return callback.error(msg, exception=PermissionDenied)
 
         msg = "Adding %s: %s" % (self.type, self.name)
         callback.send(msg)
@@ -6792,8 +6807,9 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock()
     @backend.transaction
-    def delete(self, force=False, run_policies=True, verbose_level=0,
-        _caller="API", callback=default_callback, **kwargs):
+    def delete(self, force=False, run_policies=True,
+        verbose_level=0, _caller="API",
+        callback=default_callback, **kwargs):
         """ Delete object from backend. """
         if not self._object_lock:
             msg = "Cannot delete without object lock."

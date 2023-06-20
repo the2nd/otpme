@@ -1203,8 +1203,9 @@ class CommandHandler(object):
 
         # Make sure index is ready.
         _index = config.get_index_module()
-        _index.command("drop")
-        _index.command("init")
+        if not _index.is_available():
+            _index.command("drop")
+            _index.command("init")
         if not _index.status():
             _index.start()
         # Make sure cache is started.
@@ -1265,6 +1266,9 @@ class CommandHandler(object):
             keep_cert = command_args['keep_cert']
         except:
             keep_cert = False
+
+        if keep_data:
+            keep_cert = True
 
         if config.use_api:
             offline = True
@@ -4744,36 +4748,42 @@ class CommandHandler(object):
         cluster_in_sync = True
         nodes_in_sync = list(node_checksums.keys())
         if master_node:
-            master_data_checksum = node_checksums[master_node]['data_checksum']
-            master_objects_checksum = node_checksums[master_node]['objects_checksum']
-            master_sessions_checksum = node_checksums[master_node]['sessions_checksum']
-            for node_name in list(nodes_in_sync):
-                if node_name == master_node:
-                    continue
-                # Check objects checksum.
-                if master_objects_checksum != node_checksums[node_name]['objects_checksum']:
-                    do_diff_objects = True
-                    cluster_in_sync = False
-                    try:
-                        nodes_in_sync.remove(node_name)
-                    except ValueError:
-                        pass
-                # Check data checksum.
-                if master_data_checksum != node_checksums[node_name]['data_checksum']:
-                    do_diff_data = True
-                    cluster_in_sync = False
-                    try:
-                        nodes_in_sync.remove(node_name)
-                    except ValueError:
-                        pass
-                # Check sessions checksum.
-                if master_sessions_checksum != node_checksums[node_name]['sessions_checksum']:
-                    do_diff_sessions = True
-                    cluster_in_sync = False
-                    try:
-                        nodes_in_sync.remove(node_name)
-                    except ValueError:
-                        pass
+            try:
+                master_data_checksum = node_checksums[master_node]['data_checksum']
+                master_objects_checksum = node_checksums[master_node]['objects_checksum']
+                master_sessions_checksum = node_checksums[master_node]['sessions_checksum']
+            except KeyError:
+                master_data_checksum = None
+                master_objects_checksum = None
+                master_sessions_checksum = None
+            if master_data_checksum:
+                for node_name in list(nodes_in_sync):
+                    if node_name == master_node:
+                        continue
+                    # Check objects checksum.
+                    if master_objects_checksum != node_checksums[node_name]['objects_checksum']:
+                        do_diff_objects = True
+                        cluster_in_sync = False
+                        try:
+                            nodes_in_sync.remove(node_name)
+                        except ValueError:
+                            pass
+                    # Check data checksum.
+                    if master_data_checksum != node_checksums[node_name]['data_checksum']:
+                        do_diff_data = True
+                        cluster_in_sync = False
+                        try:
+                            nodes_in_sync.remove(node_name)
+                        except ValueError:
+                            pass
+                    # Check sessions checksum.
+                    if master_sessions_checksum != node_checksums[node_name]['sessions_checksum']:
+                        do_diff_sessions = True
+                        cluster_in_sync = False
+                        try:
+                            nodes_in_sync.remove(node_name)
+                        except ValueError:
+                            pass
 
         if cluster_status:
             cstring = "Cluster status: Online"
@@ -4823,6 +4833,9 @@ class CommandHandler(object):
             cluster_status_str.append(x_status_line)
 
             if cluster_in_sync:
+                continue
+
+            if x_node_status == "Offline":
                 continue
 
             if x_node == master_node:

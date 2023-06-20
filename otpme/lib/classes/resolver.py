@@ -1430,9 +1430,24 @@ class Resolver(OTPmeObject):
     @object_lock()
     @backend.transaction
     def delete(self, delete_objects=False, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
+        verify_acls=True, verbose_level=0, callback=default_callback,
         _caller="API", **kwargs):
         """ Delete resolver. """
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = "delete:%s" % self.type
+                if not parent_object.verify_acl(del_acl):
+                    if not self.sub_type:
+                        msg = (_("Permission denied: %s") % self.name)
+                        return callback.error(msg, exception=PermissionDenied)
+                    sub_type_acl = "delete:%s:%s" % (self.type, self.sub_type)
+                    if not parent_object.verify_acl(sub_type_acl,
+                                    need_exact_acl=True):
+                        msg = (_("Permission denied: %s") % self.name)
+                        return callback.error(msg, exception=PermissionDenied)
+
         if run_policies:
             try:
                 self.run_policies("delete", callback=callback, _caller=_caller)

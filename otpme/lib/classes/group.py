@@ -796,16 +796,17 @@ class Group(OTPmeObject):
         verbose_level=0, callback=default_callback,
         _caller="API", **kwargs):
         """ Delete group. """
-        if verify_acls:
-            if self.unit_uuid:
-                unit = backend.get_object(object_type="unit", uuid=self.unit_uuid)
-                if not unit.verify_acl("delete:group"):
-                    if not self.verify_acl("delete:object"):
-                        msg = ("Permission denied.")
-                        return callback.error(msg, exception=PermissionDenied)
-
         if not self.exists():
             return callback.error("Group does not exist.")
+
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = "delete:%s" % self.type
+                if not parent_object.verify_acl(del_acl):
+                    msg = (_("Permission denied: %s") % self.name)
+                    return callback.error(msg, exception=PermissionDenied)
 
         #base_groups = config.get_base_objects("group")
         #if self.name in base_groups:

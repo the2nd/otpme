@@ -532,6 +532,9 @@ class Event(object):
                 posix_semaphores[semaphore.name] = semaphore
         return semaphore
 
+    def open(self):
+        self._semaphore = self.open_semaphore()
+
     def clear(self):
         if not self.keep:
             if self._semaphore:
@@ -540,7 +543,8 @@ class Event(object):
         self._semaphore = self.open_semaphore()
 
     def wait(self, timeout=None):
-        self._semaphore = self.open_semaphore()
+        if not self._semaphore:
+            self._semaphore = self.open_semaphore()
         try:
             self._semaphore.acquire(timeout=timeout)
         except posix_ipc.BusyError:
@@ -549,7 +553,8 @@ class Event(object):
             pass
 
     def set(self):
-        self._semaphore = self.open_semaphore()
+        if not self._semaphore:
+            self._semaphore = self.open_semaphore()
         self._semaphore.release()
 
     def close(self):

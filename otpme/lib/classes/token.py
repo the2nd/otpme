@@ -3053,13 +3053,22 @@ class Token(OTPmeObject):
     @object_lock()
     @backend.transaction
     def delete(self, force=False, remove_default_token=False,
-        verbose_level=0, callback=default_callback, **kwargs):
+        verify_acls=True, verbose_level=0, callback=default_callback, **kwargs):
         """ Delete token. """
         exception = []
 
         if self.uuid == config.admin_token_uuid:
             if config.site_uuid == config.admin_token_uuid:
                 return callback.error("Cannot delete realm admin token.")
+
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = "delete:%s" % self.type
+                if not parent_object.verify_acl(del_acl):
+                    msg = (_("Permission denied: %s") % self.rel_path)
+                    return callback.error(msg, exception=PermissionDenied)
 
         check_default_token = False
         if not remove_default_token:

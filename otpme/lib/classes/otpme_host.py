@@ -1063,23 +1063,20 @@ class OTPmeHost(OTPmeClientObject):
         verbose_level=0, callback=default_callback,
         _caller="API", **kwargs):
         """ Delete host. """
-        if self.type == "host":
-            del_acl = "delete:host"
-        if self.type == "node":
-            del_acl = "delete:node"
-
-        if verify_acls:
-            unit = backend.get_object(object_type="unit", uuid=self.unit_uuid)
-            if not unit.verify_acl(del_acl):
-                if not self.verify_acl("delete:object"):
-                    msg = ("Permission denied.")
-                    return callback.error(msg, exception=PermissionDenied)
-
         if not self.exists():
             return callback.error("Host does not exist exists.")
 
         if self.uuid == config.uuid and not force:
             return callback.error("Cannot delete ourselves.")
+
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = "delete:%s" % self.type
+                if not parent_object.verify_acl(del_acl):
+                    msg = (_("Permission denied: %s") % self.name)
+                    return callback.error(msg, exception=PermissionDenied)
 
         if not force:
             if self.confirmation_policy != "force":

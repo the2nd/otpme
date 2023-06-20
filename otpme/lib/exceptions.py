@@ -207,6 +207,9 @@ class BackendUnavailable(OTPmeException):
 class SyncListChecksumMismatch(OTPmeException):
     pass
 
+class ObjectDeleted(OTPmeException):
+    pass
+
 class ObjectLocked(OTPmeException):
     pass
 

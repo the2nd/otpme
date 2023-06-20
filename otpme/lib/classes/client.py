@@ -958,18 +958,21 @@ class Client(OTPmeClientObject):
         verbose_level=0, callback=default_callback,
         _caller="API", **kwargs):
         """ Delete client. """
-        unit = backend.get_object(object_type="unit", uuid=self.unit_uuid)
-        if not unit.verify_acl("delete:client"):
-            if not self.verify_acl("delete:object"):
-                msg = ("Permission denied.")
-                return callback.error(msg, exception=PermissionDenied)
-
         if not self.exists():
             return callback.error("Client does not exist exists.")
 
         base_clients = config.get_base_objects("client")
         if self.name in base_clients:
             return callback.error("Cannot delete base client.")
+
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = "delete:%s" % self.type
+                if not parent_object.verify_acl(del_acl):
+                    msg = (_("Permission denied: %s") % self.name)
+                    return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
             try:

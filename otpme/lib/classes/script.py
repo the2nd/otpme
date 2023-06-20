@@ -830,21 +830,24 @@ class Script(OTPmeObject):
 
     @object_lock()
     @backend.transaction
-    def delete(self, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def delete(self, force=False, run_policies=True, verify_acls=True,
+        verbose_level=0, callback=default_callback, _caller="API", **kwargs):
         """ Delete script. """
         if self.check_base_script():
             msg = (_("Cannot delete base script."))
             return callback.error(msg)
-        unit = backend.get_object(object_type="unit", uuid=self.unit_uuid)
-        if not unit.verify_acl("delete:script"):
-            if not self.verify_acl("delete:object"):
-                msg = ("Permission denied.")
-                return callback.error(msg, exception=PermissionDenied)
 
         if not self.exists():
             return callback.error("Script does not exist exists.")
+
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = "delete:%s" % self.type
+                if not parent_object.verify_acl(del_acl):
+                    msg = (_("Permission denied: %s") % self.name)
+                    return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
             try:

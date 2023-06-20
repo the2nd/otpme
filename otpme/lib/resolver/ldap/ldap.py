@@ -18,6 +18,8 @@ from otpme.lib.otpme_acl import check_acls
 from otpme.lib.locking import object_lock
 from otpme.lib.classes.resolver import Resolver
 from otpme.lib.protocols.utils import register_commands
+from otpme.lib.classes.unit import register_subtype_add_acl
+from otpme.lib.classes.unit import register_subtype_del_acl
 
 from otpme.lib.classes.resolver \
             import get_acls \
@@ -37,6 +39,8 @@ from otpme.lib.exceptions import *
 default_callback = config.get_callback()
 
 logger = config.logger
+
+RESOLVER_TYPE = "ldap"
 
 read_acls =  []
 write_acls =  []
@@ -68,9 +72,12 @@ write_value_acls = {
                             ],
                 }
 
-default_acls = []
+default_acls = [
+                'unit:add:resolver:%s' % RESOLVER_TYPE,
+                'unit:del:resolver:%s' % RESOLVER_TYPE,
+            ]
 
-recursive_default_acls = []
+recursive_default_acls = default_acls
 
 commands = {
     'key_attribute'   : {
@@ -217,6 +224,9 @@ def register():
                     commands,
                     sub_type="ldap",
                     sub_type_attribute="resolver_type")
+    resolver_acl = 'resolver:%s' % RESOLVER_TYPE
+    register_subtype_add_acl(resolver_acl)
+    register_subtype_del_acl(resolver_acl)
 
 def register_hooks():
     config.register_auth_on_action_hook("resolver", "add_server")
@@ -242,7 +252,8 @@ class LdapResolver(Resolver):
                                             path=path,
                                             **kwargs)
         # Set resolver type.
-        self.resolver_type = "ldap"
+        self.resolver_type = RESOLVER_TYPE
+        self.sub_type = RESOLVER_TYPE
 
         self._acls = get_acls()
         self._value_acls = get_value_acls()

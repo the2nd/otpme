@@ -408,21 +408,12 @@ class JoinHandler(object):
                 object_id = add_list[object_type][x]
                 logger.debug("Adding object: %s" % object_id)
                 object_config = object_configs[object_id.full_oid]
-
-                ## Load instance.
-                #try:
-                #    o = backend.get_instance_from_oid(object_id, object_config)
-                #except Exception as e:
-                #    msg = "Failed to load object: %s: %s" % (object_id, e)
-                #    raise OTPmeException(msg)
-                # FIXME: Cannot validate because on master node join we will receive objects from other sites than our own.
-                ## Make sure the object is valid.
-                #try:
-                #    validate_received_object(site_oid, o)
-                #except Exception as e:
-                #    msg = (_("Joining %s failed: Received invalid object %s: %s")
-                #            % (self.host_type, object_id, e))
-                #    raise OTPmeException(msg)
+                current_object_config = backend.read_config(object_id)
+                if current_object_config:
+                    new_checksum = object_config['CHECKSUM']
+                    current_checksum = current_object_config['CHECKSUM']
+                    if current_checksum == new_checksum:
+                        continue
                 # Write object to backend.
                 try:
                     backend.write_config(object_id=object_id,
@@ -745,10 +736,11 @@ class JoinHandler(object):
             stuff.start_otpme_daemon()
 
         # Make sure DB indices are created after adding all objects.
-        msg = "Creating DB indexes..."
-        message(msg)
         _index = config.get_index_module()
-        _index.command("create_db_indices")
+        if not _index.is_available():
+            msg = "Creating DB indexes..."
+            message(msg)
+            _index.command("create_db_indices")
 
         # FIXME: wait for  sync of authorized_key (the last sync????) to finish????
         #       - make this an option???

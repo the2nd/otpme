@@ -16,6 +16,8 @@ from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
 from otpme.lib.protocols.utils import register_commands
+from otpme.lib.classes.unit import register_subtype_add_acl
+from otpme.lib.classes.unit import register_subtype_del_acl
 
 from otpme.lib.classes.policy \
             import get_acls \
@@ -35,6 +37,11 @@ from otpme.lib.exceptions import *
 logger = config.logger
 
 default_callback = config.get_callback()
+
+POLICY_TYPE = "defaultgroups"
+BASE_POLICY_NAME = "default_groups"
+REGISTER_BEFORE = ['otpme.lib.policy.defaultpolicies.defaultpolicies']
+REGISTER_AFTER = []
 
 read_acls =  []
 write_acls =  []
@@ -58,9 +65,12 @@ write_value_acls = {
                                 ],
                 }
 
-default_acls = []
+default_acls = [
+                'unit:add:policy:%s' % POLICY_TYPE,
+                'unit:del:policy:%s' % POLICY_TYPE,
+            ]
 
-recursive_default_acls = []
+recursive_default_acls = default_acls
 
 commands = {
     'add_group'   : {
@@ -133,11 +143,6 @@ def get_recursive_default_acls():
                                 policy_recursive_default_acls)
     return _acls
 
-POLICY_TYPE = "defaultgroups"
-BASE_POLICY_NAME = "default_groups"
-REGISTER_BEFORE = ['otpme.lib.policy.defaultpolicies.defaultpolicies']
-REGISTER_AFTER = []
-
 def register():
     """ Registger policy type. """
     register_hooks()
@@ -147,6 +152,9 @@ def register():
                     commands,
                     sub_type=POLICY_TYPE,
                     sub_type_attribute="policy_type")
+    policy_acl = 'policy:%s' % POLICY_TYPE
+    register_subtype_add_acl(policy_acl)
+    register_subtype_del_acl(policy_acl)
 
 def register_hooks():
     config.register_auth_on_action_hook("policy", "add_default_group")
@@ -180,6 +188,7 @@ class DefaultgroupsPolicy(Policy):
                                                     **kwargs)
         # Set policy type.
         self.policy_type = POLICY_TYPE
+        self.sub_type = POLICY_TYPE
 
         self._acls = get_acls()
         self._value_acls = get_value_acls()

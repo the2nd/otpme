@@ -377,8 +377,9 @@ class OTPmeLDIFHandler(object):
         acls = []
         # Merge object ACLs with extension ACLs.
         for a in self.acls:
-            if not a in acls:
-                acls.append(a)
+            if a in acls:
+                continue
+            acls.append(a)
         return acls
 
     def get_value_acls(self, object_type):

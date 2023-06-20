@@ -948,9 +948,10 @@ def write_tinydb_file(filename, object_config, full_data_update=None,
                     if current_checksum and old_checksum:
                         object_uuid = object_config['UUID']
                         object_id = backend.get_oid(object_uuid)
-                        msg = ("Local object out of sync. Will do a full data "
-                                "update: %s" % object_id)
-                        config.logger.info(msg)
+                        if object_id:
+                            msg = ("Local object out of sync. Will do a full data "
+                                    "update: %s" % object_id)
+                            config.logger.info(msg)
             # Do full data update
             if full_data_update:
                 # Remove deleted attributes.

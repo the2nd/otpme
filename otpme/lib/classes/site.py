@@ -2464,6 +2464,12 @@ class Site(OTPmeObject):
         if config.site == self.name:
             return callback.error("Cannot delete own site!")
 
+        # Get parent object to check ACLs.
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                msg = (_("Permission denied: %s") % self.name)
+                return callback.error(msg, exception=PermissionDenied)
+
         if run_policies:
             try:
                 self.run_policies("delete", callback=callback, _caller=_caller)

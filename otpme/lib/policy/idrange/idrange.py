@@ -20,6 +20,8 @@ from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
 from otpme.lib.protocols.utils import register_commands
+from otpme.lib.classes.unit import register_subtype_add_acl
+from otpme.lib.classes.unit import register_subtype_del_acl
 from otpme.lib.classes.data_objects.last_assigned_id import LastAssignedID
 
 from otpme.lib.classes.policy \
@@ -40,6 +42,11 @@ from otpme.lib.exceptions import *
 LOCK_TYPE = "idrange"
 logger = config.logger
 default_callback = config.get_callback()
+
+POLICY_TYPE = "idrange"
+BASE_POLICY_NAME = "id_range"
+REGISTER_BEFORE = ['otpme.lib.policy.defaultpolicies.defaultpolicies']
+REGISTER_AFTER = ['otpme.lib.classes.data_objects.last_assigned_id']
 
 read_acls =  []
 write_acls =  []
@@ -66,8 +73,12 @@ write_value_acls = {
                             ],
                 }
 
-default_acls = []
-recursive_default_acls = []
+default_acls = [
+                'unit:add:policy:%s' % POLICY_TYPE,
+                'unit:del:policy:%s' % POLICY_TYPE,
+            ]
+
+recursive_default_acls = default_acls
 
 commands = {
     'add_id_range'   : {
@@ -147,11 +158,6 @@ def get_recursive_default_acls():
                                 policy_recursive_default_acls)
     return _acls
 
-POLICY_TYPE = "idrange"
-BASE_POLICY_NAME = "id_range"
-REGISTER_BEFORE = ['otpme.lib.policy.defaultpolicies.defaultpolicies']
-REGISTER_AFTER = ['otpme.lib.classes.data_objects.last_assigned_id']
-
 def register():
     """ Registger policy type. """
     register_hooks()
@@ -162,6 +168,9 @@ def register():
                     sub_type=POLICY_TYPE,
                     sub_type_attribute="policy_type")
     locking.register_lock_type(LOCK_TYPE, module=__file__)
+    policy_acl = 'policy:%s' % POLICY_TYPE
+    register_subtype_add_acl(policy_acl)
+    register_subtype_del_acl(policy_acl)
 
 def register_hooks():
     config.register_auth_on_action_hook("policy", "add_id_range")
@@ -194,6 +203,7 @@ class IdrangePolicy(Policy):
                                                     **kwargs)
         # Set policy type.
         self.policy_type = POLICY_TYPE
+        self.sub_type = POLICY_TYPE
 
         self._acls = get_acls()
         self._value_acls = get_value_acls()

@@ -3089,6 +3089,10 @@ class User(OTPmeObject):
         run_policies=True, remove_default_token=False,
         callback=default_callback, _caller="API", **kwargs):
         """ Delete user token. """
+        token = self.token(token_name)
+        if not token:
+            return callback.error("Token does not exist.")
+
         # FIXME: do we need this??? how to handle ACLs on token delete???
         # Check if the authenticated user tries to delete one of its own tokens.
         check_acls = True
@@ -3098,12 +3102,9 @@ class User(OTPmeObject):
 
         if check_acls:
             if not self.verify_acl("delete:token"):
-                msg = ("Permission denied.")
-                return callback.error(msg, exception=PermissionDenied)
-
-        token = self.token(token_name)
-        if not token:
-            return callback.error("Token does not exist.")
+                if not token.verify_acl("delete:object"):
+                    msg = ("Permission denied.")
+                    return callback.error(msg, exception=PermissionDenied)
 
         # Check for default token
         if self.default_token is not None:
@@ -3856,15 +3857,17 @@ class User(OTPmeObject):
                 if config.auth_token.owner_uuid == self.uuid:
                     return callback.error("You cannot delete yourself. :)")
 
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
         if verify_acls:
-            unit = backend.get_object(object_type="unit", uuid=self.unit_uuid)
-            if not unit.verify_acl("delete:user"):
-                if not self.verify_acl("delete:object"):
-                    msg = ("Permission denied.")
+            if not self.verify_acl("delete:object"):
+                del_acl = "delete:%s" % self.type
+                if not parent_object.verify_acl(del_acl):
+                    msg = (_("Permission denied: %s") % self.name)
                     return callback.error(msg, exception=PermissionDenied)
                 # FIXME: do we need this check? allow deletion of user without permission to tokens???
                 if not self.verify_acl("delete:token"):
-                    msg = ("Permission denied.")
+                    msg = (_("Permission denied: %s") % self.name)
                     return callback.error(msg, exception=PermissionDenied)
 
         if not self.exists():

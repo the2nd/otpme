@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 # Distributed under the terms of the GNU General Public License v2
 import os
+import importlib
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -468,6 +469,18 @@ commands = {
             },
     }
 
+def register_subtype_add_acl(acl):
+    global write_value_acls
+    add_acl_list = write_value_acls['add']
+    add_acl_list.append(acl)
+    write_value_acls['add'] = add_acl_list
+
+def register_subtype_del_acl(acl):
+    global write_value_acls
+    del_acl_list = write_value_acls['delete']
+    del_acl_list.append(acl)
+    write_value_acls['delete'] = del_acl_list
+
 def get_acls(**kwargs):
     return _get_acls(read_acls, write_acls, **kwargs)
 
@@ -475,10 +488,42 @@ def get_value_acls(**kwargs):
     return _get_value_acls(read_value_acls, write_value_acls, **kwargs)
 
 def get_default_acls(**kwargs):
-    return _get_default_acls(default_acls, **kwargs)
+    _default_acls = _get_default_acls(default_acls, **kwargs)
+    for acl in _default_acls:
+        if not acl.startswith("+"):
+            continue
+        object_type = acl.split("+")[1]
+        sub_types = config.get_sub_object_types(object_type)
+        if not sub_types:
+            continue
+        for sub_type in sub_types:
+            object_module_path = ("otpme.lib.%s.%s.%s"
+                                % (object_type, sub_type, sub_type))
+            object_module = importlib.import_module(object_module_path)
+            for default_acl in object_module.get_default_acls():
+                if default_acl in _default_acls:
+                    continue
+                _default_acls.append(default_acl)
+    return _default_acls
 
 def get_recursive_default_acls(**kwargs):
-    return _get_recursive_default_acls(recursive_default_acls, **kwargs)
+    _recursive_default_acls = _get_recursive_default_acls(recursive_default_acls, **kwargs)
+    for acl in _recursive_default_acls:
+        if not acl.startswith("+"):
+            continue
+        object_type = acl.split("+")[1]
+        sub_types = config.get_sub_object_types(object_type)
+        if not sub_types:
+            continue
+        for sub_type in sub_types:
+            object_module_path = ("otpme.lib.%s.%s.%s"
+                                % (object_type, sub_type, sub_type))
+            object_module = importlib.import_module(object_module_path)
+            for default_acl in object_module.get_default_acls():
+                if default_acl in _recursive_default_acls:
+                    continue
+                _recursive_default_acls.append(default_acl)
+    return _recursive_default_acls
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = ["otpme.lib.classes.site"]

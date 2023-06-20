@@ -2270,10 +2270,11 @@ class AuthHandler(object):
             # Check if the request contains an already used SOTP.
             if not self.auth_failed and not self.auth_status:
                 if self.access_group == config.realm_access_group:
-                    self.check_used(pass_type="sotp")
+                    if not self.session_logout and not self.realm_logout:
+                        self.check_used(pass_type="sotp")
 
             # Check if request contains an already used SLP.
-            if not self.session_logout and not self.realm_logout:
+            if self.session_logout or self.realm_logout:
                 self.check_used(pass_type="slp")
 
         # Try to verify request against existing session if enabled.

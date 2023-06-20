@@ -1540,14 +1540,18 @@ class Realm(OTPmeObject):
     def delete(self, force=False, verify_acls=True, run_policies=True,
         verbose_level=0, callback=default_callback, _caller="API", **kwargs):
         """ Delete realm. """
-        if verify_acls:
-            if not self.verify_acl(acl="delete:object", check_admin_role=False):
-                msg = ("Permission denied.")
-                return callback.error(msg, exception=PermissionDenied)
-
         # We should never delete ourselves ;)
         if self.own:
             return callback.error("Cannot delete own realm!")
+
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = "delete:%s" % self.type
+                if not parent_object.verify_acl(del_acl):
+                    msg = (_("Permission denied: %s") % self.name)
+                    return callback.error(msg, exception=PermissionDenied)
 
         if run_policies:
             try:

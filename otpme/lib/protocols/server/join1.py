@@ -730,6 +730,9 @@ class OTPmeJoinP1(OTPmeServer1):
         except:
             keep_host = False
 
+        if keep_cert:
+            keep_host = True
+
         # If the user is authenticated (not used a LOTP) we have to verify
         # ACLs when calling leave_realm().
         if self.authenticated:
@@ -834,6 +837,9 @@ class OTPmeJoinP1(OTPmeServer1):
             self.logger.warning(message)
             return self.build_response(status, message)
 
+        # Get hostname from FQDN.
+        host_name = host_fqdn.split(".")[0]
+
         # Try to get host type.
         try:
             host_type = command_args['host_type']
@@ -855,6 +861,8 @@ class OTPmeJoinP1(OTPmeServer1):
             for node_name in enabled_nodes:
                 if node_name == config.host_data['name']:
                     continue
+                if node_name == host_name:
+                    continue
                 if node_name in member_nodes:
                     continue
                 missing_nodes.append(node_name)
@@ -864,9 +872,6 @@ class OTPmeJoinP1(OTPmeServer1):
                 message = ("Please wait for nodes to join the cluster: %s"
                             % missing_nodes)
                 return self.build_response(status, message)
-
-        # Get hostname from FQDN.
-        host_name = host_fqdn.split(".")[0]
 
         # Get host object.
         try:

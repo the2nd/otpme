@@ -44,7 +44,10 @@ read_value_acls = {
 
 write_value_acls = {}
 
-default_acls = []
+default_acls = [
+                'add:policy',
+                'del:policy',
+            ]
 
 recursive_default_acls = []
 
@@ -517,10 +520,27 @@ class Policy(OTPmeObject):
 
     @object_lock()
     @backend.transaction
-    def delete(self, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def delete(self, force=False, run_policies=True, verify_acls=True,
+        verbose_level=0, callback=default_callback, _caller="API", **kwargs):
         """ Delete policy. """
+        if not self.exists():
+            return callback.error("Policy does not exist.")
+
+        # Get parent object to check ACLs.
+        parent_object = self.get_parent_object()
+        if verify_acls:
+            if not self.verify_acl("delete:object"):
+                del_acl = "delete:%s" % self.type
+                if not parent_object.verify_acl(del_acl):
+                    if not self.sub_type:
+                        msg = (_("Permission denied: %s") % self.name)
+                        return callback.error(msg, exception=PermissionDenied)
+                    sub_type_acl = "delete:%s:%s" % (self.type, self.sub_type)
+                    if not parent_object.verify_acl(sub_type_acl,
+                                    need_exact_acl=True):
+                        msg = (_("Permission denied: %s") % self.name)
+                        return callback.error(msg, exception=PermissionDenied)
+
         if run_policies:
             try:
                 self.run_policies("delete", callback=callback, _caller=_caller)
@@ -560,8 +580,7 @@ class Policy(OTPmeObject):
             else:
                 if self.confirmation_policy != "force":
                     if self.confirmation_policy == "paranoid":
-                        msg = ("%s\nPlease type '%s' to delete object: "
-                                % ("\n".join(exception), self.name))
+                        msg = ("Please type '%s' to delete object: " % self.name)
                         answer = callback.ask(msg)
                         if answer != self.name:
                             return callback.abort()
