@@ -323,11 +323,14 @@ def cleanup_fds():
 
 def cleanup():
     """ Cleanup on process exit. """
-    if config.debug_level("locking") > 1:
-        # Get logger.
-        logger = config.logger
-        msg = "Doing process exit cleanup."
-        logger.debug(msg)
+    try:
+        if config.debug_level("locking") > 1:
+            # Get logger.
+            logger = config.logger
+            msg = "Doing process exit cleanup."
+            logger.debug(msg)
+    except:
+        pass
     cleanup_fds()
 
 # Release locks on exit.
@@ -427,10 +430,9 @@ class OTPmeLock(OTPmeFakeLock):
     def get_flock(self):
         user = None
         group = None
-        if config.daemon_mode:
-            if config.system_user() == "root":
-                user = config.user
-                group = config.group
+        if config.system_user() == "root":
+            user = config.user
+            group = config.group
         fd = AtomicFileLock(path=self.lock_file,
                             user=user,
                             group=group,
@@ -491,9 +493,14 @@ class OTPmeLock(OTPmeFakeLock):
                                         lock_id=self.lock_id)
                 # Make sure we empty lock callers on force.
                 self.lock_callers = []
-                return self.flock.release_lock()
-            else:
-                lock_caller = self.lock_id
+                # Release lock.
+                self.flock.release_lock()
+                # Try to remove the lock file if its not used anymore.
+                self.flock.unlink()
+                # Close flock.
+                self.flock.close()
+                return
+            lock_caller = self.lock_id
 
         # Call parent class stuff.
         super(OTPmeLock, self).release_lock(lock_caller=lock_caller,

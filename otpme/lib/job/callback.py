@@ -85,6 +85,13 @@ class JobCallback(object):
             objects_written.append(o.oid.full_oid)
         return objects_written
 
+    def release_cache_locks(self):
+        """ Release all 'cached' locks. """
+        from otpme.lib import cache
+        for object_id in list(self.modified_objects):
+            o = cache.get_modified_object(object_id)
+            o.release_lock(lock_caller="cached")
+
     def handle_exception(method):
         """ Raise exception. """
         def wrapper(self, *args, **kwargs):

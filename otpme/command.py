@@ -25,6 +25,42 @@ import setproctitle
 # python3.
 from importlib import reload
 
+def otpme_commands(no_debug=False):
+    """ Handles OTPme command line tools. """
+    from otpme.lib.classes.command_handler import CommandHandler
+    command_handler = CommandHandler()
+
+    ## Load extension schemas.
+    #if config.use_api:
+    #    from otpme.lib.extensions import utils
+    #    utils.load_schemas()
+
+    try:
+        result = command_handler.handle_command(command,
+                                command_line=list(sys.argv))
+        exit_code = 0
+    except OTPmeException as e:
+        result = None
+        exit_code = 1
+        config.raise_exception()
+        msg = str(e)
+        if len(msg) > 0:
+            message(msg, newline=command_handler.newline)
+            #error_message(msg, newline=command_handler.newline)
+    except Exception as e:
+        raise
+
+    if result:
+        message(result, newline=command_handler.newline)
+
+    if not no_debug:
+        if config.print_timing_results:
+            from otpme.lib import debug
+            debug.print_timing_result(print_status=True)
+
+    return exit_code
+
+
 # We need this to get gettext module working with e.g. umlauts.
 if sys.version[0] == '2':
     reload(sys)
@@ -60,27 +96,32 @@ from otpme.lib.messages import error_message
 
 from otpme.lib.exceptions import *
 
+# Register help.
+from otpme.lib.help.register import register_help
+register_help()
+
 # Get tool name.
 tool_name = str(os.path.basename(sys.argv[0]))
 # Get command from system command (e.g. otpme-user -> user).
 command = "-".join(tool_name.split("-")[1:])
 
+# Check if user requested our version.
+if len(sys.argv) > 1 and sys.argv[1] == "--version":
+    from otpme import __version__
+    message(__version__)
+    sys.exit(0)
+
 # Set proctitle.
 current_proctitle = setproctitle.getproctitle()
-new_proctitle = current_proctitle.split()
-new_proctitle = "%s %s" % (tool_name, " ".join(new_proctitle[2:]))
+if tool_name == "otpme-auth":
+    new_proctitle = tool_name
+else:
+    new_proctitle = current_proctitle.split()
+    new_proctitle = "%s %s" % (tool_name, " ".join(new_proctitle[2:]))
 setproctitle.setproctitle(new_proctitle)
 
 #setproctitle.setproctitle(tool_name)
 sys.argv.pop(0)
-
-# Load OTPme config.
-from otpme.lib.otpme_config import OTPmeConfig
-config = OTPmeConfig(tool_name, quiet=True)
-
-# Register help.
-from otpme.lib.help.register import register_help
-register_help()
 
 help_needed = False
 help_message = None
@@ -100,7 +141,6 @@ if "--type" in sys.argv:
         help_msg = get_help(command, error=help_message)
         error_message(help_msg)
         sys.exit(0)
-config.cli_object_type = object_type
 
 for x in sys.argv:
     if x != "--compgen":
@@ -109,25 +149,9 @@ for x in sys.argv:
     show_compgen()
     sys.exit(0)
 
-# Only root can control OTPme daemons.
-if command == "controld":
-    # Get system user.
-    system_user = getpass.getuser()
-    if system_user != "root":
-        error_message("Permission denied.")
-        sys.exit(1)
-    # Change dir to otpme base directory on daemon start.
-    if os.path.exists(config.base_dir):
-        os.chdir(config.base_dir)
-
-# Check if user requested our version.
-if len(sys.argv) > 1 and sys.argv[1] == "--version":
-    message(config.my_name + "_" + config.my_version)
-    sys.exit(0)
-
 # Check if we have to print the help screen.
 try:
-    get_main_opts()
+    get_main_opts(mod_name=object_type)
 except OTPmeException as e:
     help_needed = True
     help_message = str(e)
@@ -159,10 +183,86 @@ if need_command:
                             help_needed = False
         else:
             help_needed = True
-if help_needed:
-    message(get_help(command, subcommand, error=help_message))
-    sys.exit(1)
 
+if tool_name == "otpme-auth":
+    if subcommand == "verify":
+        from otpme.lib import stuff
+        from otpme.lib.cli import get_opts
+
+        config_file = "/etc/otpme/otpme.conf"
+        fd = open(config_file, "r")
+        file_content = fd.read()
+        fd.close()
+        main_config = stuff.conf_to_dict(file_content)
+        cache = main_config['CACHE']
+        if cache == "redis":
+            import redis
+            from redis.connection import UnixDomainSocketConnection
+            try:
+                redis_socket = main_config['REDIS_SOCKET']
+            except:
+                redis_socket = "/var/run/otpme/sockets/redis.sock"
+            pool = redis.ConnectionPool(path=redis_socket,
+                        connection_class=UnixDomainSocketConnection)
+            redis_db = redis.Redis(connection_pool=pool, db=0)
+
+        if cache == "memcached":
+            import pylibmc
+            try:
+                memcache_socket = main_config['MEMCACHED_SOCKET']
+            except:
+                memcache_socket = "/var/run/otpme/sockets/memcached.sock"
+            mc = pylibmc.Client([memcache_socket])
+            pool = pylibmc.ThreadMappedPool(mc)
+
+        # Get command syntax.
+        command_syntax = command_map[command]['main'][subcommand]['cmd']
+        command_line = sys.argv[1:]
+        object_cmd, \
+        object_required, \
+        object_list, \
+        command_args = get_opts(command_syntax=command_syntax,
+                                    command_line=command_line,
+                                    command_args={})
+
+        # Handle caching.
+        try:
+            cache_seconds = command_args['cache_seconds']
+        except:
+            cache_seconds = None
+        if cache_seconds is not None:
+            client = command_args['client']
+            try:
+                client_ip = command_args['client_ip']
+            except:
+                client_ip = None
+            if client or client_ip:
+                username = command_args['username']
+                password = command_args['password']
+                if client:
+                    cache_key = "%s-%s" % (username, client)
+                else:
+                    cache_key = "%s-%s" % (username, client_ip)
+                nt_hash = stuff.gen_nt_hash(str(password))
+                try:
+                    if cache == "redis":
+                        _nt_hash = redis_db.get(cache_key)
+                    if cache == "memcached":
+                        with pool.reserve() as mc:
+                            _nt_hash = mc.get(cache_key)
+                except KeyError:
+                    _nt_hash = None
+                if _nt_hash is not None:
+                    if isinstance(_nt_hash, bytes):
+                        _nt_hash = _nt_hash.decode()
+                    if _nt_hash == nt_hash:
+                        message("Accept")
+                        sys.exit(0)
+
+# Load OTPme config.
+from otpme.lib.otpme_config import OTPmeConfig
+config = OTPmeConfig(tool_name, quiet=True)
+config.cli_object_type = object_type
 # Print warning if API mode is requested and daemon is running.
 if config.use_api:
     if os.path.exists(config.controld_pidfile):
@@ -179,6 +279,21 @@ try:
 except Exception as e:
     raise Exception("OTPme config verification failed: " + str(e))
 
+if help_needed:
+    message(get_help(command, subcommand, error=help_message))
+    sys.exit(1)
+
+# Only root can control OTPme daemons.
+if command == "controld":
+    # Get system user.
+    system_user = getpass.getuser()
+    if system_user != "root":
+        error_message("Permission denied.")
+        sys.exit(1)
+    # Change dir to otpme base directory on daemon start.
+    if os.path.exists(config.base_dir):
+        os.chdir(config.base_dir)
+
 ## Import freeradius stuff if we got called as a module.
 #if __name__ == 'otpme':
 #    from otpme.lib import init
@@ -188,39 +303,6 @@ except Exception as e:
 #    from otpme.lib.freeradius.otpme import detach
 #
 #elif __name__ == '__main__':
-
-def otpme_commands():
-    """ Handles OTPme command line tools. """
-    from otpme.lib.classes.command_handler import CommandHandler
-    command_handler = CommandHandler()
-
-    ## Load extension schemas.
-    #if config.use_api:
-    #    from otpme.lib.extensions import utils
-    #    utils.load_schemas()
-
-    try:
-        result = command_handler.handle_command(command,
-                                command_line=list(sys.argv))
-        exit_code = 0
-    except OTPmeException as e:
-        result = None
-        exit_code = 1
-        config.raise_exception()
-        msg = str(e)
-        if len(msg) > 0:
-            error_message(msg, newline=command_handler.newline)
-    except Exception as e:
-        raise
-
-    if result:
-        message(result, newline=command_handler.newline)
-
-    if config.print_timing_results:
-        from otpme.lib import debug
-        debug.print_timing_result(print_status=True)
-
-    return exit_code
 
 # Workaround used for OTPme development.
 if __name__ == "__main__":
@@ -240,4 +322,15 @@ if __name__ == "__main__":
         stats.print_stats()
     else:
         exit_code = otpme_commands()
+
+    if tool_name == "otpme-auth":
+        if subcommand == "verify":
+            if exit_code == 0:
+                if cache_seconds is not None:
+                    if cache == "redis":
+                        redis_db.set(cache_key, nt_hash, ex=cache_seconds)
+                    if cache == "memcached":
+                        with pool.reserve() as mc:
+                            mc.set(cache_key, nt_hash, time=cache_seconds)
+
     sys.exit(exit_code)

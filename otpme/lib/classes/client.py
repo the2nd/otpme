@@ -945,18 +945,17 @@ class Client(OTPmeClientObject):
             msg = "Failed to add client."
             return callback.error(msg)
 
-        msg = None
         if address:
             self.add_address(address)
             msg = "Radius secret: %s" % self.secret
+            callback.send(msg)
         # Make sure radius gets reloaded
         self.radius_reload = True
-        return callback.ok(msg)
+        return callback.ok()
 
     @object_lock()
-    def delete(self, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def delete(self, force=False, run_policies=True, verify_acls=True,
+        verbose_level=0, callback=default_callback, _caller="API", **kwargs):
         """ Delete client. """
         if not self.exists():
             return callback.error("Client does not exist exists.")

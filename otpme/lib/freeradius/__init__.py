@@ -19,6 +19,7 @@ freeradius_custom_conf = os.path.join(config.config_dir, "freeradius", "radiusd.
 freeradius_clients = os.path.join(freeradius_dir, "clients.conf")
 freeradius_cert_file = "/var/run/otpme/freeradius/cert.pem"
 freeradius_key_file = "/var/run/otpme/freeradius/key.pem"
+freeradius_ca_cert_file = "/var/run/otpme/freeradius/ca.pem"
 freeradius_pidfile = os.path.join(config.pidfile_dir, "freeradius.pid")
 
 LOCK_TYPE = "freeradius"
@@ -113,7 +114,7 @@ modules {
 			#private_key_password = whatever
 			private_key_file = /var/run/otpme/freeradius/key.pem
 			certificate_file = /var/run/otpme/freeradius/cert.pem
-			#ca_file = /var/run/otpme/freeradius/ca.pem
+			ca_file = /var/run/otpme/freeradius/ca.pem
 			#dh_file = ${certdir}/dh
 			#ca_path = ${cadir}
 			cipher_list = "DEFAULT"
@@ -194,7 +195,7 @@ server otpme {
         # use otpme to for clear-text passwords
         if (!control:Auth-Type) {
             update control {
-                Auth-Type := `otpme-auth verify --socket %{User-Name} %{User-Password} %{NAS-Identifier} %{Client-IP-Address}`
+                Auth-Type := `otpme-auth verify --socket --cache 60 %{User-Name} %{User-Password} %{NAS-Identifier} %{Client-IP-Address}`
             }
         }
     }
@@ -208,6 +209,8 @@ def create_freeradius_conf():
         shutil.copyfile(freeradius_custom_conf, freeradius_conf)
     else:
         otpme_auth_path = os.path.join(config.bin_dir, "otpme-auth")
+        if config.radius_auth_wrapper_script:
+            otpme_auth_path = config.radius_auth_wrapper_script
         x = freeradius_conf_template.replace("otpme-auth", otpme_auth_path)
         filetools.create_file(freeradius_conf,
                             content=x,
@@ -227,6 +230,15 @@ def create_cert_files():
         radius_key = site.radius_key
     filetools.create_file(freeradius_key_file,
                         content=radius_key,
+                        mode=0o660, overwrite=True)
+    realm = backend.get_object(object_type="realm",
+                            uuid=config.realm_uuid)
+    ca_data = realm.ca_data
+    # FIXME: add radius CA cert to site.
+    #if site.radius_ca_cert:
+    #    ca_data = site.radius_ca_cert
+    filetools.create_file(freeradius_ca_cert_file,
+                        content=ca_data,
                         mode=0o660, overwrite=True)
 
 def create_clients_conf():

@@ -378,9 +378,8 @@ class OTPmeConfig(object):
         # FIXME: add config file parameter?
         # Some base dirs.
         self.register_config_var("tmp_dir", str, "/tmp")
-        self.register_config_var("bin_dir", str, "/usr/local/bin")
-        if os.path.exists("/usr/bin/otpme-tool"):
-            self.bin_dir = "/usr/bin"
+        self.register_config_var("bin_dir", str, "/usr/local/bin",
+                                config_file_parameter="BIN_DIR")
 
         self.register_config_var("data_dir", str, "/var/lib/otpme",
                                 config_file_parameter="DATA_DIR")
@@ -393,6 +392,9 @@ class OTPmeConfig(object):
         self.register_config_var("log_dir", str, "/var/log/otpme",
                                 config_file_parameter="LOG_DIR")
 
+        # Radius auth wrapper.
+        self.register_config_var("radius_auth_wrapper_script", str, None,
+                                config_file_parameter="RADIUS_AUTH_WRAPPER_SCRIPT")
         # Set some default filenames.
         self.register_config_var("config_file_name", str, None)
         self.config_file_name = "%s.conf" % self.my_name.lower()
@@ -430,7 +432,7 @@ class OTPmeConfig(object):
         #self.register_config_var("smartcard_dir", str, None)
         #self.smartcard_dir = os.path.join(self.otpme_lib_dir, "smartcard")
         self.register_config_var("script_dir", str, None)
-        self.script_dir = os.path.join(self.otpme_lib_dir, "scripts")
+        self.script_dir = os.path.join(self.config_dir, "scripts")
         self.register_config_var("policy_dir", str, None)
         self.policy_dir = os.path.join(self.otpme_lib_dir, "policy")
         self.register_config_var("resolver_dir", str, None)

@@ -20,10 +20,11 @@ cmd_help = {
     '_usage_help'               : "Usage: otpme-auth {command} {username} {{password|otp}|{challenge}{response}} [client] [ipaddr]",
 
     'verify'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-auth verify [--socket] {username} {password|otp} [client] [ipaddr]',
-                    'cmd'   :   '--socket :use_socket=True: <username> <password> [client] [client_ip]',
+                    '_cmd_usage_help' : 'Usage: otpme-auth verify [--socket] [--cache <seconds>] {username} {password|otp} [client] [ipaddr]',
+                    'cmd'   :   '--socket :use_socket=True: --cache :cache_seconds: <username> <password> [client] [client_ip]',
                     '_help' :   {
                                     'cmd'                   : 'verify clear-text password|otp against valid tokens of user',
+                                    '--cache <seconds>'     : 'Cache auth request for given seconds..',
                                     '--socket'              : 'Connect to authd socket.',
                                 },
                 },

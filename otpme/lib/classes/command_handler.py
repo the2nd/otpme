@@ -1046,6 +1046,9 @@ class CommandHandler(object):
         elif command == "stop":
             stop()
         elif command == "restart":
+            # Register modules.
+            register_modules()
+            self.init(use_backend=True)
             stop()
             start()
         elif command == "status":
@@ -5354,12 +5357,11 @@ class CommandHandler(object):
 
     def handle_auth_command(self, command, subcommand, command_line):
         """ Handle auth command. """
-        register_module("otpme.lib.classes.realm")
-        # Init otpme.
-        #init_otpme(use_backend=False)
-        self.init(use_backend=False)
         # Enable cache.
         if config.use_api:
+            register_module("otpme.lib.classes.realm")
+            # Init otpme.
+            self.init(use_backend=False)
             cache.init()
             cache.enable()
         # Get command syntax.
@@ -5373,7 +5375,7 @@ class CommandHandler(object):
         command_args = cli.get_opts(command_syntax=command_syntax,
                                     command_line=command_line,
                                     command_args=self.command_args)
-        # Send auth command.
+
         if "client" not in command_args:
             command_args['host'] = config.host_data['name']
             command_args['host_type'] = config.host_data['type']
@@ -5382,9 +5384,16 @@ class CommandHandler(object):
             use_socket = command_args.pop('use_socket')
         except:
             use_socket = False
+
         socket_uri = None
         if use_socket:
             socket_uri = config.authd_socket_path
+        else:
+            register_module("otpme.lib.classes.realm")
+            # Init otpme.
+            self.init(use_backend=False)
+            cache.init()
+            cache.enable()
 
         result = self.send_command(daemon="authd",
                                 command=subcommand,

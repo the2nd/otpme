@@ -364,13 +364,16 @@ class IdrangePolicy(Policy):
                 last_assigend = self.get_last_assigned(idrange=x,
                                                     attribute=attribute,
                                                     callback=callback)
-                # Make sure last assigned ID is within ID range.
-                if last_assigend >= range_start and last_assigend <= range_end:
-                    start_id = last_assigend
+                start_id = last_assigend + 1
+                # Make sure start ID is within ID range.
+                if start_id >= range_start and start_id <= range_end:
                     # If we do not start at range_start we have to restart the
                     # search if no free ID was found between start_id and
                     # range_end.
                     restart_on_end = True
+                else:
+                    msg = "Unable to find free ID: %s" % attribute
+                    raise OTPmeException(msg)
             if self.verify_new_id or random_range:
                 try:
                     ldif_attribute = "ldif:%s" % attribute
@@ -387,7 +390,7 @@ class IdrangePolicy(Policy):
                     exception = str(e)
                     continue
             else:
-                new_id = start_id + 1
+                new_id = start_id
 
             if new_id:
                 if random_range:

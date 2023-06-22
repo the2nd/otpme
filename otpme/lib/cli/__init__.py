@@ -21,14 +21,16 @@ except:
 from otpme.lib import help
 from otpme.lib import stuff
 from otpme.lib import config
-from otpme.lib import backend
 #from otpme.lib.messages import message
 from otpme.lib.messages import error_message
 from otpme.lib.cache import object_list_cache
 
 from otpme.lib.exceptions import *
 
-default_callback = config.get_callback()
+try:
+    default_callback = config.get_callback()
+except:
+    default_callback = None
 
 object_register = {}
 
@@ -180,6 +182,7 @@ def list_getter(object_type):
 
 def get_unit_string(unit_uuid):
     """ Get unit string of objects unit. """
+    from otpme.lib import backend
     return_attrs = ['path', 'enabled']
     result = backend.search(object_type="unit",
                         attribute="uuid",
@@ -197,6 +200,7 @@ def get_unit_string(unit_uuid):
 
 def get_policies_string(object_type, object_uuid, max_policies=None):
     """ Get policies string of objects policies. """
+    from otpme.lib import backend
     return_attrs = ['name', 'enabled', 'rel_path']
     policies_result = backend.search(object_type="policy",
                             attribute="uuid",
@@ -231,6 +235,7 @@ def get_policies_string(object_type, object_uuid, max_policies=None):
 
 def get_auth_script_string(script_uuid):
     """ Get auth-script string of objects auth-script. """
+    from otpme.lib import backend
     script_status = ""
     return_attributes = ['enabled', 'rel_path']
     result = backend.search(object_type="script",
@@ -661,7 +666,7 @@ def get_opts(command_syntax, command_line, command_args,
 
                 if not para_var and not key_name:
                     if not ignore_unknown_opts:
-                        msg = (_("Unknown parameter: %s") % command_line[0])
+                        msg = ("Unknown parameter: %s" % command_line[0])
                         raise OTPmeException(msg)
                     command_line.pop(0)
                     continue
@@ -840,12 +845,18 @@ class ACLChecker(object):
                     return True
         return False
 
-def show_objects(object_type, realm=config.realm, site=None, search_regex=None,
+def show_objects(object_type, realm=None, site=None, search_regex=None,
     sort_by=None, reverse=False, max_len=None, id_attr=None, output_fields=[],
     border=True, header=True, csv=False, csv_sep=";", show_all=False,
     verify_acls=None, show_templates=False, callback=default_callback, **kwargs):
     """ Generate table to show <object_type> on terminal. """
+    from otpme.lib import backend
     search_attribute="name"
+
+    if realm is None:
+        realm = config.realm
+    if site is None:
+        site = config.site
 
     if max_len is not None:
         try:
@@ -1308,6 +1319,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
         text_table = show_sessions(username="user1", sort_by="expire", max_len=50)
     """
     from datetime import datetime
+    from otpme.lib import backend
     fields = []
     border = True
 
@@ -1661,6 +1673,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
 def list_objects(object_type, show_all=False, reverse=False,
     show_templates=False, search_regex=None, attribute=None, **kwargs):
     """ Handle object 'list' command. """
+    from otpme.lib import backend
     write_acls = [
                 "edit",
                 "edit:description",
@@ -1759,6 +1772,7 @@ def list_objects(object_type, show_all=False, reverse=False,
 
 def list_sessions(show_all=False, **kwargs):
     """ Handle 'session list' command. """
+    from otpme.lib import backend
     write_acls = [
                 "edit:session",
                 ]

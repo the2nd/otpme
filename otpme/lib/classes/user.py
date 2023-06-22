@@ -3774,6 +3774,8 @@ class User(OTPmeObject):
                                         run_policies=False,
                                         verbose_level=verbose_level,
                                         callback=callback, **kwargs)
+        if not add_result:
+            return add_result
 
         # Run post policies ALSO BEFORE adding token (e.g. tokenacls).
         if run_policies:

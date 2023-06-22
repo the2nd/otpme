@@ -750,6 +750,8 @@ class OTPmeServer1(object):
             enc_key = decode(enc_key, "hex")
             enc_key = self.site_key.decrypt(enc_key)
         except Exception as e:
+            msg = "Failed to decrypt preauth key: %s" % e
+            self.logger.critical(msg)
             status = False
             message = (_("Failed to decrypt preauth key."))
             return self.build_response(status, message, encrypt=False)

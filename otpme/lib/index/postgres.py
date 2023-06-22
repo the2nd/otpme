@@ -219,7 +219,7 @@ def get_socket_dir():
 def cli():
     from otpme.lib import system_command
     socket_dir = get_socket_dir()
-    cli_cmd = [config.psql_bin, "-h", socket_dir, DB_NAME]
+    cli_cmd = [config.psql_bin, "-h", socket_dir, "-s", DB_NAME]
     return_code = system_command.run(command=cli_cmd,
                                 user=config.user,
                                 group=config.group,
@@ -329,7 +329,7 @@ def stop():
 def create_db_user(username):
     from otpme.lib import system_command
     socket_dir = get_socket_dir()
-    create_user_cmd = [config.createuser_bin, "-h", socket_dir, username]
+    create_user_cmd = [config.createuser_bin, "-h", socket_dir, "-s", username]
     return_code = system_command.run(command=create_user_cmd,
                                     user=config.user,
                                     group=config.group,
@@ -384,6 +384,9 @@ def init_db():
     msg = "Creating postgres user (root)..."
     print_message(msg)
     create_db_user("root")
+    msg = "Creating postgres user (otpme)..."
+    print_message(msg)
+    create_db_user("otpme")
     msg = "Creating otpme DB..."
     print_message(msg)
     create_db(DB_NAME)

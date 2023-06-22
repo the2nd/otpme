@@ -28,8 +28,6 @@ from otpme.lib.exceptions import *
 
 #debug_caches = []
 
-logger = config.logger
-
 _CacheInfo = collections.namedtuple('CacheInfo', [
     'hits', 'misses', 'maxsize', 'currsize'
 ])
@@ -94,7 +92,7 @@ class Cache(object):
         or config.debug_level("func_cache_hits") > 0:
             msg = ("Initialized cache: %s (%s): %s:maxsize=%s"
                 % (self.name, cache_name, cache_type, maxsize))
-            logger.debug(msg)
+            config.logger.debug(msg)
         return new_cache
 
     def get_cache_name(self, func_args, func_kwargs):
@@ -233,7 +231,7 @@ class Cache(object):
                                 % (self.name, cache_name, method_name))
                         if config.debug_level("func_cache_hits") > 2:
                             msg = "%s: %s" % (msg, result)
-                        logger.debug(msg)
+                        config.logger.debug(msg)
                     try:
                         self._stats[cache_name][0] += 1
                     except:
@@ -263,7 +261,7 @@ class Cache(object):
                                 % (self.name, cache_name, method_name))
                         if config.debug_level("func_cache_hits") > 2:
                             msg = "%s: %s" % (msg, result)
-                        logger.debug(msg)
+                        config.logger.debug(msg)
                     try:
                         self._stats[cache_name][0] += 1
                     except:
@@ -307,7 +305,7 @@ class Cache(object):
                                 % (self.name, cache_name, method_name))
                         if config.debug_level("func_cache_adds") > 2:
                             msg = "%s: %s" % (msg, result)
-                        logger.debug(msg)
+                        config.logger.debug(msg)
                 except ValueError:
                     # Value too large.
                     pass
@@ -328,7 +326,7 @@ class Cache(object):
                                 % (self.name, cache_name, method_name))
                         if config.debug_level("func_cache_adds") > 2:
                             msg = "%s: %s" % (msg, result)
-                        logger.debug(msg)
+                        config.logger.debug(msg)
                 except ValueError:
                     # Value too large.
                     pass
@@ -374,7 +372,7 @@ class Cache(object):
         if config.debug_level("func_cache_adds") > 0 \
         or config.debug_level("func_cache_hits") > 0:
             msg = ("Clearing cache: %s: (%s)" % (self.name, cache_name))
-            logger.debug(msg)
+            config.logger.debug(msg)
         # Clear local cache.
         try:
             _cache.clear()

@@ -2248,6 +2248,12 @@ class ClusterDaemon(OTPmeDaemon):
                 finally:
                     multiprocessing.nsscache_sync_queue.release()
                 return
+            try:
+                node_list = multiprocessing.nsscache_sync_queue[sync_time]
+            except KeyError:
+                continue
+            if node_name in node_list:
+                continue
             multiprocessing.nsscache_sync_queue.lock()
             try:
                 # Send sync request.
@@ -2301,6 +2307,12 @@ class ClusterDaemon(OTPmeDaemon):
                 finally:
                     multiprocessing.radius_reload_queue.release()
                 return
+            try:
+                node_list = multiprocessing.radius_reload_queue[reload_time]
+            except KeyError:
+                continue
+            if node_name in node_list:
+                continue
             # Make sure radius gets reloaded (after objects have changed.).
             multiprocessing.radius_reload_queue.lock()
             try:

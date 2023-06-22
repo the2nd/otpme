@@ -57,7 +57,7 @@ class OTPmeLDIFHandler(object):
                                         **kwargs):
                     msg = (_("Extension %s: Error adding 'dn' attribute")
                             % self.name)
-                    return callback.error(msg)
+                    raise OTPmeException(msg)
 
         # Try to add default attributes.
         for at in self.get_default_attributes(o.type):
@@ -81,7 +81,7 @@ class OTPmeLDIFHandler(object):
                                     **kwargs):
                 msg = (_("Extension %s: Error adding default attribute: %s")
                         % (self.name, at))
-                return callback.error(msg)
+                raise OTPmeException(msg)
         return callback.ok()
 
     def get_default_attributes(self, object_type):
@@ -666,8 +666,7 @@ class OTPmeLDIFHandler(object):
                     v = self.gen_attribute_value(o, a, callback=callback)
                 except Exception as e:
                     msg = (_("Unable to get attribute value: %s: %s") % (a, e))
-                    config.raise_exception()
-                    return callback.error(msg)
+                    raise OTPmeException(msg)
 
                 if v is None:
                     msg = (_("Missing value for attribute: %s: %s: %s")

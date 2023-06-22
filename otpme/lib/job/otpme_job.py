@@ -221,6 +221,8 @@ class OTPmeJob(object):
             if objects_written:
                 cache.flush()
         else:
+            # Make sure all locks are released.
+            self.callback.release_cache_locks()
             # Clear caches.
             cache.flush(commit=False)
 

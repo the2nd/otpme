@@ -783,7 +783,7 @@ class OTPmeBaseObject(object):
                 self._object_lock.acquire_lock(lock_caller=transaction.lock_caller,
                                                     skip_same_caller=True)
 
-    def release_lock(self, lock_caller=None, recursive=False, callback=None):
+    def release_lock(self, lock_caller=None, recursive=False, force=False, callback=None):
         """ Release object lock. """
         if self.offline:
             return
@@ -794,7 +794,8 @@ class OTPmeBaseObject(object):
             cluster = True
         # Release lock.
         self._object_lock.release_lock(lock_caller=lock_caller,
-                                        cluster=cluster)
+                                        cluster=cluster,
+                                        force=force)
 
     def is_locked(self):
         """ Check if the instance is locked. """
@@ -2514,10 +2515,8 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(msg)
 
         # Init extension.
-        if not ext.init(self, default_attributes=default_attributes,
-                        verbose_level=verbose_level, callback=callback):
-            msg = ("Failed to init extension: %s" % ext.name)
-            return callback.error(msg)
+        ext.init(self, default_attributes=default_attributes,
+                verbose_level=verbose_level, callback=callback)
 
         # Add extension to object.
         self.extensions.append(extension)
@@ -5295,9 +5294,12 @@ class OTPmeObject(OTPmeBaseObject):
 
     def check_secret_format(self, secret, callback=default_callback):
         """ Check if the given secret is in the correct format """
+        # Make sure secret is string.
+        if isinstance(secret, bytes):
+            secret = secret.decode()
         # Set secret format check stuff.
-        self.secret_format_regex = '^[0-9a-z]{%s}$' % self.secret_len
-        self.secret_format_warning = (_("ERROR: Secret must be a hex "
+        self.secret_format_regex = '^[0-9A-Za-z]{%s}$' % self.secret_len
+        self.secret_format_warning = (_("ERROR: Secret must be a "
                                     "string with %s characters.")
                                     % self.secret_len)
         secret_re = re.compile(self.secret_format_regex)
@@ -5352,14 +5354,13 @@ class OTPmeObject(OTPmeBaseObject):
         if not secret:
             while True:
                 new_secret1 = callback.askpass("New secret: ")
-                # Remove spaces from secret (e.g. when pasting from yubico tool)
-                new_secret1 = new_secret1.replace(" ", ""),
+                new_secret1 = new_secret1.replace(" ", "")
                 if not self.check_secret_format(secret=new_secret1,
                                                 callback=callback):
                     return callback.error()
 
                 new_secret2 = callback.askpass("Re-type secret: ")
-                new_secret2 = new_secret2.replace(" ", ""),
+                new_secret2 = new_secret2.replace(" ", "")
                 if new_secret1 == new_secret2:
                     secret = new_secret1
                     break
@@ -6610,7 +6611,6 @@ class OTPmeObject(OTPmeBaseObject):
                                 callback=callback,
                                 verbose_level=verbose_level)
             except Exception as e:
-                config.raise_exception()
                 # Enable callback to get error to the client.
                 callback.enable()
                 return callback.error(str(e))

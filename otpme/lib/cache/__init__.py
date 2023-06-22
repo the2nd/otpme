@@ -31,7 +31,10 @@ ACL_CACHE_LOCK_TYPE = "cache.acl"
 LIST_CACHE_LOCK_TYPE = "cache.list"
 PICKLE_CACHE_LOCK_TYPE = "cache.pickle"
 
-default_callback = config.get_callback()
+try:
+    default_callback = config.get_callback()
+except AttributeError:
+    default_callback = None
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
