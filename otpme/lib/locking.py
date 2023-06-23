@@ -15,7 +15,6 @@ try:
 except:
     pass
 
-from otpme.lib import config
 from otpme.lib import multiprocessing
 from otpme.lib.filetools import AtomicFileLock
 
@@ -263,6 +262,7 @@ def forget_lock(lock_id):
 def acquire_lock(lock_type, lock_id, write=True, timeout=None,
     lock_caller=None, cluster=False, callback=None):
     """ Get lock object. """
+    from otpme.lib import config
     from otpme.lib.daemon.clusterd import cluster_object_lock
     global registered_lock_types
     if lock_type not in registered_lock_types:
@@ -323,6 +323,7 @@ def cleanup_fds():
 
 def cleanup():
     """ Cleanup on process exit. """
+    from otpme.lib import config
     try:
         if config.debug_level("locking") > 1:
             # Get logger.
@@ -401,6 +402,7 @@ class OTPmeLock(OTPmeFakeLock):
     """ Simple locking class. """
     def __init__(self, lock_type, lock_id, write=False, callback=None):
         """ Init class variables. """
+        from otpme.lib import config
         from otpme.lib.oid import oid_to_fs_name
         # Call parent class stuff.
         super(OTPmeLock, self).__init__(lock_type, lock_id, write=write)
@@ -428,6 +430,7 @@ class OTPmeLock(OTPmeFakeLock):
         return x_str
 
     def get_flock(self):
+        from otpme.lib import config
         user = None
         group = None
         if config.system_user() == "root":
@@ -444,6 +447,7 @@ class OTPmeLock(OTPmeFakeLock):
     def acquire_lock(self, lock_caller=None, write=None,
         skip_same_caller=False, timeout=None):
         """ Acquire lock. """
+        from otpme.lib import config
         # Set default lock caller.
         if lock_caller is None:
             lock_caller = self.lock_id
@@ -483,6 +487,7 @@ class OTPmeLock(OTPmeFakeLock):
 
     def release_lock(self, lock_caller=None, force=False, cluster=False):
         """ Release lock"""
+        from otpme.lib import config
         from otpme.lib.daemon.clusterd import cluster_object_lock
         if lock_caller is None:
             if force:

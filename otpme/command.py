@@ -40,15 +40,46 @@ def otpme_commands(no_debug=False):
                                 command_line=list(sys.argv))
         exit_code = 0
     except OTPmeException as e:
+        config.raise_exception()
         result = None
         exit_code = 1
-        config.raise_exception()
         msg = str(e)
         if len(msg) > 0:
-            message(msg, newline=command_handler.newline)
-            #error_message(msg, newline=command_handler.newline)
+            if command != "auth" and subcommand != "verify":
+                error_message(msg, newline=command_handler.newline)
     except Exception as e:
         raise
+
+    if command == "auth":
+        if subcommand == "verify":
+            if exit_code == 0:
+                if cache_seconds is not None:
+                    try:
+                        request_cacheable = result['request_cacheable']
+                    except KeyError:
+                        request_cacheable = False
+                    if request_cacheable:
+                        if cache == "redis":
+                            redis_db.set(cache_key, nt_hash, ex=cache_seconds)
+                        if cache == "memcached":
+                            with pool.reserve() as mc:
+                                mc.set(cache_key, nt_hash, time=cache_seconds)
+                message("Accept")
+            else:
+                message("Reject")
+        if subcommand == "verify_mschap":
+            if exit_code == 0:
+                try:
+                    nt_key = result['nt_key']
+                except KeyError:
+                    message("ERR")
+                else:
+                    message("NT_KEY: "+nt_key)
+            else:
+                message("ERR")
+        # Using auth command with freeradius requires exit code 0
+        # even on failed requests.
+        return 0
 
     if result:
         message(result, newline=command_handler.newline)
@@ -142,13 +173,6 @@ if "--type" in sys.argv:
         error_message(help_msg)
         sys.exit(0)
 
-for x in sys.argv:
-    if x != "--compgen":
-        continue
-    from otpme.lib.compgen import show_compgen
-    show_compgen()
-    sys.exit(0)
-
 # Check if we have to print the help screen.
 try:
     get_main_opts(mod_name=object_type)
@@ -156,7 +180,10 @@ except OTPmeException as e:
     help_needed = True
     help_message = str(e)
 
-need_command = command_map[command][object_type]['_need_command']
+try:
+    need_command = command_map[command][object_type]['_need_command']
+except:
+    need_command = False
 if need_command:
     if len(sys.argv) == 0:
         help_needed = True
@@ -240,9 +267,9 @@ if tool_name == "otpme-auth":
                 username = command_args['username']
                 password = command_args['password']
                 if client:
-                    cache_key = "%s-%s" % (username, client)
+                    cache_key = "otpme-auth-cache-%s-%s" % (username, client)
                 else:
-                    cache_key = "%s-%s" % (username, client_ip)
+                    cache_key = "otpme-auth-cache-%s-%s" % (username, client_ip)
                 nt_hash = stuff.gen_nt_hash(str(password))
                 try:
                     if cache == "redis":
@@ -278,6 +305,13 @@ try:
     config.verify()
 except Exception as e:
     raise Exception("OTPme config verification failed: " + str(e))
+
+for x in sys.argv:
+    if x != "--compgen":
+        continue
+    from otpme.lib.compgen import show_compgen
+    show_compgen()
+    sys.exit(0)
 
 if help_needed:
     message(get_help(command, subcommand, error=help_message))
@@ -322,15 +356,5 @@ if __name__ == "__main__":
         stats.print_stats()
     else:
         exit_code = otpme_commands()
-
-    if tool_name == "otpme-auth":
-        if subcommand == "verify":
-            if exit_code == 0:
-                if cache_seconds is not None:
-                    if cache == "redis":
-                        redis_db.set(cache_key, nt_hash, ex=cache_seconds)
-                    if cache == "memcached":
-                        with pool.reserve() as mc:
-                            mc.set(cache_key, nt_hash, time=cache_seconds)
 
     sys.exit(exit_code)

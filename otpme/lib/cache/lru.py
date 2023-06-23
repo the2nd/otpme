@@ -10,8 +10,6 @@ try:
 except:
     pass
 
-from otpme.lib import config
-
 from otpme.lib.exceptions import *
 
 class LRUCache(dict):
@@ -84,6 +82,7 @@ class LRUCache(dict):
 
     def add(self, object_id, object_data):
         """ Add object to cache. """
+        from otpme.lib import config
         self.cache[object_id] = object_data
         object_type = object_data['TYPE']
         # Add timestamp.

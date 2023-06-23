@@ -103,14 +103,17 @@ index_search_cache = FuncCache(name="index_search_cache", copy_cache=True)
 
 def enable():
     """ Enable caches. """
+    from otpme.lib import config
     config.cache_enabled = True
 
 def disable():
     """ Disable cache. """
+    from otpme.lib import config
     config.cache_enabled = False
 
 def init():
     """ Init caches. """
+    from otpme.lib import config
     global caches
     global ldif_cache
     global config_cache
@@ -308,12 +311,14 @@ def init():
 
 def get_pickle_cache_file_path(object_id):
     """ Build path to pickle cache file. """
+    from otpme.lib import config
     from otpme.lib.oid import oid_to_fs_name
     file_name = "%s.cache" % oid_to_fs_name(object_id.read_oid)
     pickle_cache_file = os.path.join(config.pickle_cache_dir, file_name)
     return pickle_cache_file
 
 def remove_pickle_cache_file(pickle_cache_file):
+    from otpme.lib import config
     # Get pickle cache file lock.
     lock = locking.acquire_lock(lock_type=PICKLE_CACHE_LOCK_TYPE,
                                 lock_id=pickle_cache_file,
@@ -332,6 +337,7 @@ def remove_pickle_cache_file(pickle_cache_file):
 
 def add_instance(instance, skip_shared_cache=False, skip_disk_pickle=False):
     """ Update instance caches. """
+    from otpme.lib import config
     if not config.cache_enabled:
         return
     if not instance.oid:
@@ -446,6 +452,7 @@ def add_instance(instance, skip_shared_cache=False, skip_disk_pickle=False):
 
 def get_instance(object_id, cache_type=None):
     """ Get instance from object cache. """
+    from otpme.lib import config
     from otpme.lib import backend
     if not config.cache_enabled:
         return
@@ -789,6 +796,7 @@ def remove_modified_object(object_id):
 def flush(commit=True, callback=default_callback, quiet=True):
     """ Clear all method caches. """
     from otpme.lib import oid
+    from otpme.lib import config
     global modified_objects
     global modified_objects_cache
 
@@ -830,6 +838,7 @@ def flush(commit=True, callback=default_callback, quiet=True):
 def clear(object_id=None, cache_type=None, keep_modified=True, quiet=True):
     """ Clear caches. """
     from otpme.lib import oid
+    from otpme.lib import config
     logger = config.logger
     if not quiet:
         msg = "Clearing caches..."

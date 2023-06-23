@@ -20,7 +20,6 @@ except:
     pass
 
 from otpme.lib import stuff
-from otpme.lib import config
 from otpme.lib import multiprocessing
 from otpme.lib.pickle import PickleHandler
 
@@ -57,6 +56,7 @@ class Cache(object):
 
     def init_cache(self, cache_name=None):
         """ Init cache. """
+        from otpme.lib import config
         if cache_name is None:
             cache_name = self.default_cache
         try:
@@ -141,6 +141,7 @@ class Cache(object):
     def decorator(self, func, class_method=False):
         """ Decorator to be added to function/method. """
         def wrapper(*args, **kwargs):
+            from otpme.lib import config
             """ Wrapper to cache function/method
             results by args/kwargs. """
             result = None
@@ -364,6 +365,7 @@ class Cache(object):
 
     def _clear_cache(self, cache_name):
         """ Clear cache. """
+        from otpme.lib import config
         # Get local cache
         try:
             _cache = self.get_cache(cache_name)
@@ -408,6 +410,7 @@ class FuncCache(object):
 
     @property
     def logger(self):
+        from otpme.lib import config
         return config.logger
 
     def get_cache(self):
@@ -436,6 +439,7 @@ class FuncCache(object):
         def wrapper(f):
             @wraps(f)
             def wrapped(*f_args, **f_kwargs):
+                from otpme.lib import config
                 try:
                     no_func_cache = f_kwargs['_no_func_cache']
                 except KeyError:
@@ -497,6 +501,7 @@ class FuncCache(object):
 
     def invalidate(self, cache_name=None):
         """ Invalidate the cache. """
+        from otpme.lib import config
         if not config.cache_enabled:
             return
         trigger_name = cache_name

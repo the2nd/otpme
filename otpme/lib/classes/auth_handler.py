@@ -584,6 +584,7 @@ class AuthHandler(object):
             if self.verify_session(session, **kwargs) is not None:
                 self.verify_session_token(session)
                 self.update_session(session)
+                self.request_cacheable = True
                 break
 
     def logout_user_session(self, slp):
@@ -1234,10 +1235,12 @@ class AuthHandler(object):
                 if self.verify_token.temp_password_hash is not None:
                     self.password_hash = self.verify_token.temp_password_hash
                     self.pass_hash_params = self.verify_token.temp_password_hash_params
+                    self.request_cacheable = True
             elif self.verify_token.password_hash is not None:
                 if not self.verify_token.second_factor_token_enabled:
                     self.password_hash = self.verify_token.password_hash
                     self.pass_hash_params= self.verify_token.password_hash_params
+                    self.request_cacheable = True
             if not self.password_hash:
                 self.gen_pass_hash()
 
@@ -1797,6 +1800,7 @@ class AuthHandler(object):
 
             # Set session created for this request.
             self.auth_session = session
+            self.request_cacheable = True
             # Nothing more to do here.
             return
 
@@ -1866,6 +1870,7 @@ class AuthHandler(object):
 
             # Set session created for this request.
             self.auth_session = session
+            self.request_cacheable = True
 
         # Release session lock after sessions have been created.
         _lock.release_lock()
@@ -1988,6 +1993,7 @@ class AuthHandler(object):
         self.jwt = None
         self.client_offline_enc_type = string_vars['client_offline_enc_type']
         self.jwt_challenge = jwt_challenge
+        self.request_cacheable = False
         if gen_jwt is None:
             if self.jwt_challenge:
                 self.gen_jwt = True
@@ -2627,8 +2633,9 @@ class AuthHandler(object):
                     self.logger.debug("Got SSH private key from token: %s"
                                 % self.verify_token.rel_path)
                     ssh_private_key = self.verify_token._ssh_private_key
-
             auth_reply['ssh_private_key'] = ssh_private_key
+
+            auth_reply['request_cacheable'] = self.request_cacheable
 
             # Update last used timestamps for user and token.
             self.user.update_last_used_time()

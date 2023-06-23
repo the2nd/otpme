@@ -155,8 +155,6 @@ class OTPmeAuthP1(OTPmeServer1):
 
             return self.build_response(True, _jwt)
 
-        # Auth result string.
-        auth_message = ""
         # Indicates if authentication was successful.
         auth_status = False
         # Variables to build log entry if something goes wrong before we could
@@ -355,7 +353,11 @@ class OTPmeAuthP1(OTPmeServer1):
         auth_reply = user.authenticate(**kwargs)
         # Get auth status and message from reply.
         auth_status = auth_reply['status']
-        auth_message = auth_reply['message']
+        # We will not send auth token instance to peer.
+        try:
+            auth_reply.pop('token')
+        except KeyError:
+            pass
 
         # Set connection status to authenticated.
         if auth_status:
@@ -363,15 +365,10 @@ class OTPmeAuthP1(OTPmeServer1):
             self.username = username
 
         # Build reply message.
+        message = auth_reply
         if auth_status:
-            if auth_type == "mschap":
-                nt_key = auth_reply['nt_key']
-                message = "NT_KEY: %s" % nt_key
-            else:
-                message = auth_message
             status = True
         else:
-            message = auth_message
             status = status_codes.ERR
 
         return self.build_response(status, message)

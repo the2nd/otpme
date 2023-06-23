@@ -1742,8 +1742,11 @@ class OTPmeServer1(object):
         if auth_status:
             # Get auth token from reply.
             auth_token = auth_reply['token']
-            # We cannot send auth token instance to peer.
-            auth_reply.pop('token')
+            # We will not send auth token instance to peer.
+            try:
+                auth_reply.pop('token')
+            except KeyError:
+                pass
             # Make sure we use destination token for linked tokens.
             if auth_token.destination_token:
                 verify_token = auth_token.get_destination_token()

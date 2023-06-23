@@ -613,10 +613,6 @@ class OTPmeConfig(object):
         self.register_config_var("last_reload_file_mtime", float, 0.0)
         self.register_config_var("last_config_reload_check", float, 0.0)
 
-        self.register_config_var("auth_ok_string", str, "Accept",
-                            config_file_parameter="AUTH_OK_STRING")
-        self.register_config_var("auth_failed_string", str, "Reject",
-                                config_file_parameter="AUTH_FAILED_STRING")
         self.register_config_var("reload_config_interval", int, 60,
                                 config_file_parameter="RELOAD_CONFIG_INTERVAL")
 
@@ -2178,16 +2174,6 @@ class OTPmeConfig(object):
         if not isinstance(self.logout_pass_len, int) or self.logout_pass_len < 1:
             msg = ("LOGOUT_PASS_LEN must be greater than 0. Please "
                     "check your config.")
-            raise OTPmeException(msg)
-
-        if self.auth_ok_string == "":
-            msg = ("AUTH_OK_STRING must be set. Please check your "
-                    "config.")
-            raise OTPmeException(msg)
-
-        if self.auth_failed_string == "":
-            msg = ("AUTH_FAILED_STRING must be set. Please check your "
-                    "config.")
             raise OTPmeException(msg)
 
         if not isinstance(self.reload_config_interval, int) or self.reload_config_interval < 1:

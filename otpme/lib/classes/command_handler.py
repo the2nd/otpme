@@ -6,6 +6,7 @@ import sys
 import time
 import glob
 import signal
+import pprint
 import datetime
 #from prettytable import ALL
 from prettytable import FRAME
@@ -281,27 +282,12 @@ class CommandHandler(object):
             log_method = self.logger.warning
             if status:
                 log_method = self.logger.debug
-            msg = "Received authentication reply: %s" % reply
+            try:
+                auth_message = reply['message']
+            except:
+                auth_message = reply
+            msg = "Received authentication reply: %s" % auth_message
             log_method(msg)
-
-            # Make sure we return the correct auth message depending on
-            # command and command status.
-            if command == "verify" \
-            or command == "verify_otp" \
-            or command == "verify_static":
-                # Check if auth command was successful and return
-                # configured strings.
-                if status:
-                    reply = config.auth_ok_string
-                else:
-                    reply = config.auth_failed_string
-            elif command == "verify_mschap" \
-            or command == "verify_mschap_otp" \
-            or command == "verify_mschap_static":
-                if not status:
-                    # FIXME: Add config file option to configure this string?
-                    # FIXME: Is this the correct output? (e.g. what does ntlm_auth output on error?)
-                    reply = "ERR"
 
         elif daemon == "syncd":
             # Get connection to syncd.
@@ -325,6 +311,8 @@ class CommandHandler(object):
             raise OTPmeException(message)
 
         if status is False:
+            if isinstance(reply, dict):
+                reply = pprint.pformat(reply)
             if isinstance(reply, list):
                 reply = "\n".join(reply)
             if config.debug_enabled:
