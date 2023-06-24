@@ -20,9 +20,6 @@ from otpme.lib import config
 
 from otpme.lib.exceptions import *
 
-logger = config.logger
-
-
 def is_ip(ip):
     """ Check if given IP is valid. """
     try:
@@ -33,13 +30,13 @@ def is_ip(ip):
 
 def get_ip(fqdn):
     """ Resolve given FQDN via gethostbyname(). """
-    logger.debug("Trying to resolve: %s" % fqdn)
+    config.logger.debug("Trying to resolve: %s" % fqdn)
     try:
         ip = socket.gethostbyname(fqdn)
     except:
-        logger.debug("Unable to resolve: %s")
+        config.logger.debug("Unable to resolve: %s")
         return False
-    logger.debug("Got IP from gethostbyname(): %s" % ip)
+    config.logger.debug("Got IP from gethostbyname(): %s" % ip)
     return ip
 
 def get_host_fqdn():
@@ -86,7 +83,7 @@ def get_otpme_site(domain):
     result = {}
     for x in query_records:
         x_record = query_records[x]
-        logger.debug("Trying to resolve OTPme %s via DNS: %s (TXT)"
+        config.logger.debug("Trying to resolve OTPme %s via DNS: %s (TXT)"
                     % (x, x_record))
         try:
             answers = dns.resolver.query(x_record, 'TXT')
@@ -96,7 +93,7 @@ def get_otpme_site(domain):
         for a in answers:
             text = a.to_text().strip('"')
             result[x] = text
-            logger.debug("Got OTPme %s from DNS: %s" % (x, text))
+            config.logger.debug("Got OTPme %s from DNS: %s" % (x, text))
             break
         if not x in result:
             msg = ("Unable to get OTPme %s via DNS.")
@@ -122,7 +119,7 @@ def get_daemon_uri(daemon, domain):
         msg = ("Unsupported daemon: %s" % daemon)
         raise OTPmeException(msg)
 
-    logger.debug("Trying to resolve %s socket URI via DNS: %s (SRV)"
+    config.logger.debug("Trying to resolve %s socket URI via DNS: %s (SRV)"
                 % (daemon, srv_record))
     try:
         answers = dns.resolver.query(srv_record, 'SRV')
@@ -135,10 +132,10 @@ def get_daemon_uri(daemon, domain):
         host = text.split()[-1].rstrip(".")
         port = text.split()[-2]
         socket_uri = "tcp://%s:%s" % (host, port)
-        logger.debug("Got %s socket URI from DNS: %s"
+        config.logger.debug("Got %s socket URI from DNS: %s"
                     % (daemon, socket_uri))
         return socket_uri
-    logger.debug("Unable to get %s address via SRV record, trying A "
+    config.logger.debug("Unable to get %s address via SRV record, trying A "
                 "record..." % daemon)
     try:
         socket.gethostbyname(domain)
@@ -147,6 +144,13 @@ def get_daemon_uri(daemon, domain):
         return socket_uri
     except:
         return None
+
+def query_dns(name, record="A"):
+    result = dns.resolver.query(name, record)
+    addresses = []
+    for a in result:
+        addresses.append(a.to_text().strip('"'))
+    return addresses
 
 def get_interfaces():
     """ Get all interface configs. """
@@ -216,11 +220,11 @@ def configure_floating_ip(address, gratuitous_arp=True, ping=False):
         raise OTPmeException(msg)
 
     floating_interface = phy_interface
-    logger.debug("Found interface '%s' for network '%s/%s'"
+    config.logger.debug("Found interface '%s' for network '%s/%s'"
                 % (floating_interface, floating_ip_network, floating_ip_netmask))
 
     if ping:
-        logger.info("Pinging address '%s'" % floating_ip)
+        config.logger.info("Pinging address '%s'" % floating_ip)
         ping_command = "ping -w 1 -c 1 %s > /dev/null 2>&1" % floating_ip
         response = os.system(ping_command)
         if response == 0:
@@ -229,7 +233,7 @@ def configure_floating_ip(address, gratuitous_arp=True, ping=False):
 
     msg = ("Adding address '%s/%s' to interface '%s'"
         % (floating_ip, floating_ip_netmask, floating_interface))
-    logger.info(msg)
+    config.logger.info(msg)
 
     ip_netmask = "%s/%s" % (floating_ip, floating_ip_netmask)
     ifup_command = [
@@ -241,7 +245,7 @@ def configure_floating_ip(address, gratuitous_arp=True, ping=False):
                     ip_netmask,
                     ]
 
-    logger.debug("Running: %s" % " ".join(ifup_command))
+    config.logger.debug("Running: %s" % " ".join(ifup_command))
 
     pipe = Popen(ifup_command, stdout=PIPE, stderr=PIPE, shell=False)
     script_stdout, script_stderr = pipe.communicate()
@@ -256,11 +260,11 @@ def configure_floating_ip(address, gratuitous_arp=True, ping=False):
     if gratuitous_arp:
         msg = ("Sending gratuitous ARP for floating IP: %s (%s)"
                 % (floating_ip, floating_interface))
-        logger.debug(msg)
+        config.logger.debug(msg)
         # Send gratuitous ARP.
         arp.send_gratuitous_arp(floating_interface, floating_ip)
 
-    logger.debug("Floating IP address configured successful.")
+    config.logger.debug("Floating IP address configured successful.")
 
 def deconfigure_floating_ip(address):
     """ Deconfigure floating IP. """
@@ -279,7 +283,7 @@ def deconfigure_floating_ip(address):
 
     if floating_interface:
         msg = ("Deconfiguring floating interface '%s'" % floating_interface)
-        logger.debug(msg)
+        config.logger.debug(msg)
 
         ip_netmask = "%s/%s" % (floating_ip, floating_ip_netmask)
         ifdown_command = [
@@ -291,7 +295,7 @@ def deconfigure_floating_ip(address):
                             ip_netmask,
                         ]
 
-        logger.debug("Running: %s" % " ".join(ifdown_command))
+        config.logger.debug("Running: %s" % " ".join(ifdown_command))
 
         pipe = Popen(ifdown_command, stdout=PIPE, stderr=PIPE, shell=False)
         script_stdout, script_stderr = pipe.communicate()
@@ -303,4 +307,4 @@ def deconfigure_floating_ip(address):
                     floating_interface, script_stderr))
             raise OTPmeException(msg)
 
-        logger.debug("Floating IP address deconfigured successful.")
+        config.logger.debug("Floating IP address deconfigured successful.")

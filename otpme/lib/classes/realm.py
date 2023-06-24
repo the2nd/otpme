@@ -105,26 +105,8 @@ commands = {
                                             'no_dicts',
                                             'dictionaries',
                                             'id_ranges',
-                                            ],
-                    'job_type'          : 'process',
-                    },
-                'exists'    : {
-                    'method'            : 'init',
-                    'oargs'             : [
-                                            'ca_country',
-                                            'ca_state',
-                                            'ca_locality',
-                                            'ca_organization',
-                                            'ca_ou',
-                                            'ca_email',
-                                            'ca_key_len',
-                                            'ca_valid',
-                                            'site_key_len',
-                                            'site_valid',
-                                            'node_key_len',
-                                            'node_valid',
-                                            'no_dicts',
-                                            'dictionaries',
+                                            'site_address',
+                                            'site_fqdn',
                                             ],
                     'job_type'          : 'process',
                     },
@@ -133,11 +115,6 @@ commands = {
     'add'   : {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
-                    'method'            : 'add',
-                    'args'              : ['realm_address'],
-                    'job_type'          : 'process',
-                    },
-                'exists'    : {
                     'method'            : 'add',
                     'args'              : ['realm_address'],
                     'job_type'          : 'process',
@@ -1146,10 +1123,11 @@ class Realm(OTPmeObject):
 
     @object_lock()
     #@backend.transaction
-    def init(self, realm_master, master_address, ca_key_len=None, ca_valid=None,
-        ca_country=None, ca_state=None, ca_locality=None, ca_organization=None,
-        ca_ou=None, ca_email=None, site_key_len=None, site_valid=None,
-        node_key_len=None, id_ranges=None, no_dicts=False, dictionaries=[],
+    def init(self, realm_master, site_fqdn, site_address=None,
+        ca_key_len=None, ca_valid=None, ca_country=None, ca_state=None,
+        ca_locality=None, ca_organization=None, ca_ou=None, ca_email=None,
+        site_key_len=None, site_valid=None, node_key_len=None,
+        id_ranges=None, no_dicts=False, dictionaries=[],
         callback=default_callback, **kwargs):
         """ Init OTPme realm. """
         from otpme.lib.classes.site import Site
@@ -1188,19 +1166,17 @@ class Realm(OTPmeObject):
         if not "interactive" in config.ignore_policy_tags:
             config.ignore_policy_tags.append("interactive")
 
-        # Check if we got a IP address or a FQDN. This check is done on the
-        # node and not on the client because the node needs to connect to the
-        # site.
-        is_ip = net.is_ip(master_address)
-        if is_ip:
-            site_address = master_address
-        else:
+        if not site_address:
             # Try to get site address from DNS.
-            site_address = net.get_ip(master_address)
+            result = net.query_dns(site_fqdn)
+            if len(result) > 1:
+                msg = "Found round-robin DNS. Please give floating IP."
+                return callback.error(msg)
+            site_address = result[0]
 
         # We always need a site address as floaging cluster IP.
         if not site_address:
-            msg = ("Unable to resolve: %s" % master_address)
+            msg = ("Unable to resolve: %s" % site_fqdn)
             raise OTPmeException(msg)
 
         if site_address != "127.0.0.1":
@@ -1255,9 +1231,9 @@ class Realm(OTPmeObject):
             return callback.error(msg)
 
         msg = (_("Adding site '%(realm_master)s' with address "
-                    "'%(master_address)s' as realm master.")
+                    "'%(site_address)s' as realm master.")
                     % {"realm_master":realm_master,
-                    "master_address":master_address})
+                    "site_address":site_address})
         callback.send(msg)
 
         # Get node address from the host we are running on.
@@ -1270,7 +1246,8 @@ class Realm(OTPmeObject):
             config.host_data['type'] = 'node'
 
         # Add our first site without initializing CA.
-        add_status = master_site.add(site_address=master_address,
+        add_status = master_site.add(site_fqdn=site_fqdn,
+                                    site_address=site_address,
                                     node_name=node_name,
                                     no_ca=True,
                                     no_node=True,
@@ -1286,7 +1263,9 @@ class Realm(OTPmeObject):
 
         config.set_site(name=master_site.name,
                         uuid=master_site.uuid,
-                        address=master_site.address)
+                        address=master_site.address,
+                        auth_fqdn=site_fqdn,
+                        mgmt_fqdn=site_fqdn)
         # Make this site our master.
         self.master = master_site.uuid
 

@@ -18,11 +18,12 @@ from otpme.lib import qrcode
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.otp.oath import totp
-from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import decode
+from otpme.lib.token.oath.oath import OathToken
 from otpme.lib.third_party.oath_toolkit import uri
+from otpme.lib.token.oath.oath import OATH_OTP_FORMATS
 from otpme.lib.protocols.utils import register_commands
 
 from otpme.lib.classes.token \
@@ -290,16 +291,6 @@ def get_recursive_default_acls():
                                 token_recursive_default_acls)
     return _acls
 
-# OATH OTP formats and the resulting OTP lens.
-OATH_OTP_FORMATS = {
-        'dec4'          : 4,
-        'dec6'          : 6,
-        'dec7'          : 7,
-        'dec8'          : 8,
-        'hex'           : 4,
-        'hex-notrunc'   : 4,
-        }
-
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
 
@@ -364,7 +355,7 @@ def register_config_params():
                                     default_value=40,
                                     object_types=object_types)
 
-class TotpToken(Token):
+class TotpToken(OathToken):
     """ Class for OATH TOTP tokens. """
     def __init__(self, object_id=None, user=None, name=None,
         realm=None, site=None, path=None, **kwargs):
@@ -386,27 +377,17 @@ class TotpToken(Token):
         self.pass_type = "otp"
         self.otp_type = "time"
 
-        self.valid_otp_formats = OATH_OTP_FORMATS
         self.otp_format = None
-        self.pin = None
-        self.pin_len = None
-        self.pin_enabled = True
         self.need_password = True
         self.auth_script_enabled = False
         self.allow_offline = False
         self.offline_expiry = 0
         self.offline_unused_expiry = 0
         self.keep_session = False
-        self.valid_modes = [ 'mode1', 'mode2' ]
-        # Default token mode should be mode2 which is more secure for offline.
-        # usage.
-        self.mode = "mode2"
-        self.pin_mandatory = True
+
         # TOTP specific settings
-        # xxxxxxxxxxxxxxxx
         # FIXME: make this per token config setting!
         self.drift = 0
-        self.server_secret = None
         self.period = None
         self.forward_drift = None
         self.backward_drift = None
@@ -473,13 +454,13 @@ class TotpToken(Token):
             }
 
         # Use parent class method to merge token configs.
-        return Token._get_object_config(self, token_config=token_config)
+        return super(TotpToken, self)._get_object_config(token_config=token_config)
 
     def set_variables(self):
         """ Set instance variables """
         # Run parent class method that may override default values with those
         # read from config.
-        Token.set_variables(self)
+        super(TotpToken, self).set_variables()
         # In mode2 the PIN is mandatory.
         if self.mode == "mode2":
             self.pin_enabled = True
@@ -488,204 +469,10 @@ class TotpToken(Token):
             self.pin_mandatory = False
 
     @property
-    def otp_len(self):
-        """ Set OTP len depending on the configured OTP format. """
-        try:
-            otp_len = OATH_OTP_FORMATS[self.otp_format]
-        except:
-            otp_len = 6
-        return otp_len
-
-    @property
     def secret_len(self):
         """ Get token secret length. """
         secret_len = self.get_config_parameter("totp_secret_len")
         return secret_len
-
-    def get_secret(self, pin=None, mode=None,
-        callback=default_callback,
-        _caller="API", ** kwargs):
-        """ Get token secret """
-        if not mode:
-            mode = self.mode
-        if mode == "mode1":
-            secret = str(self.secret)
-        else:
-            import hashlib
-            if not pin:
-                pin = self.pin
-            server_secret = self.server_secret
-            if isinstance(pin, str):
-                pin = pin.encode("utf-8")
-            if isinstance(server_secret, str):
-                server_secret = server_secret.encode("utf-8")
-            hash_string = b"%s%s" % (pin, server_secret)
-            sha512 = hashlib.sha512()
-            sha512.update(hash_string)
-            secret = sha512.hexdigest()
-            secret = secret[0:self.secret_len]
-        if _caller == "API":
-            return secret
-        return callback.ok(secret)
-
-    def get_offline_config(self, second_factor_usage=False):
-        """ Get offline config of token. (e.g. without PIN) """
-        # Make sure our object config is up-to-date.
-        self.update_object_config()
-        # Get a copy of our object config.
-        offline_config = self.object_config.copy()
-        # In offline mode we never need the PIN.
-        offline_config['PIN'] = ''
-
-        need_encryption = True
-        if self.mode == "mode1":
-            # In mode1 we do not need the server secret in offline config.
-            offline_config['SERVER_SECRET'] = ''
-            if not self.pin_enabled:
-                need_encryption = False
-
-        if self.mode == "mode2":
-            # In mode2 there should be no TOTP secret so make sure we empty it.
-            offline_config['SECRET'] = ''
-            # In mode2 the token config includes only the server secret which is
-            # used in conjunction with the PIN to generate the TOTP secret. In
-            # offline mode the token config will include neither, not the PIN
-            # and not the TOTP secret. Thus its relatively save to store it
-            # unencrypted. Using the PIN to encrypt the token secret (like its
-            # done in mode1) is much more susceptible to brute force attacks.
-            need_encryption = False
-
-        # FIXME: how to decided if encryption is needed in second factor usage??
-        # When used as second factor token (e.g. with ssh or password token) it
-        # is probably saver to encrypt our config. if the first factor token is
-        # a weak password not true but we currently have not way the get this
-        # info at this stage.
-        if second_factor_usage:
-            need_encryption = True
-        else:
-            # Wnen not used as second factor token remove PIN len from config to
-            # make brute force attacks harder.
-            offline_config['PIN_LEN'] = ''
-
-        offline_config['NEED_OFFLINE_ENCRYPTION'] = need_encryption
-        return offline_config
-
-    @check_acls(['edit:mode'])
-    @object_lock()
-    @backend.transaction
-    def change_mode(self, new_mode, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
-        """ Change token operation mode. """
-        # Make sure new mode is of type string.
-        new_mode = str(new_mode)
-
-        if not new_mode in self.valid_modes:
-            return callback.error(_("Unknown mode: %s") % new_mode)
-
-        if new_mode == self.mode:
-            return callback.error(_("Token already in mode: %s") % new_mode)
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("change_mode",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception:
-                return callback.error()
-
-        if new_mode == "mode1":
-            self.secret = self.get_secret()
-            self.pin_mandatory = False
-            return_message = (_("Token switched to mode1."))
-
-        if new_mode == "mode2":
-            # If we have a server secret we can try to switch back to mode2
-            # without re-deploying token.
-            if self.server_secret:
-                otp = None
-                if not otp:
-                    otp = callback.askpass(_("Please enter PIN+OTP: "))
-                if not otp:
-                    return callback.error("Unable to get PIN+OTP.")
-
-                # Make sure OTP is str().
-                otp = str(otp)
-
-                # Split OTP in PIN and OTP.
-                pin = otp[:self.pin_len]
-                otp = otp[self.pin_len:]
-
-                # Generate secret from server secret and PIN.
-                secret = self.get_secret(pin=pin,
-                                        mode="mode2")
-                # Verify OTP.
-                if not self.verify_otp(otp=pin+otp, secret=secret, mode="mode2"):
-                    return callback.error("Wrong PIN or token out of sync.")
-
-                # Make sure OTP cannot be re-used.
-                try:
-                    self.add_used_otp(otp=pin+otp)
-                except Exception as e:
-                    msg = "Error adding OTP to list of used OTPs: %s" % e
-                    return callback.error(msg)
-
-                self.secret = None
-                return_message = (_("Token switched to mode2."))
-            else:
-                msg = (_("WARNING: Changing token mode to 'mode2' requires "
-                        "re-deployment of the token!"))
-                callback.send(msg)
-
-                if self.pin:
-                    pin_question = "New PIN (RETURN to keep current PIN): "
-                else:
-                    pin_question = "New PIN: "
-                while True:
-                    new_pin1 = str(callback.askpass(pin_question, null_ok=True))
-                    if new_pin1 == "":
-                        if self.pin:
-                            break
-                        else:
-                            continue
-                    if not self.check_pin(pin=new_pin1, callback=callback):
-                        continue
-                    new_pin2 = callback.askpass("Repeat PIN: ")
-                    if new_pin1 == new_pin2:
-                        self.pin = str(new_pin1)
-                        break
-                self.server_secret = stuff.gen_secret(self.secret_len)
-                token_secret = self.get_secret(pin=self.pin,
-                                                mode="mode2")
-                return_message = (_("New token secret: %s") % token_secret)
-                self.pin_enabled = True
-                self.pin_mandatory = True
-
-        # Set new mode.
-        self.mode = new_mode
-
-        callback.send(return_message)
-
-        return self._cache(callback=callback)
-
-    def _enable_pin(self, pre=False, callback=default_callback, **kwargs):
-        """ Enable token PIN """
-        return True
-
-    def _disable_pin(self, pre=False, callback=default_callback, **kwargs):
-        """ Disable token PIN """
-        if not pre:
-            return True
-
-        if self.mode == "mode2":
-            if self.allow_offline:
-                callback.send(_("WARNING: Offline usage is enabled for this "
-                                "token. Anybody who is able to access the "
-                                "offline token file is able to use it for "
-                                "login."))
-        return True
 
     @check_acls(['edit:period'])
     @object_lock()
@@ -777,86 +564,18 @@ class TotpToken(Token):
 
         return self._cache(callback=callback)
 
-    def _change_secret(self, secret=None, pre=False,
-        force=False, callback=default_callback, **kwargs):
-        """ Handle stuff when changing token secret """
-        if self.mode == "mode2":
-            if pre:
-                callback.send(_("WARNING: Changing the secret of a token in "
-                                "mode2 is not supported. The secret changes "
-                                "if you change the PIN."))
-                return False
-        else:
-            if pre and not force:
-                callback.send(_("WARNING: Changing the secret requires a "
-                                "re-deployment of the token."))
-                answer = callback.ask("Change token secret?: ")
-                if answer.lower() == "y":
-                    return True
-                else:
-                    return False
-            self.server_secret = None
-        return True
-
-    def _change_pin(self, pin=None, pre=False,
-        callback=default_callback, **kwargs):
-        """ Handle stuff when changing token PIN """
-        if self.mode == "mode2":
-            if pre:
-                callback.send(_("WARNING: Changing the PIN of a token in mode2 "
-                                "requires a re-deployment of the token."))
-                answer = callback.ask("Change token PIN?: ")
-                if answer.lower() == "y":
-                    return True
-                else:
-                    return False
-            self.server_secret = stuff.gen_secret(self.secret_len)
-            token_secret = self.get_secret(pin=pin)
-            callback.send(_("New token secret: %s") % token_secret)
-
-        elif self.server_secret:
-            if pre:
-                callback.send(_("WARNING: This token was previously used in "
-                                "mode2. Changing the PIN requires a "
-                                "re-deployment when changing back to mode2."))
-                answer = callback.ask("Change token PIN?: ")
-                if answer.lower() == "y":
-                    return True
-                else:
-                    return False
-            self.server_secret = None
-
-        # Update PIN length.
-        if not pre:
-            self.pin_len = len(pin)
-        return True
-
-    def _enable_offline(self, pre=False, callback=default_callback, **kwargs):
-        """ Handle stuff when enabling offline mode """
-        if pre:
-            if self.mode == "mode1":
-                msg = (_("WARNING: Anybody who gets access to the offline "
-                        "token file is able to use it for logins and can see "
-                        "your PIN in clear-text!!"))
-                callback.send(msg)
-                msg = (_("You should consider changing token mode to mode2!!"))
-                callback.send(msg)
-            else:
-                msg = (_("INFO: Offline OTP tokens are by design vulnerable "
-                        "for brute force attacks if an attacker is able to "
-                        "steal them (e.g. from a notebook)"))
-                callback.send(msg)
-        return True
-
     @check_acls(['generate:otp'])
     def gen_otp(self, otp_count=1, secret=None, prefix_pin=False,
         callback=default_callback, _caller="API", **kwargs):
         """ Generate one or more OTPs for this token. """
         if not secret:
-            if self.secret:
-                secret = self.secret
-            else:
-                secret = self.get_secret(pin=prefix_pin)
+            if self.mode == "mode1":
+                secret = self.get_secret(callback=callback)
+            if self.mode == "mode2":
+                if not prefix_pin:
+                    msg = "Cannot generate OTP in mode2."
+                    return callback.error(msg)
+                secret = self.get_secret(pin=prefix_pin, callback=callback)
 
         if not secret:
             callback.error("Unable to get token secret.")
@@ -886,38 +605,6 @@ class TotpToken(Token):
             return callback.ok(otp)
         return [otp]
 
-    def test(self, password=None, callback=default_callback, **kwargs):
-        """ Test if the given OTP can be verified by this token. """
-        ok_message = "Token verified successful."
-        error_message = "Token verification failed."
-
-        if self.pin_enabled:
-            otp_prompt = "PIN+OTP: "
-        else:
-            otp_prompt = "OTP: "
-
-        if not password:
-            password = callback.askpass(otp_prompt)
-
-        if not password:
-            return callback.error("Unable to get OTP.")
-
-        status = self.verify_otp(otp=str(password), **kwargs)
-
-        if status:
-            return callback.ok(ok_message)
-        else:
-            return callback.error(error_message)
-
-    def verify(self, challenge=None, response=None, **kwargs):
-        """ Call default verify method. """
-        if challenge and response:
-            return self.verify_mschap_otp(challenge=challenge,
-                                            response=response,
-                                            **kwargs)
-        else:
-            return self.verify_otp(**kwargs)
-
     def verify_otp(self, otp, secret=None, handle_used_otps=True,
         mode=None, otp_includes_pin=True, verify_pin=True, sft=None,
         recursive_use=False, session_uuid=None, **kwargs):
@@ -944,6 +631,10 @@ class TotpToken(Token):
                 # allow to "emulate" the given token mode (e.g. use in
                 # change_mode())
                 otp_includes_pin = False
+        # In mode2 no PIN verification can be done as the PIN is not
+        # saved on server side.
+        if mode == "mode2":
+            verify_pin = False
 
         # Get PIN from OTP if needed.
         if otp_includes_pin:
@@ -952,7 +643,10 @@ class TotpToken(Token):
                             "to include a PIN!")
                 return None
             _otp = otp[self.pin_len:]
-            pin = otp[:self.pin_len]
+            try:
+                pin = int(otp[:self.pin_len])
+            except ValueError:
+                return None
         else:
             _otp = otp
 
@@ -1055,12 +749,11 @@ class TotpToken(Token):
         from otpme.lib import mschap_util
         nt_key = None
         otp = None
-        pin = None
         _otp = None
 
-        # Set PIN we need to prefix our OTPs with needed.
-        if self.pin_enabled:
-            pin = self.pin
+        # Cannot verify token in mode2.
+        if self.mode == "mode2":
+            return return_value
 
         # Calculate epoch time to verify OTP.
         epoch_time = time.time()
@@ -1077,7 +770,7 @@ class TotpToken(Token):
         # FIXME: we also need OTPs from self.backward_drift here!
         # Get list with valid OTPs of this token.
         otps = self.gen_otp(otp_count=self.forward_drift + 1,
-                            prefix_pin=pin,
+                            prefix_pin=self.pin,
                             verify_acls=False)
 
         # Set default return values.
@@ -1111,29 +804,8 @@ class TotpToken(Token):
         msg = ("WARNING: You may have hit a BUG of Token().verify_mschap_otp().")
         raise Exception(msg)
 
-    @check_acls(['generate:otp'])
-    def gen_mschap(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
-        """ Generate MSCHAP challenge response stuff for testing. """
-        if run_policies:
-            try:
-                self.run_policies("gen_mschap",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception:
-                return callback.error()
-
-        pin = None
-        if self.mode == "mode1":
-            if self.pin_enabled:
-                pin = self.pin
-        if self.mode == "mode2":
-            pin = self.pin
-        otp = self.gen_otp(prefix_pin=pin, verify_acls=False)[0]
-        return Token._gen_mschap(self, password=otp, callback=callback)
-
     @check_acls(['generate:qrcode'])
-    def gen_qrcode(self, qrcode_file=None, run_policies=True,
+    def gen_qrcode(self, pin=None, qrcode_file=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Generate QRCode to deploy token secret. """
         if run_policies:
@@ -1144,9 +816,15 @@ class TotpToken(Token):
             except Exception:
                 return callback.error()
 
-        # FIXME: implement qrcode_file stuff
+        if pin is None:
+            if self.mode == "mode2":
+                pin = callback.askpass("Please enter PIN: ")
+                if pin is None:
+                    msg = "Cannot gen qrcode without PIN."
+                    return callback.error(msg)
+
         # Get secret to gen QRCode.
-        secret = self.get_secret()
+        secret = self.get_secret(pin=pin)
 
         # Gen OATH URI.
         user_string = "%s@%s" % (self.rel_path, self.realm)
@@ -1170,50 +848,26 @@ class TotpToken(Token):
     def add_used_otp(self, otp, session_uuid=None, quiet=True):
         """ Add used OTP for this user/token. """
         # In offline mode we do not add used OTPs to make brute force attacks
-        # harder (no OTP hash saved to disk)
+        # harder (no OTP hash saved to disk).
         if self.offline:
             return True
         # Cache TOTPs twice the time they are valid.
         expiry = time.time() + (self.period * self.forward_drift * 2)
         # Add used OTP using parent class method.
-        return Token._add_used_otp(self, otp, expiry,
-                                session_uuid=session_uuid,
-                                quiet=quiet)
+        self._add_used_otp(otp, expiry,
+                        session_uuid=session_uuid,
+                        quiet=quiet)
 
     @object_lock()
     @backend.transaction
-    def _add(self, gen_qrcode=True, callback=default_callback, **kwargs):
+    def _add(self, *args, **kwargs):
         """ Add a token. """
         # Get default TOTP settings.
         self.otp_format = self.get_config_parameter("totp_format")
         self.period = self.get_config_parameter("totp_period")
         self.forward_drift = self.get_config_parameter("totp_forward_drift")
         self.backward_drift = self.get_config_parameter("totp_backward_drift")
-        # Gen server secret.
-        self.server_secret = stuff.gen_secret(self.secret_len)
-        # Gen PIN.
-        default_pin_len = self.get_config_parameter("totp_default_pin_len")
-        self.pin = stuff.gen_pin(default_pin_len)
-        self.pin_len = len(self.pin)
-        # Get token secret.
-        token_secret = self.get_secret(pin=self.pin)
-        # Generate salt for used OTP hashes.
-        self.used_otp_salt = stuff.gen_secret(32)
-
-        return_message = None
-        if self.verify_acl("view:secret"):
-            if gen_qrcode:
-                term_qrcode = self.gen_qrcode(run_policies=False)
-                callback.send(term_qrcode)
-            return_message = "Token secret: %s" % token_secret
-        if self.verify_acl("view:pin"):
-            message = "Token PIN: %s" % self.pin
-            if return_message:
-                return_message = "%s\n%s" % (return_message, message)
-            else:
-                return_message = message
-
-        return callback.ok(return_message)
+        return super(TotpToken, self)._add(*args, **kwargs)
 
     def show_config(self, callback=default_callback, **kwargs):
         """ Show token info. """
@@ -1245,10 +899,9 @@ class TotpToken(Token):
             server_secret = str(self.server_secret)
         lines.append('SERVER_SECRET="%s"' % server_secret)
 
-        return Token.show_config(self,
-                                config_lines=lines,
-                                callback=callback,
-                                **kwargs)
+        return super(TotpToken, self).show_config(config_lines=lines,
+                                                callback=callback,
+                                                **kwargs)
 
     def show(self, **kwargs):
         """ Show token details. """

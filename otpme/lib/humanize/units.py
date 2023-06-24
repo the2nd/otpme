@@ -3,12 +3,15 @@
 # Distributed under the terms of the GNU General Public License v2
 import os
 import humanize
+import datetime
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
         print(_("Loading module: %s") % __name__)
 except:
     pass
+
+from otpme.lib.exceptions import *
 
 unit_mapping = {
         's'     : 1,
@@ -78,3 +81,57 @@ def int2size(value):
     """ Convert size as int() to human result size string. """
     result = humanize.naturalsize(value, gnu=True)
     return result
+
+def string2unixtime(date_string, start_time):
+    """ Get unix time from string. """
+    hour = None
+    minute = None
+    day = None
+    month = None
+    year = None
+    if date_string.startswith("+"):
+        x = date_string.replace("+", "")
+        seconds = time2int(x)
+        if seconds == 0:
+            msg = "Invalid time: %s" % date_string
+            raise OTPmeException(msg)
+        start_time = datetime.datetime.fromtimestamp(start_time)
+        epoch = start_time + datetime.timedelta(seconds=seconds)
+    else:
+        for x in date_string.split():
+            if len(x.split("/")) == 3:
+                month = int(x.split("/")[0])
+                day = int(x.split("/")[1])
+                year = int(x.split("/")[2])
+            elif len(x.split("-")) == 3:
+                year = int(x.split("-")[0])
+                month = int(x.split("-")[1])
+                day = int(x.split("-")[2])
+            elif len(x.split(".")) == 3:
+                day = int(x.split(".")[0])
+                month = int(x.split(".")[1])
+                year = int(x.split(".")[2])
+            elif len(x.split(":")) == 2:
+                hour = int(x.split(":")[0])
+                minute = int(x.split(":")[1])
+            else:
+                msg = (_("Unknown date string: %s") % date_string)
+                raise OTPmeException(msg)
+
+        if year is None:
+            raise OTPmeException("Missing 'year'")
+        if month is None:
+            raise OTPmeException("Missing 'month'")
+        if hour is None:
+            raise OTPmeException("Missing 'hour'")
+        if minute is None:
+            raise OTPmeException("Missing 'minute'")
+
+        if len(str(year)) < 4:
+            raise OTPmeException(_("Unknown year: %s") % year)
+
+        epoch = datetime.datetime(year, month, day, hour, minute)
+
+    epoch = float(epoch.strftime("%s"))
+
+    return epoch

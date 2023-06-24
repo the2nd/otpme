@@ -40,6 +40,8 @@ class OTPmeAuthP1(OTPmeServer1):
         self.require_client_cert = True
         # Auth request are allowed to any node.
         self.require_master_node = False
+        # We need a clean cluster status.
+        self.require_cluster_status = True
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
 

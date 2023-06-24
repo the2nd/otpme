@@ -51,6 +51,7 @@ class OTPmeHostP1(OTPmeServer1):
         # Communication with hostd is only done via unix sockets.
         self.encrypt_session = False
         self.require_master_node = False
+        self.require_cluster_status = False
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
 
@@ -137,10 +138,11 @@ class OTPmeHostP1(OTPmeServer1):
                             "get_site",
                             "get_site_uuid",
                             "get_site_address",
+                            "get_site_auth_fqdn",
+                            "get_site_mgmt_fqdn",
                             "get_realm_master_uuid",
                             "get_realm_master_name",
                             "get_realm_master_address",
-                            "get_site_fqdn",
                             "get_site_cert",
                             "get_site_trust_status",
                             "get_user_uuid",
@@ -243,7 +245,7 @@ class OTPmeHostP1(OTPmeServer1):
                 message = site_address
 
 
-        elif command == "get_site_fqdn":
+        elif command == "get_site_auth_fqdn":
             status = True
             try:
                 realm = command_args['realm']
@@ -256,18 +258,40 @@ class OTPmeHostP1(OTPmeServer1):
 
             if realm and site:
                 try:
-                    site_address = stuff.get_site_address(realm,
-                                                        site,
-                                                        fqdn=True)
+                    auth_fqdn = stuff.get_site_fqdn(realm, site)
                 except Exception as e:
                     status = False
                     message = "Failed to get site address: %s" % e
             else:
-                site_address = config.site_address
+                auth_fqdn = config.site_auth_fqdn
 
             if status:
-                message = site_address
+                message = auth_fqdn
 
+        elif command == "get_site_mgmt_fqdn":
+            status = True
+            try:
+                realm = command_args['realm']
+            except:
+                realm = None
+            try:
+                site = command_args['site']
+            except:
+                site = None
+
+            if realm and site:
+                try:
+                    mgmt_fqdn = stuff.get_site_fqdn(realm,
+                                                    site,
+                                                    mgmt=True)
+                except Exception as e:
+                    status = False
+                    message = "Failed to get site address: %s" % e
+            else:
+                mgmt_fqdn = config.site_mgmt_fqdn
+
+            if status:
+                message = mgmt_fqdn
 
         elif command == "get_site_trust_status":
             status = True

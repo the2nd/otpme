@@ -12,7 +12,6 @@ except:
 from otpme.lib import net
 from otpme.lib import config
 from otpme.lib import connections
-from otpme.lib.protocols.otpme_client import OTPmeClient
 
 from otpme.lib.exceptions import *
 
@@ -49,7 +48,7 @@ class LoginHandler(object):
         cache_login_tokens=False, sync_token_data=False, auth_only=False,
         start_otpme_agent=True, jwt_auth=False, jwt_method=None, message_method=None,
         error_message_method=None, connect_timeout=3, timeout=10,
-        offline_key_derivation_func=None, offline_key_func_opts={},
+        node=None, offline_key_derivation_func=None, offline_key_func_opts={},
         check_offline_pass_strength=False, offline_iterations_by_score={},
         offline_session_key=None, login_session_id=None, add_agent_acl=False,
         cleanup_method=None, socket_uri=None, login_use_dns=False, use_dns=False):
@@ -90,9 +89,13 @@ class LoginHandler(object):
             # Try to get daemon socket URI via DNS.
             socket_uri = net.get_daemon_uri("authd", domain)
 
+        if node:
+            port = config.default_ports['authd']
+            socket_uri = "tcp://%s:%s" % (node, port)
+
         # Try to get connection to authd.
         try:
-            auth_conn = OTPmeClient(daemon="authd",
+            auth_conn = connections.get(daemon="authd",
                                     timeout=timeout,
                                     connect_timeout=connect_timeout,
                                     use_dns=use_dns,
@@ -128,6 +131,10 @@ class LoginHandler(object):
                                     offline_iterations_by_score=offline_iterations_by_score,
                                     offline_session_key=offline_session_key,
                                     socket_uri=socket_uri, realm=realm, site=site)
+        except ConnectionError as e:
+            msg = "Login connection failed: %s" % e
+            self.logger.warning(msg)
+            raise
         except Exception as e:
             config.raise_exception()
             msg = (_("Unable to connect to auth daemon: %s") % e)
@@ -260,16 +267,18 @@ class LoginHandler(object):
         # Try to get connection to mgmtd.
         mgmt_conn = None
         try:
-            mgmt_conn = OTPmeClient(daemon="mgmtd",
-                                    realm=login_realm,
-                                    site=login_site,
-                                    use_agent=True,
-                                    username=agent_username,
-                                    autoconnect=True)
+            mgmt_conn = connections.get(daemon="mgmtd",
+                                        realm=login_realm,
+                                        site=login_site,
+                                        use_agent=True,
+                                        auto_auth=False,
+                                        username=agent_username,
+                                        autoconnect=True)
         except AuthFailed as e:
             msg = (_("Authentication failed: %s") % e)
             status_message = (_("%s (online: %s)") % (agent_username, msg))
         except Exception as e:
+            print("KKKKKK", e)
             status_message = (_("%s (offline)") % agent_username)
 
         if mgmt_conn:

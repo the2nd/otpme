@@ -1623,7 +1623,7 @@ def get_username_by_uuid(uuid):
             return None
     return user_name
 
-def get_site_address(realm, site, fqdn=False):
+def get_site_address(realm, site):
     """ Get site address/FQDN. """
     from otpme.lib import config
     from otpme.lib import backend
@@ -1633,10 +1633,7 @@ def get_site_address(realm, site, fqdn=False):
                                     name=site,
                                     realm=realm)
         if _site:
-            if fqdn:
-                site_address = _site.fqdn
-            else:
-                site_address = _site.address
+            site_address = _site.address
         else:
             msg = (_("Unknown site: %s") % site)
             raise OTPmeException(msg)
@@ -1646,10 +1643,47 @@ def get_site_address(realm, site, fqdn=False):
         except Exception as e:
             msg = (_("Error connecting to hostd: %s") % e)
             raise OTPmeException(msg)
-        if fqdn:
-            daemon_command = "get_site_fqdn"
+        daemon_command = "get_site_address"
+        command_args = {
+                        'realm' : realm,
+                        'site'  : site,
+                    }
+        status, \
+        status_code, \
+        reply = hostd_conn.send(daemon_command, command_args)
+        if not status:
+            msg = (_("Error getting site address from hostd: %s") % reply)
+            raise ConnectionError(msg)
+        site_address = reply
+    return site_address
+
+def get_site_fqdn(realm, site, mgmt=False):
+    """ Get site address/FQDN. """
+    from otpme.lib import config
+    from otpme.lib import backend
+    from otpme.lib import connections
+    if config.use_backend:
+        _site = backend.get_object(object_type="site",
+                                    name=site,
+                                    realm=realm)
+        if _site:
+            if mgmt:
+                site_address = _site.mgmt_fqdn
+            else:
+                site_address = _site.auth_fqdn
         else:
-            daemon_command = "get_site_address"
+            msg = (_("Unknown site: %s") % site)
+            raise OTPmeException(msg)
+    else:
+        try:
+            hostd_conn = connections.get("hostd")
+        except Exception as e:
+            msg = (_("Error connecting to hostd: %s") % e)
+            raise OTPmeException(msg)
+        if mgmt:
+            daemon_command = "get_site_mgmt_fqdn"
+        else:
+            daemon_command = "get_site_auth_fqdn"
         command_args = {
                         'realm' : realm,
                         'site'  : site,

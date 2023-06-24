@@ -94,11 +94,11 @@ def get_lock_event(timestamp):
     return lock_event
 
 def check_cluster_status():
-    if not config.cluster_status:
-        msg = "Cluster not ready."
-        raise OTPmeException(msg)
     if config.master_failover:
         msg = "Ongoing master failover."
+        raise OTPmeException(msg)
+    if not config.cluster_status:
+        msg = "Cluster not ready."
         raise OTPmeException(msg)
 
 def cluster_nsscache_sync():
@@ -112,6 +112,8 @@ def cluster_nsscache_sync():
         multiprocessing.nsscache_sync_queue[sync_time] = []
     except ValueError:
         pass
+    if not multiprocessing.cluster_event:
+        return
     multiprocessing.cluster_event.set()
 
 def cluster_radius_reload():
@@ -132,6 +134,8 @@ def cluster_radius_reload():
         multiprocessing.radius_reload_queue[reload_time] = []
     except ValueError:
         pass
+    if not multiprocessing.cluster_event:
+        return
     multiprocessing.cluster_event.set()
 
 def cluster_sync_object(object_uuid, object_id, action, object_config=None,
@@ -1566,8 +1570,6 @@ class ClusterDaemon(OTPmeDaemon):
                 current_master_node = None
             if current_master_node == new_master_node:
                 time.sleep(quorum_check_interval)
-                #config.master_failover = False
-                #config.cluster_status = True
                 continue
 
             try:
@@ -1576,7 +1578,6 @@ class ClusterDaemon(OTPmeDaemon):
                 msg = "Failed to switch master node: %s" % e
                 self.logger.critical(msg)
             config.master_failover = False
-            #config.cluster_status = True
             time.sleep(quorum_check_interval)
 
     def handle_two_node_setup(self):
@@ -1931,8 +1932,6 @@ class ClusterDaemon(OTPmeDaemon):
             node_checksums = node_checksums[51200:]
         if len(processed_journal_entries) > 102400:
             processed_journal_entries = processed_journal_entries[51200:]
-        if not config.cluster_status:
-            return True
         uuids_to_process = []
         entries_to_process = []
         cluster_journal_dirs = self.get_cluster_journal()
@@ -1970,8 +1969,6 @@ class ClusterDaemon(OTPmeDaemon):
 
         written_entries = []
         unsync_status_set = False
-        objects_sync_started = True
-        objects_sync_successful = False
         for entry_timestamp in entries_to_process:
             if not config.cluster_status:
                 return True
@@ -2023,8 +2020,6 @@ class ClusterDaemon(OTPmeDaemon):
 
                 # Mark node as out of sync (tree objects).
                 if object_id.object_type in config.tree_object_types:
-                    objects_sync_started = True
-                    objects_sync_successful = True
                     if not unsync_status_set:
                         unsync_status_set = True
                         self.unset_node_sync(node_name)
@@ -2057,7 +2052,6 @@ class ClusterDaemon(OTPmeDaemon):
                         self.logger.warning(msg)
                         return True
                     if write_status != "done":
-                        objects_sync_successful = False
                         continue
                     written_entries.append(object_uuid)
                     try:
@@ -2090,7 +2084,6 @@ class ClusterDaemon(OTPmeDaemon):
                         self.logger.warning(msg)
                         return True
                     if rename_status != "done":
-                        objects_sync_successful = False
                         continue
                     written_entries.append(object_uuid)
                     try:
@@ -2119,7 +2112,6 @@ class ClusterDaemon(OTPmeDaemon):
                         self.logger.warning(msg)
                         return True
                     if del_status != "done":
-                        objects_sync_successful = False
                         continue
                     msg = ("Deleted object on node: %s: %s"
                             % (node_name, object_id))
@@ -2136,7 +2128,7 @@ class ClusterDaemon(OTPmeDaemon):
                 pass
 
         if config.master_node:
-            if objects_sync_started and objects_sync_successful:
+            if not config.master_failover:
                 sync_time = time.time()
                 config.touch_node_sync_file(sync_time)
                 # Mark node as in sync (tree objects).

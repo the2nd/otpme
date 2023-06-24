@@ -3,7 +3,6 @@
 # Distributed under the terms of the GNU General Public License v2
 import os
 import time
-import datetime
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -73,7 +72,7 @@ commands = {
     'auto_disable'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'change_auto_disable',
+                    'method'            : '_change_auto_disable',
                     'args'              : ['auto_disable'],
                     'oargs'             : ['unused'],
                     'job_type'          : 'process',
@@ -147,7 +146,7 @@ def register_policy_object():
     """ Registger policy type. """
     # Register base policy.
     call_methods = [
-                    ({'change_auto_disable': {'auto_disable': '+1h'}},),
+                    ({'_change_auto_disable': {'auto_disable': '+1h'}},),
                 ]
     config.register_base_object(object_type="policy",
                                 name="auto_disable_hour",
@@ -155,7 +154,7 @@ def register_policy_object():
                                 call_methods=call_methods)
     # Register base policy.
     call_methods = [
-                    ({'change_auto_disable': {'auto_disable': '+1D'}},),
+                    ({'_change_auto_disable': {'auto_disable': '+1D'}},),
                 ]
     config.register_base_object(object_type="policy",
                                 name="auto_disable_day",
@@ -163,7 +162,7 @@ def register_policy_object():
                                 call_methods=call_methods)
     # Register base policy.
     call_methods = [
-                    ({'change_auto_disable': {'auto_disable': '+1W'}},),
+                    ({'_change_auto_disable': {'auto_disable': '+1W'}},),
                 ]
     config.register_base_object(object_type="policy",
                                 name="auto_disable_week",
@@ -171,7 +170,7 @@ def register_policy_object():
                                 call_methods=call_methods)
     # Register base policy.
     call_methods = [
-                    ({'change_auto_disable': {'auto_disable': '+1M'}},),
+                    ({'_change_auto_disable': {'auto_disable': '+1M'}},),
                 ]
     config.register_base_object(object_type="policy",
                                 name="auto_disable_month",
@@ -179,7 +178,7 @@ def register_policy_object():
                                 call_methods=call_methods)
     # Register base policy.
     call_methods = [
-                    ({'change_auto_disable': {'auto_disable': '+1Y'}},),
+                    ({'_change_auto_disable': {'auto_disable': '+1Y'}},),
                 ]
     config.register_base_object(object_type="policy",
                                 name="auto_disable_year",
@@ -229,8 +228,8 @@ class AutodisablePolicy(Policy):
                             'accessgroup',
                             ]
 
-        self.auto_disable = "+1M"
-        self.unused_disable = False
+        self._auto_disable = "+1M"
+        self._unused_disable = False
 
         self._sub_sync_fields = {
                     'host'  : {
@@ -253,12 +252,12 @@ class AutodisablePolicy(Policy):
         """ Merge policy config with config from parent class. """
         policy_config = {
             'AUTO_DISABLE'              : {
-                                            'var_name'      : 'auto_disable',
+                                            'var_name'      : '_auto_disable',
                                             'type'          : str,
                                             'required'      : True,
                                         },
             'UNUSED_DISABLE'            : {
-                                            'var_name'      : 'unused_disable',
+                                            'var_name'      : '_unused_disable',
                                             'type'          : bool,
                                             'required'      : True,
                                         },
@@ -273,56 +272,6 @@ class AutodisablePolicy(Policy):
         # read from config.
         Policy.set_variables(self)
 
-    def string2unixtime(self, date_string, start_time):
-        """ Get unix time from string. """
-        hour = None
-        minute = None
-        day = None
-        month = None
-        year = None
-        if date_string.startswith("+"):
-            x = date_string.replace("+", "")
-            seconds = units.time2int(x)
-            start_time = datetime.datetime.fromtimestamp(start_time)
-            disable_time = start_time + datetime.timedelta(seconds=seconds)
-        else:
-            for x in date_string.split():
-                if len(x.split("/")) == 3:
-                    month = int(x.split("/")[0])
-                    day = int(x.split("/")[1])
-                    year = int(x.split("/")[2])
-                elif len(x.split("-")) == 3:
-                    year = int(x.split("-")[0])
-                    month = int(x.split("-")[1])
-                    day = int(x.split("-")[2])
-                elif len(x.split(".")) == 3:
-                    day = int(x.split(".")[0])
-                    month = int(x.split(".")[1])
-                    year = int(x.split(".")[2])
-                elif len(x.split(":")) == 2:
-                    hour = int(x.split(":")[0])
-                    minute = int(x.split(":")[1])
-                else:
-                    msg = (_("Unknown date string: %s") % date_string)
-                    raise OTPmeException(msg)
-
-            if year is None:
-                raise OTPmeException("Missing 'year'")
-            if month is None:
-                raise OTPmeException("Missing 'month'")
-            if hour is None:
-                raise OTPmeException("Missing 'hour'")
-            if minute is None:
-                raise OTPmeException("Missing 'minute'")
-
-            if len(str(year)) < 4:
-                raise OTPmeException(_("Unknown year: %s") % year)
-
-            disable_time = datetime.datetime(year, month, day, hour, minute)
-
-        disable_time = float(disable_time.strftime("%s"))
-        return disable_time
-
     def activate(self):
         """ Activate policy by returning per object policy data """
         policy_data = {
@@ -333,13 +282,13 @@ class AutodisablePolicy(Policy):
     def test(self, force=False, verbose_level=0,
         _caller="API", callback=default_callback):
         """ Test the policy. """
-        return callback.ok(self.auto_disable)
+        return callback.ok(self._auto_disable)
 
     def handle_hook(self, hook_object, hook_name, force=False,
         callback=default_callback, **kwargs):
         """ Handle policy hooks. """
         if hook_name == "exists":
-            return self.check_auto_disable(hook_object, **kwargs)
+            return self._check_auto_disable(hook_object, **kwargs)
         if hook_name != "enable":
             return callback.error(_("Unknown policy hook: %s") % hook_name,
                                     exception=self.policy_exception)
@@ -361,15 +310,15 @@ class AutodisablePolicy(Policy):
             msg = ("Error updating object policy: %s" % e)
             logger.warning(msg)
 
-    def check_auto_disable(self, hook_object, policy_add_time=None, **kwargs):
+    def _check_auto_disable(self, hook_object, policy_add_time=None, **kwargs):
         """ Handle auto disable. """
         if not policy_add_time:
             return True
-        if self.unused_disable:
+        if self._unused_disable:
             check_time = hook_object.get_last_used_time()
         else:
             check_time = policy_add_time
-        disable_time = self.string2unixtime(self.auto_disable, check_time)
+        disable_time = units.string2unixtime(self._auto_disable, check_time)
         now = time.time()
         if now >= disable_time:
             if hook_object.enabled:
@@ -394,13 +343,13 @@ class AutodisablePolicy(Policy):
     @check_acls(['edit:auto_disable'])
     @object_lock()
     @backend.transaction
-    def change_auto_disable(self, auto_disable, unused=False,
+    def _change_auto_disable(self, auto_disable, unused=False,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
         """ Change auto disable value. """
         try:
             # Check if given date string is valid.
-            self.string2unixtime(auto_disable, time.time())
+            units.string2unixtime(auto_disable, time.time())
         except Exception as e:
             msg = "Invalid date string: %s" % e
             return callback.error(msg)
@@ -416,8 +365,8 @@ class AutodisablePolicy(Policy):
             except Exception:
                 return callback.error()
 
-        self.auto_disable = auto_disable
-        self.unused_disable = unused
+        self._auto_disable = auto_disable
+        self._unused_disable = unused
         return self._cache(callback=callback)
 
     @object_lock()
@@ -436,13 +385,13 @@ class AutodisablePolicy(Policy):
         auto_disable = ""
         if self.verify_acl("view:auto_disable") \
         or self.verify_acl("edit:auto_disable"):
-            auto_disable = self.auto_disable
+            auto_disable = self._auto_disable
         lines.append('AUTO_DISABLE="%s"' % auto_disable)
 
         unused_disable = ""
         if self.verify_acl("view:unused_disable") \
         or self.verify_acl("edit:unused_disable"):
-            unused_disable = self.unused_disable
+            unused_disable = self._unused_disable
         lines.append('UNUSED_DISABLE="%s"' % unused_disable)
 
         return Policy.show_config(self,

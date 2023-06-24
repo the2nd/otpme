@@ -65,6 +65,8 @@ class OTPmeJoinP1(OTPmeServer1):
         self.session_otp = None
         # OTP type in use.
         self.session_otp_type = None
+        # Indicates master node join.
+        self.master_node_join = False
         # Join/Leave job uuid.
         self.job_uuid = None
         self.callback = None
@@ -147,39 +149,39 @@ class OTPmeJoinP1(OTPmeServer1):
         cache.flush()
 
         # For master node join requests we have to check some things.
-        master_node_join = False
-        if host.site_uuid != config.site_uuid:
-            master_node_join = True
-            s = backend.get_object(object_type="site", uuid=host.site_uuid)
-            if not s:
-                message = (_("Unknown site: %s") % host.site_uuid)
-                status = False
-                return self.build_response(status, message)
+        if host_type == "node":
+            if host.site_uuid != config.site_uuid:
+                s = backend.get_object(object_type="site", uuid=host.site_uuid)
+                if not s:
+                    message = (_("Unknown site: %s") % host.site_uuid)
+                    status = False
+                    return self.build_response(status, message)
 
-            # The site must be disabled for master node join.
-            if s.enabled:
-                message = (_("Cannot do master node join for enabled site: %s")
-                            % s.name)
-                status = False
-                return self.build_response(status, message)
+                # The site must be disabled for master node join.
+                if s.enabled:
+                    message = (_("Cannot do master node join for enabled site: %s")
+                                % s.name)
+                    status = False
+                    return self.build_response(status, message)
 
-            # Check if the joining host is a node.
-            if host.type != "node":
-                message = (_("Wrong host type: %s") % host.type)
-                status = False
-                return self.build_response(status, message)
+                # Check if the joining host is a node.
+                if host.type != "node":
+                    message = (_("Wrong host type: %s") % host.type)
+                    status = False
+                    return self.build_response(status, message)
 
-            all_nodes = backend.search(object_type="node",
-                                        attribute="uuid",
-                                        value="*",
-                                        realm=host.realm,
-                                        site=host.site,
-                                        return_type="name")
-            # Check if the joining node is the first node of this site.
-            if len(all_nodes) != 1:
-                message = (_("Node is not master node of site: %s") % s.name)
-                status = False
-                return self.build_response(status, message)
+                all_nodes = backend.search(object_type="node",
+                                            attribute="uuid",
+                                            value="*",
+                                            realm=host.realm,
+                                            site=host.site,
+                                            return_type="name")
+                # Check if the joining node is the first node of this site.
+                if len(all_nodes) != 1:
+                    message = (_("Node is not the first node of site: %s") % s.name)
+                    status = False
+                    return self.build_response(status, message)
+                self.master_node_join = True
 
         # Make host join the realm.
         try:
@@ -380,8 +382,8 @@ class OTPmeJoinP1(OTPmeServer1):
         # Build join reply.
         join_reply = {
                     'jotp'                  : host.jotp,
-                    'master_node_join'      : master_node_join,
                     'object_configs'        : sync_object_configs,
+                    'master_node_join'      : self.master_node_join,
                     'password_hash_salt'    : config.password_hash_salt,
                     }
 
@@ -1144,7 +1146,7 @@ class OTPmeJoinP1(OTPmeServer1):
             status = False
             message = (_("Permission denied"))
             # If this is a master node join we may have to update site cert.
-            if host.type == "node" and host.site_uuid != config.site_uuid:
+            if self.master_node_join:
                 # Get hosts site.
                 site = backend.get_object(object_type="site",
                                         uuid=host.site_uuid)

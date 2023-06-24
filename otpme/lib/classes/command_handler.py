@@ -815,7 +815,7 @@ class CommandHandler(object):
                 return self.handle_leave_command(object_identifier, command_args)
 
         if subcommand == "login":
-            return self.handle_login_command(command_line)
+            return self.handle_login_command(command, subcommand, command_line)
 
         if subcommand == "logout":
             return self.logout()
@@ -1055,7 +1055,9 @@ class CommandHandler(object):
             hostd_conn.send(command="reload_radius")
 
         elif command == "test":
-            import radius
+            import pyrad.packet
+            from pyrad.client import Client
+            from pyrad.dictionary import Dictionary
             from radius_eap_mschapv2 import RADIUS
             mschap = False
             if "--mschap" in command_line:
@@ -1084,12 +1086,21 @@ class CommandHandler(object):
             else:
                 msg = "Sending radius request."
                 print(msg)
-                status = radius.authenticate(username=username,
-                                    password=password,
-                                    secret=radius_secret,
-                                    host=radius_host,
-                                    nas_id=radius_nas_id,
-                                    port=1812)
+                radius_dict = os.path.join(config.config_dir, "radius", "dictionary")
+                radius_secret = radius_secret.encode()
+                srv = Client(server=radius_host,
+                			secret=radius_secret,
+                            dict=Dictionary(radius_dict))
+                # Create request.
+                req = srv.CreateAuthPacket(code=pyrad.packet.AccessRequest,
+                						   User_Name=username,
+                						   NAS_Identifier=radius_nas_id)
+                req["User-Password"] = req.PwCrypt(password)
+                # Send request.
+                reply = srv.SendPacket(req)
+                status = False
+                if reply.code == pyrad.packet.AccessAccept:
+                	status = True
             if not status:
                 msg = "Radius request failed."
                 raise OTPmeException(msg)
@@ -1219,16 +1230,41 @@ class CommandHandler(object):
                         check_site_cert=site_cert_fingerprint)
         return result
 
-    def handle_login_command(self, command_line):
+    def handle_login_command(self, command, subcommand, command_line):
         """ Handle login command. """
         #register_module("otpme.lib.protocols.client.host1")
         #register_module("otpme.lib.protocols.client.agent1")
         try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except:
+            return self.get_help(_("Unknown command: %s") % subcommand)
+
+        command_args = {}
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(command_syntax=command_syntax,
+                                            command_line=command_line,
+                                            command_args=command_args)
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            elif str(e) != "":
+                return self.get_help(str(e))
+        try:
             username = command_line[0]
         except:
             username = None
+        try:
+            node = command_args['node']
+        except:
+            node = None
+
         result = self.login(username=username,
-                    password=self.user_password)
+                        password=self.user_password,
+                        node=node)
+
         return result
 
     def handle_leave_command(self, object_identifier, command_args):
@@ -3550,7 +3586,7 @@ class CommandHandler(object):
                     config.ignore_policy_tags.remove("interactive")
         return result
 
-    def login(self, username=None, password=None):
+    def login(self, username=None, password=None, node=None):
         """ Do realm login. """
         from otpme.lib.classes.login_handler import LoginHandler
         #init_otpme(use_backend=False)
@@ -3563,15 +3599,19 @@ class CommandHandler(object):
             config.raise_exception()
             raise OTPmeException(_("Unable to start otpme-agent: %s") % e)
         login_handler = LoginHandler()
-        login_handler.login(username=username,
-                            password=password,
-                            interactive=True,
-                            use_dns=config.use_dns,
-                            #cache_login_tokens=True,
-                            start_otpme_agent=False,
-                            login_use_dns=config.login_use_dns,
-                            use_ssh_agent=config.use_ssh_agent,
-                            use_smartcard=config.use_smartcard)
+        try:
+            login_handler.login(username=username,
+                                password=password,
+                                node=node,
+                                interactive=True,
+                                use_dns=config.use_dns,
+                                #cache_login_tokens=True,
+                                start_otpme_agent=False,
+                                login_use_dns=config.login_use_dns,
+                                use_ssh_agent=config.use_ssh_agent,
+                                use_smartcard=config.use_smartcard)
+        except Exception as e:
+            raise OTPmeException(str(e))
         login_message = login_handler.login_reply['login_message']
         return login_message
 
@@ -3581,7 +3621,11 @@ class CommandHandler(object):
         #init_otpme(use_backend=False)
         self.init(use_backend=False)
         login_handler = LoginHandler()
-        return login_handler.logout()
+        try:
+            result = login_handler.logout()
+        except Exception as e:
+            raise OTPmeException(str(e))
+        return result
 
     def whoami(self):
         """ Get login status. """

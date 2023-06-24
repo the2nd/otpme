@@ -20,8 +20,8 @@ cmd_help = {
     '_usage_help'               : "Usage: otpme-realm {command} [realm]",
 
     'init'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-realm init {realm} {site} {address}',
-                    'cmd'   :   '--country :ca_country: --state :ca_state: --locality :ca_locality: --organization :ca_organization: --ou :ca_ou: --email :ca_email: --ca-valid :ca_valid: --ca-key-len :ca_key_len: --site-valid :site_valid: --site-key-len :site_key_len: --node-valid :node_valid: --node-key-len :node_key_len: --no-dicts :no_dicts=True: --dicts ::[dictionaries]:: --id-ranges ::id_ranges:: <|object|> <realm_master> <master_address>',
+                    '_cmd_usage_help' : 'Usage: otpme-realm init {realm} {site} {fqdn} [address]',
+                    'cmd'   :   '--country :ca_country: --state :ca_state: --locality :ca_locality: --organization :ca_organization: --ou :ca_ou: --email :ca_email: --ca-valid :ca_valid: --ca-key-len :ca_key_len: --site-valid :site_valid: --site-key-len :site_key_len: --node-valid :node_valid: --node-key-len :node_key_len: --no-dicts :no_dicts=True: --dicts ::[dictionaries]:: --id-ranges ::id_ranges:: <|object|> <realm_master> <site_fqdn> [site_address]',
                     '_help' :   {
                                     'cmd'                               : 'init realm',
                                     '--ca-valid'                        : 'CA certificates validity in days.',

@@ -114,6 +114,8 @@ class OTPmeSyncP1(OTPmeServer1):
         self.require_client_cert = True
         # Allow sync between nodes.
         self.require_master_node = False
+        # Sync must be possible while master node failover.
+        self.require_cluster_status = False
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
 

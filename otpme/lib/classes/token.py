@@ -62,11 +62,16 @@ read_value_acls = {
                         "pin",
                         "pin_status",
                         "used_otp_salt",
+                        "auto_disable",
                         "auth_script",
                         ],
             }
 
-write_value_acls = {}
+write_value_acls = {
+                    "edit"  : [
+                                "auto_disable",
+                            ],
+                }
 
 default_acls = []
 
@@ -160,6 +165,15 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -829,14 +843,13 @@ class Token(OTPmeObject):
         self.nt_hash = None
         self.mschap_enabled = None
         self.valid_otp_formats = []
-        self.valid_modes = []
-        self.mode = None
         self.supported_hardware_tokens = []
         self.smartcard_id = None
         self.client_options = []
         self.used_otp_salt = None
         self.signatures = {}
         self.valid_token_options = []
+        self.supports_qrcode = False
 
         self.track_last_used = True
         self.acl_inheritance_enabled = True
@@ -1760,7 +1773,7 @@ class Token(OTPmeObject):
         callback=default_callback, _caller="API", **kwargs):
         """ Show token PIN. """
         if not self.pin:
-            return callback.error("Token does not have a PIN")
+            return callback.error("No PIN saved for thist token.")
         if run_policies:
             try:
                 self.run_policies("show_pin",
@@ -1776,12 +1789,12 @@ class Token(OTPmeObject):
     def enable_pin(self, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Enable optional token PIN. """
-        if not self.pin:
-            return callback.error("Token does not have a PIN")
-
         # Check if PIN is already enabled.
         if self.pin_enabled:
             return callback.error("PIN is already enabled for this token.")
+
+        if not self.pin:
+            return callback.error("No PIN saved for thist token.")
 
         if run_policies:
             try:
@@ -1811,11 +1824,11 @@ class Token(OTPmeObject):
     def disable_pin(self, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Disable optional token PIN. """
-        if not self.pin:
-            return callback.error("Token does not have a PIN")
-
         if self.pin_mandatory:
             return callback.error("PIN is mandatory for this token.")
+
+        if not self.pin:
+            return callback.error("No PIN saved for thist token.")
 
         # Check if PIN is already disabled.
         if not self.pin_enabled:

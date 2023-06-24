@@ -776,7 +776,9 @@ class OTPmeHost(OTPmeClientObject):
         # Set new cert.
         self.cert = cert
 
-        return self._cache(callback=callback)
+        self._cache(callback=callback)
+
+        return key, cert
 
     def gen_jotp(self):
         """ Gen realm join/leave OTP. """
@@ -910,10 +912,11 @@ class OTPmeHost(OTPmeClientObject):
         # Create new host cert if needed.
         if cert_req:
             try:
-                self.renew_cert(cert_req=cert_req,
-                                cert_valid=cert_valid,
-                                verify_acls=False,
-                                callback=callback)
+                host_key, \
+                host_cert = self.renew_cert(cert_req=cert_req,
+                                            cert_valid=cert_valid,
+                                            verify_acls=False,
+                                            callback=callback)
             except Exception as e:
                 config.raise_exception()
                 msg = str(e)

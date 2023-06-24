@@ -795,7 +795,7 @@ class ControlDaemon(UnixDaemon):
                 try:
                     self.configure_floating_ip(config.site_address)
                 except Exception as e:
-                    msg = "Failed to configure floating IP."
+                    msg = "Failed to configure floating IP: %s" % e
                     self.logger.critical(msg)
                     config.raise_exception()
             elif command == "deconfigure_floating_ip":

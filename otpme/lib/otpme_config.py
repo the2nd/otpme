@@ -20,7 +20,7 @@ if "OTPME_DEBUG_FILE_WRITE" not in os.environ:
     os.environ['OTPME_DEBUG_FILE_WRITE'] = "False"
 
 if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
-    print(_("Loading module: %s") % __name__)
+    print("Loading module: %s" % __name__)
 
 import otpme
 from otpme.lib import re
@@ -33,7 +33,7 @@ from otpme.lib.exceptions import *
 
 class OTPmeConfig(object):
     def __init__(self, tool_name="otpme", use_syslog=False,
-        use_systemd_log=False, quiet=False):
+        use_systemd_log=False, auto_load=True, quiet=False):
         # All registered methods.
         self.methods = []
         # All registered properties.
@@ -138,7 +138,8 @@ class OTPmeConfig(object):
         # Site infos.
         self.register_config_var("site", str, None)
         self.register_config_var("site_uuid", str, None)
-        self.register_config_var("site_fqdn", str, None)
+        self.register_config_var("site_auth_fqdn", str, None)
+        self.register_config_var("site_mgmt_fqdn", str, None)
         self.register_config_var("site_address", str, None)
 
         # Users otpme config.
@@ -636,8 +637,12 @@ class OTPmeConfig(object):
         # Debug stuff.
         self.register_config_var("debug_test", bool, False)
 
+        # Set config to be imported via "from otpme.lib import config"
+        otpme.lib.config = self
+
         # Load config etc.
-        self.load(quiet=quiet)
+        if auto_load:
+            self.load(quiet=quiet)
 
     def __setattr__(self, name, value):
         """ Handle config variables and type checks. """
@@ -738,8 +743,6 @@ class OTPmeConfig(object):
         from otpme.lib.register import register_module
         # Set own PID.
         self.my_pid = os.getpid()
-        # Set config to be imported via "from otpme.lib import config"
-        otpme.lib.config = self
 
         # Get command line options.
         if not self.config_reload:
@@ -2239,12 +2242,13 @@ class OTPmeConfig(object):
         self.realm = name
         self.realm_uuid = uuid
 
-    def set_site(self, name, uuid, address, fqdn=None):
+    def set_site(self, name, uuid, address, auth_fqdn=None, mgmt_fqdn=None):
         """ Set our site. """
         self.site = name
         self.site_uuid = uuid
-        self.site_fqdn = fqdn
         self.site_address = address
+        self.site_auth_fqdn = auth_fqdn
+        self.site_mgmt_fqdn = mgmt_fqdn
 
     def get_master_node(self):
         from otpme.lib import multiprocessing
@@ -2452,8 +2456,9 @@ class OTPmeConfig(object):
                     'realm_uuid'    : self.realm_uuid,
                     'site'          : self.site,
                     'site_uuid'     : self.site_uuid,
-                    'site_fqdn'     : self.site_fqdn,
                     'site_address'  : self.site_address,
+                    'site_auth_fqdn': self.site_auth_fqdn,
+                    'site_mgmt_fqdn': self.site_mgmt_fqdn,
                     }
         realm_data = json.dumps(realm_data, sort_keys=True, indent=4)
         try:

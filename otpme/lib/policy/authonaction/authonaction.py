@@ -448,12 +448,9 @@ class AuthonactionPolicy(Policy):
             raise OTPmeException(msg)
 
         if callback.api_mode:
-            try:
+            if config.reauth_callback:
                 callback = config.reauth_callback
-            except:
-                msg = (_("Cannot reauth without <callback>."))
-                raise OTPmeException(msg)
-            logger.debug("Using callback from previous call to do reauth.")
+                logger.debug("Using callback from previous call to do reauth.")
 
         if callback.api_mode:
             msg = (_("Cannot reauth in API mode."))

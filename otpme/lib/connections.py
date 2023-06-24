@@ -10,6 +10,7 @@ try:
 except:
     pass
 
+from otpme.lib import net
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import multiprocessing
@@ -73,9 +74,21 @@ def add_connection(proc_id, daemon, key, connection):
         connections[proc_id][daemon] = {}
     connections[proc_id][daemon][key] = connection
 
+def get_connection(**kwargs):
+    from otpme.lib.protocols.otpme_client import OTPmeClient
+    daemon_conn = OTPmeClient(**kwargs)
+    status, \
+    status_code, \
+    reply = daemon_conn.send("ping", timeout=3)
+    if not status:
+        msg = ("Daemon connection failed: %s: %s"
+            % (daemon_conn.socket_uri, reply))
+        daemon_conn.close()
+        raise ConnectionError(msg)
+    return daemon_conn
+
 def get(daemon, **kwargs):
     """ Get connection to OTPme daemons. """
-    from otpme.lib.protocols.otpme_client import OTPmeClient
     global connections
 
     kwargs['daemon'] = daemon
@@ -162,7 +175,7 @@ def get(daemon, **kwargs):
 
     conn_kwargs = dict(kwargs)
 
-    # Generate key from func/method name and args.
+    # Generate key from func/method args.
     arguments = {
                 'args'      : (),
                 'kwargs'    : conn_kwargs,
@@ -250,26 +263,6 @@ def get(daemon, **kwargs):
             use_agent = False
         else:
             use_agent = config.use_agent
-
-    agent_user = None
-    if interactive is None:
-        if config.daemon_mode:
-            interactive = False
-        else:
-            interactive = True
-    conn_kwargs['interactive'] = interactive
-
-    # FIXME: Currently we only use an agent for connections in our own realm.
-    #        Maybe we should extend it to other realms too but it may not be a
-    #        good idea to let otpme-agent send an SOTP or any other auth data
-    #        to an other realm....
-    if use_agent is None:
-        if realm and realm != config.realm:
-            if config.use_agent and not config.use_api:
-                logger.warning("Cannot use agent connection for other realms.")
-            use_agent = False
-        else:
-            use_agent = config.use_agent
         # No agent in daemon mode.
         if config.daemon_mode:
             use_agent = False
@@ -327,22 +320,120 @@ def get(daemon, **kwargs):
                     logger.info(msg)
                     use_agent = False
 
-    # Connections to host daemon go via unix socket.
-    if daemon == "hostd":
-        conn_kwargs['use_ssl'] = False
-        conn_kwargs['auto_auth'] = False
-        conn_kwargs['auto_preauth'] = False
-        conn_kwargs['local_socket'] = True
-        conn_kwargs['handle_host_auth'] = False
-        conn_kwargs['handle_user_auth'] = False
-
     # Set agent parameter.
     conn_kwargs['use_agent'] = use_agent
     # Set username.
     conn_kwargs['username'] = username
 
-    # Get daemon connection.
-    daemon_conn = OTPmeClient(**conn_kwargs)
+    if daemon == "hostd":
+        conn_kwargs['use_ssl'] = False
+        conn_kwargs['auto_auth'] = False
+        conn_kwargs['auto_preauth'] = False
+        conn_kwargs['local_socket'] = True
+        conn_kwargs['encrypt_session'] = False
+        conn_kwargs['handle_host_auth'] = False
+        conn_kwargs['handle_user_auth'] = False
+        if not socket_uri:
+            socket_uri = config.hostd_socket_path
+        conn_kwargs['socket_uri'] = socket_uri
+        # Get daemon connection.
+        daemon_conn = get_connection(**conn_kwargs)
+        # Cache connection.
+        add_connection(proc_id, daemon, conn_key, daemon_conn)
+        return daemon_conn
+
+    if use_agent:
+        conn_kwargs['use_ssl'] = False
+        conn_kwargs['encrypt_session'] = False
+        if not socket_uri:
+            try:
+                otpme_agent_user = kwargs['otpme_agent_user']
+            except:
+                otpme_agent_user = None
+            socket_uri = config.get_agent_socket(otpme_agent_user)
+        conn_kwargs['socket_uri'] = socket_uri
+        # Get daemon connection.
+        daemon_conn = get_connection(**conn_kwargs)
+        # Cache connection.
+        add_connection(proc_id, daemon, conn_key, daemon_conn)
+        return daemon_conn
+
+    if socket_uri:
+        # Get daemon connection.
+        daemon_conn = get_connection(**conn_kwargs)
+        # Cache connection.
+        add_connection(proc_id, daemon, conn_key, daemon_conn)
+        return daemon_conn
+
+    if daemon not in config.default_ports:
+        msg = (_("Unable to get daemon port: %s") % daemon)
+        raise OTPmeException(msg)
+
+    mgmt = False
+    if daemon == "mgmtd":
+        mgmt = True
+    if realm and site:
+        try:
+            site_fqdn = stuff.get_site_fqdn(realm, site, mgmt=mgmt)
+        except ConnectionError as e:
+            msg = "Unable to get site address: %s" % e
+            raise ConnectionError(msg)
+        if site_fqdn:
+            connect_addresses = net.query_dns(site_fqdn, 'A')
+        else:
+            try:
+                site_address = stuff.get_site_address(realm, site)
+            except ConnectionError as e:
+                msg = "Unable to get site address: %s" % e
+                raise ConnectionError(msg)
+            connect_addresses = [site_address]
+    else:
+        if daemon == "mgmtd":
+            site_fqdn = config.site_mgmt_fqdn
+        else:
+            site_fqdn = config.site_auth_fqdn
+        if site_fqdn:
+            connect_addresses = net.query_dns(site_fqdn, 'A')
+        else:
+            if not config.site_address:
+                raise OTPmeException(_("Unable to get site address."))
+            connect_addresses = [config.site_address]
+
+    if len(connect_addresses) > 1:
+        msg = ("Got multiple addresses from round-robin DNS: %s"
+                % connect_addresses)
+        logger.info(msg)
+
+    #connect_addresses = ['10.219.195.227', '10.219.195.228']
+    connect_exception = None
+    for connect_address in connect_addresses:
+        # Set daemon port.
+        daemon_port = config.default_ports[daemon]
+        # Set socket URI.
+        socket_uri = "tcp://%s:%s" % (connect_address, daemon_port)
+        conn_kwargs['socket_uri'] = socket_uri
+        # Get daemon connection.
+        try:
+            daemon_conn = get_connection(**conn_kwargs)
+        except ConnectionError as e:
+            connect_exception = e
+            msg = str(connect_exception)
+            logger.warning(msg)
+            continue
+        else:
+            connect_exception = None
+            break
+
+        status, \
+        status_code, \
+        reply = daemon_conn.send("ping", timeout=3)
+
+    if connect_exception:
+        if len(connect_addresses) > 1:
+            msg = "All round-robin addresses failed."
+            logger.critical(msg)
+        raise connect_exception
+
     # Cache connection.
     add_connection(proc_id, daemon, conn_key, daemon_conn)
 

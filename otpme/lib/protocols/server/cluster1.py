@@ -50,9 +50,9 @@ class OTPmeClusterP1(OTPmeServer1):
         self.require_auth = "host"
         self.require_preauth = False
         self.require_client_cert = True
-        # Communication with hostd is only done via unix sockets.
         self.encrypt_session = True
         self.require_master_node = False
+        self.require_cluster_status = False
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
 
@@ -229,8 +229,9 @@ class OTPmeClusterP1(OTPmeServer1):
         elif command == "set_node_sync":
             status = True
             message = "Node in sync."
-            sync_time = command_args['sync_time']
-            config.touch_node_sync_file(sync_time)
+            if not config.master_failover:
+                sync_time = command_args['sync_time']
+                config.touch_node_sync_file(sync_time)
 
         elif command == "unset_node_sync":
             status = True
@@ -563,6 +564,7 @@ class OTPmeClusterP1(OTPmeServer1):
             status = True
             message = "Master failover started successful."
             config.cluster_status = False
+            config.master_failover = True
 
         elif command == "get_master_failover_status":
             message = "Master failover status."

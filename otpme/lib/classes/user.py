@@ -82,6 +82,7 @@ read_value_acls = {
                         "public_key",
                         "failcount",
                         "session",
+                        "auto_disable",
                         ],
         }
 
@@ -108,6 +109,7 @@ write_value_acls = {
                                 "auth_script",
                                 "agent_script",
                                 "login_script",
+                                "auto_disable",
                                 ],
                     "enable"    : [
                                 "autosign",
@@ -218,6 +220,15 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auto_disable'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_auto_disable',
+                    'args'              : ['auto_disable'],
                     'job_type'          : 'process',
                     },
                 },
@@ -4078,6 +4089,21 @@ class User(OTPmeObject):
             lines.append("\tstatus:\t\t\tDisabled\n")
         else:
             lines.append("\tstatus:\t\t\tActive\n")
+
+        if self.verify_acl("view:auto_disable") \
+        or self.verify_acl("edit:auto_disable"):
+            if self.auto_disable_time == 0:
+                auto_disable = "\tauto-disable:\t\tdisabled\n"
+            else:
+                auto_disable = "\tauto-disable:\t\t%s\n" % self.auto_disable_time
+            lines.append(auto_disable)
+            unused_disable = "\tunused-disable:\t\t%s\n" % self.unused_disable
+            lines.append(unused_disable)
+        else:
+            auto_disable = "\tauto-disable:\t\t\tPermission denied\n"
+            lines.append(auto_disable)
+            unused_disable = "\tunused-disable:\t\t\tPermission denied\n"
+            lines.append(unused_disable)
 
         lines.append("\trealm:\t\t\t%s\n" % self.realm)
         lines.append("\tsite:\t\t\t%s\n" % self.site)

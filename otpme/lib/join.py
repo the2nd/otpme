@@ -343,8 +343,8 @@ class JoinHandler(object):
 
         # Finish node join and create node cert.
         self._my_host.join_realm(verify_acls=False,
-                            cert_req=host_cert_req,
-                            finish=True)
+                                cert_req=host_cert_req,
+                                finish=True)
 
         # Reload CA after node cert generation.
         self._my_site_ca = backend.get_object(object_type="ca", uuid=self._my_site.ca)
@@ -379,6 +379,10 @@ class JoinHandler(object):
             msg = (_("Sending CRL failed: %s") % join_reply)
             raise OTPmeException(msg)
 
+        # Make sure master node is ready.
+        config.touch_node_sync_file()
+
+        return self._my_host.cert
 
     def process_objects(self, join_reply):
         """ Add base objects etc.. """
@@ -676,8 +680,9 @@ class JoinHandler(object):
 
         host_cert_req = None
         # Generate new host cert CSR and key if needed.
-        if not host_cert or not host_key:
-            host_cert_req, host_key = self.gen_host_cert_req(key_len=host_key_len)
+        if not master_node_join:
+            if not host_cert or not host_key:
+                host_cert_req, host_key = self.gen_host_cert_req(key_len=host_key_len)
 
         # Generate host auth key.
         host_private_key = self._my_host.gen_auth_key()
@@ -701,12 +706,13 @@ class JoinHandler(object):
         join_message = join_reply['message']
 
         if master_node_join:
-            self.handle_master_node_stuff(join_reply,
-                                        site_ca_key,
-                                        host_cert_req,
-                                        password, jotp,
-                                        conn_kwargs)
-            host_cert = self._my_host.cert
+            node_cert_req, host_key = self.gen_host_cert_req(key_len=host_key_len)
+            host_cert = self.handle_master_node_stuff(join_reply,
+                                                        site_ca_key,
+                                                        node_cert_req,
+                                                        password, jotp,
+                                                        conn_kwargs)
+
         elif host_cert_req:
             host_cert = join_reply['host_cert']
             self._my_host.cert = host_cert

@@ -226,10 +226,6 @@ class OTPmeClient(OTPmeClientBase):
                 do_preauth = True
             self.proto_handler_args['do_preauth'] = do_preauth
 
-        ## Set default username if none was given.
-        #if not username:
-        #    username = config.login_user
-
         if not local_socket:
             # Set default realm and site if needed.
             if not realm:
@@ -342,53 +338,10 @@ class OTPmeClient(OTPmeClientBase):
                     if self.verify_server:
                         raise OTPmeException(_("Host CA data missing."))
 
-            # If we got no socket URI build it from parameters we got.
-            use_ssl = self.use_ssl
-            if not self.socket_uri:
-                if self.daemon == "hostd":
-                    use_ssl = False
-                    self.encrypt_session = False
-                    self.socket_uri = config.hostd_socket_path
-                elif self.use_agent:
-                    use_ssl = False
-                    self.encrypt_session = False
-                    try:
-                        otpme_agent_user = kwargs['otpme_agent_user']
-                    except:
-                        otpme_agent_user = None
-                    self.socket_uri = config.get_agent_socket(otpme_agent_user)
-                else:
-                    if realm and site:
-                        try:
-                            site_address = stuff.get_site_address(realm, site, fqdn=True)
-                        except ConnectionError as e:
-                            msg = "Unable to get site address: %s" % e
-                            raise ConnectionError(msg)
-                        if not site_address:
-                            try:
-                                site_address = stuff.get_site_address(realm, site, fqdn=False)
-                            except ConnectionError as e:
-                                msg = "Unable to get site address: %s" % e
-                                raise ConnectionError(msg)
-                    else:
-                        site_address = config.site_fqdn
-                        if not site_address:
-                            site_address = config.site_address
-                            if not config.site_address:
-                                raise OTPmeException(_("Unable to get site address."))
-                    if not self.daemon in config.default_ports:
-                        msg = (_("Unable to get daemon port: %s") % self.daemon)
-                        raise OTPmeException(msg)
-
-                    # Set daemon port.
-                    daemon_port = config.default_ports[self.daemon]
-                    # Set socket URI.
-                    self.socket_uri = "tcp://%s:%s" % (site_address, daemon_port)
-
             # Create connect socket.
             self.connection = ConnectSocket(socket_uri=self.socket_uri,
                                             socket_handler=SocketProtoHandler,
-                                            use_ssl=use_ssl,
+                                            use_ssl=self.use_ssl,
                                             cert=cert,
                                             key=key,
                                             ca_data=ca_data,
@@ -864,6 +817,10 @@ class OTPmeClient(OTPmeClientBase):
 
         # No need to encrypt in API mode.
         if config.use_api:
+            encrypt_request = False
+
+        # Allow unencrypted ping command.
+        if command == "ping":
             encrypt_request = False
 
         # Set encryption type and key used for en- and decryption.
@@ -2272,6 +2229,9 @@ class OTPmeClient1(OTPmeClientBase):
 
         if status_code == status_codes.HOST_DISABLED:
             raise HostDisabled(response)
+
+        if status_code == status_codes.CLUSTER_NOT_READY:
+            raise ConnectionError(response)
 
         if status_code != status_codes.OK:
             msg = (_("Got unknown preauth reply code: %s") % status_code)

@@ -23,6 +23,7 @@ from otpme.lib import locking
 from otpme.lib import filetools
 from otpme.lib import otpme_pass
 from otpme.lib import init_otpme
+from otpme.lib import connections
 from otpme.lib import multiprocessing
 #from otpme.lib.messages import error_message
 from otpme.lib.protocols import status_codes
@@ -34,7 +35,6 @@ from otpme.lib.daemon.unix_daemon import UnixDaemon
 from otpme.lib.multiprocessing import get_sync_manager
 from otpme.lib.classes.conn_handler import ConnHandler
 from otpme.lib.socket.handler import SocketProtoHandler
-from otpme.lib.protocols.otpme_client import OTPmeClient
 
 from otpme.lib.exceptions import *
 
@@ -308,7 +308,7 @@ class OTPmeAgent(UnixDaemon):
                                     timeout=1)
                 comm_handler.close()
             if not login_pid in self.login_sessions:
-                msg = ("Stopped watching PID with no more login session: %s"
+                msg = ("Stopped watching PID with no more login sessions: %s"
                         % login_pid)
                 self.logger.debug(msg)
                 break
@@ -585,13 +585,13 @@ class OTPmeAgent(UnixDaemon):
         msg = ("Trying to renegotiate session for user: %s" % login_user)
         self.logger.debug(msg)
         try:
-            auth_conn = OTPmeClient(daemon="authd", realm=realm, site=site,
-                                    connect_timeout=self.connect_timeout,
-                                    timeout=config.reneg_timeout, endpoint=False,
-                                    use_agent=False, username=login_user,
-                                    autoconnect=True, auto_auth=False,
-                                    allow_untrusted=True, sync_token_data=False,
-                                    reneg=True, rsp=rsp)
+            auth_conn = connections.get(daemon="authd", realm=realm, site=site,
+                                        connect_timeout=self.connect_timeout,
+                                        timeout=config.reneg_timeout, endpoint=False,
+                                        use_agent=False, username=login_user,
+                                        autoconnect=True, auto_auth=False,
+                                        allow_untrusted=True, sync_token_data=False,
+                                        reneg=True, rsp=rsp)
         except Exception as e:
             msg = ("Error getting daemon connection for session renegotiation: "
                     "%s" % e)
@@ -736,23 +736,29 @@ class OTPmeAgent(UnixDaemon):
         self.logger.info("Trying to logout user: %s" % login_user)
 
         # Get connection to authd and logout.
-        try:
-            auth_conn = OTPmeClient(daemon="authd",
-                                    username=login_user,
-                                    realm=realm,
-                                    site=site,
-                                    slp=slp,
-                                    login=False,
-                                    logout=True,
-                                    use_agent=False,
-                                    auto_auth=False,
-                                    autoconnect=True,
-                                    allow_untrusted=True,
-                                    connect_timeout=self.connect_timeout,
-                                    timeout=self.timeout, endpoint=False)
-        except Exception as e:
-            msg = (_("Error connecting to auth daemon to logout: %s") % e)
-            raise OTPmeException(msg)
+        while True:
+            try:
+                auth_conn = connections.get(daemon="authd",
+                                            username=login_user,
+                                            realm=realm,
+                                            site=site,
+                                            slp=slp,
+                                            login=False,
+                                            logout=True,
+                                            use_agent=False,
+                                            auto_auth=False,
+                                            autoconnect=True,
+                                            allow_untrusted=True,
+                                            connect_timeout=self.connect_timeout,
+                                            timeout=self.timeout, endpoint=False)
+            except ConnectionError:
+                time.sleep(0.01)
+                continue
+            except Exception as e:
+                msg = (_("Error connecting to auth daemon to logout: %s") % e)
+                raise OTPmeException(msg)
+            else:
+                break
 
         # Send logout command.
         try:
@@ -1104,13 +1110,13 @@ class OTPmeAgent(UnixDaemon):
 
             # Connect to daemon.
             try:
-                daemon_conn = OTPmeClient(daemon=daemon, realm=realm, site=site,
-                                        connect_timeout=self.connect_timeout,
-                                        timeout=self.timeout, endpoint=False,
-                                        use_agent=False, username=login_user,
-                                        rsp=rsp, autoconnect=True,
-                                        auto_auth=True, allow_untrusted=True,
-                                        sync_token_data=False)
+                daemon_conn = connections.get(daemon=daemon, realm=realm, site=site,
+                                            connect_timeout=self.connect_timeout,
+                                            timeout=self.timeout, endpoint=False,
+                                            use_agent=False, username=login_user,
+                                            rsp=rsp, autoconnect=True,
+                                            auto_auth=True, allow_untrusted=True,
+                                            sync_token_data=False)
             except AuthFailed as e:
                 msg = (_("Authentication failed while connecting to daemon: "
                         "%s: %s") % (daemon, e))

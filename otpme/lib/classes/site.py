@@ -54,6 +54,8 @@ read_value_acls = {
                     "view"      : [
                                 "trust",
                                 "address",
+                                "auth_fqdn",
+                                "mgmt_fqdn",
                                 "auth",
                                 "sync",
                                 "ca",
@@ -84,6 +86,8 @@ write_value_acls = {
                                 ],
                     "edit"      : [
                                 "address",
+                                "auth_fqdn",
+                                "mgmt_fqdn",
                                 "radius_cert",
                                 "radius_key",
                                 ],
@@ -143,7 +147,7 @@ commands = {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : ['node_name', 'site_address'],
-                    'oargs'             : ['dictionaries', 'id_ranges'],
+                    'oargs'             : ['site_fqdn', 'dictionaries', 'id_ranges'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
@@ -368,6 +372,24 @@ commands = {
                 'exists'    : {
                     'method'            : 'change_address',
                     'args'              : ['address'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'auth_fqdn'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_auth_fqdn',
+                    'args'              : ['fqdn'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'mgmt_fqdn'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_mgmt_fqdn',
+                    'args'              : ['fqdn'],
                     'job_type'          : 'process',
                     },
                 },
@@ -684,7 +706,8 @@ def register_config():
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")
     config.register_auth_on_action_hook("site", "change_address")
-    config.register_auth_on_action_hook("site", "change_fqdn")
+    config.register_auth_on_action_hook("site", "change_auth_fqdn")
+    config.register_auth_on_action_hook("site", "change_mgmt_fqdn")
     config.register_auth_on_action_hook("site", "enable_auth")
     config.register_auth_on_action_hook("site", "disable_auth")
     config.register_auth_on_action_hook("site", "enable_sync")
@@ -768,7 +791,8 @@ class Site(OTPmeObject):
         self.user_role_uuid = None
         self.trusted_sites = []
 
-        self.fqdn = None
+        self.auth_fqdn = None
+        self.mgmt_fqdn = None
         self.address = None
         self.auth_enabled = True
         self.sync_enabled = True
@@ -889,8 +913,14 @@ class Site(OTPmeObject):
                                             'required'  : False,
                                         },
 
-            'FQDN'                      : {
-                                            'var_name'  : 'fqdn',
+            'MGMT_FQDN'                      : {
+                                            'var_name'  : 'mgmt_fqdn',
+                                            'type'      : str,
+                                            'required'  : False,
+                                        },
+
+            'AUTH_FQDN'                      : {
+                                            'var_name'  : 'auth_fqdn',
                                             'type'      : str,
                                             'required'  : False,
                                         },
@@ -1042,26 +1072,48 @@ class Site(OTPmeObject):
         self.update_index("address", self.address)
         return self._write(callback=callback)
 
-    @check_acls(['edit:fqdn'])
+    @check_acls(['edit:auth_fqdn'])
     @object_lock()
     @backend.transaction
-    def change_fqdn(self, fqdn, run_policies=True,
+    def change_auth_fqdn(self, fqdn, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
-        """ Change site FQDN. """
+        """ Change site auth FQDN. """
         if run_policies:
             try:
                 self.run_policies("modify",
                                 callback=callback,
                                 _caller=_caller)
-                self.run_policies("change_fqdn",
+                self.run_policies("change_auth_fqdn",
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
         # FIXME: Check if we got a valid FQDN.
-        self.fqdn = fqdn
+        self.auth_fqdn = fqdn
         # Update index.
-        self.update_index("fqdn", self.fqdn)
+        self.update_index("auth_fqdn", self.auth_fqdn)
+        return self._write(callback=callback)
+
+    @check_acls(['edit:mgmt_fqdn'])
+    @object_lock()
+    @backend.transaction
+    def change_mgmt_fqdn(self, fqdn, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Change site mgmt FQDN. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_mgmt_fqdn",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        # FIXME: Check if we got a valid FQDN.
+        self.mgmt_fqdn = fqdn
+        # Update index.
+        self.update_index("mgmt_fqdn", self.mgmt_fqdn)
         return self._write(callback=callback)
 
     @check_acls(['edit:radius_cert'])
@@ -1645,8 +1697,9 @@ class Site(OTPmeObject):
         config.transactions_enabled = True
 
         # Update index.
-        self.update_index("fqdn", self.fqdn)
         self.update_index("address", self.address)
+        self.update_index("auth_fqdn", self.auth_fqdn)
+        self.update_index("mgmt_fqdn", self.mgmt_fqdn)
         self.update_index("auth_enabled", self.auth_enabled)
         self.update_index("sync_enabled", self.sync_enabled)
         callback.send("Site added successful.")
@@ -1716,7 +1769,7 @@ class Site(OTPmeObject):
                 raise OTPmeException(msg)
 
     @object_lock()
-    def _add(self, site_address, node_name, no_ca=False, no_node=False,
+    def _add(self, site_address, node_name, site_fqdn=None, no_ca=False, no_node=False,
         ca_country=None, ca_state=None, ca_locality=None, ca_organization=None,
         ca_ou=None, ca_email=None, ca_key_len=None, ca_valid=None,
         site_key_len=None, site_valid=None, dictionaries=None, no_dicts=False,
@@ -1738,21 +1791,18 @@ class Site(OTPmeObject):
         if not "interactive" in config.ignore_policy_tags:
             config.ignore_policy_tags.append("interactive")
 
-        # Check if we got a IP address or a FQDN. This check is done on the
-        # node and not on the client because the node needs to connect to the
-        # site.
-        site_fqdn = None
-        is_ip = net.is_ip(site_address)
-        if not is_ip:
-            # If its not a IP it must be the FQDN.
-            site_fqdn = site_address
+        if not site_address:
             # Try to get site address from DNS.
-            site_address = net.get_ip(site_fqdn)
+            result = net.query_dns(site_fqdn)
+            if len(result) > 1:
+                msg = "Found round-robin DNS. Please give floating IP."
+                return callback.error(msg)
+            site_address = result[0]
 
-        # We always need a site address as floating cluster IP.
+        # We always need a site address as floaging cluster IP.
         if not site_address:
             msg = ("Unable to resolve: %s" % site_fqdn)
-            return callback.error(msg)
+            raise OTPmeException(msg)
 
         if not config.realm_init:
             result = backend.search(object_type="host",
@@ -1773,17 +1823,18 @@ class Site(OTPmeObject):
                 return callback.error(msg)
 
         # Set site FQDN.
-        self.fqdn = site_fqdn
+        self.auth_fqdn = site_fqdn
+        self.mgmt_fqdn = site_fqdn
 
         # Set site address.
         self.address = site_address
 
-        # Write site onfig before adding base units and policies.
-        if not self._write(callback=callback):
-            return callback.error("Error writing site config.")
-
         # Set config site.
-        config.set_site(name=self.name, uuid=self.uuid, address=self.address)
+        config.set_site(name=self.name,
+                        uuid=self.uuid,
+                        address=self.address,
+                        auth_fqdn=self.auth_fqdn,
+                        mgmt_fqdn=self.mgmt_fqdn)
 
         # Add site object BEFORE creating base objects (e.g. site gets default
         # policies).
@@ -2389,7 +2440,7 @@ class Site(OTPmeObject):
         if not admin_user.exists():
             try:
                 admin_user.add(add_default_token=True,
-                                gen_qrcode=False,
+                                gen_qrcode=True,
                                 verify_acls=False,
                                 callback=callback)
             except Exception as e:
@@ -2440,13 +2491,6 @@ class Site(OTPmeObject):
             auth_on_action_policy.add_whitelist(token_path=admin_token.rel_path,
                                                 verify_acls=False)
 
-        # Check if we can provide a QR code for admin token deployment.
-        if hasattr(admin_token, "gen_qrcode"):
-            admin_token_qrcode = admin_token.gen_qrcode(verify_acls=False)
-            msg = ("You can use this QRCode to deploy the site admin token:")
-            callback.send(msg)
-            callback.send(admin_token_qrcode)
-
         # Write objects.
         cache.flush()
 
@@ -2457,7 +2501,8 @@ class Site(OTPmeObject):
     @check_acls(['delete:object'])
     @object_lock()
     @backend.transaction
-    def delete(self, force=False, run_policies=True, verbose_level=0,
+    def delete(self, force=False, verify_acls=True,
+        run_policies=True, verbose_level=0,
         callback=default_callback, _caller="API", **kwargs):
         """ Delete site. """
         # We should never delete ourselves ;)

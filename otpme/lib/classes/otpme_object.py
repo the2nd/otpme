@@ -28,6 +28,7 @@ from otpme.lib import locking
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib import encryption
+from otpme.lib.humanize import units
 from otpme.lib import multiprocessing
 from otpme.lib.pki.cert import SSLCert
 from otpme.lib.cache import ldif_cache
@@ -1590,6 +1591,10 @@ class OTPmeObject(OTPmeBaseObject):
         self.creator_cache = None
         self.template_object = template
 
+        self.auto_disable = ""
+        self.unused_disable = False
+        self.auto_disable_start_time = 0.0
+
         # Config params of this object.
         self._config = {}
 
@@ -1641,6 +1646,9 @@ class OTPmeObject(OTPmeBaseObject):
                             "LDIF_ATTRIBUTES",
                             "EXTENSION_ATTRIBUTES",
                             "ENABLED",
+                            "UNUSED_DISABLE",
+                            "AUTO_DISABLE",
+                            "AUTO_DISABLE_START_TIME",
                             "POLICIES",
                             "POLICY_OPTIONS",
                             "CONFIG_PARAMS",
@@ -1886,17 +1894,39 @@ class OTPmeObject(OTPmeBaseObject):
                         % (self.oid, e))
                 logger.warning(msg, exc_info=True)
 
+        # Check for auto-disable of object.
+        self.check_auto_disable()
+
         return True
 
     @property
     def enabled(self):
         if self.template_object:
             return False
+        self.check_auto_disable()
         return self._enabled
 
     @enabled.setter
     def enabled(self, enabled):
         self._enabled = enabled
+
+    @property
+    def auto_disable_time(self):
+        if not self.auto_disable:
+            return 0.0
+        if self.unused_disable:
+            check_time = self.get_last_used_time()
+        else:
+            check_time = self.auto_disable_start_time
+        try:
+            # Check if given date string is valid.
+            auto_disable_time = units.string2unixtime(self.auto_disable, check_time)
+        except Exception as e:
+            msg = "Invalid date string: %s" % e
+            raise OTPmeException(msg)
+        auto_disable_time = datetime.datetime.fromtimestamp(auto_disable_time)
+        auto_disable_time = auto_disable_time.strftime('%d.%m.%Y %H:%M:%S')
+        return auto_disable_time
 
     @property
     def valid_config_params(self):
@@ -1999,6 +2029,24 @@ class OTPmeObject(OTPmeBaseObject):
                                             'var_name'      : '_enabled',
                                             'type'          : bool,
                                             'required'      : True,
+                                        },
+
+            'UNUSED_DISABLE'            : {
+                                            'var_name'      : 'unused_disable',
+                                            'type'          : bool,
+                                            'required'      : False,
+                                        },
+
+            'AUTO_DISABLE'            : {
+                                            'var_name'      : 'auto_disable',
+                                            'type'          : str,
+                                            'required'      : False,
+                                        },
+
+            'AUTO_DISABLE_START_TIME'   : {
+                                            'var_name'      : 'auto_disable_start_time',
+                                            'type'          : float,
+                                            'required'      : False,
                                         },
 
             'LDIF'                      : {
@@ -4428,7 +4476,7 @@ class OTPmeObject(OTPmeBaseObject):
         callback=default_callback, _caller="API", **kwargs):
         """ Enable the object. """
         if not force:
-            if self.enabled:
+            if self._enabled:
                 object_type = "%s%s" % (self.type[0].upper(), self.type[1:])
                 msg = (_("%s already enabled.") % object_type)
                 return callback.error(msg)
@@ -4453,9 +4501,15 @@ class OTPmeObject(OTPmeBaseObject):
                 self.logger.warning(msg)
                 return callback.error()
 
-        self.enabled = True
+        self._enabled = True
         # Update index.
         self.update_index('enabled', True)
+
+        if self.auto_disable:
+            self.auto_disable_start_time = time.time()
+            msg = ("Auto-disable active for this object: %s"
+                    % self.auto_disable_time)
+            callback.send(msg)
 
         return self._cache(callback=callback)
 
@@ -4478,7 +4532,7 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error("Cannot disable admin user.")
 
         if not force:
-            if not self.enabled:
+            if not self._enabled:
                 object_type = "%s%s" % (self.type[0].upper(), self.type[1:])
                 msg = (_("%(object_type)s '%(object_name)s' already disabled.")
                         % {"object_type":object_type, "object_name":self.name})
@@ -4508,9 +4562,10 @@ class OTPmeObject(OTPmeBaseObject):
                                 _caller=_caller)
             except Exception as e:
                 msg = str(e)
+                config.raise_exception()
                 return callback.error(msg)
 
-        self.enabled = False
+        self._enabled = False
         # Update index.
         self.update_index('enabled', False)
 
@@ -5291,6 +5346,76 @@ class OTPmeObject(OTPmeBaseObject):
                 _acl_objects.remove(o)
 
         return callback.ok()
+
+    def check_auto_disable(self, **kwargs):
+        """ Handle auto disable. """
+        if not self.auto_disable:
+            return
+        if self.auto_disable_start_time == 0:
+            return
+        if not self._enabled:
+            return
+        if self.unused_disable:
+            check_time = self.get_last_used_time()
+        else:
+            check_time = self.auto_disable_start_time
+        disable_time = units.string2unixtime(self.auto_disable, check_time)
+        now = time.time()
+        if now >= disable_time:
+            try:
+                self.disable(force=True,
+                            verify_acls=False,
+                            run_policies=False)
+                object_disabled = True
+                self._write()
+            except Exception as e:
+                exception = e
+                object_disabled = False
+                config.raise_exception()
+            if object_disabled:
+                msg = (_("%s auto-disabled: %s") % (self.type, self.name))
+                logger.warning(msg)
+            else:
+                msg = (_("Cannot auto-disable object: %s: %s")
+                        % (self.name, exception))
+                logger.critical(msg)
+                return False
+        return True
+
+    @check_acls(['edit:auto_disable'])
+    @object_lock()
+    @backend.transaction
+    def change_auto_disable(self, auto_disable, unused=False,
+        run_policies=True, callback=default_callback,
+        _caller="API", **kwargs):
+        """ Change auto disable value. """
+        if auto_disable != 0:
+            try:
+                # Check if given date string is valid.
+                units.string2unixtime(auto_disable, time.time())
+            except Exception as e:
+                msg = "Invalid date string: %s" % e
+                return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_auto_disable",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        if auto_disable == 0:
+            self.auto_disable = ""
+        else:
+            self.unused_disable = unused
+            self.auto_disable = auto_disable
+            self.auto_disable_start_time = time.time()
+
+        return self._cache(callback=callback)
 
     def check_secret_format(self, secret, callback=default_callback):
         """ Check if the given secret is in the correct format """
@@ -7035,6 +7160,14 @@ class OTPmeObject(OTPmeBaseObject):
             lines.append('ENABLED="%s"' % self.enabled)
         else:
             lines.append('ENABLED=""')
+
+        if self.verify_acl("view:auto_disable") \
+        or self.verify_acl("edit:auto_disable"):
+            lines.append('AUTO_DISABLE="%s"' % self.auto_disable_time)
+            lines.append('UNUSED_DISABLE="%s"' % self.unused_disable)
+        else:
+            lines.append('AUTO_DISABLE=""')
+            lines.append('UNUSED_DISABLE=""')
 
         if self.verify_acl("view:extension") \
         or self.verify_acl("add:extension") \

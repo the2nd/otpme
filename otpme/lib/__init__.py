@@ -15,9 +15,6 @@ try:
 except:
     pass
 
-# Must be loaded by executing script (e.g. command.py).
-config = None
-
 from otpme.lib.exceptions import *
 
 def get_api_auth_token():
@@ -72,12 +69,6 @@ def set_realm_site():
         raise OTPmeException(msg)
 
     config.set_realm(name=_realm.name, uuid=_realm.uuid)
-    #realm_master = backend.get_object(object_type="site",
-    #                                uuid=_realm.master)
-    #if realm_master:
-    #    config.set_realm_master(name=realm_master.name,
-    #                            uuid=realm_master.uuid,
-    #                            address=realm_master.address)
 
     # Check if site exists and set it.
     if config.site:
@@ -90,7 +81,9 @@ def set_realm_site():
         config.admin_role_uuid = _site.admin_role_uuid
         config.set_site(name=_site.name,
                         uuid=_site.uuid,
-                        address=_site.address)
+                        address=_site.address,
+                        auth_fqdn=_site.auth_fqdn,
+                        mgmt_fqdn=_site.mgmt_fqdn)
     else:
         if config.tool_name !=  "%s-site" % config.my_name.lower() \
         and config.tool_name != "%s-realm" % config.my_name.lower() \
@@ -148,7 +141,6 @@ def do_direct_init():
         config.raise_exception()
         raise
 
-
 def do_hostd_init():
     """ Init OTPme by getting infos from hostd. """
     from otpme.lib import host
@@ -199,79 +191,16 @@ def do_hostd_init():
     realm_uuid = realm_data['realm_uuid']
     site = realm_data['site']
     site_uuid = realm_data['site_uuid']
-    site_fqdn = realm_data['site_fqdn']
     site_address = realm_data['site_address']
+    site_auth_fqdn = realm_data['site_auth_fqdn']
+    site_mgmt_fqdn = realm_data['site_mgmt_fqdn']
 
     config.set_realm(name=realm, uuid=realm_uuid)
     config.set_site(name=site,
                     uuid=site_uuid,
                     address=site_address,
-                    fqdn=site_fqdn)
-
-    ## Set node stuff.
-    #try:
-    #    host_type = config.host_data['type']
-    #except:
-    #    host_type = None
-    #need_hostd_conn = False
-    #set_site_master = False
-    #set_realm_master = False
-    #if host_type == "node" and not config.site_master_uuid:
-    #    set_site_master = True
-    #if host_type == "node" and not config.realm_master_uuid:
-    #    set_realm_master = True
-
-    #if need_hostd_conn:
-    #    try:
-    #        hostd_conn = connections.get("hostd")
-    #    except Exception as e:
-    #        config.raise_exception()
-    #        msg = (_("Unable to get connection to hostd: %s") % e)
-    #        raise OTPmeException(msg)
-
-    #if set_site_master:
-    #    # Try to get master node UUID.
-    #    status, \
-    #    status_code, \
-    #    reply =  hostd_conn.send("get_site_master_uuid")
-    #    if status:
-    #        site_master_uuid = reply
-    #    # Try to get master node name.
-    #    status, \
-    #    status_code, \
-    #    reply =  hostd_conn.send("get_site_master_name")
-    #    if status:
-    #        site_master_name = reply
-    #        config.set_site_master(name=site_master_name,
-    #                                uuid=site_master_uuid)
-
-    #if set_realm_master:
-    #    realm_master_uuid = None
-    #    realm_master_name = None
-    #    realm_master_address = None
-    #    # Try to get master node UUID.
-    #    status, \
-    #    status_code, \
-    #    reply =  hostd_conn.send("get_realm_master_uuid")
-    #    if status:
-    #        realm_master_uuid = reply
-    #    # Try to get master node name.
-    #    status, \
-    #    status_code, \
-    #    reply =  hostd_conn.send("get_realm_master_name")
-    #    if status:
-    #        realm_master_name = reply
-    #    # Try to get master node address.
-    #    status, \
-    #    status_code, \
-    #    reply =  hostd_conn.send("get_realm_master_address")
-    #    if status:
-    #        realm_master_address = reply
-
-    #    if realm_master_uuid and realm_master_name and realm_master_address:
-    #        config.set_realm_master(name=realm_master_name,
-    #                                uuid=realm_master_uuid,
-    #                                address=realm_master_address)
+                    auth_fqdn=site_auth_fqdn,
+                    mgmt_fqdn=site_mgmt_fqdn)
 
 def init_otpme(use_backend=None):
     """ Init OTPme. """

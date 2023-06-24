@@ -71,6 +71,15 @@ cmd_help = {
                                 },
                 },
 
+    'auto_disable'          : {
+                    '_cmd_usage_help' : 'Usage: otpme-token auto_disable {token} {time}',
+                    'cmd'   :   '<|object|> <auto_disable> -u :unused=True:',
+                    '_help' :   {
+                                    'cmd'                   : 'Change auto disable value (e.g "1d" or "09:53 13.06.2023").',
+                                    '-u'                    : 'Disable object if it was unused for the given time.',
+                                },
+                },
+
     'rename'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token rename {token} {new_name}',
                     'cmd'   :   '<|object|> <new_name>',

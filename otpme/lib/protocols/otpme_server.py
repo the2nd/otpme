@@ -112,6 +112,11 @@ class OTPmeServer1(object):
         except:
             self.require_master_node = True
 
+        try:
+            self.require_cluster_status
+        except:
+            self.require_cluster_status = True
+
         # Client infos.
         self.client = client
         self.client_name = client
@@ -420,16 +425,23 @@ class OTPmeServer1(object):
         #    message = "Bye bye..."
         #    raise ClientQuit(message)
         if config.host_data['type'] == "node":
-            if self.require_master_node:
-                if not config.use_api:
+            if not config.use_api:
+                if self.require_master_node:
                     try:
                         current_master_node = multiprocessing.master_node['master']
                     except:
                         current_master_node = None
                     if current_master_node != config.host_data['name']:
                         status = False
-                        response = "Please connect to master node."
-                        return self.build_response(status, response, encrypt=False)
+                        message = "Please connect to master node."
+                        return self.build_response(status, message, encrypt=False)
+                if self.require_cluster_status:
+                    try:
+                        self.check_cluster_status()
+                    except Exception as e:
+                        message = str(e)
+                        status = status_codes.CLUSTER_NOT_READY
+                        return self.build_response(status, message, encrypt=False)
 
         # Remove newline and carriage return.
         request = data.replace('\n', '').replace('\r', '')

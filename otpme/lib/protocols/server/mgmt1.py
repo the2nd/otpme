@@ -1087,7 +1087,8 @@ class OTPmeMgmtP1(OTPmeServer1):
                                 return self.build_response(status, message)
                         if result:
                             o = result[0]
-                            object_status = "exists"
+                            if o.exists(run_policies=True):
+                                object_status = "exists"
 
                         # If we found no object we have to check if this is a
                         # request to add a new object.
@@ -1143,7 +1144,8 @@ class OTPmeMgmtP1(OTPmeServer1):
                                                     realm=search_realm)
                             if result:
                                 o = result[0]
-                                object_status = "exists"
+                                if o.exists(run_policies=True):
+                                    object_status = "exists"
                                 if not config.use_api:
                                     if o.type == "site":
                                         site_realm = backend.get_object(object_type="realm",
@@ -1217,8 +1219,9 @@ class OTPmeMgmtP1(OTPmeServer1):
                         response = ("MGMT_UNKNOWN_COMMAND: %s %s"
                                     % (command, subcommand))
                     args = {
-                        'realm_master' : None,
-                        'master_address' : None,
+                        'realm_master'  : None,
+                        'site_address'  : None,
+                        'site_fqdn'     : None,
                     }
 
         # Get object sub type.

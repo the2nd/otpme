@@ -25,6 +25,8 @@ table_headers = [
                 "sync",
                 "trusts",
                 "address",
+                "auth_fqdn",
+                "mgmt_fqdn",
                 "policies",
                 "description",
                 ]
@@ -35,7 +37,8 @@ REGISTER_AFTER = ["otpme.lib.filetools"]
 def register():
     return_attributes = [
                         'name',
-                        'fqdn',
+                        'auth_fqdn',
+                        'mgmt_fqdn',
                         'address',
                         'enabled',
                         'description',
@@ -69,7 +72,14 @@ def row_getter(realm, site, site_order, site_data, acls,
     for site_uuid in site_order:
         row = []
         site_name = site_data[site_uuid]['name']
-        site_fqdn = site_data[site_uuid]['fqdn'][0]
+        try:
+            site_auth_fqdn = site_data[site_uuid]['auth_fqdn'][0]
+        except KeyError:
+            site_auth_fqdn = "Unknown"
+        try:
+            site_mgmt_fqdn = site_data[site_uuid]['mgmt_fqdn'][0]
+        except KeyError:
+            site_mgmt_fqdn = "Unknown"
         site_address = site_data[site_uuid]['address'][0]
         try:
             enabled = site_data[site_uuid]['enabled'][0]
@@ -153,9 +163,19 @@ def row_getter(realm, site, site_order, site_data, acls,
         if "address" in output_fields:
             if check_acl("view:address") \
             or check_acl("edit:address"):
-                if site_fqdn:
-                    site_address = "%s (%s)" % (site_address, site_fqdn)
                 row.append(site_address)
+            else:
+                row.append("-")
+        if "auth_fqdn" in output_fields:
+            if check_acl("view:auth_fqdn") \
+            or check_acl("edit:auth_fqdn"):
+                row.append(site_auth_fqdn)
+            else:
+                row.append("-")
+        if "mgmt_fqdn" in output_fields:
+            if check_acl("view:mgmt_fqdn") \
+            or check_acl("edit:mgmt_fqdn"):
+                row.append(site_mgmt_fqdn)
             else:
                 row.append("-")
         # Policies.

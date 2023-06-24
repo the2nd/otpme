@@ -27,10 +27,7 @@ from otpme.lib.cache import object_list_cache
 
 from otpme.lib.exceptions import *
 
-try:
-    default_callback = config.get_callback()
-except:
-    default_callback = None
+default_callback = config.get_callback()
 
 object_register = {}
 

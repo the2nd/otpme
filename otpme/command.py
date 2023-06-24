@@ -91,7 +91,6 @@ def otpme_commands(no_debug=False):
 
     return exit_code
 
-
 # We need this to get gettext module working with e.g. umlauts.
 if sys.version[0] == '2':
     reload(sys)
@@ -118,23 +117,23 @@ if os.path.exists(PYTHONPATH_FILE):
     finally:
         fd.close()
 
+# Get tool name.
+tool_name = str(os.path.basename(sys.argv[0]))
+# Get command from system command (e.g. otpme-user -> user).
+command = "-".join(tool_name.split("-")[1:])
+
+from otpme.lib.otpme_config import OTPmeConfig
+config = OTPmeConfig(tool_name, auto_load=False)
+
 #import trace
 from otpme.lib.help import get_help
 from otpme.lib.help import command_map
 from otpme.lib.messages import message
 from otpme.lib.help import get_main_opts
 from otpme.lib.messages import error_message
+from otpme.lib.help.register import register_help
 
 from otpme.lib.exceptions import *
-
-# Register help.
-from otpme.lib.help.register import register_help
-register_help()
-
-# Get tool name.
-tool_name = str(os.path.basename(sys.argv[0]))
-# Get command from system command (e.g. otpme-user -> user).
-command = "-".join(tool_name.split("-")[1:])
 
 # Check if user requested our version.
 if len(sys.argv) > 1 and sys.argv[1] == "--version":
@@ -156,6 +155,7 @@ sys.argv.pop(0)
 
 help_needed = False
 help_message = None
+register_help()
 
 # Set cli object type.
 subcommand = None
@@ -172,6 +172,7 @@ if "--type" in sys.argv:
         help_msg = get_help(command, error=help_message)
         error_message(help_msg)
         sys.exit(0)
+config.cli_object_type = object_type
 
 # Check if we have to print the help screen.
 try:
@@ -287,15 +288,14 @@ if tool_name == "otpme-auth":
                         sys.exit(0)
 
 # Load OTPme config.
-from otpme.lib.otpme_config import OTPmeConfig
-config = OTPmeConfig(tool_name, quiet=True)
-config.cli_object_type = object_type
+config.load(quiet=True)
 # Print warning if API mode is requested and daemon is running.
 if config.use_api:
-    if os.path.exists(config.controld_pidfile):
-        error_message("Warning!!! API mode should be used with care while "
-        + "daemons are running. Your changes may be lost or result in "
-        + "malfunction!")
+    if not "--compgen" in sys.argv:
+        if os.path.exists(config.controld_pidfile):
+            error_message("Warning!!! API mode should be used with care while "
+            + "daemons are running. Your changes may be lost or result in "
+            + "malfunction!")
 
 # Check if all required modules are installed.
 config.check_modules()

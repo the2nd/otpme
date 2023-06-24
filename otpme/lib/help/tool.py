@@ -365,9 +365,11 @@ cmd_help = {
 
 
     'login'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-tool login [username]',
+                    '_cmd_usage_help' : 'Usage: otpme-tool login --node {node} [username]',
+                    'cmd'   :   '--node :node:',
                     '_help' :   {
                                     'cmd'                   : 'login to OTPme realm',
+                                    '--node <node>'         : 'Send login request to given node.',
                                 },
                 },
 
