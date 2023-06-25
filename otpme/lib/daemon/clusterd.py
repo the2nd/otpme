@@ -412,7 +412,7 @@ class ClusterLockEntry(ClusterEntry):
         return self.__str__() > other.__str__()
 
     @property
-    #@entry_lock(write=False)
+    @entry_lock(write=False)
     def lock_id(self):
         try:
             lock_id = filetools.read_file(self.lock_id_file)
@@ -427,7 +427,7 @@ class ClusterLockEntry(ClusterEntry):
                                 content=lock_id)
 
     @property
-    #@entry_lock(write=False)
+    @entry_lock(write=False)
     def lock_type(self):
         try:
             lock_type = filetools.read_file(self.lock_type_file)
@@ -442,7 +442,7 @@ class ClusterLockEntry(ClusterEntry):
                                 content=lock_type)
 
     @property
-    #@entry_lock(write=False)
+    @entry_lock(write=False)
     def timeout(self):
         try:
             timeout = filetools.read_file(self.timeout_file)
@@ -458,7 +458,7 @@ class ClusterLockEntry(ClusterEntry):
                                 content=str(timeout))
 
     @property
-    #@entry_lock(write=False)
+    @entry_lock(write=False)
     def timeout_start(self):
         try:
             timeout_start = filetools.read_file(self.timeout_start_file)
@@ -468,13 +468,13 @@ class ClusterLockEntry(ClusterEntry):
         return timeout_start
 
     @timeout_start.setter
-    #@entry_lock(write=True)
+    @entry_lock(write=True)
     def timeout_start(self, timeout_start):
         filetools.create_file(path=self.timeout_start_file,
                                 content=str(timeout_start))
 
     @property
-    #@entry_lock(write=False)
+    @entry_lock(write=False)
     def write(self):
         try:
             write = filetools.read_file(self.write_file)
@@ -543,7 +543,7 @@ class ClusterJournalEntry(ClusterEntry):
         return self.__str__() > other.__str__()
 
     @property
-    #@entry_lock(write=False)
+    @entry_lock(write=False)
     def object_id(self):
         try:
             object_id = filetools.read_file(self.object_id_file)
@@ -558,7 +558,7 @@ class ClusterJournalEntry(ClusterEntry):
                                 content=object_id.full_oid)
 
     @property
-    #@entry_lock(write=False)
+    @entry_lock(write=False)
     def new_object_id(self):
         try:
             new_object_id = filetools.read_file(self.new_object_id_file)
@@ -573,7 +573,7 @@ class ClusterJournalEntry(ClusterEntry):
                                 content=new_object_id.full_oid)
 
     @property
-    #@entry_lock(write=False)
+    @entry_lock(write=False)
     def object_uuid(self):
         try:
             object_uuid = filetools.read_file(self.object_uuid_file)
@@ -588,7 +588,7 @@ class ClusterJournalEntry(ClusterEntry):
                                 content=object_uuid)
 
     @property
-    #@entry_lock(write=False)
+    @entry_lock(write=False)
     def object_checksum(self):
         try:
             object_checksum = filetools.read_file(self.object_checksum_file)
@@ -618,7 +618,7 @@ class ClusterJournalEntry(ClusterEntry):
                                 content=last_modified)
 
     @property
-    #@entry_lock(write=False)
+    @entry_lock(write=False)
     def object_config(self):
         if not os.path.exists(self.object_config_file):
             return
@@ -934,7 +934,7 @@ class ClusterDaemon(OTPmeDaemon):
         while True:
             multiprocessing.cluster_lock_event.wait()
             multiprocessing.cluster_lock_event.clear()
-            for node_name in multiprocessing.member_nodes:
+            for node_name in multiprocessing.online_nodes:
                 lock_event_name = self.get_lock_event_name(node_name)
                 lock_event = multiprocessing.Event(lock_event_name)
                 lock_event.set()
