@@ -79,6 +79,7 @@ def handle_sync_child():
 class HostDaemon(OTPmeDaemon):
     """ HostDaemon. """
     def __init__(self, *args, **kwargs):
+        self.resolver_run_child = None
         self.remove_outdated_tokens_child = None
         self.clear_outdated_cache_objects_child = None
         super(HostDaemon, self).__init__(*args, **kwargs)
@@ -86,12 +87,15 @@ class HostDaemon(OTPmeDaemon):
     def signal_handler(self, _signal, frame):
         """ Exit on signal. """
         if _signal != 15:
-            return
+            if _signal != 2:
+                return
         # Act only on our own PID.
         if os.getpid() != self.pid:
             return
         msg = ("Received SIGTERM.")
         self.logger.debug(msg)
+        # Stop resolver runs.
+        self.stop_resolvers()
         # Shutdown sync childs.
         self.shutdown_sync_childs()
         return super(HostDaemon, self).signal_handler(_signal, frame)
@@ -1172,6 +1176,41 @@ class HostDaemon(OTPmeDaemon):
             return True
         return False
 
+    def run_resolvers(self):
+        """ Start clear outdated cache objects als child process. """
+        if not config.master_node:
+            return
+        if self.resolver_run_child:
+            if self.resolver_run_child.is_alive():
+                return
+        # Create child process.
+        child = multiprocessing.start_process(name=self.name,
+                            target=self._run_resolvers,
+                            join=True)
+        self.resolver_run_child = child
+
+    def _run_resolvers(self):
+        """ Clear outdated cache objects. """
+        # Set proctitle for new child process.
+        self.set_proctitle(proctitle="Run resolvers")
+        # Handle multiprocessing stuff.
+        multiprocessing.atfork(exit_on_signal=True)
+        resolvers = backend.search(object_type="resolver",
+                                    attribute="uuid",
+                                    value="*",
+                                    return_type="instance")
+        for resolver in resolvers:
+            if not config.master_node:
+                break
+            now = time.time()
+            if (now - resolver.last_run) < resolver.sync_interval:
+                continue
+            msg = "Running resolver: %s" % resolver.oid
+            self.logger.info(msg)
+            resolver.run(verify_acls=False)
+        # Do some cleanup.
+        multiprocessing.cleanup()
+
     def clear_outdated_cache_objects(self):
         """ Start clear outdated cache objects als child process. """
         if self.clear_outdated_cache_objects_child:
@@ -1433,9 +1472,11 @@ class HostDaemon(OTPmeDaemon):
         # Run in loop until we get signal.
         recv_timeout = None
         init_sync_started = False
+        resolver_run_interval = 30
         cache_outdate_interval = 30
         host_object_reload_interval = 30
         token_data_removal_interval = 30
+        last_resolver_run = time.time()
         last_cache_outdate = time.time()
         last_host_object_reload = time.time()
         last_token_data_removal = time.time()
@@ -1453,7 +1494,8 @@ class HostDaemon(OTPmeDaemon):
 
             try:
                 # Calculate new recv timeout.
-                new_timeout = min(cache_outdate_interval,
+                new_timeout = min(resolver_run_interval,
+                                cache_outdate_interval,
                                 host_object_reload_interval,
                                 token_data_removal_interval)
                 if recv_timeout is None:
@@ -1490,6 +1532,11 @@ class HostDaemon(OTPmeDaemon):
                 if (now - last_cache_outdate) >= cache_outdate_interval:
                     self.clear_outdated_cache_objects()
                     last_cache_outdate = time.time()
+
+                # Run resolvers
+                if (now - last_resolver_run) >= resolver_run_interval:
+                    self.run_resolvers()
+                    last_resolver_run = time.time()
 
                 # Check if command can be handled by parent class.
                 if daemon_command is not None:
@@ -1757,3 +1804,11 @@ class HostDaemon(OTPmeDaemon):
             # may affect other running sync childs.
             self.sync_childs[sync_type] = None
             self._sync_childs[sync_type] = None
+
+    def stop_resolvers(self):
+        if not self.resolver_run_child:
+            return
+        if not self.resolver_run_child.is_alive():
+            return
+        self.resolver_run_child.terminate()
+        self.resolver_run_child.join()

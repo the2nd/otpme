@@ -1413,8 +1413,8 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     if verify_acls:
         # Get ACL query.
         acl_q = q.join(IndexObject.acls)
-        q = acl_q.filter(IndexObjectACL.value.in_(verify_acls))
-        q = q.union(q)
+        acl_q = acl_q.filter(IndexObjectACL.value.in_(verify_acls))
+        q = q.union(acl_q)
 
     # Set result order (sorting).
     if order_by_attribute:
@@ -1439,25 +1439,22 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     if return_query_count:
         query_count = sorted_query.count()
 
-    # Apply limit to search.
-    if max_results > 0:
-        sorted_query = sorted_query.limit(max_results)
-
     # Handle "with ACLs" search.
     if return_acls or return_raw_acls:
         # Join with ACL table.
         sub_query = sorted_query.with_entities(IndexObject.id)
-        acl_q = session.query(IndexObjectACL)
-        acl_q = acl_q.join(IndexObject, IndexObjectACL.ioid == IndexObject.id)
-        acl_q = acl_q.filter(IndexObjectACL.ioid.in_(sub_query))
+        sorted_query = session.query(IndexObjectACL)
+        sorted_query = sorted_query.join(IndexObject, IndexObjectACL.ioid == IndexObject.id)
+        sorted_query = sorted_query.filter(IndexObjectACL.ioid.in_(sub_query))
+        sorted_query = sorted_query.filter(IndexObjectACL.value.in_(verify_acls))
 
         # Add ACL value attribute to be returned.
         acl_entities = tuple(list(entities) + [IndexObjectACL.value])
-        acl_q = acl_q.with_entities(*acl_entities)
+        sorted_query = sorted_query.with_entities(*acl_entities)
 
         # Handle dogpile caching.
         if config.dogpile_caching:
-            acl_q = acl_q.options(FromCache(cache_region))
+            sorted_query = sorted_query.options(FromCache(cache_region))
 
         # Query result build from ACLs query.
         query_result = []
@@ -1465,9 +1462,22 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         object_acls = {}
         # Do final ordering.
         if reverse_order:
-            acl_q = acl_q.order_by(desc(order_by))
+            sorted_query = sorted_query.order_by(desc(order_by))
         else:
-            acl_q = acl_q.order_by(order_by)
+            sorted_query = sorted_query.order_by(order_by)
+
+        # Apply limit to search.
+        if max_results > 0:
+            sorted_query = sorted_query.limit(max_results)
+
+        # Query to return all ACLs of selected objects.
+        sub_query = sorted_query.with_entities(IndexObject.id)
+        acl_q = session.query(IndexObjectACL)
+        acl_q = acl_q.join(IndexObject, IndexObjectACL.ioid == IndexObject.id)
+        acl_q = acl_q.filter(IndexObjectACL.ioid.in_(sub_query))
+        acl_entities = tuple(list(entities) + [IndexObjectACL.value])
+        acl_q = acl_q.with_entities(*acl_entities)
+
         # Query objects.
         acl_result = acl_q.all()
         for x in acl_result:
@@ -1493,6 +1503,9 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             object_acls[x_uuid] = list(set(x_acls))
 
     else:
+        # Apply limit to search.
+        if max_results > 0:
+            sorted_query = sorted_query.limit(max_results)
         # Query only requested attributes.
         sorted_query = sorted_query.with_entities(*entities)
         # Handle dogpile caching.

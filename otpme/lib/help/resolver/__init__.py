@@ -194,6 +194,22 @@ cmd_help = {
                                 },
                 },
 
+    'enable_sync_units' : {
+                    '_cmd_usage_help' : 'Usage: otpme-resolver enable_sync_units {resolver}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Enable sync of units.',
+                                },
+                },
+
+    'disable_sync_units' : {
+                    '_cmd_usage_help' : 'Usage: otpme-resolver disable_sync_units {resolver}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Disable sync of units.',
+                                },
+                },
+
     'enable_deletions' : {
                     '_cmd_usage_help' : 'Usage: otpme-resolver enable_deletions {resolver}',
                     'cmd'   :   '<|object|>',
@@ -219,10 +235,18 @@ cmd_help = {
                 },
 
     'run'           : {
-                    '_cmd_usage_help' : 'Usage: otpme-resolver run {resolver}',
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : 'Usage: otpme-resolver run [--object-types <object_types>] {resolver}',
+                    'cmd'   :   '--object-types :[object_types]: <|object|>',
                     '_help' :   {
                                     'cmd'                   : 'Run resolver',
+                                },
+                },
+
+    'sync_interval': {
+                    '_cmd_usage_help' : 'Usage: otpme-resolver sync_interval {resolver} {sync_interval}',
+                    'cmd'   :   '<|object|> <sync_interval>',
+                    '_help' :   {
+                                    'cmd'                       : 'Set resolver sync interval.',
                                 },
                 },
 
@@ -245,8 +269,8 @@ cmd_help = {
                 },
 
     'test'          : {
-                    '_cmd_usage_help' : 'Usage: otpme-resolver test {resolver}',
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : 'Usage: otpme-resolver test [--object-types <object_types>] {resolver}',
+                    'cmd'   :   '--object-types :[object_types]: <|object|>',
                     '_help' :   {
                                     'cmd'                   : 'test resolver',
                                 },

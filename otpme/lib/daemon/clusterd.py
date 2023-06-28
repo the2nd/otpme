@@ -55,12 +55,12 @@ def register():
     multiprocessing.register_shared_dict("node_votes")
     multiprocessing.register_shared_dict("sync_nodes")
     multiprocessing.register_shared_dict("master_node")
-    multiprocessing.register_shared_dict("enabled_nodes")
     multiprocessing.register_shared_dict("online_nodes")
     multiprocessing.register_shared_dict("member_nodes")
     multiprocessing.register_shared_dict("running_jobs")
     multiprocessing.register_shared_dict("cluster_quorum")
     multiprocessing.register_shared_list("init_sync_done")
+    multiprocessing.register_shared_dict("node_connections")
     multiprocessing.register_shared_list("master_sync_done")
     multiprocessing.register_shared_list("init_sync_running")
     multiprocessing.register_shared_dict("radius_reload_queue")
@@ -207,6 +207,8 @@ def cluster_object_lock(action, lock_type,
         return
     if timeout is None:
         timeout = 3
+    if timeout == 0:
+        timeout = 3
     while True:
         try:
             cluster_lock_entry = ClusterLockEntry(timestamp=time.time_ns(),
@@ -240,6 +242,11 @@ def cluster_object_lock(action, lock_type,
                 % (config.daemon_name, action, lock_id))
         config.logger.debug(msg)
         #print(msg)
+
+    failed_nodes = cluster_lock_entry.get_failed_nodes()
+    cluster_lock_entry.delete()
+    if failed_nodes:
+        raise LockWaitTimeout()
 
 def calc_node_vote():
     try:
@@ -281,6 +288,7 @@ class ClusterEntry(object):
         self.nodes_dir = os.path.join(self.entry_dir, "nodes")
         self.action_file = os.path.join(self.entry_dir, "action")
         self.commit_file = os.path.join(self.entry_dir, "ready")
+        self.failed_nodes_dir = os.path.join(self.entry_dir, "failed_nodes")
         if action:
             if os.path.exists(self.entry_dir):
                 msg = "Entry already exists: %s" % self.entry_dir
@@ -292,6 +300,10 @@ class ClusterEntry(object):
                 pass
             try:
                 filetools.create_dir(self.nodes_dir)
+            except FileExistsError:
+                pass
+            try:
+                filetools.create_dir(self.failed_nodes_dir)
             except FileExistsError:
                 pass
         if action is not None:
@@ -342,13 +354,25 @@ class ClusterEntry(object):
     @entry_lock(write=True)
     def add_node(self, node_name):
         node_file = os.path.join(self.nodes_dir, node_name)
-        fd = open(node_file, "w")
-        fd.close()
+        filetools.create_file(path=node_file, content=str(time.time()))
 
     @entry_lock(write=False)
     def get_nodes(self):
         nodes = []
         for node_file in sorted(glob.glob(self.nodes_dir + "/*")):
+            node_name = os.path.basename(node_file)
+            nodes.append(node_name)
+        return nodes
+
+    @entry_lock(write=True)
+    def add_failed_node(self, node_name):
+        node_file = os.path.join(self.failed_nodes_dir, node_name)
+        filetools.create_file(path=node_file, content=str(time.time()))
+
+    @entry_lock(write=False)
+    def get_failed_nodes(self):
+        nodes = []
+        for node_file in sorted(glob.glob(self.failed_nodes_dir + "/*")):
             node_name = os.path.basename(node_file)
             nodes.append(node_name)
         return nodes
@@ -653,6 +677,7 @@ class ClusterDaemon(OTPmeDaemon):
     def __init__(self, *args, **kwargs):
         self.node_conn = None
         self.online_nodes = []
+        self.node_offline = False
         self.member_candidate = False
         self.cluster_connections = {}
         self.lock_connections = {}
@@ -769,6 +794,7 @@ class ClusterDaemon(OTPmeDaemon):
                     continue
             except ObjectDeleted:
                 continue
+            lock_journal_entry.delete()
             lock_event = get_lock_event(entry_timestamp)
             lock_event.set()
             lock_event.close()
@@ -780,7 +806,11 @@ class ClusterDaemon(OTPmeDaemon):
             multiprocessing.member_nodes.pop(node_name)
         except KeyError:
             pass
-        self.calc_quorum(handle_freeradius=False)
+        try:
+            multiprocessing.node_votes.pop(node_name)
+        except KeyError:
+            pass
+        self.calc_quorum()
 
     def node_disconnect(self, node_name):
         try:
@@ -813,7 +843,8 @@ class ClusterDaemon(OTPmeDaemon):
         do_init_sync = False
         if node_name not in list(multiprocessing.init_sync_running):
             if node_name not in list(multiprocessing.init_sync_done):
-                do_init_sync = True
+                if self.host_name in multiprocessing.master_sync_done:
+                    do_init_sync = True
         if not do_init_sync:
             return
         # We cannot clear cluster writes here because on node join this
@@ -912,7 +943,7 @@ class ClusterDaemon(OTPmeDaemon):
         while True:
             multiprocessing.cluster_event.wait()
             multiprocessing.cluster_event.clear()
-            for node_name in multiprocessing.enabled_nodes:
+            for node_name in multiprocessing.node_connections:
                 conn_even_name = self.get_conn_event_name(node_name)
                 conn_event = multiprocessing.Event(conn_even_name)
                 conn_event.set()
@@ -939,17 +970,13 @@ class ClusterDaemon(OTPmeDaemon):
                 lock_event = multiprocessing.Event(lock_event_name)
                 lock_event.set()
 
-    def do_master_node_election(self):
-        """ Do master node election. """
+    def get_master_node(self, quiet=False):
+        """ Get master node. """
         node_fails = {}
-        node_vote = calc_node_vote()
-        multiprocessing.node_votes[self.host_name] = node_vote
 
         while True:
-            for node_name in multiprocessing.enabled_nodes:
+            for node_name in multiprocessing.online_nodes:
                 if node_name == self.host_name:
-                    continue
-                if node_name not in multiprocessing.online_nodes:
                     continue
                 try:
                     socket_uri = stuff.get_daemon_socket("clusterd", node_name)
@@ -995,13 +1022,14 @@ class ClusterDaemon(OTPmeDaemon):
                         pass
                     continue
                 if config.debug_level() > 2:
-                    msg = ("Got cluster vote from node: %s: %s"
-                            % (node_name, x_node_vote))
-                    self.logger.debug(msg)
+                    if not quiet:
+                        msg = ("Got cluster vote from node: %s: %s"
+                                % (node_name, x_node_vote))
+                        self.logger.debug(msg)
                 multiprocessing.node_votes[node_name] = x_node_vote
 
             conn_tries_done = True
-            for x_node in multiprocessing.enabled_nodes:
+            for x_node in multiprocessing.online_nodes:
                 if x_node in multiprocessing.node_votes:
                     continue
                 try:
@@ -1014,28 +1042,39 @@ class ClusterDaemon(OTPmeDaemon):
 
             if not conn_tries_done:
                 continue
+            break
 
-            node_scores = multiprocessing.node_votes.copy()
-            x_sort = lambda x: node_scores[x]
-            node_scores_sorted = sorted(node_scores, key=x_sort, reverse=True)
-            new_master_node = node_scores_sorted[0]
+        node_vote = calc_node_vote()
+        multiprocessing.node_votes[self.host_name] = node_vote
 
-            try:
-                old_master_node = multiprocessing.master_node['master']
-            except KeyError:
-                old_master_node = None
-            if old_master_node != new_master_node:
-                self.logger.info("Node votes: %s" % node_scores)
+        node_scores = multiprocessing.node_votes.copy()
+        x_sort = lambda x: node_scores[x]
+        node_scores_sorted = sorted(node_scores, key=x_sort, reverse=True)
+        new_master_node = node_scores_sorted[0]
 
-            required_votes = self.calc_quorum()[1]
-            if len(node_scores_sorted) >= required_votes:
-                return new_master_node
-            msg = "Master node election failed: Not enough votes"
-            for x in node_scores_sorted:
-                msg = "%s: %s" % (msg, x)
-            raise MasterNodeElectionFailed(msg)
+        return new_master_node, node_scores
 
-    def calc_quorum(self, handle_freeradius=True):
+    def do_master_node_election(self):
+        """ Do master node election. """
+        # Get new master node.
+        new_master_node, node_scores = self.get_master_node()
+
+        try:
+            old_master_node = multiprocessing.master_node['master']
+        except KeyError:
+            old_master_node = None
+        if old_master_node != new_master_node:
+            self.logger.info("Node votes: %s" % node_scores)
+
+        required_votes = self.calc_quorum()[1]
+        if len(node_scores) >= required_votes:
+            return new_master_node
+        msg = "Master node election failed: Not enough votes"
+        for x in node_scores:
+            msg = "%s: %s" % (msg, x)
+        raise MasterNodeElectionFailed(msg)
+
+    def calc_quorum(self):
         """ Calculate cluster quorum. """
         search_attributes = {
                             'uuid'      : {'value':"*"},
@@ -1056,9 +1095,17 @@ class ClusterDaemon(OTPmeDaemon):
         if required_votes % 2 == 0:
             required_votes += 1
 
+        try:
+            master_node_candidate = self.get_master_node(quiet=True)[0]
+        except MasterNodeElectionFailed as e:
+            self.logger.critical(e)
+            current_votes = 1
+            quorum = False
+            return current_votes, required_votes, quorum
+
         # Get current (active) node votes including own node.
         current_votes = 1
-        for node_name in multiprocessing.init_sync_done:
+        for node_name in multiprocessing.online_nodes:
             try:
                 node = enabled_nodes[node_name]
             except KeyError:
@@ -1075,12 +1122,20 @@ class ClusterDaemon(OTPmeDaemon):
                 clusterd_conn = connections.get("clusterd",
                                                 timeout=None,
                                                 socket_uri=socket_uri)
-            except Exception as e:
+            except Exception:
                 self.node_disconnect(node_name)
-                msg = ("Failed to get cluster connection: %s: %s"
-                        % (node_name, e))
-                self.logger.warning(msg)
                 continue
+
+            if node_name != master_node_candidate:
+                try:
+                    if not clusterd_conn.get_master_sync_status():
+                        continue
+                except Exception as e:
+                    self.node_disconnect(node_name)
+                    msg = ("Failed to get master sync status: %s: %s"
+                            % (node_name, e))
+                    self.logger.warning(msg)
+                    continue
 
             try:
                 if not clusterd_conn.get_init_sync_status(self.host_name):
@@ -1108,18 +1163,44 @@ class ClusterDaemon(OTPmeDaemon):
             if os.path.exists(config.node_sync_file):
                 config.cluster_status = True
 
-        if handle_freeradius:
-            if config.start_freeradius:
-                if config.cluster_status:
-                    self.start_freeradius()
-                else:
-                    self.stop_freeradius()
-
         return current_votes, required_votes, quorum
+
+    def set_node_setup(self):
+        """ Set node setup parameters. """
+        search_attrs = {
+                        'uuid'      : {'value':"*"},
+                        'enabled'   : {'value':True},
+                    }
+        enabled_nodes = backend.search(object_type="node",
+                                    attributes=search_attrs,
+                                    realm=config.realm,
+                                    site=config.site,
+                                    return_type="name")
+
+        if len(enabled_nodes) == 1:
+            config.one_node_setup = True
+        elif len(enabled_nodes) == 2:
+            config.two_node_setup = True
+            config.one_node_setup = False
+        else:
+            config.two_node_setup = False
+            config.one_node_setup = False
 
     def handle_node_connections(self):
         """ Handle node connections. """
-        # Get all enabled nodes.
+        # Set node setup.
+        self.set_node_setup()
+
+        # Make sure left over events are handled.
+        if config.one_node_setup:
+            self.handle_journal_events()
+            self.handle_lock_events()
+        if config.two_node_setup:
+            if len(multiprocessing.member_nodes) == 0:
+                self.handle_journal_events()
+                self.handle_lock_events()
+
+        # Get all nodes.
         result = backend.search(object_type="node",
                             attribute="uuid",
                             value="*",
@@ -1134,24 +1215,11 @@ class ClusterDaemon(OTPmeDaemon):
                 continue
             enabled_nodes[node.name] = node
 
-        if len(enabled_nodes) == 1:
-            config.one_node_setup = True
-            # Make sure left over events are handled.
-            self.handle_journal_events()
-            self.handle_lock_events()
-        elif len(enabled_nodes) == 2:
-            config.two_node_setup = True
-            config.one_node_setup = False
-            if len(multiprocessing.member_nodes) == 0:
-                # Make sure left over events are handled.
-                self.handle_journal_events()
-                self.handle_lock_events()
-        else:
-            config.two_node_setup = False
-            config.one_node_setup = False
-
-        own_node = all_nodes[self.host_name]
-        if not own_node.enabled:
+        try:
+            own_node = all_nodes[self.host_name]
+        except KeyError:
+            own_node = None
+        if own_node and not own_node.enabled:
             msg = "Node disabled. Closing cluster connections."
             self.logger.warning(msg)
             if self.cluster_connections:
@@ -1159,6 +1227,7 @@ class ClusterDaemon(OTPmeDaemon):
             if self.lock_connections:
                 self.close_lock_connections()
             return
+
         # Make sure we have a connection to all nodes.
         for node_name in enabled_nodes:
             try:
@@ -1181,7 +1250,7 @@ class ClusterDaemon(OTPmeDaemon):
             except KeyError:
                 pass
             try:
-                multiprocessing.enabled_nodes.pop(node_name)
+                multiprocessing.node_connections.pop(node_name)
             except KeyError:
                 pass
 
@@ -1206,7 +1275,7 @@ class ClusterDaemon(OTPmeDaemon):
                                             target=self.start_lock_connection,
                                             target_args=(node.name,))
                 self.lock_connections[node.name] = lock_prock
-            multiprocessing.enabled_nodes[node.name] = True
+            multiprocessing.node_connections[node.name] = True
         # Remove connection to e.g. disabled nodes.
         for node_name in dict(self.cluster_connections):
             try:
@@ -1221,11 +1290,7 @@ class ClusterDaemon(OTPmeDaemon):
             self.cluster_connections.pop(node_name)
             self.node_leave(node_name)
             try:
-                multiprocessing.enabled_nodes.pop(node_name)
-            except KeyError:
-                pass
-            try:
-                multiprocessing.node_votes.pop(node_name)
+                multiprocessing.node_connections.pop(node_name)
             except KeyError:
                 pass
         for node_name in dict(self.lock_connections):
@@ -1245,11 +1310,7 @@ class ClusterDaemon(OTPmeDaemon):
                 continue
             self.node_leave(node_name)
             try:
-                multiprocessing.enabled_nodes.pop(node_name)
-            except KeyError:
-                pass
-            try:
-                multiprocessing.node_votes.pop(node_name)
+                multiprocessing.node_connections.pop(node_name)
             except KeyError:
                 pass
 
@@ -1268,20 +1329,16 @@ class ClusterDaemon(OTPmeDaemon):
             self.comm_handler.send("controld", command="deconfigure_floating_ip")
 
         if new_master_node == self.host_name:
-            if self.host_name not in multiprocessing.master_sync_done:
-                multiprocessing.master_sync_done.append(self.host_name)
             return
 
         if current_master_node is not None:
-            if self.host_name not in multiprocessing.master_sync_done:
-                multiprocessing.master_sync_done.append(self.host_name)
             return
 
         self.wait_for_master_node_failover(new_master_node)
-        self.do_master_node_sync(new_master_node)
 
     def wait_for_master_node_failover(self, master_node):
         """ Wait for master node to finish failover. """
+        print("WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW", master_node)
         # Get new master node socket.
         try:
             socket_uri = stuff.get_daemon_socket("clusterd", master_node)
@@ -1321,15 +1378,16 @@ class ClusterDaemon(OTPmeDaemon):
                 break
             time.sleep(1)
 
-    def get_node_connection(self, node_name):
+    def get_node_connection(self, node_name, quiet=False):
         if self.node_conn:
             try:
                 self.node_conn.ping()
+            except (ConnectionTimeout, ConnectionError, ConnectionQuit):
+                self.node_disconnect(node_name)
             except Exception as e:
                 self.node_disconnect(node_name)
                 msg = ("Failed to send ping command: %s: %s"
                         % (node_name, e))
-                self.logger.warning(msg)
             else:
                 return self.node_conn
 
@@ -1338,22 +1396,31 @@ class ClusterDaemon(OTPmeDaemon):
                 socket_uri = stuff.get_daemon_socket("clusterd", node_name)
             except Exception as e:
                 self.node_leave(node_name)
-                msg = ("Failed to get clusterd daemon socket: %s: %s"
-                        % (node_name, e))
-                self.logger.warning(msg)
+                if not quiet:
+                    msg = ("Failed to get clusterd daemon socket: %s: %s"
+                            % (node_name, e))
+                    self.logger.warning(msg)
                 return None
             try:
                 self.node_conn = connections.get("clusterd",
                                                 timeout=None,
-                                                socket_uri=socket_uri)
+                                                socket_uri=socket_uri,
+                                                quiet_autoconnect=True)
             except Exception as e:
                 self.node_leave(node_name)
-                msg = ("Failed to get cluster connection: %s: %s"
-                        % (node_name, e))
-                self.logger.warning(msg)
+                if not self.node_offline:
+                    if not quiet:
+                        msg = ("Failed to get cluster connection: %s: %s"
+                                % (node_name, e))
+                        self.logger.warning(msg)
+                    self.node_offline = True
                 return None
             else:
                 multiprocessing.online_nodes[node_name] = True
+                self.node_offline = False
+                if not quiet:
+                    msg = "Node is online: %s" % node_name
+                    self.logger.info(msg)
                 return self.node_conn
 
     def do_node_check(self, node_name):
@@ -1375,11 +1442,12 @@ class ClusterDaemon(OTPmeDaemon):
             self.logger.critical(msg)
             return False
 
+        if self.host_name not in multiprocessing.master_sync_done:
+            return False
+
         try:
             current_master_node = multiprocessing.master_node['master']
-        except:
-            msg = "Waiting for master node election..."
-            self.logger.info(msg)
+        except KeyError:
             return False
 
         if node_name not in list(multiprocessing.init_sync_done):
@@ -1428,19 +1496,23 @@ class ClusterDaemon(OTPmeDaemon):
             self.logger.warning(msg)
             return
 
-        msg = "Starting initial sync with master node..."
+        msg = ("Starting initial sync with master node: %s"
+                % master_node)
         self.logger.info(msg)
         max_tries = 3
         current_try = 0
         command_handler = CommandHandler()
         while True:
+            skip_deletions = True
+            if os.path.exists(config.node_joined_file):
+                skip_deletions = False
             try:
                 sync_status = command_handler.do_sync(sync_type="objects",
                                                     realm=config.realm,
                                                     site=config.site,
                                                     max_tries=10,
                                                     ignore_changed_objects=True,
-                                                    skip_object_deletion=True,
+                                                    skip_object_deletion=skip_deletions,
                                                     socket_uri=socket_uri)
             except Exception as e:
                 sync_status = False
@@ -1454,6 +1526,7 @@ class ClusterDaemon(OTPmeDaemon):
                     return
                 time.sleep(1)
                 continue
+            filetools.delete(config.node_joined_file)
             if self.host_name not in multiprocessing.master_sync_done:
                 multiprocessing.master_sync_done.append(self.host_name)
             msg = "Initial sync with master node finished."
@@ -1511,6 +1584,18 @@ class ClusterDaemon(OTPmeDaemon):
             # Handle node connections.
             self.handle_node_connections()
 
+            if self.host_name not in multiprocessing.master_sync_done:
+                try:
+                    current_master_node = self.get_master_node(quiet=True)[0]
+                except MasterNodeElectionFailed as e:
+                    self.logger.critical(e)
+                    time.sleep(quorum_check_interval)
+                    continue
+                if current_master_node == self.host_name:
+                    multiprocessing.master_sync_done.append(self.host_name)
+                else:
+                    self.do_master_node_sync(current_master_node)
+
             # Get quorum.
             current_votes, required_votes, quorum = self.calc_quorum()
 
@@ -1526,12 +1611,25 @@ class ClusterDaemon(OTPmeDaemon):
                 quorum_message_sent = False
                 self.logger.warning(no_quorum_msg)
 
-            do_master_node_election = True
             if not quorum:
+                if config.start_freeradius:
+                    self.stop_freeradius()
+                time.sleep(quorum_check_interval)
+                continue
+
+            nodes_ready = True
+            for node_name in multiprocessing.online_nodes:
+                if node_name in multiprocessing.init_sync_done:
+                    continue
+                nodes_ready = False
+                break
+
+            if not nodes_ready:
                 time.sleep(quorum_check_interval)
                 continue
 
             # For two node clusters wait 30 seconds for second node to appear.
+            do_master_node_election = True
             if wait_for_second_node:
                 if required_votes == 1:
                     if current_votes == 1:
@@ -1564,6 +1662,11 @@ class ClusterDaemon(OTPmeDaemon):
                 self.logger.critical(msg)
                 time.sleep(quorum_check_interval)
                 continue
+
+            if config.start_freeradius:
+                if config.cluster_status:
+                    self.start_freeradius()
+
             try:
                 current_master_node = multiprocessing.master_node['master']
             except KeyError:
@@ -1577,6 +1680,7 @@ class ClusterDaemon(OTPmeDaemon):
             except Exception as e:
                 msg = "Failed to switch master node: %s" % e
                 self.logger.critical(msg)
+
             config.master_failover = False
             time.sleep(quorum_check_interval)
 
@@ -1664,8 +1768,12 @@ class ClusterDaemon(OTPmeDaemon):
             event_timeout = 3
             if start_over:
                 event_timeout = 0.05
-            lock_event.wait(timeout=event_timeout)
-            lock_event.clear()
+            try:
+                lock_event.wait(timeout=event_timeout)
+            except TimeoutReached:
+                pass
+            finally:
+                lock_event.clear()
 
             if config.two_node_setup:
                 if len(multiprocessing.member_nodes) == 0:
@@ -1683,7 +1791,7 @@ class ClusterDaemon(OTPmeDaemon):
                     continue
 
             if not self.node_conn:
-                node_conn = self.get_node_connection(node_name)
+                node_conn = self.get_node_connection(node_name, quiet=True)
                 if not node_conn:
                     start_over = True
                     continue
@@ -1709,16 +1817,37 @@ class ClusterDaemon(OTPmeDaemon):
                 if node_name not in multiprocessing.online_nodes:
                     self.check_lock_nodes(lock_journal_entry)
                     return True
-                if node_name in lock_journal_entry.get_nodes():
-                    self.check_lock_nodes(lock_journal_entry)
-                    continue
-                if self.node_conn is None:
-                    return True
+                action = lock_journal_entry.action
                 lock_id = lock_journal_entry.lock_id
                 lock_type = lock_journal_entry.lock_type
-                # We need to read action last because it will throw
-                # ObjectDeleted exception if the cluster entry was deleted.
-                action = lock_journal_entry.action
+                lock_entry_nodes = lock_journal_entry.get_nodes()
+                lock_entry_failed_nodes = lock_journal_entry.get_failed_nodes()
+                if node_name in lock_entry_nodes:
+                    if lock_entry_failed_nodes:
+                        if node_name not in lock_entry_failed_nodes:
+                            msg = "Releasing lock: %s: %s" % (node_name, lock_id)
+                            self.logger.debug(msg)
+                            try:
+                                self.node_conn.release_lock(lock_id)
+                            except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                                msg = "Failed to release lock: %s" % e
+                                self.logger.critical(msg)
+                                self.node_disconnect(node_name)
+                                return True
+                            except UnknownLock:
+                                pass
+                            except Exception as e:
+                                msg = "Error releasing lock: %s" % e
+                                self.logger.critical(msg)
+                                self.node_disconnect(node_name)
+                                return True
+                            lock_journal_entry.add_failed_node(node_name)
+                        lock_journal_entry.add_node(node_name)
+                        self.check_lock_nodes(lock_journal_entry)
+                        continue
+                if self.node_conn is None:
+                    return True
+
                 if action == "lock":
                     write = lock_journal_entry.write
                     timeout = lock_journal_entry.timeout
@@ -1733,7 +1862,7 @@ class ClusterDaemon(OTPmeDaemon):
                             self.node_conn.acquire_lock(lock_type, lock_id, write)
                         except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
                             msg = "Failed to acquire lock: %s" % e
-                            self.logger.critical(msg)
+                            self.logger.warning(msg)
                             self.node_disconnect(node_name)
                             return True
                         except LockWaitAbort:
@@ -1743,6 +1872,9 @@ class ClusterDaemon(OTPmeDaemon):
                             self.logger.critical(msg)
                             self.node_disconnect(node_name)
                             return True
+                    else:
+                        lock_journal_entry.add_failed_node(node_name)
+
                 if action == "release":
                     msg = "Releasing lock: %s: %s" % (node_name, lock_id)
                     self.logger.debug(msg)
@@ -1783,20 +1915,20 @@ class ClusterDaemon(OTPmeDaemon):
             break
         if not member_nodes_in_sync:
             return False
-        # For release requests we have to ensure it was sent to
-        # all online nodes.
-        online_nodes_in_sync = True
-        if lock_journal_entry.action == "release":
-            for node_name in multiprocessing.online_nodes:
-                if node_name in lock_journal_entry.get_nodes():
-                    continue
-                online_nodes_in_sync = False
-                break
+        ## For release requests we have to ensure it was sent to
+        ## all online nodes.
+        #online_nodes_in_sync = True
+        #if lock_journal_entry.action == "release":
+        #    for node_name in multiprocessing.online_nodes:
+        #        if node_name in lock_journal_entry.get_nodes():
+        #            continue
+        #        online_nodes_in_sync = False
+        #        break
         lock_event = get_lock_event(lock_journal_entry.timestamp)
         lock_event.set()
         lock_event.unlink()
-        if online_nodes_in_sync:
-            lock_journal_entry.delete()
+        #if online_nodes_in_sync:
+        #    lock_journal_entry.delete()
         return True
 
     def start_cluster_connection(self, *args, **kwargs):
@@ -1845,10 +1977,13 @@ class ClusterDaemon(OTPmeDaemon):
             event_timeout = 3
             if start_over:
                 event_timeout = 0.05
-            #print("waiting for cluster event: %s" % node_name)
-            conn_event.wait(timeout=event_timeout)
-            conn_event.clear()
-            #print("got event", node_name)
+
+            try:
+                conn_event.wait(timeout=event_timeout)
+            except TimeoutReached:
+                pass
+            finally:
+                conn_event.clear()
 
             # Handle two node cluster stuff.
             self.handle_two_node_setup()
@@ -1995,20 +2130,21 @@ class ClusterDaemon(OTPmeDaemon):
                 else:
                     # Skip duplicate object writes.
                     if object_uuid in written_entries:
+                        try:
+                            uuids_to_process.remove(object_uuid)
+                        except ValueError:
+                            pass
                         if object_uuid in uuids_to_process:
                             msg = ("Skipping duplicated cluster journal entry: %s"
                                     % (object_id))
                             self.logger.debug(msg)
-                            try:
-                                uuids_to_process.remove(object_uuid)
-                            except ValueError:
-                                pass
                             # Check if object was written to member nodes
                             if self.check_member_nodes(cluster_journal_entry):
                                 # Check if object was written to all online nodes.
                                 self.check_online_nodes(cluster_journal_entry)
                             cluster_journal_entry.delete()
                             continue
+
                     if object_checksum in node_checksums:
                         cluster_journal_entry.add_node(node_name)
                         processed_journal_entries.append(cluster_journal_entry.timestamp)
@@ -2069,8 +2205,9 @@ class ClusterDaemon(OTPmeDaemon):
                     new_object_id = cluster_journal_entry.new_object_id
                     new_object_id = oid.get(new_object_id)
                     try:
-                        rename_status = self.node_conn.rename(object_id.full_oid,
-                                                            new_object_id.full_oid)
+                        rename_status = self.node_conn.rename(object_uuid=object_uuid,
+                                                        object_id=object_id.full_oid,
+                                                        new_object_id=new_object_id.full_oid)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
                         self.node_disconnect(node_name)
                         msg = ("Failed to rename object: %s: %s: %s"
@@ -2196,6 +2333,9 @@ class ClusterDaemon(OTPmeDaemon):
                 all_nodes_in_sync = False
         if not all_nodes_in_sync:
             return
+        object_event = get_object_event(cluster_journal_entry.timestamp)
+        object_event.set()
+        object_event.unlink()
         cluster_journal_entry.delete()
 
     def check_member_nodes(self, cluster_journal_entry):
@@ -2428,6 +2568,9 @@ class ClusterDaemon(OTPmeDaemon):
         except Exception as e:
             msg = "Failed to drop privileges: %s" % e
             self.logger.critical(msg)
+
+        # Set node setup.
+        self.set_node_setup()
 
         # Start listening on sockets.
         for s in self.sockets:

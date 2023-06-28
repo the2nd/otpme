@@ -17,10 +17,11 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-resolver add {resolver}',
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : 'Usage: otpme-resolver add [--template <template>] {resolver}',
+                    'cmd'   :   '--template :ldap_template: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'add new resolver',
+                                    'cmd'                   : 'Add new resolver.',
+                                    '--template <template>' : 'Use settings from given template.',
                                 },
                 },
 

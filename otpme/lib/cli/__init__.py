@@ -626,7 +626,7 @@ def get_opts(command_syntax, command_line, command_args,
                     raise Exception("help")
                 else:
                     if not ignore_unknown_opts:
-                        raise Exception(_("Unknown option: %s") % command_line[0])
+                        raise Exception("Unknown option: %s" % command_line[0])
                     command_line.pop(0)
         else:
             # If this command needs an object and we do not have one yet
@@ -1099,6 +1099,7 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
         for x in dict(result):
             found_edit_acl = False
             for acl in object_acls[x]:
+                #print("pppp", acl)
                 if acl in write_acls:
                     found_edit_acl = True
                     break

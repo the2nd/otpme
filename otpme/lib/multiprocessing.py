@@ -548,7 +548,7 @@ class Event(object):
         try:
             self._semaphore.acquire(timeout=timeout)
         except posix_ipc.BusyError:
-            pass
+            raise TimeoutReached()
         except posix_ipc.SignalError:
             pass
 

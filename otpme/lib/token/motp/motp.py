@@ -678,7 +678,7 @@ class MotpToken(Token):
 
     @object_lock()
     @backend.transaction
-    def _add(self, callback=default_callback, **kwargs):
+    def _add(self, no_token_infos=False, callback=default_callback, **kwargs):
         """ Add a token. """
         # Get default MOTP settings.
         self.validity_time = self.get_config_parameter("motp_validity_time")
@@ -691,16 +691,20 @@ class MotpToken(Token):
         self.used_otp_salt = stuff.gen_secret(32)
 
         return_message = None
-        if self.verify_acl("view:secret"):
-            return_message = "Token secret: %s" % token_secret
-        if self.verify_acl("view:pin"):
-            message = "Token PIN: %s" % self.pin
-            if return_message:
-                return_message = "%s\n%s" % (return_message, message)
-            else:
-                return_message = message
+        if not no_token_infos:
+            if self.verify_acl("view:secret"):
+                return_message = "Token secret: %s" % token_secret
+            if self.verify_acl("view:pin"):
+                message = "Token PIN: %s" % self.pin
+                if return_message:
+                    return_message = "%s\n%s" % (return_message, message)
+                else:
+                    return_message = message
 
-        return callback.ok(return_message)
+        if return_message:
+            return callback.ok(return_message)
+
+        return callback.ok()
 
     def show_config(self, callback=default_callback, **kwargs):
         """ Show token info. """

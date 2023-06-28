@@ -110,7 +110,7 @@ class OTPmeConfig(object):
         self.register_config_var("pinentry", str, "otpme-pinentry",
                                 config_file_parameter="PINENTRY",
                                 user_config_file_parameter="PINENTRY")
-        self.register_config_var("logger", None, None)
+        self.register_config_var("_logger", None, None)
         # Index type to use.
         self.register_config_var("index_type", str, "sqlite3",
                                 config_file_parameter="INDEX")
@@ -450,6 +450,7 @@ class OTPmeConfig(object):
         self.register_config_var("sync_dir", str, None)
         self.register_config_var("reload_file_path", str, None)
         self.register_config_var("node_sync_file", str, None)
+        self.register_config_var("node_joined_file", str, None)
         self.register_config_var("realm_data_file_path", str, None)
         self.register_config_var("sync_status_file_path", str, None)
         self.register_config_var("offline_dir", str, None)
@@ -864,6 +865,7 @@ class OTPmeConfig(object):
         self.sync_dir = os.path.join(self.spool_dir, "sync")
         self.reload_file_path = os.path.join(self.spool_dir, "reload")
         self.node_sync_file = os.path.join(self.spool_dir, "node_synced")
+        self.node_joined_file = os.path.join(self.spool_dir, "new_node")
         self.realm_data_file_path = os.path.join(self.cache_dir, "realm-data.json")
         self.sync_status_file_path = os.path.join(self.cache_dir, "sync-status.json")
 
@@ -2358,6 +2360,12 @@ class OTPmeConfig(object):
                                     self.site_ca)
         return realm_ca_path
 
+    @property
+    def logger(self):
+        if not self._logger:
+            self.setup_logger()
+        return self._logger
+
     def setup_logger(self, banner=None, existing_logger=None,
         log_file=False, timestamps=None, pid=None, **kwargs):
         """ Configure logger. """
@@ -2414,7 +2422,7 @@ class OTPmeConfig(object):
                 # log messages.
                 logger_logfile = "/dev/null"
 
-        self.logger = log.get_logger(log_name=self.log_name, pid=pid, banner=banner,
+        self._logger = log.get_logger(log_name=self.log_name, pid=pid, banner=banner,
                                 logfile=logger_logfile, syslog=logger_syslog,
                                 systemd=logger_systemd, level=logger_loglevel,
                                 color_logs=logger_color_logs, timestamps=timestamps,

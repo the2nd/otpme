@@ -152,7 +152,8 @@ def row_getter(realm, site, user_order, user_data, acls,
         if "authscript" in output_fields:
             if check_acl("view_all:auth_script") \
             or check_acl("enable:auth_script") \
-            or check_acl("disable:auth_script"):
+            or check_acl("disable:auth_script") \
+            or check_acl("edit"):
                 if auth_script_uuid:
                     try:
                         auth_script_string = get_auth_script_string(auth_script_uuid)

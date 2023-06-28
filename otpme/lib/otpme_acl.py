@@ -514,16 +514,20 @@ def get_raw_acls(acls, token):
             acl_list.append("view_all:attribute")
 
         # Add value ACLs.
-        if acl_value:
-            x = "view:%s" % (acl_value)
-            acl_list.append(x)
-            x = "edit:%s" % (acl_value)
-            acl_list.append(x)
-        if acl_sub_value:
-            x = "view:%s:%s" % (acl_value, acl_sub_value)
-            acl_list.append(x)
-            x = "edit:%s:%s" % (acl_value, acl_sub_value)
-            acl_list.append(x)
+        if acl_name == "view":
+            if acl_value:
+                x = "view:%s" % (acl_value)
+                acl_list.append(x)
+            if acl_sub_value:
+                x = "view:%s:%s" % (acl_value, acl_sub_value)
+                acl_list.append(x)
+        if acl_name == "edit":
+            if acl_value:
+                x = "edit:%s" % (acl_value)
+                acl_list.append(x)
+            if acl_sub_value:
+                x = "edit:%s:%s" % (acl_value, acl_sub_value)
+                acl_list.append(x)
 
         # For value ACL checks with sub value
         # (e.g. view:attribute:ldif:uidNumber) we also need to get all

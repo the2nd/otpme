@@ -406,6 +406,11 @@ class OTPmeClusterP1(OTPmeServer1):
             status = True
             message = None
             try:
+                object_uuid = command_args['object_uuid']
+            except:
+                message = "Missing object UUID."
+                status = False
+            try:
                 object_id = command_args['object_id']
             except:
                 message = "Missing object ID."
@@ -416,19 +421,21 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = "Missing new object ID."
                 status = False
             if status:
-                msg = "Renaming object: %s: %s" % (object_id, new_object_id)
-                logger.debug(msg)
                 object_id = oid.get(object_id)
-                new_object_id = oid.get(new_object_id)
-                try:
-                    backend.rename_object(object_id,
-                                        new_object_id,
-                                        cluster=False)
-                    status = True
-                    message = "done"
-                except Exception as e:
-                    message = "Failed to rename object: %s: %s" % (object_id, e)
-                    logger.warning(message)
+                our_object = backend.get_object(uuid=object_uuid)
+                if our_object.oid.full_oid == object_id.full_oid:
+                    new_object_id = oid.get(new_object_id)
+                    msg = "Renaming object: %s: %s" % (object_id, new_object_id)
+                    logger.debug(msg)
+                    try:
+                        backend.rename_object(object_id,
+                                            new_object_id,
+                                            cluster=False)
+                        status = True
+                        message = "done"
+                    except Exception as e:
+                        message = "Failed to rename object: %s: %s" % (object_id, e)
+                        logger.warning(message)
 
         elif command == "delete":
             status = True
@@ -680,7 +687,7 @@ class OTPmeClusterP1(OTPmeServer1):
                         continue
                     try:
                         sync_status = command_handler.do_sync(sync_type="objects",
-                                                            skip_object_deletion=True,
+                                                            skip_object_deletion=False,
                                                             socket_uri=socket_uri,
                                                             realm=config.realm,
                                                             site=config.site,

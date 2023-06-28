@@ -3,6 +3,7 @@
 # Distributed under the terms of the GNU General Public License v2
 import os
 import sys
+import time
 import functools
 
 try:
@@ -61,12 +62,15 @@ class JobCallback(object):
         self.modified_objects = []
         # Get logger.
         self.logger = config.logger
+        # Time the callback was last used.
+        self.last_used = time.time()
 
     def add_modified_object(self, o):
         """ Add modified object to callback. """
         if o.oid in self.modified_objects:
             return
         self.modified_objects.append(o.oid)
+        self.last_used = time.time()
 
     def write_modified_objects(self):
         """ Write objects modified by this callback. """
@@ -90,6 +94,8 @@ class JobCallback(object):
         from otpme.lib import cache
         for object_id in list(self.modified_objects):
             o = cache.get_modified_object(object_id)
+            if not o:
+                continue
             o.release_lock(lock_caller="cached")
 
     def handle_exception(method):
@@ -133,9 +139,12 @@ class JobCallback(object):
                             timeout=timeout)
         except ExitOnSignal:
             self.job.stop()
+        self.last_used = time.time()
 
     def _send_query(self, query_id, query, timeout=1):
         """ Send query to client and handle answer. """
+        # Callback was used.
+        self.last_used = time.time()
         # Send query to client.
         self._send(query, timeout=timeout)
         # Receive answer
@@ -460,11 +469,13 @@ class JobCallback(object):
     def enable(self):
         """ Enable callback. """
         self.enabled = True
+        self.last_used = time.time()
 
     @handle_exception
     def disable(self):
         """ Disable callback. """
         self.enabled = False
+        self.last_used = time.time()
 
     @handle_exception
     def stop(self, status, message="", timeout=1,

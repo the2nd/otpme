@@ -123,12 +123,19 @@ def show_compgen():
                             if x_opt == "--type":
                                 if main_command == "token":
                                     token_types = list(command_map['token'])
+                                    token_types.remove("main")
                                     token_types = " ".join(token_types)
                                     print(token_types)
                                 if main_command == "policy":
                                     policy_types = list(command_map['policy'])
+                                    policy_types.remove("main")
                                     policy_types = " ".join(policy_types)
                                     print(policy_types)
+                                if main_command == "resolver":
+                                    resolver_types = list(command_map['resolver'])
+                                    resolver_types.remove("main")
+                                    resolver_types = " ".join(resolver_types)
+                                    print(resolver_types)
                             global_opts_done = False
                 else:
                     print(x_opt)

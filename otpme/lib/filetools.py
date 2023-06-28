@@ -215,6 +215,8 @@ class AtomicFileLock(object):
             try:
                 fcntl.flock(self.fd, flags)
                 lock_status = True
+            except BlockingIOError:
+                lock_status = False
             except IOError:
                 lock_status = False
             except TimeoutReached:
@@ -264,7 +266,7 @@ def get_file_lock(path, write=True):
     lock_id = real_path.replace("/", ":")
     try:
         _lock = locking.acquire_lock(lock_type=FILE_LOCK_TYPE,
-                                lock_id=lock_id, write=write)
+                                    lock_id=lock_id, write=write)
     except OTPmeException as e:
         msg = "Failed to acquire file lock: %s: %s" % (real_path, e)
         raise ObjectLocked(msg)

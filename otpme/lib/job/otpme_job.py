@@ -117,7 +117,7 @@ class OTPmeJob(object):
             return False
         if self.start_time is None:
             return False
-        job_age = time.time() - self.start_time
+        job_age = time.time() - self.callback.last_used
         if job_age >= self.timeout:
             return True
         return False

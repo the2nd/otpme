@@ -19,6 +19,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import nsscache
+from otpme.lib import filetools
 from otpme.lib.pki import utils
 from otpme.lib import init_otpme
 from otpme.lib import connections
@@ -410,7 +411,6 @@ class JoinHandler(object):
         for object_type in add_order:
             for x in sorted(add_list[object_type]):
                 object_id = add_list[object_type][x]
-                logger.debug("Adding object: %s" % object_id)
                 object_config = object_configs[object_id.full_oid]
                 current_object_config = backend.read_config(object_id)
                 if current_object_config:
@@ -418,6 +418,7 @@ class JoinHandler(object):
                     current_checksum = current_object_config['CHECKSUM']
                     if current_checksum == new_checksum:
                         continue
+                logger.debug("Adding object: %s" % object_id)
                 # Write object to backend.
                 try:
                     backend.write_config(object_id=object_id,
@@ -720,6 +721,10 @@ class JoinHandler(object):
         self._my_host.enable(force=True,
                             verify_acls=False)
         self._my_host._write()
+
+        # Mark node as new node.
+        if host_type == "node":
+            filetools.touch(config.node_joined_file)
 
         # Update nsscache:
         nsscache.update()

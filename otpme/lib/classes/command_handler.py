@@ -1253,7 +1253,7 @@ class CommandHandler(object):
             elif str(e) != "":
                 return self.get_help(str(e))
         try:
-            username = command_line[0]
+            username = command_args['username']
         except:
             username = None
         try:

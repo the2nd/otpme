@@ -1462,9 +1462,11 @@ class OTPmeBaseObject(object):
             x_val = x[1]
             self.index_journal.append(('del', x_key, x_val))
 
-    def add(self, verbose_level=0, callback=default_callback,
+    def add(self, uuid=None, verbose_level=0, callback=default_callback,
         write=True, **kwargs):
         """ Should be called from child class to add object. """
+        if uuid is not None:
+            self.uuid = uuid
         # Origin node this object was created on.
         self.origin = config.uuid
         origin = backend.get_object(uuid=config.uuid)
@@ -2519,7 +2521,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['add:extension'])
     @object_lock()
-    def add_extension(self, extension, default_attributes=[],
+    def add_extension(self, extension, default_attributes={},
         run_policies=True, verbose_level=0, _caller="API",
         callback=default_callback, **kwargs):
         """ Add OTPme extension to object. """
@@ -6724,9 +6726,9 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = (_("Adding default extension: %s") % e)
                 callback.send(msg)
             try:
-                e_default_attributes = list(default_attributes[e])
+                e_default_attributes = default_attributes[e]
             except:
-                e_default_attributes = []
+                e_default_attributes = {}
             # Disable user interaction while adding extension.
             callback.disable()
             try:
@@ -6736,6 +6738,7 @@ class OTPmeObject(OTPmeBaseObject):
                                 callback=callback,
                                 verbose_level=verbose_level)
             except Exception as e:
+                config.raise_exception()
                 # Enable callback to get error to the client.
                 callback.enable()
                 return callback.error(str(e))

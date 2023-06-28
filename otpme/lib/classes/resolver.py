@@ -2,6 +2,8 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 # Distributed under the terms of the GNU General Public License v2
 import os
+import time
+import datetime
 #import importlib
 
 try:
@@ -16,6 +18,8 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import locking
+from otpme.lib.humanize import units
+from otpme.lib.classes.unit import Unit
 from otpme.lib.classes.user import User
 from otpme.lib.classes.group import Group
 from otpme.lib.locking import object_lock
@@ -51,18 +55,22 @@ read_value_acls = {
                 "view"  : [
                         "resolver_type",
                         "key_attribute",
+                        "sync_interval",
                         ],
             }
 
 write_value_acls = {
                 "edit"  : [
                         "key_attribute",
+                        "sync_interval",
                         ],
                 "enable"  : [
                         "deletions",
+                        "sync_units",
                         ],
                 "disable"  : [
                         "deletions",
+                        "sync_units",
                         ],
                 "delete"  : [
                         "objects",
@@ -76,19 +84,6 @@ recursive_default_acls = []
 LOCK_TYPE = "resolver.ldap.sync"
 
 commands = {
-    'add'   : {
-            'OTPme-mgmt-1.0'    : {
-                'missing'    : {
-                    'method'            : 'add',
-                    'args'              : ['resolver_type'],
-                    'job_type'          : 'process',
-                    },
-                'exists'    : {
-                    'method'            : 'add',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
     'show'   : {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
@@ -183,6 +178,15 @@ commands = {
                     },
                 },
             },
+    'sync_interval'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'set_sync_interval',
+                    'args'              : ['sync_interval'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'enable_acl_inheritance'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -203,6 +207,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'run',
+                    'oargs'             : ['object_types'],
                     'job_type'          : 'process',
                     },
                 },
@@ -219,6 +224,22 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable_deletions',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'enable_sync_units'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_sync_units',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'disable_sync_units'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_sync_units',
                     'job_type'          : 'process',
                     },
                 },
@@ -245,7 +266,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'test',
-                    'args'              : ['object_type'],
+                    'oargs'             : ['object_types'],
                     'job_type'          : 'process',
                     },
                 },
@@ -501,9 +522,12 @@ class Resolver(OTPmeObject):
         self.key_attributes = {}
         # Templates the resolver knows.
         self.templates = {}
-        self.default_template = None
         # If True we will delete objects that are removed on the resolver site.
         self.sync_deletions = False
+        # Sync units=
+        self.sync_units = False
+        self.sync_interval = 300
+        self.last_run = 0.0
         self._sub_sync_fields = {
                     'host'  : {
                         'trusted'  : [
@@ -543,6 +567,21 @@ class Resolver(OTPmeObject):
                                                         'type'      : bool,
                                                         'required'  : True,
                                                     },
+                        'SYNC_UNITS'                : {
+                                                        'var_name'  : 'sync_units',
+                                                        'type'      : bool,
+                                                        'required'  : True,
+                                                    },
+                        'SYNC_INTERVAL'             : {
+                                                        'var_name'  : 'sync_interval',
+                                                        'type'      : int,
+                                                        'required'  : True,
+                                                    },
+                        'LAST_RUN'                  : {
+                                                        'var_name'  : 'last_run',
+                                                        'type'      : float,
+                                                        'required'  : True,
+                                                    },
                         }
 
         object_config = {}
@@ -565,12 +604,59 @@ class Resolver(OTPmeObject):
         # Set OID.
         self.set_oid()
 
+    @check_acls(['enable:sync_units'])
+    @object_lock()
+    @backend.transaction
+    def enable_sync_units(self, run_policies=True,
+        force=False, callback=default_callback, _caller="API", **kwargs):
+        """ Enable deletion of objects missing on resolver site. """
+        if self.sync_units:
+            msg = "Sync of units already enabled."
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_sync_units",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.sync_units = True
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:sync_units'])
+    @object_lock()
+    @backend.transaction
+    def disable_sync_units(self, run_policies=True,
+        force=False, callback=default_callback, _caller="API", **kwargs):
+        """ Disable deletion of objects missing on resolver site. """
+        if not self.sync_units:
+            msg = "Sync of units already disabled."
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_sync_units",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.sync_units = False
+        return self._cache(callback=callback)
+
     @check_acls(['enable:deletions'])
     @object_lock()
     @backend.transaction
     def enable_deletions(self, run_policies=True,
         force=False, callback=default_callback, _caller="API", **kwargs):
         """ Enable deletion of objects missing on resolver site. """
+        if self.sync_deletions:
+            msg = "Sync of deletions already enabled."
+            return callback.error(msg)
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -590,6 +676,9 @@ class Resolver(OTPmeObject):
     def disable_deletions(self, run_policies=True,
         force=False, callback=default_callback, _caller="API", **kwargs):
         """ Disable deletion of objects missing on resolver site. """
+        if not self.sync_deletions:
+            msg = "Sync of deletions already disabled."
+            return callback.error(msg)
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -624,8 +713,8 @@ class Resolver(OTPmeObject):
         self.key_attributes[object_type] = key_attribute
         return self._cache(callback=callback)
 
-    @check_acls(['runt', 'test'])
-    def test(self, run_policies=True, verbose_level=0,
+    @check_acls(['run', 'test'])
+    def test(self, object_types=None, run_policies=True, verbose_level=0,
         callback=default_callback, _caller="API", **kwargs):
         """ Test the resolver. """
         if run_policies:
@@ -641,6 +730,7 @@ class Resolver(OTPmeObject):
         # Call sync method with testing enabled.
         sync_status = self.start_sync(test=True,
                                     callback=callback,
+                                    object_types=object_types,
                                     verbose_level=verbose_level)
         if exit_status is False or sync_status is False:
             return callback.error("There were errors!")
@@ -648,7 +738,7 @@ class Resolver(OTPmeObject):
         return callback.ok("All tests successful.")
 
     @check_acls(['run'])
-    def run(self, run_policies=True, verbose_level=0,
+    def run(self, object_types=None, run_policies=True, verbose_level=0,
         callback=default_callback, _caller="API", **kwargs):
         """ Run the resolver. """
         if run_policies:
@@ -661,7 +751,11 @@ class Resolver(OTPmeObject):
         # Call sync method.
         sync_status = self.start_sync(interactive=True,
                                     callback=callback,
+                                    object_types=object_types,
                                     verbose_level=verbose_level)
+        self.last_run = time.time()
+        self._write(callback=callback)
+
         if sync_status is False:
             return callback.error()
 
@@ -705,14 +799,14 @@ class Resolver(OTPmeObject):
 
         return False
 
-    def start_sync(self, test=False, interactive=None,
+    def start_sync(self, object_types=None, test=False, interactive=None,
         verbose_level=0, callback=default_callback):
         """ Start import of objects from this resolver. """
         # Handle locking.
-        sync_lock = locking.get_lock(LOCK_TYPE, self.lock_id)
-        if not sync_lock.status():
+        try:
+            sync_lock = locking.acquire_lock(LOCK_TYPE, self.lock_id, timeout=0)
+        except LockWaitTimeout:
             return callback.error("This resolver is already running.")
-        sync_lock.acquire_lock()
 
         if test:
             if interactive is None:
@@ -726,7 +820,7 @@ class Resolver(OTPmeObject):
 
         # Get object via child class.
         try:
-            result = self.fetch_objects()
+            result = self.fetch_objects(object_types=object_types)
         except Exception as e:
             msg = ("Failed to fetch objects with resolver: %s: %s"
                     % (self.name, e))
@@ -738,7 +832,16 @@ class Resolver(OTPmeObject):
         all_objects = []
         all_remote_objects = {}
         all_local_objects = {}
-        for object_type in result:
+        for object_type in self.object_types:
+            if config.daemon_mode:
+                if not config.cluster_status:
+                    break
+                if config.master_failover:
+                    break
+                if not config.master_node:
+                    break
+            if object_type not in result:
+                continue
             if not object_type in all_remote_objects:
                 all_remote_objects[object_type] = []
             for x in result[object_type]:
@@ -761,78 +864,144 @@ class Resolver(OTPmeObject):
         removed_objects = []
         skipped_objects = []
         unchanged_objects = []
-        for object_type in result:
+        for object_type in self.object_types:
+            if config.daemon_mode:
+                if not config.cluster_status:
+                    break
+                if config.master_failover:
+                    break
+                if not config.master_node:
+                    break
+            if object_type not in result:
+                continue
             object_failed = False
             # Get attribute that will be mapped to the objects name.
             name_attribute = self.attribute_mappings[object_type]['name']
-            # Get UID attribute.
-            try:
-                uid_attribute = self.attribute_mappings[object_type]['uidNumber']
-            except:
-                uid_attribute = None
             # Get UUID attribute.
             try:
                 uuid_attribute = self.attribute_mappings[object_type]['uuid']
             except:
                 uuid_attribute = None
+            try:
+                uid_number_attribute = self.attribute_mappings[object_type]['uidNumber']
+            except:
+                uid_number_attribute = None
+            try:
+                gid_number_attribute = self.attribute_mappings[object_type]['gidNumber']
+            except:
+                gid_number_attribute = None
 
             attr_map_rev = {}
             for dst_attr in self.attribute_mappings[object_type]:
                 src_attr = self.attribute_mappings[object_type][dst_attr]
+                if src_attr == uid_number_attribute:
+                    continue
+                if src_attr == gid_number_attribute:
+                    continue
                 if src_attr == uuid_attribute:
                     continue
                 if src_attr == name_attribute:
                     continue
                 attr_map_rev[src_attr] = dst_attr
 
+            class AddObject(object):
+                def __init__(self, name, path, object_type, attributes):
+                    self.name = name
+                    self.path = path
+                    self.attributes = attributes
+                    self.object_type = object_type
+
+                def __str__(self):
+                    return self.name
+
+                def __repr__(self):
+                    if self.object_type == "unit":
+                        return len(self.path)
+                    return self.name
+
+                def __hash__(self):
+                    return hash(self.__str__())
+
+                def __eq__(self, other):
+                    return self.path == other.path
+
+                def __ne__(self, other):
+                    return self.path != other.path
+
+                def __lt__(self, other):
+                    return self.__repr__() < other.__repr__()
+
+                def __gt__(self, other):
+                    return self.__repr__() > other.__repr__()
+
+            add_order = []
             for x in result[object_type]:
-                x_object = None
                 x_attributes = result[object_type][x]
+                x_path = x_attributes.pop('object_path')
+                add_object = AddObject(name=x,
+                                    path=x_path,
+                                    object_type=object_type,
+                                    attributes=x_attributes)
+                add_order.append(add_object)
+
+            for x in sorted(add_order):
+                if config.daemon_mode:
+                    if not config.cluster_status:
+                        break
+                    if config.master_failover:
+                        break
+                    if not config.master_node:
+                        break
+                x_object = None
+                x_name = x.name
+                x_path = x.path
+                x_attributes = x.attributes
+                x_path = "/".join(x_path)
+                x_path = "/%s/%s/%s" % (self.realm, self.site, x_path)
                 x_resolver_key = x_attributes[self.key_attributes[object_type]]
                 # Build checksum
                 checksum_vals = []
                 for a in sorted(x_attributes):
-                    vals = sorted(x_attributes[a])
+                    vals = x_attributes[a]
+                    vals = sorted(vals)
                     checksum_vals.append("%s:%s" % (a, ",".join(vals)))
                 x_resolver_checksum = stuff.gen_md5("\n".join(checksum_vals))
 
                 # Get object name.
                 if not name_attribute in x_attributes:
                     msg = (_("Got no name attribute: %s: %s")
-                            % (x, name_attribute))
+                            % (x_name, name_attribute))
                     logger.warning(msg)
                     if interactive:
-                        callback.send(msg)
-                    failed_objects.append(x)
+                        callback.error(msg)
+                    failed_objects.append(x_name)
                     sync_status = False
                     object_failed = True
                     continue
 
-                x_name = x_attributes[name_attribute]
-                x_attributes.pop(name_attribute)
-
-                # Get UUID value
+                # Get UUID value.
                 x_uuid = None
                 if uuid_attribute:
                     x_uuid = x_attributes[uuid_attribute]
                     x_attributes.pop(uuid_attribute)
 
-                # Get UID value
-                x_uid = None
-                if uid_attribute:
-                    x_uid = x_attributes[uid_attribute]
-                    if isinstance(x_uid, list):
-                        if len(x_uid) > 1:
+                # Get uidNumber value.
+                x_uid_number = None
+                if uid_number_attribute:
+                    x_uid_number = x_attributes.pop(uid_number_attribute)
+                    if isinstance(x_uid_number, list):
+                        if len(x_uid_number) > 1:
                             msg = (_("Got multiple values for uidNumber: %s: %s")
-                                    % (x, ",".join(x_uid)))
+                                    % (x_name, ",".join(x_uid_number)))
                             logger.warning(msg)
                             if interactive:
-                                callback.send(msg)
-                            failed_objects.append(x)
+                                callback.error(msg)
+                            failed_objects.append(x_name)
                             sync_status = False
                             object_failed = True
                             continue
-                        x_uid = x_uid[0]
+                        x_uid_number = x_uid_number[0]
+                    x_uid_number = int(x_uid_number)
 
                 # Check if the object already exists.
                 x_result = backend.search(attribute="resolver_key",
@@ -847,6 +1016,8 @@ class Resolver(OTPmeObject):
                                                     interactive=interactive,
                                                     callback=callback)
                     if not resolver_valid:
+                        msg = "Skipping object: %s" % x_oid
+                        logger.info(msg)
                         skipped_objects.append(x_oid)
                         continue
 
@@ -854,13 +1025,13 @@ class Resolver(OTPmeObject):
                         update_object = True
 
                     if not update_object:
-                        result = backend.search(attribute="read_oid",
+                        checksum_result = backend.search(attribute="read_oid",
                                     value=x_oid.read_oid,
                                     return_attributes=['resolver_checksum'])
-                        if not result:
+                        if not checksum_result:
                             continue
 
-                        x_checksum = result[0]
+                        x_checksum = checksum_result[0]
 
                         # Skip unchanged objects.
                         if x_checksum == x_resolver_checksum:
@@ -876,31 +1047,53 @@ class Resolver(OTPmeObject):
                         object_class = User
                     elif object_type == "group":
                         object_class = Group
+                    elif object_type == "unit":
+                        object_class = Unit
                     else:
-                        failed_objects.append(x)
+                        failed_objects.append(x_name)
                         sync_status = False
                         object_failed = True
                         msg = ("Got unsupported object from resolver: %s: %s"
-                                % (object_type, x))
+                                % (object_type, x_name))
                         logger.critical(msg)
                         if interactive:
-                            callback.send(msg)
+                            callback.error(msg)
                         continue
 
+                    if test:
+                        if self.sync_units and object_type != "unit":
+                            if object_types and "unit" not in object_types:
+                                unit_path = "/".join(x_path.split("/")[3:-1])
+                                unit = backend.get_object(object_type="unit",
+                                                        rel_path=unit_path,
+                                                        realm=self.realm,
+                                                        site=self.site)
+                                if not unit:
+                                    msg = "Would not add object: Unit missing: %s" % x_name
+                                    callback.send(msg)
+                                    continue
+
                     # Try to create object instance.
+                    if test:
+                        x_path = None
+
+                    if not self.sync_units:
+                        x_path = None
+
                     try:
                         x_object = object_class(name=x_name,
-                                            site=config.site,
-                                            realm=config.realm)
+                                                path=x_path,
+                                                site=config.site,
+                                                realm=config.realm)
                     except Exception as e:
-                        failed_objects.append(x)
+                        failed_objects.append(x_name)
                         sync_status = False
                         object_failed = True
                         msg = ("Unable to import %s: %s: %s"
                                 % (object_type, x_name, e))
                         logger.critical(msg)
                         if interactive:
-                            callback.send(msg)
+                            callback.error(msg)
                         continue
 
                     if x_object.exists():
@@ -920,14 +1113,14 @@ class Resolver(OTPmeObject):
                                 u_object = backend.get_object(object_type=t,
                                                                 uuid=x_uuid)
                                 if u_object:
-                                    failed_objects.append(x)
+                                    failed_objects.append(x_name)
                                     sync_status = False
                                     object_failed = True
                                     msg = ("UUID conflict: %s <> %s: %s"
                                         % (x_name, u_object.oid, x_uuid))
                                     logger.critical(msg)
                                     if interactive:
-                                        callback.send(msg)
+                                        callback.error(msg)
                                     continue
                         add_object = True
 
@@ -941,36 +1134,46 @@ class Resolver(OTPmeObject):
                             msg = (_("Adding %s: %s (%s/%s)")
                                     % (object_type, x_name,
                                     len(added_objects), len(all_objects)))
-                        logger.debug(msg)
+                        logger.info(msg)
                         if interactive:
                             callback.send(msg)
+                        group = None
+                        if object_type == "user":
+                            try:
+                                group = x_attributes.pop('object_group')
+                            except KeyError:
+                                group = None
+                        # Try to add object.
                         if not test:
                             # Add default attributes.
                             base_attributes = {}
                             posix_attributes = {}
-                            if x_uid:
-                                posix_attributes['uidNumber'] = x_uid
+                            if x_uid_number:
+                                posix_attributes['uidNumber'] = x_uid_number
                             default_attributes = {
                                                 'base' : base_attributes,
                                                 'posix': posix_attributes,
                                                 }
-                            # Try to add object.
                             try:
                                 x_object.add(uuid=x_uuid,
+                                        group=group,
+                                        no_token_infos=True,
                                         extensions=['posix'],
-                                        default_attributes=default_attributes,
                                         resolver=self.uuid,
                                         creator=self.uuid,
+                                        verify_acls=False,
+                                        default_attributes=default_attributes,
                                         callback=callback)
                             except Exception as e:
-                                failed_objects.append(x)
+                                config.raise_exception()
+                                failed_objects.append(x_name)
                                 sync_status = False
                                 object_failed = True
                                 msg = ("Unable to add %s: %s: %s"
                                         % (object_type, x_name, e))
                                 logger.critical(msg)
                                 if interactive:
-                                    callback.send(msg)
+                                    callback.error(msg)
                                 continue
                     else:
                         if not test:
@@ -998,7 +1201,7 @@ class Resolver(OTPmeObject):
                     if interactive:
                         callback.send(msg)
                     else:
-                        logger.debug(msg)
+                        logger.info(msg)
 
                     # Make sure the object references to us (e.g. after adoption)
                     if not test:
@@ -1020,7 +1223,7 @@ class Resolver(OTPmeObject):
                                         % (object_type, x_object.name, e))
                                 logger.critical(msg)
                                 if interactive:
-                                    callback.send(msg)
+                                    callback.error(msg)
                                 continue
 
                     # Check if we have to rename the object.
@@ -1034,7 +1237,7 @@ class Resolver(OTPmeObject):
                         if interactive:
                             callback.send(msg)
                         else:
-                            logger.debug(msg)
+                            logger.info(msg)
 
                         if not test:
                             # Try to rename object.
@@ -1048,7 +1251,7 @@ class Resolver(OTPmeObject):
                                         % (object_type, x_object.name, e))
                                 logger.critical(msg)
                                 if interactive:
-                                    callback.send(msg)
+                                    callback.error(msg)
                                 continue
 
                 # Add/Update object attributes.
@@ -1085,18 +1288,20 @@ class Resolver(OTPmeObject):
                             msg = "Unable to handle attribute: %s: %s" % (oa, e)
                             logger.warning(msg)
                             if interactive:
-                                callback.send(msg)
+                                callback.error(msg)
                             continue
 
                     add_values = []
                     del_values = []
                     for xv in nv:
-                        if xv not in cv:
-                            add_values.append(xv)
+                        if xv in cv:
+                            continue
+                        add_values.append(xv)
 
                     for xv in cv:
-                        if xv not in nv:
-                            del_values.append(xv)
+                        if xv in nv:
+                            continue
+                        del_values.append(xv)
 
                     # We first add new attributes to be able to remove a
                     # mandatory attribute afterwards.
@@ -1105,22 +1310,26 @@ class Resolver(OTPmeObject):
                             msg = (_("Would add attribute: %s: %s") % (oa, av))
                         else:
                             msg = (_("Adding attribute: %s: %s") % (oa, av))
+                            if oa in self.id_attributes:
+                                av = int(av)
                         if interactive:
                             if verbose_level > 1:
                                 callback.send(msg)
                         else:
-                            logger.debug(msg)
+                            logger.info(msg)
 
                         if not test:
                             try:
-                                x_object.add_attribute(attribute=oa, value=av)
+                                x_object.add_attribute(attribute=oa,
+                                                        value=av,
+                                                        verify_acls=False)
                             except Exception as e:
                                 sync_status = False
                                 object_failed = True
                                 msg = "Unable to add attribute: %s: %s" % (a, e)
                                 logger.warning(msg)
                                 if interactive:
-                                    callback.send(msg)
+                                    callback.error(msg)
                                 continue
 
                     # Single values attribute need no deletion.
@@ -1139,10 +1348,13 @@ class Resolver(OTPmeObject):
                             if verbose_level > 1:
                                 callback.send(msg)
                         else:
-                            logger.debug(msg)
+                            logger.info(msg)
+
                         if not test:
                             try:
-                                x_object.del_attribute(attribute=oa, value=dv)
+                                x_object.del_attribute(attribute=oa,
+                                                        value=dv,
+                                                        verify_acls=False)
                             except MandatoryAttribute as e:
                                 pass
                             except Exception as e:
@@ -1152,7 +1364,7 @@ class Resolver(OTPmeObject):
                                         % (x_object.oid, a, e))
                                 logger.warning(msg)
                                 if interactive:
-                                    callback.send(msg)
+                                    callback.error(msg)
                                 continue
 
                 for a in del_attrs:
@@ -1166,10 +1378,11 @@ class Resolver(OTPmeObject):
                         if verbose_level > 1:
                             callback.send(msg)
                     else:
-                        logger.debug(msg)
+                        logger.info(msg)
                     if not test:
                         try:
-                            x_object.del_attribute(attribute=a)
+                            x_object.del_attribute(attribute=a,
+                                                verify_acls=False)
                         except MandatoryAttribute as e:
                             pass
                         except Exception as e:
@@ -1179,14 +1392,14 @@ class Resolver(OTPmeObject):
                                     % (x_object.oid, a, e))
                             logger.warning(msg)
                             if interactive:
-                                callback.send(msg)
+                                callback.error(msg)
                             continue
 
                 if test:
                     continue
 
                 if object_failed:
-                    failed_objects.append(x)
+                    failed_objects.append(x_name)
                     continue
 
                 if update_object:
@@ -1203,6 +1416,13 @@ class Resolver(OTPmeObject):
         # Delete orphan objects.
         for object_type in all_local_objects:
             for x in all_local_objects[object_type]:
+                if config.daemon_mode:
+                    if not config.cluster_status:
+                        break
+                    if config.master_failover:
+                        break
+                    if not config.master_node:
+                        break
                 if x in all_remote_objects[object_type]:
                     continue
 
@@ -1215,7 +1435,7 @@ class Resolver(OTPmeObject):
                 else:
                     msg = (_("Removing %s: %s") % (object_type, x_oid))
 
-                logger.debug(msg)
+                logger.info(msg)
 
                 if interactive:
                     callback.send(msg)
@@ -1234,7 +1454,7 @@ class Resolver(OTPmeObject):
                             % (object_type, x_oid, e))
                     logger.warning(msg)
                     if interactive:
-                        callback.send(msg)
+                        callback.error(msg)
 
         # Release lock.
         sync_lock.release_lock()
@@ -1253,6 +1473,7 @@ class Resolver(OTPmeObject):
             % (main_msg, len(added_objects), len(updated_objects),
             len(removed_objects), len(failed_objects),
             len(skipped_objects), len(unchanged_objects)))
+        logger.info(msg)
 
         if not sync_status:
             return callback.error(msg)
@@ -1262,7 +1483,7 @@ class Resolver(OTPmeObject):
     @object_lock()
     @backend.transaction
     @run_pre_post_add_policies()
-    def add(self, verbose_level=0, _caller="API",
+    def add(self, ldap_template=None, verbose_level=0, _caller="API",
         callback=default_callback, **kwargs):
         """ Add a resolver. """
         # Run parent class stuff e.g. verify ACLs.
@@ -1279,14 +1500,19 @@ class Resolver(OTPmeObject):
                 verbose_level=verbose_level,
                 **kwargs)
 
-        if self.default_template:
-            if self.default_template in self.templates:
-                for x in self.templates[self.default_template]:
-                    val = self.templates[self.default_template][x]
-                    setattr(self, x, val)
+        if ldap_template:
+            if ldap_template not in self.templates:
+                msg = "Unknown template: %s" % ldap_template
+                return callback.error(msg)
+            for x in self.templates[ldap_template]:
+                val = self.templates[ldap_template][x]
+                setattr(self, x, val)
 
-        # Add object using parent class.
-        return OTPmeObject.add(self, verbose_level=verbose_level,
+        # New resolvers should be disabled to allow the admin to
+        # manually sync units and add policies etc. before syncing
+        # any group/user.
+        return OTPmeObject.add(self, enabled=False,
+                                verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
     @object_lock()
@@ -1294,8 +1520,9 @@ class Resolver(OTPmeObject):
     def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
         """ Rename resolver. """
         # Check if resolver is in use.
-        rename_lock = locking.get_lock(LOCK_TYPE, self.lock_id)
-        if not rename_lock.status():
+        try:
+            rename_lock = locking.acquire_lock(LOCK_TYPE, self.lock_id, timeout=0)
+        except LockWaitTimeout:
             return callback.error("This resolver is currently running.")
 
         # Build new OID.
@@ -1315,6 +1542,19 @@ class Resolver(OTPmeObject):
             rename_lock.release_lock()
 
         return result
+
+    @check_acls(['sync_interval'])
+    def set_sync_interval(self, sync_interval,
+        callback=default_callback, **kwargs):
+        """ Set resolver sync interval. """
+        try:
+            interval = units.time2int(sync_interval)
+        except:
+            msg = "Invalid sync interval: %s" % sync_interval
+            return callback.error(msg)
+
+        self.sync_interval = interval
+        return self._cache(callback=callback)
 
     @check_acls(['get_objects'])
     def get_resolver_objects(self, object_types=[], return_type="name",
@@ -1358,8 +1598,9 @@ class Resolver(OTPmeObject):
         if not object_types:
             object_types = self.object_types
 
-        del_lock = locking.get_lock(LOCK_TYPE, self.lock_id)
-        if not del_lock.status():
+        try:
+            del_lock = locking.acquire_lock(LOCK_TYPE, self.lock_id, timeout=0)
+        except LockWaitTimeout:
             return callback.error("This resolver is currently running.")
 
         if run_policies:
@@ -1380,16 +1621,16 @@ class Resolver(OTPmeObject):
             exception = []
             if self.confirmation_policy != "force":
                 for object_type in object_names:
-                    object_list = object_names[object_type]
+                    object_count = len(object_names[object_type])
                     exception.append(_("Resolver '%(resolver_name)s' added "
-                                    "the following %(object_type)s: %(objects)s")
+                                    "%(object_count)s %(object_type)ss.")
                                     % {"resolver_name":self.name,
                                     "object_type":object_type,
-                                    "objects":", ".join(object_list)})
+                                    "object_count":object_count})
             if exception:
                 if self.confirmation_policy != "force":
                     if self.confirmation_policy == "paranoid":
-                        msg = (_("%s\nPlease type '%s' to delete object: ")
+                        msg = (_("%s\nPlease type '%s' to delete objects: ")
                                 % ("\n".join(exception), self.name))
                         ask = callback.ask(msg)
                         if ask != self.name:
@@ -1405,7 +1646,7 @@ class Resolver(OTPmeObject):
         all_objects = self.get_resolver_objects(object_types=object_types,
                                                 return_type="instance")
         delete_status = True
-        for object_type in all_objects:
+        for object_type in reversed(all_objects):
             object_list = all_objects[object_type]
             for x in object_list:
                 msg = (_("Deleting %s: %s") % (object_type, x.oid))
@@ -1454,8 +1695,9 @@ class Resolver(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        del_lock = locking.get_lock(LOCK_TYPE, self.lock_id)
-        if not del_lock.status():
+        try:
+            del_lock = locking.acquire_lock(LOCK_TYPE, self.lock_id, timeout=0)
+        except LockWaitTimeout:
             return callback.error("This resolver is currently running.")
 
         if not force:
@@ -1464,12 +1706,12 @@ class Resolver(OTPmeObject):
                 if not delete_objects:
                     all_objects = self.get_resolver_objects()
                     for object_type in all_objects:
-                        object_list = all_objects[object_type]
+                        object_count = len(all_objects[object_type])
                         exception.append(_("Resolver '%(resolver_name)s' added "
-                                        "the following %(object_type)s: %(objects)s")
+                                        "%(object_count)s: %(object_type)ss")
                                         % {"resolver_name":self.name,
                                         "object_type":object_type,
-                                        "objects":", ".join(object_list)})
+                                        "object_count":object_count})
             if exception:
                 msg = (_("%s\n%s") % ("\n".join(exception), "Delete resolver "
                         "and all objects?: "))
@@ -1522,6 +1764,14 @@ class Resolver(OTPmeObject):
         else:
             lines.append('RESOLVER_TYPE=""')
 
+        if self.verify_acl("view:sync_interval"):
+            sync_interval = units.int2time(self.sync_interval)[0]
+            lines.append('SYNC_INTERVAL="%s"' % sync_interval)
+        else:
+            lines.append('SYNC_INTERVAL=""')
+
+        lines.append('SYNC_UNITS="%s"' % self.sync_units)
+
         key_attributes = []
         if self.verify_acl("view:key_attribute") \
         or self.verify_acl("edit:key_attribute"):
@@ -1530,6 +1780,10 @@ class Resolver(OTPmeObject):
                 key_attr_str = "%s[%s]" % (object_type, key_attr)
                 key_attributes.append(key_attr_str)
         lines.append('KEY_ATTRIBUTES="%s"' % ",".join(key_attributes))
+
+        last_run = datetime.datetime.fromtimestamp(self.last_run)
+        last_run = last_run.strftime('%d.%m.%Y %H:%M:%S')
+        lines.append('LAST_RUN="%s"' % last_run)
 
         # Append lines from child class.
         lines += config_lines

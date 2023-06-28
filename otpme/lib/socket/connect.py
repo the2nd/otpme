@@ -171,7 +171,7 @@ class ConnectSocket(object):
         """ Map to original methods. """
         return getattr(self._socket, name)
 
-    def connect(self, timeout=15, connect_timeout=3, **kwargs):
+    def connect(self, timeout=15, connect_timeout=3, quiet=False, **kwargs):
         """ Connect to remote socket and read first packet. """
         if self.connected:
             msg = "Already connected: %s" % self.socket_uri
@@ -184,9 +184,11 @@ class ConnectSocket(object):
             connect_timeout_msg = "None"
         else:
             connect_timeout_msg = "%ss" % connect_timeout
-        msg = ("Connecting to '%s' (tmo=%s/%s)"
-            % (self.socket_uri, connect_timeout_msg, timeout_msg))
-        self.logger.debug(msg)
+
+        if not quiet:
+            msg = ("Connecting to '%s' (tmo=%s/%s)"
+                % (self.socket_uri, connect_timeout_msg, timeout_msg))
+            self.logger.debug(msg)
 
         try:
             # Set connect timeout.
@@ -197,7 +199,7 @@ class ConnectSocket(object):
             self.set_timeout(timeout)
             self.connected = True
         except Exception as e:
-            config.raise_exception()
+            #config.raise_exception()
             msg = (_("Error connecting to '%s': %s") % (self.socket_uri, e))
             raise OTPmeException(msg)
 

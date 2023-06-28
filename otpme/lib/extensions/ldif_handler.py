@@ -35,7 +35,7 @@ def register_backend():
 
 class OTPmeLDIFHandler(object):
     """ Handle LDAP attributes for OTPme objects etc. """
-    def init(self, o, default_attributes=[], verbose_level=0,
+    def init(self, o, default_attributes={}, verbose_level=0,
         callback=default_callback, **kwargs):
         """ Add needed attributes to object. """
         # Add DN attribute if missing.

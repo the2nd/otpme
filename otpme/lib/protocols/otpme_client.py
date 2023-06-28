@@ -199,7 +199,7 @@ class OTPmeClient(OTPmeClientBase):
         use_dns=False, local_socket=False, site_ident=False,
         site_ident_digest="sha256", trust_site_cert=False,
         trust_site_cert_fp=None, encrypt_session=True,
-        realm=None, site=None, **kwargs):
+        quiet_autoconnect=False, realm=None, site=None, **kwargs):
         # Init parent class.
         super(OTPmeClient, self).__init__(daemon, **kwargs)
 
@@ -349,7 +349,7 @@ class OTPmeClient(OTPmeClientBase):
         # Handle autoconnect.
         if self.autoconnect:
             try:
-                self.connect()
+                self.connect(quiet=quiet_autoconnect)
             except:
                 self.close()
                 self.cleanup()
@@ -458,7 +458,7 @@ class OTPmeClient(OTPmeClientBase):
         return login_status
 
     def connect(self, connect_timeout=None, timeout=None,
-        auto_auth=None, auto_preauth=None):
+        auto_auth=None, auto_preauth=None, quiet=False):
         """ Connect to daemon and do protocol negotiation. """
         if not self.supported_protocols:
             msg = ("Unable to connect: %s: Missing client supported protocols."
@@ -489,7 +489,8 @@ class OTPmeClient(OTPmeClientBase):
         # Connect to peer.
         try:
             self.connection.connect(connect_timeout=connect_timeout,
-                                        timeout=timeout)
+                                        timeout=timeout,
+                                        quiet=quiet)
         except Exception as e:
             msg = (_("Daemon connection failed: %s: %s") % (self.socket_uri, e))
             if not config.file_logging and not config.debug_enabled:

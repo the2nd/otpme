@@ -72,11 +72,8 @@ class OTPmeAuthP1(OTPmeServer1):
         valid_commands = [
                             "verify",
                             "get_jwt",
-                            "verify_otp",
                             "verify_static",
                             "verify_mschap",
-                            "verify_mschap_otp",
-                            "verify_mschap_static",
                         ]
 
         # Check if we got a valid command.
@@ -231,20 +228,11 @@ class OTPmeAuthP1(OTPmeServer1):
         # Set auth mode.
         if command == "verify" or command == "verify_mschap":
             auth_mode = "auto"
-        if command == "verify_otp" or command == "verify_mschap_otp":
-            auth_mode = "otp"
-        if command == "verify_static" or command == "verify_mschap_static":
-            auth_mode = "static"
 
         # Set auth type.
-        if command == "verify" \
-        or command == "verify_otp" \
-        or command == "verify_static":
+        if command == "verify":
             auth_type = "clear-text"
-        if command == "verify_mschap" \
-        or command == "verify_mschap_otp" \
-        or command == "verify_mschap_static":
-            # Set auth type.
+        if command == "verify_mschap":
             auth_type = "mschap"
 
         # Set log variables.

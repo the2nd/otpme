@@ -71,17 +71,18 @@ class OTPmeClusterP1(OTPmeClient1):
             raise OTPmeException(msg)
         return reply
 
-    def rename(self, object_id, new_object_id):
+    def rename(self, object_uuid, object_id, new_object_id):
         """ Rename object on peer. """
         command = "rename"
         command_args = {}
         command_args['object_id'] = object_id
+        command_args['object_uuid'] = object_uuid
         command_args['new_object_id'] = new_object_id
         status, \
         status_code, \
         reply = self.connection.send(command, command_args)
         if not status:
-            msg = "Failed to reanem object: %s: %s" % (object_id, reply)
+            msg = "Failed to rename object: %s: %s" % (object_id, reply)
             raise OTPmeException(msg)
         return reply
 

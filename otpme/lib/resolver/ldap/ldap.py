@@ -80,6 +80,19 @@ default_acls = [
 recursive_default_acls = default_acls
 
 commands = {
+    'add'   : {
+            'OTPme-mgmt-1.0'    : {
+                'missing'    : {
+                    'method'            : 'add',
+                    'args'              : ['ldap_template'],
+                    'job_type'          : 'process',
+                    },
+                'exists'    : {
+                    'method'            : 'add',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'key_attribute'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -129,7 +142,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'del_server',
-                    'add'               : ['server_uri'],
+                    'args'               : ['server_uri'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -172,6 +185,48 @@ commands = {
                 },
             },
     }
+
+templates = {
+                'openldap' : {
+                        'ldap_filters' : {
+                                        'user'  : ['(&(objectclass=posixAccount)(objectclass=inetOrgPerson))'],
+                                        'group' : ['(objectclass=posixGroup)'],
+                                        'unit'  : ['(objectclass=organizationalUnit)'],
+                                        },
+
+                        'key_attributes' : {
+                                        'user'  : 'entryUUID',
+                                        'group' : 'entryUUID',
+                                        'unit'  : 'entryUUID',
+                                        },
+
+                        'id_attributes' : ['uidNumber', 'gidNumber'],
+
+                        'attribute_mappings' : {
+                                        'user': {
+                                                'name'          : 'uid',
+                                                'uuid'          : 'entryUUID',
+                                                'uidNumber'     : 'uidNumber',
+                                                'gidNumber'     : 'gidNumber',
+                                                'givenName'     : 'givenName',
+                                                'sn'            : 'sn',
+                                                'cn'            : 'cn',
+                                                'mail'          : 'mail',
+                                                'description'   : 'description',
+                                            },
+                                        'group': {
+                                                'name'          : 'cn',
+                                                'uuid'          : 'entryUUID',
+                                                'gidNumber'     : 'gidNumber',
+                                                'description'   : 'description',
+                                            },
+                                        'unit': {
+                                                'name'          : 'ou',
+                                                'uuid'          : 'entryUUID',
+                                            },
+                                        },
+                            },
+                    }
 
 def get_acls(split=False, **kwargs):
     """ Get all supported object ACLs """
@@ -262,8 +317,9 @@ class LdapResolver(Resolver):
 
         # Set default values.
         self.object_types = [
-                            'user',
+                            'unit',
                             'group',
+                            'user',
                             ]
 
         self.ldap_servers = []
@@ -271,35 +327,10 @@ class LdapResolver(Resolver):
         self.ldap_base = None
         self.login_dn = None
         self.login_password = None
+        self.id_attributes = []
         self.attribute_mappings = {}
 
-        self.default_template = "openldap"
-
-        self.templates = {
-                        'openldap' : {
-                                'ldap_filters' : {
-                                                'user' : ['(&(objectclass=posixAccount)(objectclass=inetOrgPerson))']
-                                                },
-
-                                'key_attributes' : {
-                                                'user'  : 'entryUUID',
-                                                'group' : 'entryUUID',
-                                                },
-
-                                'attribute_mappings' : {
-                                                'user': {
-                                                        'name'          : 'uid',
-                                                        'uuid'          : 'entryUUID',
-                                                        'uidNumber'     : 'uidNumber',
-                                                        'givenName'     : 'givenName',
-                                                        'sn'            : 'sn',
-                                                        'cn'            : 'cn',
-                                                        'mail'          : 'mail',
-                                                        'description'   : 'description',
-                                                    },
-                                                },
-                                    },
-                            }
+        self.templates = templates
 
     def _get_object_config(self):
         """ Merge resolver config with config from parent class. """
@@ -329,6 +360,11 @@ class LdapResolver(Resolver):
                                             'type'          : str,
                                             'required'      : False,
                                             'encryption'    : config.disk_encryption,
+                                        },
+            'ID_ATTRIBUTES'             : {
+                                            'var_name'      : 'id_attributes',
+                                            'type'          : list,
+                                            'required'      : False,
                                         },
             'ATTRIBUTE_MAPPINGS'        : {
                                             'var_name'      : 'attribute_mappings',
@@ -659,31 +695,35 @@ class LdapResolver(Resolver):
     def _fetch_objects(self, ldap_conn, object_types, **kwargs):
         """ Get LDAP objects. """
         result = {}
-        for o in object_types:
+        for object_type in object_types:
             # Skip object type without filters.
-            if not o in self.ldap_filters:
+            if object_type not in self.ldap_filters:
                 continue
 
-            result[o] = {}
+            if object_type == "unit":
+                if not self.sync_units:
+                    continue
+
+            result[object_type] = {}
 
             # Get attribute mappings.
             try:
-                attr_list = self.attribute_mappings[o].values()
+                attr_list = list(self.attribute_mappings[object_type].values())
             except:
                 attr_list = []
 
-            return_attributes = list(attr_list)
+            return_attributes = attr_list
 
             # We need the resolver key attribute to identify the object (e.g.
             # when renamed)
-            key_attribute = self.key_attributes[o]
+            key_attribute = self.key_attributes[object_type]
             if not key_attribute in attr_list:
                 attr_list.append(key_attribute)
 
             # Get attribute that will be mapped to the objects name.
-            name_attribute = self.attribute_mappings[o]['name']
+            name_attribute = self.attribute_mappings[object_type]['name']
 
-            for search_filter in self.ldap_filters[o]:
+            for search_filter in self.ldap_filters[object_type]:
                 ldap_conn.search(self.ldap_base,
                                 search_filter,
                                 attributes=attr_list)
@@ -693,6 +733,8 @@ class LdapResolver(Resolver):
                     x_attributes = x['raw_attributes']
                     # Get object DN.
                     x_dn = x['dn']
+                    if isinstance(x_dn, bytes):
+                        x_dn = x_dn.decode()
                     # Make sure we got the key attribute.
                     x_key_attribute = x_attributes[key_attribute]
                     if not x_key_attribute:
@@ -706,39 +748,75 @@ class LdapResolver(Resolver):
                             x_key_attribute = x_key_attribute[0]
                             x_attributes[key_attribute] = x_key_attribute
                     # Make sure we have just one object name.
-                    x_name = x_attributes[name_attribute]
+                    x_name = x_attributes.pop(name_attribute)
                     if isinstance(x_name, list):
                         x_name = x_name[0]
-                        x_attributes[name_attribute] = x_name
+                    if isinstance(x_name, bytes):
+                        x_name = x_name.decode()
+
+                    x_path = []
+                    for p in x_dn.split(","):
+                        if not p.startswith("ou="):
+                            continue
+                        path_part = p.replace("ou=", "")
+                        x_path.insert(0, path_part)
+                    if object_type != "unit":
+                        x_path.append(x_name)
 
                     for a in return_attributes:
                         if a in x_attributes:
-                            result_attributes[a] = x_attributes[a]
+                            x_attr = x_attributes[a]
+                            if isinstance(x_attr, list):
+                                converted_attr = []
+                                for x_val in x_attr:
+                                    if isinstance(x_val, bytes):
+                                        x_val = x_val.decode()
+                                    converted_attr.append(x_val)
+                                x_attr = converted_attr
+                            else:
+                                if isinstance(x_attr, bytes):
+                                    x_attr = x_attr.decode()
+                            result_attributes[a] = x_attr
                         else:
                             result_attributes[a] = []
 
-                    result[o][x_name] = result_attributes
+                    if object_type == "user":
+                        try:
+                            gid_number = x_attributes['gidNumber'][0]
+                        except KeyError:
+                            gid_number = None
+                        if gid_number:
+                            if isinstance(gid_number, bytes):
+                                gid_number = gid_number.decode()
+                            for group in result['group']:
+                                x_gid_number = result['group'][group]['gidNumber'][0]
+                                if x_gid_number == gid_number:
+                                    result_attributes['object_group'] = group
+                                    break
+
+                    result_attributes['object_path'] = x_path
+                    result[object_type][x_name] = result_attributes
 
         return result
 
-    def fetch_objects(self, object_type=None, **kwargs):
+    def fetch_objects(self, object_types=None, **kwargs):
         """ Get LDAP objects. """
         ldap_conn = None
 
         if not self.ldap_servers:
             raise Exception("No LDAP server configured.")
 
-        for object_type in self.ldap_filters:
+        for o_type in self.ldap_filters:
             try:
-                self.key_attributes[object_type]
+                self.key_attributes[o_type]
             except:
                 raise Exception("No key attribute configured for: %s"
-                                % object_type)
+                                % o_type)
             try:
-                self.attribute_mappings[object_type]['name']
+                self.attribute_mappings[o_type]['name']
             except:
                 raise Exception("Please add a attribute mapping for 'name': %s"
-                                % object_type)
+                                % o_type)
 
         for server_uri in self.ldap_servers:
             try:
@@ -750,9 +828,7 @@ class LdapResolver(Resolver):
         if ldap_conn is None:
             raise Exception("Unable to connect to any LDAP server.")
 
-        if object_type:
-            object_types = [object_type]
-        else:
+        if not object_types:
             object_types = self.object_types
 
         try:
@@ -802,13 +878,14 @@ class LdapResolver(Resolver):
                     logger.warning(error_msg)
                     if verbose_level > 0:
                         callback.send(error_msg)
+                    config.raise_exception()
                 finally:
                     ldap_conn.unbind()
                 if ldap_result:
                     found_objects = 0
                     for object_type in ldap_result:
                         found_objects = len(ldap_result[object_type])
-                        if not object_type in object_counter:
+                        if object_type not in object_counter:
                             object_counter[object_type] = {}
                         object_counter[object_type][server_uri] = found_objects
                         if verbose_level > 0:

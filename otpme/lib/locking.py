@@ -453,19 +453,24 @@ class OTPmeLock(OTPmeFakeLock):
             lock_caller = self.lock_id
         if not self.lock_callers:
             wait_message = "Waiting for lock: %s" % self.lock_id
+            block = True
+            if timeout == 0:
+                block = False
             if write:
-                lock_status = self.flock.acquire_lock(exclusive=True,
+                lock_status = self.flock.acquire_lock(block=block,
+                                                    exclusive=True,
                                                     timeout=timeout,
                                                     wait_message=wait_message,
                                                     log_wait_message=True,
                                                     callback=self.callback)
             else:
-                lock_status = self.flock.acquire_lock(timeout=timeout,
+                lock_status = self.flock.acquire_lock(block=block,
+                                                    timeout=timeout,
                                                     wait_message=wait_message,
                                                     log_wait_message=True,
                                                     callback=self.callback)
             if not lock_status:
-                return False
+                raise LockWaitTimeout()
 
             if config.debug_level("locking") > 1:
                 msg = ("Acquired lock: %s (%s): %s"

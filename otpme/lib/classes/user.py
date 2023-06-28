@@ -137,7 +137,7 @@ commands = {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : [],
-                    'oargs'             : ['add_default_token', 'default_token', 'default_token_type', 'default_roles', 'groups', 'unit', 'group', 'template_object', 'template_name', 'gen_qrcode'],
+                    'oargs'             : ['add_default_token', 'default_token', 'default_token_type', 'default_roles', 'groups', 'unit', 'group', 'template_object', 'template_name', 'gen_qrcode', 'no_token_infos'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
@@ -2909,7 +2909,7 @@ class User(OTPmeObject):
     @backend.transaction
     def add_token(self, token_name=None, token_type=None, token_uuid=None,
         new_token=None, destination_token=None, replace=False, gen_qrcode=True,
-        token_store_move=False, force=False, run_policies=True,
+        no_token_infos=False, token_store_move=False, force=False, run_policies=True,
         verify_acls=True, verbose_level=0, callback=default_callback,
         _caller="API", **kwargs):
         """ Adds token to user. """
@@ -3033,6 +3033,7 @@ class User(OTPmeObject):
                                     gen_qrcode=gen_qrcode,
                                     run_policies=run_policies,
                                     verify_acls=verify_acls,
+                                    no_token_infos=no_token_infos,
                                     destination_token_uuid=destination_token_uuid,
                                     verbose_level=verbose_level,
                                     force=force,
@@ -3477,9 +3478,9 @@ class User(OTPmeObject):
     @run_pre_post_add_policies()
     def add(self, group=None, add_default_token=None, default_token=None,
         default_token_type=None, template_name=None, template_object=None,
-        gen_qrcode=True, run_policies=True, force=False, verify_acls=True,
-        groups=None, default_roles=None, verbose_level=0,
-        callback=default_callback, **kwargs):
+        gen_qrcode=True, no_token_infos=False, run_policies=True,
+        force=False, verify_acls=True, groups=None, default_roles=None,
+        verbose_level=0, callback=default_callback, **kwargs):
         """ Add user. """
         # Get default token settings.
         if add_default_token is None:
@@ -3516,9 +3517,10 @@ class User(OTPmeObject):
             if not result:
                 msg = "Unknown group: %s" % group
                 return callback.error(msg)
-            if not self.verify_acl('add:default_group_user'):
-                msg = "Group: %s: Permission denied" % group
-                return callback.error(msg)
+            if verify_acls:
+                if not self.verify_acl('add:default_group_user'):
+                    msg = "Group: %s: Permission denied" % group
+                    return callback.error(msg)
 
         _groups = []
         if groups is not None:
@@ -3533,9 +3535,10 @@ class User(OTPmeObject):
                     msg = "Unknown group: %s" % group_name
                     return callback.error(msg)
                 _group = result[0]
-                if not _group.verify_acl("add:token"):
-                    msg = "Group: %s: Permission denied" % group_name
-                    return callback.error(msg)
+                if verify_acls:
+                    if not _group.verify_acl("add:token"):
+                        msg = "Group: %s: Permission denied" % group_name
+                        return callback.error(msg)
                 _groups.append(_group)
 
         _default_roles = []
@@ -3551,9 +3554,10 @@ class User(OTPmeObject):
                     msg = "Unknown role: %s" % role_name
                     return callback.error(msg)
                 role = result[0]
-                if not role.verify_acl("add:token"):
-                    msg = "Role: %s: Permission denied" % role_name
-                    return callback.error(msg)
+                if verify_acl:
+                    if not role.verify_acl("add:token"):
+                        msg = "Role: %s: Permission denied" % role_name
+                        return callback.error(msg)
                 _default_roles.append(role)
 
         # Handle default token from TOKENSTORE.
@@ -3573,7 +3577,6 @@ class User(OTPmeObject):
                     msg = "Unknown token: %s" % default_token_path
                     return callback.error(msg)
                 _default_token = result[0]
-
 
         if template_object and template_name:
             msg = "Cannot create template from template."
@@ -3797,10 +3800,13 @@ class User(OTPmeObject):
         if add_default_token:
             if default_token:
                 new_token_path = "%s/%s" % (self.name, default_token_name)
-                _default_token.move(new_token_path, callback=callback)
+                _default_token.move(new_token_path,
+                                    verify_acls=verify_acls,
+                                    callback=callback)
             else:
                 self.add_token(token_name=default_token_name,
                                 token_type=default_token_type,
+                                no_token_infos=no_token_infos,
                                 gen_qrcode=gen_qrcode,
                                 verify_acls=False,
                                 force=force,
@@ -3809,10 +3815,12 @@ class User(OTPmeObject):
             _default_token = self.token(default_token_name)
             for role in _default_roles:
                 role.add_token(token_path=_default_token.rel_path,
+                                verify_acls=verify_acls,
                                 callback=callback)
             # Add token to groups.
             for _group in _groups:
                 _group.add_token(token_path=_default_token.rel_path,
+                                verify_acls=verify_acls,
                                 callback=callback)
 
         # Non-admin users are done here.
@@ -3836,7 +3844,7 @@ class User(OTPmeObject):
         site_admin_role = result[0]
 
         site_admin_role.add_token(token_path=admin_token.rel_path,
-                                    verify_acls=False,
+                                    verify_acls=verify_acls,
                                     callback=callback)
 
         # Add allow all ACL for admin token to own site.

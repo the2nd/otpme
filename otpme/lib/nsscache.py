@@ -272,15 +272,16 @@ def update(resync=False, cache_resync=False, lock=None):
             update_sync_map(lock=lock)
             return None
 
-        update_members = False
-        if not config.master_node:
-            update_members = False
+        update_members = True
+        if not config.use_api:
+            if not config.master_node:
+                update_members = False
 
-        if config.master_failover:
-            update_members = False
+            if config.master_failover:
+                update_members = False
 
-        if not config.cluster_status:
-            update_members = False
+            if not config.cluster_status:
+                update_members = False
 
         if update_members:
             # Get roles/groups to update members of.
@@ -326,7 +327,7 @@ def update(resync=False, cache_resync=False, lock=None):
             for _group in set(sorted(update_groups)):
                 if _group.oid in updated_groups:
                     continue
-            #    _group._update_extensions("update_members")
+                _group._update_extensions("update_members")
 
         # Re-read update files after update_members.
         nss_cache_files = filetools.list_dir(config.nsscache_spool_dir)
