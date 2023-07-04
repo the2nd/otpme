@@ -61,6 +61,14 @@ cmd_help = {
                                 },
                 },
 
+    'touch'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-group touch {group}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Touch group (e.g. migrate).',
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : 'Usage: otpme-group enable {group}',
                     'cmd'   :   '<|object|>',

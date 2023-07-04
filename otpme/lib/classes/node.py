@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 # Distributed under the terms of the GNU General Public License v2
 import os
+import random
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -16,6 +17,7 @@ from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.daemon.scriptd import run_script
 from otpme.lib.classes.otpme_host import OTPmeHost
 from otpme.lib.protocols.utils import register_commands
 
@@ -30,9 +32,9 @@ from otpme.lib.classes.otpme_host import \
 
 from otpme.lib.exceptions import *
 
-logger = config.logger
-
 default_callback = config.get_callback()
+
+logger = config.logger
 
 read_acls = []
 
@@ -43,13 +45,19 @@ write_acls =  [
 
 read_value_acls = {
                 "view"      : [
-                                "cluster_votes",
+                                "vote_script",
                                 ],
             }
 
 write_value_acls = {
+                "enable"      : [
+                                "vote_script",
+                                ],
+                "disable"      : [
+                                "vote_script",
+                                ],
                 "edit"      : [
-                                "cluster_votes",
+                                "vote_script",
                                 ],
             }
 
@@ -77,6 +85,14 @@ commands = {
                     },
                 'exists'    : {
                     'method'            : 'add',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'touch'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'touch',
                     'job_type'          : 'process',
                     },
                 },
@@ -178,11 +194,27 @@ commands = {
                     },
                 },
             },
-    'cluster_votes'   : {
+    'vote_script'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'set_cluster_votes',
-                    'args'              : ['new_votes'],
+                    'method'            : 'change_vote_script',
+                    'args'              : ['vote_script'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'enable_vote_script'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_vote_script',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_vote_script'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_vote_script',
                     'job_type'          : 'thread',
                     },
                 },
@@ -732,7 +764,6 @@ class Node(OTPmeHost):
         unit=None, realm=None, site=None, **kwargs):
         # Set our type (used in parent class)
         self.type = "node"
-        self.cluster_votes = 1
         # Call parent class init.
         super(Node, self).__init__(object_id=object_id,
                                         realm=realm,
@@ -746,6 +777,10 @@ class Node(OTPmeHost):
         self._value_acls = get_value_acls()
         self._default_acls = get_default_acls()
         self._recursive_default_acls = get_recursive_default_acls()
+
+        self.vote_script = None
+        self.vote_script_options = []
+        self.vote_script_enabled = False
 
         self.handle_cert_loading = True
         self.handle_key_loading = True
@@ -777,9 +812,19 @@ class Node(OTPmeHost):
     def _get_object_config(self):
         """ Get object config dict. """
         node_config = {
-                        'CLUSTER_VOTES'             : {
-                                                        'var_name'  : 'cluster_votes',
-                                                        'type'      : int,
+                        'VOTE_SCRIPT'             : {
+                                                        'var_name'  : 'vote_script',
+                                                        'type'      : 'uuid',
+                                                        'required'  : False,
+                                                    },
+                        'VOTE_SCRIPT_OPTIONS'       : {
+                                                        'var_name'  : 'vote_script_options',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+                        'VOTE_SCRIPT_ENABLED'       : {
+                                                        'var_name'  : 'vote_script_enabled',
+                                                        'type'      : bool,
                                                         'required'  : False,
                                                     },
                         }
@@ -787,13 +832,119 @@ class Node(OTPmeHost):
         # Use parent class method to merge node config.
         return OTPmeHost._get_object_config(self, object_config=node_config)
 
-    @check_acls(['edit:cluster_votes'])
+    def get_node_vote(self):
+        """ Get node vote. """
+        try:
+            node_vote = os.path.getmtime(config.node_sync_file)
+        except FileNotFoundError:
+            node_vote = random.random()
+
+        if not self.vote_script_enabled:
+            return node_vote
+
+        if not self.vote_script:
+            return node_vote
+
+        result = backend.search(object_type="script",
+                                    attribute="uuid",
+                                    value=self.vote_script,
+                                    return_type="instance")
+        if not result:
+            msg = "Unknown vote script: %s" % self.vote_script
+            logger.warning(msg)
+            return 1
+
+        vote_script = result[0]
+
+        # Set auth type idependent values.
+        vote_script_parms = {
+                'options'           : self.vote_script_options,
+                }
+        # Run auth script.
+        try:
+            vote_script_result = run_script(script_type="script",
+                                        script_path=vote_script.rel_path,
+                                        script_uuid=self.vote_script,
+                                        script_parms=vote_script_parms,
+                                        user=config.user,
+                                        group=config.group)
+        except Exception as e:
+            msg = ("Error running node vote script: %s" % e)
+            logger.warning(msg)
+            return 1
+
+        exit_code = vote_script_result[0]
+        if exit_code == 0:
+            return node_vote
+
+        return 0
+
+    @check_acls(['edit:vote_script'])
     @object_lock()
-    @backend.transaction
-    def set_cluster_votes(self, new_votes,
+    def change_vote_script(self, vote_script=None, script_options=None,
+        run_policies=True, callback=default_callback, _caller="API", **kwargs):
+        """ Change node vote script. """
+        if script_options:
+            script_options = script_options.split(" ")
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_vote_script",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        return self.change_script(script_var='vote_script',
+                        script_options_var='vote_script_options',
+                        script_options=script_options,
+                        script=vote_script, callback=callback)
+
+    @check_acls(['enable:vote_script'])
+    @object_lock()
+    def enable_vote_script(self, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
-        """ Set cluster votes. """
-        self.cluster_votes = new_votes
+        """ Enable vote script. """
+        if not self.vote_script:
+            msg = "No vote script configured."
+            return callback.error(msg)
+        if self.vote_script_enabled:
+            msg = "Vote script already enabled."
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_vote_script",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.vote_script_enabled = True
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:vote_script'])
+    @object_lock()
+    def disable_vote_script(self, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Disable vote script. """
+        if not self.vote_script_enabled:
+            msg = "Vote script already disabled."
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_vote_script",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.vote_script_enabled = False
         return self._cache(callback=callback)
 
     def disable(self, *args, force=False, callback=default_callback, **kwargs):

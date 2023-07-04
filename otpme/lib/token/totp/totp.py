@@ -232,22 +232,6 @@ commands = {
                     },
                 },
             },
-    'enable_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'enable_mschap',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'disable_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'disable_mschap',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
     }
 
 def get_acls(split=False, **kwargs):
@@ -352,7 +336,7 @@ def register_config_params():
     # The TOTP secret length.
     config.register_config_parameter(name="totp_secret_len",
                                     ctype=int,
-                                    default_value=40,
+                                    default_value=10,
                                     object_types=object_types)
 
 class TotpToken(OathToken):
@@ -572,10 +556,13 @@ class TotpToken(OathToken):
             if self.mode == "mode1":
                 secret = self.get_secret(callback=callback)
             if self.mode == "mode2":
-                if not prefix_pin:
-                    msg = "Cannot generate OTP in mode2."
+                pin = callback.askpass("Please enter PIN: ")
+                try:
+                    pin = int(pin)
+                except ValueError:
+                    msg = "Invalid PIN."
                     return callback.error(msg)
-                secret = self.get_secret(pin=prefix_pin, callback=callback)
+                secret = self.get_secret(pin=pin, callback=callback)
 
         if not secret:
             callback.error("Unable to get token secret.")
@@ -755,6 +742,10 @@ class TotpToken(OathToken):
         if self.mode == "mode2":
             return return_value
 
+        pin = None
+        if self.pin_enabled:
+            pin = self.pin
+
         # Calculate epoch time to verify OTP.
         epoch_time = time.time()
 
@@ -770,7 +761,7 @@ class TotpToken(OathToken):
         # FIXME: we also need OTPs from self.backward_drift here!
         # Get list with valid OTPs of this token.
         otps = self.gen_otp(otp_count=self.forward_drift + 1,
-                            prefix_pin=self.pin,
+                            prefix_pin=pin,
                             verify_acls=False)
 
         # Set default return values.
@@ -819,12 +810,16 @@ class TotpToken(OathToken):
         if pin is None:
             if self.mode == "mode2":
                 pin = callback.askpass("Please enter PIN: ")
-                if pin is None:
-                    msg = "Cannot gen qrcode without PIN."
+                try:
+                    pin = int(pin)
+                except ValueError:
+                    msg = "Invalid PIN."
                     return callback.error(msg)
 
         # Get secret to gen QRCode.
         secret = self.get_secret(pin=pin)
+        secret = decode(secret, "base32")
+        secret = secret.encode()
 
         # Gen OATH URI.
         user_string = "%s@%s" % (self.rel_path, self.realm)
@@ -833,7 +828,7 @@ class TotpToken(OathToken):
         #                                    issuer_name=config.my_name)
         # Use oath-toolkit.
         oath_uri = uri.generate(key_type=self.token_type,
-                                key=decode(secret, "hex"),
+                                key=secret,
                                 user=user_string,
                                 issuer=config.my_name,
                                 counter=None)

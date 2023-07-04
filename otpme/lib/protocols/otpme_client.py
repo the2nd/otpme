@@ -277,7 +277,6 @@ class OTPmeClient(OTPmeClientBase):
         # The client that sends this request.
         self.client = client
         self.stop_job = False
-        self.job_stop_sent = False
 
         # Will hold our current job ID.
         self.jobs = {}
@@ -378,16 +377,13 @@ class OTPmeClient(OTPmeClientBase):
 
     def signal_handler(self, _signal, frame):
         """ Handle signals. """
-        if self.jobs:
-            msg = "Cannot exit while jobs are running."
-            error_message(msg)
-            return
         if _signal == 2:
             self.logger.warning("Exiting on Ctrl+C")
         if _signal == 15:
             self.logger.warning("Exiting on 'SIGTERM'.")
-        #self.stop_job = True
-        #self.job_stop_sent = False
+        self.stop_job = True
+        if self.jobs:
+            return
         self.close()
         self.cleanup()
         os._exit(0)
@@ -1403,13 +1399,10 @@ class OTPmeClient(OTPmeClientBase):
                 self.print_response(response)
 
                 if self.stop_job:
-                    if not self.job_stop_sent:
-                        self.stop_job = False
-                        self.job_stop_sent = True
-                        x_id = list(self.jobs.keys())[0]
-                        x_job_uuid = self.jobs[x_id]
-                        command = "stop_job"
-                        command_args = x_job_uuid
+                    x_id = list(self.jobs.keys())[0]
+                    x_job_uuid = self.jobs[x_id]
+                    command = "stop_job"
+                    command_args = x_job_uuid
 
                 # Send (keepalive) request to server.
                 try:

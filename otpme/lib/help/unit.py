@@ -69,6 +69,14 @@ cmd_help = {
                                 },
                 },
 
+    'touch'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-unit touch {unit}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Touch unit (e.g. migrate).',
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : 'Usage: otpme-unit enable {unit}',
                     'cmd'   :   '<|object|>',

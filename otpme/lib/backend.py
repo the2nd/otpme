@@ -31,10 +31,10 @@ from otpme.lib.classes.object_config import ObjectConfig
 
 from otpme.lib.exceptions import *
 
-OID_LOCK_TYPE = "oid"
+#OID_LOCK_TYPE = "oid"
 SYNC_MAP_LOCK_TYPE = "sync_map"
 
-locking.register_lock_type(OID_LOCK_TYPE, module=__file__)
+#locking.register_lock_type(OID_LOCK_TYPE, module=__file__)
 locking.register_lock_type(SYNC_MAP_LOCK_TYPE, module=__file__)
 
 multiprocessing.register_shared_dict("sync_map")
@@ -1037,7 +1037,7 @@ def get_object(object_id=None, uuid=None, object_type=None,
     if object_config:
         try:
             instance = get_instance_from_oid(object_id, object_config)
-        except OTPmeException:
+        except OTPmeException as e:
             instance = None
         except Exception as e:
             msg = "Failed to load object: %s: %s" % (object_id, e)
@@ -1226,14 +1226,17 @@ def search(attribute=None, value=None, values=None, attributes={},
 
     return result
 
-def get_sessions(session_id=None, uuid=None, user=None, session_type=None,
-    access_group=None, return_type="uuid", return_attributes=None):
+def get_sessions(session_id=None, uuid=None, user=None, token=None,
+    session_type=None, access_group=None, return_type="uuid",
+    return_attributes=None):
     """ Get sessions from backend. """
     search_attrs = {}
     if uuid is not None:
         search_attrs['uuid'] = {'value':uuid}
     if user is not None:
         search_attrs['user_uuid'] = {'value':user}
+    if token is not None:
+        search_attrs['token_uuid'] = {'value':token}
     if session_id is not None:
         search_attrs['session_id'] = {'value':session_id}
     if access_group is not None:

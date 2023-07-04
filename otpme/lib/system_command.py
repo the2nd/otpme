@@ -4,7 +4,6 @@
 import os
 import pwd
 import grp
-import time
 from subprocess import PIPE
 from subprocess import Popen
 #from subprocess import DEVNULL
@@ -63,15 +62,13 @@ def run(command, user=None, group=True, groups=True, return_proc=False,
         stdout = None
         stderr = None
         if "stdout" in kwargs:
-            DEVNULL = open(os.devnull, 'w')
             stdout = kwargs.pop('stdout')
             if stdout is None:
-                stdout = DEVNULL
+                stdout = open(os.devnull, 'w')
         if "stderr" in kwargs:
-            DEVNULL = open(os.devnull, 'w')
             stderr = kwargs.pop('stderr')
             if stderr is None:
-                stderr = DEVNULL
+                stderr = open(os.devnull, 'w')
         try:
             return_val = _call(command,
                                 shell=shell,
@@ -84,11 +81,27 @@ def run(command, user=None, group=True, groups=True, return_proc=False,
             raise OSError(msg)
         return return_val
 
+    stdin = PIPE
+    if "stdin" in kwargs:
+        stdin = kwargs.pop('stdin')
+        if stdin is None:
+            stdin = open(os.devnull, 'w')
+    stdout = PIPE
+    if "stdout" in kwargs:
+        stdout = kwargs.pop('stdout')
+        if stdout is None:
+            stdout = open(os.devnull, 'w')
+    stderr = PIPE
+    if "stderr" in kwargs:
+        stderr = kwargs.pop('stderr')
+        if stderr is None:
+            stderr = open(os.devnull, 'w')
+
     # Start command.
     proc = Popen(command,
-                stdin=PIPE,
-                stdout=PIPE,
-                stderr=PIPE,
+                stdin=stdin,
+                stdout=stdout,
+                stderr=stderr,
                 shell=shell,
                 preexec_fn=demote(user, group, groups=groups),
                 **kwargs)
@@ -96,8 +109,7 @@ def run(command, user=None, group=True, groups=True, return_proc=False,
     if return_proc:
         return proc
     # Wait for process to finish.
-    while proc.poll():
-        time.sleep(0.01)
+    proc.wait()
     if not return_proc_data:
         return
     # Get command stdout and stderr.

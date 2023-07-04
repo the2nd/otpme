@@ -148,18 +148,21 @@ class OTPmeJob(object):
 
         # Handle multiprocessing stuff.
         if self.start_process:
-            #def signal_handler(_signal, frame):
-            #    """ Handle SIGTERM. """
-            #    from otpme.lib import config
-            #    # Get logger.
-            #    logger = config.logger
-            #    msg = "Received SIGTERM."
-            #    logger.debug(msg)
-            #    os._exit(0)
+            def signal_handler(_signal, frame):
+                """ Handle SIGTERM. """
+                from otpme.lib import config
+                # Get logger.
+                logger = config.logger
+                msg = "Received SIGTERM."
+                logger.debug(msg)
+                if _signal == 2:
+                    self.callback.stop_job = True
+                if _signal == 15:
+                    os._exit(0)
 
             multiprocessing.atfork(quiet=True,
-                                exit_on_signal=True)
-                                #signal_method=signal_handler)
+                                exit_on_signal=True,
+                                signal_method=signal_handler)
             setproctitle.setproctitle(self.proctitle)
             self.pid = os.getpid()
             # Reconfigure logger.
@@ -284,7 +287,7 @@ class OTPmeJob(object):
             return True
         return False
 
-    def stop(self):
+    def stop(self, signal=2):
         """ Stop job. """
         if self.stopped:
             return
@@ -296,15 +299,12 @@ class OTPmeJob(object):
             return
         # Terminate job process.
         if self._child is not None:
-            msg = "Sending SIGTERM to job: %s" % self.name
+            msg = "Sending signal to job: %s" % self.name
             self.logger.info(msg)
             try:
-                stuff.kill_pid(self._child.pid)
+                stuff.kill_pid(self._child.pid, signal=signal)
             except Exception as e:
                 config.raise_exception()
-                if self.job_is_alive():
-                    msg = "Failed to stop job process: %s" % e
-                    self.logger.critical(msg)
             while self.job_is_alive():
                 time.sleep(0.01)
         msg = ("Job stoppped: %s") % self.name

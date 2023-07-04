@@ -525,9 +525,9 @@ class OTPmeJoinP1(OTPmeServer1):
                         % host.lotp)
                 msg.append(x)
 
-        # Make sure all online nodes gets new node object.
-        if host.type == "node":
-            self.update_node_object(host)
+        ## Make sure all online nodes gets new node object.
+        #if host.type == "node":
+        #    self.update_node_object(host)
 
         # Add join message to reply.
         join_reply['message'] = "\n".join(msg)

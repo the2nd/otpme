@@ -221,22 +221,6 @@ commands = {
                     },
                 },
             },
-    'enable_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'enable_mschap',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'disable_mschap'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'disable_mschap',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
     }
 
 def get_acls(split=False, **kwargs):
@@ -338,7 +322,7 @@ def register_config_params():
     # The HOTP secret length.
     config.register_config_parameter(name="hotp_secret_len",
                                     ctype=int,
-                                    default_value=40,
+                                    default_value=10,
                                     object_types=object_types)
 
 class HotpToken(OathToken):
@@ -654,7 +638,6 @@ class HotpToken(OathToken):
     def verify_mschap_otp(self, challenge, response,
         session_uuid=None, handle_used_otps=True, **kwargs):
         """ Verify MSCHAP challenge/response against OTPs """
-        from otpme.lib.otp.oath import hotp
         from otpme.lib import mschap_util
 
         nt_key = None
@@ -668,15 +651,20 @@ class HotpToken(OathToken):
         if self.mode == "mode2":
             return return_value
 
-        # Get token secret.
-        secret = self.get_secret()
+        pin = None
+        if self.pin_enabled:
+            pin = self.pin
+
+        # Get secret.
+        secret = self.get_secret(pin=pin)
 
         # Get token counter check range.
         token_counter_start, token_counter_end = self.get_counter_range()
 
         # Get list with valid OTPs of this token for the given counter range.
         otps = self.gen_otp(otp_count=self.counter_check_range,
-                            prefix_pin=self.pin, verify_acls=False)
+                            prefix_pin=pin,
+                            verify_acls=False)
 
         msg = ("Verifiying OTP within counter range: start='%s' end='%s'."
                 % (token_counter_start, token_counter_end))
@@ -752,18 +740,20 @@ class HotpToken(OathToken):
 
         # Get secret to gen QRCode.
         secret = self.get_secret(pin=pin)
+        secret = decode(secret, "base32")
+        secret = secret.encode()
 
         token_counter_start, token_counter_end = self.get_counter_range()
 
         # Gen OATH URI.
         user_string = "%s@%s" % (self.rel_path, self.realm)
-        #oath_uri = HOTP(secret, "hex")
+        #oath_uri = HOTP(secret)
         #oath_uri = oath_uri.provisioning_uri(name=user_string,
         #                                    issuer_name=config.my_name,
         #                                    initial_count=token_counter_start)
         # Use oath-toolkit.
         oath_uri = uri.generate(key_type=self.token_type,
-                                key=decode(secret, "hex"),
+                                key=secret,
                                 user=user_string,
                                 issuer=config.my_name,
                                 counter=token_counter_start)

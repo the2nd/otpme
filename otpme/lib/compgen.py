@@ -44,6 +44,9 @@ def show_compgen():
             sys.argv.remove(x)
         counter += 1
 
+    if '"' in cur:
+        cur = cur.replace('"', '')
+
     tool_name = comp_words[0]
     main_command  = tool_name.split("-")[1]
 

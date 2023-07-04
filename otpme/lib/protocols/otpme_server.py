@@ -189,6 +189,8 @@ class OTPmeServer1(object):
 
     def signal_handler(self, _signal, frame):
         """ Handle signals """
+        if _signal != 15:
+            return
         # Close our connection.
         self.connection.close()
         # Handle multiprocessing cleanup().

@@ -61,6 +61,14 @@ cmd_help = {
                                 },
                 },
 
+    'touch'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-node touch {node}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Touch node (e.g. migrate).',
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : 'Usage: otpme-node enable {node}',
                     'cmd'   :   '<|object|>',
@@ -341,20 +349,27 @@ cmd_help = {
                                 },
                 },
 
-
-    'address'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-node address {node} [ip_address]',
-                    'cmd'   :   '<|object|> [address]',
+    'vote_script'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-node vote_script {vote_script}',
+                    'cmd'   :   '<|object|> <vote_script> [script_options]',
                     '_help' :   {
-                                    'cmd'                   : 'change nodes IP address',
+                                    'cmd'                   : 'Change node vote script.',
                                 },
                 },
 
-    'cluster_votes'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-node cluster_votes {node} {new_votes}',
-                    'cmd'   :   '<|object|> <new_votes>',
+    'enable_vote_script'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-node enable_vote_script {node}',
+                    'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'Change nodes cluter votes.',
+                                    'cmd'                   : 'Enable node vote script.',
+                                },
+                },
+
+    'disable_vote_script'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-node disable_vote_script {node}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Disable node vote script.',
                                 },
                 },
 

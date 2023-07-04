@@ -128,7 +128,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             if not job.is_alive():
                 continue
             # Sent stop signal to job.
-            job.stop()
+            job.stop(signal=15)
         while True:
             jobs_stopped = True
             for job_uuid in dict(self.jobs):
@@ -1227,7 +1227,8 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Get object sub type.
         try:
             sub_type_attribute = sub_types[object_type]
-            sub_type = getattr(o, sub_type_attribute)
+            #sub_type = getattr(o, sub_type_attribute)
+            sub_type = command_args[sub_type_attribute]
         except:
             pass
         # Try to get command methods.

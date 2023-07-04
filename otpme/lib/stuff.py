@@ -28,14 +28,15 @@ from otpme.lib.compression.base import decompress
 from otpme.lib.exceptions import *
 
 @contextmanager
-def _timeout(seconds):
+def _timeout(timeout):
     # https://stackoverflow.com/questions/5255220/fcntl-flock-how-to-implement-a-timeout
     def timeout_handler(signum, frame):
         msg = "Timeout reached."
         raise TimeoutReached(msg)
     original_handler = signal.signal(signal.SIGALRM, timeout_handler)
     try:
-        signal.alarm(seconds)
+        #signal.alarm(timeout)
+        signal.setitimer(signal.ITIMER_REAL, timeout)
         yield
     finally:
         signal.alarm(0)
@@ -184,13 +185,27 @@ def gen_pin(len=4):
     pin = ""
     for i in range(len):
         pin = "%s%s" % (pin, random.randint(0,9))
+    pin = int(pin)
     return pin
 
-def gen_secret(len=32):
+def gen_secret(len=32, encoding="hex"):
     """ Generate secret. """
-    random_bits = get_random_bits(1024)
-    random_bits = random_bits.encode('utf-8')
-    secret = gen_sha512(random_bits)[:len]
+    import base64
+    import codecs
+    random_bytes = get_random_bytes(len)
+    if encoding:
+        if encoding == "hex":
+            secret = codecs.encode(random_bytes, "hex")
+            secret = secret.decode()
+        elif encoding == "base32":
+            secret = base64.b32encode(random_bytes)
+            secret = secret.decode()
+        elif encoding == "base64":
+            secret = base64.b64encode(random_bytes)
+            secret = secret.decode()
+        else:
+            msg = "Unknown encoding: %s" % encoding
+            raise OTPmeException(msg)
     return secret
 
 def gen_password(len=16, capital=True, numbers=True,
@@ -1332,7 +1347,9 @@ def stop_otpme_daemon(kill=False, timeout=None):
     daemon_status, pid = control_daemon.status(quiet=True)
     if not daemon_status:
         return True
-    logger.debug("Stopping OTPme daemons...")
+    msg = "Stopping OTPme daemons..."
+    print(msg)
+    logger.debug(msg)
     otpme_daemon_bin = '%s/otpme-controld' % config.bin_dir
     command = [ otpme_daemon_bin, "stop" ]
     if kill:

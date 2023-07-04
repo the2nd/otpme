@@ -93,6 +93,14 @@ commands = {
                     },
                 },
             },
+    'touch'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'show'   : {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
@@ -2498,6 +2506,15 @@ class Token(OTPmeObject):
             return_message = (_("New password: %s") % password)
             callback.send(return_message)
 
+        # Remove sessions with old password.
+        token_sessions = backend.get_sessions(token=self.uuid,
+                                            return_type="instance")
+        for session in token_sessions:
+            if session.access_group == config.realm_access_group:
+                continue
+            session.delete(force=True,
+                        verify_acls=False)
+
         return self._cache(callback=callback)
 
     @check_acls(['set_temp_password'])
@@ -2550,12 +2567,14 @@ class Token(OTPmeObject):
                 return callback.error()
 
         # Set temp password.
-        self.change_password(password=temp_password,
-                            auto_password=auto_password,
-                            verify_acls=verify_acls,
-                            force=force,
-                            temp=True,
-                            callback=callback)
+        change_result = self.change_password(password=temp_password,
+                                            auto_password=auto_password,
+                                            verify_acls=verify_acls,
+                                            force=force,
+                                            temp=True,
+                                            callback=callback)
+        if not change_result:
+            return change_result
 
         try:
             duration_seconds = units.time2int(duration, time_unit="s")
@@ -2617,17 +2636,15 @@ class Token(OTPmeObject):
                 return callback.error()
 
         # Call child class method that may return a new PIN or just do some
-        # other checks. If the method returns a string its used as the new PIN.
+        # other checks. If the method returns a int its used as the new PIN.
         # If the method returns False we abort PIN changing else we continue as
         # usual.
-        try:
-            x = self._change_pin(pin=pin, pre=True, callback=callback, **kwargs)
-            if isinstance(x, str):
+        x = self._change_pin(pin=pin, pre=True, callback=callback, **kwargs)
+        if not isinstance(x, bool):
+            if isinstance(x, int):
                 pin = x
-            if x == False:
-                return callback.abort()
-        except:
-            pass
+        if x == False:
+            return callback.abort()
 
         if not pin and not auto_pin:
             answer = False
@@ -2652,8 +2669,8 @@ class Token(OTPmeObject):
                 else:
                     return callback.error("Sorry, PINs do not match.")
 
-        # Make sure PIN is a string.
-        pin = str(pin)
+        # Make sure PIN is a int.
+        pin = int(pin)
 
         if not self.check_pin(pin, callback=callback):
             return callback.error()
@@ -2665,14 +2682,20 @@ class Token(OTPmeObject):
 
         # Run child class method (e.g. handle token specific stuff when
         # changing the PIN).
-        try:
-            if not self._change_pin(pin=pin, callback=callback, **kwargs):
-                return callback.abort()
-        except:
-            pass
+        if not self._change_pin(pin=pin, callback=callback, **kwargs):
+            return callback.abort()
 
         # Set new PIN.
         self.pin = pin
+
+        # Remove sessions with old PIN.
+        token_sessions = backend.get_sessions(token=self.uuid,
+                                            return_type="instance")
+        for session in token_sessions:
+            if session.access_group == config.realm_access_group:
+                continue
+            session.delete(force=True,
+                        verify_acls=False)
 
         if return_message:
             callback.send(return_message)

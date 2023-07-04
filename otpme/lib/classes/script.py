@@ -76,6 +76,14 @@ commands = {
                     },
                 },
             },
+    'touch'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'show'   : {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {

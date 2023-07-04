@@ -65,6 +65,14 @@ commands = {
                     },
                 },
             },
+    'touch'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'show'   : {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
@@ -344,7 +352,7 @@ def register_oid():
     read_oid_schema = [ 'realm', 'site', 'name' ]
     # OID regex stuff.
     unit_path_re = oid.object_regex['unit']['path']
-    policy_name_re = '([0-9A-Za-z]([0-9A-Za-z_.-]*[0-9A-Za-z]){0,})'
+    policy_name_re = '([0-9A-Za-z]([0-9A-Za-z_:.-]*[0-9A-Za-z]){0,})'
     policy_path_re = '%s[/]%s' % (unit_path_re, policy_name_re)
     policy_oid_re = 'policy|%s' % policy_path_re
     oid.register_oid_schema(object_type="policy",

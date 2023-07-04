@@ -20,7 +20,6 @@ from otpme.lib.encryption.ec import ECKey
 from otpme.lib.encoding.base import decode
 from otpme.lib.classes.session import Session
 from otpme.lib.daemon.scriptd import run_script
-from otpme.lib.classes.session import acquire_session_lock
 
 from otpme.lib.exceptions import *
 
@@ -1180,6 +1179,7 @@ class AuthHandler(object):
         verify_status = None
         # Try to verify token. A status of None means continue to next token.
         if _verify_token.temp_password_hash is not None:
+            self.create_sessions = False
             if self.auth_type == "mschap":
                 token_verify_parms['temp'] = True
             else:
@@ -1232,15 +1232,14 @@ class AuthHandler(object):
         # Make sure we have a password hash.
         if self.password and not self.realm_login and not self.realm_logout:
             if self.temp_password_auth:
-                if self.verify_token.temp_password_hash is not None:
+                if self.verify_token.temp_password_hash:
                     self.password_hash = self.verify_token.temp_password_hash
                     self.pass_hash_params = self.verify_token.temp_password_hash_params
                     self.request_cacheable = True
-            elif self.verify_token.password_hash is not None:
+            elif self.verify_token.password_hash:
                 if not self.verify_token.second_factor_token_enabled:
                     self.password_hash = self.verify_token.password_hash
                     self.pass_hash_params= self.verify_token.password_hash_params
-                    self.request_cacheable = True
             if not self.password_hash:
                 self.gen_pass_hash()
 
@@ -1320,6 +1319,7 @@ class AuthHandler(object):
             # Get clear-text OTP.
             if self.verify_token.pass_type == "otp":
                 self.password = mschap_status[2]
+                self.gen_pass_hash()
             # For static password tokens mschap_status contains the password
             # hash instead of the used clear-text password.
             if self.verify_token.pass_type == "static":
@@ -1498,6 +1498,9 @@ class AuthHandler(object):
                 self.auth_message = "LOGIN_OK_SMARTCARD"
             else:
                 self.auth_message = "AUTH_OK_SMARTCARD"
+
+        if self.auth_mode == "static":
+            self.request_cacheable = True
 
         # Return True because we found a valid token.
         return True
@@ -1771,32 +1774,24 @@ class AuthHandler(object):
                 return
             self.logger.debug("Creating static password session because "
                         "CACHE_STATIC_PASSWORDS is enabled...")
-            # Acquire lock while creating new sessions.
-            _lock = acquire_session_lock(username=self.user.name,
-                                        access_group=self.access_group,
-                                        write=True)
-
-            try:
-                session = Session(self.auth_type, self.user.name,
-                                    pass_hash=self.password_hash,
-                                    pass_hash_params=self.pass_hash_params,
-                                    token=self.auth_token.uuid,
-                                    access_group=self.access_group,
-                                    client=self.client,
-                                    client_ip=self.client_ip,
-                                    cache=True)
-                # Create cache session.
-                if session.add():
-                    # FIXME: do we need to call exists()????
-                    # Call exists() to fill in all session variables.
-                    session.exists()
-                    # Count up login count for the new created session.
-                    session.count_login()
-                    # Set log_session_id to new created session_id with
-                    # info tag that its new.
-                    self.log_session_id = "new_cache:%s" % session.session_id
-            finally:
-                _lock.release_lock()
+            session = Session(self.auth_type, self.user.name,
+                                pass_hash=self.password_hash,
+                                pass_hash_params=self.pass_hash_params,
+                                token=self.auth_token.uuid,
+                                access_group=self.access_group,
+                                client=self.client,
+                                client_ip=self.client_ip,
+                                cache=True)
+            # Create cache session.
+            if session.add():
+                # FIXME: do we need to call exists()????
+                # Call exists() to fill in all session variables.
+                session.exists()
+                # Count up login count for the new created session.
+                session.count_login()
+                # Set log_session_id to new created session_id with
+                # info tag that its new.
+                self.log_session_id = "new_cache:%s" % session.session_id
 
             # Set session created for this request.
             self.auth_session = session
@@ -1815,11 +1810,6 @@ class AuthHandler(object):
                                 "request with token/password type: %s"
                                 % self.verify_token.pass_type)
                 return
-
-        # Acquire lock while creating new sessions.
-        _lock = acquire_session_lock(username=self.user.name,
-                                    access_group=self.access_group,
-                                    write=True)
 
         # Check if there is a session master for auth_group configured.
         session_master = self.auth_group.parents(recursive=True,
@@ -1872,9 +1862,6 @@ class AuthHandler(object):
             self.auth_session = session
             self.request_cacheable = True
 
-        # Release session lock after sessions have been created.
-        _lock.release_lock()
-
     def reset_user_fail_counter(self):
         """ Reset users failed login counter. """
         # Get fail count for this user/group.
@@ -1890,6 +1877,50 @@ class AuthHandler(object):
         except Exception as e:
             self.logger.critical("Error resetting login fail count: %s" % e)
             config.raise_exception()
+
+    def build_log_message(self):
+        """ Build log message. """
+        # Set variables to build final log entry.
+        log_username = None
+        log_auth_type = None
+        log_token_name = None
+        log_access_group = None
+        log_client = None
+        log_client_ip = None
+        log_client = None
+        log_client_ip = None
+        log_session_id = None
+        if self.user:
+            log_username = self.user.name
+        if self.auth_type:
+            log_auth_type = self.auth_type
+        if self.auth_token:
+            log_token_name = self.auth_token.name
+        if self.auth_group:
+            log_access_group = self.auth_group.name
+        if self.client:
+            log_client = self.client
+        if self.client_ip:
+            log_client_ip = self.client_ip
+        if self.host:
+            log_client = self.host
+        if self.host_ip:
+            log_client_ip = self.host_ip
+        if self.auth_session:
+            log_session_id = self.auth_session.session_id
+
+        # Final success message.
+        log_message = ("%s: user=%s token=%s access_group=%s client=%s "
+                        "client_ip=%s auth_type=%s session=%s"
+                        % (self.auth_message,
+                        log_username,
+                        log_token_name,
+                        log_access_group,
+                        log_client,
+                        log_client_ip,
+                        log_auth_type,
+                        log_session_id))
+        return log_message
 
     def authenticate(self, user, ecdh_curve=None, auth_type="clear-text",
         auth_mode="auto", realm_login=False, realm_logout=False,
@@ -2002,15 +2033,6 @@ class AuthHandler(object):
         else:
             self.gen_jwt = gen_jwt
 
-        # Set log information we already have.
-        self.log_username = self.user.name
-        self.log_auth_type = self.auth_type
-        self.log_token_name = ""
-        self.log_access_group = ""
-        self.log_client = ""
-        self.log_client_ip = ""
-        self.log_session_id = ""
-
 	    # Check if we have to log authentication data for this request.
         if isinstance(config.log_auth_data, bool):
             self.log_auth_data = config.log_auth_data
@@ -2121,7 +2143,6 @@ class AuthHandler(object):
                 raise OTPmeException(msg)
         self.rsp_hash_type = rsp_hash_type
 
-        # FIXME: should we implement something like force_ip for realm sessions to prevent using a stolen RSP from another host/IP?
         if self.realm_login:
             if self.access_group != config.realm_access_group:
                 msg = ("Realm login requests must have "
@@ -2285,16 +2306,8 @@ class AuthHandler(object):
 
         # Try to verify request against existing session if enabled.
         if not self.auth_failed and self.verify_sessions:
-            # Acquire read lock to prevent race with any ongoing session
-            # creation.
-            _lock = acquire_session_lock(username=self.user.name,
-                                        access_group=self.access_group,
-                                        write=False)
             # Verify sessions.
             self.verify_user_sessions()
-
-            # Release session read lock.
-            _lock.release_lock()
 
         # Handle JWT (cross-site) authentication.
         if self.auth_type == "jwt":
@@ -2426,22 +2439,6 @@ class AuthHandler(object):
                     self.count_fails = False
                     self.auth_message = "AUTH_INTERNAL_SERVER_ERROR"
 
-        # Set variables to build final log entry.
-        if self.auth_token:
-            self.log_token_name = self.auth_token.name
-        if self.auth_group:
-            self.log_access_group = self.auth_group.name
-        if self.client:
-            self.log_client = self.client
-        if self.client_ip:
-            self.log_client_ip = self.client_ip
-        if self.host:
-            self.log_client = self.host
-        if self.host_ip:
-            self.log_client_ip = self.host_ip
-        if self.auth_session:
-            self.log_session_id = self.auth_session.session_id
-
         # Log request auth data if enabled.
         if self.log_auth_data and (config.loglevel == "DEBUG" or config.debug_enabled):
             self.logger.warning("Logging of sensitive authentication data is "
@@ -2527,18 +2524,6 @@ class AuthHandler(object):
                                     key=self.site_key,
                                     algorithm='RS256')
 
-            # Final success message.
-            ok_message = ("%s: user=%s token=%s access_group=%s client=%s "
-                            "client_ip=%s auth_type=%s session=%s"
-                            % (self.auth_message,
-                            self.log_username,
-                            self.log_token_name,
-                            self.log_access_group,
-                            self.log_client,
-                            self.log_client_ip,
-                            self.log_auth_type,
-                            self.log_session_id))
-
             # On session refresh/reneg we are done here.
             if self.session_reneg or self.session_refresh:
                 auth_reply = {
@@ -2548,6 +2533,7 @@ class AuthHandler(object):
                         'message'           : self.auth_message,
                         }
                 # Log final success message.
+                ok_message = self.build_log_message()
                 self.logger.info(ok_message)
                 return auth_reply
 
@@ -2568,11 +2554,11 @@ class AuthHandler(object):
                 auth_reply['password_hash'] = self.password_hash
                 auth_reply['nt_key'] = self.nt_key
 
+
             # Handle session creation.
             if self.replace_sessions:
                 for _slp in self.replace_sessions:
                     self.logout_user_session(_slp)
-
             self.create_user_sessions()
 
             if self.auth_session:
@@ -2646,30 +2632,21 @@ class AuthHandler(object):
                             % self.auth_token.name)
 
             # Log final success message.
+            ok_message = self.build_log_message()
             self.logger.info(ok_message)
 
             # Finally return.
             return auth_reply
 
         if self.realm_logout:
-            # Log final logout message.
-            logout_message = ("%s: user=%s token=%s access_group=%s client=%s "
-                            "client_ip=%s auth_type=%s session=%s"
-                            % (self.auth_message,
-                            self.log_username,
-                            self.log_token_name,
-                            self.log_access_group,
-                            self.log_client,
-                            self.log_client_ip,
-                            self.log_auth_type,
-                            self.log_session_id))
-
             # Update last used timestamps for user and token.
             self.user.update_last_used_time()
             # Token may not exist anymore.
             if self.auth_token:
                 self.auth_token.update_last_used_time()
 
+            # Log final logout message.
+            logout_message = self.build_log_message()
             self.error_log_method(logout_message)
 
             # Logout reply.
@@ -2732,17 +2709,7 @@ class AuthHandler(object):
                 self.user.count_fail(self.one_iter_hash,
                                     access_group=self.access_group)
         # Log final failed message.
-        failed_message = ("%s: user=%s token=%s access_group=%s client=%s "
-                        "client_ip=%s auth_type=%s session=%s"
-                        % (self.auth_message,
-                        self.log_username,
-                        self.log_token_name,
-                        self.log_access_group,
-                        self.log_client,
-                        self.log_client_ip,
-                        self.log_auth_type,
-                        self.log_session_id))
-
+        failed_message = self.build_log_message()
         self.error_log_method(failed_message)
 
         # Authentication failed!!

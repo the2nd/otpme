@@ -62,6 +62,14 @@ cmd_help = {
                                 },
                 },
 
+    'touch'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-host touch {host}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Touch host (e.g. migrate).',
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : 'Usage: otpme-host enable {host}',
                     'cmd'   :   '<|object|>',

@@ -75,6 +75,15 @@ default_acls = [
 recursive_default_acls = default_acls
 
 commands = {
+    'add'   : {
+            'OTPme-mgmt-1.0'    : {
+                'missing'    : {
+                    'method'            : 'add',
+                    'args'              : ['policy_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'add_unit'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {

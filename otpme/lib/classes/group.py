@@ -79,6 +79,14 @@ commands = {
                     },
                 },
             },
+    'touch'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'show'   : {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
@@ -739,6 +747,10 @@ class Group(OTPmeObject):
         self.default_group_users.append(user_uuid)
         # Update index.
         self.add_index('user', user_uuid)
+        # Update extensions.
+        self.update_extensions("update_members",
+                            verbose_level=verbose_level,
+                            callback=callback)
         return self._cache(callback=callback)
 
     @check_acls(['remove:default_group_user'])
@@ -758,6 +770,10 @@ class Group(OTPmeObject):
         self.default_group_users.remove(user_uuid)
         # Update index.
         self.del_index('user', user_uuid)
+        # Update extensions.
+        self.update_extensions("update_members",
+                            verbose_level=verbose_level,
+                            callback=callback)
         return self._cache(callback=callback)
 
     @object_lock()

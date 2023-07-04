@@ -73,6 +73,15 @@ default_acls = [
 recursive_default_acls = default_acls
 
 commands = {
+    'add'   : {
+            'OTPme-mgmt-1.0'    : {
+                'missing'    : {
+                    'method'            : 'add',
+                    'args'              : ['policy_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'add_group'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -197,7 +206,7 @@ class DefaultgroupsPolicy(Policy):
 
         # Set default values.
         self.hooks = {
-                    'user'   : ['post_add_user'],
+                    'user'   : ['set_default_group', 'set_groups'],
                     }
 
         self.object_types = ['realm', 'site', 'unit']
@@ -247,41 +256,43 @@ class DefaultgroupsPolicy(Policy):
     def handle_hook(self, hook_name=None, child_object=None,
         callback=default_callback, **kwargs):
         """ Handle policy hooks. """
-        if hook_name != "post_add_user":
+        if hook_name == "set_default_group":
+            # Handle default group.
+            if self.default_group is not None:
+                result = backend.search(object_type="group",
+                                        attribute="uuid",
+                                        value=self.default_group,
+                                        return_attributes=['name'])
+                if result:
+                    default_group = result[0]
+                    if child_object.group != default_group:
+                        child_object.change_group(default_group,
+                                            callback=callback)
+        elif hook_name == "set_groups":
+            # Handle default groups if user does have a default token.
+            if self.default_groups and child_object.default_token:
+                result = backend.search(object_type="token",
+                                        attribute="uuid",
+                                        value=child_object.default_token,
+                                        return_attributes=['rel_path'])
+                if result:
+                    default_token = result[0]
+                    for group_uuid in self.default_groups:
+                        group = backend.get_object(object_type="group",
+                                                    uuid=group_uuid)
+                        if not group:
+                            continue
+                        try:
+                            group.add_token(default_token)
+                        except AlreadyExists:
+                            continue
+                        except Exception as e:
+                            msg = ("Failed to add default token to group: %s: "
+                                    "%s: %s" % (group.name, default_token, e))
+                            return callback.error(msg)
+        else:
             msg = (_("Unknown policy hook: %s") % hook_name)
             return callback.error(msg, exception=self.policy_exception)
-        # Handle default group.
-        if self.default_group is not None:
-            result = backend.search(object_type="group",
-                                    attribute="uuid",
-                                    value=self.default_group,
-                                    return_attributes=['name'])
-            if result:
-                default_group = result[0]
-                if child_object.group != default_group:
-                    child_object.change_group(default_group,
-                                            callback=callback)
-        # Handle default groups if user does have a default token.
-        if self.default_groups and child_object.default_token:
-            result = backend.search(object_type="token",
-                                    attribute="uuid",
-                                    value=child_object.default_token,
-                                    return_attributes=['rel_path'])
-            if result:
-                default_token = result[0]
-                for group_uuid in self.default_groups:
-                    group = backend.get_object(object_type="group",
-                                                uuid=group_uuid)
-                    if not group:
-                        continue
-                    try:
-                        group.add_token(default_token)
-                    except AlreadyExists:
-                        continue
-                    except Exception as e:
-                        msg = ("Failed to add default token to group: %s: "
-                                "%s: %s" % (group.name, default_token, e))
-                        return callback.error(msg)
         return callback.ok()
 
     @check_acls(['edit:default_group'])

@@ -22,6 +22,7 @@ def register():
     from otpme.lib import config
     enc_mod = sys.modules[__name__]
     config.register_encoding_type("HEX", enc_mod)
+    config.register_encoding_type("BASE32", enc_mod)
     config.register_encoding_type("BASE64", enc_mod)
 
 def encode(data, encoding, oneline=True):
@@ -32,6 +33,8 @@ def encode(data, encoding, oneline=True):
     # Encode data.
     if encoding == "base64":
         encoded_data = base64.b64encode(data)
+    elif encoding == "base32":
+        encoded_data = base64.b32encode(data)
     else:
         encoded_data = codecs.encode(data, encoding)
     # Remove newlines.
@@ -49,6 +52,8 @@ def decode(data, encoding):
         data = data.encode()
     if encoding == "base64":
         decoded_data = base64.b64decode(data)
+    elif encoding == "base32":
+        decoded_data = base64.b32decode(data)
     else:
         decoded_data = codecs.decode(data, encoding)
     # Try to return string.

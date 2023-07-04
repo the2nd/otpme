@@ -91,9 +91,10 @@ class OTPmeAuthP1(OTPmeServer1):
                 return self.build_response(status, message)
 
         if command == "get_jwt":
+            msg = "Processing JWT request."
+            self.logger.info(msg)
+
             if not self.authenticated:
-                msg = "Processing JWT request."
-                self.logger.info(msg)
                 message = "Not logged in."
                 status = status_codes.NEED_USER_AUTH
                 self.require_auth = "user"
@@ -106,21 +107,21 @@ class OTPmeAuthP1(OTPmeServer1):
                 jwt_reason = command_args['jwt_reason']
             except:
                 status = False
-                message = "1AUTHD_INCOMPLETE_COMMAND"
+                message = "AUTHD_INCOMPLETE_COMMAND"
                 return self.build_response(status, message)
 
             try:
                 jwt_challenge = command_args['jwt_challenge']
             except:
                 status = False
-                message = "2AUTHD_INCOMPLETE_COMMAND"
+                message = "AUTHD_INCOMPLETE_COMMAND"
                 return self.build_response(status, message)
 
             try:
                 jwt_accessgroup = command_args['jwt_accessgroup']
             except:
                 status = False
-                message = "3AUTHD_INCOMPLETE_COMMAND"
+                message = "AUTHD_INCOMPLETE_COMMAND"
                 return self.build_response(status, message)
 
             # Load JWT signing key.
@@ -130,7 +131,7 @@ class OTPmeAuthP1(OTPmeServer1):
             # Redirect user if we do not have the required site key.
             if not sign_key:
                message = "%s/%s" % (user_site.realm, user_site.name)
-               status = "303"
+               status = status_codes.CONNECTION_REDIRECT
                return self.build_response(status, message)
 
             # Build JWT.

@@ -123,7 +123,6 @@ class OTPmeHost(OTPmeClientObject):
         self.acl_inheritance_enabled = False
         # Host join status.
         self.joined = False
-        self.fqdn = None
         self.jotp = None
         self.lotp = None
         self.jotp_enabled = True
@@ -254,10 +253,14 @@ class OTPmeHost(OTPmeClientObject):
 
         return super(OTPmeHost, self)._get_object_config(object_config=_object_config)
 
+    @property
+    def fqdn(self):
+        """ Set instance variables. """
+        fqdn = "%s.%s.%s" % (self.name, self.site, self.realm)
+        return fqdn
+
     def set_variables(self):
         """ Set instance variables. """
-        # Build FQDN.
-        self.fqdn = "%s.%s.%s" % (self.name, self.site, self.realm)
         # Set OID.
         self.set_oid()
 
@@ -271,7 +274,7 @@ class OTPmeHost(OTPmeClientObject):
         # Get peer.
         peer = backend.get_object(uuid=peer_uuid)
         if not peer:
-            msg = "Unknown peer: %s" % uuid
+            msg = "Unknown peer: %s" % peer_uuid
             raise OTPmeException(msg)
         # Objects not to sync.
         skip_admin = True

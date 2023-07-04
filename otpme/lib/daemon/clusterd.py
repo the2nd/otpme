@@ -6,7 +6,6 @@ import time
 import json
 import glob
 import shutil
-import random
 import signal
 import setproctitle
 from functools import wraps
@@ -58,6 +57,7 @@ def register():
     multiprocessing.register_shared_dict("online_nodes")
     multiprocessing.register_shared_dict("member_nodes")
     multiprocessing.register_shared_dict("running_jobs")
+    multiprocessing.register_shared_dict("cluster_writes")
     multiprocessing.register_shared_dict("cluster_quorum")
     multiprocessing.register_shared_list("init_sync_done")
     multiprocessing.register_shared_dict("node_connections")
@@ -96,6 +96,9 @@ def get_lock_event(timestamp):
 def check_cluster_status():
     if config.master_failover:
         msg = "Ongoing master failover."
+        raise OTPmeException(msg)
+    if not config.cluster_quorum:
+        msg = "No cluster quorum."
         raise OTPmeException(msg)
     if not config.cluster_status:
         msg = "Cluster not ready."
@@ -190,11 +193,18 @@ def cluster_sync_object(object_uuid, object_id, action, object_config=None,
         config.logger.critical(msg)
         return
     multiprocessing.cluster_event.set()
-    object_event.wait()
-    if config.debug_level() > 2:
-        msg = ("Finished cluster data write: %s %s %s"
-                % (config.daemon_name, action, object_id))
-        config.logger.debug(msg)
+    while True:
+        try:
+            object_event.wait(timeout=1)
+        except TimeoutReached:
+            continue
+        object_event.clear()
+        object_event.unlink()
+        if config.debug_level() > 2:
+            msg = ("Finished cluster data write: %s %s %s"
+                    % (config.daemon_name, action, object_id))
+            config.logger.debug(msg)
+        break
 
 def cluster_object_lock(action, lock_type,
     lock_id, write=False, timeout=None):
@@ -237,6 +247,8 @@ def cluster_object_lock(action, lock_type,
         return
     multiprocessing.cluster_lock_event.set()
     lock_event.wait()
+    lock_event.clear()
+    lock_event.unlink()
     if config.debug_level() > 2:
         msg = ("Finished cluster lock: %s %s %s"
                 % (config.daemon_name, action, lock_id))
@@ -249,17 +261,21 @@ def cluster_object_lock(action, lock_type,
         raise LockWaitTimeout()
 
 def calc_node_vote():
-    try:
-        node_vote = os.path.getmtime(config.node_sync_file)
-    except FileNotFoundError:
-        node_name = config.host_data['name']
-        node_in_sync = False
-        if node_name in multiprocessing.master_sync_done:
-            node_in_sync = True
-        if node_in_sync:
-            node_vote = random.random()
-        else:
-            node_vote = 0
+    node_name = config.host_data['name']
+    node_in_sync = False
+    if node_name in multiprocessing.master_sync_done:
+        node_in_sync = True
+    if node_in_sync:
+        result = backend.search(object_type="node",
+                                attribute="name",
+                                value=node_name,
+                                return_type="instance")
+        if not result:
+            return 0
+        node = result[0]
+        node_vote = node.get_node_vote()
+    else:
+        node_vote = 0
     return node_vote
 
 def entry_lock(write=True, timeout=None):
@@ -310,6 +326,8 @@ class ClusterEntry(object):
             self.action = action
 
     def lock(self, write=False):
+        if self._lock:
+            return
         self._lock = locking.acquire_lock(lock_type=self._lock_type,
                                             lock_id=self.timestamp,
                                             write=write)
@@ -331,13 +349,22 @@ class ClusterEntry(object):
             action = filetools.read_file(self.action_file)
         except FileNotFoundError:
             action = None
+        except Exception as e:
+            action = None
+            msg = "Failed to read action from cluster entry: %s" % e
+            self.logger.critical(msg)
         return action
 
     @action.setter
     @entry_lock(write=True)
     def action(self, action):
-        filetools.create_file(path=self.action_file,
-                                content=action)
+        try:
+            filetools.create_file(path=self.action_file,
+                                    content=action)
+        except Exception as e:
+            msg = ("Failed to add action to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
 
     @property
     @entry_lock(write=False)
@@ -348,13 +375,23 @@ class ClusterEntry(object):
 
     @entry_lock(write=True)
     def commit(self):
-        filetools.create_file(path=self.commit_file,
-                            content=str(time.time()))
+        try:
+            filetools.create_file(path=self.commit_file,
+                                content=str(time.time()))
+        except Exception as e:
+            msg = ("Failed to commit cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
 
     @entry_lock(write=True)
     def add_node(self, node_name):
         node_file = os.path.join(self.nodes_dir, node_name)
-        filetools.create_file(path=node_file, content=str(time.time()))
+        try:
+            filetools.create_file(path=node_file, content=str(time.time()))
+        except Exception as e:
+            msg = ("Failed to add node to cluster entry: %s: %s"
+                    % (node_name, e))
+            self.logger.critical(msg)
 
     @entry_lock(write=False)
     def get_nodes(self):
@@ -367,7 +404,12 @@ class ClusterEntry(object):
     @entry_lock(write=True)
     def add_failed_node(self, node_name):
         node_file = os.path.join(self.failed_nodes_dir, node_name)
-        filetools.create_file(path=node_file, content=str(time.time()))
+        try:
+            filetools.create_file(path=node_file, content=str(time.time()))
+        except Exception as e:
+            msg = ("Failed to add failed node to cluster entry: %s: %s"
+                    % (node_name, e))
+            self.logger.critical(msg)
 
     @entry_lock(write=False)
     def get_failed_nodes(self):
@@ -442,13 +484,23 @@ class ClusterLockEntry(ClusterEntry):
             lock_id = filetools.read_file(self.lock_id_file)
         except FileNotFoundError:
             lock_id = None
+        except Exception as e:
+            lock_id = None
+            msg = ("Failed to read lock ID from cluster entry: %s: %s"
+                    % (self.timeout, e))
+            self.logger.critical(msg)
         return lock_id
 
     @lock_id.setter
     #@entry_lock(write=True)
     def lock_id(self, lock_id):
-        filetools.create_file(path=self.lock_id_file,
-                                content=lock_id)
+        try:
+            filetools.create_file(path=self.lock_id_file,
+                                    content=lock_id)
+        except Exception as e:
+            msg = ("Failed to add lock ID to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
 
     @property
     @entry_lock(write=False)
@@ -457,13 +509,23 @@ class ClusterLockEntry(ClusterEntry):
             lock_type = filetools.read_file(self.lock_type_file)
         except FileNotFoundError:
             lock_type = None
+        except Exception as e:
+            lock_type = None
+            msg = ("Failed to read lock type from cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
         return lock_type
 
     @lock_type.setter
     #@entry_lock(write=True)
     def lock_type(self, lock_type):
-        filetools.create_file(path=self.lock_type_file,
-                                content=lock_type)
+        try:
+            filetools.create_file(path=self.lock_type_file,
+                                    content=lock_type)
+        except Exception as e:
+            msg = ("Failed to add lock type to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
 
     @property
     @entry_lock(write=False)
@@ -473,13 +535,23 @@ class ClusterLockEntry(ClusterEntry):
             timeout = float(timeout)
         except (FileNotFoundError, ValueError):
             timeout = None
+        except Exception as e:
+            timeout = None
+            msg = ("Failed to read timeout from lock entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
         return timeout
 
     @timeout.setter
     #@entry_lock(write=True)
     def timeout(self, timeout):
-        filetools.create_file(path=self.timeout_file,
-                                content=str(timeout))
+        try:
+            filetools.create_file(path=self.timeout_file,
+                                    content=str(timeout))
+        except Exception as e:
+            msg = ("Failed to add timeout to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
 
     @property
     @entry_lock(write=False)
@@ -489,13 +561,23 @@ class ClusterLockEntry(ClusterEntry):
             timeout_start = float(timeout_start)
         except (FileNotFoundError, ValueError):
             timeout_start = None
+        except Exception as e:
+            timeout_start = None
+            msg = ("Failed to read timeout start from lock entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
         return timeout_start
 
     @timeout_start.setter
     @entry_lock(write=True)
     def timeout_start(self, timeout_start):
-        filetools.create_file(path=self.timeout_start_file,
-                                content=str(timeout_start))
+        try:
+            filetools.create_file(path=self.timeout_start_file,
+                                    content=str(timeout_start))
+        except Exception as e:
+            msg = ("Failed to add timeout start to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
 
     @property
     @entry_lock(write=False)
@@ -505,13 +587,23 @@ class ClusterLockEntry(ClusterEntry):
             write = bool(write)
         except FileNotFoundError:
             write = False
+        except Exception as e:
+            write = False
+            msg = ("Failed to read write from lock entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
         return write
 
     @write.setter
     #@entry_lock(write=True)
     def write(self, write):
-        filetools.create_file(path=self.write_file,
-                                content=str(write))
+        try:
+            filetools.create_file(path=self.write_file,
+                                    content=str(write))
+        except Exception as e:
+            msg = ("Failed to add write to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
 
 class ClusterJournalEntry(ClusterEntry):
     """ Cluster journal entry. """
@@ -573,13 +665,23 @@ class ClusterJournalEntry(ClusterEntry):
             object_id = filetools.read_file(self.object_id_file)
         except FileNotFoundError:
             object_id = None
+        except Exception as e:
+            object_id = None
+            msg = ("Failed to read object ID from lock entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
         return object_id
 
     @object_id.setter
     #@entry_lock(write=True)
     def object_id(self, object_id):
-        filetools.create_file(path=self.object_id_file,
-                                content=object_id.full_oid)
+        try:
+            filetools.create_file(path=self.object_id_file,
+                                    content=object_id.full_oid)
+        except Exception as e:
+            msg = ("Failed to add object ID to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
 
     @property
     @entry_lock(write=False)
@@ -588,13 +690,23 @@ class ClusterJournalEntry(ClusterEntry):
             new_object_id = filetools.read_file(self.new_object_id_file)
         except FileNotFoundError:
             new_object_id = None
+        except Exception as e:
+            new_object_id = None
+            msg = ("Failed to read new object ID from lock entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
         return new_object_id
 
     @new_object_id.setter
     #@entry_lock(write=True)
     def new_object_id(self, new_object_id):
-        filetools.create_file(path=self.new_object_id_file,
-                                content=new_object_id.full_oid)
+        try:
+            filetools.create_file(path=self.new_object_id_file,
+                                    content=new_object_id.full_oid)
+        except Exception as e:
+            msg = ("Failed to add new object ID to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
 
     @property
     @entry_lock(write=False)
@@ -603,13 +715,23 @@ class ClusterJournalEntry(ClusterEntry):
             object_uuid = filetools.read_file(self.object_uuid_file)
         except FileNotFoundError:
             object_uuid = None
+        except Exception as e:
+            object_uuid = None
+            msg = ("Failed to read object UUID from lock entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
         return object_uuid
 
     @object_uuid.setter
     #@entry_lock(write=True)
     def object_uuid(self, object_uuid):
-        filetools.create_file(path=self.object_uuid_file,
-                                content=object_uuid)
+        try:
+            filetools.create_file(path=self.object_uuid_file,
+                                    content=object_uuid)
+        except Exception as e:
+            msg = ("Failed to add object UUID to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
 
     @property
     @entry_lock(write=False)
@@ -618,13 +740,23 @@ class ClusterJournalEntry(ClusterEntry):
             object_checksum = filetools.read_file(self.object_checksum_file)
         except FileNotFoundError:
             object_checksum = None
+        except Exception as e:
+            object_checksum = None
+            msg = ("Failed to read object checksum from lock entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
         return object_checksum
 
     @object_checksum.setter
     #@entry_lock(write=True)
     def object_checksum(self, object_checksum):
-        filetools.create_file(path=self.object_checksum_file,
-                                content=object_checksum)
+        try:
+            filetools.create_file(path=self.object_checksum_file,
+                                    content=object_checksum)
+        except Exception as e:
+            msg = ("Failed to add object checksum to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
 
     @property
     #@entry_lock(write=False)
@@ -633,13 +765,23 @@ class ClusterJournalEntry(ClusterEntry):
             last_modified = filetools.read_file(self.last_modified_file)
         except FileNotFoundError:
             last_modified = None
+        except Exception as e:
+            last_modified = None
+            msg = ("Failed to read last modified from lock entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
         return last_modified
 
     @last_modified.setter
     #@entry_lock(write=True)
     def last_modified(self, last_modified):
-        filetools.create_file(path=self.last_modified_file,
-                                content=last_modified)
+        try:
+            filetools.create_file(path=self.last_modified_file,
+                                    content=last_modified)
+        except Exception as e:
+            msg = ("Failed to add last modified to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
 
     @property
     @entry_lock(write=False)
@@ -650,6 +792,11 @@ class ClusterJournalEntry(ClusterEntry):
         try:
             object_config = filetools.read_file(self.object_config_file)
         except FileNotFoundError:
+            return None
+        except Exception as e:
+            msg = ("Failed to read object config from lock entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
             return None
         object_config = json.loads(object_config)
         object_config = ObjectConfig(object_id=object_id,
@@ -669,8 +816,13 @@ class ClusterJournalEntry(ClusterEntry):
         object_config = object_config.encrypt(config.master_key)
         object_config = object_config.copy()
         object_config = json.dumps(object_config)
-        filetools.create_file(path=self.object_config_file,
-                                content=object_config)
+        try:
+            filetools.create_file(path=self.object_config_file,
+                                    content=object_config)
+        except Exception as e:
+            msg = ("Failed to add object config to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
 
 class ClusterDaemon(OTPmeDaemon):
     """ ClusterDaemon. """
@@ -696,15 +848,29 @@ class ClusterDaemon(OTPmeDaemon):
             return
         msg = ("Received SIGTERM.")
         self.logger.debug(msg)
+        self.wait_for_cluster_writes()
         if config.start_freeradius:
             self.stop_freeradius()
         self.close_childs()
         return super(ClusterDaemon, self).signal_handler(_signal, frame)
 
+    def wait_for_cluster_writes(self):
+        time.sleep(0.5)
+        while len(multiprocessing.cluster_writes) > 0:
+            msg = "Waiting for pending cluster writes..."
+            self.logger.info(msg)
+            time.sleep(1)
+
     def start_childs(self):
         """ Start child processes childs. """
         msg = "Starting cluster communication..."
         self.logger.info(msg)
+        # Remove left over lock entries.
+        lock_journal_dirs = self.get_lock_journal()
+        for lock_entry_dir in lock_journal_dirs:
+            entry_timestamp = os.path.basename(lock_entry_dir)
+            lock_journal_entry = ClusterLockEntry(timestamp=entry_timestamp)
+            lock_journal_entry.delete()
         # Interprocess communication.
         self.interprocess_comm_child = multiprocessing.start_process(name=self.name,
                                         target=self.start_interprocess_comm)
@@ -726,8 +892,6 @@ class ClusterDaemon(OTPmeDaemon):
             except Exception as e:
                 msg = "Failed to stop cluster IPC child: %s" % e
                 self.logger.warning(msg)
-            while self.interprocess_comm_child.is_alive():
-                time.sleep(0.01)
         if self.interprocess_lock_comm_child:
             try:
                 self.interprocess_lock_comm_child.terminate()
@@ -735,8 +899,6 @@ class ClusterDaemon(OTPmeDaemon):
             except Exception as e:
                 msg = "Failed to stop cluster lock IPC child: %s" % e
                 self.logger.warning(msg)
-            while self.interprocess_lock_comm_child.is_alive():
-                time.sleep(0.01)
         if self.cluster_comm_child:
             try:
                 self.cluster_comm_child.terminate()
@@ -744,8 +906,6 @@ class ClusterDaemon(OTPmeDaemon):
             except Exception as e:
                 msg = "Failed to stop cluster communication child: %s" % e
                 self.logger.warning(msg)
-            while self.cluster_comm_child.is_alive():
-                time.sleep(0.01)
 
     @property
     def host_name(self):
@@ -934,6 +1094,7 @@ class ClusterDaemon(OTPmeDaemon):
         def signal_handler(_signal, frame):
             if _signal != 15:
                 return
+            self.wait_for_cluster_writes()
             # Cleanup IPC stuff.
             multiprocessing.cleanup()
             # Finally exit.
@@ -956,6 +1117,7 @@ class ClusterDaemon(OTPmeDaemon):
         def signal_handler(_signal, frame):
             if _signal != 15:
                 return
+            self.wait_for_cluster_writes()
             # Cleanup IPC stuff.
             multiprocessing.cleanup()
             # Finally exit.
@@ -1104,7 +1266,10 @@ class ClusterDaemon(OTPmeDaemon):
             return current_votes, required_votes, quorum
 
         # Get current (active) node votes including own node.
-        current_votes = 1
+        current_votes = 0
+        node_vote = calc_node_vote()
+        if node_vote > 0:
+            current_votes = 1
         for node_name in multiprocessing.online_nodes:
             try:
                 node = enabled_nodes[node_name]
@@ -1145,6 +1310,17 @@ class ClusterDaemon(OTPmeDaemon):
                 msg = ("Failed to get init sync status: %s: %s"
                         % (node_name, e))
                 self.logger.warning(msg)
+                continue
+
+            try:
+                x_node_vote = clusterd_conn.get_node_vote()
+            except Exception as e:
+                self.node_disconnect(node_name)
+                msg = ("Failed to get cluster node vote: %s: %s"
+                        % (node_name, e))
+                self.logger.warning(msg)
+                continue
+            if x_node_vote == 0:
                 continue
 
             current_votes += 1
@@ -1316,8 +1492,6 @@ class ClusterDaemon(OTPmeDaemon):
 
     def switch_master_node(self, current_master_node, new_master_node):
         """ Switch master node. """
-        msg = ("Master node elected: %s" % new_master_node)
-        self.logger.info(msg)
         multiprocessing.master_node['master'] = new_master_node
         if new_master_node == self.host_name:
             msg = "Sending request to configure floating IP."
@@ -1328,17 +1502,23 @@ class ClusterDaemon(OTPmeDaemon):
             self.logger.info(msg)
             self.comm_handler.send("controld", command="deconfigure_floating_ip")
 
+        if current_master_node != new_master_node:
+            msg = ("Master node elected: %s" % new_master_node)
+            self.logger.info(msg)
+
         if new_master_node == self.host_name:
             return
 
         if current_master_node is not None:
             return
 
+        if new_master_node is None:
+            return
+
         self.wait_for_master_node_failover(new_master_node)
 
     def wait_for_master_node_failover(self, master_node):
         """ Wait for master node to finish failover. """
-        print("WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW", master_node)
         # Get new master node socket.
         try:
             socket_uri = stuff.get_daemon_socket("clusterd", master_node)
@@ -1550,6 +1730,7 @@ class ClusterDaemon(OTPmeDaemon):
         def signal_handler(_signal, frame):
             if _signal != 15:
                 return
+            self.wait_for_cluster_writes()
             # Close all cluster connections.
             self.close_cluster_connections()
             self.close_lock_connections()
@@ -1614,6 +1795,16 @@ class ClusterDaemon(OTPmeDaemon):
             if not quorum:
                 if config.start_freeradius:
                     self.stop_freeradius()
+                try:
+                    current_master_node = multiprocessing.master_node['master']
+                except KeyError:
+                    current_master_node = None
+                try:
+                    self.switch_master_node(current_master_node=current_master_node,
+                                            new_master_node=None)
+                except Exception as e:
+                    msg = "Failed to switch master node: %s" % e
+                    self.logger.critical(msg)
                 time.sleep(quorum_check_interval)
                 continue
 
@@ -1665,7 +1856,8 @@ class ClusterDaemon(OTPmeDaemon):
 
             if config.start_freeradius:
                 if config.cluster_status:
-                    self.start_freeradius()
+                    if not config.daemon_shutdown:
+                        self.start_freeradius()
 
             try:
                 current_master_node = multiprocessing.master_node['master']
@@ -1747,6 +1939,7 @@ class ClusterDaemon(OTPmeDaemon):
         def signal_handler(_signal, frame):
             if _signal != 15:
                 return
+            self.wait_for_cluster_writes()
             # Cleanup IPC stuff.
             if self.node_conn:
                 self.node_conn.close()
@@ -1817,6 +2010,7 @@ class ClusterDaemon(OTPmeDaemon):
                 if node_name not in multiprocessing.online_nodes:
                     self.check_lock_nodes(lock_journal_entry)
                     return True
+                write = lock_journal_entry.write
                 action = lock_journal_entry.action
                 lock_id = lock_journal_entry.lock_id
                 lock_type = lock_journal_entry.lock_type
@@ -1825,10 +2019,10 @@ class ClusterDaemon(OTPmeDaemon):
                 if node_name in lock_entry_nodes:
                     if lock_entry_failed_nodes:
                         if node_name not in lock_entry_failed_nodes:
-                            msg = "Releasing lock: %s: %s" % (node_name, lock_id)
+                            msg = "Releasing failed lock: %s: %s" % (node_name, lock_id)
                             self.logger.debug(msg)
                             try:
-                                self.node_conn.release_lock(lock_id)
+                                self.node_conn.release_lock(lock_id, write)
                             except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
                                 msg = "Failed to release lock: %s" % e
                                 self.logger.critical(msg)
@@ -1844,12 +2038,12 @@ class ClusterDaemon(OTPmeDaemon):
                             lock_journal_entry.add_failed_node(node_name)
                         lock_journal_entry.add_node(node_name)
                         self.check_lock_nodes(lock_journal_entry)
-                        continue
+                    continue
+
                 if self.node_conn is None:
                     return True
 
                 if action == "lock":
-                    write = lock_journal_entry.write
                     timeout = lock_journal_entry.timeout
                     if timeout == 0:
                         timeout = 1
@@ -1879,7 +2073,7 @@ class ClusterDaemon(OTPmeDaemon):
                     msg = "Releasing lock: %s: %s" % (node_name, lock_id)
                     self.logger.debug(msg)
                     try:
-                        self.node_conn.release_lock(lock_id)
+                        self.node_conn.release_lock(lock_id, write)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
                         msg = "Failed to release lock: %s" % e
                         self.logger.critical(msg)
@@ -1907,28 +2101,24 @@ class ClusterDaemon(OTPmeDaemon):
 
     def check_lock_nodes(self, lock_journal_entry):
         """ Make sure locks are sent to all online nodes. """
-        member_nodes_in_sync = True
-        for node_name in multiprocessing.member_nodes:
+        online_nodes_in_sync = True
+        for node_name in multiprocessing.online_nodes:
             if node_name in lock_journal_entry.get_nodes():
                 continue
-            member_nodes_in_sync = False
+            online_nodes_in_sync = False
             break
-        if not member_nodes_in_sync:
+        failed_nodes = lock_journal_entry.get_failed_nodes()
+        if failed_nodes:
+            for node_name in multiprocessing.online_nodes:
+                if node_name in failed_nodes:
+                    continue
+                online_nodes_in_sync = False
+                break
+        if not online_nodes_in_sync:
             return False
-        ## For release requests we have to ensure it was sent to
-        ## all online nodes.
-        #online_nodes_in_sync = True
-        #if lock_journal_entry.action == "release":
-        #    for node_name in multiprocessing.online_nodes:
-        #        if node_name in lock_journal_entry.get_nodes():
-        #            continue
-        #        online_nodes_in_sync = False
-        #        break
         lock_event = get_lock_event(lock_journal_entry.timestamp)
         lock_event.set()
         lock_event.unlink()
-        #if online_nodes_in_sync:
-        #    lock_journal_entry.delete()
         return True
 
     def start_cluster_connection(self, *args, **kwargs):
@@ -1953,6 +2143,7 @@ class ClusterDaemon(OTPmeDaemon):
         def signal_handler(_signal, frame):
             if _signal != 15:
                 return
+            self.wait_for_cluster_writes()
             # Cleanup IPC stuff.
             if self.node_conn:
                 self.node_conn.close()

@@ -424,7 +424,105 @@ def get_ldif(ldif, attributes=None, verify_acl_func=None,
 
     return result
 
-class OTPmeBaseObject(object):
+class OTPmeLockObject(object):
+    """ OTPme lock object. """
+    @property
+    def _object_lock(self):
+        try:
+            _lock = locking.get_lock(OBJECT_LOCK_TYPE, self.oid.read_oid)
+        except:
+            return
+        return _lock
+
+    def acquire_lock(self, lock_caller, write=False, recursive=False,
+        skip_same_caller=False, timeout=None, reload_on_change=True,
+        _caller="API", callback=default_callback):
+        """ Acquire object lock. """
+        if self.offline:
+            return
+        # Acquire object lock. We use the object ID as lock ID to prevent
+        # issues when adding a new object (e.g. new object has no UUID).
+        if self._object_lock:
+            self._object_lock.acquire_lock(lock_caller=lock_caller,
+                                    skip_same_caller=skip_same_caller)
+        else:
+            old_uuid = backend.get_uuid(self.oid)
+            old_checksum = backend.get_checksum(self.oid)
+            object_existed = backend.object_exists(self.oid)
+            try:
+                locking.acquire_lock(lock_type=OBJECT_LOCK_TYPE,
+                                    lock_id=self.oid.read_oid,
+                                    lock_caller=lock_caller,
+                                    write=write,
+                                    timeout=timeout,
+                                    cluster=True,
+                                    callback=callback)
+            except LockWaitTimeout:
+                raise
+            except Exception as e:
+                config.raise_exception()
+                msg = (_("Failed to acquire lock: %s") % e)
+                raise OTPmeException(msg)
+            if object_existed:
+                if not backend.object_exists(self.oid):
+                    msg = "Object deleted while waiting for lock: %s" % self
+                    self._object_lock.release_lock(lock_caller=lock_caller)
+                    raise LockWaitAbort(msg)
+                object_uuid = backend.get_uuid(self.oid)
+                if object_uuid != old_uuid:
+                    msg = "Object re-created while waiting for lock: %s" % self
+                    self._object_lock.release_lock(lock_caller=lock_caller)
+                    raise LockWaitAbort(msg)
+                new_checksum = backend.get_checksum(self.oid)
+                if old_checksum != new_checksum:
+                    if not reload_on_change:
+                        msg = "Object changed while waiting for lock: %s" % self
+                        raise LockWaitAbort(msg)
+                    if self._modified:
+                        msg = "Will not auto-reload modified object: %s" % self
+                        raise LockWaitAbort(msg)
+                    self._load()
+            else:
+                if backend.object_exists(self.oid):
+                    msg = "Object created while waiting for lock: %s" % self
+                    self._object_lock.release_lock(lock_caller=lock_caller)
+                    raise LockWaitAbort(msg)
+
+        # Add transaction lock if needed. This will prevent the
+        # object from being released before the transaction
+        # finished.
+        if not self.no_transaction:
+            transaction = backend.get_transaction()
+            if transaction:
+                # Add locked object to transaction.
+                transaction.cache_locked_object(self)
+                # Add transaction lock.
+                self._object_lock.acquire_lock(lock_caller=transaction.lock_caller,
+                                                    skip_same_caller=True)
+
+    def release_lock(self, lock_caller=None,
+        recursive=False, force=False, callback=None):
+        """ Release object lock. """
+        if self.offline:
+            return
+        if not self._object_lock:
+            return
+        # Release lock.
+        self._object_lock.release_lock(lock_caller=lock_caller,
+                                        force=force)
+
+    def is_locked(self):
+        """ Check if the instance is locked. """
+        if not self._object_lock:
+            return False
+        if not self._object_lock.is_locked():
+            return False
+        if self._object_lock.write:
+            return "write"
+        else:
+            return "read"
+
+class OTPmeBaseObject(OTPmeLockObject):
     """ Generic OTPme object. """
     def __init__(self, object_config=None,
     uuid=None, no_transaction=False, **kwargs):
@@ -708,108 +806,6 @@ class OTPmeBaseObject(object):
         return sync_config
 
     @property
-    def _object_lock(self):
-        try:
-            _lock = locking.get_lock(OBJECT_LOCK_TYPE, self.oid.read_oid)
-        except:
-            return
-        return _lock
-
-    def acquire_lock(self, lock_caller, write=False, recursive=False,
-        skip_same_caller=False, timeout=None, reload_on_change=True,
-        _caller="API", callback=default_callback):
-        """ Acquire object lock. """
-        if self.offline:
-            return
-        # Acquire object lock. We use the object ID as lock ID to prevent
-        # issues when adding a new object (e.g. new object has no UUID).
-        if self._object_lock:
-            self._object_lock.acquire_lock(lock_caller=lock_caller,
-                                    skip_same_caller=skip_same_caller)
-        else:
-            cluster = False
-            if self.type in config.tree_object_types:
-                cluster = True
-            old_uuid = backend.get_uuid(self.oid)
-            old_checksum = backend.get_checksum(self.oid)
-            object_existed = backend.object_exists(self.oid)
-            try:
-                locking.acquire_lock(lock_type=OBJECT_LOCK_TYPE,
-                                    lock_id=self.oid.read_oid,
-                                    lock_caller=lock_caller,
-                                    write=write,
-                                    timeout=timeout,
-                                    cluster=cluster,
-                                    callback=callback)
-            except LockWaitTimeout:
-                raise
-            except Exception as e:
-                config.raise_exception()
-                msg = (_("Failed to acquire lock: %s") % e)
-                raise OTPmeException(msg)
-            if object_existed:
-                if not backend.object_exists(self.oid):
-                    msg = "Object deleted while waiting for lock: %s" % self
-                    self._object_lock.release_lock(lock_caller=lock_caller)
-                    raise LockWaitAbort(msg)
-                object_uuid = backend.get_uuid(self.oid)
-                if object_uuid != old_uuid:
-                    msg = "Object re-created while waiting for lock: %s" % self
-                    self._object_lock.release_lock(lock_caller=lock_caller)
-                    raise LockWaitAbort(msg)
-                new_checksum = backend.get_checksum(self.oid)
-                if old_checksum != new_checksum:
-                    if not reload_on_change:
-                        msg = "Object changed while waiting for lock: %s" % self
-                        raise LockWaitAbort(msg)
-                    if self._modified:
-                        msg = "Will not auto-reload modified object: %s" % self
-                        raise LockWaitAbort(msg)
-                    self._load()
-            else:
-                if backend.object_exists(self.oid):
-                    msg = "Object created while waiting for lock: %s" % self
-                    self._object_lock.release_lock(lock_caller=lock_caller)
-                    raise LockWaitAbort(msg)
-
-        # Add transaction lock if needed. This will prevent the
-        # object from being released before the transaction
-        # finished.
-        if not self.no_transaction:
-            transaction = backend.get_transaction()
-            if transaction:
-                # Add locked object to transaction.
-                transaction.cache_locked_object(self)
-                # Add transaction lock.
-                self._object_lock.acquire_lock(lock_caller=transaction.lock_caller,
-                                                    skip_same_caller=True)
-
-    def release_lock(self, lock_caller=None, recursive=False, force=False, callback=None):
-        """ Release object lock. """
-        if self.offline:
-            return
-        if not self._object_lock:
-            return
-        cluster = False
-        if self.type in config.tree_object_types:
-            cluster = True
-        # Release lock.
-        self._object_lock.release_lock(lock_caller=lock_caller,
-                                        cluster=cluster,
-                                        force=force)
-
-    def is_locked(self):
-        """ Check if the instance is locked. """
-        if not self._object_lock:
-            return False
-        if not self._object_lock.is_locked():
-            return False
-        if self._object_lock.write:
-            return "write"
-        else:
-            return "read"
-
-    @property
     def _cert(self):
         cert = None
         if self._cert_oid:
@@ -1020,7 +1016,7 @@ class OTPmeBaseObject(object):
 
         # Set old checksum. Used in backend to decide
         # if a full data update is required.
-        if self.old_checksum is None:
+        if not self.old_checksum:
             try:
                 self.old_checksum = self.object_config['CHECKSUM']
             except KeyError:
@@ -1333,6 +1329,10 @@ class OTPmeBaseObject(object):
         self.update_index('last_modified', self.last_modified)
 
     @object_lock()
+    def touch(self, callback=default_callback, **kwargs):
+        return self._write(callback=callback)
+
+    @object_lock()
     def _write(self, cluster=True, update_last_modified=True,
         callback=default_callback):
         """ Write object config to backend. """
@@ -1505,7 +1505,6 @@ class OTPmeBaseObject(object):
 
         return callback.ok()
 
-    @object_lock()
     def update_last_used_time(self):
         """ Update last_used time for this object. """
         if not self.track_last_used:
@@ -3007,11 +3006,10 @@ class OTPmeObject(OTPmeBaseObject):
         # Update index.
         self.add_index('role', role.uuid)
 
-        ## Update extensions.
-        #if config.use_api:
-        #    self.update_extensions("update_members",
-        #                        verbose_level=verbose_level,
-        #                        callback=callback)
+        # Update extensions.
+        self.update_extensions("update_members",
+                            verbose_level=verbose_level,
+                            callback=callback)
         # Clear cache.
         assigned_role_cache.invalidate()
 
@@ -3077,11 +3075,10 @@ class OTPmeObject(OTPmeBaseObject):
         # Update index.
         self.del_index('role', role_uuid)
 
-        ## Update extensions.
-        #if config.use_api:
-        #    self.update_extensions("update_members",
-        #                        verbose_level=verbose_level,
-        #                        callback=callback)
+        # Update extensions.
+        self.update_extensions("update_members",
+                            verbose_level=verbose_level,
+                            callback=callback)
         # Clear cache.
         assigned_role_cache.invalidate()
 
@@ -3200,7 +3197,7 @@ class OTPmeObject(OTPmeBaseObject):
                             _caller=_caller,
                             force=force)
 
-        msg = "Adding token %s to %s %s." % (token.oid, self.type, self.name)
+        msg = "Adding token %s to %s %s." % (token.rel_path, self.type, self.name)
         callback.send(msg)
 
         if self.type == "role":
@@ -3352,10 +3349,10 @@ class OTPmeObject(OTPmeBaseObject):
         if login_interfaces:
             self.token_login_interfaces[token.uuid] = login_interfaces
 
-        ## Update extensions.
-        #self.update_extensions("update_members",
-        #                    verbose_level=verbose_level,
-        #                    callback=callback)
+        # Update extensions.
+        self.update_extensions("update_members",
+                            verbose_level=verbose_level,
+                            callback=callback)
         # Clear cache.
         assigned_token_cache.invalidate()
 
@@ -3451,10 +3448,10 @@ class OTPmeObject(OTPmeBaseObject):
         # Update index.
         self.del_index('token', token.uuid)
 
-        ## Update extensions.
-        #self.update_extensions("update_members",
-        #                    verbose_level=verbose_level,
-        #                    callback=callback)
+        # Update extensions.
+        self.update_extensions("update_members",
+                            verbose_level=verbose_level,
+                            callback=callback)
         # Clear cache.
         assigned_token_cache.invalidate()
 
@@ -5419,21 +5416,6 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    def check_secret_format(self, secret, callback=default_callback):
-        """ Check if the given secret is in the correct format """
-        # Make sure secret is string.
-        if isinstance(secret, bytes):
-            secret = secret.decode()
-        # Set secret format check stuff.
-        self.secret_format_regex = '^[0-9A-Za-z]{%s}$' % self.secret_len
-        self.secret_format_warning = (_("ERROR: Secret must be a "
-                                    "string with %s characters.")
-                                    % self.secret_len)
-        secret_re = re.compile(self.secret_format_regex)
-        if secret_re.match(secret):
-            return True
-        return callback.error(self.secret_format_warning)
-
     @check_acls(acls=['edit:secret'])
     @object_lock()
     def change_secret(self, auto_secret=False, secret=False,
@@ -5482,10 +5464,6 @@ class OTPmeObject(OTPmeBaseObject):
             while True:
                 new_secret1 = callback.askpass("New secret: ")
                 new_secret1 = new_secret1.replace(" ", "")
-                if not self.check_secret_format(secret=new_secret1,
-                                                callback=callback):
-                    return callback.error()
-
                 new_secret2 = callback.askpass("Re-type secret: ")
                 new_secret2 = new_secret2.replace(" ", "")
                 if new_secret1 == new_secret2:
@@ -5498,9 +5476,6 @@ class OTPmeObject(OTPmeBaseObject):
         secret = str(secret)
         # Remove spaces from secret (e.g. when pasting from yubico tool)
         secret = secret.replace(" ", "")
-
-        if not self.check_secret_format(secret=secret, callback=callback):
-            return callback.error()
 
         # Run child class method (e.g. handle token specific stuff when
         # changing the secret)

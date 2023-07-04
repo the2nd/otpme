@@ -404,7 +404,22 @@ def read(object_id, parameters=None, no_lock=False, use_index=True):
     object_config = get_overlay_object(object_id, parameters)
     if not object_config:
         # Get config file path.
-        config_file = get_config_paths(object_id, use_index=use_index)['config_file']
+        object_paths = get_config_paths(object_id, use_index=use_index)
+        if "config_dir" in object_paths:
+            config_dir = object_paths['config_dir']
+            json_config_file = os.path.join(config_dir, config.json_config_file_name)
+            sqlite_config_file = os.path.join(config_dir, config.sqlite_config_file_name)
+            if object_id.object_type in config.sqlite_objects:
+                if os.path.exists(json_config_file):
+                    filetools.migrate_data_file(json_config_file, sqlite_config_file)
+                config_file = sqlite_config_file
+            else:
+                if os.path.exists(sqlite_config_file):
+                    filetools.migrate_data_file(sqlite_config_file, json_config_file)
+                config_file = json_config_file
+        else:
+            config_file = object_paths['config_file']
+
         # Object without config file does not exist.
         if not config_file:
             return
@@ -448,9 +463,21 @@ def write(object_id, object_config, index_journal=None,
 
     # Get config file path from index.
     object_paths = get_config_paths(object_id, use_index=False)
-    config_file = object_paths['config_file']
-    # Get parent dir as config dir.
-    config_dir = os.path.dirname(config_file)
+    if "config_dir" in object_paths:
+        config_dir = object_paths['config_dir']
+        json_config_file = os.path.join(config_dir, config.json_config_file_name)
+        sqlite_config_file = os.path.join(config_dir, config.sqlite_config_file_name)
+        if object_id.object_type in config.sqlite_objects:
+            if os.path.exists(json_config_file):
+                filetools.migrate_data_file(json_config_file, sqlite_config_file)
+            config_file = sqlite_config_file
+        else:
+            if os.path.exists(sqlite_config_file):
+                filetools.migrate_data_file(sqlite_config_file, json_config_file)
+            config_file = json_config_file
+    else:
+        config_file = object_paths['config_file']
+        config_dir = os.path.dirname(config_file)
 
     # Child objects to be updated in the index.
     child_objects = {}
@@ -956,7 +983,10 @@ def get_config_paths(object_id, use_index=True, no_lock=False):
     # config file name.
     if object_type in config.tree_object_types:
         config_dir = config_paths['config_dir']
-        config_file = "%s/%s" % (config_dir, config.object_config_file_name)
+        if object_id.object_type in config.sqlite_objects:
+            config_file = os.path.join(config_dir, config.sqlite_config_file_name)
+        else:
+            config_file = os.path.join(config_dir, config.json_config_file_name)
         config_paths['config_file'] = config_file
         config_paths['remove_on_delete'] = [config_file]
     return config_paths
@@ -1446,7 +1476,8 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         sorted_query = session.query(IndexObjectACL)
         sorted_query = sorted_query.join(IndexObject, IndexObjectACL.ioid == IndexObject.id)
         sorted_query = sorted_query.filter(IndexObjectACL.ioid.in_(sub_query))
-        sorted_query = sorted_query.filter(IndexObjectACL.value.in_(verify_acls))
+        if verify_acls:
+            sorted_query = sorted_query.filter(IndexObjectACL.value.in_(verify_acls))
 
         # Add ACL value attribute to be returned.
         acl_entities = tuple(list(entities) + [IndexObjectACL.value])
@@ -2283,7 +2314,10 @@ def index_rebuild():
         except:
             msg = "Missing rebuild function for object type: %s" % object_type
             raise OTPmeException(msg)
-        config_file = "%s/%s" % (config_dir, config.object_config_file_name)
+        if object_id.object_type in config.sqlite_objects:
+            config_file = os.path.join(config_dir, config.sqlite_config_file_name)
+        else:
+            config_file = os.path.join(config_dir, config.json_config_file_name)
         log_current_object.file_count += 1
         try:
             objects = all_objects[object_type]

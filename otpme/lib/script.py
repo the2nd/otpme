@@ -254,9 +254,15 @@ def run(script_type, script_path, realm=None, site=None, options=None,
             # Remove temporary script file.
             os.remove(script_file)
         multiprocessing.start_thread(_remove_file, ())
-    else:
-        # Remove temporary script file.
-        os.remove(script_file)
-        # Convert result to string.
+        return return_val
+
+    # Remove temporary script file.
+    os.remove(script_file)
+
+    # Make sure script output is string.
+    return_code, script_stdout, script_stderr, pid = return_val
+    script_stdout = script_stdout.decode()
+    script_stderr = script_stderr.decode()
+
     # Return script status etc.
-    return return_val
+    return return_code, script_stdout, script_stderr, pid

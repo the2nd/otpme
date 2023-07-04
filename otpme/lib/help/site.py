@@ -84,6 +84,14 @@ cmd_help = {
                                 },
                 },
 
+    'touch'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-site touch {site}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Touch site (e.g. migrate).',
+                                },
+                },
+
     # FIXME: do we need this anymore?
     'enable'    : {
                     '_cmd_usage_help' : 'Usage: otpme-site enable {site}',

@@ -276,12 +276,12 @@ class OTPmeLogger(object):
         return self.logger.info(*args, **kwargs)
     @log_lock()
     def warning(self, *args, **kwargs):
-        #kwargs['exc_info'] = self.exc_info
+        #kwargs['exc_info'] = True
         #print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww")
         #from otpme.lib import debug
         #debug.trace()
         return self.logger.warning(*args, **kwargs)
     @log_lock()
     def critical(self, *args, **kwargs):
-        #kwargs['exc_info'] = self.exc_info
+        #kwargs['exc_info'] = True
         return self.logger.critical(*args, **kwargs)

@@ -207,85 +207,87 @@ if need_command:
                 if not help_needed:
                     help_needed = True
                     for i in sys.argv[0:]:
-                        if not i.startswith("-"):
-                            help_needed = False
+                        if i.startswith("-"):
+                            continue
+                        help_needed = False
         else:
             help_needed = True
 
-if tool_name == "otpme-auth":
-    if subcommand == "verify":
-        from otpme.lib import stuff
-        from otpme.lib.cli import get_opts
+if not help_needed:
+    if tool_name == "otpme-auth":
+        if subcommand == "verify":
+            from otpme.lib import stuff
+            from otpme.lib.cli import get_opts
 
-        config_file = "/etc/otpme/otpme.conf"
-        fd = open(config_file, "r")
-        file_content = fd.read()
-        fd.close()
-        main_config = stuff.conf_to_dict(file_content)
-        cache = main_config['CACHE']
-        if cache == "redis":
-            import redis
-            from redis.connection import UnixDomainSocketConnection
-            try:
-                redis_socket = main_config['REDIS_SOCKET']
-            except:
-                redis_socket = "/var/run/otpme/sockets/redis.sock"
-            pool = redis.ConnectionPool(path=redis_socket,
-                        connection_class=UnixDomainSocketConnection)
-            redis_db = redis.Redis(connection_pool=pool, db=0)
-
-        if cache == "memcached":
-            import pylibmc
-            try:
-                memcache_socket = main_config['MEMCACHED_SOCKET']
-            except:
-                memcache_socket = "/var/run/otpme/sockets/memcached.sock"
-            mc = pylibmc.Client([memcache_socket])
-            pool = pylibmc.ThreadMappedPool(mc)
-
-        # Get command syntax.
-        command_syntax = command_map[command]['main'][subcommand]['cmd']
-        command_line = sys.argv[1:]
-        object_cmd, \
-        object_required, \
-        object_list, \
-        command_args = get_opts(command_syntax=command_syntax,
-                                    command_line=command_line,
-                                    command_args={})
-
-        # Handle caching.
-        try:
-            cache_seconds = command_args['cache_seconds']
-        except:
-            cache_seconds = None
-        if cache_seconds is not None:
-            client = command_args['client']
-            try:
-                client_ip = command_args['client_ip']
-            except:
-                client_ip = None
-            if client or client_ip:
-                username = command_args['username']
-                password = command_args['password']
-                if client:
-                    cache_key = "otpme-auth-cache-%s-%s" % (username, client)
-                else:
-                    cache_key = "otpme-auth-cache-%s-%s" % (username, client_ip)
-                nt_hash = stuff.gen_nt_hash(str(password))
+            config_file = "/etc/otpme/otpme.conf"
+            fd = open(config_file, "r")
+            file_content = fd.read()
+            fd.close()
+            main_config = stuff.conf_to_dict(file_content)
+            cache = main_config['CACHE']
+            if cache == "redis":
+                import redis
+                from redis.connection import UnixDomainSocketConnection
                 try:
-                    if cache == "redis":
-                        _nt_hash = redis_db.get(cache_key)
-                    if cache == "memcached":
-                        with pool.reserve() as mc:
-                            _nt_hash = mc.get(cache_key)
-                except KeyError:
-                    _nt_hash = None
-                if _nt_hash is not None:
-                    if isinstance(_nt_hash, bytes):
-                        _nt_hash = _nt_hash.decode()
-                    if _nt_hash == nt_hash:
-                        message("Accept")
-                        sys.exit(0)
+                    redis_socket = main_config['REDIS_SOCKET']
+                except:
+                    redis_socket = "/var/run/otpme/sockets/redis.sock"
+                pool = redis.ConnectionPool(path=redis_socket,
+                            connection_class=UnixDomainSocketConnection)
+                redis_db = redis.Redis(connection_pool=pool, db=0)
+
+            if cache == "memcached":
+                import pylibmc
+                try:
+                    memcache_socket = main_config['MEMCACHED_SOCKET']
+                except:
+                    memcache_socket = "/var/run/otpme/sockets/memcached.sock"
+                mc = pylibmc.Client([memcache_socket])
+                pool = pylibmc.ThreadMappedPool(mc)
+
+            # Get command syntax.
+            command_syntax = command_map[command]['main'][subcommand]['cmd']
+            command_line = sys.argv[1:]
+            object_cmd, \
+            object_required, \
+            object_list, \
+            command_args = get_opts(command_syntax=command_syntax,
+                                        command_line=command_line,
+                                        command_args={})
+
+            # Handle caching.
+            try:
+                cache_seconds = command_args['cache_seconds']
+            except:
+                cache_seconds = None
+            if cache_seconds is not None:
+                client = command_args['client']
+                try:
+                    client_ip = command_args['client_ip']
+                except:
+                    client_ip = None
+                if client or client_ip:
+                    username = command_args['username']
+                    password = command_args['password']
+                    if client:
+                        cache_key = "otpme-auth-cache-%s-%s" % (username, client)
+                    else:
+                        cache_key = "otpme-auth-cache-%s-%s" % (username, client_ip)
+                    nt_hash = stuff.gen_nt_hash(str(password))
+                    try:
+                        if cache == "redis":
+                            _nt_hash = redis_db.get(cache_key)
+                        if cache == "memcached":
+                            with pool.reserve() as mc:
+                                _nt_hash = mc.get(cache_key)
+                    except KeyError:
+                        _nt_hash = None
+                    if _nt_hash is not None:
+                        if isinstance(_nt_hash, bytes):
+                            _nt_hash = _nt_hash.decode()
+                        if _nt_hash == nt_hash:
+                            message("Accept")
+                            sys.exit(0)
 
 # Load OTPme config.
 config.load(quiet=True)

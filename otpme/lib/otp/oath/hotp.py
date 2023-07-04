@@ -10,12 +10,15 @@ try:
 except:
     pass
 
+from otpme.lib.encoding.base import encode
+from otpme.lib.encoding.base import decode
+
 from otpme.lib.exceptions import *
 
 def generate_hotp(counter, secret, format):
     """ Generate an HOTP from the given secret and token counter. """
-    # Prevent "decode method has been disabled in newst".
-    secret = secret
+    secret = decode(secret, "base32")
+    secret = encode(secret, "hex")
     try:
         otp = hotp.hotp(key=secret, counter=counter, format=format)
     except Exception as e:
@@ -25,8 +28,8 @@ def generate_hotp(counter, secret, format):
 
 def verify_hotp(counter_start, counter_end, secret, otp, format):
     """ Verify HOTP for an given counter range. """
-    # Prevent "decode method has been disabled in newst".
-    secret = secret
+    secret = decode(secret, "base32")
+    secret = encode(secret, "hex")
     for i in range(counter_start, counter_end):
         hotp_status = False
         try:

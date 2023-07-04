@@ -145,6 +145,14 @@ cmd_help = {
                 },
 
 
+    'touch'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-script touch {script}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Touch script (e.g. migrate).',
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : 'Usage: otpme-script enable {script}',
                     'cmd'   :   '<|object|>',

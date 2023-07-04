@@ -116,6 +116,18 @@ def register():
             _pid = None
         return _pid
     config.register_property(name="daemon_pid", getx=pid_getter)
+    # Register daemon shutdown status property.
+    def daemon_shutdown_getter(self):
+        try:
+            return config._daemon_shutdown.value
+        except AttributeError:
+            return False
+    def daemon_shutdown_setter(self, new_status):
+        config._daemon_shutdown.value = new_status
+    config.register_property(name="daemon_shutdown",
+                            getx=daemon_shutdown_getter,
+                            setx=daemon_shutdown_setter)
+    config.register_config_var("_daemon_shutdown", None, False)
     # Register cluster quorum property.
     def cluster_quorum_getter(self):
         try:
@@ -124,8 +136,6 @@ def register():
             return False
     def cluster_quorum_setter(self, new_status):
         config._cluster_quorum.value = new_status
-        if new_status is not True:
-            return
     config.register_property(name="cluster_quorum",
                             getx=cluster_quorum_getter,
                             setx=cluster_quorum_setter)
@@ -138,8 +148,6 @@ def register():
             return False
     def cluster_status_setter(self, new_status):
         config._cluster_status.value = new_status
-        if new_status is not True:
-            return
     config.register_property(name="cluster_status",
                             getx=cluster_status_getter,
                             setx=cluster_status_setter)
@@ -152,8 +160,6 @@ def register():
             return False
     def cluster_vote_participation_setter(self, new_status):
         config._cluster_vote_participation.value = new_status
-        if new_status is not True:
-            return
     config.register_property(name="cluster_vote_participation",
                             getx=cluster_vote_participation_getter,
                             setx=cluster_vote_participation_setter)
@@ -166,8 +172,6 @@ def register():
             return False
     def master_failover_setter(self, new_status):
         config._master_failover.value = new_status
-        if new_status is not True:
-            return
     config.register_property(name="master_failover",
                             getx=master_failover_getter,
                             setx=master_failover_setter)
@@ -180,8 +184,6 @@ def register():
             return False
     def one_node_setup_setter(self, new_status):
         config._one_node_setup.value = new_status
-        if new_status is not True:
-            return
     config.register_property(name="one_node_setup",
                             getx=one_node_setup_getter,
                             setx=one_node_setup_setter)
@@ -194,8 +196,6 @@ def register():
             return False
     def two_node_setup_setter(self, new_status):
         config._two_node_setup.value = new_status
-        if new_status is not True:
-            return
     config.register_property(name="two_node_setup",
                             getx=two_node_setup_getter,
                             setx=two_node_setup_setter)
@@ -210,8 +210,6 @@ def register():
         try:
             config._site_init.value = new_status
         except AttributeError:
-            return
-        if new_status is not True:
             return
     config.register_property(name="site_init",
                             getx=site_init_getter,
@@ -262,6 +260,7 @@ class ControlDaemon(UnixDaemon):
         signal_name = stuff.get_signal_name(_signal)
         if signal_name == "SIGINT":
             self.logger.warning("Exiting on Ctrl+C")
+            stuff.kill_pid(self.pid)
         if signal_name == "SIGTERM":
             self.logger.warning("Exiting on 'SIGTERM'.")
         if signal_name == "SIGHUP":
@@ -273,7 +272,13 @@ class ControlDaemon(UnixDaemon):
                 self.comm_handler.send(recipient="controld", command="reload")
             return
 
-        config.cluster_status = False
+        config.daemon_shutdown = True
+        config.master_failover = True
+
+        while len(multiprocessing.cluster_writes) > 0:
+            msg = "Waiting for pending cluster writes..."
+            self.logger.info(msg)
+            time.sleep(1)
 
         # Do shutdown stuff only in daemon handler process.
         if not config.daemonize:
@@ -292,7 +297,6 @@ class ControlDaemon(UnixDaemon):
         # Close and remove message queues.
         self.comm_queue.close()
         self.comm_queue.unlink()
-
         self.comm_handler.close()
         self.comm_handler.unlink()
 
@@ -323,15 +327,20 @@ class ControlDaemon(UnixDaemon):
             os.remove(self.status_file)
         # Remove pidfile.
         self.remove_pidfile()
-        # Close shared bools.
+        # Close shared objects.
         try:
             self._cleanup_done.close()
         except Exception as e:
             msg = ("Failed to close shared bool: %s" % self._cleanup_done.name)
             self.logger.critical(msg)
-        # Stop multiprocessing event (posix_ipc semaphore)
         try:
-            config._cluster_quorum.close()
+            config._daemon_shutdown.close()
+        except Exception as e:
+            msg = ("Failed to close shared bool: %s"
+                % config._daemon_shutdown.name)
+            self.logger.critical(msg)
+        try:
+            config._daemon_shutdown.close()
         except Exception as e:
             msg = ("Failed to close shared bool: %s"
                 % config._cluster_quorum.name)
@@ -514,9 +523,17 @@ class ControlDaemon(UnixDaemon):
         #add_decorators(decorator=handle_exit,
         #            blacklist_methods=blacklist_methods,
         #            blacklist_functions=blacklist_functions)
+
         multiprocessing.cluster_event = multiprocessing.Event(keep=True)
         multiprocessing.cluster_lock_event = multiprocessing.Event(keep=True)
 
+        daemon_shutdown = "otpme-daemon-shutdown"
+        try:
+            config._daemon_shutdown = multiprocessing.get_bool(daemon_shutdown,
+                                                            random_name=False)
+        except Exception as e:
+            msg = "Failed to get shared bool: %s" % e
+            self.logger.critical(msg)
         cluster_quorum = "otpme-cluster-quorum"
         try:
             config._cluster_quorum = multiprocessing.get_bool(cluster_quorum,
@@ -1144,7 +1161,7 @@ class ControlDaemon(UnixDaemon):
 
     def stop_child(self, daemon_name):
         """ Stop child daemon. """
-        terminate_wait = 3000
+        terminate_wait = 10000
         # Get child daemon process.
         daemon = self.get_child(daemon_name)
         if not daemon:

@@ -146,6 +146,14 @@ commands = {
                     },
                 },
             },
+    'touch'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'list'   : {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
@@ -1478,6 +1486,8 @@ class User(OTPmeObject):
             msg = "Unknown group: %s" % group_uuid
             raise UnknownObject(msg)
         group = result[0]
+        msg = "Setting group: %s" % group.name
+        callback.send(msg)
         self._group_uuid = group.uuid
         self.update_index('group', self._group_uuid)
         result = group.add_default_group_user(self.uuid,
@@ -2616,11 +2626,11 @@ class User(OTPmeObject):
         # Generate hash
         _hash = self._gen_used_hash(hash)
 
-        # We want to cache used hashes for 24h. We cache SLPs to prevent server
+        # We want to cache used hashes 1h. We cache SLPs to prevent server
         # load when doing authentication and SOTPs to prevent re-usage of them.
-        # For both 24h should be enough.
+        # For both 1h should be enough.
         # FIXME: make this a config file option???
-        cache_time = 86400
+        cache_time = 3600
         # Get epoch time.
         expiry_timestamp = time.time() + cache_time
 
@@ -3480,7 +3490,7 @@ class User(OTPmeObject):
         default_token_type=None, template_name=None, template_object=None,
         gen_qrcode=True, no_token_infos=False, run_policies=True,
         force=False, verify_acls=True, groups=None, default_roles=None,
-        verbose_level=0, callback=default_callback, **kwargs):
+        _caller="API", verbose_level=0, callback=default_callback, **kwargs):
         """ Add user. """
         # Get default token settings.
         if add_default_token is None:
@@ -3497,7 +3507,7 @@ class User(OTPmeObject):
         if default_token is not None:
             add_default_token = True
 
-        if self.template_object:
+        if template_object:
             add_default_token = False
 
         if add_default_token:
@@ -3554,7 +3564,7 @@ class User(OTPmeObject):
                     msg = "Unknown role: %s" % role_name
                     return callback.error(msg)
                 role = result[0]
-                if verify_acl:
+                if verify_acls:
                     if not role.verify_acl("add:token"):
                         msg = "Role: %s: Permission denied" % role_name
                         return callback.error(msg)
@@ -3586,8 +3596,10 @@ class User(OTPmeObject):
         if template_object is not None:
             self.template_object = template_object
 
+        # Get template name set by policy.
         if template_name is None:
             template_name = self.template_name
+
         # Get template.
         template = None
         if template_name:
@@ -3631,37 +3643,57 @@ class User(OTPmeObject):
         # Generate salt for used OTP/pass hashes.
         self.used_pass_salt = stuff.gen_secret(32)
 
-        # Set default group.
+        # If no group is given but a template prever templates group
+        # over any defaultgroups policy.
         if group is None:
             if template:
                 group = template.group
+
+        # If no group and not template group is given run policies (e.g. defaultgroups).
         if group is None:
-            if self.name == config.admin_user_name:
-                group = config.admin_group
-            else:
-                group = config.users_group
-        result = backend.search(object_type="group",
-                                attribute="name",
-                                value=group,
-                                return_type="uuid")
-        if not result:
-            msg = "Unknown group: %s" % group
-            return callback.error(msg)
+            policy_hook = "set_default_group"
+            parent_object = self.get_parent_object()
+            try:
+                self._run_parent_object_policies(policy_hook,
+                                                parent_object=parent_object,
+                                                child_object=self,
+                                                callback=callback,
+                                                _caller=_caller)
+            except PolicyException as e:
+                msg = str(e)
+                return callback.error(msg)
+            except Exception as e:
+                config.raise_exception()
+                msg = str(e)
+                return callback.error(msg)
 
-        group_uuid = result[0]
+        # If not group was set by policies set default users group.
+        if self.group is None:
+            if group is None:
+                if self.name == config.admin_user_name:
+                    group = config.admin_group
+                else:
+                    group = config.users_group
+            result = backend.search(object_type="group",
+                                    attribute="name",
+                                    value=group,
+                                    return_type="uuid")
+            if not result:
+                msg = "Unknown group: %s" % group
+                return callback.error(msg)
 
-        msg = "Setting group: %s" % group
-        callback.send(msg)
-        try:
-            self._change_group(group_uuid,
-                            verify_acls=verify_acls,
-                            callback=callback)
-        except UnknownObject as e:
-            msg = str(e)
-            return callback.error(msg, exception=UnknownObject)
-        except PermissionDenied as e:
-           msg = "Permission denied while setting group."
-           return callback.error(msg, exception=PermissionDenied)
+            group_uuid = result[0]
+
+            try:
+                self._change_group(group_uuid,
+                                verify_acls=verify_acls,
+                                callback=callback)
+            except UnknownObject as e:
+                msg = str(e)
+                return callback.error(msg, exception=UnknownObject)
+            except PermissionDenied as e:
+               msg = "Permission denied while setting group."
+               return callback.error(msg, exception=PermissionDenied)
 
         # Internal users (e.g. TOKENSTORE) do not need any scripts etc.
         internal_users = config.get_internal_objects("user")
@@ -3817,11 +3849,29 @@ class User(OTPmeObject):
                 role.add_token(token_path=_default_token.rel_path,
                                 verify_acls=verify_acls,
                                 callback=callback)
-            # Add token to groups.
-            for _group in _groups:
-                _group.add_token(token_path=_default_token.rel_path,
-                                verify_acls=verify_acls,
-                                callback=callback)
+            if _groups:
+                # Add token to given groups.
+                for _group in _groups:
+                    _group.add_token(token_path=_default_token.rel_path,
+                                    verify_acls=verify_acls,
+                                    callback=callback)
+            else:
+                # If no groups are given run policies (e.g. defaultgroups).
+                policy_hook = "set_groups"
+                parent_object = self.get_parent_object()
+                try:
+                    self._run_parent_object_policies(policy_hook,
+                                                    parent_object=parent_object,
+                                                    child_object=self,
+                                                    callback=callback,
+                                                    _caller=_caller)
+                except PolicyException as e:
+                    msg = str(e)
+                    return callback.error(msg)
+                except Exception as e:
+                    config.raise_exception()
+                    msg = str(e)
+                    return callback.error(msg)
 
         # Non-admin users are done here.
         if self.name != config.admin_user_name:

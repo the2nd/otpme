@@ -21,7 +21,6 @@ from otpme.lib import sotp
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
-from otpme.lib import locking
 from otpme.lib import filetools
 from otpme.lib import encryption
 from otpme.lib import otpme_pass
@@ -29,13 +28,11 @@ from otpme.lib import mschap_util
 from otpme.lib.locking import object_lock
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.object_config import ObjectConfig
+from otpme.lib.classes.otpme_object import OTPmeLockObject
 
 from otpme.lib.exceptions import *
 
 logger = config.logger
-
-SESSION_LOCK_TYPE = "session"
-OBJECT_LOCK_TYPE = "session.object"
 
 default_callback = config.get_callback()
 
@@ -103,8 +100,6 @@ def register():
     register_backend()
     register_sync_settings()
     register_commands("session", commands)
-    locking.register_lock_type(OBJECT_LOCK_TYPE, module=__file__)
-    locking.register_lock_type(SESSION_LOCK_TYPE, module=__file__)
 
 #def register_config():
 #    """ Register config stuff. """
@@ -134,7 +129,7 @@ def register_backend():
                             perms=0o770)
     def path_getter(object_id):
         session_name = object_id.name
-        config_file_name = "%s.session" % session_name
+        config_file_name = "%s.json" % session_name
         config_file = os.path.join(SESSIONS_DIR, config_file_name)
         config_paths = {}
         config_paths['config_file'] = config_file
@@ -182,26 +177,7 @@ def register_backend():
                                 index_rebuild_func=index_rebuild,
                                 path_getter=path_getter)
 
-def gen_session_lock_id(username, access_group):
-    lock_id = "%s:%s" % (username, access_group)
-    return lock_id
-
-def get_session_lock(username, access_group):
-    """ Get session lock. """
-    lock_id = gen_session_lock_id(username, access_group)
-    session_lock = locking.get_lock(SESSION_LOCK_TYPE, lock_id)
-    return session_lock
-
-def acquire_session_lock(username, access_group, lock_caller=None, write=False, timeout=10):
-    """ Acquire session lock. """
-    lock_id = gen_session_lock_id(username, access_group)
-    session_lock = locking.acquire_lock(lock_type=SESSION_LOCK_TYPE,
-                                        lock_id=lock_id,
-                                        lock_caller=lock_caller,
-                                        write=write, timeout=timeout)
-    return session_lock
-
-class Session(object):
+class Session(OTPmeLockObject):
     """ OTPme session object. """
     def __init__(self, session_type=None, username=None, access_group=None,
         object_id=None, object_config=None, uuid=None, cache=False,
@@ -230,8 +206,12 @@ class Session(object):
         self.pickable = True
         self.origin = None
         self.last_modified = None
+        # Be compatible with OTPmeLockObject.
+        self.offline = False
+        self.no_transaction = False
         # How long to cache a session e.g. in redis.
         self.cache_expire = 300
+        self._lock = None
 
         # Set our object type.
         self.type = "session"
@@ -426,83 +406,6 @@ class Session(object):
                                         self.uuid,
                                         self.session_id)
         return session_name
-
-    @property
-    def _session_lock(self):
-        try:
-            _lock = get_session_lock(username=self.username,
-                                    access_group=self.access_group)
-        except:
-            return
-        return _lock
-
-    @property
-    def _object_lock(self):
-        try:
-            _lock = locking.get_lock(OBJECT_LOCK_TYPE, self.oid.read_oid)
-        except:
-            return
-        return _lock
-
-    def acquire_lock(self, lock_caller, write=False, skip_same_caller=False,
-        timeout=None, _caller="API", callback=default_callback, **kwargs):
-        """ Acquire session locks. """
-        # Acquire session lock.
-        if self._session_lock:
-            self._session_lock.acquire_lock(lock_caller=lock_caller,
-                                    skip_same_caller=skip_same_caller)
-        else:
-            acquire_session_lock(username=self.username,
-                                access_group=self.access_group,
-                                lock_caller=lock_caller,
-                                write=write)
-        # Acquire object lock. We use the object ID as lock ID to prevent
-        # issues when adding a new object (e.g. new object has no UUID).
-        if self._object_lock:
-            self._object_lock.acquire_lock(lock_caller=lock_caller,
-                                    skip_same_caller=skip_same_caller)
-        else:
-            old_uuid = backend.get_uuid(self.oid)
-            object_existed = backend.object_exists(self.oid)
-            try:
-                locking.acquire_lock(lock_type=OBJECT_LOCK_TYPE,
-                                    lock_id=self.oid.read_oid,
-                                    lock_caller=lock_caller,
-                                    write=write,
-                                    timeout=timeout,
-                                    callback=callback)
-            except LockWaitTimeout:
-                raise
-            except Exception as e:
-                config.raise_exception()
-                msg = (_("Failed to acquire lock: %s") % e)
-                raise OTPmeException(msg)
-            if object_existed:
-                if not backend.object_exists(self.oid):
-                    msg = "Object deleted while waiting for lock: %s" % self
-                    self._object_lock.release_lock(lock_caller=lock_caller)
-                    raise LockWaitAbort(msg)
-                object_uuid = backend.get_uuid(self.oid)
-                if object_uuid != old_uuid:
-                    msg = "Object re-created while waiting for lock: %s" % self
-                    self._object_lock.release_lock(lock_caller=lock_caller)
-                    raise LockWaitAbort(msg)
-            else:
-                if backend.object_exists(self.oid):
-                    msg = "Object created while waiting for lock: %s" % self
-                    self._object_lock.release_lock(lock_caller=lock_caller)
-                    raise LockWaitAbort(msg)
-
-    def release_lock(self, lock_caller=None, callback=None, **kwargs):
-        """ Release sesson lock. """
-        # Release session lock.
-        if self._session_lock:
-            self._session_lock.release_lock(lock_caller=lock_caller)
-        # Remove child locks.
-        if not self._object_lock:
-            return
-        # Release lock.
-        self._object_lock.release_lock(lock_caller=lock_caller)
 
     def export_config(self, callback=default_callback, **kwargs):
         """ Export session config. """
@@ -719,7 +622,6 @@ class Session(object):
 
         return True
 
-    @object_lock()
     def update_last_used_time(self, update_child_sessions=False, force=False):
         """ Update the time this session was last used. """
         if not force:
@@ -975,7 +877,7 @@ class Session(object):
                                                             challenge, response)
                 except Exception as e:
                     verify_status = None
-                    msg = ("Error verifying MSCHAP request: %s: %s"
+                    msg = ("Error verifying MSCHAP request (auth): %s: %s"
                             % (self.session_id, e))
                     logger.critical(msg)
                 if verify_status:
@@ -1013,7 +915,7 @@ class Session(object):
                                                                 response)
                 except Exception as e:
                     verify_status = None
-                    msg = ("Error verifying MSCHAP request: %s: %s"
+                    msg = ("bError verifying MSCHAP request (SLP): %s: %s"
                             % (self.session_id, e))
                     logger.critical(msg)
                 if verify_status:
@@ -1052,7 +954,7 @@ class Session(object):
                                                                         response)
                 except Exception as e:
                     mschap_verify_status = None
-                    msg = ("Error verifying MSCHAP request: %s: %s"
+                    msg = ("Error verifying MSCHAP request (SRP): %s: %s"
                             % (self.session_id, e))
                     logger.critical(msg)
 
@@ -1090,7 +992,7 @@ class Session(object):
                                                 response=response)
                 except Exception as e:
                     verify_status = None
-                    msg = ("Error verifying MSCHAP request: %s: %s"
+                    msg = ("dError verifying MSCHAP request (SOTP): %s: %s"
                             % (self.session_id, e))
                     logger.critical(msg)
 
@@ -1111,10 +1013,10 @@ class Session(object):
     def add_child_session(self, session_id):
         """ Add session ID to child sessions. """
         # Add child session if its not already there.
-        if not session_id in self.child_sessions:
-            self.child_sessions.append(session_id)
-            return self.write_config()
-        return False
+        if session_id in self.child_sessions:
+            return True
+        self.child_sessions.append(session_id)
+        return self.write_config()
 
     # FIXME: create_child_sessions() creates all child sessions regardless if
     #        the token used for the request is allowed for the child session/group.

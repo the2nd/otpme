@@ -70,6 +70,15 @@ default_acls = [
 recursive_default_acls = default_acls
 
 commands = {
+    'add'   : {
+            'OTPme-mgmt-1.0'    : {
+                'missing'    : {
+                    'method'            : 'add',
+                    'args'              : ['policy_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'add_default_policy'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -283,6 +292,11 @@ class DefaultpoliciesPolicy(Policy):
                                 _caller=_caller)
             except Exception:
                 return callback.error()
+
+        if object_type not in policy.object_types:
+            msg = ("Policy not valid for object type: %s: %s"
+                    % (object_type, policy))
+            return callback.error(msg)
 
         if not object_type in self.default_policies:
             self.default_policies[object_type] = []

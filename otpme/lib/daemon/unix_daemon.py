@@ -51,7 +51,7 @@ class UnixDaemon(object):
             # Run stuff before daemonizing.
             self.pre_fork()
             # WORKAROUND: https://stackoverflow.com/questions/20636678/paramiko-inside-python-daemon-causes-ioerror
-            files_preserve = self.files_preserve_by_path(['/dev/urandom', '/dev/null'])
+            #files_preserve = self.files_preserve_by_path(['/dev/urandom', '/dev/null'])
             class TestDaemon(Daemonize):
                 def exit(self, *args, **kwargs):
                     return
@@ -60,8 +60,9 @@ class UnixDaemon(object):
             daemon = Daemonize(app=self.proc_name,
                             pid=self.pidfile,
                             action=self.__atfork,
-                            keep_fds=files_preserve,
-                            auto_close_fds=True)
+                            auto_close_fds=False)
+                            #keep_fds=files_preserve,
+                            #auto_close_fds=True)
                             #foreground=True)
             daemon.start()
         else:

@@ -404,9 +404,9 @@ def create_file(path, content=None, user=None, group=True, mode=0o660,
     try:
         # Open temp file.
         fd = AtomicFileLock(path=file_real_path,
-                                mode=write_mode,
-                                write_lock=True,
-                                perms=mode)
+                            mode=write_mode,
+                            write_lock=True,
+                            perms=mode)
         # Truncate file.
         fd.truncate()
         # Write data to file.
@@ -517,7 +517,7 @@ def set_fs_ownership(path, user, group=None, recursive=False):
         # If group is True we set gid to the primary group of user.
         # If group is False we do not touch group ownership.
         # If group is set we set gid to the gid of the given group.
-        if user and group == True:
+        if group is True:
             gid = pwd.getpwnam(user).pw_gid
         elif not group:
             gid = -1
@@ -646,13 +646,43 @@ def set_fs_permissions(path, mode, user_acls=[], group_acls=[], recursive=False)
             if apply_acls:
                 new_acl.applyto(path)
 
-def read_data_file(*args, **kwargs):
-    return read_tinydb_file(*args, **kwargs)
-    #return read_sqlite_file(*args, **kwargs)
+def migrate_data_file(src_file, dst_file):
+    from otpme.lib import config
+    config_dir = os.path.dirname(src_file)
+    _lock = get_file_lock(config_dir)
+    try:
+        if src_file.endswith(".json"):
+            if not dst_file.endswith(".sqlite"):
+                msg = "Unknown file type to migrate: %s" % dst_file
+                raise OTPmeException(msg)
+            object_config = read_tinydb_file(src_file)
+            write_sqlite_file(filename=dst_file,
+                            object_config=object_config,
+                            user=config.user,
+                            group=config.group)
+            os.remove(src_file)
+        if src_file.endswith(".sqlite"):
+            if not dst_file.endswith(".json"):
+                msg = "Unknown file type to migrate: %s" % dst_file
+                raise OTPmeException(msg)
+            object_config = read_tinydb_file(src_file)
+            write_tinydb_file(filename=dst_file,
+                            object_config=object_config,
+                            user=config.user,
+                            group=config.group)
+            os.remove(src_file)
+    finally:
+        _lock.release_lock()
 
-def write_data_file(*args, **kwargs):
-    return write_tinydb_file(*args, **kwargs)
-    #return write_sqlite_file(*args, **kwargs)
+def read_data_file(filename, *args, **kwargs):
+    if filename.endswith(".json"):
+        return read_tinydb_file(filename, *args, **kwargs)
+    return read_sqlite_file(filename, *args, **kwargs)
+
+def write_data_file(filename, *args, **kwargs):
+    if filename.endswith(".json"):
+        return write_tinydb_file(filename, *args, **kwargs)
+    return write_sqlite_file(filename, *args, **kwargs)
 
 def read_sqlite_file(filename, parameters=None):
     """ Import bash style config file into dictionary. """
@@ -679,27 +709,32 @@ def read_sqlite_file(filename, parameters=None):
         raise OTPmeException(msg)
 
     _lock = get_file_lock(file_real_path)
-    try:
-        engine = create_engine('sqlite:///%s' % file_real_path)
-        meta = MetaData()
+    engine = create_engine('sqlite:///%s' % file_real_path)
+    meta = MetaData()
 
-        object_table = Table(
-           'object', meta,
-           Column('id', Integer, primary_key = True),
-           Column('attribute', String),
-           Column('value', String),
-        )
-        session_factory = sessionmaker(bind=engine)
-        Session = scoped_session(session_factory)
-        session = Session()
+    object_table = Table(
+       'object', meta,
+       Column('id', Integer, primary_key = True),
+       Column('attribute', String),
+       Column('value', String),
+    )
+    session_factory = sessionmaker(bind=engine)
+    Session = scoped_session(session_factory)
+    session = Session()
+    try:
         if parameters:
             object_config = {}
             for attr in parameters:
-                sql_stmt = select([object_table])
+                sql_stmt = select(object_table)
                 sql_stmt = sql_stmt.where(object_table.c.attribute == attr)
                 result = session.execute(sql_stmt)
-                val = result[2]
-                val = json.loads(val)
+                try:
+                    val = list(result)[0][2]
+                except IndexError:
+                    val = None
+                else:
+                    val = json.loads(val)
+                #print("VVVV", val)
                 object_config[attr] = val
         else:
             object_config = {}
@@ -709,10 +744,11 @@ def read_sqlite_file(filename, parameters=None):
                 attr = x[1]
                 val = x[2]
                 val = json.loads(val)
+                #print("vvvv", val)
                 object_config[attr] = val
-        # Close DB.
-        session.close()
     finally:
+        session.close()
+        engine.dispose()
         _lock.release_lock()
     return object_config
 
@@ -753,7 +789,7 @@ def read_tinydb_file(filename, parameters=None):
         _lock.release_lock()
     return object_config
 
-def write_sqlite_file(filename, object_config, full_data_update=False,
+def write_sqlite_file(filename, object_config, full_data_update=None,
     user=None, group=True, mode=0o660, user_acls=[], group_acls=[]):
     """ Write dictionary to JSON config file. """
     from sqlalchemy import Table
@@ -770,6 +806,10 @@ def write_sqlite_file(filename, object_config, full_data_update=False,
     from sqlalchemy.orm import scoped_session
     from sqlalchemy.exc import IntegrityError
     from sqlalchemy.dialects.sqlite import insert
+
+    from otpme.lib import config
+    from otpme.lib import backend
+    #from otpme.lib.backends.file.models import JsonEncodedData
 
     # Get file real path to ensure working locking (e.g. on symlink).
     file_real_path = os.path.realpath(filename)
@@ -795,17 +835,20 @@ def write_sqlite_file(filename, object_config, full_data_update=False,
         deleted_attributes = []
 
     _lock = get_file_lock(file_real_path)
-    try:
-        engine = create_engine('sqlite:///%s' % file_real_path)
-        meta = MetaData()
+    engine = create_engine('sqlite:///%s' % file_real_path)
+    meta = MetaData()
 
-        object_table = Table(
-           'object', meta,
-           Column('id', Integer, primary_key=True),
-           Column('attribute', String, unique=True),
-           #Column('attribute', String),
-           Column('value', String),
-        )
+    object_table = Table(
+        'object', meta,
+        Column('id', Integer, primary_key=True),
+        Column('attribute', String, unique=True),
+        #Column('value', JsonEncodedData(4096)),
+        Column('value', String),
+    )
+    session_factory = sessionmaker(bind=engine)
+    Session = scoped_session(session_factory)
+    session = Session()
+    try:
         if not os.path.exists(file_real_path):
             meta.create_all(engine)
             # Set ownership.
@@ -820,16 +863,37 @@ def write_sqlite_file(filename, object_config, full_data_update=False,
                                 group_acls=group_acls,
                                 recursive=False)
 
-        session_factory = sessionmaker(bind=engine)
-        Session = scoped_session(session_factory)
-        session = Session()
-
         if os.path.exists(file_real_path):
+            if full_data_update is None:
+                full_data_update = False
+                # Check if a full data update is required.
+                try:
+                    old_checksum = object_config['OLD_CHECKSUM']
+                except KeyError:
+                    old_checksum = None
+                if old_checksum:
+                    sql_stmt = select(object_table)
+                    sql_stmt = sql_stmt.where(object_table.c.attribute == "CHECKSUM")
+                    result = session.execute(sql_stmt)
+                    try:
+                        current_checksum = list(result)[0][2]
+                        current_checksum = json.loads(current_checksum)
+                    except IndexError:
+                        current_checksum = None
+                    if current_checksum != old_checksum:
+                        full_data_update = True
+                        if current_checksum and old_checksum:
+                            object_uuid = object_config['UUID']
+                            object_id = backend.get_oid(object_uuid)
+                            if object_id:
+                                msg = ("Local object out of sync. Will do a full data "
+                                        "update: %s" % object_id)
+                                config.logger.info(msg)
             # Open file/DB.
             if full_data_update:
                 # Remove deleted attributes.
                 sql_stmt = select(object_table)
-                full_data = list(session.execute(sql_stmt))
+                full_data = session.execute(sql_stmt)
                 for x in full_data:
                     attr = x[1]
                     if attr in object_config:
@@ -895,13 +959,15 @@ def write_sqlite_file(filename, object_config, full_data_update=False,
                 session.execute(sql_stmt)
         # Make sure data is written.
         session.commit()
-        session.close()
     finally:
+        session.close()
+        engine.dispose()
         _lock.release_lock()
 
 def write_tinydb_file(filename, object_config, full_data_update=None,
     user=None, group=True, mode=0o660, user_acls=[], group_acls=[]):
     """ Write dictionary to JSON config file. """
+    #from tinydb import Query
     from tinydb import TinyDB
     from tinydb.operations import delete
     from tinydb.storages import JSONStorage
@@ -933,10 +999,15 @@ def write_tinydb_file(filename, object_config, full_data_update=None,
 
     _lock = get_file_lock(file_real_path)
     try:
+        db_exists = False
         if os.path.exists(file_real_path):
             # Open file/DB.
             db = TinyDB(file_real_path, sort_keys=True, indent=4,
                     storage=CachingMiddleware(JSONStorage))
+            full_data = db.get(doc_id=1)
+            if full_data:
+                db_exists = True
+        if db_exists:
             if full_data_update is None:
                 full_data_update = False
                 # Check if a full data update is required.
@@ -944,7 +1015,11 @@ def write_tinydb_file(filename, object_config, full_data_update=None,
                     old_checksum = object_config['OLD_CHECKSUM']
                 except KeyError:
                     old_checksum = None
-                current_checksum = db.get(doc_id=1)['CHECKSUM']
+                try:
+                    current_checksum = full_data['CHECKSUM']
+                except TypeError:
+                    current_checksum = None
+                #current_checksum = db.get(Query()['CHECKSUM'] != None)
                 if current_checksum != old_checksum:
                     full_data_update = True
                     if current_checksum and old_checksum:
@@ -957,7 +1032,6 @@ def write_tinydb_file(filename, object_config, full_data_update=None,
             # Do full data update
             if full_data_update:
                 # Remove deleted attributes.
-                full_data = db.get(doc_id=1)
                 for attr in full_data:
                     if attr in object_config:
                         continue

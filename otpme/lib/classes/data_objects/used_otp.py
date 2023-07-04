@@ -88,7 +88,7 @@ def register_backend():
                                 path_id,
                                 token_uuid,
                                 otp_hash)
-        config_file = os.path.join(config_dir, config.object_config_file_name)
+        config_file = os.path.join(config_dir, config.json_config_file_name)
         config_paths = {}
         config_paths['config_file'] = config_file
         config_paths['config_dir'] = config_dir
@@ -110,7 +110,7 @@ def register_backend():
                 for x in used_otp_files:
                     counter += 1
                     x_path = os.path.join(used_otp_dir, x)
-                    x_file = os.path.join(x_path, config.object_config_file_name)
+                    x_file = os.path.join(x_path, config.json_config_file_name)
                     msg = ("Processing %s (%s/%s): %s"
                         % (path_id, counter, files_count, x_file))
                     logger.debug(msg)

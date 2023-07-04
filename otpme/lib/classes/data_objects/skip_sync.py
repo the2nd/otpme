@@ -86,7 +86,7 @@ def register_backend():
                                 object_id.realm,
                                 object_id.site,
                                 object_id.skip_hash)
-        config_file = os.path.join(config_dir, config.object_config_file_name)
+        config_file = os.path.join(config_dir, config.json_config_file_name)
         config_paths = {}
         config_paths['config_file'] = config_file
         config_paths['config_dir'] = config_dir
@@ -106,7 +106,7 @@ def register_backend():
                     if not stuff.is_uuid(object_uuid):
                         continue
                     x_path = os.path.join(site_dir, object_uuid)
-                    x_file = os.path.join(x_path, config.object_config_file_name)
+                    x_file = os.path.join(x_path, config.json_config_file_name)
                     x_oid = oid_getter(x_path)
                     msg = ("Processing %s (%s/%s): %s"
                         % (path_id, counter, files_count, x_file))

@@ -64,6 +64,8 @@ class JobCallback(object):
         self.logger = config.logger
         # Time the callback was last used.
         self.last_used = time.time()
+        # Indicates that the job should be stopped.
+        self.stop_job = False
 
     def add_modified_object(self, o):
         """ Add modified object to callback. """

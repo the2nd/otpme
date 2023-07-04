@@ -67,6 +67,14 @@ commands = {
                     },
                 },
             },
+    'touch'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'show'   : {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
@@ -553,7 +561,7 @@ def register_oid():
     read_oid_schema = [ 'realm', 'site', 'name' ]
     # OID regex stuff.
     unit_path_re = oid.object_regex['unit']['path']
-    role_name_re = '([0-9A-Za-z]([0-9A-Za-z_.-]*[0-9A-Za-z]){0,})'
+    role_name_re = '([0-9A-Za-z]([0-9A-Za-z_:.-]*[0-9A-Za-z]){0,})'
     role_path_re = '%s[/]%s' % (unit_path_re, role_name_re)
     role_oid_re = 'role|%s' % role_path_re
     oid.register_oid_schema(object_type="role",
@@ -924,8 +932,8 @@ class Role(OTPmeObject):
     @object_lock()
     @backend.transaction
     def delete(self, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+        verify_acls=True, verbose_level=0, _caller="API",
+        callback=default_callback, **kwargs):
         """ Delete role. """
         if not self.exists():
             return callback.error("Role does not exist exists.")

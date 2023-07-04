@@ -201,6 +201,14 @@ cmd_help = {
                 },
 
 
+    'touch'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user touch {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Touch user (e.g. migrate).',
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : 'Usage: otpme-user enable {user}',
                     'cmd'   :   '<|object|>',

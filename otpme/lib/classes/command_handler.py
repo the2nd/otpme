@@ -467,6 +467,10 @@ class CommandHandler(object):
             cache.enable()
             return self.send_command(daemon="mgmtd")
 
+        if config.cli_object_type != "main":
+            object_type = "%s_type" % command
+            self.command_args[object_type] = config.cli_object_type
+
         if command == "user" and subcommand == "dump_key":
             return self.handle_user_dump_key_command(command, subcommand)
 
@@ -531,11 +535,6 @@ class CommandHandler(object):
 
         if command == "dictionary" and subcommand == "word_learning":
             self.handle_dictionary_word_learning_command(command, subcommand)
-
-        if subcommand == "add":
-            if config.cli_object_type != "main":
-                object_type = "%s_type" % command
-                self.command_args[object_type] = config.cli_object_type
 
         # Rewrite "token add" command to "user add_token". This is a workaround
         # to be backward compatible with OTPme commands before v0.3 handling
@@ -1302,6 +1301,27 @@ class CommandHandler(object):
 
         if isinstance(lotp, int) or isinstance(lotp, float):
             lotp = str(lotp)
+
+        if not config.uuid:
+            msg = "Host is not a realm member."
+            raise OTPmeException(msg)
+
+        # Stop OTPme daemons.
+        try:
+            stuff.stop_otpme_daemon(kill=True, timeout=1)
+        except Exception as e:
+            msg = "Failed to stop OTPme daemons: %s" % e
+            logger.critical(msg)
+
+        # Make sure index is running.
+        _index = config.get_index_module()
+        if _index.need_start:
+            if not _index.status():
+                _index.start()
+        # Make sure cache is running.
+        _cache = config.get_cache_module()
+        if not _cache.status():
+            _cache.start()
 
         result = self.leave_realm(domain=object_identifier,
                                     lotp=lotp,
@@ -4717,6 +4737,7 @@ class CommandHandler(object):
                                 site=config.site,
                                 return_type="instance")
         node_status = {}
+        master_node = None
         node_checksums = {}
         cluster_status = False
         for node in result:
@@ -4741,13 +4762,15 @@ class CommandHandler(object):
                 continue
             try:
                 # Get master node.
-                master_node = clusterd_conn.get_master_node()
+                x_master_node = clusterd_conn.get_master_node()
                 try:
-                    node_status[node.name]['master'] = master_node
+                    node_status[node.name]['master'] = x_master_node
                 except:
-                    node_status[node.name] = {'master':master_node}
+                    node_status[node.name] = {'master':x_master_node}
             except Exception as e:
-                master_node = None
+                x_master_node = None
+            if not master_node:
+                master_node = x_master_node
             if node.name == master_node:
                 cluster_status = clusterd_conn.get_cluster_status()
             try:
@@ -4861,10 +4884,13 @@ class CommandHandler(object):
                     sessions_checksum = None
                 x_status_line = ("%s (Quorum: %s) (Master: %s) (Objects: %s) (Data: %s) (Sessions: %s)"
                                 % (x_node, x_node_quorum, x_node_master, objects_checksum, data_checksum, sessions_checksum))
-                if x_node in nodes_in_sync:
-                    x_status_line = colored(x_status_line, 'green')
+                if x_node_master == "Unknown":
+                    x_status_line = colored(x_status_line, 'red')
                 else:
-                    x_status_line = colored(x_status_line, 'yellow')
+                    if x_node in nodes_in_sync:
+                        x_status_line = colored(x_status_line, 'green')
+                    else:
+                        x_status_line = colored(x_status_line, 'yellow')
             cluster_status_str.append(x_status_line)
 
             if cluster_in_sync:
@@ -4942,7 +4968,6 @@ class CommandHandler(object):
                     diff_objects.append(msg)
 
                 for n_object in n_object_checksums:
-                    n_checksum = n_object_checksums[n_object]
                     try:
                         m_object_checksums[n_object]
                     except KeyError:
@@ -4993,7 +5018,6 @@ class CommandHandler(object):
                     diff_datas.append(msg)
 
                 for n_data in n_data_checksums:
-                    n_checksum = n_data_checksums[n_data]
                     try:
                         m_data_checksums[n_data]
                     except KeyError:
@@ -5071,6 +5095,37 @@ class CommandHandler(object):
             cluster_status_str = diff_details + cluster_status_str
         cluster_status_str = "\n".join(cluster_status_str)
         return cluster_status_str
+
+    def check_node_vote_status(self, node_name):
+        try:
+            hostd_conn = connections.get("hostd")
+        except Exception as e:
+            msg = "Failed to get hostd connection: %s" % e
+            self.logger.warning(msg)
+            raise OTPmeException(msg)
+        try:
+            socket_uri = hostd_conn.get_daemon_socket("clusterd", node_name)
+        except Exception as e:
+            msg = "Failed to get daemon socket from hostd: %s" % e
+            self.logger.warning(msg)
+            raise OTPmeException(msg)
+        try:
+            clusterd_conn = connections.get("clusterd",
+                                            timeout=None,
+                                            socket_uri=socket_uri)
+        except Exception as e:
+            msg = ("Failed to get node connection: %s: %s"
+                    % (node_name, e))
+            self.logger.warning(msg)
+            raise OTPmeException(msg)
+        try:
+            node_vote = clusterd_conn.get_node_vote()
+        except Exception as e:
+            msg = ("Node vote check failed: %s: %s" % (node_name, e))
+            raise OTPmeException(msg)
+        if node_vote == 0:
+            msg = "Node not ready."
+            raise OTPmeException(msg)
 
     def check_node_sync_status(self, node_name):
         try:
@@ -5266,6 +5321,13 @@ class CommandHandler(object):
                             % (new_master_node, e))
                     self.logger.debug(msg)
                     continue
+                try:
+                    self.check_node_vote_status(new_master_node)
+                except Exception as e:
+                    msg = ("Will not switch to unsync node: %s: %s"
+                            % (new_master_node, e))
+                    self.logger.debug(msg)
+                    continue
                 break
 
             msg = ("Will switch to node: %s" % new_master_node)
@@ -5322,10 +5384,29 @@ class CommandHandler(object):
         new_master_node = this_node.name
         if new_master:
             new_master_node = new_master
+
+        if new_master_node == master_node:
+            msg = "Node already the master node: %s" % new_master_node
+            msg = colored(msg, 'red')
+            return msg
+
         msg = ("Checking node sync status: %s" % new_master_node)
         msg = colored(msg, 'green')
         print(msg)
         while True:
+            try:
+                self.check_node_vote_status(new_master_node)
+                break
+            except Exception as e:
+                msg = ("Will not switch to not ready node: %s: %s"
+                        % (new_master_node, e))
+                self.logger.debug(msg)
+                msg = colored(msg, 'red')
+                if wait:
+                    print(msg)
+                    time.sleep(1)
+                else:
+                    return msg
             try:
                 self.check_node_sync_status(new_master_node)
                 break
@@ -5390,12 +5471,11 @@ class CommandHandler(object):
     def handle_auth_command(self, command, subcommand, command_line):
         """ Handle auth command. """
         # Enable cache.
-        if config.use_api:
-            register_module("otpme.lib.classes.realm")
-            # Init otpme.
-            self.init(use_backend=False)
-            cache.init()
-            cache.enable()
+        register_module("otpme.lib.classes.realm")
+        # Init otpme.
+        self.init(use_backend=False)
+        cache.init()
+        cache.enable()
         # Get command syntax.
         try:
             command_syntax = self.get_command_syntax(command, subcommand)

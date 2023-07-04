@@ -374,11 +374,9 @@ class MotpToken(Token):
     def gen_secret(self, token_secret, pin, ** kwargs):
         """ Generate server secret from token secret and PIN. """
         import hashlib
-        if isinstance(pin, str):
-            pin = pin.encode("utf-8")
         if isinstance(token_secret, str):
             token_secret = token_secret.encode("utf-8")
-        hash_string = b"%s%s" % (pin, token_secret)
+        hash_string = b"%s%s" % (str(pin).encode(), token_secret)
         sha512 = hashlib.sha512()
         sha512.update(hash_string)
         secret = sha512.hexdigest()

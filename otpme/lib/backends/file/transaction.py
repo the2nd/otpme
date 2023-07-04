@@ -229,6 +229,7 @@ def end_transaction():
         msg = "Uhhh, tried to end not existing transaction."
         logger.warning(msg)
         return
+
     try:
         # Make sure cached objects are written to this transaction.
         modified_objects = _transaction.write_cached_objects()
@@ -247,7 +248,7 @@ def end_transaction():
         try:
             _transaction.commit()
         except Exception as e:
-            msg = "Failed to commit transaction: %s: %s" % (_transaction.id, e)
+            msg = "Failed to end transaction: %s: %s" % (_transaction.id, e)
             logger.critical(msg, exc_info=True)
             config.raise_exception()
             return False
@@ -313,8 +314,10 @@ def replay_transactions():
             continue
         # Lock transaction.
         try:
-            _transaction.acquire_lock(timeout=0.1)
+            _transaction.acquire_lock(timeout=0.01)
         except ObjectLocked:
+            continue
+        except ObjectDeleted:
             continue
         try:
             # Remove finished or incomplete transaction.
@@ -339,7 +342,7 @@ def replay_transactions():
                 _transaction.replay()
             except Exception as e:
                 config.raise_exception()
-                msg = ("Failed to commit transaction: %s: %s"
+                msg = ("Failed to replay transaction: %s: %s"
                         % (_transaction.id, e))
                 logger.critical(msg)
                 continue
@@ -361,8 +364,10 @@ def replay_transactions():
             continue
         # Lock transaction.
         try:
-            _transaction.acquire_lock(timeout=0.1)
+            _transaction.acquire_lock(timeout=0.01)
         except ObjectLocked:
+            continue
+        except ObjectDeleted:
             continue
         try:
             # Remove finished or incomplete transaction.
@@ -387,7 +392,7 @@ def replay_transactions():
                 _transaction.replay()
             except Exception as e:
                 config.raise_exception()
-                msg = ("Failed to commit transaction: %s: %s"
+                msg = ("Failed to replay transaction: %s: %s"
                         % (_transaction.id, e))
                 logger.critical(msg)
                 continue
@@ -535,8 +540,8 @@ class BaseTransaction(object):
 
     def begin(self):
         """ Start transaction. """
-        self.acquire_lock()
         self.set_status("new")
+        self.acquire_lock()
 
     def acquire_lock(self, **kwargs):
         """ Lock transaction. """
@@ -547,6 +552,8 @@ class BaseTransaction(object):
         except LockWaitTimeout:
             msg = "Transaction is locked: %s (%s)" % (self.id, self.lock_type)
             raise ObjectLocked(msg)
+        if not self.exists():
+            raise ObjectDeleted()
 
     def release_lock(self):
         """ Release transaction lock. """

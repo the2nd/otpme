@@ -101,11 +101,12 @@ class OTPmeClusterP1(OTPmeClient1):
             raise LockWaitAbort(msg)
         return reply
 
-    def release_lock(self, lock_id):
+    def release_lock(self, lock_id, write):
         """ Release lock on peer. """
         command = "release_lock"
         command_args = {}
         command_args['lock_id'] = lock_id
+        command_args['write'] = write
         status, \
         status_code, \
         reply = self.connection.send(command, command_args)

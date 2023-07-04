@@ -77,7 +77,6 @@ preload_modules = [
     'otpme.lib.cli.token',
     'otpme.lib.cli.unit',
     'otpme.lib.cli.user',
-    'otpme.lib.compgen',
     'otpme.lib.compression.base',
     'otpme.lib.connections',
     'otpme.lib.daemon.authd',

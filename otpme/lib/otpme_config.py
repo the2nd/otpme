@@ -527,6 +527,9 @@ class OTPmeConfig(object):
         self.register_config_var("object_caches", [None, list], None,
                                 config_file_parameter="OBJECT_CACHES")
 
+        self.register_config_var("sqlite_objects", [None, list], [],
+                                config_file_parameter="SQLITE_OBJECTS")
+
         default_ports = {
                     'authd'     : '2020',
                     'hostd'     : '2021',
@@ -597,7 +600,8 @@ class OTPmeConfig(object):
         self.register_config_var("node_member_pass_algo", str, "sha512")
         self.register_config_var("group_secret_len", int, 16)
 
-        self.register_config_var("object_config_file_name", str, "object.json")
+        self.register_config_var("json_config_file_name", str, "object.json")
+        self.register_config_var("sqlite_config_file_name", str, "object.sqlite")
 
         # FIXME: make this a (user) config file option?
         self.register_config_var("pwgen", str, "pwgen")

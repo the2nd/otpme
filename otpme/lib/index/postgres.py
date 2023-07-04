@@ -286,6 +286,7 @@ def start():
                                     user=config.user,
                                     group=config.group,
                                     close_fds=True,
+                                    stdout=None,
                                     shell=False,
                                     call=False)
     if return_code == 0:
@@ -321,6 +322,7 @@ def stop():
     return_code = system_command.run(command=stop_cmd,
                                     user=config.user,
                                     group=config.group,
+                                    stdout=None,
                                     call=True)
     if return_code == 0:
         return True

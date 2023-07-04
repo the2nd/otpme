@@ -40,9 +40,9 @@ def register():
     """ Register OTPme daemon. """
     config.register_otpme_daemon("scriptd")
 
-def run_script(script_type, script_uuid, script_parms, user, group, groups=[]):
+def run_script(script_type, script_uuid, script_parms,
+    user, group, groups=[], script_path=None):
     """ Run script via scriptd. """
-    #global script_comm_handler
     if 'user' in script_parms:
         msg = "<user> in script parameters is not allowed."
         raise OTPmeException(msg)
@@ -59,6 +59,7 @@ def run_script(script_type, script_uuid, script_parms, user, group, groups=[]):
                 'group'         : group,
                 'groups'        : groups,
                 'script_uuid'   : script_uuid,
+                'script_path'   : script_path,
                 'script_type'   : script_type,
                 'script_parms'  : script_parms,
     }
@@ -75,9 +76,17 @@ def run_script(script_type, script_uuid, script_parms, user, group, groups=[]):
     script_comm_handler.send("script-handler",
                             command="run",
                             data=exec_request)
-    sender, \
-    command, \
-    script_reply = script_comm_handler.recv()
+
+    # Run recv() with timeout to prevent blocking of clusterd shutdown.
+    while True:
+        try:
+            sender, \
+            command, \
+            script_reply = script_comm_handler.recv(timeout=1)
+        except TimeoutReached:
+            continue
+        else:
+            break
     # Get script result/exception.
     script_result = script_reply['script_result']
     script_exception = script_reply['script_exception']
@@ -99,6 +108,7 @@ def handle_script_request(request):
     group = script_request['group']
     groups = script_request['groups']
     script_uuid = script_request['script_uuid']
+    script_path = script_request['script_path']
     script_type = script_request['script_type']
     script_parms = script_request['script_parms']
 
@@ -119,6 +129,7 @@ def handle_script_request(request):
             script_class = valid_script_classes[script_type]
             script_result = script_class.run(script_type=script_type,
                                             script_uuid=script_uuid,
+                                            script_path=script_path,
                                             user=user,
                                             group=group,
                                             groups=groups,
@@ -232,7 +243,8 @@ class ScriptDaemon(OTPmeDaemon):
                             target_args=(request,),
                             daemon=True,
                             join=True)
-        # Close comm handler on exit.
+        # Remove comm handler on exit.
+        scriptd_comm_handler.close()
         scriptd_comm_handler.unlink()
 
     def _run(self, **kwargs):

@@ -219,8 +219,6 @@ class OTPmeExtension(OTPmeLDIFHandler):
         if o.type == "user":
             if a == "uidNumber":
                 self.check_free_id(o.type, a, v)
-            if a == "gidNumber":
-                self.check_free_id(o.type, a, v)
 
         if o.type == "group":
             if a == "gidNumber":
@@ -241,13 +239,14 @@ class OTPmeExtension(OTPmeLDIFHandler):
                     return new_id
 
             if a == "gidNumber":
-                return_attrs = ['ldif:gidNumber']
-                result = backend.search(object_type="group",
-                                        attribute="uuid",
-                                        value=o.group_uuid,
-                                        return_attributes=return_attrs)
-                if result:
-                    return result[0]
+                if o.group_uuid:
+                    return_attrs = ['ldif:gidNumber']
+                    result = backend.search(object_type="group",
+                                            attribute="uuid",
+                                            value=o.group_uuid,
+                                            return_attributes=return_attrs)
+                    if result:
+                        return result[0]
                 return None
 
             if a == "loginShell":
@@ -318,18 +317,16 @@ class OTPmeExtension(OTPmeLDIFHandler):
                         write=True, callback=callback)
         o._load()
         try:
-            for token_owner in current_members:
-                if token_owner in group_members:
-                    continue
+            del_users = list(set(current_members) - set(group_members))
+            new_users = list(set(group_members) - set(current_members))
+            for token_owner in del_users:
                 object_modified = True
                 self.del_attribute_value(o=o,
                                     attribute='memberUid',
                                     value=token_owner,
                                     callback=callback)
             # Add new members.
-            for token_owner in group_members:
-                if token_owner in current_members:
-                    continue
+            for token_owner in new_users:
                 object_modified = True
                 self.add_attribute_value(o=o,
                                     attribute="memberUid",
@@ -338,7 +335,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
                                     auto_value=True,
                                     callback=callback)
             if object_modified:
-                o._write(callback=callback)
+                o._cache(callback=callback)
         finally:
             o.release_lock(lock_caller="update_members", callback=callback)
         # Make sure nsscache gets updated.

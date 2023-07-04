@@ -1178,7 +1178,7 @@ class OfflineToken(object):
             config_dir = "%s/%s/otp/%s/%s" % (self.used_dir,
                                             self.user_uuid,
                                             token_uuid, otp_hash)
-            config_file = "%s/%s" % (config_dir, config.object_config_file_name)
+            config_file = "%s/%s" % (config_dir, config.json_config_file_name)
             config_paths['config_file'] = config_file
             config_paths['config_dir'] = config_dir
             config_paths['remove_on_delete'] = [config_file]
@@ -1192,7 +1192,7 @@ class OfflineToken(object):
                                                 self.user_uuid,
                                                 token_uuid,
                                                 counter_hash)
-            config_file = "%s/%s" % (config_dir, config.object_config_file_name)
+            config_file = "%s/%s" % (config_dir, config.json_config_file_name)
             config_paths['config_file'] = config_file
             config_paths['config_dir'] = config_dir
             config_paths['remove_on_delete'] = [config_file]

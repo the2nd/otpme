@@ -87,8 +87,7 @@ class HostDaemon(OTPmeDaemon):
     def signal_handler(self, _signal, frame):
         """ Exit on signal. """
         if _signal != 15:
-            if _signal != 2:
-                return
+            return
         # Act only on our own PID.
         if os.getpid() != self.pid:
             return
@@ -199,10 +198,12 @@ class HostDaemon(OTPmeDaemon):
             self.logger.critical(msg)
             return
         try:
-            self.host = backend.get_object(object_type=host_type,
+            host = backend.get_object(object_type=host_type,
                                             uuid=config.uuid)
         except LockWaitTimeout:
-            return
+            host = None
+        if host:
+            self.host = host
 
     def update_realm_data(self):
         """ Update realm data cache. """
@@ -1202,12 +1203,16 @@ class HostDaemon(OTPmeDaemon):
         for resolver in resolvers:
             if not config.master_node:
                 break
+            if not resolver.enabled:
+                continue
             now = time.time()
             if (now - resolver.last_run) < resolver.sync_interval:
                 continue
             msg = "Running resolver: %s" % resolver.oid
             self.logger.info(msg)
-            resolver.run(verify_acls=False)
+            resolver.run(daemon_run=True,
+                        interactive=False,
+                        verify_acls=False)
         # Do some cleanup.
         multiprocessing.cleanup()
 

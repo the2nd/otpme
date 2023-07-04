@@ -52,7 +52,8 @@ cluster_lock_event = None
 # Shared dict to handle objects to sync with peers.
 cluster_votes = None
 # Cluster locks acquired by clusterd.
-cluster_locks = {}
+cluster_read_locks = {}
+cluster_write_locks = {}
 
 # PID of the current process.
 def register():
@@ -228,8 +229,11 @@ def cleanup():
         msg = "Backend cleanup failed: %s: %s" % (pid, e)
         logger.critical(msg)
         config.raise_exception()
-    for x in cluster_locks:
-        x_lock = cluster_locks[x]
+    for x in cluster_read_locks:
+        x_lock = cluster_read_locks[x]
+        x_lock.release_lock(force=True)
+    for x in cluster_write_locks:
+        x_lock = cluster_write_locks[x]
         x_lock.release_lock(force=True)
     for x in list(message_queues):
         try:
@@ -752,7 +756,7 @@ class InterProcessQueue(object):
                     name = stuff.gen_uuid()
                 return self.get_handler(name)
             def close(own):
-                queue = self.get_queue(own.name, pop=True)
+                queue = self.get_queue(own.name, pop=False)
                 if queue is None:
                     return
                 try:

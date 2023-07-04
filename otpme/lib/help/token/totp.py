@@ -82,22 +82,6 @@ cmd_help = {
                                 },
                 },
 
-    'enable_mschap'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token enable_mschap {token}',
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : 'enable MSCHAP authentication',
-                                },
-                },
-
-    'disable_mschap'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token disable_mschap {token}',
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : 'disable MSCHAP authentication',
-                                },
-                },
-
     'gen_mschap'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token gen_mschap {token}',
                     'cmd'   :   '<|object|>',

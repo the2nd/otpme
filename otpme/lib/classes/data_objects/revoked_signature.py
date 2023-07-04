@@ -81,7 +81,7 @@ def register_backend():
         signer_uuid = object_id.signer_uuid
         config_dir = os.path.join(revoked_signs_dir, signer_uuid)
         config_dir = os.path.join(config_dir, sign_hash)
-        config_file = os.path.join(config_dir, config.object_config_file_name)
+        config_file = os.path.join(config_dir, config.json_config_file_name)
         config_paths = {}
         config_paths['config_file'] = config_file
         config_paths['config_dir'] = config_dir
@@ -100,7 +100,7 @@ def register_backend():
             for x in revoked_sign_files:
                 counter += 1
                 x_path = os.path.join(revoked_signs_dir, x)
-                x_file = os.path.join(x_path, config.object_config_file_name)
+                x_file = os.path.join(x_path, config.json_config_file_name)
                 msg = ("Processing %s (%s/%s): %s"
                     % (path_id, counter, files_count, x_file))
                 logger.debug(msg)

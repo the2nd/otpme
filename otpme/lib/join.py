@@ -882,13 +882,6 @@ class JoinHandler(object):
         # Close all connections.
         connections.close_connections()
 
-        # Stop OTPme daemons after leaving realm.
-        try:
-            stuff.stop_otpme_daemon(kill=True, timeout=1)
-        except Exception as e:
-            msg = "Failed to stop OTPme daemons: %s" % e
-            logger.critical(msg)
-
         # Make sure index is stopped.
         _index = config.get_index_module()
         if _index.need_start:

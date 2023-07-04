@@ -112,6 +112,14 @@ cmd_help = {
                                 },
                 },
 
+    'touch'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-realm touch {realm}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Touch realm (e.g. migrate).',
+                                },
+                },
+
      'config'    : {
                     '_cmd_usage_help' : 'Usage: otpme-realm config {realm} {param} [value]',
                     'cmd'   :   '<|object|> <parameter> [value]',

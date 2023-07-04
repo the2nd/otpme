@@ -10,12 +10,15 @@ try:
 except:
     pass
 
+from otpme.lib.encoding.base import encode
+from otpme.lib.encoding.base import decode
+
 from otpme.lib.exceptions import *
 
 def generate_totp(epoch_time, secret, period, format):
     """ Generate an TOTP from the given secret and time period. """
-    # Prevent "decode method has been disabled in newst".
-    secret = secret
+    secret = decode(secret, "base32")
+    secret = encode(secret, "hex")
     try:
         otp = totp.totp(key=secret, period=period, t=epoch_time, format=format)
     except Exception as e:
@@ -26,8 +29,8 @@ def generate_totp(epoch_time, secret, period, format):
 def verify_totp(epoch_time, secret, period, otp,
     format, backward_drift, forward_drift, drift=0):
     """ Verify TOTP for an given time period. """
-    # Prevent "decode method has been disabled in newst".
-    secret = secret
+    secret = decode(secret, "base32")
+    secret = encode(secret, "hex")
     otp = otp
     try:
         totp_status, \

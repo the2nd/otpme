@@ -272,64 +272,71 @@ def update(resync=False, cache_resync=False, lock=None):
             update_sync_map(lock=lock)
             return None
 
-        update_members = True
-        if not config.use_api:
-            if not config.master_node:
-                update_members = False
+        #update_members = True
+        #if not config.use_api:
+        #    if not config.master_node:
+        #        update_members = False
 
-            if config.master_failover:
-                update_members = False
+        #    if config.master_failover:
+        #        update_members = False
 
-            if not config.cluster_status:
-                update_members = False
+        #    if not config.cluster_status:
+        #        update_members = False
 
-        if update_members:
-            # Get roles/groups to update members of.
-            update_roles = []
-            update_groups = []
-            nss_cache_files = filetools.list_dir(config.nsscache_spool_dir)
-            for f in nss_cache_files:
-                file_path = os.path.join(config.nsscache_spool_dir, f)
-                x_oid = ".".join(f.split(".")[:-1]).replace(":", "/")
-                x_oid = oid.get(x_oid)
-                x_object = backend.get_object(x_oid)
-                if not x_object:
-                    continue
+        #if update_members:
+        #    # Get roles/groups to update members of.
+        #    update_roles = []
+        #    update_groups = []
+        #    nss_cache_files = filetools.list_dir(config.nsscache_spool_dir)
+        #    for f in nss_cache_files:
+        #        file_path = os.path.join(config.nsscache_spool_dir, f)
+        #        x_oid = ".".join(f.split(".")[:-1]).replace(":", "/")
+        #        x_oid = oid.get(x_oid)
+        #        x_object = backend.get_object(x_oid)
+        #        if not x_object:
+        #            continue
 
-                if x_object.type == "user":
-                    update_roles += x_object.get_roles(return_type="instance")
-                    update_groups += x_object.get_groups(return_type="instance")
+        #        if x_object.type == "user":
+        #            update_roles += x_object.get_roles(return_type="instance")
+        #            update_groups += x_object.get_groups(return_type="instance")
 
-                if x_object.type == "role":
-                    if x_object.site != config.site:
-                        continue
-                    update_roles.append(x_object)
-                    try:
-                        filetools.delete(file_path)
-                    except Exception as e:
-                        msg = ("Failed to remove nsscache file: %s: %s"
-                                % (file_path, e))
-                        logger.critical(msg)
+        #        if x_object.type == "role":
+        #            if x_object.site != config.site:
+        #                continue
+        #            update_roles.append(x_object)
+        #            try:
+        #                filetools.delete(file_path)
+        #            except Exception as e:
+        #                msg = ("Failed to remove nsscache file: %s: %s"
+        #                        % (file_path, e))
+        #                logger.critical(msg)
 
-                if x_object.type == "group":
-                    if x_object.site != config.site:
-                        continue
-                    update_groups.append(x_object)
+        #        if x_object.type == "group":
+        #            if x_object.site != config.site:
+        #                continue
+        #            update_groups.append(x_object)
 
-            # Update group members from role members.
-            updated_groups = []
-            for role in set(sorted(update_roles)):
-                msg = "Updating goup members from role: %s" % role.oid
-                logger.info(msg)
-                updated_groups += role._update_extensions("update_members")[1]
+        #    # Update group members from role members.
+        #    updated_groups = []
+        #    for role in set(sorted(update_roles)):
+        #        msg = "Updating goup members from role: %s" % role.oid
+        #        logger.info(msg)
+        #        updated_groups += role._update_extensions("update_members")[1]
 
-            # Update group members (but not those processed by role updates above).
-            for _group in set(sorted(update_groups)):
-                if _group.oid in updated_groups:
-                    continue
-                _group._update_extensions("update_members")
+        #    # Update group members (but not those processed by role updates above).
+        #    for _group in set(sorted(update_groups)):
+        #        if _group.oid in updated_groups:
+        #            continue
+        #        callback = config.get_callback()
+        #        try:
+        #            _group._update_extensions("update_members",
+        #                                    callback=callback)
+        #        except Exception as e:
+        #            msg = ("Failed to update group members: %s: %s"
+        #                    % (_group.oid, e))
+        #        finally:
+        #            callback.release_cache_locks()
 
-        # Re-read update files after update_members.
         nss_cache_files = filetools.list_dir(config.nsscache_spool_dir)
         for f in nss_cache_files:
             file_path = os.path.join(config.nsscache_spool_dir, f)
@@ -535,10 +542,10 @@ def update(resync=False, cache_resync=False, lock=None):
             update_needed = False
             # Handle removed entries.
             for name in sorted(nsscache_remove_names[object_type]):
-                if not name in nsscache_current_entries[object_type]:
-                    msg = ("Deleted OTPme object is missing in nsscache: "
-                            "%s: %s" % (object_type, name))
-                    logger.warning(msg)
+                if name not in nsscache_current_entries[object_type]:
+                    #msg = ("Deleted OTPme object is missing in nsscache: "
+                    #        "%s: %s" % (object_type, name))
+                    #logger.warning(msg)
                     continue
                 update_needed = True
                 msg = ("Removing %s from nsscache: %s" % (object_type, name))

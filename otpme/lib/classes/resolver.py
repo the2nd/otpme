@@ -2,7 +2,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 # Distributed under the terms of the GNU General Public License v2
 import os
-import time
 import datetime
 #import importlib
 
@@ -84,6 +83,14 @@ recursive_default_acls = []
 LOCK_TYPE = "resolver.ldap.sync"
 
 commands = {
+    'touch'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'touch',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'show'   : {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
@@ -527,7 +534,7 @@ class Resolver(OTPmeObject):
         # Sync units=
         self.sync_units = False
         self.sync_interval = 300
-        self.last_run = 0.0
+        self.track_last_used = True
         self._sub_sync_fields = {
                     'host'  : {
                         'trusted'  : [
@@ -577,11 +584,6 @@ class Resolver(OTPmeObject):
                                                         'type'      : int,
                                                         'required'  : True,
                                                     },
-                        'LAST_RUN'                  : {
-                                                        'var_name'  : 'last_run',
-                                                        'type'      : float,
-                                                        'required'  : True,
-                                                    },
                         }
 
         object_config = {}
@@ -603,6 +605,20 @@ class Resolver(OTPmeObject):
         """ Set instance variables. """
         # Set OID.
         self.set_oid()
+
+    @property
+    def last_run(self):
+        last_run = self.get_last_used_time()
+        return last_run
+
+    @property
+    def is_enabled(self):
+        result = backend.search(object_type="resolver",
+                                attribute="uuid",
+                                value=self.uuid,
+                                return_attributes=['enabled'])
+        enabled = result[0]
+        return enabled
 
     @check_acls(['enable:sync_units'])
     @object_lock()
@@ -739,7 +755,7 @@ class Resolver(OTPmeObject):
 
     @check_acls(['run'])
     def run(self, object_types=None, run_policies=True, verbose_level=0,
-        callback=default_callback, _caller="API", **kwargs):
+        daemon_run=False, callback=default_callback, _caller="API", **kwargs):
         """ Run the resolver. """
         if run_policies:
             try:
@@ -748,18 +764,19 @@ class Resolver(OTPmeObject):
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
+        # Set last used time.
+        self.update_last_used_time()
         # Call sync method.
         sync_status = self.start_sync(interactive=True,
                                     callback=callback,
+                                    daemon_run=daemon_run,
                                     object_types=object_types,
                                     verbose_level=verbose_level)
-        self.last_run = time.time()
-        self._write(callback=callback)
 
         if sync_status is False:
             return callback.error()
 
-        return callback.ok()
+        return sync_status
 
     def check_object_resolver(self, object_id, interactive=False,
         run_policies=True, callback=default_callback, **kwargs):
@@ -800,7 +817,7 @@ class Resolver(OTPmeObject):
         return False
 
     def start_sync(self, object_types=None, test=False, interactive=None,
-        verbose_level=0, callback=default_callback):
+        daemon_run=False, verbose_level=0, callback=default_callback):
         """ Start import of objects from this resolver. """
         # Handle locking.
         try:
@@ -833,7 +850,11 @@ class Resolver(OTPmeObject):
         all_remote_objects = {}
         all_local_objects = {}
         for object_type in self.object_types:
-            if config.daemon_mode:
+            if callback.stop_job:
+                return callback.abort()
+            if daemon_run:
+                if not self.is_enabled:
+                    break
                 if not config.cluster_status:
                     break
                 if config.master_failover:
@@ -865,7 +886,11 @@ class Resolver(OTPmeObject):
         skipped_objects = []
         unchanged_objects = []
         for object_type in self.object_types:
-            if config.daemon_mode:
+            if callback.stop_job:
+                return callback.abort()
+            if daemon_run:
+                if not self.is_enabled:
+                    break
                 if not config.cluster_status:
                     break
                 if config.master_failover:
@@ -945,7 +970,11 @@ class Resolver(OTPmeObject):
                 add_order.append(add_object)
 
             for x in sorted(add_order):
-                if config.daemon_mode:
+                if callback.stop_job:
+                    return callback.abort()
+                if daemon_run:
+                    if not self.is_enabled:
+                        break
                     if not config.cluster_status:
                         break
                     if config.master_failover:
@@ -1416,7 +1445,11 @@ class Resolver(OTPmeObject):
         # Delete orphan objects.
         for object_type in all_local_objects:
             for x in all_local_objects[object_type]:
-                if config.daemon_mode:
+                if callback.stop_job:
+                    return callback.abort()
+                if daemon_run:
+                    if not self.is_enabled:
+                        break
                     if not config.cluster_status:
                         break
                     if config.master_failover:
@@ -1649,6 +1682,8 @@ class Resolver(OTPmeObject):
         for object_type in reversed(all_objects):
             object_list = all_objects[object_type]
             for x in object_list:
+                if callback.stop_job:
+                    return callback.abort()
                 msg = (_("Deleting %s: %s") % (object_type, x.oid))
                 logger.debug(msg)
                 callback.send(msg)
@@ -1781,8 +1816,12 @@ class Resolver(OTPmeObject):
                 key_attributes.append(key_attr_str)
         lines.append('KEY_ATTRIBUTES="%s"' % ",".join(key_attributes))
 
-        last_run = datetime.datetime.fromtimestamp(self.last_run)
-        last_run = last_run.strftime('%d.%m.%Y %H:%M:%S')
+        last_run = self.get_last_used_time()
+        if last_run:
+            last_run = datetime.datetime.fromtimestamp(last_run)
+            last_run = last_run.strftime('%d.%m.%Y %H:%M:%S')
+        else:
+            last_run = "Never"
         lines.append('LAST_RUN="%s"' % last_run)
 
         # Append lines from child class.

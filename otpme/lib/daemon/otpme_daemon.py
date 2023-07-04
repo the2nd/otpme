@@ -66,6 +66,8 @@ class OTPmeDaemon(object):
 
     def signal_handler(self, _signal, frame):
         """ Handle signals """
+        if _signal != 15:
+            return
         # Do nothing for signals to child processes (connection, jobs...).
         if os.getpid() != self.pid:
             return True

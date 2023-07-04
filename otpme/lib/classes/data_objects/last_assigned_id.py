@@ -84,7 +84,7 @@ def register_backend():
         config_dir = os.path.join(LAST_ASSIGNED_IDS_DIR,
                                     id_type, policy_uuid,
                                     last_assigned_id)
-        config_file = os.path.join(config_dir, config.object_config_file_name)
+        config_file = os.path.join(config_dir, config.json_config_file_name)
         config_paths = {}
         config_paths['config_file'] = config_file
         config_paths['config_dir'] = config_dir
@@ -102,7 +102,7 @@ def register_backend():
                 for x_id in filetools.list_dir(policy_uuid_dir):
                     counter += 1
                     x_path = os.path.join(policy_uuid_dir, x_id)
-                    x_file = os.path.join(x_path, config.object_config_file_name)
+                    x_file = os.path.join(x_path, config.json_config_file_name)
                     x_oid = oid_getter(x_path)
                     msg = ("Processing %s (%s/%s): %s"
                         % (path_id, counter, files_count, x_file))

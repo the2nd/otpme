@@ -662,6 +662,7 @@ class OTPmeLDIFHandler(object):
 
         if v is None:
             if not attribute_mappings:
+                auto_value = True
                 try:
                     v = self.gen_attribute_value(o, a, callback=callback)
                 except Exception as e:
