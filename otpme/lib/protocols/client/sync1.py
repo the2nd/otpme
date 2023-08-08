@@ -882,9 +882,17 @@ class OTPmeSyncP1(OTPmeClient1):
                 # Get object config from sync cache.
                 object_config = self.sync_cache[object_id]
 
+                if not object_config:
+                    continue
+
                 # Make sure parent object exists on our site.
                 if object_id.object_type in config.tree_object_types:
-                    parent_object_uuid = object_config.pop('SYNC_PARENT_OBJECT_UUID')
+                    try:
+                        parent_object_uuid = object_config.pop('SYNC_PARENT_OBJECT_UUID')
+                    except Exception as e:
+                        msg = "Failed to get parent object UUID: %s: %s" % (object_id, e)
+                        self.logger.critical(msg)
+                        continue
                     parent_object = backend.search(attribute="uuid",
                                             value=parent_object_uuid)
                     if not parent_object:
@@ -999,7 +1007,8 @@ class OTPmeSyncP1(OTPmeClient1):
                 # Write object to backend.
                 try:
                     backend.write_config(object_id,
-                                    instance=new_object)
+                                    instance=new_object,
+                                    full_data_update=True)
                     self.synced_objects.append(object_id)
                 except Exception as e:
                     self.failed_objects.append(object_id)
@@ -1385,7 +1394,9 @@ class OTPmeSyncP1(OTPmeClient1):
             x_object = backend.get_object(uuid=x_oid.token_uuid)
             if not x_object:
                 continue
-            if backend.write_config(object_id=x_oid, object_config=x_config):
+            if backend.write_config(object_id=x_oid,
+                                    object_config=x_config,
+                                    full_data_update=True):
                 self.synced_objects.append(x_oid)
 
         # Remove outdated objects.

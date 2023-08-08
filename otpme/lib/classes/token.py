@@ -101,6 +101,14 @@ commands = {
                     },
                 },
             },
+    'test'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'test',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'show'   : {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
@@ -773,7 +781,8 @@ def register_backend():
                             add_after=["user"],
                             sync_after=["user"],
                             object_cache=2048,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'user', 'name'])
     # Register index attributes.
     config.register_index_attribute('token_type')
     config.register_index_attribute('owner_uuid')
@@ -847,7 +856,6 @@ class Token(OTPmeObject):
         self.need_password = False
         # False means token type does not have a password.
         self.password_hash = False
-        self.password_hash_params = []
         self.nt_hash = None
         self.mschap_enabled = None
         self.valid_otp_formats = []
@@ -864,7 +872,6 @@ class Token(OTPmeObject):
 
         self.temp_password_expire = 0.0
         self._temp_password_hash = None
-        self.temp_password_hash_params = []
         self.temp_nt_hash = None
         self.user_acls = []
         self.token_acls = []
@@ -1030,6 +1037,7 @@ class Token(OTPmeObject):
                         'TEMP_PASSWORD_EXPIRY'      : {
                                                         'var_name'      : 'temp_password_expire',
                                                         'type'          : float,
+                                                        'force_type'    : True,
                                                         'required'      : False,
                                                     },
                         }
@@ -2258,7 +2266,7 @@ class Token(OTPmeObject):
         return self._cache(callback=callback)
 
     @check_acls(['edit:auth_script'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def change_auth_script(self, auth_script=None, script_options=None,
         run_policies=True, callback=default_callback, _caller="API", **kwargs):
@@ -2364,7 +2372,7 @@ class Token(OTPmeObject):
                 "Token().verify_mschap_static()."))
         raise Exception(msg)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def change_password(self, password=None, auto_password=False,
         verify_current_pass=False, force=False, verify_acls=True,
@@ -2489,11 +2497,11 @@ class Token(OTPmeObject):
                                     password=password,
                                     hash_args=[hash_args])
         if temp:
-            self.temp_password_hash = x.pop('hash')
-            self.temp_password_hash_params = x.pop('hash_args')
+            self.temp_password_hash = x['hash']
+            self.temp_password_hash_params = x['hash_args']
         else:
-            self.password_hash = x.pop('hash')
-            self.password_hash_params = x.pop('hash_args')
+            self.password_hash = x['hash']
+            self.password_hash_params = x['hash_args']
 
         # Create NT hash.
         if self.mschap_enabled:
@@ -2518,7 +2526,7 @@ class Token(OTPmeObject):
         return self._cache(callback=callback)
 
     @check_acls(['set_temp_password'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def set_temp_password(self, temp_password=None, auto_password=False,
         duration="1h", force=False, verify_acls=True, remove=False,
@@ -2619,7 +2627,7 @@ class Token(OTPmeObject):
         return callback.ok()
 
     @check_acls(['edit:pin'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def change_pin(self, pin=None, auto_pin=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
@@ -2641,9 +2649,8 @@ class Token(OTPmeObject):
         # usual.
         x = self._change_pin(pin=pin, pre=True, callback=callback, **kwargs)
         if not isinstance(x, bool):
-            if isinstance(x, int):
-                pin = x
-        if x == False:
+            pin = x
+        if x is False:
             return callback.abort()
 
         if not pin and not auto_pin:
@@ -2668,9 +2675,6 @@ class Token(OTPmeObject):
                     break
                 else:
                     return callback.error("Sorry, PINs do not match.")
-
-        # Make sure PIN is a int.
-        pin = int(pin)
 
         if not self.check_pin(pin, callback=callback):
             return callback.error()
@@ -2809,7 +2813,7 @@ class Token(OTPmeObject):
         """
         return callback.error("This token does not support deploying.")
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @load_object(force=False)
     @backend.transaction
     @run_pre_post_add_policies()
@@ -2876,7 +2880,7 @@ class Token(OTPmeObject):
             return True
         return False
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
         """ Rename a token. """
@@ -2895,7 +2899,7 @@ class Token(OTPmeObject):
 
         return self._rename(new_oid, callback=callback, _caller=_caller, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def move(self, new_token_path, force=False, replace=False,
         run_policies=True, verbose_level=0, _caller="API",
@@ -3086,7 +3090,7 @@ class Token(OTPmeObject):
         for token_counter in counter_list:
             token_counter.delete()
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def delete(self, force=False, remove_default_token=False,
         verify_acls=True, verbose_level=0, callback=default_callback, **kwargs):

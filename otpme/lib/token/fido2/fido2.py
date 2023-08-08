@@ -244,7 +244,7 @@ class Fido2Token(Token):
         challenge_hash_hex = encode(challenge_hash, "hex")
         return challenge, challenge_hash, challenge_hash_hex
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def pre_deploy(self, _caller="API",
         verbose_level=0, callback=default_callback):
         """ Deploy fido2 token. """
@@ -259,7 +259,7 @@ class Fido2Token(Token):
         self._write(callback=callback)
         return callback.ok(reply)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def deploy(self, registration_data, uv="discouraged", _caller="API",
         verbose_level=0, callback=default_callback):
@@ -352,7 +352,7 @@ class Fido2Token(Token):
             return False
         return True
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def _add(self, callback=default_callback, _caller="API", **kwargs):
         """ Add a fido2 token. """
         if _caller == "CLIENT":

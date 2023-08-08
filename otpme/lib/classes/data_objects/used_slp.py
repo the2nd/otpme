@@ -92,7 +92,7 @@ def register_backend():
         used_slp_dir = user_paths[path_id]
         slp_hash = object_id.object_hash
         config_dir = os.path.join(used_slp_dir, slp_hash)
-        config_file = os.path.join(config_dir, config.json_config_file_name)
+        config_file = os.path.join(config_dir, config.object_config_file_name)
         config_paths = {}
         config_paths['config_file'] = config_file
         config_paths['config_dir'] = config_dir
@@ -111,7 +111,7 @@ def register_backend():
             for x in used_slp_files:
                 counter += 1
                 x_path = os.path.join(used_slp_dir, x)
-                x_file = os.path.join(x_path, config.json_config_file_name)
+                x_file = os.path.join(x_path, config.object_config_file_name)
                 msg = ("Processing %s (%s/%s): %s"
                     % (path_id, counter, files_count, x_file))
                 logger.debug(msg)
@@ -123,8 +123,13 @@ def register_backend():
     config.register_object_type(object_type="used_slp",
                             tree_object=False,
                             uniq_name=False,
+                            add_after=["token"],
                             object_cache=1024,
-                            cache_region="data_object")
+                            cache_region="data_object",
+                            backup_attributes=['realm',
+                                            'site',
+                                            'user_uuid',
+                                            'object_hash'])
     # Register object to backend.
     class_getter = lambda: UsedSLP
     backend.register_object_type(object_type="used_slp",

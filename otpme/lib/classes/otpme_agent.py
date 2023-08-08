@@ -1123,7 +1123,7 @@ class OTPmeAgent(UnixDaemon):
                 self.logger.warning(msg)
                 raise AuthFailed(msg)
             except Exception as e:
-                msg = (_("Error getting daemon connection: %s") % e)
+                msg = (_("Error getting daemon connection: %s: %s") % (daemon, e))
                 self.logger.warning(msg)
                 raise OTPmeException(msg)
             finally:

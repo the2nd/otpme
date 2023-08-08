@@ -45,7 +45,8 @@ def register_config():
     config.register_object_type(object_type="cert",
                             backend_object=False,
                             object_cache=1024,
-                            cache_region="data_object")
+                            cache_region="data_object",
+                            backup_attributes=['realm', 'site', 'fingerprint'])
 
 class OTPmeCert(SSLCert):
     """ Class that implements last used object. """

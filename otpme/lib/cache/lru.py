@@ -50,7 +50,6 @@ class LRUCache(dict):
         self.delete(object_id)
 
     def clear(self):
-        # Get proc ID.
         self.cache.clear()
 
     #def copy(self):

@@ -422,8 +422,8 @@ class JoinHandler(object):
                 # Write object to backend.
                 try:
                     backend.write_config(object_id=object_id,
-                                    index_auto_update=False,
-                                    full_index_update=True,
+                                    index_auto_update=True,
+                                    #full_index_update=True,
                                     object_config=object_config)
                 except Exception as e:
                     config.raise_exception()
@@ -748,7 +748,7 @@ class JoinHandler(object):
 
         # Make sure DB indices are created after adding all objects.
         _index = config.get_index_module()
-        if not _index.is_available():
+        if _index.is_available():
             msg = "Creating DB indexes..."
             message(msg)
             _index.command("create_db_indices")

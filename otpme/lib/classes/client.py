@@ -604,7 +604,8 @@ def register_backend():
                             add_after=["host"],
                             sync_after=["user", "token"],
                             object_cache=1024,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'site', 'name'])
     # Register index attributes.
     config.register_index_attribute('accessgroup')
     # Register object to backend.
@@ -642,11 +643,7 @@ class Client(OTPmeClientObject):
 
         self.access_group = None
         self.access_group_uuid = None
-        self.addresses = []
-        self.roles = []
-        self.tokens = []
-        self.token_options = {}
-        self.token_login_interfaces = {}
+
         self.secret = None
         self.secret_len = 32
         # Clients should not inherit ACLs by default.
@@ -909,7 +906,7 @@ class Client(OTPmeClientObject):
 
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
         """ Rename client. """
         base_clients = config.get_base_objects("client")
@@ -927,7 +924,7 @@ class Client(OTPmeClientObject):
         self.radius_reload = True
         return result
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @run_pre_post_add_policies()
     def add(self, address=None, verbose_level=0, callback=default_callback, **kwargs):
         """ Add a client. """
@@ -961,7 +958,7 @@ class Client(OTPmeClientObject):
         self.radius_reload = True
         return callback.ok()
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def delete(self, force=False, run_policies=True, verify_acls=True,
         verbose_level=0, callback=default_callback, _caller="API", **kwargs):
         """ Delete client. """

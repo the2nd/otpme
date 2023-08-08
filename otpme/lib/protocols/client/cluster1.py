@@ -42,14 +42,15 @@ class OTPmeClusterP1(OTPmeClient1):
         reply = self.connection.send(command, command_args)
         return reply
 
-    def write(self, object_id, object_config, last_modified, last_used=None):
+    def write(self, object_id, object_config,
+        last_used=None, full_index_update=False):
         """ Send object to peer. """
         command = "write"
         command_args = {}
         command_args['object_id'] = object_id
         command_args['object_config'] = object_config
         command_args['last_used'] = last_used
-        command_args['last_modified'] = last_modified
+        command_args['full_index_update'] = full_index_update
         status, \
         status_code, \
         reply = self.connection.send(command, command_args)
@@ -58,11 +59,11 @@ class OTPmeClusterP1(OTPmeClient1):
             raise OTPmeException(msg)
         return reply
 
-    def delete(self, object_uuid, object_id):
-        """ Delete object on peer. """
-        command = "delete"
+    def object_exists(self, object_id):
+        """ Check if object exists on peer. """
+        command = "object_exists"
         command_args = {}
-        command_args['object_uuid'] = object_uuid
+        command_args['object_id'] = object_id
         status, \
         status_code, \
         reply = self.connection.send(command, command_args)
@@ -71,12 +72,24 @@ class OTPmeClusterP1(OTPmeClient1):
             raise OTPmeException(msg)
         return reply
 
-    def rename(self, object_uuid, object_id, new_object_id):
+    def delete(self, object_id):
+        """ Delete object on peer. """
+        command = "delete"
+        command_args = {}
+        command_args['object_id'] = object_id
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args)
+        if not status:
+            msg = "Failed to delete object: %s: %s" % (object_id, reply)
+            raise OTPmeException(msg)
+        return reply
+
+    def rename(self, object_id, new_object_id):
         """ Rename object on peer. """
         command = "rename"
         command_args = {}
         command_args['object_id'] = object_id
-        command_args['object_uuid'] = object_uuid
         command_args['new_object_id'] = new_object_id
         status, \
         status_code, \
@@ -116,6 +129,18 @@ class OTPmeClusterP1(OTPmeClient1):
             raise UnknownLock(msg)
         return reply
 
+    def get_data_revision(self):
+        """ Get data revision from peer. """
+        command = "get_data_revision"
+        command_args = {}
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args, timeout=None)
+        if not status:
+            msg = "Failed to get data revision: %s" % reply
+            raise OTPmeException(msg)
+        return reply
+
     def get_checksums(self):
         """ Get cluster checksums. """
         command = "get_checksums"
@@ -153,6 +178,12 @@ class OTPmeClusterP1(OTPmeClient1):
         synced_objects = []
         for x_oid in reply:
             x_oid = oid.get(x_oid)
+            try:
+                x_data = reply[x_oid]
+            except KeyError:
+                continue
+            if not x_data:
+                continue
             if hasattr(x_oid, "user_uuid"):
                 if x_oid.user_uuid:
                     if not backend.get_oid(x_oid.user_uuid):
@@ -165,8 +196,9 @@ class OTPmeClusterP1(OTPmeClient1):
                 if x_oid.accessgroup_uuid:
                     if not backend.get_oid(x_oid.accessgroup_uuid):
                         continue
-            x_last_used = reply[x_oid]['last_used']
-            x_last_modified = reply[x_oid]['last_modified']
+            x_config = x_data['object_config']
+            x_last_used = x_data['last_used']
+            x_last_modified = x_data['last_modified']
             local_object = backend.get_object(x_oid)
             if local_object:
                 skip_object = True
@@ -179,7 +211,6 @@ class OTPmeClusterP1(OTPmeClient1):
                     continue
             msg = "Writing received object: %s" % x_oid
             self.logger.debug(msg)
-            x_config = reply[x_oid]['object_config']
             x_uuid = x_config['UUID']
             if x_last_used is not None:
                 try:
@@ -192,6 +223,15 @@ class OTPmeClusterP1(OTPmeClient1):
                     self.logger.warning(msg)
             backend.write_config(x_oid, object_config=x_config, cluster=False)
             synced_objects.append(x_oid)
+        # Remove deleted objects.
+        for x_oid in local_objects:
+            if x_oid in reply:
+                continue
+            x_oid = oid.get(x_oid)
+            try:
+                backend.delete_object(x_oid, cluster=False)
+            except UnknownObject:
+                pass
         msg = ("Synced %s objects from peer: %s"
                 % (len(synced_objects), self.peer.name))
         self.logger.info(msg)
@@ -212,6 +252,15 @@ class OTPmeClusterP1(OTPmeClient1):
     def set_node_online(self):
         """ Mark node as online. """
         command = "set_node_online"
+        command_args = {}
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args, timeout=None)
+        return status
+
+    def set_member_candidate(self):
+        """ Mark node as member candidate. """
+        command = "set_member_candidate"
         command_args = {}
         status, \
         status_code, \

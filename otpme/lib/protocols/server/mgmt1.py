@@ -50,6 +50,7 @@ REGISTER_BEFORE = []
 REGISTER_AFTER = [
                 'otpme.lib.classes.realm',
                 'otpme.lib.protocols.otpme_server',
+                'otpme.lib.classes.data_objects.data_revision',
                 ]
 
 PROTOCOL_VERSION = "OTPme-mgmt-1.0"
@@ -211,6 +212,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         self.job_exit_status[job_uuid] = {}
         self.job_exit_status[job_uuid]['exit_status'] = exit_status
         self.job_exit_status[job_uuid]['exit_message'] = exit_message
+        self.job_exit_status[job_uuid]['objects_written'] = job.objects_written.value
         # Close job.
         job.close()
         job.join()
@@ -348,6 +350,14 @@ class OTPmeMgmtP1(OTPmeServer1):
                 message = str(e)
                 status = status_codes.CLUSTER_NOT_READY
                 return self.build_response(status, message)
+            try:
+                current_master_node = multiprocessing.master_node['master']
+            except:
+                current_master_node = None
+            if current_master_node != config.host_data['name']:
+                message = "Please connect to master node."
+                status = status_codes.CLUSTER_NOT_READY
+                return self.build_response(status, message, encrypt=False)
 
         if thread or process:
             # Add job to multiprocessing queue.
@@ -489,6 +499,14 @@ class OTPmeMgmtP1(OTPmeServer1):
                 job_reply = self.job_exit_status[job_uuid]['exit_message']
             except:
                 continue
+            try:
+                objects_written = self.job_exit_status[job_uuid]['objects_written']
+            except:
+                continue
+
+            if objects_written:
+                config.update_data_revision()
+
             # Remove job from list if its no longer alive.
             try:
                 self.jobs.pop(job.uuid)
@@ -518,6 +536,7 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         valid_backend_commands = [  "search",
                                     "import",
+                                    "restore",
                                     "get_oid",
                                     "get_uuid",
                                     "object_exists",
@@ -552,7 +571,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                 config.raise_exception()
 
         if backend_command == "import":
-            # FIXME: how to handle ACLs here?
             if not self.is_admin:
                 status = False
                 message = "You need to be admin to run this command."
@@ -578,6 +596,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             except:
                 key_salt = None
 
+            aes_key = None
             if password:
                 if not key_salt:
                     status = False
@@ -605,6 +624,32 @@ class OTPmeMgmtP1(OTPmeServer1):
                                     target_method=backend.import_config,
                                     args=args, opt_args=opt_args,
                                     command_args=command_args,
+                                    process=True,
+                                    thread=False)
+            except Exception as e:
+                config.raise_exception()
+                response = ("Error running command: %s: %s"
+                                % (backend_command, e))
+                status = False
+
+        if backend_command == "restore":
+            if not self.is_admin:
+                status = False
+                message = "You need to be admin to run this command."
+                return self.build_response(status, message)
+            try:
+                object_data = command_args['object_data']
+            except:
+                message = "MGMT_INCOMPLETE_COMMAND"
+                status = False
+                return self.build_response(status, message)
+
+            args = {'object_data':object_data}
+            try:
+                status, \
+                response = self.start_job(name="restore_object",
+                                    target_method=backend.restore_object,
+                                    args=args, command_args=command_args,
                                     process=True,
                                     thread=False)
             except Exception as e:
@@ -712,8 +757,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                                                 return_type=return_type,
                                                 verify_acls=verify_acls,
                                                 realm=config.realm,
-                                                site=config.site,
-                                                _otpme_func_cache_shared=True)
+                                                site=config.site)
                 # Make sure we return all results as str().
                 if return_type == "checksum":
                     response = "\n".join("%s %s" % (str(x[0]), str(x[1]))
@@ -794,6 +838,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             response = self.handle_job(job_uuid=job_uuid,
                                     callbacks=callbacks,
                                     stop=stop)
+
             return self.build_response(status, response)
 
         if not config.use_api:
@@ -902,7 +947,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                 status = False
             return self.build_response(status, response)
 
-
         # Handle delete_object command.
         if command == "delete_object":
             default_callback = config.get_callback()
@@ -920,6 +964,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 except Exception as e:
                     msg = "Error deleting object: %s" % e
                     return callback.error(msg)
+                config.update_data_revision()
                 return callback.ok()
 
             if self.is_admin:
@@ -949,7 +994,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                 status = False
 
             return self.build_response(status, response)
-
 
         # Handle dump_index command.
         if command == "dump_index":

@@ -14,7 +14,8 @@ from otpme.lib.protocols import status_codes
 
 from otpme.lib.exceptions import *
 
-def build_response(status, data, encryption=None, enc_key=None):
+def build_response(status, data, encryption=None,
+    enc_key=None, compress=True):
     """ Build response. """
     response = {'data':data}
     # Build response.
@@ -28,7 +29,7 @@ def build_response(status, data, encryption=None, enc_key=None):
         response['status_code'] = status
     # Encode/encrypt response.
     response = json.encode(response,
-                    compress=True,
+                    compress=compress,
                     compress_level=1,
                     encoding="base64",
                     encryption=encryption,

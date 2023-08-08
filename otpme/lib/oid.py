@@ -12,7 +12,6 @@ except:
 from otpme.lib import re
 from otpme.lib import stuff
 from otpme.lib import config
-from otpme.lib.cache import oid_cache
 
 from otpme.lib.exceptions import *
 
@@ -160,7 +159,6 @@ def register_oid_schema(object_type, full_schema, read_schema=None,
 
     read_oid_schema[object_type] = read_schema
 
-@oid_cache.cache_function()
 def get_object_type(object_id):
     """ Get object type from ID. """
     try:
@@ -169,7 +167,6 @@ def get_object_type(object_id):
         raise InvalidOID()
     return object_type
 
-@oid_cache.cache_function()
 def get_object_realm(object_id):
     """ Get object realm from ID. """
     try:
@@ -178,7 +175,6 @@ def get_object_realm(object_id):
         raise InvalidOID()
     return object_realm
 
-@oid_cache.cache_function()
 def get_object_site(object_id):
     object_type = get_object_type(object_id)
     try:
@@ -187,7 +183,6 @@ def get_object_site(object_id):
         getter = default_site_getter
     return getter(object_id)
 
-@oid_cache.cache_function()
 def default_site_getter(object_id):
     """ Get object site from ID. """
     object_site = None
@@ -196,7 +191,6 @@ def default_site_getter(object_id):
         object_site = oid_parts[1]
     return object_site
 
-@oid_cache.cache_function()
 def get_object_name(object_id):
     """ Get object name from ID """
     if not object_id:
@@ -207,7 +201,6 @@ def get_object_name(object_id):
         raise InvalidOID()
     return object_name
 
-@oid_cache.cache_function()
 def get_object_unit(object_id):
     """ Get object unit from ID. """
     object_type = get_object_type(object_id)
@@ -217,7 +210,6 @@ def get_object_unit(object_id):
         getter = default_unit_getter
     return getter(object_id)
 
-@oid_cache.cache_function()
 def default_unit_getter(object_id):
     """ Get object unit from ID. """
     object_path = get_object_rel_path(object_id)
@@ -228,7 +220,6 @@ def default_unit_getter(object_id):
     object_unit = "/".join(object_path.split("/")[:-1])
     return object_unit
 
-@oid_cache.cache_function()
 def get_object_path(object_id):
     """ Get object path from ID. """
     try:
@@ -237,7 +228,6 @@ def get_object_path(object_id):
         raise InvalidOID()
     return object_path
 
-@oid_cache.cache_function()
 def resolve_oid(object_id):
     """ Resolve read OID to full OID using index.. """
     object_type = get_object_type(object_id)
@@ -248,7 +238,6 @@ def resolve_oid(object_id):
     full_oid = resolver(object_id)
     return full_oid
 
-@oid_cache.cache_function()
 def get_object_rel_path(object_id):
     """ Get object relative path from ID. """
     object_type = get_object_type(object_id)
@@ -261,7 +250,6 @@ def get_object_rel_path(object_id):
     object_path = "/".join(object_path)
     return object_path
 
-@oid_cache.cache_function()
 def default_oid_resolver(object_id):
     from otpme.lib.backend import search
     object_type = get_object_type(object_id)
@@ -282,7 +270,6 @@ def default_oid_resolver(object_id):
     full_oid = result[0]
     return full_oid
 
-#@oid_cache.cache_function()
 #def default_oid_resolver(object_id):
 #    from otpme.lib.backend import search
 #    object_type = get_object_type(object_id)
@@ -328,7 +315,6 @@ def default_oid_resolver(object_id):
 #            return object_oid.full_oid
 #        uuid_path.append(unit_uuid)
 
-@oid_cache.cache_function()
 def resolve_path(object_path, object_type):
     """ Resolve object path. """
     if object_type not in config.tree_object_types:
@@ -398,7 +384,6 @@ def resolve_path(object_path, object_type):
             }
     return result
 
-@oid_cache.cache_function()
 def oid_to_fs_name(read_oid):
     """ Convert read OID to fs compatible name. """
     #fs_name = read_oid.replace("/", ":")
@@ -406,7 +391,6 @@ def oid_to_fs_name(read_oid):
     fs_name = stuff.gen_md5(read_oid)
     return fs_name
 
-@oid_cache.cache_function()
 def check_name(object_type, object_name):
     try:
         checker = name_checker[object_type]
@@ -414,7 +398,6 @@ def check_name(object_type, object_name):
         checker = default_name_checker
     return checker(object_type, object_name)
 
-@oid_cache.cache_function()
 def default_name_checker(object_type, object_name):
     """ Make sure object name is in correct format. """
     if object_type not in config.tree_object_types:
@@ -425,7 +408,6 @@ def default_name_checker(object_type, object_name):
         return True
     return False
 
-@oid_cache.cache_function()
 def check_path(object_type, object_path):
     """ Make sure object path is in correct format. """
     if object_type not in config.tree_object_types:
@@ -436,7 +418,6 @@ def check_path(object_type, object_path):
         return True
     return False
 
-@oid_cache.cache_function()
 def is_oid(object_id):
     """ Check if object ID is in correct format. """
     object_type = get_object_type(object_id)
@@ -448,7 +429,6 @@ def is_oid(object_id):
         return True
     return False
 
-@oid_cache.cache_function()
 def get(object_id=None, **kwargs):
     """ Get OID object from string. """
     oid = OTPmeOid(object_id=object_id, **kwargs)

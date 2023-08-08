@@ -217,7 +217,7 @@ class LinkToken(Token):
             logger.warning(msg)
         return None
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def _add(self, destination_token_uuid, callback=default_callback, **kwargs):
         """ Add a token. """

@@ -18,8 +18,8 @@ from otpme.lib.otpme_acl import check_acls
 from otpme.lib.register import register_module
 from otpme.lib.cache import assigned_role_cache
 from otpme.lib.cache import assigned_token_cache
-from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import OTPmeObject
+from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 
 from otpme.lib.classes.otpme_object import \
@@ -601,7 +601,8 @@ def register_backend():
                             add_after=["token"],
                             sync_before=["token", "user"],
                             object_cache=1024,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'site', 'name'])
     # Register object to backend.
     class_getter = lambda: Role
     backend.register_object_type(object_type="role",
@@ -726,12 +727,6 @@ class Role(OTPmeObject):
         self._value_acls = get_value_acls()
         self._default_acls = get_default_acls()
         self._recursive_default_acls = get_recursive_default_acls()
-
-        self.tokens = []
-        self.roles = []
-        self.token_options = {}
-        self.token_login_interfaces = {}
-        self.sync_users = []
 
         # Roles should not inherit ACLs by default.
         self.acl_inheritance_enabled = False
@@ -901,7 +896,7 @@ class Role(OTPmeObject):
             result = "\n".join(result)
         return callback.ok(result)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
         """ Rename role. """
@@ -916,7 +911,7 @@ class Role(OTPmeObject):
                         name=new_name)
         return self._rename(new_oid, callback=callback, _caller=_caller, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
     def add(self, verbose_level=0, callback=default_callback, **kwargs):
@@ -929,7 +924,7 @@ class Role(OTPmeObject):
         return OTPmeObject.add(self, verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def delete(self, force=False, run_policies=True,
         verify_acls=True, verbose_level=0, _caller="API",

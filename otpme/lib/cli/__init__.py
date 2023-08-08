@@ -120,7 +120,7 @@ def check_rapi_opts():
                     msg = "Unknown <_caller>: %s" % _caller
                     return callback.error(msg)
                 # Get argument position.
-                argspec = inspect.getargspec(f)
+                argspec = inspect.getfullargspec(f)
                 for x_attr in ovals:
                     valid_values = ovals[x_attr]
                     x_index = argspec.args.index(x_attr)
@@ -184,8 +184,7 @@ def get_unit_string(unit_uuid):
     result = backend.search(object_type="unit",
                         attribute="uuid",
                         value=unit_uuid,
-                        return_attributes=return_attrs,
-                        _otpme_func_cache_shared=True)
+                        return_attributes=return_attrs)
     unit_path = result[unit_uuid]['path']
     unit_enabled = result[unit_uuid]['enabled'][0]
     unit_path = "/".join(unit_path.split("/")[3:])
@@ -208,8 +207,7 @@ def get_policies_string(object_type, object_uuid, max_policies=None):
                             join_attribute="policy",
                             order_by="rel_path",
                             max_results=max_policies,
-                            return_attributes=return_attrs,
-                            _otpme_func_cache_shared=True)
+                            return_attributes=return_attrs)
     policies_strings = []
     for policy_uuid in policies_result:
         policy_name = policies_result[policy_uuid]['name']
@@ -238,8 +236,7 @@ def get_auth_script_string(script_uuid):
     result = backend.search(object_type="script",
                             attribute="uuid",
                             value=script_uuid,
-                            return_attributes=return_attributes,
-                            _otpme_func_cache_shared=True)
+                            return_attributes=return_attributes)
     if not result:
         msg = "Unknown auth script."
         raise UnknownObject(msg)
@@ -1086,8 +1083,7 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
                             verify_acls=verify_acls,
                             return_acls=return_acls,
                             return_query_count=True,
-                            return_attributes=return_attributes,
-                            _otpme_func_cache_shared=True)
+                            return_attributes=return_attributes)
 
     object_acls = None
     if verify_acls:
@@ -1394,8 +1390,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
                                 value=search_regex,
                                 return_type="uuid",
                                 order_by="name",
-                                verify_acls=verify_acls,
-                                _otpme_func_cache_shared=True)
+                                verify_acls=verify_acls)
         user_list = list(set(user_list))
 
     # Get all sessions.
@@ -1760,8 +1755,7 @@ def list_objects(object_type, show_all=False, reverse=False,
                             order_by=sort_by,
                             reverse_order=reverse,
                             return_type=return_type,
-                            verify_acls=verify_acls,
-                            _otpme_func_cache_shared=True)
+                            verify_acls=verify_acls)
 
     object_list = sorted([str(x) for x in object_list])
     response = "\n".join(object_list)
@@ -1810,8 +1804,7 @@ def list_sessions(show_all=False, **kwargs):
                             value="*",
                             return_type="uuid",
                             order_by="name",
-                            verify_acls=verify_acls,
-                            _otpme_func_cache_shared=True)
+                            verify_acls=verify_acls)
 
     # Get tokens based on ACLs.
     user_list += backend.search(realm=config.realm,
@@ -1821,8 +1814,7 @@ def list_sessions(show_all=False, **kwargs):
                             value="*",
                             return_attributes=["owner_uuid"],
                             order_by="name",
-                            verify_acls=verify_acls,
-                            _otpme_func_cache_shared=True)
+                            verify_acls=verify_acls)
     user_list = list(set(user_list))
 
     # Get all sessions.

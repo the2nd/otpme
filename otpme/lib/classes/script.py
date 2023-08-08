@@ -482,7 +482,8 @@ def register_backend():
                             add_after=["unit", "policy"],
                             sync_after=["user", "token"],
                             object_cache=512,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'site', 'unit', 'name'])
     # Register object to backend.
     class_getter = lambda: Script
     backend.register_object_type(object_type="script",
@@ -519,7 +520,7 @@ class Script(OTPmeObject):
         self.script = None
         self.script_md5sum = None
         self.signable = True
-        self.signatures = {}
+        #self.signatures = {}
         # Scripts should not inherit ACLs by default.
         self.acl_inheritance_enabled = False
 
@@ -633,7 +634,7 @@ class Script(OTPmeObject):
             return callback.dump(decoded_script)
         return callback.ok(decoded_script)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
         """ Rename script. """
@@ -654,7 +655,7 @@ class Script(OTPmeObject):
             return callback.error(msg)
         return super(Script, self).move(callback=callback, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
     def add(self, script, replace=False, uuid=None, verify_acls=True,
@@ -762,7 +763,7 @@ class Script(OTPmeObject):
         return OTPmeObject.add(self, verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def copy(self, destination_script, force=False,
         verbose_level=0, callback=default_callback, **kwargs):
@@ -836,7 +837,7 @@ class Script(OTPmeObject):
 
         return dst_script._write(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def delete(self, force=False, run_policies=True, verify_acls=True,
         verbose_level=0, callback=default_callback, _caller="API", **kwargs):

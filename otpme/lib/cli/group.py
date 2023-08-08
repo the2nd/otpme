@@ -134,7 +134,6 @@ def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
                                                 max_results=max_roles,
                                                 return_query_count=True,
                                                 return_attributes=return_attrs,
-                                                _otpme_func_cache_shared=True,
                                                 realm=realm,
                                                 site=site)
             for role_uuid in roles_result:
@@ -159,7 +158,6 @@ def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
                                                 max_results=max_tokens,
                                                 return_query_count=True,
                                                 return_attributes=return_attrs,
-                                                _otpme_func_cache_shared=True,
                                                 realm=realm,
                                                 site=site)
                 for token_uuid in role_tokens_result:
@@ -200,7 +198,6 @@ def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
                                                 max_results=max_tokens,
                                                 return_query_count=True,
                                                 return_attributes=return_attrs,
-                                                _otpme_func_cache_shared=True,
                                                 realm=realm,
                                                 site=site)
             for token_uuid in group_tokens_result:
@@ -249,7 +246,6 @@ def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
                                                 max_results=max_sync_users,
                                                 return_query_count=True,
                                                 return_attributes=return_attrs,
-                                                _otpme_func_cache_shared=True,
                                                 realm=realm,
                                                 site=site)
             for user_uuid in group_users_result:

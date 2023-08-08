@@ -3,6 +3,7 @@
 # Distributed under the terms of the GNU General Public License v2
 import os
 import time
+import datetime
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -67,6 +68,7 @@ read_value_acls = {
 write_value_acls = {
                     "renew"     : [ "cert" ],
                     "revoke"    : [ "cert" ],
+                    "edit"      : [ "crl_validity" ],
         }
 
 default_acls = []
@@ -211,6 +213,15 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'get_crl',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'crl_validity'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'set_crl_validity',
+                    'args'              : ['crl_validity'],
                     'job_type'          : 'process',
                     },
                 },
@@ -594,7 +605,8 @@ def register_backend():
                             sync_after=["unit"],
                             uniq_name=True,
                             object_cache=1024,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'site', 'name'])
     # Register object to backend.
     class_getter = lambda: Ca
     backend.register_object_type(object_type="ca",
@@ -638,8 +650,9 @@ class Ca(OTPmeObject):
 
         # CAs should not inherit ACLs by default.
         self.acl_inheritance_enabled = False
-        self.revoked_certs = {}
         self.crl = None
+        self.crl_validity = 3650
+        self.last_crl_update = 0.0
         # Objects we can handle certificates for.
         self.supported_objects = [ 'node', 'host' ]
 
@@ -705,6 +718,16 @@ class Ca(OTPmeObject):
                                             'type'      : str,
                                             'required'  : False,
                                         },
+            'CRL_VALIDITY'              : {
+                                            'var_name'  : 'crl_validity',
+                                            'type'      : int,
+                                            'required'  : False,
+                                        },
+            'LAST_CRL_UPDATE'           : {
+                                            'var_name'  : 'last_crl_update',
+                                            'type'      : float,
+                                            'required'  : False,
+                                        },
             }
 
         return object_config
@@ -725,8 +748,19 @@ class Ca(OTPmeObject):
         else:
             self.name = name.lower()
 
-    @check_acls(['create_cert'])
+    @check_acls(['edit:crl_validity'])
     @object_lock()
+    def set_crl_validity(self, crl_validity, callback=default_callback, **kwargs):
+        try:
+            crl_validity = int(crl_validity)
+        except:
+            msg = "CRL validity must be <int>."
+            return callback.error(msg)
+        self.crl_validity = crl_validity
+        return self._cache(callback=callback)
+
+    @check_acls(['create_cert'])
+    @object_lock(full_lock=True)
     def create_cert(self, cn, valid, self_signed, basic_constraints=None,
         key_usage=None, ext_key_usage=None, key=None, cert_req=None,
         organization=None, country=None, state=None, locality=None,
@@ -792,7 +826,7 @@ class Ca(OTPmeObject):
         return cert, key
 
     @check_acls(['create_ca_cert'])
-    @object_lock()
+    @object_lock(full_lock=True)
     def create_ca_cert(self, cn, self_signed=False,
         key=None, key_len=None, cert_req=None, country=None,
         state=None, locality=None, organization=None,
@@ -842,7 +876,7 @@ class Ca(OTPmeObject):
         return cert, key
 
     @check_acls(['create_server_cert'])
-    @object_lock()
+    @object_lock(full_lock=True)
     def create_server_cert(self, cn, cert_req=None, key=None,
         organization=None, country=None, state=None, valid=None,
         ou=None, key_len=None, locality=None, email=None, run_policies=True,
@@ -891,7 +925,7 @@ class Ca(OTPmeObject):
         return cert, key
 
     @check_acls(['create_client_cert'])
-    @object_lock()
+    @object_lock(full_lock=True)
     def create_client_cert(self, cn, valid=None, key_len=None, cert_req=None,
         key=None, organization=None, country=None, state=None, ou=None,
         locality=None, email=None, run_policies=True, _caller="API",
@@ -940,7 +974,7 @@ class Ca(OTPmeObject):
                             verify_acls=False)
         return cert, key
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def create_host_cert(self, cn, host_type="host",
         country=None, state=None, locality=None, organization=None,
         ou=None, email=None, self_signed=False, ca_cert=None,
@@ -1006,7 +1040,7 @@ class Ca(OTPmeObject):
         sn = int(time.time() * 1000000)
         return sn
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def set_crl(self, crl, run_policies=True,
         _caller="API", callback=default_callback, **kwargs):
@@ -1021,8 +1055,9 @@ class Ca(OTPmeObject):
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
-        # Enable CRL
+        # Set CRL
         self.crl = crl
+        self.last_crl_update = time.time()
 
         # Save our config before updating realm CA data.
         self._cache(callback=callback)
@@ -1036,9 +1071,8 @@ class Ca(OTPmeObject):
 
         return callback.ok()
 
-    # FIXME: how to get CRL not_after? when to re-create CRL?
     @check_acls(['update_crl'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def update_crl(self, sign_algo=None, run_policies=True, timezone=None,
         _caller="API", callback=default_callback, **kwargs):
@@ -1053,8 +1087,9 @@ class Ca(OTPmeObject):
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
+
         # Temp dict to hold new revoked list (without outdated serials)
-        revoked_certs = {}
+        revoked_certs = ['1']
 
         # Walk through list of revoked certs.
         for serial in self.revoked_certs:
@@ -1063,9 +1098,9 @@ class Ca(OTPmeObject):
 
             # Build dict without outdated revoked certs.
             if cert_expiry > time.time():
-                revoked_certs[serial] = cert_expiry
+                revoked_certs.append(serial)
 
-        new_crl = None
+        new_crl = self.crl
 
         if sign_algo is None:
             sign_algo = self.get_config_parameter("crl_sign_algo")
@@ -1073,28 +1108,25 @@ class Ca(OTPmeObject):
             timezone = config.timezone
 
         # Build new CRL if needed.
-        if self.revoked_certs != revoked_certs:
-            logger.debug("Building new CRL.")
-            for serial in revoked_certs:
-                cert_expiry = self.revoked_certs[serial]
-                try:
-                    revoke_serial, \
-                    revoke_until, \
-                    new_crl = utils.revoke_certificate(ca_cert=self.cert,
-                                                        ca_key=self.key,
-                                                        sn=serial,
-                                                        sign_algo=sign_algo,
-                                                        timezone=timezone,
-                                                        ca_crl=new_crl)
-                except Exception as e:
-                    config.raise_exception()
-                    msg = (_("Problem adding cert '%s' to CRL: %s")
-                            % (serial, e))
-                    return callback.error(msg)
-        if not new_crl:
-            return callback.ok("No CRL update needed.")
+        logger.debug("Building new CRL.")
+        for serial in revoked_certs:
+            try:
+                revoke_serial, \
+                revoke_until, \
+                new_crl = utils.revoke_certificate(ca_cert=self.cert,
+                                                    ca_key=self.key,
+                                                    sn=serial,
+                                                    sign_algo=sign_algo,
+                                                    timezone=timezone,
+                                                    ca_crl=new_crl,
+                                                    next_update=self.crl_validity)
+            except Exception as e:
+                config.raise_exception()
+                msg = (_("Problem adding cert '%s' to CRL: %s")
+                        % (serial, e))
+                return callback.error(msg)
 
-        self.set_crl(new_crl)
+        self.set_crl(new_crl, callback=callback)
 
         return callback.ok()
 
@@ -1118,7 +1150,7 @@ class Ca(OTPmeObject):
         return callback.ok(self.crl)
 
     @check_acls(['revoke:cert'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def revoke_cert(self, cert, crl_sign_algo=None, timezone=None,
         run_policies=True, _caller="API", callback=default_callback, **kwargs):
@@ -1155,7 +1187,8 @@ class Ca(OTPmeObject):
                                                 cert=cert,
                                                 ca_crl=self.crl,
                                                 timezone=timezone,
-                                                sign_algo=crl_sign_algo)
+                                                sign_algo=crl_sign_algo,
+                                                next_update=self.crl_validity)
         except CertAlreadyRevoked:
             raise
         except Exception as e:
@@ -1224,7 +1257,7 @@ class Ca(OTPmeObject):
 
     #    return o._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def set_cert(self, cert, key=None, callback=default_callback):
         """ Set CA cert/key """
@@ -1255,7 +1288,7 @@ class Ca(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
     def add(self, cn=None, country=None, state=None,
@@ -1315,7 +1348,7 @@ class Ca(OTPmeObject):
         return OTPmeObject.add(self, verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def delete(self, force=False, run_policies=True,
         verbose_level=0, callback=default_callback,
@@ -1411,6 +1444,19 @@ class Ca(OTPmeObject):
             if self.email:
                 email = self.email
         lines.append('EMAIL="%s"' % email)
+
+        crl_validity = ""
+        if self.verify_acl("edit:crl_validity"):
+            if self.crl_validity:
+                crl_validity = self.crl_validity
+        lines.append('CRL_VALIDITY="%s"' % crl_validity)
+
+        last_crl_update = ""
+        if self.last_crl_update:
+            last_crl_update = self.last_crl_update
+            last_crl_update = datetime.datetime.fromtimestamp(last_crl_update)
+            last_crl_update = last_crl_update.strftime('%d.%m.%Y %H:%M:%S')
+        lines.append('LAST_CRL_UPDATE="%s"' % last_crl_update)
 
         crl = ""
         if self.verify_acl("view:crl") \

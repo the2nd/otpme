@@ -332,6 +332,15 @@ cmd_help = {
                 },
 
 
+    'crl_validity'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-ca crl_validity {ca} {days}',
+                    'cmd'   :   '<|object|> <crl_validity>',
+                    '_help' :   {
+                                    'cmd'                   : 'dump CA CRL to stdout',
+                                },
+                },
+
+
     'dump_crl'   : {
                     '_cmd_usage_help' : 'Usage: otpme-ca dump_crl {ca}',
                     'cmd'   :   '<|object|>',

@@ -128,8 +128,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                                         join_attribute="role",
                                         attribute="uuid",
                                         value="*",
-                                        return_attributes=return_attrs,
-                                        _otpme_func_cache_shared=True)
+                                        return_attributes=return_attrs)
                 role_roles = []
                 roles_count = len(role_roles_result)
                 for x in role_roles_result:
@@ -173,8 +172,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                                             value="*",
                                             max_results=max_tokens,
                                             return_query_count=True,
-                                            return_attributes=return_attrs,
-                                            _otpme_func_cache_shared=True)
+                                            return_attributes=return_attrs)
                 role_tokens = []
                 for x in role_tokens_result:
                     token_status_string = ""
@@ -212,8 +210,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                                             value="*",
                                             max_results=max_sync_users,
                                             return_query_count=True,
-                                            return_attributes=return_attrs,
-                                            _otpme_func_cache_shared=True)
+                                            return_attributes=return_attrs)
                 role_users = []
                 for x in role_users_result:
                     user_status_string = ""
@@ -250,8 +247,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                                         value=role_uuid,
                                         max_results=max_ags,
                                         return_query_count=True,
-                                        return_attributes=return_attrs,
-                                        _otpme_func_cache_shared=True)
+                                        return_attributes=return_attrs)
                 for x_uuid in role_ags_result:
                     ag_name = role_ags_result[x_uuid]['name']
                     ag_enabled = role_ags_result[x_uuid]['enabled'][0]
@@ -289,8 +285,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                                                 site=config.site,
                                                 max_results=max_ags,
                                                 return_query_count=True,
-                                                return_attributes=return_attrs,
-                                                _otpme_func_cache_shared=True)
+                                                return_attributes=return_attrs)
                         for x_uuid in role_ags_result:
                             if x_uuid in role_ags:
                                 continue
@@ -336,8 +331,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                                         value=role_uuid,
                                         max_results=max_groups,
                                         return_query_count=True,
-                                        return_attributes=return_attrs,
-                                        _otpme_func_cache_shared=True)
+                                        return_attributes=return_attrs)
                 for x_uuid in role_groups_result:
                     ag_name = role_groups_result[x_uuid]['name']
                     ag_enabled = role_groups_result[x_uuid]['enabled'][0]
@@ -373,8 +367,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                                                 value=x_role_uuid,
                                                 max_results=max_groups,
                                                 return_query_count=True,
-                                                return_attributes=return_attrs,
-                                                _otpme_func_cache_shared=True)
+                                                return_attributes=return_attrs)
                         for x_uuid in role_groups_result:
                             if x_uuid in role_groups:
                                 continue

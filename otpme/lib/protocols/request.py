@@ -16,14 +16,14 @@ def decode_command(command):
     pass
 
 def build_request(command, command_args={},
-    encryption=None, enc_key=None):
+    encryption=None, enc_key=None, compress=True):
     """ Build JSON request. """
     request = {
             'command'       : command,
             'command_args'  : command_args,
             }
     request = json.encode(request,
-                        compress=True,
+                        compress=compress,
                         compress_level=1,
                         encoding="base64",
                         encryption=encryption,

@@ -8,7 +8,6 @@ https://redis-py.readthedocs.io/en/stable/
 import os
 import sys
 import time
-import zlib
 from dogpile.cache.region import make_region
 from otpme.lib.cache.dogpile import md5_key_mangler
 from otpme.lib.cache.dogpile import CustomInvalidationStrategy
@@ -485,14 +484,16 @@ class RedisHandler(object):
 
 class RedisDict(SharedDict):
     """ A simple redis dict. """
-    def __init__(self, name, pool, locking=None, lock_type=None,
-        clear=False, raise_exceptions=False, refresh_keys=False):
-        super(RedisDict, self).__init__(name, locking=locking,
-                                        lock_type=lock_type)
+    def __init__(self, name, pool, locking=None, clear=False,
+        raise_exceptions=False, refresh_keys=False, compression=None):
+        super(RedisDict, self).__init__(name)
         self.name = name
+        self.locking = locking
+        self.compression = compression
         self.dict_data_key = "dict_data"
         self.refresh_keys = refresh_keys
         #self.logger = config.logger
+        self.pool = pool
         self.redis_db = RedisHandler(connection_pool=pool,
                                     raise_exceptions=raise_exceptions,
                                     db=0)
@@ -509,7 +510,7 @@ class RedisDict(SharedDict):
 
     def lock(self):
         """
-        Lock complete dict (prevent race when changing list contained in dict.
+        Lock complete dict (prevent race when changing list contained in dict).
         """
         from otpme.lib import locking
         lock_id = "redis-dict-%s" % self.name
@@ -603,7 +604,8 @@ class RedisDict(SharedDict):
         # Pickle data.
         value = self.pickle_handler.dumps(value)
         # Compress value.
-        value = zlib.compress(value, 1)
+        if self.compression:
+            value = stuff.compress(value, self.compression)
         #self.redis_db.mset({key:value})
         if expire is None:
             self.redis_db.set(key, value)
@@ -618,7 +620,8 @@ class RedisDict(SharedDict):
         if value is None:
             raise KeyError(key)
         # Decompress value.
-        value = zlib.decompress(value)
+        if self.compression:
+            value = stuff.decompress(value, self.compression)
         # Unpickle data.
         value = self.pickle_handler.loads(value)
         return value
@@ -640,12 +643,17 @@ class RedisDict(SharedDict):
                 _lock.release_lock()
         return deleted_item
 
+    def close(self):
+        self.pool.disconnect()
+
 class RedisList(SharedList):
     """ A simple redis list. """
     def __init__(self, name, pool, clear=False,
-        locking=None, lock_type=None, raise_exceptions=False):
-        super(RedisList, self).__init__(name, locking=locking, lock_type=lock_type)
+        compression=None, raise_exceptions=False, **kwargs):
+        super(RedisList, self).__init__(name)
         #self.logger = config.logger
+        self.pool = pool
+        self.compression = compression
         self.redis_db = RedisHandler(connection_pool=pool,
                                     raise_exceptions=raise_exceptions,
                                     db=0)
@@ -663,8 +671,9 @@ class RedisList(SharedList):
     def list(self):
         try:
             _list = self.redis_db.get(self.name)
-            # Decompress data.
-            _list = zlib.decompress(_list)
+            # Decompress list.
+            if self.compression:
+                _list = stuff.decompress(_list, self.compression)
             # Unpickle data.
             _list = self.pickle_handler.loads(_list)
         except:
@@ -675,8 +684,9 @@ class RedisList(SharedList):
     def list(self, _list):
         # Pickle data.
         _list = self.pickle_handler.dumps(_list)
-        # Compress data.
-        _list = zlib.compress(_list, 1)
+        # Compress list.
+        if self.compression:
+            _list = stuff.compress(_list, self.compression)
         #self.redis_db.mset({self.name:_list})
         self.redis_db.set(self.name, _list)
         return _list
@@ -713,6 +723,9 @@ class RedisList(SharedList):
             self.list = _list
         finally:
             _lock.release_lock()
+
+    def close(self):
+        self.pool.disconnect()
 
 class RedisInvalidationStrategy(CustomInvalidationStrategy):
     def __init__(self, region, redis_pool, **kwargs):

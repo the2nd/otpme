@@ -162,8 +162,7 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
                                         join_attribute="child_group",
                                         attribute="uuid",
                                         value="*",
-                                        return_type="name",
-                                        _otpme_func_cache_shared=True)
+                                        return_type="name")
                 if child_ags_result:
                     row.append("\n".join(child_ags_result))
                 else:
@@ -231,8 +230,7 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
                                         join_attribute="child_session",
                                         attribute="uuid",
                                         value="*",
-                                        return_type="name",
-                                        _otpme_func_cache_shared=True)
+                                        return_type="name")
                 if child_sessions_result:
                     row.append("\n".join(child_sessions_result))
                 else:

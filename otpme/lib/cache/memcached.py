@@ -125,7 +125,7 @@ def command(command):
         return wait_for_start()
     elif command == "stop":
         if stuff.controld_status():
-            msg = "Please stop otpme daemon first."
+            msg = "Please stop OTPme daemon first."
             raise OTPmeException(msg)
         return stop()
     elif command == "status":
@@ -134,7 +134,7 @@ def command(command):
             raise NotRunning()
     elif command == "restart":
         if stuff.controld_status():
-            msg = "Please stop otpme daemon first."
+            msg = "Please stop OTPme daemon first."
             raise OTPmeException(msg)
         try:
             stop()

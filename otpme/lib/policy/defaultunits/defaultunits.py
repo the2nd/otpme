@@ -224,7 +224,7 @@ class DefaultunitsPolicy(Policy):
         # Set default values.
         self.hooks = {}
         self.object_types = ['user']
-        self.default_units = {}
+        #self.default_units = {}
 
         self._sub_sync_fields = {}
         #self._sub_sync_fields = {
@@ -391,7 +391,7 @@ class DefaultunitsPolicy(Policy):
 
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def _add(self, callback=default_callback, **kwargs):
         """ Add a policy. """
         return callback.ok()

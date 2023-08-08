@@ -319,7 +319,7 @@ class AuthonactionPolicy(Policy):
         self._recursive_default_acls = get_recursive_default_acls()
 
         # Set default values.
-        self.hooks = {}
+        #self.hooks = {}
         self.object_types = config.tree_object_types
 
         # For units we have to support the "add" hook for each in-tree object.
@@ -371,7 +371,7 @@ class AuthonactionPolicy(Policy):
         self.reauth_expiry = 0
 
         # Whitelisted tokens/roles that are not required to reauth.
-        self.whitelist = {}
+        #self.whitelist = {}
 
         self._sub_sync_fields = {}
         #self._sub_sync_fields = {

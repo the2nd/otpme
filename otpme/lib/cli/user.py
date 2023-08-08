@@ -122,8 +122,7 @@ def row_getter(realm, site, user_order, user_data, acls,
                                         value=user_uuid,
                                         realm=realm,
                                         site=site,
-                                        return_attributes=return_attrs,
-                                        _otpme_func_cache_shared=True)
+                                        return_attributes=return_attrs)
                 group_string = "N/A"
                 if group_result:
                     group_uuid = list(dict(group_result).keys())[0]

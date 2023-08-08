@@ -560,7 +560,7 @@ class YubikeyhmacToken(Token):
                             session_uuid=session_uuid,
                             quiet=quiet)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def deploy(self, smartcard_id, secret, hmac_challenge, hmac_id,
         slot=default_slot, _caller="API", verbose_level=0,
@@ -584,7 +584,7 @@ class YubikeyhmacToken(Token):
         self.slot = slot
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def _add(self, callback=default_callback, **kwargs):
         """ Add a token. """

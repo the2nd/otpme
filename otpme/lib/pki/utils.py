@@ -525,7 +525,7 @@ def revoke_certificate(ca_cert, ca_key, cert=None, sn=None,
     try:
         next_update = int(next_update)
     except:
-        msg = ("<next_update> must be int.")
+        msg = "<next_update> must be int, got %s." % type(next_update)
         raise OTPmeException(msg)
 
     if sn is not None:
@@ -637,7 +637,8 @@ def revoke_certificate(ca_cert, ca_key, cert=None, sn=None,
     crl_data = crl.public_bytes(encoding=serialization.Encoding.PEM)
     crl_data = crl_data.decode()
 
-    return revoked_cert.serial_number, revoke_until, crl_data
+    serial_number = str(revoked_cert.serial_number)
+    return serial_number, revoke_until, crl_data
 
 def check_ssl_cert_key(cert, key):
     from otpme.lib import backend

@@ -703,7 +703,8 @@ def register_backend():
                             sync_before=["site"],
                             uniq_name=True,
                             object_cache=1024,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm'])
     # Register object to backend.
     backend.register_object_type(object_type="realm",
                                 dir_name_extension=realm_dir_extension,
@@ -727,7 +728,7 @@ class Realm(OTPmeObject):
         self.own = False
         self.ca = None
         self.ca_data = None
-        self.aliases = []
+        #self.aliases = []
         self.master = None
         self.auth_enabled = True
         self.sync_enabled = True
@@ -1062,7 +1063,7 @@ class Realm(OTPmeObject):
                 return callback.error(msg, exception=PermissionDenied)
         return callback.ok(self.ca_data)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def update_ca_data(self, verify_acls=True, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
@@ -1129,8 +1130,7 @@ class Realm(OTPmeObject):
 
         return self._write(callback=callback)
 
-    @object_lock()
-    #@backend.transaction
+    @object_lock(full_lock=True)
     def init(self, realm_master, site_fqdn, site_address=None,
         ca_key_len=None, ca_valid=None, ca_country=None, ca_state=None,
         ca_locality=None, ca_organization=None, ca_ou=None, ca_email=None,
@@ -1153,9 +1153,6 @@ class Realm(OTPmeObject):
         if config.realm:
             msg = ("We already have our realm initialized. :)")
             return callback.error(msg)
-
-        # Disable transactions.
-        config.transactions_enabled = False
 
         # Make sure there are not already objects in our realm.
         for t in config.tree_object_types:
@@ -1496,7 +1493,7 @@ class Realm(OTPmeObject):
         msg = ("Realm initialized successful.")
         return callback.ok(msg)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
     def add(self, verbose_level=0, callback=default_callback, **kwargs):
@@ -1522,7 +1519,7 @@ class Realm(OTPmeObject):
         return super(Realm, self).add(verbose_level=verbose_level,
                                     callback=callback, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def delete(self, force=False, verify_acls=True, run_policies=True,
         verbose_level=0, callback=default_callback, _caller="API", **kwargs):

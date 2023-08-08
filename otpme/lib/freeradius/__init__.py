@@ -214,7 +214,7 @@ def create_freeradius_conf():
         x = freeradius_conf_template.replace("otpme-auth", otpme_auth_path)
         filetools.create_file(freeradius_conf,
                             content=x,
-                            mode=0o660, overwrite=True)
+                            mode=0o660)
 
 def create_cert_files():
     site = backend.get_object(object_type="site",
@@ -224,13 +224,13 @@ def create_cert_files():
         radius_cert = site.radius_cert
     filetools.create_file(freeradius_cert_file,
                         content=radius_cert,
-                        mode=0o660, overwrite=True)
+                        mode=0o660)
     radius_key = site.key
     if site.radius_key:
         radius_key = site.radius_key
     filetools.create_file(freeradius_key_file,
                         content=radius_key,
-                        mode=0o660, overwrite=True)
+                        mode=0o660)
     realm = backend.get_object(object_type="realm",
                             uuid=config.realm_uuid)
     ca_data = realm.ca_data
@@ -239,7 +239,7 @@ def create_cert_files():
     #    ca_data = site.radius_ca_cert
     filetools.create_file(freeradius_ca_cert_file,
                         content=ca_data,
-                        mode=0o660, overwrite=True)
+                        mode=0o660)
 
 def create_clients_conf():
     clients = backend.search(object_type="client",
@@ -263,7 +263,7 @@ def create_clients_conf():
 
     filetools.create_file(freeradius_clients,
                         content=lines,
-                        mode=0o660, overwrite=True)
+                        mode=0o660)
 
 def get_pid():
     fd = open(freeradius_pidfile, "r")

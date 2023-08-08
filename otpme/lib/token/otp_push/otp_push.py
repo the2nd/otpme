@@ -374,7 +374,7 @@ class OtppushToken(Token):
         raise Exception(msg)
 
     @check_acls(['edit:push_script'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def change_push_script(self, push_script=None,
         run_policies=True, callback=default_callback,
@@ -395,7 +395,7 @@ class OtppushToken(Token):
                         script=push_script, callback=callback)
 
     @check_acls(['edit:push_token'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def change_push_token(self, push_token=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
@@ -437,7 +437,7 @@ class OtppushToken(Token):
     # xxxxxxxxxxxxxxxxxxx
     # FIXME: implement using phone number from ldif attribute! -> add search filter?
     @check_acls(['edit:phone_number'])
-    @object_lock()
+    @object_lock(full_lock=True)
     def change_phone_number(self, phone_number=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change object phone_number. """

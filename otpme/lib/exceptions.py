@@ -252,6 +252,9 @@ class SiteNotTrusted(OTPmeException):
 class NoUnitFound(OTPmeException):
     pass
 
+class ProcessingFailed(OTPmeException):
+    pass
+
 class ShowHelp(OTPmeException):
     pass
 

@@ -807,7 +807,8 @@ def register_backend():
                             add_after=["node"],
                             sync_after=["node", "user", "token"],
                             object_cache=1024,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'site', 'name'])
     # Register object to backend.
     class_getter = lambda: Host
     backend.register_object_type(object_type="host",
@@ -844,10 +845,8 @@ class Host(OTPmeHost):
         self._recursive_default_acls = get_recursive_default_acls()
 
         self.logins_limited = True
-        self.sync_groups = []
         self.sync_by_login_token = True
         self.sync_groups_enabled = False
-        self.sync_users = []
 
         self.handle_cert_loading = True
         self.handle_key_loading = True

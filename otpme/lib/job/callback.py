@@ -37,6 +37,10 @@ class JobCallback(object):
                 self.uuid = uuid
                 self.exit_info = {}
                 self._caller = "API"
+                class FakeBool(object):
+                    def __init__(self):
+                        self.value = False
+                self.objects_written = FakeBool()
         if job:
             self.job = job
             if api_mode is None:
@@ -60,6 +64,8 @@ class JobCallback(object):
         self.enabled = True
         # Will hold all (modified objects this callback was used. in.
         self.modified_objects = []
+        # Will hold all locked objects.
+        self.locked_objects = []
         # Get logger.
         self.logger = config.logger
         # Time the callback was last used.
@@ -67,37 +73,45 @@ class JobCallback(object):
         # Indicates that the job should be stopped.
         self.stop_job = False
 
+    def add_locked_object(self, o):
+        """ Add modified object to callback. """
+        if o in self.locked_objects:
+            return
+        self.locked_objects.append(o)
+        self.last_used = time.time()
+
     def add_modified_object(self, o):
         """ Add modified object to callback. """
         if o.oid in self.modified_objects:
             return
         self.modified_objects.append(o.oid)
         self.last_used = time.time()
+        self.job.objects_written.value = True
 
     def write_modified_objects(self):
         """ Write objects modified by this callback. """
         from otpme.lib import cache
         #from otpme.lib import backend
         objects_written = []
-        for object_id in list(self.modified_objects):
+        for object_id in self.modified_objects:
             o = cache.get_modified_object(object_id)
             cache.remove_modified_object(object_id)
-            self.modified_objects.remove(object_id)
             if not o or not o._modified:
                 continue
             msg = "Writing modified object (Job): %s" % o
             self.logger.debug(msg)
             o._write(callback=self)
+            # Reset modified stuff before adding object to cache.
+            o.reset_modified()
+            # Add object to cache.
+            cache.add_instance(o)
             objects_written.append(o.oid.full_oid)
         return objects_written
 
     def release_cache_locks(self):
         """ Release all 'cached' locks. """
-        from otpme.lib import cache
-        for object_id in list(self.modified_objects):
-            o = cache.get_modified_object(object_id)
-            if not o:
-                continue
+        for o in list(self.locked_objects):
+            self.locked_objects.remove(o)
             o.release_lock(lock_caller="cached")
 
     def handle_exception(method):
@@ -172,7 +186,9 @@ class JobCallback(object):
         #        to the corresponding python types. This means that e.g. a
         #        password that is just the string "False" will fail.
         # Convert string to type().
-        reply = stuff.string_to_type(answer)
+        reply = stuff.string_to_type(value=answer,
+                                    ignore_int=True,
+                                    ignore_float=True)
 
         return reply
 
@@ -311,7 +327,8 @@ class JobCallback(object):
                                 prompt=prompt,
                                 null_ok=null_ok)
         # Send query.
-        return self._send_query(query_id, query, timeout=timeout)
+        result = self._send_query(query_id, query, timeout=timeout)
+        return result
 
     @handle_exception
     def sshauth(self, challenge, timeout=1):

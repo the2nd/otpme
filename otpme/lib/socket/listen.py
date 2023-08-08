@@ -331,7 +331,8 @@ class ListenSocket(object):
                                             suppress_ragged_eofs=True,
                                             server_hostname=None)
                 else:
-                    ctx = ssl.create_default_context()
+                    #ctx = ssl.create_default_context()
+                    ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
                     # FIXME: Is this all we need to enable PFS with python 2.7??
                     # Enable PFS.
                     # http://jderose.blogspot.de/2014/01/how-to-enable-perfect-forward-secrecy.html

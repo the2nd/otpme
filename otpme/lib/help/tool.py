@@ -480,4 +480,19 @@ cmd_help = {
                                     'cmd'                   : 'Reset auth_on_action reauth.',
                                 },
                 },
+
+    'backup'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-tool backup -d <backup_dir>',
+                    'cmd'   :   '-d :backup_dir:',
+                    '_help' :   {
+                                    'cmd'                   : 'Write backup to backup directory.',
+                                },
+                },
+    'restore'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-tool restore {-d <restore_dir>|-f <restore_file>}',
+                    'cmd'   :   '-d :restore_dir: -f :restore_file:',
+                    '_help' :   {
+                                    'cmd'                   : 'Write backup to backup directory.',
+                                },
+                },
     }

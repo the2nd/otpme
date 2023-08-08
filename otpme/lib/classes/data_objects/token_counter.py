@@ -86,7 +86,7 @@ def register_backend():
                                 path_id,
                                 token_uuid,
                                 counter_hash)
-        config_file = os.path.join(config_dir, config.json_config_file_name)
+        config_file = os.path.join(config_dir, config.object_config_file_name)
         config_paths = {}
         config_paths['config_file'] = config_file
         config_paths['config_dir'] = config_dir
@@ -108,7 +108,7 @@ def register_backend():
                 for x in token_counter_files:
                     counter += 1
                     x_path = os.path.join(token_counter_dir, x)
-                    x_file = os.path.join(x_path, config.json_config_file_name)
+                    x_file = os.path.join(x_path, config.object_config_file_name)
                     msg = ("Processing %s (%s/%s): %s"
                         % (path_id, counter, files_count, x_file))
                     logger.debug(msg)
@@ -120,6 +120,7 @@ def register_backend():
     config.register_object_type(object_type="token_counter",
                             tree_object=False,
                             uniq_name=False,
+                            add_after=["token"],
                             object_cache=1024,
                             cache_region="data_object")
     # Register object to backend.

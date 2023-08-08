@@ -277,7 +277,7 @@ class PasswordPolicy(Policy):
         self.pin_min_len = 4
         self.strength_checker = config.default_pass_strength_checker
         self.strength_checker_enabled = True
-        self.strength_checker_opts = {}
+        #self.strength_checker_opts = {}
 
         self._sub_sync_fields = {
                     'host'  : {
@@ -648,7 +648,7 @@ class PasswordPolicy(Policy):
         self.strength_checker_enabled = False
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def _add(self, callback=default_callback, **kwargs):
         """ Add a policy. """
         self.strength_checker = config.default_pass_strength_checker

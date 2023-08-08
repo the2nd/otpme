@@ -24,6 +24,7 @@ from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.compression.base import compress
 from otpme.lib.compression.base import decompress
+from otpme.lib.compression.base import get_compression_type
 
 from otpme.lib.exceptions import *
 
@@ -179,13 +180,13 @@ def gen_sha512(string):
     sha512sum = hashlib.sha512(string).hexdigest()
     return sha512sum
 
-def gen_pin(len=4):
+def gen_pin(pin_len=4):
     """ Generate PIN from length given as arg. """
     import random
     pin = ""
-    for i in range(len):
-        pin = "%s%s" % (pin, random.randint(0,9))
-    pin = int(pin)
+    for i in range(pin_len):
+        number = random.randint(0,9)
+        pin = "%s%s" % (pin, number)
     return pin
 
 def gen_secret(len=32, encoding="hex"):
@@ -271,6 +272,9 @@ def is_uuid(uuid):
 
 def copy_object(d):
     """ Deepcopy alternative (faster). """
+    #import pickle
+    #o = pickle.dumps(d)
+    #o = pickle.loads(o)
     o = json.dumps(d)
     o = json.loads(o)
     return o
@@ -854,7 +858,7 @@ def args_to_hash(arguments, ignore_args=[],
     key = gen_md5(key)
     return key
 
-def string_to_type(value):
+def string_to_type(value, ignore_int=False, ignore_float=False):
     """ Try to find value type and return value as the correct type. """
     # Non-string values need no conversion.
     if not isinstance(value, str):
@@ -862,25 +866,27 @@ def string_to_type(value):
 
     # Check if value is int() before float() because float can match int but
     # not vice versa.
-    try:
-        # FIXME: Workaround to prevent a string (e.g. an OTP)
-        #        from beeing treated as int (e.g. 085624).
-        #        str(val) should always be equal to str(int(val))
-        int_val = int(value)
-        if str(int_val) == str(value):
-            return int_val
-    except:
-        pass
+    if not ignore_int:
+        try:
+            # FIXME: Workaround to prevent a string (e.g. an OTP)
+            #        from beeing treated as int (e.g. 085624).
+            #        str(val) should always be equal to str(int(val))
+            int_val = int(value)
+            if str(int_val) == str(value):
+                return int_val
+        except:
+            pass
     # Check if value is float().
-    try:
-        # FIXME: Workaround to prevent a string (e.g. an OTP)
-        #        from beeing treated as float (e.g. 461e49).
-        #        str(val) should always be equal to str(float(val))
-        float_val = float(value)
-        if str(float_val) == str(value):
-            return float_val
-    except:
-        pass
+    if not ignore_float:
+        try:
+            # FIXME: Workaround to prevent a string (e.g. an OTP)
+            #        from beeing treated as float (e.g. 461e49).
+            #        str(val) should always be equal to str(float(val))
+            float_val = float(value)
+            if str(float_val) == str(value):
+                return float_val
+        except:
+            pass
 
     ## Check if value is boolean
     #bool_re = re.compile("True|False", re.IGNORECASE)

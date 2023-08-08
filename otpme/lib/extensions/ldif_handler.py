@@ -70,7 +70,7 @@ class OTPmeLDIFHandler(object):
                     v = self.get_attribute_values(o=o, attribute=at)[0]
                 except:
                     v = None
-            if not self.add_attribute(o=o,
+            add_result = self.add_attribute(o=o,
                                     a=at,
                                     v=v,
                                     auto_value=True,
@@ -78,7 +78,8 @@ class OTPmeLDIFHandler(object):
                                     verify=False,
                                     verbose_level=verbose_level,
                                     callback=callback,
-                                    **kwargs):
+                                    **kwargs)
+            if not add_result:
                 msg = (_("Extension %s: Error adding default attribute: %s")
                         % (self.name, at))
                 raise OTPmeException(msg)
@@ -667,6 +668,7 @@ class OTPmeLDIFHandler(object):
                     v = self.gen_attribute_value(o, a, callback=callback)
                 except Exception as e:
                     msg = (_("Unable to get attribute value: %s: %s") % (a, e))
+                    config.raise_exception()
                     raise OTPmeException(msg)
 
                 if v is None:

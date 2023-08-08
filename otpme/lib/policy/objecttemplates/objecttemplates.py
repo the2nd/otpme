@@ -196,7 +196,7 @@ class ObjecttemplatesPolicy(Policy):
 
         self.object_types = ['realm', 'site', 'unit']
 
-        self.object_templates = {}
+        #self.object_templates = {}
 
         self._sub_sync_fields = {}
         #self._sub_sync_fields = {
@@ -365,7 +365,7 @@ class ObjecttemplatesPolicy(Policy):
         self.object_templates[object_type] = template_uuid
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def _add(self, callback=default_callback, **kwargs):
         """ Add a policy. """
         return callback.ok()

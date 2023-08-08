@@ -18,7 +18,6 @@ from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.register import register_module
 from otpme.lib.protocols.utils import register_commands
-from otpme.lib.extensions.posix.posix import free_id_lock
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 
@@ -609,7 +608,8 @@ def register_backend():
                             sync_before=["token", "user"],
                             uniq_name=True,
                             object_cache=1024,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'name'])
     # Register index attributes.
     config.register_index_attribute('user')
     # Register object to backend.
@@ -646,10 +646,6 @@ class Group(OTPmeObject):
         self._default_acls = get_default_acls()
         self._recursive_default_acls = get_recursive_default_acls()
 
-        self.roles = []
-        self.tokens = []
-        self.sync_users = []
-        self.default_group_users = []
         self.token_options = {}
         self.token_login_interfaces = {}
         # Groups should inherit ACLs by default.
@@ -747,10 +743,6 @@ class Group(OTPmeObject):
         self.default_group_users.append(user_uuid)
         # Update index.
         self.add_index('user', user_uuid)
-        # Update extensions.
-        self.update_extensions("update_members",
-                            verbose_level=verbose_level,
-                            callback=callback)
         return self._cache(callback=callback)
 
     @check_acls(['remove:default_group_user'])
@@ -770,13 +762,9 @@ class Group(OTPmeObject):
         self.default_group_users.remove(user_uuid)
         # Update index.
         self.del_index('user', user_uuid)
-        # Update extensions.
-        self.update_extensions("update_members",
-                            verbose_level=verbose_level,
-                            callback=callback)
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
         """ Rename group. """
@@ -792,9 +780,8 @@ class Group(OTPmeObject):
                         name=new_name)
         return self._rename(new_oid, callback=callback, _caller=_caller, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
-    @free_id_lock("gidNumber")
     @run_pre_post_add_policies()
     def add(self, verbose_level=0, callback=default_callback, **kwargs):
         """ Add a group. """
@@ -806,7 +793,7 @@ class Group(OTPmeObject):
         return OTPmeObject.add(self, verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def delete(self, force=False, run_policies=True, verify_acls=True,
         verbose_level=0, callback=default_callback,

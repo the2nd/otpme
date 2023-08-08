@@ -160,8 +160,7 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
         owner_result = backend.search(object_type="user",
                                     attribute="uuid",
                                     value=owner_uuid,
-                                    return_type="name",
-                                    _otpme_func_cache_shared=True)
+                                    return_type="name")
         if owner_result:
             owner_name = owner_result[0]
 
@@ -228,23 +227,20 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
             roles_result = backend.search(object_type="role",
                                     attribute="token",
                                     value=token_uuid,
-                                    return_attributes=return_attributes,
-                                    _otpme_func_cache_shared=True)
+                                    return_attributes=return_attributes)
 
         if get_accessgroups:
             return_attributes = ['name', 'site', 'enabled']
             accessgroups_result = backend.search(object_type="accessgroup",
                                                 attribute="token",
                                                 value=token_uuid,
-                                                return_attributes=return_attributes,
-                                                _otpme_func_cache_shared=True)
+                                                return_attributes=return_attributes)
             role_ags_result = {}
             if roles_result:
                 role_ags_result = backend.search(object_type="accessgroup",
                                                 attribute="role",
                                                 values=list(roles_result),
-                                                return_attributes=return_attributes,
-                                                _otpme_func_cache_shared=True)
+                                                return_attributes=return_attributes)
         # Roles.
         if show_roles:
             token_roles = []
@@ -308,15 +304,13 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                 groups_result = backend.search(object_type="group",
                                             attribute="token",
                                             value=token_uuid,
-                                            return_attributes=return_attributes,
-                                            _otpme_func_cache_shared=True)
+                                            return_attributes=return_attributes)
                 role_groups_result = {}
                 if roles_result:
                     role_groups_result = backend.search(object_type="group",
                                                 attribute="role",
                                                 values=list(roles_result),
-                                                return_attributes=return_attributes,
-                                                _otpme_func_cache_shared=True)
+                                                return_attributes=return_attributes)
                 group_strings = []
                 all_groups = list(groups_result) + list(role_groups_result)
                 for group_uuid in all_groups:

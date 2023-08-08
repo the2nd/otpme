@@ -328,6 +328,7 @@ class CommandHandler(object):
     def handle_command(self, command, command_line, client_type="CLIENT"):
         """ Handle given command. """
         register_module("otpme.lib.protocols.otpme_client")
+        register_module("otpme.lib.protocols.server.mgmt1")
         # Add newline to command output?
         self.newline = True
         # Command args we send to the server.
@@ -443,6 +444,7 @@ class CommandHandler(object):
 
         # Init realm.
         if command == "realm" and subcommand == "init":
+            from otpme.lib import multiprocessing
             from otpme.lib.register import register_modules
             # Register modules.
             register_modules()
@@ -452,6 +454,8 @@ class CommandHandler(object):
             config.realm_init = True
             # Disable locking on realm init.
             config.locking_enabled = False
+            # Disable transactions.
+            config.transactions_enabled = False
             # Make sure index is ready.
             _index = config.get_index_module()
             _index.command("init")
@@ -462,9 +466,13 @@ class CommandHandler(object):
             if not _cache.status():
                 _cache.start()
             init_otpme()
+            # Create shared dicts/lists.
+            multiprocessing.create_shared_objects()
             # Enable cache.
             cache.init()
             cache.enable()
+            # Disable on disk caching.
+            config.pickle_cache_enabled = False
             return self.send_command(daemon="mgmtd")
 
         if config.cli_object_type != "main":
@@ -758,6 +766,158 @@ class CommandHandler(object):
 
         return self.get_help(_("Unknown command: %s") % subcommand)
 
+    def do_backup(self, backup_dir):
+        import ujson
+        from otpme.lib import backend
+        from otpme.lib import filetools
+        self.init()
+        backend.init()
+        def get_backup_filename(object_id):
+            object_type = object_id.object_type
+            backup_attributes = config.get_backup_attributes(object_type)
+            backup_filename = []
+            for x in backup_attributes:
+                x_attr = getattr(object_id, x)
+                x_attr = x_attr.replace("/", "+")
+                backup_filename.append(x_attr)
+            backup_filename = "+".join(backup_filename)
+            return backup_filename
+
+        if not os.path.exists(backup_dir):
+            os.mkdir(backup_dir)
+
+        backup_time = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+        backup_revision_dir = os.path.join(backup_dir, backup_time)
+        if not os.path.exists(backup_revision_dir):
+            os.mkdir(backup_revision_dir)
+
+        for object_type in config.object_add_order:
+            result = backend.search(object_type=object_type,
+                                    attribute="uuid",
+                                    value="*",
+                                    return_type="oid")
+            backup_dir = os.path.join(backup_revision_dir, object_type)
+            if not os.path.exists(backup_dir):
+                os.mkdir(backup_dir)
+            for x_oid in result:
+                backup_file_name = get_backup_filename(x_oid)
+                backup_file_name = "%s.json" % backup_file_name
+                backup_file = os.path.join(backup_dir, backup_file_name)
+                x_oc = backend.read_config(x_oid, decrypt=False)
+                x_uuid = x_oc['UUID']
+                msg = "Backing up: %s" % x_oid
+                print(msg)
+                file_content = {'object_id':x_oid.full_oid, 'object_config':x_oc}
+                if x_oid.object_type == "user":
+                    result = backend.search(object_type="group",
+                                                    attribute="user",
+                                                    value=x_uuid)
+                    if result:
+                        file_content['user_group'] = result[0]
+                if x_oid.object_type == "token":
+                    # Get token roles.
+                    x_token_roles = backend.search(object_type="role",
+                                                    attribute="token",
+                                                    value=x_uuid)
+                    x_token_roles_opts = []
+                    for x in x_token_roles:
+                        x_token_role = backend.get_object(uuid=x)
+                        try:
+                            x_token_opts = x_token_role.token_options[x_uuid]
+                        except KeyError:
+                            x_token_opts = None
+                        try:
+                            x_token_login_interfaces = x_token_role.token_login_interfaces[x_uuid]
+                        except KeyError:
+                            x_token_login_interfaces = []
+                        x_token_roles_opts.append((x, x_token_opts, x_token_login_interfaces))
+                    file_content['token_roles'] = x_token_roles_opts
+                    # Get token groups.
+                    x_token_groups = backend.search(object_type="group",
+                                                    attribute="token",
+                                                    value=x_uuid)
+                    x_token_groups_opts = []
+                    for x in x_token_groups:
+                        x_token_group = backend.get_object(uuid=x)
+                        try:
+                            x_token_opts = x_token_group.token_options[x_uuid]
+                        except KeyError:
+                            x_token_opts = None
+                        try:
+                            x_token_login_interfaces = x_token_group.token_login_interfaces[x_uuid]
+                        except KeyError:
+                            x_token_login_interfaces = []
+                        x_token_groups_opts.append((x, x_token_opts, x_token_login_interfaces))
+                    file_content['token_groups'] = x_token_groups_opts
+                file_content = ujson.dumps(file_content)
+                filetools.create_file(path=backup_file, content=file_content)
+
+    def full_restore(self, restore_dir):
+        import ujson
+        from otpme.lib import filetools
+        _index = config.get_index_module()
+        if not _index.is_available():
+            _index.command("init")
+        backend.init(init_file_dir_perms=True)
+        failed_restores = []
+        for object_type in config.object_add_order:
+            x_restore_order = {}
+            x_restore_dir = os.path.join(restore_dir, object_type)
+            for x_filename in sorted(os.listdir(x_restore_dir)):
+                x_file = os.path.join(x_restore_dir, x_filename)
+                file_content = filetools.read_file(x_file)
+                object_data = ujson.loads(file_content)
+                x_oid = object_data['object_id']
+                x_oid = oid.get(x_oid)
+                x_oc = object_data['object_config']
+                x_path_len = len(x_oid.path.split("/"))
+                x_restore_order[x_oid] = {}
+                x_restore_order[x_oid]['path_len'] = x_path_len
+                x_restore_order[x_oid]['object_config'] = x_oc
+
+            x_sort = lambda x: x_restore_order[x]['path_len']
+            x_restore_order_sorted = sorted(x_restore_order, key=x_sort)
+            for x_oid in x_restore_order_sorted:
+                msg = "Restoring: %s" % x_oid
+                print(msg)
+                x_oc = x_restore_order[x_oid]['object_config']
+                try:
+                    backend.write_config(object_id=x_oid,
+                                        object_config=x_oc,
+                                        full_index_update=True,
+                                        full_data_update=True,
+                                        index_auto_update=False,
+                                        encrypt=False)
+                except Exception as e:
+                    msg = "Failed to restore object: %s: %s" % (x_oid, e)
+                    print(msg)
+                    failed_restores.append(msg)
+        msg = "Creating DB indexes..."
+        print(msg)
+        _index.command("create_db_indices")
+        for x in failed_restores:
+            print(x)
+
+    def restore_object(self, restore_file):
+        import ujson
+        from otpme.lib import filetools
+        backend.init()
+        self.init()
+        file_content = filetools.read_file(restore_file)
+        object_data = ujson.loads(file_content)
+        command_args = {}
+        command_args['object_data'] = object_data
+        mgmt_client = self.get_mgmt_client()
+        command = "backend"
+        command_args['subcommand'] = "restore"
+        status, \
+        reply = mgmt_client.send_command(command=command,
+                                    command_args=command_args,
+                                    client_type="CLIENT")
+        if status is False:
+            raise OTPmeException(reply)
+        return reply
+
     def handle_tool_command(self, command, subcommand, command_line):
         """ Handle tool command. """
         # FIXME: use cli.get_opts() for all -tool commands!
@@ -842,6 +1002,7 @@ class CommandHandler(object):
             cache.init()
             cache.enable()
             return self.handle_do_sync_command(command, subcommand, command_line)
+
         if subcommand == "add_signer" \
         or subcommand == "del_signer" \
         or subcommand == "show_signer" \
@@ -953,6 +1114,75 @@ class CommandHandler(object):
 
         if subcommand == "search":
             return self.handle_search_command(command_line)
+
+        if subcommand == "backup":
+            from otpme.lib.register import register_modules
+            register_modules()
+            # Get command syntax.
+            try:
+                command_syntax = self.get_command_syntax(command, subcommand)
+            except:
+                return self.get_help(_("Unknown command: %s") % subcommand)
+
+            # Parse command line.
+            try:
+                object_cmd, \
+                object_required, \
+                object_identifier, \
+                command_args = cli.get_opts(command_syntax=command_syntax,
+                                            command_line=command_line,
+                                            command_args=self.command_args)
+            except Exception as e:
+                if str(e) == "help":
+                    return self.get_help()
+                elif str(e) != "":
+                    return self.get_help(str(e))
+            try:
+                backup_dir = command_args['backup_dir']
+            except KeyError:
+                return self.get_help()
+            return self.do_backup(backup_dir)
+
+        if subcommand == "restore":
+            from otpme.lib.register import register_modules
+            register_modules()
+            # Get command syntax.
+            try:
+                command_syntax = self.get_command_syntax(command, subcommand)
+            except:
+                return self.get_help(_("Unknown command: %s") % subcommand)
+
+            # Parse command line.
+            try:
+                object_cmd, \
+                object_required, \
+                object_identifier, \
+                command_args = cli.get_opts(command_syntax=command_syntax,
+                                            command_line=command_line,
+                                            command_args=self.command_args)
+            except Exception as e:
+                if str(e) == "help":
+                    return self.get_help()
+                elif str(e) != "":
+                    return self.get_help(str(e))
+            try:
+                restore_dir = command_args['restore_dir']
+            except KeyError:
+                restore_dir = None
+            try:
+                restore_file = command_args['restore_file']
+            except KeyError:
+                restore_file = None
+            if not restore_dir and not restore_file:
+                return self.get_help()
+            if restore_dir:
+                if stuff.controld_status():
+                    msg = "Please stop OTPme daemon first."
+                    print(msg)
+                    return False
+                return self.full_restore(restore_dir)
+            if restore_file:
+                return self.restore_object(restore_file)
 
         if subcommand == "sign" \
         or subcommand == "verify" \
@@ -1193,8 +1423,13 @@ class CommandHandler(object):
             fingerprint_digest = "sha256"
             site_cert_fingerprint = None
 
+        # Get index module.
+        _index = config.get_index_module()
+
         # Check host status.
         if config.uuid:
+            if not _index.status():
+                _index.start()
             #init_otpme()
             self.init()
             my_host = backend.get_object(uuid=config.uuid)
@@ -1203,8 +1438,9 @@ class CommandHandler(object):
                 raise OTPmeException(msg)
 
         # Make sure index is ready.
-        _index = config.get_index_module()
         if not _index.is_available():
+            if _index.status():
+                _index.stop()
             _index.command("drop")
             _index.command("init")
         if not _index.status():
@@ -1304,6 +1540,10 @@ class CommandHandler(object):
 
         if not config.uuid:
             msg = "Host is not a realm member."
+            raise OTPmeException(msg)
+
+        if config.master_node:
+            msg = "Master node cannot leave the realm."
             raise OTPmeException(msg)
 
         # Stop OTPme daemons.
@@ -1470,6 +1710,8 @@ class CommandHandler(object):
 
     def handle_import_command(self, command, subcommand):
         """ Handle import command. """
+        import ujson
+        from otpme.lib import filetools
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
         except:
@@ -1481,7 +1723,7 @@ class CommandHandler(object):
             object_required, \
             object_identifier, \
             local_command_args = cli.get_opts(command_syntax=command_syntax,
-                                            command_line=command_line,
+                                            command_line=self.command_line,
                                             command_args=local_command_args)
         except Exception as e:
             if str(e) == "help":
@@ -1495,16 +1737,17 @@ class CommandHandler(object):
             password = None
         filename = object_identifier
 
-        from otpme.lib import filetools
         # xxxxxxxxxxxxxxx
         # FIXME: how to im-/export complete user (e.g. with tokens?)
         try:
-            object_config = filetools.read_data_file(filename)
+            file_content = filetools.read_file(filename)
         except Exception as e:
             msg = (_("Error reading object config: %s") % e)
             raise OTPmeException(msg)
 
-        object_id = object_config['OID']
+        object_config = ujson.loads(file_content)
+        object_id = object_config.pop('OID')
+
         return self.import_object(object_config,
                                 object_id=object_id,
                                 password=password)
@@ -2915,25 +3158,23 @@ class CommandHandler(object):
             raise OTPmeException(reply)
         return reply
 
-    def import_object(self, object_config, object_id=None, password=None):
+    def import_object(self, object_config, object_id, password=None):
         """ Import object. """
-        #init_otpme()
         self.init()
-        # Get OID if needed.
-        if not object_id:
-            object_id = object_config['OID']
-
         # Encode object config.
         object_config = json.encode(object_config, encoding="base64")
-        self.command_args['password'] = password
-        self.command_args['object_config'] = object_config
+        command_args = {}
+        command_args['password'] = password
+        command_args['object_id'] = object_id
+        command_args['object_config'] = object_config
 
         mgmt_client = self.get_mgmt_client()
-        mgmt_cmd = "backend import %s" % object_id
+        command = "backend"
+        command_args['subcommand'] = "import"
         status, \
-        reply = mgmt_client.send(command=mgmt_cmd,
-                                command_args=self.command_args)
-        if status == False:
+        reply = mgmt_client.send_command(command=command,
+                                    command_args=command_args)
+        if status is False:
             raise OTPmeException(reply)
 
     def gen_motp(self, **kwargs):
@@ -5015,7 +5256,7 @@ class CommandHandler(object):
                     already_diffed_datas[x_node] = n_diffed_datas
                     msg = "Object %s differs on node %s." % (m_data, x_node)
                     msg = colored(msg, 'yellow')
-                    diff_datas.append(msg)
+                    diff_objects.append(msg)
 
                 for n_data in n_data_checksums:
                     try:

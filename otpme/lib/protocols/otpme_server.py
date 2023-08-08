@@ -186,6 +186,7 @@ class OTPmeServer1(object):
         self.session_key_hash_algo = "SHA256"
         self.peer = None
         self.smartcard_handlers = {}
+        self.compresss_response = True
 
     def signal_handler(self, _signal, frame):
         """ Handle signals """
@@ -437,8 +438,8 @@ class OTPmeServer1(object):
                         except:
                             current_master_node = None
                         if current_master_node != config.host_data['name']:
-                            status = False
                             message = "Please connect to master node."
+                            status = status_codes.CLUSTER_NOT_READY
                             return self.build_response(status, message, encrypt=False)
                     if self.require_cluster_status:
                         try:
@@ -1203,8 +1204,8 @@ class OTPmeServer1(object):
             agent_script = decode(x.script, "base64")
             agent_script_uuid = x.uuid
             agent_script_path = x.rel_path
-            agent_script_options = self.user.agent_script_options
-            agent_script_signs = x.signatures
+            agent_script_options = self.user.agent_script_options.copy()
+            agent_script_signs = x.signatures.copy()
         else:
             agent_script = None
             agent_script_uuid = None
@@ -1864,7 +1865,8 @@ class OTPmeServer1(object):
 
         response = build_response(status, message,
                             encryption=enc_mod,
-                            enc_key=enc_key)
+                            enc_key=enc_key,
+                            compress=self.compresss_response)
         if config.use_api:
             self.last_response = response
 

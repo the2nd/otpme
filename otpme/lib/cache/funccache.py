@@ -9,7 +9,7 @@ from functools import wraps
 
 #from cachetools import keys
 #from cachetools.rr import RRCache
-from cachetools.lru import LRUCache
+from cachetools import LRUCache
 #from cachetools.lfu import LFUCache
 #from cachetools.ttl import TTLCache
 
@@ -33,7 +33,7 @@ _CacheInfo = collections.namedtuple('CacheInfo', [
 
 class Cache(object):
     """ Cache class. """
-    def __init__(self, name, cache_type="lru", maxsize=1024, ignore_args=[],
+    def __init__(self, name, cache_type="lru", maxsize=256, ignore_args=[],
         ignore_classes=[], cache_name_var=None, cache_name_func=None,
         caches=None, default_cache=None, shared=False, copy_cache=False):
         self.name = name
@@ -131,9 +131,6 @@ class Cache(object):
         try:
             _shared_cache = self._shared_caches[shared_cache_name]
         except:
-            # We always need to get shared dict to prevent issues when
-            # running clear() and _otpme_func_cache_shared with
-            # self.shared=False is used.
             _shared_cache = multiprocessing.get_dict(shared_cache_name)
             self._shared_caches[shared_cache_name] = _shared_cache
         return _shared_cache
@@ -155,20 +152,12 @@ class Cache(object):
             # Get method name.
             name_kwarg = "_otpme_func_name"
             method_name = kwargs.pop(name_kwarg)
-            try:
-                _otpme_func_cache_shared = kwargs["_otpme_func_cache_shared"]
-            except:
-                _otpme_func_cache_shared = False
 
             # Get cache parameters.
             cache_name = self.get_cache_name(args, kwargs)
             if cache_name is not None:
                 if self.shared:
                     check_shared_cache = True
-                if _otpme_func_cache_shared:
-                    use_shared_cache = True
-                    check_shared_cache = True
-                    update_shared_cache = True
                 try:
                     ignore_args = self.caches[cache_name]['ignore_args']
                 except:
@@ -383,6 +372,8 @@ class Cache(object):
                 self._stats[cache_name][:] = [0, 0]
             except:
                 pass
+        if not self.shared:
+            return
         # Clear shared cache.
         _shared_cache = self.get_shared_cache(cache_name)
         _shared_cache.clear()
@@ -415,8 +406,8 @@ class FuncCache(object):
 
     def get_cache(self):
         """ Get or init cache by thread ID. """
-        #thread_id = multiprocessing.get_thread_id()
-        thread_id = "test"
+        thread_id = multiprocessing.get_thread_id()
+        #thread_id = "test"
         try:
             _cache = self._caches[thread_id]
         except:

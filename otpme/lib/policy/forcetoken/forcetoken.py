@@ -212,7 +212,7 @@ class ForcetokenPolicy(Policy):
                     'client',
                     'accessgroup',
                     ]
-        self.force_token_types = None
+
         self.force_pass_types = [ 'otp', 'ssh_key', 'smartcard' ]
 
         self._sub_sync_fields = {
@@ -335,7 +335,7 @@ class ForcetokenPolicy(Policy):
 
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def _add(self, callback=default_callback, **kwargs):
         """ Add a policy. """
         return callback.ok()

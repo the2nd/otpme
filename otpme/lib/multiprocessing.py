@@ -47,8 +47,9 @@ posix_semaphores = {}
 manager = None
 
 # Clusterd events.
-cluster_event = None
-cluster_lock_event = None
+cluster_in_event = None
+cluster_out_event = None
+#cluster_lock_event = None
 # Shared dict to handle objects to sync with peers.
 cluster_votes = None
 # Cluster locks acquired by clusterd.
@@ -300,6 +301,39 @@ def get_bool(name, default=False, random_name=True):
     shared_bool = SharedBool(name, default=default, random_name=random_name)
     return shared_bool
 
+def get_shm_string(name, size=1024, value=None):
+    class SharedString(object):
+        def __init__(self, name, size=1024, value=None):
+            self.name = name
+            shmem_name = "/%s" % self.name
+            self.shmem = posix_ipc.SharedMemory(shmem_name,
+                                            posix_ipc.O_CREAT,
+                                            size=size)
+            self._value = mmap.mmap(self.shmem.fd, size)
+            if value is not None:
+                self.value = value
+        @property
+        def value(self):
+            null_byte_index = self._value.find(b'\0')
+            value = self._value[:null_byte_index]
+            value = value.decode()
+            return value
+        @value.setter
+        def value(self, new_val):
+            new_val_len = len(new_val)
+            new_val = new_val.encode()
+            self._value[:new_val_len+1] = new_val + b'\0'
+        def close(self):
+            self._value.close()
+            self.shmem.close_fd()
+        def unlink(self):
+            try:
+                self.shmem.unlink()
+            except posix_ipc.ExistentialError:
+                pass
+    shared_string = SharedString(name, value=value, size=size)
+    return shared_string
+
 def get_dict(name=None, clear=False, **kwargs):
     from otpme.lib import config
     global manager
@@ -519,66 +553,68 @@ def get_sync_manager(name, proc_title=None, user=None, group=None):
 
 
 class Event(object):
-    def __init__(self, event_name=None, keep=False):
+    def __init__(self, event_name=None):
         if event_name is None:
             event_name = "/%s" % stuff.gen_uuid()
         self.name = event_name
         self._semaphore = None
-        self.keep = keep
 
     def open_semaphore(self):
         global posix_semaphores
         semaphore = posix_ipc.Semaphore(name=self.name,
                                         flags=posix_ipc.O_CREAT,
                                         mode=0o600)
-        if not self.keep:
-            if semaphore.name not in posix_semaphores:
-                posix_semaphores[semaphore.name] = semaphore
+        if semaphore.name not in posix_semaphores:
+            posix_semaphores[semaphore.name] = semaphore
         return semaphore
 
     def open(self):
         self._semaphore = self.open_semaphore()
 
-    def clear(self):
-        if not self.keep:
-            if self._semaphore:
-                self.close()
-                self.unlink()
-        self._semaphore = self.open_semaphore()
-
     def wait(self, timeout=None):
         if not self._semaphore:
-            self._semaphore = self.open_semaphore()
+            self.open()
         try:
             self._semaphore.acquire(timeout=timeout)
         except posix_ipc.BusyError:
             raise TimeoutReached()
         except posix_ipc.SignalError:
             pass
+        self.close()
 
     def set(self):
         if not self._semaphore:
-            self._semaphore = self.open_semaphore()
+            self.open()
         self._semaphore.release()
+        self.close()
 
     def close(self):
         if self._semaphore is None:
             return
         self._semaphore.close()
+        self._semaphore = None
 
     def unlink(self):
         global posix_semaphores
         if self._semaphore is None:
-            self._semaphore = self.open_semaphore()
+            self.open()
         try:
             self._semaphore.unlink()
         except posix_ipc.ExistentialError:
             pass
         except posix_ipc.PermissionsError:
             pass
-        if not self.keep:
-            if self._semaphore.name in posix_semaphores:
-                posix_semaphores.pop(self._semaphore.name)
+        try:
+            self._semaphore.close()
+        except posix_ipc.ExistentialError:
+            pass
+        except posix_ipc.PermissionsError:
+            pass
+        try:
+            posix_semaphores.pop(self._semaphore.name)
+        except KeyError:
+            pass
+        self._semaphore = None
 
 class MessageQueue(object):
     def __init__(self, name, identifier=None, max_message_size=None):
@@ -937,13 +973,8 @@ class InterProcessQueue(object):
 
 class SharedDict(dict):
     """ A simple shared dict class to be used by e.g. redis. """
-    def __init__(self, name, locking=None, lock_type=None):
+    def __init__(self, name):
         self.name = name
-        self.locking = locking
-        self.lock_type = lock_type
-        if self.locking is None:
-            if self.lock_type is not None:
-                self.locking = True
         # Data store for fake shared dicts.
         self._dict = {}
         self.dict_data_key = "dict_data"
@@ -1032,13 +1063,8 @@ class SharedDict(dict):
 
 class SharedList(list):
     """ A simple shared list class to be used by e.g. redis. """
-    def __init__(self, name, locking=None, lock_type=None):
+    def __init__(self, name):
         self.name = name
-        self.locking = locking
-        self.lock_type = lock_type
-        if self.locking is None:
-            if self.lock_type is not None:
-                self.locking = True
         # Data store for fake shared lists.
         self._list = []
 
@@ -1086,40 +1112,16 @@ class SharedList(list):
         self._list = []
 
     def insert(self, i, value):
-        from otpme.lib import locking
-        if self.locking:
-            _lock = locking.acquire_lock(lock_type=self.lock_type,
-                                            lock_id=self.name)
-        try:
-            _list = self.list
-            _list.insert(i, value)
-            self.list = _list
-        finally:
-            if self.locking:
-                _lock.release_lock()
+        _list = self.list
+        _list.insert(i, value)
+        self.list = _list
 
     def append(self, value):
-        from otpme.lib import locking
-        if self.locking:
-            _lock = locking.acquire_lock(lock_type=self.lock_type,
-                                            lock_id=self.name)
-        try:
-            _list = self.list
-            _list.insert(len(self.list), value)
-            self.list = _list
-        finally:
-            if self.locking:
-                _lock.release_lock()
+        _list = self.list
+        _list.insert(len(self.list), value)
+        self.list = _list
 
     def remove(self, value):
-        from otpme.lib import locking
-        if self.locking:
-            _lock = locking.acquire_lock(lock_type=self.lock_type,
-                                            lock_id=self.name)
-        try:
-            _list = self.list
-            _list.remove(value)
-            self.list = _list
-        finally:
-            if self.locking:
-                _lock.release_lock()
+        _list = self.list
+        _list.remove(value)
+        self.list = _list

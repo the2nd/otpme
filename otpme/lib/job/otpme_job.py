@@ -62,6 +62,7 @@ class OTPmeJob(object):
         self._child = None
         self._child_joined = False
         self._caller = _caller
+        self.objects_written = multiprocessing.get_bool(name="objects_written")
         self.logger = config.logger
 
     def __str__(self):
@@ -344,3 +345,4 @@ class OTPmeJob(object):
         self.exit_info.clear()
         self.comm_queue.close()
         self.comm_queue.unlink()
+        self.objects_written.close()

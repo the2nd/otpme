@@ -346,8 +346,8 @@ def verify(uuid, acl_list, acl, force_acl_check=False, need_exact_acl=False,
 
     # Try to get ACL result from cache
     cached_acl_result = cache.get_acl(object_uuid=uuid,
-                                        token_uuid=auth_token.uuid,
-                                        acl=acl)
+                                    token_uuid=auth_token.uuid,
+                                    acl=acl)
     if cached_acl_result is not None:
         return cached_acl_result
 

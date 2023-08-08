@@ -594,7 +594,7 @@ class OtpmeToken(Token):
                             session_uuid=session_uuid,
                             quiet=quiet)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def _add(self, callback=default_callback, verify_acls=True, **kwargs):
         """ Add a token. """

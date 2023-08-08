@@ -260,10 +260,6 @@ class TokenaclsPolicy(Policy):
                     'user',
                     ]
 
-        self.user_acls = []
-        self.token_acls = []
-        self.creator_acls = []
-
         self._sub_sync_fields = {}
         #self._sub_sync_fields = {
         #            'host'  : {
@@ -639,7 +635,7 @@ class TokenaclsPolicy(Policy):
 
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def _add(self, callback=default_callback, **kwargs):
         """ Add a policy. """
         return callback.ok()

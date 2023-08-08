@@ -234,7 +234,7 @@ class IdrangePolicy(Policy):
                     'unit',
                     ]
 
-        self.id_ranges = {}
+        #self.id_ranges = {}
 
         self._sub_sync_fields = {
                     'host'  : {
@@ -362,6 +362,7 @@ class IdrangePolicy(Policy):
                 msg = ("Invalid ID range: %s: %s" % (self.name, x))
                 logger.warning(msg)
                 continue
+            new_id = None
             start_id = None
             random_range = False
             restart_on_end = False
@@ -380,9 +381,7 @@ class IdrangePolicy(Policy):
                     # search if no free ID was found between start_id and
                     # range_end.
                     restart_on_end = True
-                else:
-                    msg = "Unable to find free ID: %s" % attribute
-                    raise OTPmeException(msg)
+                    new_id = start_id
             if self.verify_new_id or random_range:
                 try:
                     ldif_attribute = "ldif:%s" % attribute
@@ -398,21 +397,20 @@ class IdrangePolicy(Policy):
                 except Exception as e:
                     exception = str(e)
                     continue
-            else:
-                new_id = start_id
 
             if new_id:
-                if random_range:
-                    break
-                # For non-random ID range we need to remember the last
-                # assigned ID.
-                set_result = self.set_last_assigned(idrange=x,
-                                            attribute=attribute,
-                                            id=new_id,
-                                            callback=callback)
-                # If the new ID was set successful its ready to use.
-                if set_result:
-                    break
+                break
+
+        if not new_id:
+            msg = "Unable to find free ID: %s" % attribute
+            raise OTPmeException(msg)
+
+        # For non-random ID range we need to remember the last
+        # assigned ID.
+        self.set_last_assigned(idrange=x,
+                            attribute=attribute,
+                            id=new_id,
+                            callback=callback)
         if exception:
             raise OTPmeException(exception)
 
@@ -672,7 +670,7 @@ class IdrangePolicy(Policy):
                 config.raise_exception()
         return last_id
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def _add(self, callback=default_callback, **kwargs):
         """ Add a policy """
         return callback.ok()

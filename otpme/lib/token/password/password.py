@@ -338,7 +338,7 @@ class PasswordToken(Token):
         return offline_config
 
     @check_acls(['edit:2ftoken'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def change_2f_token(self, second_factor_token, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
@@ -441,7 +441,7 @@ class PasswordToken(Token):
         self.second_factor_token_enabled = False
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def resync(self, callback=default_callback, **kwargs):
         """ Wrapper method to call resync() of 2ftoken. """
         try:
@@ -612,7 +612,7 @@ class PasswordToken(Token):
                                 password_hash=self.nt_hash,
                                 callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def _add(self, callback=default_callback, **kwargs):
         """ Add a token. """

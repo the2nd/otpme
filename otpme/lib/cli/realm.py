@@ -133,8 +133,7 @@ def row_getter(realm, site, realm_order, realm_data, acls,
                 aliases = backend.search(object_type="realm",
                                         attribute="uuid",
                                         value=realm_uuid,
-                                        return_attributes=return_attrs,
-                                        _otpme_func_cache_shared=True)
+                                        return_attributes=return_attrs)
                 if aliases:
                     row.append("\n".join(aliases))
                 else:

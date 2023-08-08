@@ -674,7 +674,7 @@ class MotpToken(Token):
                             session_uuid=session_uuid,
                             quiet=quiet)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def _add(self, no_token_infos=False, callback=default_callback, **kwargs):
         """ Add a token. """

@@ -294,8 +294,6 @@ class LogintimesPolicy(Policy):
 
         # Allow not more than one policy of this type per object.
         self.allow_multiple = False
-        self.roles = []
-        self.tokens = []
         self.token_options = {}
         self.token_login_interfaces = {}
         self.ignore_empty = False
@@ -562,7 +560,7 @@ class LogintimesPolicy(Policy):
         self.ignore_empty = False
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def _add(self, callback=default_callback, **kwargs):
         """ Add a policy """
         return callback.ok()

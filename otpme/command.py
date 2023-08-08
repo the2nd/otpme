@@ -355,7 +355,7 @@ if __name__ == "__main__":
         #stats = pstats.Stats(profiler).sort_stats('tottime')
         #stats = pstats.Stats(profiler).sort_stats('percall')
         #stats = pstats.Stats(profiler).sort_stats('cumtime')
-        stats.print_stats()
+        stats.print_stats(10)
     else:
         exit_code = otpme_commands()
 

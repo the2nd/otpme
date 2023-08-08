@@ -8,7 +8,7 @@ import zlib
 import gzip
 import magic
 import struct
-from io import StringIO
+import lz4.frame
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -48,9 +48,13 @@ def get_compression_type(filename):
         compression = "GZIP"
     elif file_type in BZIP2_MIMETYPES:
         compression = "BZIP2"
+    elif file_type == "application/x-lz4":
+        compression = "lz4"
+    elif file_type == "application/zlib":
+        compression = "zlib"
     elif file_type == "application/octet-stream":
         x_file_type = magic.from_file(filename, mime=False)
-        if x_file_type.startswit("lzop compressed data"):
+        if x_file_type.startswith("lzop compressed data"):
             compression = "LZO"
     if not compression:
         msg = "Unable to detect file compression."
@@ -85,9 +89,10 @@ def compress(data, compression, level=None):
     if compression == "gzip":
         if level is None:
             level = 9
-        fd = StringIO()
-        gzip.GzipFile(fileobj=fd, mode="w", compresslevel=level).write(data)
-        compressed_data = fd.getvalue()
+        compressed_data = gzip.compress(data, compresslevel=level)
+
+    elif compression == "lz4":
+        compressed_data = lz4.frame.compress(data)
 
     elif compression == "zlib":
         if level is None:
@@ -107,7 +112,9 @@ def compress(data, compression, level=None):
 def decompress(data, compression):
     """ Decompress given data. """
     if compression == "gzip":
-        decompressed_data = gzip.GzipFile(fileobj=StringIO(data)).read()
+        decompressed_data = gzip.decompress(data)
+    elif compression == "lz4":
+        decompressed_data = lz4.frame.decompress(data)
     elif compression == "zlib":
         decompressed_data = zlib.decompress(data)
     elif compression == "bzip":

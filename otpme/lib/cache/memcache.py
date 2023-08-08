@@ -8,7 +8,6 @@ http://sendapatch.se/projects/pylibmc/reference.html
 import os
 import sys
 import time
-import zlib
 try:
     import pylibmc
 except ImportError:
@@ -141,8 +140,9 @@ class MemcacheHandler(object):
                             call=True)
 
 class MemcacheClient(object):
-    def __init__(self, pool_getter):
+    def __init__(self, pool_getter, compression=None):
         self.pools = {}
+        self.compression = compression
         self.logger = config.logger
         self.pool_getter = pool_getter
         self.connection_error_logged = False
@@ -178,7 +178,8 @@ class MemcacheClient(object):
         if value is None:
             raise KeyError(key)
         # Decompress value.
-        value = zlib.decompress(value)
+        if self.compression:
+            value = stuff.decompress(value, self.compression)
         # Unpickle data.
         value = self.pickle_handler.loads(value)
         return value
@@ -187,7 +188,8 @@ class MemcacheClient(object):
         # Pickle data.
         value = self.pickle_handler.dumps(value)
         # Compress value.
-        value = zlib.compress(value, 1)
+        if self.compression:
+            value = stuff.compress(value, self.compression)
         #cas = self.self.pool.gets(key)
         #if cas is not None:
         #    self.pool.cas(key, value, cas, **kwargs)
@@ -230,15 +232,32 @@ class MemcacheClient(object):
             return
 
 class MemcacheDict(SharedDict):
-    """ A simple memcachedb dict. """
-    def __init__(self, name, pool, locking=True,
-        lock_type="memcache", clear=False, refresh_keys=False):
-        super(MemcacheDict, self).__init__(name, locking=locking, lock_type=lock_type)
-        self.client = MemcacheClient(pool)
+    """ A simple memcached dict. """
+    def __init__(self, name, pool, locking=False, lock_type="memcached",
+        clear=False, refresh_keys=False, compression=None):
+        super(MemcacheDict, self).__init__(name)
+        self.client = MemcacheClient(pool, compression=compression)
         self.dict_keys_key = "%s.dict_keys" % self.name
         self.refresh_keys = refresh_keys
+        self.lock_type = lock_type
+        self.locking = locking
+        self._lock = None
         if clear:
             self.clear()
+
+    def lock(self):
+        """
+        Lock complete dict (prevent race when changing list contained in dict).
+        """
+        from otpme.lib import locking
+        lock_id = "memcached-dict-%s" % self.name
+        self._lock = locking.acquire_lock(lock_type=self.lock_type,
+                                            lock_id=lock_id)
+
+    def release(self):
+        if not self._lock:
+            return
+        self._lock.release_lock()
 
     def clear(self):
         for x in self.keys():
@@ -387,10 +406,12 @@ class MemcacheDict(SharedDict):
         return deleted_item
 
 class MemcacheList(SharedList):
-    """ A simple memcachedb list. """
-    def __init__(self, name, pool, locking=None, lock_type=None, clear=False):
-        super(MemcacheList, self).__init__(name, locking=locking, lock_type=lock_type)
-        self.client = MemcacheClient(pool)
+    """ A simple memcached list. """
+    def __init__(self, name, pool, clear=False, compression=None,
+        lock_type="memcached", **kwargs):
+        super(MemcacheList, self).__init__(name)
+        self.lock_type = lock_type
+        self.client = MemcacheClient(pool, compression=compression)
         if clear:
             self.clear()
 
@@ -405,43 +426,36 @@ class MemcacheList(SharedList):
     @list.setter
     def list(self, _list):
         self.client.set(self.name, _list)
-        return _list
 
     def clear(self):
         self.client.delete(self.name)
 
     def insert(self, i, value):
         from otpme.lib import locking
-        if self.locking:
-            _lock = locking.acquire_lock(lock_type=self.lock_type, lock_id=self.name)
+        _lock = locking.acquire_lock(lock_type=self.lock_type, lock_id=self.name)
         try:
             _list = self.list
             _list.insert(i, value)
             self.list = _list
         finally:
-            if self.locking:
-                _lock.release_lock()
+            _lock.release_lock()
 
     def append(self, value):
         from otpme.lib import locking
-        if self.locking:
-            _lock = locking.acquire_lock(lock_type=self.lock_type, lock_id=self.name)
+        _lock = locking.acquire_lock(lock_type=self.lock_type, lock_id=self.name)
         try:
             _list = self.list
-            _list.insert(len(self.list), value)
+            _list.append(value)
             self.list = _list
         finally:
-            if self.locking:
-                _lock.release_lock()
+            _lock.release_lock()
 
     def remove(self, value):
         from otpme.lib import locking
-        if self.locking:
-            _lock = locking.acquire_lock(lock_type=self.lock_type, lock_id=self.name)
+        _lock = locking.acquire_lock(lock_type=self.lock_type, lock_id=self.name)
         try:
             _list = self.list
             _list.remove(value)
             self.list = _list
         finally:
-            if self.locking:
-                _lock.release_lock()
+            _lock.release_lock()

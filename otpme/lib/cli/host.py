@@ -144,8 +144,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                                                 order_by="rel_path",
                                                 max_results=max_roles,
                                                 return_query_count=True,
-                                                return_attributes=return_attrs,
-                                                _otpme_func_cache_shared=True)
+                                                return_attributes=return_attrs)
             for role_uuid in roles_result:
                 role_rel_path = roles_result[role_uuid]['rel_path']
                 role_enabled = roles_result[role_uuid]['enabled'][0]
@@ -167,8 +166,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                                                 order_by="rel_path",
                                                 max_results=max_tokens,
                                                 return_query_count=True,
-                                                return_attributes=return_attrs,
-                                                _otpme_func_cache_shared=True)
+                                                return_attributes=return_attrs)
                 for token_uuid in role_tokens_result:
                     token_roles[token_uuid] = role_uuid
                 processed_roles = len(member_roles)
@@ -205,8 +203,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                                                 order_by="rel_path",
                                                 max_results=max_tokens,
                                                 return_query_count=True,
-                                                return_attributes=return_attrs,
-                                                _otpme_func_cache_shared=True)
+                                                return_attributes=return_attrs)
             for token_uuid in host_tokens_result:
                 if len(processed_tokens) >= max_tokens:
                     break
@@ -251,8 +248,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                                                 order_by="rel_path",
                                                 max_results=max_sync_users,
                                                 return_query_count=True,
-                                                return_attributes=return_attrs,
-                                                _otpme_func_cache_shared=True)
+                                                return_attributes=return_attrs)
             for user_uuid in host_users_result:
                 if len(processed_users) >= max_sync_users:
                     break

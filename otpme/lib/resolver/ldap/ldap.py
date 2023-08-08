@@ -624,7 +624,7 @@ class LdapResolver(Resolver):
             self.login_password = login_password
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def _add(self, callback=default_callback, **kwargs):
         """ Add a resolver. """
         return callback.ok()
@@ -799,7 +799,7 @@ class LdapResolver(Resolver):
 
         return result
 
-    def fetch_objects(self, object_types=None, **kwargs):
+    def fetch_objects(self, object_types=None, callback=default_callback, **kwargs):
         """ Get LDAP objects. """
         ldap_conn = None
 
@@ -831,6 +831,8 @@ class LdapResolver(Resolver):
         if not object_types:
             object_types = self.object_types
 
+        msg = "Fetching LDAP objects..."
+        callback.send(msg)
         try:
             result = self._fetch_objects(ldap_conn, object_types)
         except Exception as e:

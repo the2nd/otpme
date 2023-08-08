@@ -372,6 +372,8 @@ def get(daemon, **kwargs):
     mgmt = False
     if daemon == "mgmtd":
         mgmt = True
+    if daemon == "syncd":
+        mgmt = True
     if realm and site:
         try:
             site_fqdn = stuff.get_site_fqdn(realm, site, mgmt=mgmt)
@@ -400,8 +402,8 @@ def get(daemon, **kwargs):
             connect_addresses = [config.site_address]
 
     if len(connect_addresses) > 1:
-        msg = ("Got multiple addresses from round-robin DNS: %s"
-                % connect_addresses)
+        msg = ("Got multiple addresses from round-robin DNS (%s): %s"
+                % (site_fqdn, connect_addresses))
         logger.info(msg)
 
     #connect_addresses = ['10.219.195.227', '10.219.195.228']

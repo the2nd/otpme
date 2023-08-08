@@ -378,7 +378,7 @@ class AutodisablePolicy(Policy):
         self._unused_disable = unused
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def _add(self, callback=default_callback, **kwargs):
         """ Add a policy """
         return callback.ok()

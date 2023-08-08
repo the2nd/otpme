@@ -40,7 +40,6 @@ from .transaction import FileTransaction
 # Imports (forwarded) to be imported from file backend module.
 from .transaction import get_transaction
 from .transaction import handle_transaction
-from .transaction import get_overlay_object
 from .transaction import init as init_transactions
 from .transaction import cleanup as transaction_cleanup
 
@@ -400,39 +399,27 @@ def read(object_id, parameters=None, no_lock=False, use_index=True):
     if not object_exists:
         return
 
-    # Try to get object from overlay (transactions).
-    object_config = get_overlay_object(object_id, parameters)
-    if not object_config:
-        # Get config file path.
-        object_paths = get_config_paths(object_id, use_index=use_index)
-        if "config_dir" in object_paths:
-            config_dir = object_paths['config_dir']
-            json_config_file = os.path.join(config_dir, config.json_config_file_name)
-            sqlite_config_file = os.path.join(config_dir, config.sqlite_config_file_name)
-            if object_id.object_type in config.sqlite_objects:
-                if os.path.exists(json_config_file):
-                    filetools.migrate_data_file(json_config_file, sqlite_config_file)
-                config_file = sqlite_config_file
-            else:
-                if os.path.exists(sqlite_config_file):
-                    filetools.migrate_data_file(sqlite_config_file, json_config_file)
-                config_file = json_config_file
-        else:
-            config_file = object_paths['config_file']
+    # Get config file path.
+    object_paths = get_config_paths(object_id, use_index=use_index)
+    if "config_dir" in object_paths:
+        config_dir = object_paths['config_dir']
+        config_file = os.path.join(config_dir, config.object_config_file_name)
+    else:
+        config_file = object_paths['config_file']
 
-        # Object without config file does not exist.
-        if not config_file:
-            return
-        if not os.path.exists(config_file):
-            return
+    # Object without config file does not exist.
+    if not config_file:
+        return
+    if not os.path.exists(config_file):
+        return
 
-        # Try to read object config.
-        try:
-            object_config = filetools.read_data_file(config_file, parameters)
-        except Exception as e:
-            logger.critical(str(e))
-            object_config = None
-            config.raise_exception()
+    # Try to read object config.
+    try:
+        object_config = filetools.read_data_file(config_file, parameters)
+    except Exception as e:
+        logger.critical(str(e))
+        object_config = None
+        config.raise_exception()
 
     # Return object config.
     return object_config
@@ -465,16 +452,7 @@ def write(object_id, object_config, index_journal=None,
     object_paths = get_config_paths(object_id, use_index=False)
     if "config_dir" in object_paths:
         config_dir = object_paths['config_dir']
-        json_config_file = os.path.join(config_dir, config.json_config_file_name)
-        sqlite_config_file = os.path.join(config_dir, config.sqlite_config_file_name)
-        if object_id.object_type in config.sqlite_objects:
-            if os.path.exists(json_config_file):
-                filetools.migrate_data_file(json_config_file, sqlite_config_file)
-            config_file = sqlite_config_file
-        else:
-            if os.path.exists(sqlite_config_file):
-                filetools.migrate_data_file(sqlite_config_file, json_config_file)
-            config_file = json_config_file
+        config_file = os.path.join(config_dir, config.object_config_file_name)
     else:
         config_file = object_paths['config_file']
         config_dir = os.path.dirname(config_file)
@@ -502,6 +480,7 @@ def write(object_id, object_config, index_journal=None,
                                             no_index_writes=no_index_writes,
                                             commit_files=commit_files)
         write_transaction.begin()
+
     else:
         # For tree-objects we have to make sure the parent directory (e.g. the
         # object's unit) does exist.
@@ -518,6 +497,7 @@ def write(object_id, object_config, index_journal=None,
                                         no_index_writes=no_index_writes,
                                         commit_files=commit_files)
         write_transaction.begin()
+
         # Transaction to handle index actions.
         index_handler = write_transaction
         # Check if objects config dir path has changed and we have to move it,
@@ -649,16 +629,11 @@ def object_exists(object_id, realm=False, site=False, no_lock=False):
         realm = object_id.realm
     if site is False:
         site = object_id.site
-    read_oid = object_id.read_oid
-    object_type = object_id.object_type
-    # Check if OID exists in index.
-    result = index_search(attribute="read_oid",
-                        value=read_oid,
-                        object_type=object_type,
-                        realm=realm,
-                        site=site,
-                        return_type="uuid")
-    if not result:
+    try:
+        config_file = get_config_paths(object_id=object_id)['config_file']
+    except:
+        return False
+    if not os.path.exists(config_file):
         return False
     return True
 
@@ -797,6 +772,7 @@ def rename(object_id, new_object_id, no_lock=False,
         rename_transaction.cluster_rename(object_uuid,
                                         object_id,
                                         new_object_id)
+
     # Commit and delete transaction.
     if transaction_replay:
         rename_transaction.replay()
@@ -983,12 +959,9 @@ def get_config_paths(object_id, use_index=True, no_lock=False):
     # config file name.
     if object_type in config.tree_object_types:
         config_dir = config_paths['config_dir']
-        if object_id.object_type in config.sqlite_objects:
-            config_file = os.path.join(config_dir, config.sqlite_config_file_name)
-        else:
-            config_file = os.path.join(config_dir, config.json_config_file_name)
-        config_paths['config_file'] = config_file
+        config_file = os.path.join(config_dir, config.object_config_file_name)
         config_paths['remove_on_delete'] = [config_file]
+        config_paths['config_file'] = config_file
     return config_paths
 
 # FIXME: implement regex searching??? http://xion.io/post/code/sqlalchemy-regex-filters.html
@@ -1801,6 +1774,7 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
     no_lock=False, session=None, **kwargs):
     """ Add object to search index. """
     from sqlalchemy.sql import select
+    from sqlalchemy.sql import delete
     from sqlalchemy.orm.exc import ObjectDeletedError
     if object_id.full_oid is None:
         msg = ("Object ID is missing full OID: %s" % object_id)
@@ -1880,8 +1854,8 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
         try:
             template = object_config['TEMPLATE']
         except:
-            template = None
-        # Get object template status.
+            template = False
+        # Get object LDIF.
         try:
             object_ldif = object_config['LDIF']
         except:
@@ -1925,6 +1899,9 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
                 session.commit()
             index_object = None
 
+    if not index_object:
+        full_index_update = True
+
     # Get object attributes from index DB.
     if full_index_update:
         autocommit = False
@@ -1939,42 +1916,45 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
     if full_index_update and index_object and object_index:
         # Get current attributes.
         # https://github.com/sqlalchemy/sqlalchemy/issues/6300
-        sql_stmt = select(IndexObjectAttribute)
-        sql_stmt = sql_stmt.distinct()
+        #sql_stmt = select(IndexObjectAttribute)
+        sql_stmt = delete(IndexObjectAttribute)
+        #sql_stmt = sql_stmt.distinct()
         sql_stmt = sql_stmt.where(IndexObjectAttribute.ioid == index_object.id)
-        result = list(session.execute(sql_stmt))
-        object_attributes = []
-        for x in result:
-            try:
-                x_name = x[3]
-            except IndexError:
-                continue
-            try:
-                x_value = x[4]
-            except IndexError:
-                continue
-            object_attributes.append([x_name, x_value])
-        # Delete orphan attributes.
-        for x in object_attributes:
-            if x in object_index:
-                continue
-            # Del attribute.
-            n = x[0]
-            v = x[1]
-            q = session.query(IndexObjectAttribute)
-            q = q.filter(IndexObjectAttribute.ioid == index_object.id)
-            q = q.filter(IndexObjectAttribute.name == n)
-            q = q.filter(IndexObjectAttribute.value == v)
-            a = q.first()
-            session.delete(a)
-            #local_object = session.merge(x)
-            #session.delete(local_object)
-        if autocommit:
-            session.commit()
+        #result = session.execute(sql_stmt)
+        session.execute(sql_stmt)
+        #object_attributes = []
+        #for x in result:
+        #    try:
+        #        x_name = x[3]
+        #    except IndexError:
+        #        continue
+        #    try:
+        #        x_value = x[4]
+        #    except IndexError:
+        #        continue
+        #    print("XX", x_name, x_value)
+        #    object_attributes.append([x_name, x_value])
+        ## Delete orphan attributes.
+        #for x in object_attributes:
+        #    if x in object_index:
+        #        continue
+        #    # Del attribute.
+        #    n = x[0]
+        #    v = x[1]
+        #    q = session.query(IndexObjectAttribute)
+        #    q = q.filter(IndexObjectAttribute.ioid == index_object.id)
+        #    q = q.filter(IndexObjectAttribute.name == n)
+        #    q = q.filter(IndexObjectAttribute.value == v)
+        #    a = q.first()
+        #    session.delete(a)
+        #    #local_object = session.merge(x)
+        #    #session.delete(local_object)
+        #if autocommit:
+        #    session.commit()
         # Add new attributes.
         for x in object_index:
-            if x in object_attributes:
-                continue
+            #if x in object_attributes:
+            #    continue
             # Add attribute.
             n = x[0]
             v = x[1]
@@ -2314,10 +2294,7 @@ def index_rebuild():
         except:
             msg = "Missing rebuild function for object type: %s" % object_type
             raise OTPmeException(msg)
-        if object_id.object_type in config.sqlite_objects:
-            config_file = os.path.join(config_dir, config.sqlite_config_file_name)
-        else:
-            config_file = os.path.join(config_dir, config.json_config_file_name)
+        config_file = os.path.join(config_dir, config.object_config_file_name)
         log_current_object.file_count += 1
         try:
             objects = all_objects[object_type]

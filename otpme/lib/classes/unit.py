@@ -598,7 +598,8 @@ def register_backend():
                             add_after=["site"],
                             sync_after=["site"],
                             object_cache=1024,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'site', 'rel_path'])
     # Register object to backend.
     class_getter = lambda: Unit
     backend.register_object_type(object_type="unit",
@@ -713,7 +714,7 @@ class Unit(OTPmeObject):
                 return True
             # Start thread that will print the message if needed.
             self._acl_msg = True
-            multiprocessing.start_thread(print_msg, ())
+            multiprocessing.start_thread("print_msg", print_msg)
 
         # Get members.
         members = self.get_members(return_type="instance")
@@ -1020,7 +1021,7 @@ class Unit(OTPmeObject):
 
         return self.delete(force=True, callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @run_pre_post_add_policies()
     def add(self, verify_acls=True, inherit_acls=True,
         verbose_level=0, callback=default_callback, **kwargs):
@@ -1094,7 +1095,7 @@ class Unit(OTPmeObject):
                                 verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def delete(self, force=False, run_policies=True,
         verbose_level=0, callback=default_callback,
         _caller="API", **kwargs):

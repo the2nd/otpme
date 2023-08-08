@@ -771,7 +771,8 @@ def register_backend():
                             add_after=["role"],
                             sync_after=["user", "token"],
                             object_cache=1024,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'site', 'name'])
     # Register object to backend.
     class_getter = lambda: AccessGroup
     backend.register_object_type(object_type="accessgroup",
@@ -820,12 +821,6 @@ class AccessGroup(OTPmeObject):
         # Set default unused session timeout.
         self.unused_session_timeout = 300
 
-        self.roles = []
-        self.tokens = []
-        self.token_options = {}
-        self.token_login_interfaces = {}
-        self.child_groups = []
-        self.child_sessions = []
         # Accessgroups should not inherit ACLs by default.
         self.acl_inheritance_enabled = False
         self.sessions_enabled = False
@@ -1717,7 +1712,7 @@ class AccessGroup(OTPmeObject):
         self.update_index("timeout_pass_on", self.timeout_pass_on)
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
         """ Rename accessgroup. """
@@ -1733,7 +1728,7 @@ class AccessGroup(OTPmeObject):
                         name=new_name)
         return self._rename(new_oid, callback=callback, _caller=_caller, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
     def add(self, uuid=None, verbose_level=0, callback=default_callback, **kwargs):
@@ -1756,7 +1751,7 @@ class AccessGroup(OTPmeObject):
         return OTPmeObject.add(self, verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def delete(self, force=False, run_policies=True, verify_acls=True,
         verbose_level=0, callback=default_callback,

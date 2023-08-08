@@ -5,8 +5,11 @@ import os
 import pwd
 import grp
 import stat
-import json
+import copy
+import time
+import ujson
 import fcntl
+import pprint
 import shutil
 from pathlib import Path
 
@@ -364,13 +367,20 @@ def remove_dir(path, recursive=False,
         os.rmdir(x)
         x = "/".join(x.split("/")[:-1])
 
-def read_file(path, read_mode="r"):
+def read_file(path, read_mode="r", compression=None):
     """ Atomic file read.. """
+    from otpme.lib import stuff
     # Get file real path to ensure working locking (e.g. on symlink).
     file_real_path = os.path.realpath(path)
     if not os.path.exists(file_real_path):
         msg = "No such file or directory: %s" % path
         raise FileNotFoundError(msg)
+    try:
+        _compression = stuff.get_compression_type(file_real_path)
+    except OTPmeException:
+        _compression = None
+    if _compression:
+        read_mode = "rb"
     # Get flock.
     fd = AtomicFileLock(path=file_real_path, mode=read_mode, read_lock=True)
     # Read file content.
@@ -379,11 +389,14 @@ def read_file(path, read_mode="r"):
     finally:
         fd.release_lock()
         fd.close()
+    if _compression:
+        file_content = stuff.decompress(file_content, compression=_compression)
     return file_content
 
 def create_file(path, content=None, user=None, group=True, mode=0o660,
-    user_acls=[], group_acls=[], write_mode="w", overwrite=True, lock=True):
+    user_acls=[], group_acls=[], write_mode="w", compression=None, lock=True):
     """ Create file with content and sane permissions. """
+    from otpme.lib import stuff
     if not user or not group:
         from otpme.lib import config
         user = config.user
@@ -395,6 +408,10 @@ def create_file(path, content=None, user=None, group=True, mode=0o660,
     # Make sure user/goup exists.
     check_user(user)
     check_group(group)
+
+    if compression:
+        write_mode = "wb"
+        content = stuff.compress(content, compression=compression)
 
     # Get file real path to ensure working locking (e.g. on symlink).
     file_real_path = os.path.realpath(path)
@@ -562,9 +579,6 @@ def set_fs_ownership(path, user, group=None, recursive=False):
     # Check if path is a directory.
     if os.path.isdir(path):
         for root, dirs, files in os.walk(path):
-            #print("root: %s" % root)
-            #print("dirs: %s" % dirs)
-            #print("files: %s" % files)
             # There is no need to differentiate between dirs and files so we
             # call it objects.
             objects = files
@@ -575,9 +589,6 @@ def set_fs_ownership(path, user, group=None, recursive=False):
 
             for object in objects:
                 object_path = os.path.join(root, object)
-                #print(object_path)
-                #print(uid)
-                #print(gid)
                 os.chown(object_path, uid, gid)
     else:
         # Set ownership of file.
@@ -646,449 +657,6 @@ def set_fs_permissions(path, mode, user_acls=[], group_acls=[], recursive=False)
             if apply_acls:
                 new_acl.applyto(path)
 
-def migrate_data_file(src_file, dst_file):
-    from otpme.lib import config
-    config_dir = os.path.dirname(src_file)
-    _lock = get_file_lock(config_dir)
-    try:
-        if src_file.endswith(".json"):
-            if not dst_file.endswith(".sqlite"):
-                msg = "Unknown file type to migrate: %s" % dst_file
-                raise OTPmeException(msg)
-            object_config = read_tinydb_file(src_file)
-            write_sqlite_file(filename=dst_file,
-                            object_config=object_config,
-                            user=config.user,
-                            group=config.group)
-            os.remove(src_file)
-        if src_file.endswith(".sqlite"):
-            if not dst_file.endswith(".json"):
-                msg = "Unknown file type to migrate: %s" % dst_file
-                raise OTPmeException(msg)
-            object_config = read_tinydb_file(src_file)
-            write_tinydb_file(filename=dst_file,
-                            object_config=object_config,
-                            user=config.user,
-                            group=config.group)
-            os.remove(src_file)
-    finally:
-        _lock.release_lock()
-
-def read_data_file(filename, *args, **kwargs):
-    if filename.endswith(".json"):
-        return read_tinydb_file(filename, *args, **kwargs)
-    return read_sqlite_file(filename, *args, **kwargs)
-
-def write_data_file(filename, *args, **kwargs):
-    if filename.endswith(".json"):
-        return write_tinydb_file(filename, *args, **kwargs)
-    return write_sqlite_file(filename, *args, **kwargs)
-
-def read_sqlite_file(filename, parameters=None):
-    """ Import bash style config file into dictionary. """
-    from sqlalchemy import Table
-    from sqlalchemy import select
-    from sqlalchemy import Column
-    from sqlalchemy import String
-    from sqlalchemy import Integer
-    from sqlalchemy import MetaData
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from sqlalchemy.orm import scoped_session
-
-    # Get file real path to ensure working locking (e.g. on symlink).
-    file_real_path = os.path.realpath(filename)
-    try:
-        if os.environ['OTPME_DEBUG_FILE_READ'] == "True":
-            print("READ: %s" % file_real_path)
-    except:
-        pass
-
-    if not os.path.exists(file_real_path):
-        msg = "No such file or directory: %s" % filename
-        raise OTPmeException(msg)
-
-    _lock = get_file_lock(file_real_path)
-    engine = create_engine('sqlite:///%s' % file_real_path)
-    meta = MetaData()
-
-    object_table = Table(
-       'object', meta,
-       Column('id', Integer, primary_key = True),
-       Column('attribute', String),
-       Column('value', String),
-    )
-    session_factory = sessionmaker(bind=engine)
-    Session = scoped_session(session_factory)
-    session = Session()
-    try:
-        if parameters:
-            object_config = {}
-            for attr in parameters:
-                sql_stmt = select(object_table)
-                sql_stmt = sql_stmt.where(object_table.c.attribute == attr)
-                result = session.execute(sql_stmt)
-                try:
-                    val = list(result)[0][2]
-                except IndexError:
-                    val = None
-                else:
-                    val = json.loads(val)
-                #print("VVVV", val)
-                object_config[attr] = val
-        else:
-            object_config = {}
-            sql_stmt = select(object_table)
-            result = list(session.execute(sql_stmt))
-            for x in result:
-                attr = x[1]
-                val = x[2]
-                val = json.loads(val)
-                #print("vvvv", val)
-                object_config[attr] = val
-    finally:
-        session.close()
-        engine.dispose()
-        _lock.release_lock()
-    return object_config
-
-def read_tinydb_file(filename, parameters=None):
-    """ Import bash style config file into dictionary. """
-    from tinydb import TinyDB
-    from tinydb.storages import JSONStorage
-    from tinydb.middlewares import CachingMiddleware
-    # Get file real path to ensure working locking (e.g. on symlink).
-    file_real_path = os.path.realpath(filename)
-    try:
-        if os.environ['OTPME_DEBUG_FILE_READ'] == "True":
-            print("READ: %s" % file_real_path)
-    except:
-        pass
-
-    if not os.path.exists(file_real_path):
-        msg = "No such file or directory: %s" % filename
-        raise OTPmeException(msg)
-
-    _lock = get_file_lock(file_real_path)
-    try:
-        db = TinyDB(file_real_path, sort_keys=True, indent=4,
-                storage=CachingMiddleware(JSONStorage))
-        if parameters:
-            object_config = {}
-            for attr in parameters:
-                try:
-                    val = db.get(doc_id=1)[attr]
-                except:
-                    val = None
-                object_config[attr] = val
-        else:
-            object_config = db.get(doc_id=1)
-        # Close DB.
-        db.close()
-    finally:
-        _lock.release_lock()
-    return object_config
-
-def write_sqlite_file(filename, object_config, full_data_update=None,
-    user=None, group=True, mode=0o660, user_acls=[], group_acls=[]):
-    """ Write dictionary to JSON config file. """
-    from sqlalchemy import Table
-    from sqlalchemy import select
-    #from sqlalchemy import insert
-    from sqlalchemy import update
-    from sqlalchemy import delete
-    from sqlalchemy import Column
-    from sqlalchemy import String
-    from sqlalchemy import Integer
-    from sqlalchemy import MetaData
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from sqlalchemy.orm import scoped_session
-    from sqlalchemy.exc import IntegrityError
-    from sqlalchemy.dialects.sqlite import insert
-
-    from otpme.lib import config
-    from otpme.lib import backend
-    #from otpme.lib.backends.file.models import JsonEncodedData
-
-    # Get file real path to ensure working locking (e.g. on symlink).
-    file_real_path = os.path.realpath(filename)
-
-    try:
-        if os.environ['OTPME_DEBUG_FILE_WRITE'] == "True":
-            print("WRITE: %s" % file_real_path)
-    except:
-        pass
-
-    if not isinstance(object_config, dict):
-        msg = "<object_config> must be dict not %s" % type(object_config)
-        raise OTPmeException(msg)
-
-    # Get (and remove) modified attributes information from object config.
-    try:
-        modified_attributes = object_config.pop('MODIFIED_ATTRIBUTES')
-    except:
-        modified_attributes = []
-    try:
-        deleted_attributes = object_config.pop('DELETED_ATTRIBUTES')
-    except:
-        deleted_attributes = []
-
-    _lock = get_file_lock(file_real_path)
-    engine = create_engine('sqlite:///%s' % file_real_path)
-    meta = MetaData()
-
-    object_table = Table(
-        'object', meta,
-        Column('id', Integer, primary_key=True),
-        Column('attribute', String, unique=True),
-        #Column('value', JsonEncodedData(4096)),
-        Column('value', String),
-    )
-    session_factory = sessionmaker(bind=engine)
-    Session = scoped_session(session_factory)
-    session = Session()
-    try:
-        if not os.path.exists(file_real_path):
-            meta.create_all(engine)
-            # Set ownership.
-            set_fs_ownership(path=file_real_path,
-                            user=user,
-                            group=group,
-                            recursive=False)
-            # Set permissions.
-            set_fs_permissions(path=file_real_path,
-                                mode=mode,
-                                user_acls=user_acls,
-                                group_acls=group_acls,
-                                recursive=False)
-
-        if os.path.exists(file_real_path):
-            if full_data_update is None:
-                full_data_update = False
-                # Check if a full data update is required.
-                try:
-                    old_checksum = object_config['OLD_CHECKSUM']
-                except KeyError:
-                    old_checksum = None
-                if old_checksum:
-                    sql_stmt = select(object_table)
-                    sql_stmt = sql_stmt.where(object_table.c.attribute == "CHECKSUM")
-                    result = session.execute(sql_stmt)
-                    try:
-                        current_checksum = list(result)[0][2]
-                        current_checksum = json.loads(current_checksum)
-                    except IndexError:
-                        current_checksum = None
-                    if current_checksum != old_checksum:
-                        full_data_update = True
-                        if current_checksum and old_checksum:
-                            object_uuid = object_config['UUID']
-                            object_id = backend.get_oid(object_uuid)
-                            if object_id:
-                                msg = ("Local object out of sync. Will do a full data "
-                                        "update: %s" % object_id)
-                                config.logger.info(msg)
-            # Open file/DB.
-            if full_data_update:
-                # Remove deleted attributes.
-                sql_stmt = select(object_table)
-                full_data = session.execute(sql_stmt)
-                for x in full_data:
-                    attr = x[1]
-                    if attr in object_config:
-                        continue
-                    sql_stmt = delete(object_table)
-                    sql_stmt = sql_stmt.where(object_table.c.attribute == attr)
-                    session.execute(sql_stmt)
-                # Add all attributes.
-                for attr in object_config:
-                    value = object_config[attr]
-                    value = json.dumps(value)
-                    sql_stmt = insert(object_table)
-                    sql_stmt = sql_stmt.values(attribute=attr, value=value)
-                    try:
-                        session.execute(sql_stmt)
-                    except IntegrityError:
-                        sql_stmt = update(object_table)
-                        sql_stmt = sql_stmt.values({"value": value})
-                        sql_stmt = sql_stmt.where(object_table.c.attribute == attr)
-                        session.execute(sql_stmt)
-            else:
-                if modified_attributes:
-                    for attr in modified_attributes:
-                        try:
-                            value = object_config[attr]
-                        except:
-                            msg = "Missing modified attribute: %s" % attr
-                            raise OTPmeException(msg)
-                        value = json.dumps(value)
-                        sql_stmt = insert(object_table)
-                        sql_stmt = sql_stmt.values(attribute=attr, value=value)
-                        try:
-                            session.execute(sql_stmt)
-                        except IntegrityError:
-                            sql_stmt = update(object_table)
-                            sql_stmt = sql_stmt.values({"value": value})
-                            sql_stmt = sql_stmt.where(object_table.c.attribute == attr)
-                            session.execute(sql_stmt)
-                else:
-                    for attr in object_config:
-                        value = object_config[attr]
-                        value = json.dumps(value)
-
-                        sql_stmt = insert(object_table)
-                        sql_stmt = sql_stmt.values(attribute=attr, value=value)
-                        try:
-                            session.execute(sql_stmt)
-                        except IntegrityError:
-                            sql_stmt = update(object_table)
-                            sql_stmt = sql_stmt.values({"value": value})
-                            sql_stmt = sql_stmt.where(object_table.c.attribute == attr)
-                            session.execute(sql_stmt)
-                for attr in deleted_attributes:
-                    sql_stmt = delete(object_table)
-                    sql_stmt = sql_stmt.where(object_table.c.attribute == attr)
-                    session.execute(sql_stmt)
-        else:
-            for attr in object_config:
-                value = object_config[attr]
-                value = json.dumps(value)
-                sql_stmt = insert(object_table)
-                sql_stmt = sql_stmt.values(attribute=attr, value=value)
-                session.execute(sql_stmt)
-        # Make sure data is written.
-        session.commit()
-    finally:
-        session.close()
-        engine.dispose()
-        _lock.release_lock()
-
-def write_tinydb_file(filename, object_config, full_data_update=None,
-    user=None, group=True, mode=0o660, user_acls=[], group_acls=[]):
-    """ Write dictionary to JSON config file. """
-    #from tinydb import Query
-    from tinydb import TinyDB
-    from tinydb.operations import delete
-    from tinydb.storages import JSONStorage
-    from tinydb.middlewares import CachingMiddleware
-    from otpme.lib import config
-    from otpme.lib import backend
-    # Get file real path to ensure working locking (e.g. on symlink).
-    file_real_path = os.path.realpath(filename)
-
-    try:
-        if os.environ['OTPME_DEBUG_FILE_WRITE'] == "True":
-            print("WRITE: %s" % file_real_path)
-    except:
-        pass
-
-    if not isinstance(object_config, dict):
-        msg = "<object_config> must be dict not %s" % type(object_config)
-        raise OTPmeException(msg)
-
-    # Get (and remove) modified attributes information from object config.
-    try:
-        modified_attributes = object_config.pop('MODIFIED_ATTRIBUTES')
-    except:
-        modified_attributes = []
-    try:
-        deleted_attributes = object_config.pop('DELETED_ATTRIBUTES')
-    except:
-        deleted_attributes = []
-
-    _lock = get_file_lock(file_real_path)
-    try:
-        db_exists = False
-        if os.path.exists(file_real_path):
-            # Open file/DB.
-            db = TinyDB(file_real_path, sort_keys=True, indent=4,
-                    storage=CachingMiddleware(JSONStorage))
-            full_data = db.get(doc_id=1)
-            if full_data:
-                db_exists = True
-        if db_exists:
-            if full_data_update is None:
-                full_data_update = False
-                # Check if a full data update is required.
-                try:
-                    old_checksum = object_config['OLD_CHECKSUM']
-                except KeyError:
-                    old_checksum = None
-                try:
-                    current_checksum = full_data['CHECKSUM']
-                except TypeError:
-                    current_checksum = None
-                #current_checksum = db.get(Query()['CHECKSUM'] != None)
-                if current_checksum != old_checksum:
-                    full_data_update = True
-                    if current_checksum and old_checksum:
-                        object_uuid = object_config['UUID']
-                        object_id = backend.get_oid(object_uuid)
-                        if object_id:
-                            msg = ("Local object out of sync. Will do a full data "
-                                    "update: %s" % object_id)
-                            config.logger.info(msg)
-            # Do full data update
-            if full_data_update:
-                # Remove deleted attributes.
-                for attr in full_data:
-                    if attr in object_config:
-                        continue
-                    db.update(delete(attr), doc_ids=[1])
-                # Add all attributes.
-                for attr in object_config:
-                    value = object_config[attr]
-                    try:
-                        db.update({attr:value}, doc_ids=[1])
-                    except json.decoder.JSONDecodeError:
-                        msg = ("Failed to update attribute: %s" % attr)
-                        raise OTPmeException(msg)
-            else:
-                if modified_attributes:
-                    for attr in modified_attributes:
-                        try:
-                            value = object_config[attr]
-                        except:
-                            msg = "Missing modified attribute: %s" % attr
-                            raise OTPmeException(msg)
-                        try:
-                            db.update({attr:value}, doc_ids=[1])
-                        except json.decoder.JSONDecodeError:
-                            msg = ("Failed to update attribute: %s" % attr)
-                            raise OTPmeException(msg)
-                else:
-                    for attr in object_config:
-                        value = object_config[attr]
-                        try:
-                            db.update({attr:value}, doc_ids=[1])
-                        except json.decoder.JSONDecodeError:
-                            msg = ("Failed to update attribute: %s" % attr)
-                            raise OTPmeException(msg)
-                for attr in deleted_attributes:
-                    # Set deleted values to None as there seems to be now way to
-                    # delete attribute from document.
-                    #db.update({attr:None}, doc_ids=[1])
-                    db.update(delete(attr), doc_ids=[1])
-        else:
-            try:
-                touch(path=file_real_path,
-                    user=user,
-                    group=group,
-                    mode=mode,
-                    user_acls=user_acls,
-                    group_acls=group_acls)
-            except Exception as e:
-                msg = (_("Error writing config file: %s") % e)
-                raise Exception(msg)
-            db = TinyDB(file_real_path, sort_keys=True, indent=4,
-                    storage=CachingMiddleware(JSONStorage))
-            db.insert(object_config)
-        # Make sure data is written.
-        db.close()
-    finally:
-        _lock.release_lock()
-
 def ensure_fs_permissions(directories=None, files=None,
     files_create=None, user=None, group=None):
     """
@@ -1129,3 +697,334 @@ def ensure_fs_permissions(directories=None, files=None,
             # Set ownership and permissions.
             set_fs_ownership(path=f, user=user, group=group)
             set_fs_permissions(path=f, mode=files_create[f])
+
+def read_data_file(filename, *args, **kwargs):
+    _file = JsonFile(filename)
+    return _file.read(*args, **kwargs)
+
+def write_data_file(filename, *args, **kwargs):
+    _file = JsonFile(filename)
+    return _file.write(*args, **kwargs)
+
+class JsonFile(object):
+    def __init__(self, file_path):
+        from otpme.lib import config
+        # Get file real path to ensure working locking (e.g. on symlink).
+        file_real_path = os.path.realpath(file_path)
+        self.file_path = file_real_path
+        self.logger = config.logger
+
+    def incremental_update(self, update_dict, action, key, dict_path, value_type, value):
+        if len(dict_path) > 1:
+            root_key = dict_path[0]
+            try:
+                current_dict = update_dict[root_key]
+            except KeyError:
+                current_dict = {}
+            new_dict = copy.deepcopy(current_dict)
+            _dict_dict = new_dict
+            counter = 0
+            for x_key in dict_path[1:]:
+                counter += 1
+                if counter == len(dict_path) - 1:
+                    if value_type == "dict":
+                        try:
+                            dict_val = _dict_dict[x_key]
+                        except KeyError:
+                            dict_val = {}
+                    if value_type == "list":
+                        try:
+                            dict_val = _dict_dict[x_key]
+                        except KeyError:
+                            dict_val = []
+                    _dict_dict[x_key] = dict_val
+                else:
+                    if x_key not in _dict_dict:
+                        _dict_dict[x_key] = {}
+                _dict_dict = _dict_dict[x_key]
+            if value_type == "list":
+                if action == "add":
+                    dict_val.append(value)
+                if action == "del":
+                    try:
+                        dict_val.remove(value)
+                    except  ValueError:
+                        pass
+            if value_type == "dict":
+                if action == "add":
+                    dict_val[key] = value
+                if action == "del":
+                    try:
+                        dict_val.pop(key)
+                    except KeyError:
+                        pass
+            value = new_dict
+        else:
+            if value_type == "dict":
+                root_key = dict_path[0]
+                try:
+                    current_dict = update_dict[root_key]
+                except KeyError:
+                    current_dict = {}
+                new_dict = copy.deepcopy(current_dict)
+                if action == "add":
+                    new_dict[key] = value
+                if action == "del":
+                    try:
+                        new_dict.pop(key)
+                    except KeyError:
+                        pass
+                value = new_dict
+            if value_type == "list":
+                root_key = dict_path[0]
+                try:
+                    current_list = update_dict[root_key]
+                except KeyError:
+                    current_list = []
+                if action == "add":
+                    current_list.append(value)
+                if action == "del":
+                    try:
+                        current_list.remove(value)
+                    except ValueError:
+                        pass
+                value = current_list
+        return value
+
+    def read_file(self):
+        try:
+            file_content = read_file(self.file_path, compression="auto")
+        except Exception as e:
+            msg = "Failed to read file: %s: %s" % (self.file_path, e)
+            self.logger.critical(msg)
+            raise
+        try:
+            object_config = ujson.loads(file_content)
+        except Exception as e:
+            msg = "Failed to load file: %s: %s" % (self.file_path, e)
+            self.logger.critical(msg)
+            raise
+        return object_config
+
+    def write_file(self, object_config):
+        file_content = ujson.dumps(object_config)
+        try:
+            create_file(path=self.file_path,
+                        content=file_content,
+                        compression="lz4")
+        except Exception as e:
+            msg = "Failed to write file: %s: %s" % (self.file_path, e)
+            self.logger.critical(msg)
+
+    def read(self, parameters=None):
+        """ Import bash style config file into dictionary. """
+        try:
+            if os.environ['OTPME_DEBUG_FILE_READ'] == "True":
+                print("READ: %s" % self.file_path)
+        except:
+            pass
+
+        if not os.path.exists(self.file_path):
+            msg = "No such file or directory: %s" % self.file_path
+            raise OTPmeException(msg)
+
+        _lock = get_file_lock(self.file_path, write=False)
+
+        try:
+            object_config = self.read_file()
+            if parameters:
+                for attr in dict(object_config):
+                    if attr in parameters:
+                        continue
+                    object_config.pop(attr)
+        finally:
+            _lock.release_lock()
+        return object_config
+
+    def write(self, object_config, full_data_update=None,
+        user=None, group=True, mode=0o660, user_acls=[], group_acls=[]):
+        """ Write dictionary to JSON config file. """
+        from otpme.lib import stuff
+        from otpme.lib import config
+
+        if user is None:
+            user = config.user
+
+        try:
+            if os.environ['OTPME_DEBUG_FILE_WRITE'] == "True":
+                print("WRITE: %s" % self.file_path)
+        except:
+            pass
+
+        if not isinstance(object_config, dict):
+            msg = "<object_config> must be dict not %s" % type(object_config)
+            raise OTPmeException(msg)
+
+        object_config = stuff.copy_object(object_config)
+
+        # Get (and remove) modified attributes information from object config.
+        try:
+            modified_attributes = object_config.pop('MODIFIED_ATTRIBUTES')
+        except KeyError:
+            modified_attributes = []
+        try:
+            deleted_attributes = object_config.pop('DELETED_ATTRIBUTES')
+        except KeyError:
+            deleted_attributes = []
+        try:
+            list_attributes = object_config['LIST_ATTRIBUTES']
+        except KeyError:
+            list_attributes = []
+        try:
+            dict_attributes = object_config['DICT_ATTRIBUTES']
+        except KeyError:
+            dict_attributes = []
+        try:
+            incremental_updates = object_config.pop('INCREMENTAL_UPDATES')
+        except KeyError:
+            incremental_updates = []
+        try:
+            modified_attributes.remove("INCREMENTAL_UPDATES")
+        except ValueError:
+            pass
+        try:
+            object_config.pop('INDEX_JOURNAL')
+        except KeyError:
+            pass
+        try:
+            modified_attributes.remove("INDEX_JOURNAL")
+        except ValueError:
+            pass
+
+        _lock = get_file_lock(self.file_path)
+
+        try:
+            new_db = False
+            if not os.path.exists(self.file_path):
+                new_db = True
+                touch(self.file_path,
+                        user=user,
+                        group=group,
+                        mode=mode,
+                        user_acls=user_acls,
+                        group_acls=group_acls)
+
+            if not new_db:
+                current_oc = self.read_file()
+                new_incr_id = None
+                if incremental_updates:
+                    # Generate increment ID.
+                    new_incr_id = ujson.dumps(incremental_updates)
+                    new_incr_id = stuff.gen_md5(new_incr_id)
+                    # Skip already written increment.
+                    try:
+                        increment_ids = current_oc["INCREMENT_IDS"]
+                    except KeyError:
+                        increment_ids = []
+                    increment_ids = sorted(increment_ids)
+                    for x in increment_ids:
+                        incr_id = x[1]
+                        if new_incr_id == incr_id:
+                            return
+
+                # FUCK
+                #full_data_update = True
+                if full_data_update is True:
+                    self.write_file(object_config)
+                    return
+
+                _modified_attributes = modified_attributes.copy()
+                for x in incremental_updates:
+                    attr = x[1]
+                    action = x[2]
+                    value_type = x[3]
+                    dict_path = x[4]
+                    if attr in list_attributes:
+                        value = x[5]
+                        try:
+                            current_list = current_oc[attr]
+                        except KeyError:
+                            current_list = []
+                        if action == "add":
+                            current_list.append(value)
+                        elif action == "del":
+                            try:
+                                current_list.remove(value)
+                            except ValueError:
+                                pass
+                        else:
+                            msg = "Unknown action: %s" % action
+                            raise OTPmeException(msg)
+                        current_oc[attr] = current_list
+                    if attr in dict_attributes:
+                        if value_type == "list":
+                            value = x[5]
+                            key = dict_path[-1]
+                        if value_type == "dict":
+                            key = x[5]
+                            value = x[6]
+                        try:
+                            current_dict = current_oc[attr]
+                        except KeyError:
+                            current_dict = {}
+                        if dict_path:
+                            value = self.incremental_update(current_dict,
+                                                            action,
+                                                            key,
+                                                            dict_path,
+                                                            value_type,
+                                                            value)
+                            action = "add"
+                            key = dict_path[0]
+                        if action == "add":
+                            current_dict[key] = value
+                        elif action == "del":
+                            try:
+                                current_dict.pop(key)
+                            except KeyError:
+                                pass
+                        else:
+                            msg = "Unknown action: %s" % action
+                            raise OTPmeException(msg)
+                        current_oc[attr] = current_dict
+                    try:
+                        _modified_attributes.remove(attr)
+                    except ValueError:
+                        pass
+                if modified_attributes:
+                    for attr in _modified_attributes:
+                        try:
+                            value = object_config[attr]
+                        except:
+                            msg = "Missing modified attribute: %s" % attr
+                            raise OTPmeException(msg)
+                        current_oc[attr] = value
+                else:
+                    for attr in object_config:
+                        value = object_config[attr]
+                        current_oc[attr] = value
+                for attr in deleted_attributes:
+                    current_oc.pop(attr)
+            else:
+                new_incr_id = None
+                increment_ids = []
+                # Set new increment ID.
+                current_oc = object_config
+
+            # Save increment ID.
+            if new_incr_id:
+                try:
+                    _increment_ids = current_oc['INCREMENT_IDS']
+                except KeyError:
+                    _increment_ids = []
+                for x in _increment_ids:
+                    if x in increment_ids:
+                        continue
+                    increment_ids.append(x)
+                increment_ids.append([time.time(), new_incr_id])
+                increment_ids = sorted(increment_ids)[-5:]
+                current_oc['INCREMENT_IDS'] = increment_ids
+            # Make sure data is written.
+            self.write_file(current_oc)
+        finally:
+            _lock.release_lock()

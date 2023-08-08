@@ -205,8 +205,6 @@ class DefaultrolesPolicy(Policy):
 
         self.object_types = ['realm', 'site', 'unit']
 
-        self.default_roles = []
-
         self._sub_sync_fields = {}
         #self._sub_sync_fields = {
         #            'host'  : {
@@ -244,30 +242,32 @@ class DefaultrolesPolicy(Policy):
     def handle_hook(self, hook_name=None, child_object=None,
         callback=default_callback, **kwargs):
         """ Handle policy hooks. """
-        if hook_name != "post_add_user":
+        if hook_name == "post_add_user":
+            # Handle default roles if user does have a default token.
+            if self.default_roles and child_object.default_token:
+                result = backend.search(object_type="token",
+                                        attribute="uuid",
+                                        value=child_object.default_token,
+                                        return_attributes=['rel_path'])
+                if result:
+                    default_token = result[0]
+                    for role_uuid in self.default_roles:
+                        role = backend.get_object(object_type="role",
+                                                    uuid=role_uuid)
+                        if not role:
+                            continue
+                        try:
+                            role.add_token(default_token, callback=callback)
+                        except AlreadyExists:
+                            continue
+                        except Exception as e:
+                            msg = ("Failed to add default token to role: %s: "
+                                    "%s: %s" % (role.name, default_token, e))
+                            config.raise_exception()
+                            return callback.error(msg)
+        else:
             msg = (_("Unknown policy hook: %s") % hook_name)
             return callback.error(msg, exception=self.policy_exception)
-        # Handle default roles if user does have a default token.
-        if self.default_roles and child_object.default_token:
-            result = backend.search(object_type="token",
-                                    attribute="uuid",
-                                    value=child_object.default_token,
-                                    return_attributes=['rel_path'])
-            if result:
-                default_token = result[0]
-                for role_uuid in self.default_roles:
-                    role = backend.get_object(object_type="role",
-                                                uuid=role_uuid)
-                    if not role:
-                        continue
-                    try:
-                        role.add_token(default_token, callback=callback)
-                    except AlreadyExists:
-                        continue
-                    except Exception as e:
-                        msg = ("Failed to add default token to role: %s: "
-                                "%s: %s" % (role.name, default_token, e))
-                        return callback.error(msg)
         return callback.ok()
 
     @check_acls(['add:default_role'])
@@ -342,7 +342,7 @@ class DefaultrolesPolicy(Policy):
 
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def _add(self, callback=default_callback, **kwargs):
         """ Add a policy. """
         return callback.ok()

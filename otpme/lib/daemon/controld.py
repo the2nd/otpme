@@ -275,11 +275,6 @@ class ControlDaemon(UnixDaemon):
         config.daemon_shutdown = True
         config.master_failover = True
 
-        while len(multiprocessing.cluster_writes) > 0:
-            msg = "Waiting for pending cluster writes..."
-            self.logger.info(msg)
-            time.sleep(1)
-
         # Do shutdown stuff only in daemon handler process.
         if not config.daemonize:
             if self.pid == os.getpid():
@@ -381,13 +376,18 @@ class ControlDaemon(UnixDaemon):
             msg = ("Failed to close shared bool: %s"
                 % config._site_init.name)
             self.logger.critical(msg)
+        #try:
+        #    multiprocessing.cluster_lock_event.unlink()
+        #except Exception as e:
+        #    msg = "Failed to remove cluster event: %s" % e
+        #    self.logger.critical(msg)
         try:
-            multiprocessing.cluster_lock_event.unlink()
+            multiprocessing.cluster_in_event.unlink()
         except Exception as e:
             msg = "Failed to remove cluster event: %s" % e
             self.logger.critical(msg)
         try:
-            multiprocessing.cluster_event.unlink()
+            multiprocessing.cluster_out_event.unlink()
         except Exception as e:
             msg = "Failed to remove cluster event: %s" % e
             self.logger.critical(msg)
@@ -524,8 +524,9 @@ class ControlDaemon(UnixDaemon):
         #            blacklist_methods=blacklist_methods,
         #            blacklist_functions=blacklist_functions)
 
-        multiprocessing.cluster_event = multiprocessing.Event(keep=True)
-        multiprocessing.cluster_lock_event = multiprocessing.Event(keep=True)
+        multiprocessing.cluster_in_event = multiprocessing.Event()
+        multiprocessing.cluster_out_event = multiprocessing.Event()
+        #multiprocessing.cluster_lock_event = multiprocessing.Event()
 
         daemon_shutdown = "otpme-daemon-shutdown"
         try:
@@ -624,6 +625,7 @@ class ControlDaemon(UnixDaemon):
         except Exception as e:
             msg = "Failed to enable cache: %s" % e
             self.logger.critical(msg)
+        config.pickle_cache_enabled = False
 
         # Init OTPme (e.g. get config.host_data).
         try:
@@ -815,8 +817,10 @@ class ControlDaemon(UnixDaemon):
                     msg = "Failed to configure floating IP: %s" % e
                     self.logger.critical(msg)
                     config.raise_exception()
+                self.comm_handler.send(sender, command="ip_configured")
             elif command == "deconfigure_floating_ip":
                 self.deconfigure_floating_ip()
+                self.comm_handler.send(sender, command="ip_deconfigured")
                 #self.need_restart = True
             elif command == "reload":
                 self._reload()

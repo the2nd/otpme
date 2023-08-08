@@ -5,6 +5,7 @@ import os
 import sys
 import copy
 import time
+import ujson
 import types
 import pprint
 import datetime
@@ -212,17 +213,23 @@ def run_pre_post_add_policies():
             except:
                 callback = default_callback
             try:
-                self._run_pre_add_policies(callback=callback)
-            except PolicyException as e:
-                msg = str(e)
-                return callback.error(msg)
-            result = f(self, *f_args, **f_kwargs)
-            if result is not False:
+                run_policies = f_kwargs['run_policies']
+            except:
+                run_policies = True
+            if run_policies:
                 try:
-                    self._run_post_add_policies(callback=callback)
+                    self._run_pre_add_policies(callback=callback)
                 except PolicyException as e:
                     msg = str(e)
                     return callback.error(msg)
+            result = f(self, *f_args, **f_kwargs)
+            if result is not False:
+                if run_policies:
+                    try:
+                        self._run_post_add_policies(callback=callback)
+                    except PolicyException as e:
+                        msg = str(e)
+                        return callback.error(msg)
             return result
         return wrapped
     return wrapper
@@ -424,8 +431,245 @@ def get_ldif(ldif, attributes=None, verify_acl_func=None,
 
     return result
 
+class IncrementaObject(object):
+    def set_normal_attrs(self, value):
+        if isinstance(value, IncrementalList):
+            normal_value = value.copy()
+        elif isinstance(value, IncrementalDict):
+            normal_value = value.copy()
+        else:
+            normal_value = value
+        return normal_value
+
+    def set_incremental_attrs(self, value, dict_path, _set=False):
+        if isinstance(value, list):
+            _list = value
+            if _set:
+                _list = []
+            inc_value = IncrementalList(data=_list,
+                                    key=self.key,
+                                    dict_path=dict_path,
+                                    incremental_data=self.incremental_data)
+            if _set:
+                inc_value.set(value)
+        elif isinstance(value, dict):
+            _dict = value
+            if _set:
+                _dict = {}
+            inc_value = IncrementalDict(data=_dict,
+                                    key=self.key,
+                                    dict_path=dict_path,
+                                    incremental_data=self.incremental_data)
+            if _set:
+                inc_value.set(value)
+        else:
+            inc_value = value
+        return inc_value
+
+class IncrementalDict(IncrementaObject):
+    """ Handle incremental updates of dict attribute. """
+    def __init__(self, data={}, key=None, dict_path=[], incremental_data=[]):
+        self.key = key
+        self.data = {}
+        self.type = "dict"
+        self.dict_path = dict_path
+        self.incremental_data = incremental_data
+        for x in data:
+            self.__setitem__(x, data[x])
+
+    @property
+    def modified(self):
+        for x in self.incremental_data:
+            if self.key not in x:
+                continue
+            return True
+        return False
+
+    def incremental_add(self, key, value):
+        if isinstance(value, IncrementalDict):
+            value = value.copy()
+        if isinstance(value, IncrementalList):
+            value = value.copy()
+        self.incremental_data.append((time.time(),
+                                    self.key,
+                                    'add',
+                                    self.type,
+                                    self.dict_path,
+                                    key, value))
+
+    def incremental_del(self, key, value):
+        if isinstance(value, IncrementalDict):
+            value = value.copy()
+        if isinstance(value, IncrementalList):
+            value = value.copy()
+        self.incremental_data.append((time.time(),
+                                    self.key,
+                                    'del',
+                                    self.type,
+                                    self.dict_path,
+                                    key, value))
+
+    def __getitem__(self, key):
+        key = str(key)
+        return self.data[key]
+
+    def copy(self):
+        dict_copy = {}
+        for x in self.data:
+            x_val = self.data[x]
+            if isinstance(x_val, IncrementalDict):
+                x_val = x_val.copy()
+            if isinstance(x_val, IncrementalList):
+                x_val = x_val.copy()
+            x_normal_value = self.set_normal_attrs(x_val)
+            dict_copy[x] = x_normal_value
+        return dict_copy
+
+    def __setitem__(self, key, value):
+        key = str(key)
+        dict_path = self.dict_path.copy()
+        dict_path.append(key)
+        inc_value = self.set_incremental_attrs(value, dict_path)
+        self.data[key] = inc_value
+        add_value  = True
+        if isinstance(value, list):
+            add_value = False
+        if isinstance(value, dict):
+            add_value = False
+        if not add_value:
+            return
+        self.incremental_add(key, value)
+
+    def __delitem__(self, key):
+        key = str(key)
+        del_val = self.data.pop(key)
+        self.incremental_del(key, del_val)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __iter__(self):
+        return iter(self.data)
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        _str = self.data.__str__()
+        return _str
+
+    def values(self):
+        return self.data.values()
+
+    def items(self):
+        return self.data.items()
+
+    def keys(self):
+        return self.data.keys()
+
+    def pop(self, key):
+        key = str(key)
+        del_val = self.data.pop(key)
+        self.incremental_del(key, del_val)
+        return del_val
+
+    def set(self, _dict):
+        self.data = {}
+        for key in _dict:
+            key = str(key)
+            val = _dict[key]
+            dict_path = self.dict_path.copy()
+            dict_path.append(key)
+            inc_value = self.set_incremental_attrs(val, dict_path, _set=True)
+            self.data[key] = inc_value
+
+class IncrementalList(list, IncrementaObject):
+    """ Handle incremental updates of list attribute. """
+    def __init__(self, data=[], key=None, dict_path=[], incremental_data=[]):
+        self.key = key
+        self.type = "list"
+        self.dict_path = dict_path
+        self.incremental_data = incremental_data
+        _list = []
+        if data is not None:
+            _list = data
+        for x in _list:
+            self.append(x)
+        #return super(IncrementalList, self).__init__(_list)
+
+    @property
+    def modified(self):
+        for x in self.incremental_data:
+            if self.key not in x:
+                continue
+            return True
+        return False
+
+    def incremental_add(self, item):
+        if isinstance(item, IncrementalDict):
+            item = item.copy()
+        if isinstance(item, IncrementalList):
+            item = item.copy()
+        self.incremental_data.append((time.time(),
+                                    self.key,
+                                    'add',
+                                    self.type,
+                                    self.dict_path,
+                                    item))
+
+    def incremental_del(self, item):
+        self.incremental_data.append((time.time(),
+                                    self.key,
+                                    'del',
+                                    self.type,
+                                    self.dict_path,
+                                    item))
+
+    def __setitem__(self, index, item):
+        self.incremental_add(item)
+        return super(IncrementalList, self).__setitem__(index, item)
+
+    def __delitem__(self, index):
+        del_item = self[index]
+        self.incremental_del(del_item)
+        return super(IncrementalList, self).__delitem__(index)
+
+    #def copy(self):
+    #    list_copy = super(IncrementalList, self).copy()
+    #    for x in list_copy:
+    #        if isinstance(x, IncrementalDict):
+    #            x = x.copy()
+    #        if isinstance(x, IncrementalList):
+    #            x = x.copy()
+    #        #x_normal_value = self.set_normal_attrs(x)
+    #        #dict_copy[x] = x_normal_value
+    #    return list_copy
+
+    def append(self, value):
+        self.incremental_add(value)
+        return super(IncrementalList, self).append(value)
+
+    def insert(self, index, value):
+        self.incremental_add(value)
+        return super(IncrementalList, self).insert(index, value)
+
+    def pop(self, index=-1):
+        del_item = super(IncrementalList, self).pop(index)
+        self.incremental_del(del_item)
+        return del_item
+
+    def remove(self, value):
+        self.incremental_del(value)
+        return super(IncrementalList, self).remove(value)
+
+    def set(self, _list):
+        super(IncrementalList, self).__init__(_list)
+
 class OTPmeLockObject(object):
     """ OTPme lock object. """
+    def __init__(self):
+        self.full_write_lock = False
+
     @property
     def _object_lock(self):
         try:
@@ -436,10 +680,12 @@ class OTPmeLockObject(object):
 
     def acquire_lock(self, lock_caller, write=False, recursive=False,
         skip_same_caller=False, timeout=None, reload_on_change=True,
-        _caller="API", callback=default_callback):
+        full=False, cluster=True, _caller="API", callback=default_callback):
         """ Acquire object lock. """
         if self.offline:
             return
+        if full:
+            self.full_write_lock = True
         # Acquire object lock. We use the object ID as lock ID to prevent
         # issues when adding a new object (e.g. new object has no UUID).
         if self._object_lock:
@@ -455,7 +701,7 @@ class OTPmeLockObject(object):
                                     lock_caller=lock_caller,
                                     write=write,
                                     timeout=timeout,
-                                    cluster=True,
+                                    cluster=cluster,
                                     callback=callback)
             except LockWaitTimeout:
                 raise
@@ -468,6 +714,14 @@ class OTPmeLockObject(object):
                     msg = "Object deleted while waiting for lock: %s" % self
                     self._object_lock.release_lock(lock_caller=lock_caller)
                     raise LockWaitAbort(msg)
+                if self.uuid:
+                    object_id = backend.get_oid(self.uuid,
+                                                instance=True,
+                                                object_type=self.type)
+                    if object_id != self.oid:
+                        msg = "Object renamed while waiting for lock: %s" % self
+                        self._object_lock.release_lock(lock_caller=lock_caller)
+                        raise LockWaitAbort(msg)
                 object_uuid = backend.get_uuid(self.oid)
                 if object_uuid != old_uuid:
                     msg = "Object re-created while waiting for lock: %s" % self
@@ -478,10 +732,10 @@ class OTPmeLockObject(object):
                     if not reload_on_change:
                         msg = "Object changed while waiting for lock: %s" % self
                         raise LockWaitAbort(msg)
-                    if self._modified:
-                        msg = "Will not auto-reload modified object: %s" % self
-                        raise LockWaitAbort(msg)
-                    self._load()
+                    #if self._modified:
+                    #    msg = "Will not auto-reload modified object: %s" % self
+                    #    raise LockWaitAbort(msg)
+                    #self._load()
             else:
                 if backend.object_exists(self.oid):
                     msg = "Object created while waiting for lock: %s" % self
@@ -492,13 +746,14 @@ class OTPmeLockObject(object):
         # object from being released before the transaction
         # finished.
         if not self.no_transaction:
-            transaction = backend.get_transaction()
-            if transaction:
-                # Add locked object to transaction.
-                transaction.cache_locked_object(self)
-                # Add transaction lock.
-                self._object_lock.acquire_lock(lock_caller=transaction.lock_caller,
-                                                    skip_same_caller=True)
+            if self.full_write_lock:
+                transaction = backend.get_transaction()
+                if transaction:
+                    # Add locked object to transaction.
+                    transaction.cache_locked_object(self)
+                    # Add transaction lock.
+                    self._object_lock.acquire_lock(lock_caller=transaction.lock_caller,
+                                                        skip_same_caller=True)
 
     def release_lock(self, lock_caller=None,
         recursive=False, force=False, callback=None):
@@ -544,10 +799,13 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.pickable = True
         self.cache_expire = 30
         self.sub_type = None
-        self.index = []
+        #self.index = []
         self.index_journal = []
         self.index_journal_id = None
-        self.index_journal_archive = {}
+        #self.index_journal_archive = {}
+        self.incremental_updates = []
+        self.list_attributes = []
+        self.dict_attributes = []
         self.template_name = None
         self.template_object = False
         self.handle_key_loading = False
@@ -569,12 +827,130 @@ class OTPmeBaseObject(OTPmeLockObject):
         self._sub_sync_fields = {}
         self._base_sync_fields = {}
         self.object_config = {}
-        self.old_checksum = None
         self.no_transaction = no_transaction
         self.kwargs_object_config = object_config
         # Object version.
         self.version = 1
-        #super(OTPmeBaseObject, self).__init__()
+        self.add_properties()
+        super(OTPmeBaseObject, self).__init__()
+
+    def __setstate__(self, _dict):
+        self.__dict__ = _dict
+        self.add_properties()
+
+    def add_properties(self):
+        # Get object config.
+        base_config = self._get_base_config()
+        for x in base_config:
+            x_type = base_config[x]['type']
+            try:
+                x_incremental = base_config[x]['incremental']
+            except KeyError:
+                x_incremental = True
+            if not x_incremental:
+                continue
+            x_var_name = base_config[x]['var_name']
+            if x_type == dict:
+                prop_getter = self.get_dict_prop_getter(x)
+                prop_setter = self.get_dict_prop_setter(x)
+                prop = property(prop_getter, prop_setter, None, "Dict property")
+                setattr(self.__class__, x_var_name, prop)
+                if x not in self.dict_attributes:
+                    self.dict_attributes.append(x)
+            if x_type == list:
+                prop_getter = self.get_list_prop_getter(x)
+                prop_setter = self.get_list_prop_setter(x)
+                prop = property(prop_getter, prop_setter, None, "List property")
+                setattr(self.__class__, x_var_name, prop)
+                if x not in self.list_attributes:
+                    self.list_attributes.append(x)
+
+        # Get object config from child class.
+        object_config = self._get_object_config()
+        for x in object_config:
+            x_type = object_config[x]['type']
+            try:
+                x_incremental = object_config[x]['incremental']
+            except KeyError:
+                x_incremental = True
+            if not x_incremental:
+                continue
+            x_var_name = object_config[x]['var_name']
+            if x_type == dict:
+                prop_getter = self.get_dict_prop_getter(x)
+                prop_setter = self.get_dict_prop_setter(x)
+                prop = property(prop_getter, prop_setter, None, "Dict property")
+                setattr(self.__class__, x_var_name, prop)
+                if x not in self.dict_attributes:
+                    self.dict_attributes.append(x)
+            if x_type == list:
+                prop_getter = self.get_list_prop_getter(x)
+                prop_setter = self.get_list_prop_setter(x)
+                prop = property(prop_getter, prop_setter, None, "List property")
+                setattr(self.__class__, x_var_name, prop)
+                if x not in self.list_attributes:
+                    self.list_attributes.append(x)
+
+    def get_list_prop_getter(self, attr):
+        def prop_getter(self):
+            try:
+                x_attr = getattr(self, attr)
+            except AttributeError:
+                x_attr = None
+            if x_attr:
+                return x_attr
+            x_attr = IncrementalList(data=[],
+                                    key=attr,
+                                    incremental_data=self.incremental_updates)
+            setattr(self, attr, x_attr)
+            return x_attr
+        return prop_getter
+
+    def get_list_prop_setter(self, attr):
+        def prop_setter(self, _list):
+            try:
+                cur_attr = getattr(self, attr)
+            except AttributeError:
+                cur_attr = None
+            if cur_attr:
+                for x in cur_attr:
+                    cur_attr.incremental_del(x)
+            x_attr = IncrementalList(data=_list,
+                                    key=attr,
+                                    incremental_data=self.incremental_updates)
+            setattr(self, attr, x_attr)
+        return prop_setter
+
+    def get_dict_prop_getter(self, attr):
+        def prop_getter(self):
+            try:
+                x_attr = getattr(self, attr)
+            except AttributeError:
+                x_attr = None
+            if x_attr:
+                return x_attr
+            x_attr = IncrementalDict(data={},
+                                    key=attr,
+                                    incremental_data=self.incremental_updates)
+            setattr(self, attr, x_attr)
+            return x_attr
+        return prop_getter
+
+    def get_dict_prop_setter(self, attr):
+        def prop_setter(self, _dict):
+            try:
+                cur_attr = getattr(self, attr)
+            except AttributeError:
+                cur_attr = None
+            x_attr = IncrementalDict(data=_dict,
+                                    key=attr,
+                                    incremental_data=self.incremental_updates)
+            if cur_attr:
+                for k in cur_attr:
+                    v = cur_attr[k]
+                    x_attr.incremental_del(k, v)
+            setattr(self, attr, x_attr)
+        return prop_setter
 
     def __repr__(self):
         # We need a string when object is used as dict key!
@@ -613,6 +989,12 @@ class OTPmeBaseObject(OTPmeLockObject):
 
     def is_template(self):
         return self.template_object
+
+    def reset_modified(self):
+        self._modified = False
+        self.full_write_lock = False
+        self._last_modified_written = False
+        self.object_config.reset_modified()
 
     @property
     def sync_fields(self):
@@ -686,15 +1068,7 @@ class OTPmeBaseObject(OTPmeLockObject):
     def cache_expire_time(self):
         if self.is_special_object():
             return
-        if self.size > 256000:
-            cache_expire = self.cache_expire * 2
-        elif self.size > 512000:
-            cache_expire = self.cache_expire * 4
-        elif self.size > 1024000:
-            cache_expire = self.cache_expire * 8
-        else:
-            cache_expire = self.cache_expire
-        return cache_expire
+        return self.cache_expire
 
     def _get_object_config(self):
         """ Should be overridden by child class. """
@@ -739,7 +1113,9 @@ class OTPmeBaseObject(OTPmeLockObject):
         # Make sure our object config is up-to-date.
         #self.update_object_config()
         # Get a copy of our object config.
-        sync_config = self.object_config.copy()
+        #sync_config = self.object_config.copy()
+        sync_config = backend.read_config(self.oid)
+        sync_config = sync_config.copy()
 
         if peer.type != "node":
             if not peer.type in self.sync_fields:
@@ -1014,13 +1390,6 @@ class OTPmeBaseObject(OTPmeLockObject):
         # Set new object config.
         self.object_config = object_config
 
-        # Set old checksum. Used in backend to decide
-        # if a full data update is required.
-        if not self.old_checksum:
-            try:
-                self.old_checksum = self.object_config['CHECKSUM']
-            except KeyError:
-                pass
         return True
 
     def _set_variables(self):
@@ -1099,6 +1468,16 @@ class OTPmeBaseObject(OTPmeLockObject):
                     val = x()
                 else:
                     val = x
+                if isinstance(val, IncrementalDict):
+                    if not val.modified:
+                        return
+                    #print("IIIIIIIIIIIIIIIIIIIIIIIII", self, id(self), var_name, self.incremental_updates)
+                    val = val.copy()
+                if isinstance(val, IncrementalList):
+                    if not val.modified:
+                        return
+                    #print("iiiiiiiiiiiiiiiiiiiiiii", self, id(self), var_name, self.incremental_updates)
+                    val = val.copy()
         else:
             try:
                 val = self.object_config.get(attribute, no_headers=True)
@@ -1110,9 +1489,9 @@ class OTPmeBaseObject(OTPmeLockObject):
                 raise
 
         # Make sure we use a copy of the value.
-        #val = copy.deepcopy(val)
         try:
             val = stuff.copy_object(val)
+            #val = copy.deepcopy(val)
         except TypeError as e:
             msg = "Failed to copy attribute value: %s" % attribute
             logger.critical(msg)
@@ -1224,12 +1603,14 @@ class OTPmeBaseObject(OTPmeLockObject):
                 if type_wanted is dict:
                     val = {}
 
+            # Get copy of value.
+            val = stuff.copy_object(val)
+            #val = copy.deepcopy(val)
+
             # Encode val as JSON.
             if encode_as_json:
                 val = json.encode(val)
 
-            # Get copy of value.
-            val = stuff.copy_object(val)
             # Set object config attribute.
             self.object_config.add(attribute, val,
                                 compression=compression,
@@ -1295,7 +1676,14 @@ class OTPmeBaseObject(OTPmeLockObject):
                 if type_wanted is dict:
                     val = {}
             if has_attr and not is_method:
-                setattr(self, var_name, val)
+                attr = getattr(self, var_name)
+                attr_type = type(attr)
+                if attr_type == IncrementalList:
+                    attr.set(val)
+                elif attr_type == IncrementalDict:
+                    attr.set(val)
+                else:
+                    setattr(self, var_name, val)
 
     def update_object_config(self):
         """ Update object config. """
@@ -1361,6 +1749,16 @@ class OTPmeBaseObject(OTPmeLockObject):
         # Update object config from variables.
         self.update_object_config()
 
+        # Add incremental update stuff.
+        self.object_config['INDEX_JOURNAL'] = index_journal
+        self.object_config['LIST_ATTRIBUTES'] = self.list_attributes
+        self.object_config['DICT_ATTRIBUTES'] = self.dict_attributes
+        self.object_config['INCREMENTAL_UPDATES'] = list(self.incremental_updates)
+
+        if self.incremental_updates:
+            # Clear incremental journal.
+            self.incremental_updates.clear()
+
         # No need to write unmodified object.
         if not self.object_config.modified:
             return
@@ -1377,9 +1775,6 @@ class OTPmeBaseObject(OTPmeLockObject):
                 pass
         elif not backend.is_available():
             raise BackendUnavailable("Backend not available.")
-
-        if self.old_checksum is not None:
-            self.object_config['OLD_CHECKSUM'] = self.old_checksum
 
         # Try to write object config to backend.
         try:
@@ -1486,8 +1881,11 @@ class OTPmeBaseObject(OTPmeLockObject):
     def delete(self, force=False, verbose_level=0,
         callback=default_callback, **kwargs):
         """ Delete object from backend. """
+        msg = "Deleting object: %s" % self.oid
+        logger.debug(msg)
         # Make sure this object will not be written on cache.flush().
         self._modified = False
+        cache.remove_modified_object(self.oid)
         # Delete object.
         try:
             backend.delete_object(object_id=self.oid,
@@ -1567,21 +1965,21 @@ class OTPmeObject(OTPmeBaseObject):
         self.access_group = None
         self.path = None
         self.rel_path = None
-        self.acls = []
+        #self.acls = []
         self._enabled = False
         self.acl_inheritance_enabled = None
-        self.ldif = {}
-        self.ldif_attributes = []
-        self.object_classes = []
-        self.extensions = []
+        #self.ldif = {}
+        #self.ldif_attributes = []
+        #self.object_classes = []
+        #self.extensions = []
         self._extensions = {}
-        self.extension_attributes = {}
-        self.policies = []
-        self.policy_options = {}
-        self.tokens = None
+        #self._extension_attributes = {}
+        #self.policies = []
+        #self.policy_options = {}
+        #self.tokens = None
         self.token_owner = None
-        self.roles = None
-        self.sync_users = None
+        #self.roles = None
+        #self.sync_users = None
         self.description = ""
         self.secret = None
         self.secret_format_regex = None
@@ -1597,7 +1995,7 @@ class OTPmeObject(OTPmeBaseObject):
         self.auto_disable_start_time = 0.0
 
         # Config params of this object.
-        self._config = {}
+        #self.config_params = {}
 
         self._base_sync_fields = {
                     'host'  : {
@@ -1877,6 +2275,7 @@ class OTPmeObject(OTPmeBaseObject):
                 logger.critical(msg, exc_info=True)
                 raise
 
+
         if self.offline:
             return True
 
@@ -1953,7 +2352,7 @@ class OTPmeObject(OTPmeBaseObject):
         parent_object = self
         while True:
             try:
-                value = parent_object._config[parameter]
+                value = parent_object.config_params[parameter]
             except:
                 value = None
 
@@ -1985,7 +2384,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Delete config parameter.
         if value is None:
-            self._config.pop(parameter)
+            self.config_params.pop(parameter)
             config_cache.invalidate()
             return self._cache(callback=callback)
 
@@ -1999,7 +2398,7 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = "Invalid value: %s: %s" % (parameter, value)
                 return callback.error(msg)
 
-        self._config[parameter] = value
+        self.config_params[parameter] = value
 
         config_cache.invalidate()
 
@@ -2047,6 +2446,7 @@ class OTPmeObject(OTPmeBaseObject):
             'AUTO_DISABLE_START_TIME'   : {
                                             'var_name'      : 'auto_disable_start_time',
                                             'type'          : float,
+                                            'force_type'    : True,
                                             'required'      : False,
                                         },
 
@@ -2126,7 +2526,7 @@ class OTPmeObject(OTPmeBaseObject):
                                         },
 
             'CONFIG_PARAMS'             : {
-                                            'var_name'      : '_config',
+                                            'var_name'      : 'config_params',
                                             'type'          : dict,
                                             'required'      : False,
                                         },
@@ -2328,6 +2728,14 @@ class OTPmeObject(OTPmeBaseObject):
         auto_revoke = self.get_config_parameter("auto_revoke")
         return auto_revoke
 
+    def acquire_cached_lock(self, callback=default_callback):
+        """ Acquire cached lock. """
+        self.acquire_lock(lock_caller="cached",
+                        skip_same_caller=True,
+                        callback=callback)
+        # Add object to callback (used after job has finished).
+        callback.add_locked_object(self)
+
     def _cache(self, callback=default_callback):
         """ Mark object changes to be written on next write. """
         # Mark object as modified.
@@ -2344,9 +2752,8 @@ class OTPmeObject(OTPmeBaseObject):
             if transaction:
                 transaction.cache_modified_object(self)
         # Ensure object keeps locked after method call (object_lock decorator!).
-        self.acquire_lock(lock_caller="cached",
-                        skip_same_caller=True,
-                        callback=callback)
+        if self.full_write_lock:
+            self.acquire_cached_lock(callback=callback)
         return callback.ok()
 
     @object_lock()
@@ -2374,7 +2781,7 @@ class OTPmeObject(OTPmeBaseObject):
             # Update last modified timestamp.
             self.update_last_modified()
             # Update extensions.
-            self._update_extensions("update_modified_timestamp",
+            self.update_extensions("update_modified_timestamp",
                                     callback=callback)
 
         # Call base class write method.
@@ -2399,7 +2806,8 @@ class OTPmeObject(OTPmeBaseObject):
         # Release cache lock.
         if self._cached:
             self._cached = False
-            self.release_lock(lock_caller="cached", callback=callback)
+            if self.full_write_lock:
+                self.release_lock(lock_caller="cached", callback=callback)
 
         # Handle modified flags.
         if self._modified:
@@ -2441,6 +2849,7 @@ class OTPmeObject(OTPmeBaseObject):
             enc_key = x['key']
             key_salt = x['salt']
 
+        # Get current object config from backend.
         object_config = backend.read_config(self.oid)
         object_config['OID'] = self.oid.full_oid
         if key_salt:
@@ -2452,7 +2861,7 @@ class OTPmeObject(OTPmeBaseObject):
                                 encrypted=False)
         encrypted_object_config = object_config.encrypt(enc_key, fake=fake)
         # Encode object config.
-        config_string = json.encode(encrypted_object_config, indent=4, sort_keys=True)
+        config_string = ujson.dumps(encrypted_object_config, indent=4, sort_keys=True)
         return callback.ok(config_string)
 
     def get_members(self, **kwargs):
@@ -2621,14 +3030,16 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    @object_lock()
-    @backend.transaction
-    def update_extensions(self, hook, callback=default_callback, **kwargs):
-        """ Make sure object is written. """
-        self._write(callback=callback)
-        return self._update_extensions(hook, callback=callback, **kwargs)
+    ##@backend.transaction
+    #def update_extensions(self, hook, write=True,
+    #    callback=default_callback, **kwargs):
+    #    """ Make sure object is written. """
+    #    if write:
+    #        self._write(callback=callback)
+    #    return self._update_extensions(hook, callback=callback, **kwargs)
 
-    def _update_extensions(self, hook, extensions=None,
+    #@object_lock()
+    def update_extensions(self, hook, extensions=None,
         fail_on_unknown_hook=False, **kwargs):
         """ Update OTPme extensions. """
         # Get callback.
@@ -2704,37 +3115,42 @@ class OTPmeObject(OTPmeBaseObject):
             also_update[extension.name] = update_childs
 
         # Update extensions of this object.
-        update_status = True
-        for x in _extensions:
-            try:
-                extension = self._extensions[x]
-            except:
-                msg = ("Cannot update unknown extension: %s: %s"
-                        % (self.oid, x))
-                return callback.error(msg)
-            # Get hook.
-            extension_hook = extension.get_hook(self, hook, **kwargs)
-            if not extension_hook:
-                if fail_on_unknown_hook:
-                    msg = ("Cannot update unknown hook: %s: %s (%s)"
-                            % (self.oid, hook, extension.name))
+        self.acquire_lock(lock_caller="update_extensions")
+        try:
+            update_status = True
+            for x in _extensions:
+                try:
+                    extension = self._extensions[x]
+                except:
+                    msg = ("Cannot update unknown extension: %s: %s"
+                            % (self.oid, x))
                     return callback.error(msg)
-                continue
-            # Logging.
-            msg = ("Updating extension: %s: %s (%s)"
-                    % (self.oid, extension.name, hook))
-            if config.debug_level() > 3:
-                logger.debug(msg)
-            if verbose_level > 2:
-                callback.send(msg)
-            # Run extension hook.
-            try:
-                update_status = extension_hook(self, **kwargs)
-            except Exception as e:
-                msg = ("Failed to run extension hook: %s: %s: %s"
-                    % (extension.name, hook, e))
-                logger.warning(msg)
-                config.raise_exception()
+                # Get hook.
+                extension_hook = extension.get_hook(self, hook, **kwargs)
+                if not extension_hook:
+                    if fail_on_unknown_hook:
+                        msg = ("Cannot update unknown hook: %s: %s (%s)"
+                                % (self.oid, hook, extension.name))
+                        return callback.error(msg)
+                    continue
+                # Logging.
+                msg = ("Updating extension: %s: %s (%s)"
+                        % (self.oid, extension.name, hook))
+                if config.debug_level() > 3:
+                    logger.debug(msg)
+                if verbose_level > 2:
+                    callback.send(msg)
+                # Run extension hook.
+                try:
+                    update_status = extension_hook(self, **kwargs)
+                except Exception as e:
+                    msg = ("Failed to run extension hook: %s: %s: %s"
+                        % (extension.name, hook, e))
+                    logger.warning(msg)
+                    config.raise_exception()
+        finally:
+            self.release_lock(lock_caller="update_extensions")
+
         # Update child objects.
         update_childs = {}
         updated_childs = []
@@ -2744,10 +3160,13 @@ class OTPmeObject(OTPmeBaseObject):
                 x_child = c[0]
                 x_hook = c[1]
                 x_result, \
-                x_childs = x_child._update_extensions(hook=x_hook, **kwargs)
+                x_childs = x_child.update_extensions(hook=x_hook, **kwargs)
                 if x_result is None:
                     continue
                 updated_childs.append(x_child.oid)
+
+        self._cache(callback=callback)
+
         return update_status, updated_childs
 
     def _add_extension_attribute(self, extension, attribute,
@@ -2782,7 +3201,7 @@ class OTPmeObject(OTPmeBaseObject):
                 self.extension_attributes[extension].pop(attribute)
             except KeyError:
                 pass
-            return
+            return self._cache(callback=callback)
         try:
             self.extension_attributes[extension][attribute].pop(value)
         except:
@@ -3006,10 +3425,6 @@ class OTPmeObject(OTPmeBaseObject):
         # Update index.
         self.add_index('role', role.uuid)
 
-        # Update extensions.
-        self.update_extensions("update_members",
-                            verbose_level=verbose_level,
-                            callback=callback)
         # Clear cache.
         assigned_role_cache.invalidate()
 
@@ -3075,10 +3490,6 @@ class OTPmeObject(OTPmeBaseObject):
         # Update index.
         self.del_index('role', role_uuid)
 
-        # Update extensions.
-        self.update_extensions("update_members",
-                            verbose_level=verbose_level,
-                            callback=callback)
         # Clear cache.
         assigned_role_cache.invalidate()
 
@@ -3201,9 +3612,6 @@ class OTPmeObject(OTPmeBaseObject):
         callback.send(msg)
 
         if self.type == "role":
-            msg = (_("WARNING: Please make sure token ACLs do not allow any "
-                    "privilege escalation when adding a token to a role!"))
-            callback.send(msg)
             # Trigger ACL cache clearing.
             cache.clear_acl_cache(token_uuid=token.uuid)
 
@@ -3349,10 +3757,6 @@ class OTPmeObject(OTPmeBaseObject):
         if login_interfaces:
             self.token_login_interfaces[token.uuid] = login_interfaces
 
-        # Update extensions.
-        self.update_extensions("update_members",
-                            verbose_level=verbose_level,
-                            callback=callback)
         # Clear cache.
         assigned_token_cache.invalidate()
 
@@ -3448,10 +3852,6 @@ class OTPmeObject(OTPmeBaseObject):
         # Update index.
         self.del_index('token', token.uuid)
 
-        # Update extensions.
-        self.update_extensions("update_members",
-                            verbose_level=verbose_level,
-                            callback=callback)
         # Clear cache.
         assigned_token_cache.invalidate()
 
@@ -3606,7 +4006,7 @@ class OTPmeObject(OTPmeBaseObject):
         if policy_types is None:
             policy_types = []
         if policy_type is not None:
-            if not policy_type in policy_types:
+            if policy_type not in policy_types:
                 policy_types.append(policy_type)
 
         search_result = []
@@ -3676,13 +4076,17 @@ class OTPmeObject(OTPmeBaseObject):
                     continue
 
                 if return_type == "uuid":
-                    result.append(policy.uuid)
+                    if policy.uuid not in result:
+                        result.append(policy.uuid)
                 elif return_type == "full_oid":
-                    result.append(policy.oid.full_oid)
+                    if policy.oid.full_oid not in result:
+                        result.append(policy.oid.full_oid)
                 elif return_type == "name":
-                    result.append(policy.name)
+                    if policy.name not in result:
+                        result.append(policy.name)
                 elif return_type == "instance" and _caller == "API":
-                    result.append(policy)
+                    if policy not in result:
+                        result.append(policy)
                 else:
                     msg = (_("Unknown return type: %s") % return_type)
                     return callback.stop(msg)
@@ -4417,9 +4821,7 @@ class OTPmeObject(OTPmeBaseObject):
             # Update index.
             ldif_attr = "ldif:%s" % a
             self.del_index(ldif_attr, v)
-            if attr_values:
-                self.ldif[a] = attr_values
-            else:
+            if not attr_values:
                 self.ldif.pop(a)
 
         self.del_ldif_attributes(ldif)
@@ -4431,8 +4833,9 @@ class OTPmeObject(OTPmeBaseObject):
         """ Add LDIF attributes to object. """
         for x in ldif:
             a = x[0]
-            if not a in self.ldif_attributes:
-                self.ldif_attributes.append(a)
+            if a in self.ldif_attributes:
+                continue
+            self.ldif_attributes.append(a)
         ldif_cache.invalidate()
         ldap_search_cache.invalidate()
 
@@ -4440,8 +4843,9 @@ class OTPmeObject(OTPmeBaseObject):
         """ Add LDIF attributes to object. """
         for x in ldif:
             a = x[0]
-            if a in self.ldif_attributes:
-                self.ldif_attributes.remove(a)
+            if a not in self.ldif_attributes:
+                continue
+            self.ldif_attributes.remove(a)
         ldif_cache.invalidate()
         ldap_search_cache.invalidate()
 
@@ -5417,7 +5821,7 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @check_acls(acls=['edit:secret'])
-    @object_lock()
+    @object_lock(full_lock=True)
     def change_secret(self, auto_secret=False, secret=False,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
@@ -5553,7 +5957,7 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(cert_chain)
 
     @check_acls(acls=['move'])
-    @object_lock()
+    @object_lock(full_lock=True)
     # Besides we dont need a transaction for object moves it keeps object
     # locks longer than needed and slows down other jobs while moving.
     #@backend.transaction
@@ -5581,11 +5985,12 @@ class OTPmeObject(OTPmeBaseObject):
             msg = "Invalid unit: %s" % e
             return callback.error(msg)
 
+        if not _new_unit.exists():
+            msg = ("Unknown unit: %s: %s" % (self, new_unit))
+            return callback.error(msg)
+
         _new_unit.acquire_lock(lock_caller=lock_caller)
         try:
-            if not _new_unit.exists():
-                msg = ("Unknown unit: %s: %s" % (self, new_unit))
-                return callback.error(msg)
 
             if _new_unit.rel_path == self.unit:
                 object_type = "%s%s" % (self.type[0].upper(), self.type[1:])
@@ -5746,7 +6151,7 @@ class OTPmeObject(OTPmeBaseObject):
         # Write object as soon as possible to release lock.
         return self._write(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def change_script(self, script_var, script_options_var,
         script=None, script_options=None, callback=default_callback, **kwargs):
         """ Change the given script and its options. """
@@ -5861,7 +6266,7 @@ class OTPmeObject(OTPmeBaseObject):
         default_tags.append(type_tag)
         return default_tags
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def resign(self, force=False, run_policies=False, verbose_level=0,
         callback=default_callback, _caller="API", **kwargs):
         """ Resign all signatures of the current auth user.. """
@@ -5899,7 +6304,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         return callback.ok()
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def sign(self, tags=None, sign_ref=None, force=False, run_policies=False,
         callback=default_callback, _caller="API", **kwargs):
         """ Sign the given object. """
@@ -6615,7 +7020,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         return callback.ok()
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @load_object(force=False)
     def add(self, creator=None, resolver=None, extensions=[], enabled=True,
         default_attributes={}, inherit_acls=True, template=None,
@@ -6713,7 +7118,7 @@ class OTPmeObject(OTPmeBaseObject):
                                 callback=callback,
                                 verbose_level=verbose_level)
             except Exception as e:
-                config.raise_exception()
+                #config.raise_exception()
                 # Enable callback to get error to the client.
                 callback.enable()
                 return callback.error(str(e))
@@ -6769,9 +7174,9 @@ class OTPmeObject(OTPmeBaseObject):
         add_result = super(OTPmeObject, self).add(verbose_level=verbose_level,
                                                     callback=callback,
                                                     **kwargs)
-        #if run_policies:
-        #    self._run_post_add_policies(callback=callback, _caller=_caller,
-        #                                verbose_level=verbose_level)
+        if run_policies:
+            self._run_post_add_policies(callback=callback, _caller=_caller,
+                                        verbose_level=verbose_level)
         # Set enabled status.
         if enabled and not internal_user:
             self.enable(force=True,
@@ -6830,7 +7235,7 @@ class OTPmeObject(OTPmeBaseObject):
                                         _caller=_caller)
 
     @check_acls(acls=['rename:object'])
-    @object_lock(recursive=True)
+    @object_lock(recursive=True, full_lock=True)
     @backend.transaction
     def _rename(self, new_oid, force=False, run_policies=True,
         verbose_level=0, callback=default_callback,
@@ -6900,15 +7305,15 @@ class OTPmeObject(OTPmeBaseObject):
                             new_name=new_oid.name,
                             verbose_level=verbose_level,
                             callback=callback)
-        # Write changes.
-        self._write(callback=callback)
 
         # Update object config.
         self.update_object_config()
 
+        self._write(callback=callback)
+
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def delete(self, force=False, run_policies=True,
         verbose_level=0, _caller="API",
@@ -7119,7 +7524,7 @@ class OTPmeObject(OTPmeBaseObject):
         return return_status
 
     def show_config_parameters(self, callback=default_callback, **kwargs):
-        result = self._config
+        result = self.config_params
         return callback.ok(result)
 
     def show_config(self, config_lines=[],
@@ -7257,8 +7662,8 @@ class OTPmeObject(OTPmeBaseObject):
         or self.verify_acl("add:config") \
         or self.verify_acl("del:config") \
         or self.verify_acl("edit:config"):
-            if self._config:
-                config_params = self._config
+            if self.config_params:
+                config_params = self.config_params
         lines.append('CONFIG_PARAMS="%s"' % config_params)
 
 
@@ -7671,7 +8076,7 @@ class OTPmeDataObject(OTPmeBaseObject):
 
         return True
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def add(self, creator=None, resolver=None, extensions=[],
         enabled=True, default_attributes={}, verbose_level=0,
         callback=default_callback, write=True, **kwargs):

@@ -344,6 +344,11 @@ class OTPmeSyncP1(OTPmeServer1):
             response = "Permission denied: %s" % object_id
             self.logger.warning(response)
             return status, response
+        if not backend.object_exists(object_id):
+            status = status_codes.UNKNOWN_OBJECT
+            response = "Unknown object: %s" % object_id
+            self.logger.warning(response)
+            return status, response
         # Get object.
         o = backend.get_object(object_type=object_type,
                                 object_id=object_id)
@@ -352,7 +357,7 @@ class OTPmeSyncP1(OTPmeServer1):
             response = "Unknown object: %s" % object_id
             self.logger.warning(response)
             # Hotfix our index.
-            backend.index_del(object_id)
+            #backend.index_del(object_id)
             return status, response
         # Get sync object config.
         try:
@@ -1015,13 +1020,13 @@ class OTPmeSyncP1(OTPmeServer1):
         if command == "get_object":
             try:
                 object_id = command_args['object_id']
-                object_id = oid.get(object_id=object_id)
             except:
                 response = "SYNC_INCOMPLETE_COMMAND: Missing object ID."
                 status = False
                 self.logger.warning(response)
                 return self.build_response(status, response)
 
+            object_id = oid.get(object_id=object_id)
             try:
                 remote_checksums = command_args['object_checksums']
             except:

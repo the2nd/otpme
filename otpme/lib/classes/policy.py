@@ -394,7 +394,8 @@ def register_backend():
                             sync_after=["unit", "revoked_signature"],
                             uniq_name=True,
                             object_cache=1024,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'site', 'name'])
     # Register index attributes.
     config.register_index_attribute('policy_type')
     config.register_index_attribute('policy_uuid')
@@ -490,7 +491,7 @@ class Policy(OTPmeObject):
         """ Activate policy by returning per object policy data """
         return {}
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
     def add(self, verbose_level=0, _caller="API",
@@ -514,7 +515,7 @@ class Policy(OTPmeObject):
         return OTPmeObject.add(self, verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
         """ Rename a token. """
@@ -526,7 +527,7 @@ class Policy(OTPmeObject):
                         name=new_name)
         return self._rename(new_oid, callback=callback, _caller=_caller, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def delete(self, force=False, run_policies=True, verify_acls=True,
         verbose_level=0, callback=default_callback, _caller="API", **kwargs):

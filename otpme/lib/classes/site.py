@@ -695,8 +695,8 @@ def register():
     register_module("otpme.lib.classes.data_objects.cert")
 
 def register_sync_settings():
-    config.register_cluster_sync(object_type="site")
-    #config.register_object_sync(host_type="node", object_type="site")
+    #config.register_cluster_sync(object_type="site")
+    config.register_object_sync(host_type="node", object_type="site")
 
 def register_templates_unit():
     config.register_base_object("unit", TEMPLATES_UNIT, early=True)
@@ -772,7 +772,8 @@ def register_backend():
                             sync_after=["realm"],
                             uniq_name=True,
                             object_cache=1024,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'site'])
     # Register object to backend.
     backend.register_object_type(object_type="site",
                                 dir_name_extension=site_dir_extension,
@@ -797,7 +798,6 @@ class Site(OTPmeObject):
         self.ca = None
         self.admin_role_uuid = None
         self.user_role_uuid = None
-        self.trusted_sites = []
 
         self.auth_fqdn = None
         self.mgmt_fqdn = None
@@ -895,7 +895,6 @@ class Site(OTPmeObject):
                                             'type'          : list,
                                             'required'      : False,
                                         },
-
 
             'CA'                        : {
                                             'var_name'  : 'ca',
@@ -1397,7 +1396,7 @@ class Site(OTPmeObject):
         return cert, key
 
     @check_acls(['renew:cert'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def renew_cert(self, valid=None, key_len=None, run_policies=True,
         verbose_level=0, callback=default_callback, _caller="API", **kwargs):
@@ -1448,7 +1447,7 @@ class Site(OTPmeObject):
         self.key = key
         return self._write(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def create_site_ca(self, ca_country=None, ca_state=None, ca_locality=None,
         ca_organization=None, ca_ou=None, ca_email=None, cert=None, key=None,
         no_cert=False, ca_key_len=None, ca_valid=None, site_key_len=None,
@@ -1512,6 +1511,7 @@ class Site(OTPmeObject):
                                     valid=site_valid,
                                     callback=callback)
             except Exception as e:
+                config.raise_exception()
                 msg = str(e)
                 return callback.error(msg)
 
@@ -1523,12 +1523,13 @@ class Site(OTPmeObject):
             try:
                 site_ca.update_realm_ca_data(callback=callback)
             except Exception as e:
+                config.raise_exception()
                 msg = str(e)
                 return callback.error(msg)
 
         return callback.ok()
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def create_master_node(self, node_name, cert_req=None,
         gen_jotp=True, cert_valid=None, uuid=None, public_key=None,
         _caller="API", callback=default_callback, **kwargs):
@@ -1662,7 +1663,7 @@ class Site(OTPmeObject):
 
         return self._write(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @run_pre_post_add_policies()
     def add(self, site_address, node_name, callback=default_callback, **kwargs):
         """ Add site. """
@@ -1694,7 +1695,6 @@ class Site(OTPmeObject):
             kwargs['uuid'] = self.uuid
         else:
             config.site_init = True
-            config.transactions_enabled = False
 
         # Start site add.
         add_result = self._add(**kwargs)
@@ -1702,7 +1702,6 @@ class Site(OTPmeObject):
             return add_result
 
         config.site_init = False
-        config.transactions_enabled = True
 
         # Update index.
         self.update_index("address", self.address)
@@ -1722,8 +1721,6 @@ class Site(OTPmeObject):
         """ Add users that exists on all sites (e.g. TOKENSTORE). """
         per_site_users = config.get_per_site_objects("user")
         for user_name in per_site_users:
-            msg = (_("Adding user: %s") % user_name)
-            callback.send(msg)
             # Create user.
             x_user = User(name=user_name,
                         realm=self.realm,
@@ -1776,7 +1773,7 @@ class Site(OTPmeObject):
                 msg = (_("Problem adding user: %s") % e)
                 raise OTPmeException(msg)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def _add(self, site_address, node_name, site_fqdn=None, no_ca=False, no_node=False,
         ca_country=None, ca_state=None, ca_locality=None, ca_organization=None,
         ca_ou=None, ca_email=None, ca_key_len=None, ca_valid=None,
@@ -1886,7 +1883,7 @@ class Site(OTPmeObject):
         # Add site using parent class.
         return self._write(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def add_early_objects(self, id_ranges=None,
         callback=default_callback, **kwargs):
         """ Add site base objects. """
@@ -1911,7 +1908,7 @@ class Site(OTPmeObject):
                                         site=self.name)
         id_range_policy.add(callback=callback)
         if id_ranges is None:
-            id_ranges = "uidNumber:s:300000-400000,gidNumber:s:300000-400000"
+            id_ranges = "uidNumber:s:10000-20000,gidNumber:s:10000-20000"
         id_ranges = id_ranges.split(",")
         for id_range in id_ranges:
             id_range_policy.add_id_range(id_range=id_range)
@@ -1920,7 +1917,7 @@ class Site(OTPmeObject):
         self.add_base_policies(callback=callback)
         return True
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def add_base_objects(self, dictionaries=[], no_dicts=False,
         callback=default_callback, **kwargs):
         """ Add site base objects. """
@@ -2024,11 +2021,8 @@ class Site(OTPmeObject):
                 policy_method_args['callback'] = callback
                 policy_method(verify_acls=False, **policy_method_args)
 
-        # Add our base policies before adding any other object. This is needed
-        # at least for policy inheritance via DefaultPolicies() policy.
-        self.add_default_policies(callback=callback)
-
         # Write objects.
+        callback.write_modified_objects()
         cache.flush()
 
         # Create base units.
@@ -2085,6 +2079,7 @@ class Site(OTPmeObject):
             self.add_policy(policy.name, verify_acls=False)
 
         # Write objects.
+        callback.write_modified_objects()
         cache.flush()
 
         # Create base access groups.
@@ -2163,10 +2158,6 @@ class Site(OTPmeObject):
         # Create scripts.
         from otpme.lib.classes.script import Script
         for script_name in os.listdir(config.script_dir):
-            msg = (_("Adding script '%s' for site '%s'.")
-                        % (script_name, self.name))
-            callback.send(msg)
-
             script_path = "%s/%s" % (config.script_dir, script_name)
             script = Script(name=script_name,
                                 site=self.name,
@@ -2278,9 +2269,10 @@ class Site(OTPmeObject):
             if not result:
                 continue
             policy = result[0]
-            policy.add_default_policies()
+            policy.add_default_policies(callback=callback)
 
         # Write objects.
+        callback.write_modified_objects()
         cache.flush()
 
         callback.send("Adding default ACLs...")
@@ -2349,6 +2341,7 @@ class Site(OTPmeObject):
                         verbose_level=1,
                         callback=callback)
         # Write objects.
+        callback.write_modified_objects()
         cache.flush()
 
         # Add internal users.
@@ -2357,8 +2350,6 @@ class Site(OTPmeObject):
         for user_name in internal_users:
             if user_name in per_site_users:
                 continue
-            msg = (_("Adding user: %s") % user_name)
-            callback.send(msg)
             # Create internal user.
             x_user = User(name=user_name,
                         realm=self.realm,
@@ -2416,9 +2407,10 @@ class Site(OTPmeObject):
                 policy_method(verify_acls=False, **policy_method_args)
 
         # Write objects.
+        callback.write_modified_objects()
         cache.flush()
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def add_base_groups(self, callback=default_callback):
         """ Create base groups. """
         base_groups = config.get_base_objects("group")
@@ -2436,7 +2428,7 @@ class Site(OTPmeObject):
                 msg = (_("Problem adding base group '%s'.") % group.path)
                 return callback.error(msg)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     def add_admin_user(self, callback=default_callback):
         """ Create site admin user. """
         # Create admin user.
@@ -2457,6 +2449,7 @@ class Site(OTPmeObject):
                 return callback.error(msg)
 
         # Write objects.
+        callback.write_modified_objects()
         cache.flush()
 
         # Get admin user token UUID.
@@ -2484,6 +2477,7 @@ class Site(OTPmeObject):
                                     verify_acls=False)
 
         # Write objects.
+        callback.write_modified_objects()
         cache.flush()
 
         # Whitelist admin token in auth_on_action policy.
@@ -2500,14 +2494,14 @@ class Site(OTPmeObject):
                                                 verify_acls=False)
 
         # Write objects.
+        callback.write_modified_objects()
         cache.flush()
 
         return self._write(callback=callback)
 
-    # zzzzzzzzzzzzzzzzzzzzz
     # FIXME: make sure we remove all references before deleting a site
     @check_acls(['delete:object'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def delete(self, force=False, verify_acls=True,
         run_policies=True, verbose_level=0,

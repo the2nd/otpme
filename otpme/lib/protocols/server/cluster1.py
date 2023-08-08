@@ -3,10 +3,11 @@
 # Distributed under the terms of the GNU General Public License v2
 import os
 import time
+import ujson
 import signal
 import datetime
-from prettytable import FRAME
 from prettytable import NONE
+from prettytable import FRAME
 from prettytable import PrettyTable
 
 try:
@@ -21,11 +22,12 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import locking
+from otpme.lib import filetools
 from otpme.lib import connections
-from otpme.lib import sign_key_cache
 from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.clusterd import calc_node_vote
+from otpme.lib.classes.object_config import ObjectConfig
 from otpme.lib.protocols.otpme_server import OTPmeServer1
 from otpme.lib.freeradius import reload as freeradius_reload
 
@@ -54,6 +56,7 @@ class OTPmeClusterP1(OTPmeServer1):
         self.encrypt_session = True
         self.require_master_node = False
         self.require_cluster_status = False
+        self.compresss_response = False
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
 
@@ -133,6 +136,7 @@ class OTPmeClusterP1(OTPmeServer1):
                             "acquire_lock",
                             "release_lock",
                             "get_checksums",
+                            "object_exists",
                             "get_node_vote",
                             "set_node_sync",
                             "unset_node_sync",
@@ -141,10 +145,12 @@ class OTPmeClusterP1(OTPmeServer1):
                             "do_radius_reload",
                             "do_nsscache_sync",
                             "get_member_nodes",
+                            "get_data_revision",
                             "do_master_failover",
                             "get_cluster_quorum",
                             "get_cluster_status",
                             "set_master_failover",
+                            "set_member_candidate",
                             "get_init_sync_status",
                             "get_node_sync_status",
                             "start_master_failover",
@@ -180,6 +186,10 @@ class OTPmeClusterP1(OTPmeServer1):
             status = True
             msg = "Received ping."
             logger.debug(msg)
+
+        elif command == "get_data_revision":
+            status = True
+            message = config.get_data_revision()
 
         elif command == "get_master_node":
             try:
@@ -239,6 +249,11 @@ class OTPmeClusterP1(OTPmeServer1):
             message = "Node online."
             multiprocessing.online_nodes[self.peer.name] = True
 
+        elif command == "set_member_candidate":
+            status = True
+            message = "Member candidate set."
+            multiprocessing.member_candidates[self.peer.name] = True
+
         elif command == "set_node_sync":
             status = True
             message = "Node in sync."
@@ -256,9 +271,7 @@ class OTPmeClusterP1(OTPmeServer1):
             message = 0.0
             # Get/set vote for this node. This is also done in clusterd daemon.
             if config.cluster_vote_participation:
-                node_vote = calc_node_vote()
-                multiprocessing.node_votes[config.host_data['name']] = node_vote
-                message = node_vote
+                message = calc_node_vote()
 
         elif command == "get_member_nodes":
             status = True
@@ -303,11 +316,12 @@ class OTPmeClusterP1(OTPmeServer1):
                                         value="*",
                                         return_type="instance")
                 sync_objects = {}
+                sync_objects_count = 0
                 for x in result:
                     sync_object = False
                     try:
                         remote_object_data = remote_objects[x.oid.full_oid]
-                    except:
+                    except KeyError:
                         remote_object_data = None
                         sync_object = True
                     if remote_object_data:
@@ -320,15 +334,29 @@ class OTPmeClusterP1(OTPmeServer1):
                             if remote_last_modified < x.last_modified:
                                 sync_object = True
                     if not sync_object:
+                        sync_objects[x.oid.full_oid] = None
                         continue
+                    sync_objects_count += 1
                     sync_objects[x.oid.full_oid] = {}
                     sync_objects[x.oid.full_oid]['last_used'] = x.last_used
                     sync_objects[x.oid.full_oid]['last_modified'] = x.last_modified
                     sync_objects[x.oid.full_oid]['object_config'] = x.object_config.copy()
                 message = sync_objects
                 msg = ("Sending %s objects to peer: %s"
-                        % (len(sync_objects), self.peer.name))
+                        % (sync_objects_count, self.peer.name))
                 logger.info(msg)
+
+        elif command == "object_exists":
+            status = True
+            message = None
+            try:
+                object_id = command_args['object_id']
+            except:
+                message = "Missing object ID."
+                status = False
+            if status:
+                object_id = oid.get(object_id)
+                message = backend.object_exists(object_id)
 
         elif command == "write":
             status = True
@@ -347,88 +375,49 @@ class OTPmeClusterP1(OTPmeServer1):
                 last_used = command_args['last_used']
             except:
                 last_used = None
+            try:
+                full_index_update = command_args['full_index_update']
+            except:
+                full_index_update = None
             if config.daemon_shutdown:
                 message = "Daemon shutdown."
                 status = False
             if status:
-                object_id = oid.get(object_id)
-                object_checksum = object_config['CHECKSUM']
-                current_checksum = backend.get_checksum(object_id)
-                if current_checksum == object_checksum:
-                    status = True
-                    message = "done"
+                msg = ("Writing object (node:%s): %s" % (self.peer.name, object_id))
+                logger.debug(msg)
+                message = "done"
+                while True:
+                    entry_time = str(time.time_ns())
+                    cluster_journal_file = os.path.join(config.cluster_in_journal_dir, entry_time)
+                    if os.path.exists(cluster_journal_file):
+                        continue
+                    break
+                object_config = ObjectConfig(object_id, object_config, encrypted=False)
+                object_config = object_config.encrypt(config.master_key,
+                                                    update_checksums=False)
+                object_data = {
+                                'action'            : 'write',
+                                'object_id'         : object_id,
+                                'last_used'         : last_used,
+                                'object_config'     : object_config,
+                                'full_index_update' : full_index_update,
+                            }
+                file_content = ujson.dumps(object_data)
+                try:
+                    filetools.create_file(path=cluster_journal_file,
+                                            content=file_content,
+                                            compression="lz4")
+                except Exception as e:
+                    message = ("Failed to write cluster journal: %s: %s: %s"
+                                % (object_id, cluster_journal_file, e))
+                    status = False
                 else:
-                    msg = "Writing object: %s (%s)" % (object_id, object_checksum)
-                    logger.debug(msg)
-                    object_uuid = object_config['UUID']
-                    multiprocessing.cluster_writes[object_uuid] = time.time()
-                    try:
-                        if last_used is not None:
-                            backend.set_last_used(object_id.realm,
-                                                object_id.site,
-                                                object_id.object_type,
-                                                object_uuid, last_used)
-                        try:
-                            backend.write_config(object_id=object_id,
-                                                cluster=False,
-                                                index_auto_update=True,
-                                                #full_data_update=True,
-                                                object_config=object_config)
-                            status = True
-                            message = "done"
-                        except Exception as e:
-                            message = "Failed to write object: %s: %s" % (object_id, e)
-                            logger.warning(message)
-
-                        # Update signers cache.
-                        if object_id.object_type == "user":
-                            #new_object = backend.get_object(object_id)
-                            # Load instance.
-                            try:
-                                new_object = backend.get_instance_from_oid(object_id,
-                                                                        object_config)
-                            except Exception as e:
-                                msg = "Failed to load new object: %s: %s" % (object_id, e)
-                                self.logger.critical(msg)
-                                new_object = None
-
-                            if new_object and new_object.public_key:
-                                try:
-                                    public_key = sign_key_cache.get_cache(object_id)
-                                except Exception as e:
-                                    msg = "Unable to read signer cache: %s: %s" % (object_id, e)
-                                    self.logger.critical(msg)
-                                    public_key = None
-                                if new_object.public_key != public_key:
-                                    try:
-                                        sign_key_cache.add_cache(object_id, new_object.public_key)
-                                    except Exception as e:
-                                        msg = "Unable to add signer cache: %s: %s" % (object_id, e)
-                                        self.logger.critical(msg)
-                            else:
-                                try:
-                                    public_key = sign_key_cache.get_cache(object_id)
-                                except Exception as e:
-                                    msg = "Unable to read signer cache: %s: %s" % (object_id, e)
-                                    self.logger.critical(msg)
-                                    public_key = None
-                                if public_key:
-                                    try:
-                                        sign_key_cache.del_cache(object_id)
-                                    except Exception as e:
-                                        msg = "Unable to add signer cache: %s: %s" % (object_id, e)
-                                        self.logger.critical(msg)
-                    finally:
-                        multiprocessing.cluster_writes.pop(object_uuid)
+                    multiprocessing.cluster_in_event.set()
+                    message = "done"
 
         elif command == "rename":
             status = True
             message = None
-            try:
-                object_uuid = command_args['object_uuid']
-            except:
-                message = "Missing object UUID."
-                status = False
             try:
                 object_id = command_args['object_id']
             except:
@@ -443,31 +432,35 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = "Daemon shutdown."
                 status = False
             if status:
-                multiprocessing.cluster_writes[object_uuid] = time.time()
+                while True:
+                    entry_time = str(time.time_ns())
+                    cluster_journal_file = os.path.join(config.cluster_in_journal_dir, entry_time)
+                    if os.path.exists(cluster_journal_file):
+                        continue
+                    break
+                object_data = {
+                                'action'            : 'rename',
+                                'object_id'         : object_id,
+                                'new_object_id'     : new_object_id,
+                            }
+                file_content = ujson.dumps(object_data)
                 try:
-                    object_id = oid.get(object_id)
-                    our_object = backend.get_object(uuid=object_uuid)
-                    if our_object.oid.full_oid == object_id.full_oid:
-                        new_object_id = oid.get(new_object_id)
-                        msg = "Renaming object: %s: %s" % (object_id, new_object_id)
-                        logger.debug(msg)
-                        try:
-                            backend.rename_object(object_id,
-                                                new_object_id,
-                                                cluster=False)
-                            status = True
-                            message = "done"
-                        except Exception as e:
-                            message = "Failed to rename object: %s: %s" % (object_id, e)
-                            logger.warning(message)
-                finally:
-                    multiprocessing.cluster_writes.pop(object_uuid)
+                    filetools.create_file(path=cluster_journal_file,
+                                            content=file_content,
+                                            compression="lz4")
+                except Exception as e:
+                    message = ("Failed to write cluster journal: %s: %s: %s"
+                                % (object_id, cluster_journal_file, e))
+                    status = False
+                else:
+                    multiprocessing.cluster_in_event.set()
+                    message = "done"
 
         elif command == "delete":
             status = True
             message = "done"
             try:
-                object_uuid = command_args['object_uuid']
+                object_id = command_args['object_id']
             except:
                 message = "Missing object UUID."
                 status = False
@@ -475,40 +468,28 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = "Daemon shutdown."
                 status = False
             if status:
+                while True:
+                    entry_time = str(time.time_ns())
+                    cluster_journal_file = os.path.join(config.cluster_in_journal_dir, entry_time)
+                    if os.path.exists(cluster_journal_file):
+                        continue
+                    break
+                object_data = {
+                                'action'        : 'delete',
+                                'object_id'     : object_id,
+                            }
+                file_content = ujson.dumps(object_data)
                 try:
-                    object_id = backend.get_oid(object_uuid, instance=True)
+                    filetools.create_file(path=cluster_journal_file,
+                                            content=file_content,
+                                            compression="lz4")
                 except Exception as e:
+                    message = ("Failed to write cluster journal: %s: %s: %s"
+                                % (object_id, cluster_journal_file, e))
                     status = False
-            if status and object_id:
-                multiprocessing.cluster_writes[object_uuid] = time.time()
-                try:
-                    if object_id.object_type == "user":
-                        try:
-                            public_key = sign_key_cache.get_cache(object_id)
-                        except Exception as e:
-                            msg = "Unable to read signer cache: %s: %s" % (object_id, e)
-                            self.logger.critical(msg)
-                            public_key = None
-                        if public_key:
-                            try:
-                                sign_key_cache.del_cache(object_id)
-                            except Exception as e:
-                                msg = "Unable to add signer cache: %s: %s" % (object_id, e)
-                                self.logger.critical(msg)
-                    msg = "Removing object: %s" % object_id
-                    logger.debug(msg)
-                    try:
-                        backend.delete_object(object_id=object_id)
-                        status = True
-                        message = "done"
-                    except UnknownObject:
-                        status = True
-                        message = "Unknown object."
-                    except Exception as e:
-                        message = "Failed to delete object: %s: %s" % (object_id, e)
-                        logger.warning(message)
-                finally:
-                    multiprocessing.cluster_writes.pop(object_uuid)
+                else:
+                    multiprocessing.cluster_in_event.set()
+                    message = "done"
 
         elif command == "acquire_lock":
             status = True
@@ -528,6 +509,14 @@ class OTPmeClusterP1(OTPmeServer1):
             except:
                 message = "Missing write lock flag."
                 status = False
+            if write:
+                if lock_id in multiprocessing.cluster_write_locks:
+                    status = False
+                    message = "Write lock exits: %s" % lock_id
+            else:
+                if lock_id in multiprocessing.cluster_read_locks:
+                    status = False
+                    message = "Read lock exits: %s" % lock_id
             if status:
                 try:
                     lock = locking.acquire_lock(lock_type=lock_type,
@@ -701,59 +690,64 @@ class OTPmeClusterP1(OTPmeServer1):
             if status:
                 from otpme.lib.classes.command_handler import CommandHandler
                 # Sync data objects and sessions.
-                master_node = multiprocessing.master_node['master']
                 try:
-                    socket_uri = stuff.get_daemon_socket("clusterd", master_node)
-                except Exception as e:
-                    msg = "Failed to get clusterd socket: %s: %s" % (x_node.name, e)
-                    logger.critical(msg)
-                    socket_uri = None
-                clusterd_conn = None
-                if socket_uri:
+                    master_node = multiprocessing.master_node['master']
+                except KeyError:
+                    status = False
+                    message = "No master node elected."
+                if status:
                     try:
-                        clusterd_conn = connections.get("clusterd", socket_uri=socket_uri)
+                        socket_uri = stuff.get_daemon_socket("clusterd", master_node)
                     except Exception as e:
-                        msg = "Cluster sync connection failed: %s: %s" % (x_node.name, e)
+                        msg = "Failed to get clusterd socket: %s: %s" % (x_node.name, e)
                         logger.critical(msg)
-                if clusterd_conn:
-                    msg = "Starting sync of data objects..."
-                    logger.info(msg)
-                    try:
-                        clusterd_conn.sync()
-                    except Exception as e:
-                        msg = "Master failover sync failed: %s: %s" % (x_node.name, e)
-                        logger.critical(msg)
-                    finally:
-                        clusterd_conn.close()
-                command_handler = CommandHandler()
-                while True:
-                    try:
-                        socket_uri = stuff.get_daemon_socket("syncd", master_node)
-                    except Exception as e:
-                        msg = "Failed to get syncd socket: %s" % e
-                        self.logger.warning(msg)
-                        time.sleep(1)
-                        continue
-                    try:
-                        sync_status = command_handler.do_sync(sync_type="objects",
-                                                            skip_object_deletion=True,
-                                                            socket_uri=socket_uri,
-                                                            realm=config.realm,
-                                                            site=config.site,
-                                                            max_tries=3)
-                    except Exception as e:
-                        msg = "Final sync of objects failed: %s" % e
-                        logger.warning(msg)
-                        sync_status = False
-                    if sync_status is not False:
-                        status = True
-                        break
+                        socket_uri = None
+                    clusterd_conn = None
+                    if socket_uri:
+                        try:
+                            clusterd_conn = connections.get("clusterd", socket_uri=socket_uri)
+                        except Exception as e:
+                            msg = "Cluster sync connection failed: %s: %s" % (x_node.name, e)
+                            logger.critical(msg)
+                    if clusterd_conn:
+                        msg = "Starting sync of data objects..."
+                        logger.info(msg)
+                        try:
+                            clusterd_conn.sync()
+                        except Exception as e:
+                            msg = "Master failover sync failed: %s: %s" % (x_node.name, e)
+                            logger.critical(msg)
+                        finally:
+                            clusterd_conn.close()
+                    command_handler = CommandHandler()
+                    while True:
+                        try:
+                            socket_uri = stuff.get_daemon_socket("syncd", master_node)
+                        except Exception as e:
+                            msg = "Failed to get syncd socket: %s" % e
+                            self.logger.warning(msg)
+                            time.sleep(1)
+                            continue
+                        try:
+                            sync_status = command_handler.do_sync(sync_type="objects",
+                                                                skip_object_deletion=True,
+                                                                socket_uri=socket_uri,
+                                                                realm=config.realm,
+                                                                site=config.site,
+                                                                max_tries=3)
+                        except Exception as e:
+                            msg = "Final sync of objects failed: %s" % e
+                            logger.warning(msg)
+                            sync_status = False
+                        if sync_status is not False:
+                            status = True
+                            break
 
             if status:
                 while True:
                     config.touch_node_sync_file()
-                    new_master_vote = calc_node_vote()
-                    multiprocessing.node_votes[config.host_data['name']] = new_master_vote
+                    #new_master_vote = calc_node_vote()
+                    #multiprocessing.node_votes[config.host_data['name']] = new_master_vote
                     try:
                         master_node = multiprocessing.master_node['master']
                     except:

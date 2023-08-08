@@ -502,7 +502,8 @@ def register_backend():
                             sync_after=["user", "token"],
                             uniq_name=True,
                             object_cache=128,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'site', 'name'])
     # Register object to backend.
     class_getter = lambda: Dictionary
     backend.register_object_type(object_type="dictionary",
@@ -563,6 +564,7 @@ class Dictionary(OTPmeObject):
                         'DICTIONARY'                : {
                                                         'var_name'      : 'dictionary',
                                                         'type'          : dict,
+                                                        'incremental'   : False,
                                                         'required'      : False,
                                                         'compression'   : 'ZLIB',
                                                     },
@@ -664,7 +666,7 @@ class Dictionary(OTPmeObject):
         return self._cache(callback=callback)
 
     @check_acls(['rename'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
         """ Rename dictionary. """
@@ -676,7 +678,7 @@ class Dictionary(OTPmeObject):
                         name=new_name)
         return self._rename(new_oid, callback=callback, _caller=_caller, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
     def add(self, dict_type="list", verbose_level=0,
@@ -702,7 +704,7 @@ class Dictionary(OTPmeObject):
                                 callback=callback, **kwargs)
 
     @check_acls(['delete'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def delete(self, force=False, run_policies=True,
         verbose_level=0, callback=default_callback,

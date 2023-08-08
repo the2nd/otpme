@@ -2,7 +2,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 # Distributed under the terms of the GNU General Public License v2
 import os
-import gc
 import bson
 
 try:
@@ -21,14 +20,13 @@ except:
 from otpme.lib.exceptions import *
 
 class PickleHandler(object):
-    def __init__(self, pickle_type, encode=True, disable_gc=True):
+    def __init__(self, pickle_type, encode=True):
         if pickle_type == "auto":
             pickle_type = PICKLE_TYPE
         # Set pickler.
         self.pickler = self.get_pickler(pickle_type)
         self.pickle_type = pickle_type
         self.encode = encode
-        self.disable_gc = disable_gc
 
     def get_pickler(self, pickle_type):
         if pickle_type == "pickle":
@@ -48,8 +46,6 @@ class PickleHandler(object):
             if protocol is None:
                 protocol = self.pickler.HIGHEST_PROTOCOL
                 kwargs['protocol'] = protocol
-        if self.disable_gc:
-            gc.disable()
         pickle_data = self.pickler.dumps(instance, **kwargs)
         dump_data = {
                     'pickle_type' : self.pickle_type,
@@ -57,19 +53,13 @@ class PickleHandler(object):
                     }
         if self.encode:
             dump_data = bson.dumps(dump_data)
-        if self.disable_gc:
-            gc.enable()
         return dump_data
 
     def loads(self, dump_data, **kwargs):
-        if self.disable_gc:
-            gc.disable()
         if self.encode:
             dump_data = bson.loads(dump_data)
         pickle_type = dump_data['pickle_type']
         pickle_data = dump_data['pickle_data']
         pickler = self.get_pickler(pickle_type)
         instance = pickler.loads(pickle_data, **kwargs)
-        if self.disable_gc:
-            gc.enable()
         return instance

@@ -557,9 +557,7 @@ class TotpToken(OathToken):
                 secret = self.get_secret(callback=callback)
             if self.mode == "mode2":
                 pin = callback.askpass("Please enter PIN: ")
-                try:
-                    pin = int(pin)
-                except ValueError:
+                if len(pin) != self.pin_len:
                     msg = "Invalid PIN."
                     return callback.error(msg)
                 secret = self.get_secret(pin=pin, callback=callback)
@@ -630,10 +628,7 @@ class TotpToken(OathToken):
                             "to include a PIN!")
                 return None
             _otp = otp[self.pin_len:]
-            try:
-                pin = int(otp[:self.pin_len])
-            except ValueError:
-                return None
+            pin = otp[:self.pin_len]
         else:
             _otp = otp
 
@@ -810,9 +805,7 @@ class TotpToken(OathToken):
         if pin is None:
             if self.mode == "mode2":
                 pin = callback.askpass("Please enter PIN: ")
-                try:
-                    pin = int(pin)
-                except ValueError:
+                if len(pin) != self.pin_len:
                     msg = "Invalid PIN."
                     return callback.error(msg)
 
@@ -853,7 +846,7 @@ class TotpToken(OathToken):
                         session_uuid=session_uuid,
                         quiet=quiet)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def _add(self, *args, **kwargs):
         """ Add a token. """

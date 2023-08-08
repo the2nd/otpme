@@ -89,7 +89,7 @@ class OTPmeClientBase(object):
         auth_type=None, interactive=False, print_messages=None,
         handle_response=None, message_method=None,
         error_message_method=None, use_agent=False,
-        site_cert=None, **kwargs):
+        site_cert=None, compress_request=True, **kwargs):
 
         # Make sure we got connect infos.
         if not daemon and not socket_uri:
@@ -131,6 +131,8 @@ class OTPmeClientBase(object):
         self.site_cert = site_cert
         # Will hold the session secret generated via DH.
         self.session_key = None
+        # Compress request?
+        self.compress_request = compress_request
         # Methods to send user messages (e.g. via PAM)
         self.message_method = message_method
         self.error_message_method = error_message_method
@@ -854,7 +856,8 @@ class OTPmeClient(OTPmeClientBase):
                     request = build_request(command=command,
                                             command_args=command_args,
                                             encryption=enc_mod,
-                                            enc_key=enc_key)
+                                            enc_key=enc_key,
+                                            compress=self.compress_request)
                 except Exception as e:
                     msg = (_("Faild to build request: %s") % e)
                     raise OTPmeException(msg)
@@ -2184,7 +2187,8 @@ class OTPmeClient1(OTPmeClientBase):
             preauth_request = build_request(command="preauth_request",
                                             command_args=preauth_args,
                                             encryption=enc_mod,
-                                            enc_key=enc_key)
+                                            enc_key=enc_key,
+                                            compress=self.compress_request)
         except Exception as e:
             msg = (_("Faild to build preauth request: %s") % e)
             raise OTPmeException(msg)

@@ -743,7 +743,8 @@ def register_backend():
                             sync_after=["user", "token"],
                             uniq_name=True,
                             object_cache=1024,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'site', 'name'])
     # Register object to backend.
     class_getter = lambda: Node
     backend.register_object_type(object_type="node",
@@ -779,7 +780,6 @@ class Node(OTPmeHost):
         self._recursive_default_acls = get_recursive_default_acls()
 
         self.vote_script = None
-        self.vote_script_options = []
         self.vote_script_enabled = False
 
         self.handle_cert_loading = True
@@ -838,6 +838,9 @@ class Node(OTPmeHost):
             node_vote = os.path.getmtime(config.node_sync_file)
         except FileNotFoundError:
             node_vote = random.random()
+
+        revision_vote = config.get_data_revision()
+        node_vote = {'revision':revision_vote, 'vote':node_vote}
 
         if not self.vote_script_enabled:
             return node_vote

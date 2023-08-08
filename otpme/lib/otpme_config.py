@@ -72,6 +72,8 @@ class OTPmeConfig(object):
         self.register_config_var("SYNC_STATUS_LOCK_TYPE", str, "sync_status")
         # Node sync lock type.
         self.register_config_var("NODE_SYNC_LOCK_TYPE", str, "node_sync")
+        # Data revision update lock type
+        self.register_config_var("DATA_REVISION_LOCK_TYPE", str, "data_revision_update")
         # Set tool and log name.
         self.register_config_var("tool_name", str, tool_name)
         #self.register_config_var("log_name", str, "otpme")
@@ -112,7 +114,7 @@ class OTPmeConfig(object):
                                 user_config_file_parameter="PINENTRY")
         self.register_config_var("_logger", None, None)
         # Index type to use.
-        self.register_config_var("index_type", str, "sqlite3",
+        self.register_config_var("index_type", str, "postgres",
                                 config_file_parameter="INDEX")
         self.register_config_var("cache_type", str, "redis",
                                 config_file_parameter="CACHE")
@@ -168,6 +170,8 @@ class OTPmeConfig(object):
         self.register_config_var("realm_join", bool, False)
         # Indicates caching is enabled.
         self.register_config_var("cache_enabled", bool, False)
+        # Indicates on disk caching is enabled.
+        self.register_config_var("pickle_cache_enabled", bool, False)
         # Indicates if locking is enabled.
         self.register_config_var("locking_enabled", bool, True)
         # Indicates if transactions are enabled.
@@ -365,6 +369,8 @@ class OTPmeConfig(object):
         self.register_config_var("backend_object_types", list, [])
         # Objects that can be uniquely identified by their name.
         self.register_config_var("name_uniq_objects", list, [])
+        # Attributes to build backup filename.
+        self.register_config_var("backup_attributes", dict, {})
 
         # Objects we cache and their limit.
         self.register_config_var("cache_objects", dict, {})
@@ -450,12 +456,12 @@ class OTPmeConfig(object):
         self.register_config_var("sync_dir", str, None)
         self.register_config_var("reload_file_path", str, None)
         self.register_config_var("node_sync_file", str, None)
+        self.register_config_var("cache_clear_file", str, None)
         self.register_config_var("node_joined_file", str, None)
         self.register_config_var("realm_data_file_path", str, None)
         self.register_config_var("sync_status_file_path", str, None)
         self.register_config_var("offline_dir", str, None)
         self.register_config_var("env_dir", str, None)
-        self.register_config_var("pickle_cache_dir", str, None)
         self.register_config_var("nsscache_dir", str, None)
         self.register_config_var("sign_key_cache_dir", str, None)
         self.register_config_var("ssh_deploy_dir", str, None)
@@ -486,7 +492,7 @@ class OTPmeConfig(object):
 
         # FIXME: where to configure this?
         # Index journal settings.
-        self.register_config_var("index_journal_max", int, 1024)
+        self.register_config_var("index_journal_max", int, 128)
 
         # All base objects.
         self.register_config_var("base_objects", dict, {})
@@ -526,9 +532,6 @@ class OTPmeConfig(object):
 
         self.register_config_var("object_caches", [None, list], None,
                                 config_file_parameter="OBJECT_CACHES")
-
-        self.register_config_var("sqlite_objects", [None, list], [],
-                                config_file_parameter="SQLITE_OBJECTS")
 
         default_ports = {
                     'authd'     : '2020',
@@ -600,8 +603,7 @@ class OTPmeConfig(object):
         self.register_config_var("node_member_pass_algo", str, "sha512")
         self.register_config_var("group_secret_len", int, 16)
 
-        self.register_config_var("json_config_file_name", str, "object.json")
-        self.register_config_var("sqlite_config_file_name", str, "object.sqlite")
+        self.register_config_var("object_config_file_name", str, "object.json")
 
         # FIXME: make this a (user) config file option?
         self.register_config_var("pwgen", str, "pwgen")
@@ -869,6 +871,7 @@ class OTPmeConfig(object):
         self.sync_dir = os.path.join(self.spool_dir, "sync")
         self.reload_file_path = os.path.join(self.spool_dir, "reload")
         self.node_sync_file = os.path.join(self.spool_dir, "node_synced")
+        self.cache_clear_file = os.path.join(self.spool_dir, "cache_clear")
         self.node_joined_file = os.path.join(self.spool_dir, "new_node")
         self.realm_data_file_path = os.path.join(self.cache_dir, "realm-data.json")
         self.sync_status_file_path = os.path.join(self.cache_dir, "sync-status.json")
@@ -883,8 +886,6 @@ class OTPmeConfig(object):
         self.offline_dir = os.path.join(self.cache_dir, "offline")
         # Directory to store temporary files for login sessions.
         self.env_dir = os.path.join(self.cache_dir, "env")
-        # Directory to cache objects (pickle).
-        self.pickle_cache_dir = os.path.join(self.cache_dir, "pickle")
         # Directory to cache nsscache(1) files.
         self.nsscache_dir = os.path.join(self.cache_dir, "nsscache")
         # Directory to cache user public keys (sign keys).
@@ -1026,6 +1027,45 @@ class OTPmeConfig(object):
             if var_name != x_name:
                 continue
             return para_name
+
+    def get_data_revision(self):
+        from otpme.lib import backend
+        result = backend.search(object_type="data_revision",
+                                attribute="uuid",
+                                value="*",
+                                return_attributes=['data_revision'])
+        if not result:
+            return 1
+        highest_revision = sorted(result)[-1]
+        return highest_revision
+
+    def update_data_revision(self):
+        """ Update data revision timestamp. """
+        from otpme.lib import backend
+        from otpme.lib import locking
+        from otpme.lib.classes.data_objects.data_revision import DataRevision
+        if self.realm_init:
+            return
+        lock_id = "update_data_revision"
+        lock = locking.acquire_lock(lock_type=self.DATA_REVISION_LOCK_TYPE,
+                                                    lock_id=lock_id)
+        try:
+            result = backend.search(object_type="data_revision",
+                                    attribute="uuid",
+                                    value="*",
+                                    return_type="instance")
+            if not result:
+                data_revision = DataRevision(realm=self.realm,
+                                            site=self.site,
+                                            data_revision=time.time())
+                data_revision.add()
+                return
+
+            data_revision = result[0]
+            data_revision.data_revision = time.time()
+            data_revision._write()
+        finally:
+            lock.release_lock()
 
     def touch_node_sync_file(self, timestamp=None):
         from otpme.lib import locking
@@ -1197,7 +1237,7 @@ class OTPmeConfig(object):
     def register_object_type(self, object_type, tree_object=None,
         backend_object=True, uniq_name=False, object_cache=False,
         cache_region=None, add_before=None, add_after=None,
-        sync_before=None, sync_after=None):
+        sync_before=None, sync_after=None, backup_attributes=None):
         """ Register object type. """
         if tree_object:
             object_list = self.tree_object_types
@@ -1208,6 +1248,8 @@ class OTPmeConfig(object):
             raise AlreadyRegistered(msg)
         object_list.append(object_type)
         self.object_types = self.tree_object_types + self.flat_object_types
+        if backup_attributes:
+            self.backup_attributes[object_type] = backup_attributes
         if backend_object:
             if object_type not in self.backend_object_types:
                 self.backend_object_types.append(object_type)
@@ -1246,6 +1288,13 @@ class OTPmeConfig(object):
             raise AlreadyRegistered(msg)
         sub_types.append(stype)
         self.sub_object_types[object_type] = sub_types
+
+    def get_backup_attributes(self, object_type):
+        if object_type not in self.backup_attributes:
+            msg = "Object type backup attributes not registered: %s" % object_type
+            raise NotRegistered(msg)
+        backup_attributes = list(self.backup_attributes[object_type])
+        return backup_attributes
 
     def handle_post_object_registration(self):
         """
@@ -1930,7 +1979,6 @@ class OTPmeConfig(object):
                     self.offline_dir : 0o1777,
                     self.nsscache_dir : 0o775,
                     self.ssh_deploy_dir : 0o750,
-                    self.pickle_cache_dir : 0o750,
                     self.sign_key_cache_dir : 0o775,
                     self.nsscache_spool_dir : 0o770,
                     self.authorized_keys_dir : 0o750,

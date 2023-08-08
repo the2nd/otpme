@@ -2603,8 +2603,8 @@ class AuthHandler(object):
                     key_script = decode(x.script, "base64")
                     key_script_uuid = x.uuid
                     key_script_path = x.rel_path
-                    key_script_opts = self.user.key_script_options
-                    key_script_signs = x.signatures
+                    key_script_opts = self.user.key_script_options.copy()
+                    key_script_signs = x.signatures.copy()
 
             auth_reply['key_script'] = key_script
             auth_reply['key_script_uuid'] = key_script_uuid

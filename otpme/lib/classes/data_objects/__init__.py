@@ -11,6 +11,7 @@ modules = [
 	'otpme.lib.classes.data_objects.last_assigned_id',
 	'otpme.lib.classes.data_objects.revoked_signature',
 	'otpme.lib.classes.data_objects.token_counter',
+	'otpme.lib.classes.data_objects.data_revision',
 	'otpme.lib.classes.data_objects.used_hash',
 	'otpme.lib.classes.data_objects.used_otp',
 	'otpme.lib.classes.data_objects.used_slp',

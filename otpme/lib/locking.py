@@ -24,8 +24,9 @@ current_thread_fds = {}
 current_thread_locks = {}
 
 registered_lock_types = {
-                        'node_sync'     : 'config',
-                        'sync_status'   : 'config',
+                        'node_sync'             : 'config',
+                        'sync_status'           : 'config',
+                        'data_revision_update'  : 'config',
                         }
 
 def atfork():
@@ -146,7 +147,8 @@ def register_lock_type(lock_type, module):
 #
 #    return wrapper
 
-def object_lock(write=True, recursive=False, timeout=None, reload_on_change=True):
+def object_lock(write=True, recursive=False, timeout=None,
+    reload_on_change=True, full_lock=False):
     """ Decorator to handle object lock. """
     def wrapper(f):
         @wraps(f)
@@ -161,6 +163,11 @@ def object_lock(write=True, recursive=False, timeout=None, reload_on_change=True
                 lock_object = f_kwargs.pop('lock_object')
             except:
                 lock_object = None
+            # Check if lock clustering was disabled.
+            try:
+                cluster_lock = f_kwargs.pop('cluster_lock')
+            except:
+                cluster_lock = True
             # Wait timeout for the object lock.
             try:
                 lock_wait_timeout = f_kwargs.pop('lock_wait_timeout')
@@ -172,6 +179,9 @@ def object_lock(write=True, recursive=False, timeout=None, reload_on_change=True
             except:
                 lock_reload_on_change = reload_on_change
 
+            if full_lock:
+                self.full_write_lock = True
+
             # Acquire lock
             if lock_object is None:
                 lock_object = True
@@ -181,6 +191,7 @@ def object_lock(write=True, recursive=False, timeout=None, reload_on_change=True
                 try:
                     self.acquire_lock(lock_caller,
                                     write=write,
+                                    cluster=cluster_lock,
                                     timeout=lock_wait_timeout,
                                     reload_on_change=lock_reload_on_change,
                                     recursive=recursive,
@@ -453,12 +464,25 @@ class OTPmeLock(OTPmeFakeLock):
     def acquire_lock(self, lock_caller=None, skip_same_caller=False, timeout=None):
         """ Acquire lock. """
         from otpme.lib import config
-        from otpme.lib.daemon.clusterd import cluster_object_lock
+        #from otpme.lib.daemon.clusterd import cluster_object_lock
         # Set default lock caller.
         if lock_caller is None:
             lock_caller = self.lock_id
         if not self.lock_callers:
             wait_message = "Waiting for lock: %s" % self.lock_id
+
+            #if self.cluster:
+            #    try:
+            #        cluster_object_lock(action="lock",
+            #                            lock_type=self.lock_type,
+            #                            lock_id=self._lock_id,
+            #                            write=self.write,
+            #                            timeout=timeout)
+            #    except LockWaitTimeout:
+            #        msg = "Failed to acquire lock: %s" % self._lock_id
+            #        #self.flock.release_lock()
+            #        raise LockWaitTimeout(msg)
+
             block = True
             if timeout == 0:
                 block = False
@@ -478,13 +502,6 @@ class OTPmeLock(OTPmeFakeLock):
             if not lock_status:
                 raise LockWaitTimeout()
 
-            if self.cluster:
-                cluster_object_lock(action="lock",
-                                    lock_type=self.lock_type,
-                                    lock_id=self._lock_id,
-                                    write=self.write,
-                                    timeout=timeout)
-
             if config.debug_level("locking") > 1:
                 msg = ("Acquired lock: %s (%s): %s"
                     % (self.lock_id, self._lock_type, self.lock_file))
@@ -496,15 +513,15 @@ class OTPmeLock(OTPmeFakeLock):
     def release_lock(self, lock_caller=None, force=False):
         """ Release lock"""
         from otpme.lib import config
-        from otpme.lib.daemon.clusterd import cluster_object_lock
+        #from otpme.lib.daemon.clusterd import cluster_object_lock
         if lock_caller is None:
             if force:
-                # Release cluster lock.
-                if self.cluster:
-                    cluster_object_lock(action="release",
-                                        lock_type=self.lock_type,
-                                        lock_id=self._lock_id,
-                                        write=self.write)
+                ## Release cluster lock.
+                #if self.cluster:
+                #    cluster_object_lock(action="release",
+                #                        lock_type=self.lock_type,
+                #                        lock_id=self._lock_id,
+                #                        write=self.write)
                 # Make sure we empty lock callers on force.
                 self.lock_callers = []
                 # Release lock.
@@ -529,11 +546,11 @@ class OTPmeLock(OTPmeFakeLock):
         # Close flock.
         self.flock.close()
 
-        # Release cluster lock.
-        if self.cluster:
-            cluster_object_lock(action="release",
-                                lock_type=self.lock_type,
-                                lock_id=self._lock_id)
+        ## Release cluster lock.
+        #if self.cluster:
+        #    cluster_object_lock(action="release",
+        #                        lock_type=self.lock_type,
+        #                        lock_id=self._lock_id)
         # Release flock.
         self.flock.release_lock()
         # We dont want the released lock to be re-used.

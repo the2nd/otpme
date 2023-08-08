@@ -100,7 +100,7 @@ def register_backend():
         failed_pass_dir = os.path.join(failed_pass_dir, object_id.accessgroup_uuid)
         sign_hash = object_id.object_hash
         config_dir = os.path.join(failed_pass_dir, sign_hash)
-        config_file = os.path.join(config_dir, config.json_config_file_name)
+        config_file = os.path.join(config_dir, config.object_config_file_name)
         config_paths = {}
         config_paths['config_file'] = config_file
         config_paths['config_dir'] = config_dir
@@ -123,7 +123,7 @@ def register_backend():
                 for x in failed_pass_files:
                     counter += 1
                     x_path = os.path.join(failed_pass_dir, x)
-                    x_file = os.path.join(x_path, config.json_config_file_name)
+                    x_file = os.path.join(x_path, config.object_config_file_name)
                     msg = ("Processing %s (%s/%s): %s"
                         % (path_id, counter, files_count, x_file))
                     logger.debug(msg)
@@ -135,8 +135,14 @@ def register_backend():
     config.register_object_type(object_type="failed_pass",
                             tree_object=False,
                             uniq_name=False,
+                            add_after=["user"],
                             object_cache=1024,
-                            cache_region="data_object")
+                            cache_region="data_object",
+                            backup_attributes=['realm',
+                                            'site',
+                                            'user_uuid',
+                                            'accessgroup_uuid',
+                                            'object_hash'])
     # Register object to backend.
     class_getter = lambda: FailedPass
     backend.register_object_type(object_type="failed_pass",

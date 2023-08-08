@@ -129,10 +129,6 @@ class OTPmeHost(OTPmeClientObject):
         self.lotp_enabled = True
         self.allow_jotp_rejoin = False
         self.public_key = None
-        self.roles = []
-        self.tokens = []
-        self.token_options = {}
-        self.token_login_interfaces = {}
         self.join_date = None
         self.join_node = None
         self.join_node_cache = None
@@ -626,7 +622,7 @@ class OTPmeHost(OTPmeClientObject):
         return self._cache(callback=callback)
 
     @check_acls(['edit:public_key'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def change_public_key(self, public_key=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
@@ -653,7 +649,7 @@ class OTPmeHost(OTPmeClientObject):
         return self._cache(callback=callback)
 
     @check_acls(['revoke:cert'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def revoke_cert(self, run_policies=True,
         _caller="API", callback=default_callback, **kwargs):
@@ -701,7 +697,7 @@ class OTPmeHost(OTPmeClientObject):
         return self._cache(callback=callback)
 
     @check_acls(['renew:cert'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def renew_cert(self, cert_req, cert_valid=None, run_policies=True,
         verbose_level=0, _caller="API", callback=default_callback, **kwargs):
@@ -792,7 +788,7 @@ class OTPmeHost(OTPmeClientObject):
         jotp = stuff.gen_secret(jotp_len)
         return jotp
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def gen_auth_key(self, callback=default_callback, **kwargs):
         """ Generate host auth key pair. """
@@ -867,7 +863,7 @@ class OTPmeHost(OTPmeClientObject):
         return False
 
     @check_acls(['join'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def join_realm(self, finish=False, cert=None, cert_req=None, public_key=None,
         cert_valid=None, run_policies=True, verbose_level=0, _caller="API",
@@ -954,7 +950,7 @@ class OTPmeHost(OTPmeClientObject):
         return self._write(callback=callback)
 
     @check_acls(['leave'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def leave_realm(self, keep_cert=False, keep_auth_key=False,
         run_policies=True, callback=default_callback, verbose_level=0,
@@ -993,7 +989,7 @@ class OTPmeHost(OTPmeClientObject):
 
         return self._write(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
     def add(self, gen_jotp=True, cert_req=None, cert_valid=None,
@@ -1063,7 +1059,7 @@ class OTPmeHost(OTPmeClientObject):
                                 verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def delete(self, force=False, run_policies=True, verify_acls=True,
         verbose_level=0, callback=default_callback,

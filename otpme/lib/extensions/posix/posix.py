@@ -2,7 +2,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 # Distributed under the terms of the GNU General Public License v2
 import os
-from functools import wraps
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -11,7 +10,6 @@ except:
     pass
 
 from otpme.lib import config
-from otpme.lib import locking
 from otpme.lib import backend
 from otpme.lib import nsscache
 from otpme.lib.extensions.ldif_handler import OTPmeLDIFHandler
@@ -22,7 +20,6 @@ EXTENSION_NAME = "posix"
 logger = config.logger
 default_callback = config.get_callback()
 
-LOCK_TYPE = "free_id"
 REGISTER_BEFORE = []
 REGISTER_AFTER = ["otpme.lib.extensions.base.base"]
 
@@ -34,54 +31,12 @@ def register():
     # Roles do need extensions to update e.g. groups (e.g. memberUid)
     # on token_add!
     config.register_default_extension("role", EXTENSION_NAME)
-    locking.register_lock_type(LOCK_TYPE, module=__file__)
 
 #def register_backend():
 #    # Register index attributes.
 #    config.register_index_attribute('uidNumber', ldif=True)
 #    config.register_index_attribute('gidNumber', ldif=True)
 #    config.register_index_attribute('memberUid', ldif=True)
-
-def free_id_lock(attribute):
-    """ Decorator to handle free ID lock. """
-    def wrapper(f):
-        @wraps(f)
-        def wrapped(self, *f_args, **f_kwargs):
-            try:
-                callback = f_kwargs['callback']
-            except:
-                callback = None
-
-            lock_failed_msg = "Failed to acquire free ID lock"
-            try:
-                id_lock = locking.acquire_lock(lock_type=LOCK_TYPE,
-                                            lock_id=attribute,
-                                            write=True,
-                                            callback=callback)
-            except LockWaitTimeout as e:
-                if callback:
-                    msg = "%s: %s" % (lock_failed_msg, e)
-                    return callback.error(msg)
-                raise
-            except LockWaitAbort as e:
-                if callback:
-                    msg = "%s: %s" % (lock_failed_msg, e)
-                    return callback.error(msg)
-                raise
-            except UnknownObject as e:
-                if callback:
-                    msg = "%s: %s" % (lock_failed_msg, e)
-                    return callback.error(msg)
-                raise
-
-            # Call given class method.
-            try:
-                result = f(self, *f_args, **f_kwargs)
-            finally:
-                id_lock.release_lock()
-            return result
-        return wrapped
-    return wrapper
 
 class OTPmeExtension(OTPmeLDIFHandler):
     def __init__(self):
@@ -288,8 +243,6 @@ class OTPmeExtension(OTPmeLDIFHandler):
 
     def update_members(self, o, callback=default_callback, **kwargs):
         """ Handle update_members hook. """
-        msg = "Updating group members: %s" % o.oid
-        logger.info(msg)
         # Get all group tokens
         group_tokens = o.get_tokens(include_roles=True, return_type="rel_path")
         # Get group members.
@@ -312,10 +265,13 @@ class OTPmeExtension(OTPmeLDIFHandler):
         object_modified = False
         group_members = list(set(group_members))
         # Remove members not assigend anymore.
-        current_members = self.get_attribute_values(o=o, attribute="memberUid")
+        current_members = backend.search(object_type=o.type,
+                                        attribute="uuid",
+                                        value=o.uuid,
+                                        return_attributes=['ldif:memberUid'])
+        #current_members = self.get_attribute_values(o=o, attribute="memberUid")
         o.acquire_lock(lock_caller="update_members",
                         write=True, callback=callback)
-        o._load()
         try:
             del_users = list(set(current_members) - set(group_members))
             new_users = list(set(group_members) - set(current_members))
@@ -335,6 +291,8 @@ class OTPmeExtension(OTPmeLDIFHandler):
                                     auto_value=True,
                                     callback=callback)
             if object_modified:
+                msg = "Updated group members: %s" % o.oid
+                logger.info(msg)
                 o._cache(callback=callback)
         finally:
             o.release_lock(lock_caller="update_members", callback=callback)

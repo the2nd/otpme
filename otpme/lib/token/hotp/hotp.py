@@ -418,6 +418,7 @@ class HotpToken(OathToken):
             'COUNTER_SYNC_TIME'         : {
                                             'var_name'      : 'counter_sync_time',
                                             'type'          : float,
+                                            'force_type'    : True,
                                             'required'      : False,
                                         },
 
@@ -538,10 +539,7 @@ class HotpToken(OathToken):
                 logger.debug(msg)
                 return None
             _otp = otp[self.pin_len:]
-            try:
-                pin = int(otp[:self.pin_len])
-            except ValueError:
-                return None
+            pin = otp[:self.pin_len]
         else:
             _otp = otp
 
@@ -732,9 +730,8 @@ class HotpToken(OathToken):
         if pin is None:
             if self.mode == "mode2":
                 pin = callback.askpass("Please enter PIN: ")
-                try:
-                    pin = int(pin)
-                except ValueError:
+                pin = str(pin)
+                if len(pin) != self.pin_len:
                     msg = "Invalid PIN."
                     return callback.error(msg)
 
@@ -764,7 +761,7 @@ class HotpToken(OathToken):
         return callback.ok(_qrcode)
 
     @check_acls(['resync'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def resync(self, otp=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
@@ -798,9 +795,8 @@ class HotpToken(OathToken):
         pin = None
         if self.mode == "mode2":
             pin = callback.askpass("Please enter PIN: ")
-            try:
-                pin = int(pin)
-            except ValueError:
+            pin = str(pin)
+            if len(pin) != self.pin_len:
                 msg = "Invalid PIN."
                 return callback.error(msg)
 
@@ -936,7 +932,7 @@ class HotpToken(OathToken):
 
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def deploy(self, server_secret, pin, _caller="API",
         verbose_level=0, callback=default_callback):
@@ -961,7 +957,7 @@ class HotpToken(OathToken):
 
         return self._cache(callback=callback)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def _add(self, *args, **kwargs):
         """ Add a token. """

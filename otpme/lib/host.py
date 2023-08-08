@@ -36,6 +36,7 @@ def host_data_getter(self):
             if not config.realm_join:
                 msg = "Failed to load host data."
                 logger.critical(msg)
+                config.raise_exception()
     return host_data
 
 def register():

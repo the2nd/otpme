@@ -3,6 +3,7 @@
 # Distributed under the terms of the GNU General Public License v2
 import os
 import glob
+import ujson
 import shutil
 
 try:
@@ -103,7 +104,7 @@ class SyncCache(dict):
 
     def get_cache_file(self, object_id):
         """ Get cache file path. """
-        cache_file = "%s/%s.cache" % (self.cache_dir, object_id.replace("/", ":"))
+        cache_file = "%s/%s.sqlite" % (self.cache_dir, object_id.replace("/", ":"))
         return cache_file
 
     @property
@@ -302,14 +303,14 @@ class SyncCache(dict):
         if not os.path.exists(self.cache_dir):
             return
         # Get cache file list.
-        cache_files = glob.glob("%s/*.cache" % self.cache_dir)
+        cache_files = glob.glob("%s/*.sqlite" % self.cache_dir)
         if not cache_files:
             return
         self.logger.info("Reading sync cache from directory: %s" % self.cache_dir)
         for cache_file in cache_files:
             cache_file_name = os.path.basename(cache_file)
             object_id = cache_file_name.replace(":", "/")
-            object_id = re.sub('.cache$', '', object_id)
+            object_id = re.sub('.sqlite$', '', object_id)
             self.object_ids[object_id] = cache_file
 
     def read_object(self, object_id):
@@ -320,10 +321,12 @@ class SyncCache(dict):
         cache_file = self.get_cache_file(object_id)
         # Read sync object from disk.
         try:
-            object_config = filetools.read_data_file(cache_file)
-        except Exception as e:
-            self.logger.warning("Error reading cache file: %s" % e)
+            file_content = filetools.read_file(cache_file)
+        except Exception:
+            os.remove(cache_file)
             return
+        # Load object config.
+        object_config = ujson.loads(file_content)
         # Decrypt config.
         try:
             object_config = ObjectConfig(object_id, object_config)
@@ -341,16 +344,17 @@ class SyncCache(dict):
         object_config = ObjectConfig(object_id=object_id,
                                 object_config=object_config,
                                 encrypted=False)
-        encrypted_object_config = object_config.encrypt(config.master_key)
+        object_config = object_config.encrypt(config.master_key)
+        file_content = ujson.dumps(object_config)
         # Get cache file path.
         cache_file = self.get_cache_file(object_id)
         # Write object config to disk.
         try:
-            return filetools.write_data_file(cache_file,
-                                            encrypted_object_config,
-                                            user=config.user,
-                                            group=config.group,
-                                            mode=0o660)
+            return filetools.create_file(cache_file,
+                                        file_content,
+                                        user=config.user,
+                                        group=config.group,
+                                        mode=0o660)
         except Exception as e:
             msg = (_("Error writing cache file: %s") % e)
             raise OTPmeException(msg)

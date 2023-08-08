@@ -6,6 +6,7 @@ import time
 import json
 import copy
 import pprint
+from functools import wraps
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -24,8 +25,6 @@ from otpme.lib import multiprocessing
 from otpme.lib.cache import ldif_cache
 #from otpme.lib.locking import oid_lock
 from otpme.lib.cache import search_cache
-from otpme.lib.cache import checksum_cache
-from otpme.lib.cache import instance_cache
 from otpme.lib.cache import ldap_search_cache
 from otpme.lib.classes.object_config import ObjectConfig
 
@@ -95,6 +94,18 @@ def cleanup():
     from otpme.lib.backends.file.file import cleanup
     return cleanup()
 
+def handle_daemon_shutdown():
+    """ Decorator to handle daemon shutdown behavior. """
+    def wrapper(func):
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            if config.daemon_shutdown:
+                os._exit(0)
+            result = func(*args, **kwargs)
+            return result
+        return wrapped
+    return wrapper
+
 def register_object_type(object_type, class_getter=None,
     class_getter_args=None, tree_object=True, path_getter=None,
     oid_getter=None, index_rebuild_func=None, dir_name_extension=None):
@@ -161,7 +172,7 @@ def get_class_getter(object_type):
 # FIXME: add parameter "cache_object=False" to prevent object from beeing cached!?
 #@oid_lock(args_oid_pos=[0])
 def read_config(object_id, read_from_cache=True,
-    checksum_only=False, decrypt=True):
+    parameters=[], checksum_only=False, decrypt=True):
     """ Read object config from backend. """
     # Get logger.
     logger = config.logger
@@ -214,7 +225,7 @@ def read_config(object_id, read_from_cache=True,
     # Read object config from backend. The read() function from backend
     # must return None if object does not exist.
     try:
-        object_config = read(object_id)
+        object_config = read(object_id, parameters=parameters)
     except Exception as e:
         msg = ("Failed to read config from backend: %s: %s"
                 % (object_id, e))
@@ -225,15 +236,18 @@ def read_config(object_id, read_from_cache=True,
         return
 
     # Decrypt object config.
-    object_config = ObjectConfig(object_id, object_config)
-    object_config.decrypt(config.master_key)
+    if decrypt:
+        object_config = ObjectConfig(object_id, object_config)
+        object_config.decrypt(config.master_key)
 
     return object_config
 
+@handle_daemon_shutdown()
 #@oid_lock(args_oid_pos=[0], write=True)
 def write_config(object_id, instance=None, object_config=None, cluster=False,
     index_auto_update=True, full_index_update=False, full_data_update=None,
-    index_journal={}, index_journal_start_id=None, no_transaction=False):
+    index_journal=[], index_journal_start_id=None,
+    no_transaction=False, encrypt=True):
     """ Write object config to backend and update config cache. """
     # Get logger.
     logger = config.logger
@@ -242,10 +256,13 @@ def write_config(object_id, instance=None, object_config=None, cluster=False,
         logger.critical(msg)
         raise OTPmeException(msg)
     if index_auto_update and index_journal:
-        msg = "You can use only one of <index_auto_update> or <index_journal_start_id>."
+        msg = "You can use only one of <index_auto_update> or <index_journal>."
         raise OTPmeException(msg)
     if index_journal_start_id and index_journal:
         msg = "You can use only one of <index_journal> or <index_journal_start_id>."
+        raise OTPmeException(msg)
+    if full_index_update and index_auto_update:
+        msg = "You can use only one of <full_index_update> or <index_auto_update>."
         raise OTPmeException(msg)
     if full_index_update and index_journal:
         msg = "You can use only one of <full_index_update> or <index_journal>."
@@ -282,7 +299,10 @@ def write_config(object_id, instance=None, object_config=None, cluster=False,
             pass
 
     # Encrypt object config and update checksums.
-    encrypted_object_config = object_config.encrypt(config.master_key)
+    if encrypt:
+        object_config = object_config.encrypt(config.master_key)
+    else:
+        object_config = object_config.copy()
 
     if index_journal_start_id:
         # Get object index journal archive.
@@ -313,7 +333,7 @@ def write_config(object_id, instance=None, object_config=None, cluster=False,
 
     # Write config file.
     write_status = write(object_id=object_id,
-                    object_config=encrypted_object_config,
+                    object_config=object_config,
                     index_journal=index_journal,
                     full_index_update=full_index_update,
                     full_data_update=full_data_update,
@@ -334,6 +354,7 @@ def write_config(object_id, instance=None, object_config=None, cluster=False,
 
     return write_status
 
+@handle_daemon_shutdown()
 #@oid_lock(args_oid_pos=[0, 1], write=True)
 def rename_object(object_id, new_object_id,
     no_transaction=False, cluster=False):
@@ -349,6 +370,7 @@ def rename_object(object_id, new_object_id,
     outdate_object(object_id, cache_type="all")
     return True
 
+@handle_daemon_shutdown()
 #@oid_lock(args_oid_pos=[0], write=True)
 def delete_object(object_id, no_transaction=False, cluster=False):
     """ Delete object. """
@@ -394,10 +416,6 @@ def outdate_object(object_id, cache_type=None):
     # Clear OID from cache. Cache type None just clears
     # the checksum cache.
     cache.clear(object_id, cache_type=cache_type)
-    # Clear checksum cache.
-    checksum_cache.invalidate(object_type)
-    # Clear object cache.
-    instance_cache.invalidate(object_type)
     # Clear search cache.
     search_cache.invalidate()
     if object_type in config.tree_object_types:
@@ -417,6 +435,57 @@ def outdate_object(object_id, cache_type=None):
     # Clear ACL cache.
     if object_uuid:
         cache.outdate_acl_cache(object_uuid=object_uuid)
+
+def restore_object(object_data, callback=default_callback, **kwargs):
+    """ Restore object. """
+    object_id = object_data['object_id']
+    object_id = oid.get(object_id)
+    msg = "Restoring: %s" % object_id
+    callback.send(msg)
+    object_config = object_data['object_config']
+    try:
+        write_config(object_id=object_id,
+                    object_config=object_config,
+                    full_index_update=True,
+                    full_data_update=True,
+                    index_auto_update=False,
+                    encrypt=False,
+                    cluster=True)
+    except Exception as e:
+        msg = "Failed to restore object: %s: %s" % (object_id, e)
+        return callback.error(msg)
+    if object_id.object_type == "user":
+        x_uuid = object_config['UUID']
+        x_user_group = object_data['user_group']
+        x_user_group = get_object(uuid=x_user_group)
+        x_user_group.add_default_group_user(user_uuid=x_uuid,
+                                            callback=callback,
+                                            verify_acls=False)
+    if object_id.object_type == "token":
+        x_token_groups = object_data['token_groups']
+        for x in x_token_groups:
+            x_group_uuid = x[0]
+            x_token_opts = x[1]
+            x_token_login_interfaces = x[2]
+            x_group = get_object(uuid=x_group_uuid)
+            x_group.add_token(token_path=object_id.rel_path,
+                            token_options=x_token_opts,
+                            login_interfaces=x_token_login_interfaces,
+                            callback=callback,
+                            verify_acls=False)
+        x_token_roles = object_data['token_roles']
+        for x in x_token_roles:
+            x_role_uuid = x[0]
+            x_token_opts = x[1]
+            x_token_login_interfaces = x[2]
+            x_role = get_object(uuid=x_role_uuid)
+            x_role.add_token(token_path=object_id.rel_path,
+                            token_options=x_token_opts,
+                            login_interfaces=x_token_login_interfaces,
+                            callback=callback,
+                            verify_acls=False)
+    msg = "Restored object: %s" % object_id
+    return callback.ok(msg)
 
 def import_config(object_config, object_id=None, force=False,
     aes_key=None, callback=default_callback, **kwargs):
@@ -466,14 +535,15 @@ def import_config(object_config, object_id=None, force=False,
 
     # Write object config to backend.
     try:
-        write_config(object_id=object_id, object_config=object_config)
+        write_config(object_id=object_id,
+                    object_config=object_config,
+                    cluster=True)
     except:
         config.raise_exception()
         return callback.error("Error writing object config.")
 
     return callback.ok()
 
-@checksum_cache.cache_function()
 def get_checksum(object_id):
     """ Get object checksum. """
     checksum = None
@@ -495,7 +565,6 @@ def get_checksum(object_id):
 
     return checksum
 
-@checksum_cache.cache_function()
 def get_sync_checksum(object_id):
     """ Get object sync checksum. """
     sync_checksum = None
@@ -956,7 +1025,6 @@ def get_instance_from_oid(object_id, object_config=None):
 
     return instance
 
-@instance_cache.cache_function()
 def get_object(object_id=None, uuid=None, object_type=None,
     path=None, rel_path=None, realm=None, site=None, unit=None,
     name=None, run_policies=False, use_cache=True, **kwargs):
@@ -1211,7 +1279,7 @@ def search(attribute=None, value=None, values=None, attributes={},
 
     if return_type == "instance":
         for object_id in _result:
-            x = get_object(object_id=object_id)
+            x = get_object(object_id)
             # Skip objects deleted while search was running.
             if not x:
                 continue

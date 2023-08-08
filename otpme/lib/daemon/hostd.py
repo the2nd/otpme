@@ -1177,6 +1177,33 @@ class HostDaemon(OTPmeDaemon):
             return True
         return False
 
+    def update_crls(self):
+        """ Update CA CRLs. """
+        if not config.master_node:
+            return
+        if not config.cluster_status:
+            return
+        if config.master_failover:
+            return
+        result = backend.search(object_type="ca",
+                                attribute="uuid",
+                                value="*",
+                                return_type="instance")
+        for ca in result:
+            crl_age = time.time() - ca.last_crl_update
+            if crl_age < 86400:
+                continue
+            callback = config.get_callback()
+            ca.update_crl(verify_acls=False, callback=callback)
+            if not config.master_node:
+                continue
+            if not config.cluster_status:
+                continue
+            if config.master_failover:
+                continue
+            callback.write_modified_objects()
+            callback.release_cache_locks()
+
     def run_resolvers(self):
         """ Start clear outdated cache objects als child process. """
         if not config.master_node:
@@ -1477,11 +1504,13 @@ class HostDaemon(OTPmeDaemon):
         # Run in loop until we get signal.
         recv_timeout = None
         init_sync_started = False
+        crl_update_interval = 300
         resolver_run_interval = 30
         cache_outdate_interval = 30
         host_object_reload_interval = 30
         token_data_removal_interval = 30
         last_resolver_run = time.time()
+        last_crl_update_run = time.time()
         last_cache_outdate = time.time()
         last_host_object_reload = time.time()
         last_token_data_removal = time.time()
@@ -1499,7 +1528,8 @@ class HostDaemon(OTPmeDaemon):
 
             try:
                 # Calculate new recv timeout.
-                new_timeout = min(resolver_run_interval,
+                new_timeout = min(crl_update_interval,
+                                resolver_run_interval,
                                 cache_outdate_interval,
                                 host_object_reload_interval,
                                 token_data_removal_interval)
@@ -1538,7 +1568,12 @@ class HostDaemon(OTPmeDaemon):
                     self.clear_outdated_cache_objects()
                     last_cache_outdate = time.time()
 
-                # Run resolvers
+                # Update CA CRLs.
+                if (now - last_crl_update_run) >= crl_update_interval:
+                    self.update_crls()
+                    last_crl_update_run = time.time()
+
+                # Run resolvers.
                 if (now - last_resolver_run) >= resolver_run_interval:
                     self.run_resolvers()
                     last_resolver_run = time.time()

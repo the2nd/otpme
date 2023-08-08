@@ -6,6 +6,7 @@ REGISTER_AFTER = []
 
 # Protocol modules to register.
 modules = [
+        'otpme.lib.classes.otpme_object',
         'otpme.lib.classes.user',
         'otpme.lib.classes.accessgroup',
         'otpme.lib.classes.ca',

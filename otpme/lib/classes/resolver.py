@@ -490,7 +490,8 @@ def register_backend():
                             add_after=["unit", "script"],
                             sync_after=["unit", "script"],
                             object_cache=1024,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'site', 'name'])
     # Register object to backend.
     class_getter = resolver.get_class
     class_getter_args = {'RESOLVER_TYPE' : 'resolver_type'}
@@ -837,13 +838,18 @@ class Resolver(OTPmeObject):
 
         # Get object via child class.
         try:
-            result = self.fetch_objects(object_types=object_types)
+            result = self.fetch_objects(object_types=object_types,
+                                        callback=callback)
         except Exception as e:
             msg = ("Failed to fetch objects with resolver: %s: %s"
                     % (self.name, e))
             logger.warning(msg)
             sync_lock.release_lock()
             return callback.error(msg)
+
+        msg = "Processing objects..."
+        callback.send(msg)
+        logger.info(msg)
 
         # Count objects we got.
         all_objects = []
@@ -1208,6 +1214,11 @@ class Resolver(OTPmeObject):
                         if not test:
                             x_object._write()
 
+                    # Write modified objects (e.g. groups)
+                    callback.write_modified_objects()
+                    # Release cached locks.
+                    callback.release_cache_locks()
+
                     # Skip unchanged objects.
                     if not update_object:
                         if x_object.resolver_checksum == x_resolver_checksum:
@@ -1513,7 +1524,7 @@ class Resolver(OTPmeObject):
 
         return callback.ok(msg)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
     def add(self, ldap_template=None, verbose_level=0, _caller="API",
@@ -1548,7 +1559,7 @@ class Resolver(OTPmeObject):
                                 verbose_level=verbose_level,
                                 callback=callback, **kwargs)
 
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
         """ Rename resolver. """
@@ -1688,7 +1699,9 @@ class Resolver(OTPmeObject):
                 logger.debug(msg)
                 callback.send(msg)
                 try:
-                    x.delete(force=True, verify_acls=False)
+                    x.delete(force=True,
+                            verify_acls=False,
+                            callback=callback)
                 except Exception as e:
                     config.raise_exception()
                     delete_status = False
@@ -1697,13 +1710,18 @@ class Resolver(OTPmeObject):
                     logger.warning(msg)
                     callback.send(msg)
 
+                # Write modified objects (e.g. groups)
+                callback.write_modified_objects()
+                # Release cached locks.
+                callback.release_cache_locks()
+
         # Release lock.
         del_lock.release_lock()
 
         return delete_status
 
     @check_acls(['delete:object'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def delete(self, delete_objects=False, force=False, run_policies=True,
         verify_acls=True, verbose_level=0, callback=default_callback,

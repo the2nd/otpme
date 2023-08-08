@@ -4,7 +4,7 @@
 import os
 # NOTE: Its important to use the same JSON module on each host
 #       when generating the checksums, so we do not use otpme.lib.json.
-import json
+import ujson
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -84,8 +84,17 @@ class ObjectConfig(object):
         return self.decrypted_config.__str__()
 
     def add(self, key, value, compression=None, encoding=None, encryption=None):
-        if key not in self.modified_attributes:
-            self.modified_attributes.append(key)
+        modified_attr = False
+        try:
+            cur_val = self.get(key)
+        except KeyError:
+            modified_attr = True
+        else:
+            if cur_val != value:
+                modified_attr = True
+        if modified_attr:
+            if key not in self.modified_attributes:
+                self.modified_attributes.append(key)
         try:
             self.deleted_attributes.remove(key)
         except:
@@ -200,6 +209,18 @@ class ObjectConfig(object):
             return True
         return False
 
+    def reset_modified(self):
+        self.modified_attributes.clear()
+        self.deleted_attributes.clear()
+        try:
+            self.encrypted_config.pop('INCREMENTAL_UPDATES')
+        except KeyError:
+            pass
+        try:
+            self.decrypted_config.pop('INCREMENTAL_UPDATES')
+        except KeyError:
+            pass
+
     @property
     def sync_checksum(self):
         self.update_checksums()
@@ -240,11 +261,36 @@ class ObjectConfig(object):
             temp_oc.pop('DELETED_ATTRIBUTES')
         except:
             pass
+        # Remove incremental stuff before generating new checksum.
+        try:
+            temp_oc.pop('INCREMENT_ID')
+        except:
+            pass
+        try:
+            temp_oc.pop('INCREMENT_IDS')
+        except:
+            pass
+        try:
+            temp_oc.pop('INCREMENTAL_UPDATES')
+        except:
+            pass
+        try:
+            temp_oc.pop('INCREMENTAL_CHECKSUM')
+        except:
+            pass
+        try:
+            temp_oc.pop('INDEX_JOURNAL')
+        except:
+            pass
+        try:
+            temp_oc.pop('INDEX_JOURNAL_ARCHIVE')
+        except:
+            pass
 
         # Add object salt. This salt is added to each object config to make
         # brute force attacks against the checksum harder on hosts/nodes where
-        # the object config does not include sensitive data (e.g. password
-        # hashes, PINs etc.)
+        # the object config does include sensitive data (e.g. password hashes,
+        # PINs etc.)
         if not self.salt:
             self.salt = stuff.gen_secret(len=32)
 
@@ -252,7 +298,7 @@ class ObjectConfig(object):
         temp_oc['SALT'] = self.salt
 
         # Gen new checksum.
-        object_checksum = json.dumps(temp_oc, sort_keys=True)
+        object_checksum = ujson.dumps(temp_oc, sort_keys=True)
         object_checksum = stuff.gen_sha512(object_checksum)
         # Add checksum.
         self.checksum = object_checksum
@@ -557,26 +603,26 @@ class ObjectConfig(object):
 
         return decrypted_config
 
-    def encrypt(self, key=None, fake=False):
+    def encrypt(self, key=None, fake=False, update_checksums=True):
         if self.encrypted_config:
             if not self.modified:
                 return self.encrypted_config
-        # Update checksums.
-        self.update_checksums()
+        if update_checksums:
+            self.update_checksums()
         if self.encrypted:
             # If the object config was encrypted on init we just have to add
             # the modified (plaintext) attributes to be encrypted below.
             for x in self.modified_attributes:
                 self.encrypted_config[x] = self.decrypted_config[x]
-            object_config = dict(self.encrypted_config)
+            object_config = stuff.copy_object(self.encrypted_config)
         else:
-            object_config = dict(self.decrypted_config)
+            object_config = stuff.copy_object(self.decrypted_config)
         # Add modifified objects to be used by TinyDB on write.
         if self.modified_attributes:
+            self.modified_attributes.append("SALT")
+            self.modified_attributes.append("CHECKSUM")
+            self.modified_attributes.append("SYNC_CHECKSUM")
             modified_attributes = self.modified_attributes
-            modified_attributes.append("SALT")
-            modified_attributes.append("CHECKSUM")
-            modified_attributes.append("SYNC_CHECKSUM")
             object_config['MODIFIED_ATTRIBUTES'] = modified_attributes
             self.modified_attributes = []
             deleted_attributes = self.deleted_attributes
@@ -601,7 +647,7 @@ class ObjectConfig(object):
         except Exception as e:
             msg = "Failed to encrypt object config: %s" % e
             raise OTPmeException(msg)
-        self.encrypted_config = dict(encrypted_oc)
+        self.encrypted_config = encrypted_oc
         return self.encrypted_config
 
     def decrypt(self, key=None):
@@ -625,5 +671,47 @@ class ObjectConfig(object):
         except Exception as e:
             msg = ("Failed to decompress object config: %s" % e)
             raise OTPmeException(msg)
-        self.decrypted_config = dict(decompressed_oc)
+        self.decrypted_config = decompressed_oc
         return self.decrypted_config
+
+    #def reduce(self):
+    #    reduced_config = stuff.copy_object(self.decrypted_config)
+    #    for x in dict(reduced_config):
+    #        if x in self.modified_attributes:
+    #            continue
+    #        if x == "UUID":
+    #            continue
+    #        if x == "LDIF":
+    #            continue
+    #        if x == "TEMPLATE":
+    #            continue
+    #        if x == "CHECKSUM":
+    #            continue
+    #        if x == "SYNC_CHECKSUM":
+    #            continue
+    #        if x == "INDEX_JOURNAL":
+    #            continue
+    #        if x == "INCREMENT_ID":
+    #            continue
+    #        if x == "INCREMENT_IDS":
+    #            continue
+    #        if x == "DICT_ATTRIBUTES":
+    #            continue
+    #        if x == "LIST_ATTRIBUTES":
+    #            continue
+    #        if x == "INCREMENTAL_UPDATES":
+    #            continue
+    #        if x == "INDEX_JOURNAL_ARCHIVE":
+    #            continue
+    #        reduced_config.pop(x)
+    #    try:
+    #        incremental_updates = self.decrypted_config['INCREMENTAL_UPDATES']
+    #    except KeyError:
+    #        incremental_updates = []
+    #    for x in incremental_updates:
+    #        attr = x[1]
+    #        try:
+    #            reduced_config.pop(attr)
+    #        except KeyError:
+    #            pass
+    #    return reduced_config

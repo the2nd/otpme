@@ -20,13 +20,13 @@ except:
 
 from otpme.lib import oid
 from otpme.lib import stuff
+from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import nsscache
 from otpme.lib import filetools
 from otpme.lib import sign_key_cache
 from otpme.lib import multiprocessing
-from otpme.lib.pickle import PickleHandler
 from otpme.lib.classes.object_config import ObjectConfig
 
 from otpme.lib.exceptions import *
@@ -43,13 +43,11 @@ I_TRANSACTION_LOCK_TYPE = "transaction.index"
 O_TRANSACTION_LOCK_TYPE = "transaction.object"
 
 DEBUG_SLOT = "transactions"
-OVERLAY_DIR = os.path.join(config.transaction_dir, "overlay")
 FILE_TRANSACTIONS_DIR = os.path.join(config.transaction_dir, "files")
 OBJECT_TRANSACTIONS_DIR = os.path.join(config.transaction_dir, "objects")
 
 # Make sure transaction directories exists.
 transaction_dirs = [
-                OVERLAY_DIR,
                 FILE_TRANSACTIONS_DIR,
                 OBJECT_TRANSACTIONS_DIR,
                 ]
@@ -81,26 +79,10 @@ def cleanup():
         return
     _transaction._remove_incomplete_transaction(quiet=True)
 
-def get_overlay_object(object_id, parameters=None):
-    """ Build object overlay file path. """
-    overlay_link = get_overlay_file(object_id)
-    if not overlay_link:
-        return
-    # Make sure we use the symlink destination to prevent null byte files
-    # (e.g. AtomicFileLock()).
-    overlay_file = os.path.realpath(overlay_link)
-    try:
-        object_config = filetools.read_data_file(overlay_file, parameters)
-    except Exception as e:
-        msg = ("Error reading object file: %(overlay_file)s: "
-            "%(error)s" % {"overlay_file":overlay_file, "error":e})
-        logger.critical(msg)
-        return
-    return object_config
-
 def get_overlay_file(object_id, active=True):
     """ Build object overlay file path. """
     filename = oid.oid_to_fs_name(object_id.read_oid)
+    filename = "%s.json" % filename
     overlay_file = os.path.join(OVERLAY_DIR, filename)
     if not active:
         return overlay_file
@@ -244,7 +226,7 @@ def end_transaction():
             config.raise_exception()
             return False
         # Commit transaction. For running transactions we dont need to modify
-        # index DB anymore because of a currently active sqlite transaction.
+        # index DB anymore because of a currently active DB transaction.
         try:
             _transaction.commit()
         except Exception as e:
@@ -258,7 +240,8 @@ def end_transaction():
         _transaction.remove()
         # Reset modified flag.
         for o in modified_objects:
-            o._modified = False
+            o.reset_modified()
+            cache.add_instance(o)
         # Release object locks.
         for o in _transaction.locked_objects:
             o.release_lock(lock_caller=_transaction.lock_caller)
@@ -299,8 +282,6 @@ def replay_transactions():
     # This would lead to open posix semaphores as root.
     if config.daemon_name == "controld":
         return
-    if config.use_api:
-        return
     # Replay file transactions.
     for x in get_file_transactions():
         # Get transaction.
@@ -316,8 +297,6 @@ def replay_transactions():
         try:
             _transaction.acquire_lock(timeout=0.01)
         except ObjectLocked:
-            continue
-        except ObjectDeleted:
             continue
         try:
             # Remove finished or incomplete transaction.
@@ -366,8 +345,6 @@ def replay_transactions():
         try:
             _transaction.acquire_lock(timeout=0.01)
         except ObjectLocked:
-            continue
-        except ObjectDeleted:
             continue
         try:
             # Remove finished or incomplete transaction.
@@ -478,8 +455,7 @@ class BaseTransaction(object):
                             self.name, self.id))
         else:
             self.log_name = "%s: %s" % (self.transaction_type, self.id)
-        # Set pickle handler.
-        self.pickle_handler = PickleHandler("auto")
+        self.compression = "lz4"
 
     def index_add(self, object_id, **kwargs):
         """ Add OID to index. """
@@ -487,7 +463,7 @@ class BaseTransaction(object):
         journal_file = self.get_journal_file(action)
         journal_entry = {
                         'action'        : action,
-                        'object_id'     : object_id,
+                        'object_id'     : object_id.full_oid,
                         'kwargs'        : kwargs,
                         'journal_file'  : journal_file,
                         }
@@ -501,7 +477,7 @@ class BaseTransaction(object):
         journal_file = self.get_journal_file(action)
         journal_entry = {
                         'action'        : action,
-                        'object_id'     : object_id,
+                        'object_id'     : object_id.full_oid,
                         'kwargs'        : kwargs,
                         'journal_file'  : journal_file,
                         }
@@ -552,8 +528,6 @@ class BaseTransaction(object):
         except LockWaitTimeout:
             msg = "Transaction is locked: %s (%s)" % (self.id, self.lock_type)
             raise ObjectLocked(msg)
-        if not self.exists():
-            raise ObjectDeleted()
 
     def release_lock(self):
         """ Release transaction lock. """
@@ -571,7 +545,7 @@ class BaseTransaction(object):
                                     full_data_update=full_data_update,
                                     user=config.user,
                                     group=config.group,
-                                    mode=0o660)
+                                    mode=0o770)
         except Exception as e:
             msg = ("Error writing config file: %s" % e)
             logger.critical(msg)
@@ -678,13 +652,15 @@ class BaseTransaction(object):
                 msg = "Reading transaction data from disk: %s" % x
                 logger.debug(msg)
             try:
-                file_content = filetools.read_file(x, read_mode="rb")
+                file_content = filetools.read_file(path=x,
+                                                read_mode="rb",
+                                                compression=self.compression)
             except Exception as e:
                 config.raise_exception()
                 msg = ("Error reading transaction: %s: %s" % (x, e))
                 raise OTPmeException(msg)
 
-            journal_entry = self.pickle_handler.loads(file_content)
+            journal_entry = json.loads(file_content)
 
             self.journal.append(self.journal_counter)
             self.journal_entries[str(self.journal_counter)] = journal_entry
@@ -714,7 +690,7 @@ class BaseTransaction(object):
             # Get journal entry.
             journal_entry = self.journal_entries[str(x)]
             # Encode data.
-            file_content = self.pickle_handler.dumps(journal_entry)
+            file_content = json.dumps(journal_entry)
             # Get spool file.
             journal_file = journal_entry['journal_file']
 
@@ -728,8 +704,8 @@ class BaseTransaction(object):
                                 content=file_content,
                                 user=config.user,
                                 group=config.group,
-                                write_mode="wb",
-                                mode=0o660)
+                                mode=0o660,
+                                compression=self.compression)
     def _write(self):
         """ Write transaction to disk. """
         # Mark transaction as completely written to disk.
@@ -834,7 +810,7 @@ class FileTransaction(BaseTransaction):
         journal_entry = {
                         'action'        : action,
                         'object_uuid'   : object_uuid,
-                        'object_id'     : object_id,
+                        'object_id'     : object_id.full_oid,
                         'object_config' : object_config,
                         'journal_file'  : journal_file,
                         }
@@ -849,7 +825,7 @@ class FileTransaction(BaseTransaction):
         journal_entry = {
                         'action'        : action,
                         'object_uuid'   : object_uuid,
-                        'object_id'     : object_id,
+                        'object_id'     : object_id.full_oid,
                         'journal_file'  : journal_file,
                         }
         self.journal.append(self.journal_counter)
@@ -862,9 +838,9 @@ class FileTransaction(BaseTransaction):
         journal_file = self.get_journal_file(action)
         journal_entry = {
                         'action'        : action,
-                        'object_id'     : object_id,
+                        'object_id'     : object_id.full_oid,
                         'object_uuid'   : object_uuid,
-                        'new_object_id' : new_object_id,
+                        'new_object_id' : new_object_id.full_oid,
                         'journal_file'  : journal_file,
                         }
         self.journal.append(self.journal_counter)
@@ -1017,6 +993,7 @@ class FileTransaction(BaseTransaction):
             msg = "Commiting transaction: %s" % self.log_name
             logger.debug(msg)
 
+        cluster_events = []
         object_transaction = get_transaction()
         for x in self.journal:
             journal_entry = self.journal_entries[str(x)]
@@ -1028,27 +1005,27 @@ class FileTransaction(BaseTransaction):
                 logger.debug(msg)
 
             if action == "index_add":
-                if not self.no_index_writes:
-                    object_id = journal_entry['object_id']
-                    kwargs = journal_entry['kwargs']
-                    autocommit = True
-                    if self.no_disk_writes:
-                        autocommit = False
-                    if object_transaction:
-                        autocommit = False
-                    kwargs['autocommit'] = autocommit
-                    self._index_add(object_id, **kwargs)
+                object_id = journal_entry['object_id']
+                object_id = oid.get(object_id)
+                kwargs = journal_entry['kwargs']
+                autocommit = True
+                if self.no_disk_writes:
+                    autocommit = False
+                if object_transaction:
+                    autocommit = False
+                kwargs['autocommit'] = autocommit
+                self._index_add(object_id, **kwargs)
             elif action == "index_del":
-                if not self.no_index_writes:
-                    object_id = journal_entry['object_id']
-                    kwargs = journal_entry['kwargs']
-                    autocommit = True
-                    if self.no_disk_writes:
-                        autocommit = False
-                    if object_transaction:
-                        autocommit = False
-                    kwargs['autocommit'] = autocommit
-                    self._index_del(object_id, **kwargs)
+                object_id = journal_entry['object_id']
+                object_id = oid.get(object_id)
+                kwargs = journal_entry['kwargs']
+                autocommit = True
+                if self.no_disk_writes:
+                    autocommit = False
+                if object_transaction:
+                    autocommit = False
+                kwargs['autocommit'] = autocommit
+                self._index_del(object_id, **kwargs)
             elif action == "create_dir":
                 if not self.no_disk_writes:
                     directory = journal_entry['directory']
@@ -1077,52 +1054,61 @@ class FileTransaction(BaseTransaction):
             elif action == "update_nsscache":
                 if not self.no_disk_writes:
                     object_id = journal_entry['object_id']
-                    object_id = oid.get(object_id=object_id)
+                    object_id = oid.get(object_id)
                     nsscache_action = journal_entry['nsscache_action']
                     self._update_nsscache(object_id, nsscache_action)
             elif action == "cluster_write":
                 if not self.no_disk_writes:
                     object_uuid = journal_entry['object_uuid']
                     object_id = journal_entry['object_id']
+                    object_id = oid.get(object_id)
                     object_config = journal_entry['object_config']
                     # Decrypt object config.
                     object_config = ObjectConfig(object_id, object_config)
                     object_config = object_config.decrypt(config.master_key)
                     checksum = object_config['CHECKSUM']
-                    object_config = object_config.copy()
                     wait_for_write = True
                     if self._replay:
                         wait_for_write = False
-                    cluster_sync_object(object_uuid=object_uuid,
-                                        object_id=object_id,
-                                        object_config=object_config,
-                                        action="write",
-                                        checksum=checksum,
-                                        wait_for_write=wait_for_write)
+                    cluster_event = cluster_sync_object(object_uuid=object_uuid,
+                                                    object_id=object_id,
+                                                    object_config=object_config,
+                                                    action="write",
+                                                    checksum=checksum,
+                                                    wait_for_write=wait_for_write)
+                    if cluster_event:
+                        cluster_events.append(cluster_event)
             elif action == "cluster_delete":
                 if not self.no_disk_writes:
                     object_uuid = journal_entry['object_uuid']
                     object_id = journal_entry['object_id']
+                    object_id = oid.get(object_id)
                     wait_for_write = True
                     if self._replay:
                         wait_for_write = False
-                    cluster_sync_object(object_uuid=object_uuid,
-                                        object_id=object_id,
-                                        action="delete",
-                                        wait_for_write=wait_for_write)
+                    cluster_event = cluster_sync_object(object_uuid=object_uuid,
+                                                        object_id=object_id,
+                                                        action="delete",
+                                                        wait_for_write=wait_for_write)
+                    if cluster_event:
+                        cluster_events.append(cluster_event)
             elif action == "cluster_rename":
                 if not self.no_disk_writes:
                     object_id = journal_entry['object_id']
+                    object_id = oid.get(object_id)
                     object_uuid = journal_entry['object_uuid']
                     new_object_id = journal_entry['new_object_id']
+                    new_object_id = oid.get(new_object_id)
                     wait_for_write = True
                     if self._replay:
                         wait_for_write = False
-                    cluster_sync_object(object_uuid=object_uuid,
-                                        object_id=object_id,
-                                        action="rename",
-                                        new_object_id=new_object_id,
-                                        wait_for_write=wait_for_write)
+                    cluster_event = cluster_sync_object(object_uuid=object_uuid,
+                                                        object_id=object_id,
+                                                        action="rename",
+                                                        new_object_id=new_object_id,
+                                                        wait_for_write=wait_for_write)
+                    if cluster_event:
+                        cluster_events.append(cluster_event)
             else:
                 msg = "Unknown transaction action: %s" % action
                 raise OTPmeException(msg)
@@ -1130,6 +1116,10 @@ class FileTransaction(BaseTransaction):
             if not self.no_disk_writes:
                 if not object_transaction:
                     self._remove_file(journal_file)
+
+        for x in cluster_events:
+            x.wait()
+            x.unlink()
 
         if not self.no_disk_writes:
             # Remove commit files we got from object transaction.
@@ -1178,7 +1168,6 @@ class ObjectTransaction(BaseTransaction):
                             lock_type=O_TRANSACTION_LOCK_TYPE, **kwargs)
         self.spool_dir = os.path.join(OBJECT_TRANSACTIONS_DIR, self.id)
         self.journal_dir = os.path.join(self.spool_dir, "journal")
-        self.objects_dir = os.path.join(self.spool_dir, "objects")
         self.deleted_objects_dir = os.path.join(self.spool_dir, "deleted")
         self.status_file = os.path.join(self.spool_dir, "transaction.status")
         # Indicates active transaction.
@@ -1219,18 +1208,6 @@ class ObjectTransaction(BaseTransaction):
         # Delete object from index.
         return self._index_del(*args, **kwargs)
 
-    def get_object_file(self, object_id):
-        """ Build object spool file path. """
-        filename = oid.oid_to_fs_name(object_id.read_oid)
-        object_file = os.path.join(self.objects_dir, filename)
-        return object_file
-
-    def get_deleted_object_file(self, object_id):
-        """ Build deleted object spool file path. """
-        filename = oid.oid_to_fs_name(object_id.read_oid)
-        object_file = os.path.join(self.deleted_objects_dir, filename)
-        return object_file
-
     def cache_modified_object(self, o):
         """ Add modified object to transaction cache. """
         # Make sure OID cache is up to date.
@@ -1243,8 +1220,9 @@ class ObjectTransaction(BaseTransaction):
 
     def cache_locked_object(self, o):
         """ Add locked object to transaction cache. """
-        if not o in self.locked_objects:
-            self.locked_objects.append(o)
+        if o in self.locked_objects:
+            return
+        self.locked_objects.append(o)
 
     def add_sign_cache(self, object_id, user_uuid, signer_key, **kwargs):
         """ Add public key to transaction. """
@@ -1326,6 +1304,8 @@ class ObjectTransaction(BaseTransaction):
                 logger.debug(msg)
         modified_objects = []
         for o in cached_objects:
+            if not o._modified:
+                continue
             if config.debug_level(DEBUG_SLOT) > 0:
                 msg = "Writing cached object: %s: %s" % (o, self.log_name)
                 logger.debug(msg)
@@ -1363,102 +1343,19 @@ class ObjectTransaction(BaseTransaction):
             return x_oid.read_oid
         return full_oid
 
-    def add_overlay_object(self, object_id, object_file):
-        """ Add object to overlay. """
-        # Add object to overlay.
-        overlay_file = get_overlay_file(object_id, active=False)
-        if os.path.islink(overlay_file):
-            if os.path.exists(overlay_file):
-                real_path = os.path.realpath(overlay_file)
-                if os.path.exists(real_path):
-                    if real_path == object_file:
-                        return overlay_file
-                    #msg = ("Unable to handle object overlay (add): %s: %s"
-                    #    % (object_id, real_path))
-                    #raise OTPmeException(msg)
-            # Remove orphan overlay file.
-            self._remove_file(overlay_file)
-        try:
-            filetools.symlink(object_file, overlay_file)
-        except Exception as e:
-            msg = ("Failed to add overlay object: %s: %s" % (object_file, e))
-            logger.critical(msg)
-            config.raise_exception()
-        return overlay_file
-
-    def remove_overlay_object(self, object_id, object_file):
-        """ Remove object from overlay. """
-        overlay_file = get_overlay_file(object_id, active=False)
-        if not os.path.islink(overlay_file):
-            return
-        if os.path.exists(overlay_file):
-            real_path = os.path.realpath(overlay_file)
-            if real_path != object_file:
-                msg = ("Unable to handle object overlay (remove): %s: %s"
-                    % (object_id, real_path))
-                raise OTPmeException(msg)
-        self._remove_file(overlay_file)
-        self._remove_file(object_file)
-
-    def overlay_deleted_object(self, object_id, object_config):
-        """ Add object to be deleted to overlay. """
-        # Write current object config to "deleted" dir.
-        object_file = self.get_deleted_object_file(object_id)
-        if not os.path.exists(self.deleted_objects_dir):
-            self._create_dir(self.deleted_objects_dir)
-        if not os.path.exists(object_file):
-            self._write_object_file(object_file, object_config)
-        # Add deleted object to overlay.
-        overlay_file = self.add_overlay_object(object_id, object_file)
-        return overlay_file
-
     def _add_object(self, object_id, object_config):
         """ Add object to journal. """
         read_oid = object_id.read_oid
         full_oid = object_id.full_oid
-        # Merge new object config with the one we already have.
         try:
-            modified_attributes = object_config['MODIFIED_ATTRIBUTES']
+            object_configs = self.journal_objects[read_oid]
         except KeyError:
-            modified_attributes = []
-        try:
-            deleted_attributes = object_config['DELETED_ATTRIBUTES']
-        except KeyError:
-            deleted_attributes = []
-        try:
-            x_oc = self.journal_objects[read_oid]
-        except KeyError:
-            x_oc = {}
-        try:
-            x_deleted_attributes = x_oc['DELETED_ATTRIBUTES']
-        except KeyError:
-            x_deleted_attributes = []
-        try:
-            x_modified_attributes = x_oc['MODIFIED_ATTRIBUTES']
-        except KeyError:
-            x_modified_attributes = []
-        for x in modified_attributes:
-            try:
-                x_deleted_attributes.remove(x)
-            except ValueError:
-                pass
-        modified_attributes = x_modified_attributes + modified_attributes
-        modified_attributes = list(set(modified_attributes))
-        deleted_attributes = x_deleted_attributes + deleted_attributes
-        deleted_attributes = list(set(deleted_attributes))
-        for x in object_config:
-            x_oc[x] = object_config[x]
-        # If no modified objects are present we have to handle removed
-        # attributes for a full object config write.
-        if not modified_attributes:
-            for x in dict(x_oc):
-                if x in object_config:
-                    continue
-                x_oc.pop(x)
-        x_oc['DELETED_ATTRIBUTES'] = deleted_attributes
-        x_oc['MODIFIED_ATTRIBUTES'] = modified_attributes
-        # Set updated object config.
-        self.journal_objects[read_oid] = x_oc
+            object_configs = []
+        # Make sure we use a copy to prevent changing of object config
+        # while its cached.
+        object_config = stuff.copy_object(object_config)
+        object_configs.append(object_config)
+        self.journal_objects[read_oid] = object_configs
         # Handle UUID/OID mapping.
         try:
             object_uuid = x_oc['UUID']
@@ -1493,13 +1390,6 @@ class ObjectTransaction(BaseTransaction):
             self.journal_oid_uuid.pop(object_uuid)
         except:
             pass
-        # Remove object from disk.
-        object_file = self.get_object_file(object_id)
-        if not os.path.exists(object_file):
-            return
-        self._remove_file(object_file)
-        # Remove object from overlay.
-        self.remove_overlay_object(object_id, object_file)
 
     def add_object(self, object_id, object_config, **kwargs):
         """ Add object to transaction. """
@@ -1516,6 +1406,7 @@ class ObjectTransaction(BaseTransaction):
         journal_entry = {
                         'action'        : action,
                         'object_id'     : object_id.full_oid,
+                        'object_config' : object_config,
                         'kwargs'        : kwargs,
                         'journal_file'  : journal_file,
                     }
@@ -1533,17 +1424,9 @@ class ObjectTransaction(BaseTransaction):
         read_oid = object_id.read_oid
         # Try to get object from cache.
         try:
-            object_config = self.journal_objects[read_oid]
-            #object_config = stuff.copy_object(object_config)
-            object_config = object_config.copy()
+            object_config = self.journal_objects[read_oid][-1]
         except:
-            # Get object from disk.
-            object_file = self.get_object_file(object_id)
-            if not os.path.exists(object_file):
-                return
-            object_config = self.read_object(object_file)
-            # Update object in cache.
-            self.journal_objects[read_oid] = stuff.copy_object(object_config)
+            return
         if parameters:
             for x in object_config.copy():
                 if x in parameters:
@@ -1559,10 +1442,9 @@ class ObjectTransaction(BaseTransaction):
             msg = ("Transaction action: %s: %s > %s: %s"
                 % (action, object_id, new_object_id, self.log_name))
             logger.debug(msg)
-        old_object_config = read(object_id)
         object_config = self.get_object(object_id)
         if not object_config:
-            object_config = old_object_config
+            object_config = read(object_id)
         object_uuid = object_config['UUID']
         # Remove old object data from transaction.
         self.dismiss_object(object_id)
@@ -1577,7 +1459,6 @@ class ObjectTransaction(BaseTransaction):
                         'uuid'              : object_uuid,
                         'old_oid'           : object_id.full_oid,
                         'new_oid'           : new_object_id.full_oid,
-                        'old_object_config' : old_object_config,
                         'journal_file'      : journal_file,
                     }
         self.journal_entries[str(self.journal_counter)] = journal_entry
@@ -1619,11 +1500,9 @@ class ObjectTransaction(BaseTransaction):
                 % (action, object_id, self.log_name))
             logger.debug(msg)
         read_oid = object_id.read_oid
-        try:
-            self.journal_objects[read_oid]
-        except:
-            return False
-        return True
+        if read_oid in self.journal_objects:
+            return True
+        return False
 
     def read_object(self, object_file):
         """ Read object from disk. """
@@ -1638,23 +1517,6 @@ class ObjectTransaction(BaseTransaction):
         object_config = json.loads(object_config_json)
         return object_config
 
-    def write_object(self, object_file, object_config):
-        """ Write object to disk. """
-        # Encode object config.
-        object_config_json = json.dumps(object_config)
-        # Write object config.
-        try:
-            filetools.create_file(object_file,
-                                object_config_json,
-                                user=config.user,
-                                group=config.group,
-                                mode=0o660)
-        except Exception as e:
-            msg = ("Error writing journal file: %(object_file)s: "
-                "%(error)s" % {"object_file":object_file, "error":e})
-            logger.critical(msg)
-            config.raise_exception()
-
     def _write(self):
         """ Write object transaction to disk. """
         # Will not write empty transaction to disk.
@@ -1662,15 +1524,6 @@ class ObjectTransaction(BaseTransaction):
             self._write_journal()
         except EmptyTransaction:
             return
-        # Make sure objects dir exists.
-        if not os.path.exists(self.objects_dir):
-            self._create_dir(self.objects_dir)
-        # Write objects to disk.
-        for read_oid in self.journal_objects:
-            object_id = oid.get(read_oid)
-            object_file = self.get_object_file(object_id)
-            object_config = self.journal_objects[read_oid]
-            self.write_object(object_file, object_config)
         if config.debug_level(DEBUG_SLOT) > 3:
             msg = ("Transaction data successful written to disk: %s"
                     % self.log_name)
@@ -1754,32 +1607,25 @@ class ObjectTransaction(BaseTransaction):
             if action == "index_add":
                 if not no_index_writes:
                     object_id = journal_entry['object_id']
+                    object_id = oid.get(object_id)
                     kwargs = journal_entry['kwargs']
                     self._index_add(object_id, **kwargs)
                     self._remove_file(journal_file)
             elif action == "index_del":
                 if not no_index_writes:
                     object_id = journal_entry['object_id']
+                    object_id = oid.get(object_id)
                     kwargs = journal_entry['kwargs']
                     self._index_del(object_id, **kwargs)
                     self._remove_file(journal_file)
             elif action == "add":
                 object_id = journal_entry['object_id']
+                object_config = journal_entry['object_config']
                 kwargs = journal_entry['kwargs']
-                # Make sure we write an object just one time.
-                if object_id in added_objects:
-                    self._remove_file(journal_file)
-                    continue
                 # Get OID.
-                object_id = oid.get(object_id=object_id)
-                # Add object to overlay.
-                object_file = self.get_object_file(object_id)
-                overlay_file = self.add_overlay_object(object_id, object_file)
+                object_id = oid.get(object_id)
                 # Add commit files to be removed by file transaction.
                 commit_files.append(journal_file)
-                commit_files.append(overlay_file)
-                # Get object config.
-                object_config = self.get_object(object_id)
                 if config.debug_level(DEBUG_SLOT) > 0:
                     msg = ("Applying object transaction (write): %s: %s"
                             % (object_id, self.log_name))
@@ -1797,13 +1643,9 @@ class ObjectTransaction(BaseTransaction):
                 object_config = journal_entry['object_config']
                 kwargs = journal_entry['kwargs']
                 # Get OID.
-                object_id = oid.get(object_id=object_id)
-                # Add object to be deleted to overlay.
-                overlay_file = self.overlay_deleted_object(object_id,
-                                                        object_config)
+                object_id = oid.get(object_id)
                 # Add commit files to be removed by file transaction.
                 commit_files.append(journal_file)
-                commit_files.append(overlay_file)
                 if config.debug_level(DEBUG_SLOT) > 0:
                     msg = ("Applying object transaction (delete): %s: %s"
                             % (object_id, self.log_name))
@@ -1822,7 +1664,6 @@ class ObjectTransaction(BaseTransaction):
                 old_oid = journal_entry['old_oid']
                 old_oid = oid.get(object_id=old_oid)
                 object_uuid = journal_entry['uuid']
-                old_object_config = journal_entry['old_object_config']
                 new_oid = journal_entry['new_oid']
                 new_oid = oid.get(object_id=new_oid)
                 kwargs = journal_entry['kwargs']
@@ -1830,12 +1671,8 @@ class ObjectTransaction(BaseTransaction):
                     msg = ("Applying object transaction (rename): %s > %s: %s"
                             % (old_oid, new_oid, self.log_name))
                     logger.debug(msg)
-                # Add object to be renamed to overlay.
-                overlay_file = self.overlay_deleted_object(old_oid,
-                                                    old_object_config)
                 # Add commit files to be removed by file transaction.
                 commit_files.append(journal_file)
-                commit_files.append(overlay_file)
                 # Rename object.
                 rename(old_oid, new_oid,
                     object_uuid=object_uuid,

@@ -32,7 +32,6 @@ from otpme.lib.policy import one_time_policy_run
 from otpme.lib.otpme_acl import check_special_user
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
-from otpme.lib.extensions.posix.posix import free_id_lock
 from otpme.lib.classes.data_objects.used_slp import UsedSLP
 from otpme.lib.classes.data_objects.used_sotp import UsedSOTP
 from otpme.lib.classes.data_objects.failed_pass import FailedPass
@@ -1093,7 +1092,8 @@ def register_backend():
                             add_after=["group"],
                             sync_before=["token"],
                             object_cache=1024,
-                            cache_region="tree_object")
+                            cache_region="tree_object",
+                            backup_attributes=['realm', 'name'])
     # Register object to backend.
     class_getter = lambda: User
     backend.register_object_type(object_type="user",
@@ -1219,18 +1219,13 @@ class User(OTPmeObject):
         self.autosign_enabled = False
         # The OTPmeScript used to handle users private key.
         self.key_script = None
-        self.key_script_options = None
         # The OTPmeScript used to start/stop users gpg/ssh-agent.
         self.agent_script = None
-        self.agent_script_options = None
         # The OTPmeScript used as users login script.
         self.login_script = None
-        self.login_script_options = None
         self.login_script_enabled = False
-        self.tokens = []
         self.used_pass_salt = None
         self.auth_script = None
-        self.auth_script_options = None
         self.auth_script_enabled = False
         self.acl_inheritance_enabled = False
         self.track_last_used = True
@@ -1594,7 +1589,7 @@ class User(OTPmeObject):
         return self._cache(callback=callback)
 
     @check_acls(['edit:private_key'])
-    @object_lock()
+    @object_lock(full_lock=True)
     def change_private_key(self, private_key, force=False, verbose_level=0,
         run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Set users RSA private key or stuff to get it. """
@@ -1624,7 +1619,7 @@ class User(OTPmeObject):
         return self._cache(callback=callback)
 
     @check_acls(['edit:public_key'])
-    @object_lock()
+    @object_lock(full_lock=True)
     def change_public_key(self, public_key, force=False, verbose_level=0,
         run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Set users RSA public key. """
@@ -1758,7 +1753,7 @@ class User(OTPmeObject):
     @check_acls(['gen_keys'])
     @check_special_user()
     @cli.check_rapi_opts()
-    #@object_lock()
+    #@object_lock(full_lock=True)
     def gen_keys(self, sign_mode="client", encrypt_key=True, aes_key=None,
         aes_key_enc=None, key_len=None, pass_hash_type="PBKDF2", force=False,
         run_policies=True, stdin_pass=False, verbose_level=0,
@@ -1885,7 +1880,7 @@ class User(OTPmeObject):
     @check_acls(['del_keys'])
     @check_special_user()
     @cli.check_rapi_opts()
-    #@object_lock()
+    #@object_lock(full_lock=True)
     def del_keys(self, force=False, run_policies=True, verbose_level=0,
         callback=default_callback, _caller="API", **kwargs):
         """ Create users RSA private/public key pair. """
@@ -1968,7 +1963,7 @@ class User(OTPmeObject):
         return private_key
 
     @check_acls(['edit:private_key_pass'])
-    @object_lock()
+    @object_lock(full_lock=True)
     def change_key_pass(self, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change private key passphrase. """
@@ -2800,7 +2795,7 @@ class User(OTPmeObject):
         return callback.ok()
 
     @check_acls(['deploy:token'])
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def deploy_token(self, token_name, token_type, smartcard_type,
         replace=False, deploy_data=None, pre_deploy=False, force=False,
@@ -3348,7 +3343,7 @@ class User(OTPmeObject):
 
     @check_acls(['edit:key_script'])
     @check_special_user()
-    @object_lock()
+    @object_lock(full_lock=True)
     def change_key_script(self, key_script=None, script_options=None,
         run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Change user key script. """
@@ -3372,7 +3367,7 @@ class User(OTPmeObject):
 
     @check_acls(['edit:agent_script'])
     @check_special_user()
-    @object_lock()
+    @object_lock(full_lock=True)
     def change_agent_script(self, agent_script=None, script_options=None,
         run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Change user agent script. """
@@ -3396,7 +3391,7 @@ class User(OTPmeObject):
 
     @check_acls(['edit:login_script'])
     @check_special_user()
-    @object_lock()
+    @object_lock(full_lock=True)
     def change_login_script(self, login_script=None, script_options=None,
         run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Change user login script. """
@@ -3420,7 +3415,7 @@ class User(OTPmeObject):
 
     @check_acls(['edit:auth_script'])
     @check_special_user()
-    @object_lock()
+    @object_lock(full_lock=True)
     def change_auth_script(self, auth_script=None, script_options=None,
         run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Change user auth script. """
@@ -3443,7 +3438,7 @@ class User(OTPmeObject):
                         script=auth_script, callback=callback)
 
     @check_special_user()
-    @object_lock()
+    @object_lock(full_lock=True)
     @backend.transaction
     def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
         """ Rename user. """
@@ -3481,8 +3476,7 @@ class User(OTPmeObject):
 
         return rename_result
 
-    @object_lock()
-    @free_id_lock("uidNumber")
+    @object_lock(full_lock=True)
     @backend.transaction
     @one_time_policy_run
     @run_pre_post_add_policies()
@@ -3492,6 +3486,7 @@ class User(OTPmeObject):
         force=False, verify_acls=True, groups=None, default_roles=None,
         _caller="API", verbose_level=0, callback=default_callback, **kwargs):
         """ Add user. """
+
         # Get default token settings.
         if add_default_token is None:
             # No need to add default token for base users.
@@ -3518,20 +3513,6 @@ class User(OTPmeObject):
                 msg = "Unknown token type: %s" % default_token_type
                 return callback.error(msg)
 
-        # Check for given group.
-        if group is not None:
-            result = backend.search(object_type="group",
-                                    attribute="name",
-                                    value=group,
-                                    return_type="uuid")
-            if not result:
-                msg = "Unknown group: %s" % group
-                return callback.error(msg)
-            if verify_acls:
-                if not self.verify_acl('add:default_group_user'):
-                    msg = "Group: %s: Permission denied" % group
-                    return callback.error(msg)
-
         _groups = []
         if groups is not None:
             for group_name in groups:
@@ -3549,6 +3530,8 @@ class User(OTPmeObject):
                     if not _group.verify_acl("add:token"):
                         msg = "Group: %s: Permission denied" % group_name
                         return callback.error(msg)
+                # Acquire lock.
+                #_group._cache(callback=callback)
                 _groups.append(_group)
 
         _default_roles = []
@@ -3563,12 +3546,14 @@ class User(OTPmeObject):
                 if not result:
                     msg = "Unknown role: %s" % role_name
                     return callback.error(msg)
-                role = result[0]
+                _role = result[0]
                 if verify_acls:
-                    if not role.verify_acl("add:token"):
+                    if not _role.verify_acl("add:token"):
                         msg = "Role: %s: Permission denied" % role_name
                         return callback.error(msg)
-                _default_roles.append(role)
+                # Acquire lock.
+                #_role._cache(callback=callback)
+                _default_roles.append(_role)
 
         # Handle default token from TOKENSTORE.
         _default_token = None
@@ -3611,6 +3596,36 @@ class User(OTPmeObject):
                 msg = "Unknown template: %s" % template_name
                 return callback.error(msg)
 
+        # If no group is given but a template, prever templates group
+        # over any defaultgroups policy.
+        if group is None:
+            if template:
+                group = template.group
+
+        run_group_policies = False
+        if group is None:
+            run_group_policies = True
+            if self.name == config.admin_user_name:
+                group = config.admin_group
+            else:
+                group = config.users_group
+
+        # Check for given group.
+        default_group = None
+        if group is not None:
+            result = backend.search(object_type="group",
+                                    attribute="name",
+                                    value=group,
+                                    return_type="instance")
+            if not result:
+                msg = "Unknown group: %s" % group
+                return callback.error(msg)
+            default_group = result[0]
+            if verify_acls:
+                if not self.verify_acl('add:default_group_user'):
+                    msg = "Group: %s: Permission denied" % group
+                    return callback.error(msg)
+
         check_exists = True
         if force:
             check_exists = False
@@ -3643,14 +3658,8 @@ class User(OTPmeObject):
         # Generate salt for used OTP/pass hashes.
         self.used_pass_salt = stuff.gen_secret(32)
 
-        # If no group is given but a template prever templates group
-        # over any defaultgroups policy.
-        if group is None:
-            if template:
-                group = template.group
-
         # If no group and not template group is given run policies (e.g. defaultgroups).
-        if group is None:
+        if run_group_policies:
             policy_hook = "set_default_group"
             parent_object = self.get_parent_object()
             try:
@@ -3669,23 +3678,8 @@ class User(OTPmeObject):
 
         # If not group was set by policies set default users group.
         if self.group is None:
-            if group is None:
-                if self.name == config.admin_user_name:
-                    group = config.admin_group
-                else:
-                    group = config.users_group
-            result = backend.search(object_type="group",
-                                    attribute="name",
-                                    value=group,
-                                    return_type="uuid")
-            if not result:
-                msg = "Unknown group: %s" % group
-                return callback.error(msg)
-
-            group_uuid = result[0]
-
             try:
-                self._change_group(group_uuid,
+                self._change_group(default_group.uuid,
                                 verify_acls=verify_acls,
                                 callback=callback)
             except UnknownObject as e:
@@ -3823,11 +3817,6 @@ class User(OTPmeObject):
         if not add_result:
             return add_result
 
-        # Run post policies ALSO BEFORE adding token (e.g. tokenacls).
-        if run_policies:
-            super(User, self)._run_post_add_policies(verbose_level=verbose_level,
-                                                    callback=callback, **kwargs)
-
         # Add default token.
         if add_default_token:
             if default_token:
@@ -3873,6 +3862,11 @@ class User(OTPmeObject):
                     msg = str(e)
                     return callback.error(msg)
 
+        # Run post policies ALSO BEFORE adding token (e.g. tokenacls).
+        if run_policies:
+            super(User, self)._run_post_add_policies(verbose_level=verbose_level,
+                                                    callback=callback, **kwargs)
+
         # Non-admin users are done here.
         if self.name != config.admin_user_name:
             return self._write(callback=callback)
@@ -3910,7 +3904,7 @@ class User(OTPmeObject):
         return self._write(callback=callback)
 
     @check_special_user()
-    @object_lock(recursive=True)
+    @object_lock(recursive=True, full_lock=True)
     @backend.transaction
     def delete(self, force=False, verify_acls=True, run_policies=True,
         verbose_level=0, callback=default_callback,
@@ -3982,8 +3976,8 @@ class User(OTPmeObject):
 
         # Remove user from group.
         if self.group_uuid:
-            group = backend.get_object(uuid=self.group_uuid)
-            group.remove_default_group_user(self.uuid,
+            default_group = backend.get_object(uuid=self.group_uuid)
+            default_group.remove_default_group_user(self.uuid,
                                             verify_acls=False,
                                             ignore_missing=True)
 

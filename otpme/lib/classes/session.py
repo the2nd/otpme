@@ -36,7 +36,7 @@ logger = config.logger
 
 default_callback = config.get_callback()
 
-SESSIONS_DIR = "%s/sessions" % config.spool_dir
+SESSIONS_DIR = "%s/sessions" % config.data_dir
 
 commands = {
     'list'   : {
@@ -129,7 +129,7 @@ def register_backend():
                             perms=0o770)
     def path_getter(object_id):
         session_name = object_id.name
-        config_file_name = "%s.json" % session_name
+        config_file_name = "%s.sqlite" % session_name
         config_file = os.path.join(SESSIONS_DIR, config_file_name)
         config_paths = {}
         config_paths['config_file'] = config_file
@@ -140,7 +140,8 @@ def register_backend():
                             tree_object=False,
                             uniq_name=False,
                             object_cache=1024,
-                            cache_region="session")
+                            cache_region="session",
+                            backup_attributes=['realm', 'site', 'name'])
     # Register index attributes.
     config.register_index_attribute('client')
     config.register_index_attribute('session_id')
@@ -184,6 +185,7 @@ class Session(OTPmeLockObject):
         pass_hash=None, pass_hash_params=None, session_id=None, token=None,
         client=None, client_ip=None):
         """ Init. """
+        super(Session, self).__init__()
         self.realm = config.realm
         self.site = config.site
         #if pass_hash is not None:
@@ -215,6 +217,9 @@ class Session(OTPmeLockObject):
 
         # Set our object type.
         self.type = "session"
+
+        # Old checksum.
+        self.old_checksum = None
 
         if object_id:
             self.oid = object_id
@@ -422,14 +427,18 @@ class Session(OTPmeLockObject):
         # FIXME: how and when to run a function or method to remove expired sessions from backend?
         #       there may be orphan session (those who have expired without beeing reused after expiry)
         # If session is expired remove it.
-        if time.time() > self.expire_time():
+        now = time.time()
+        expire_time = self.expire_time()
+        if now > expire_time:
+            print("CCC", now, expire_time)
             msg = ("Session '%s' is expired by session timeout. "
                     "Removing..." % self.name)
             logger.debug(msg)
             self.delete(force=True, recursive=True, verify_acls=False)
             return False
         # If session is expired remove it and all childs that exist.
-        if time.time() > self.unused_expire_time():
+        unused_expire_time = self.unused_expire_time()
+        if now > unused_expire_time:
             msg = ("Session '%s' is expired by unused session timeout. "
                     "Removing..." % self.name)
             logger.debug(msg)
@@ -470,7 +479,16 @@ class Session(OTPmeLockObject):
         if not object_config:
             return False
 
+        # Set old checksum. Used in backend to decide
+        # if a full data update is required.
+        if not self.old_checksum:
+            try:
+                self.old_checksum = object_config['CHECKSUM']
+            except KeyError:
+                pass
+
         self.object_config = object_config
+
         return True
 
     def get_config_parameter(self, parameter):
@@ -539,6 +557,9 @@ class Session(OTPmeLockObject):
                 self.object_config.pop('RENEG_HASH')
         if self.last_reneg:
             self.object_config['LAST_RENEG'] = self.last_reneg
+
+        if self.old_checksum is not None:
+            self.object_config['OLD_CHECKSUM'] = self.old_checksum
 
         # Write session config.
         try:
