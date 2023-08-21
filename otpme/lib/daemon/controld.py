@@ -257,6 +257,8 @@ class ControlDaemon(UnixDaemon):
 
     def signal_handler(self, _signal, frame):
         """ Handle signals and notify ourselves via queue.put() """
+        if self.daemon_startup.value:
+            return
         signal_name = stuff.get_signal_name(_signal)
         if signal_name == "SIGINT":
             self.logger.warning("Exiting on Ctrl+C")
@@ -329,6 +331,12 @@ class ControlDaemon(UnixDaemon):
             msg = ("Failed to close shared bool: %s" % self._cleanup_done.name)
             self.logger.critical(msg)
         try:
+            self.daemon_startup.close()
+        except Exception as e:
+            msg = ("Failed to close shared bool: %s"
+                % config.daemon_startup.name)
+            self.logger.critical(msg)
+        try:
             config._daemon_shutdown.close()
         except Exception as e:
             msg = ("Failed to close shared bool: %s"
@@ -388,6 +396,11 @@ class ControlDaemon(UnixDaemon):
             self.logger.critical(msg)
         try:
             multiprocessing.cluster_out_event.unlink()
+        except Exception as e:
+            msg = "Failed to remove cluster event: %s" % e
+            self.logger.critical(msg)
+        try:
+            multiprocessing.two_node_setup_event.unlink()
         except Exception as e:
             msg = "Failed to remove cluster event: %s" % e
             self.logger.critical(msg)
@@ -504,6 +517,9 @@ class ControlDaemon(UnixDaemon):
         self.logger = config.setup_logger(banner=log_banner,
                                         pid=self.pid,
                                         existing_logger=config.logger)
+        if not os.path.exists(config.uuid_file):
+            msg = (_("Host is not a realm member."))
+            raise OTPmeException(msg)
         ## Blacklists for exit handler decorator.
         #blacklist_methods = [
         #                    '__getattr__',
@@ -526,8 +542,18 @@ class ControlDaemon(UnixDaemon):
 
         multiprocessing.cluster_in_event = multiprocessing.Event()
         multiprocessing.cluster_out_event = multiprocessing.Event()
+        multiprocessing.two_node_setup_event = multiprocessing.Event()
         #multiprocessing.cluster_lock_event = multiprocessing.Event()
 
+        daemon_startup = "otpme-daemon-startup"
+        try:
+            self.daemon_startup = multiprocessing.get_bool(daemon_startup,
+                                                        random_name=False)
+        except Exception as e:
+            msg = "Failed to get shared bool: %s" % e
+            self.logger.critical(msg)
+        # Mark daemon startup as True.
+        self.daemon_startup.value = True
         daemon_shutdown = "otpme-daemon-shutdown"
         try:
             config._daemon_shutdown = multiprocessing.get_bool(daemon_shutdown,
@@ -808,6 +834,7 @@ class ControlDaemon(UnixDaemon):
                 #    break
                 # Inform main process about startup.
                 self.comm_handler.send(sender, command="daemons_ready")
+                self.daemon_startup.value = False
             elif command == "send_keepalive":
                 self.ensure_daemons()
             elif command == "configure_floating_ip":

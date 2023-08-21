@@ -83,28 +83,32 @@ class OTPmeClusterP1(OTPmeServer1):
         running_jobs = dict(multiprocessing.running_jobs)
         if len(running_jobs) == 0:
             return
-        table_headers = ['Start Time', 'Job Name', 'Auth Token', 'User']
+        table_headers = ['Start Time', 'Job Name', 'Auth Token', 'PID']
         table = PrettyTable(table_headers,
                             header_style="title",
                             vrules=NONE,
                             hrules=FRAME)
+        job_added = False
         table.align = "l"
         table.padding_width = 0
         table.right_padding_width = 1
         for x in running_jobs:
             x_name = running_jobs[x]['name']
+            x_pid = running_jobs[x]['pid']
+            if x_pid:
+                if not stuff.check_pid(x_pid):
+                    continue
             x_start_time = running_jobs[x]['start_time']
             x_start_time = datetime.datetime.fromtimestamp(x_start_time)
-            try:
-                x_user = running_jobs[x]['user']
-            except KeyError:
-                x_user = None
             try:
                 x_auth_token = running_jobs[x]['auth_token']
             except KeyError:
                 x_auth_token = None
-            row = [x_start_time, x_name, x_auth_token, x_user]
+            row = [x_start_time, x_name, x_auth_token, x_pid]
             table.add_row(row)
+            job_added = True
+        if not job_added:
+            return
         # Get output string from table.
         output = table.get_string(start=0)
         return output
@@ -150,8 +154,6 @@ class OTPmeClusterP1(OTPmeServer1):
                             "get_cluster_quorum",
                             "get_cluster_status",
                             "set_master_failover",
-                            "set_member_candidate",
-                            "get_init_sync_status",
                             "get_node_sync_status",
                             "start_master_failover",
                             "get_master_sync_status",
@@ -224,18 +226,6 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = False
                 message = "Master sync not done."
 
-        elif command == "get_init_sync_status":
-            status = True
-            message = "Init sync done."
-            try:
-                node_name = command_args['node_name']
-            except:
-                message = "Missing node name."
-                status = False
-            if status:
-                if node_name not in multiprocessing.init_sync_done:
-                    status = False
-
         elif command == "get_node_sync_status":
             if os.path.exists(config.node_sync_file):
                 status = True
@@ -248,11 +238,6 @@ class OTPmeClusterP1(OTPmeServer1):
             status = True
             message = "Node online."
             multiprocessing.online_nodes[self.peer.name] = True
-
-        elif command == "set_member_candidate":
-            status = True
-            message = "Member candidate set."
-            multiprocessing.member_candidates[self.peer.name] = True
 
         elif command == "set_node_sync":
             status = True
@@ -311,36 +296,41 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = False
             if status:
                 object_types = config.get_cluster_object_types()
+                return_attributes = ['oid', 'sync_checksum']
                 result = backend.search(object_types=object_types,
                                         attribute="uuid",
                                         value="*",
-                                        return_type="instance")
+                                        return_attributes=return_attributes)
                 sync_objects = {}
                 sync_objects_count = 0
-                for x in result:
+                for x_uuid in result:
+                    x_oid = result[x_uuid]['oid']
+                    x_checksum = result[x_uuid]['sync_checksum']
                     sync_object = False
                     try:
-                        remote_object_data = remote_objects[x.oid.full_oid]
+                        remote_object_data = remote_objects[x_oid.full_oid]
                     except KeyError:
                         remote_object_data = None
                         sync_object = True
                     if remote_object_data:
-                        remote_last_used = remote_object_data['last_used']
-                        if remote_last_used is not None and x.last_used is not None:
-                            if remote_last_used < x.last_used:
-                                sync_object = True
-                        remote_last_modified = remote_object_data['last_modified']
-                        if remote_last_modified is not None and x.last_modified is not None:
-                            if remote_last_modified < x.last_modified:
-                                sync_object = True
+                        remote_checksum = remote_object_data['sync_checksum']
+                        if remote_checksum != x_checksum:
+                            sync_object = True
                     if not sync_object:
-                        sync_objects[x.oid.full_oid] = None
+                        sync_objects[x_oid.full_oid] = None
                         continue
+                    x_object_config = backend.read_config(x_oid)
+                    x_object_config = x_object_config.copy()
+                    x_sync_checksum = backend.get_sync_checksum(x_oid)
+                    x_object_config['SYNC_CHECKSUM'] = x_sync_checksum
+                    x_last_used = backend.get_last_used(x_oid.realm,
+                                                        x_oid.site,
+                                                        x_oid.object_type,
+                                                        x_uuid)
                     sync_objects_count += 1
-                    sync_objects[x.oid.full_oid] = {}
-                    sync_objects[x.oid.full_oid]['last_used'] = x.last_used
-                    sync_objects[x.oid.full_oid]['last_modified'] = x.last_modified
-                    sync_objects[x.oid.full_oid]['object_config'] = x.object_config.copy()
+                    sync_objects[x_oid.full_oid] = {}
+                    sync_objects[x_oid.full_oid]['last_used'] = x_last_used
+                    sync_objects[x_oid.full_oid]['object_config'] = x_object_config
                 message = sync_objects
                 msg = ("Sending %s objects to peer: %s"
                         % (sync_objects_count, self.peer.name))
@@ -376,14 +366,20 @@ class OTPmeClusterP1(OTPmeServer1):
             except:
                 last_used = None
             try:
+                full_data_update = command_args['full_data_update']
+            except:
+                full_data_update = False
+            try:
                 full_index_update = command_args['full_index_update']
             except:
-                full_index_update = None
+                full_index_update = False
             if config.daemon_shutdown:
                 message = "Daemon shutdown."
                 status = False
             if status:
-                msg = ("Writing object (node:%s): %s" % (self.peer.name, object_id))
+                object_checksum = object_config['CHECKSUM']
+                msg = ("Writing object (node:%s): %s (%s)"
+                    % (self.peer.name, object_id, object_checksum))
                 logger.debug(msg)
                 message = "done"
                 while True:
@@ -400,6 +396,7 @@ class OTPmeClusterP1(OTPmeServer1):
                                 'object_id'         : object_id,
                                 'last_used'         : last_used,
                                 'object_config'     : object_config,
+                                'full_data_update'  : full_data_update,
                                 'full_index_update' : full_index_update,
                             }
                 file_content = ujson.dumps(object_data)

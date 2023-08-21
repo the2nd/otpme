@@ -576,7 +576,7 @@ class JoinHandler(object):
         host_fqdn=None, username=None, password=None, jotp=None,
         host_key_len=None, site_key_len=None, unit=None,
         force=False, trust_site_cert=False, no_daemon_start=False,
-        check_site_cert=None, fingerprint_digest=None):
+        check_site_cert=None, fingerprint_digest=None, create_db_indexes=False):
         """ Join this node/host to realm. """
         if jotp is not None:
             if not isinstance(jotp, str):
@@ -747,11 +747,12 @@ class JoinHandler(object):
             stuff.start_otpme_daemon()
 
         # Make sure DB indices are created after adding all objects.
-        _index = config.get_index_module()
-        if _index.is_available():
-            msg = "Creating DB indexes..."
-            message(msg)
-            _index.command("create_db_indices")
+        if create_db_indexes:
+            _index = config.get_index_module()
+            if _index.is_available():
+                msg = "Creating DB indexes..."
+                message(msg)
+                _index.command("create_db_indices")
 
         # FIXME: wait for  sync of authorized_key (the last sync????) to finish????
         #       - make this an option???

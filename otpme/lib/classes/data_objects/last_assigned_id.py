@@ -27,6 +27,7 @@ def register():
     register_oid()
     register_backend()
     register_sync_settings()
+    config.register_index_attribute("id_type")
 
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'policy_uuid', 'id_type', 'last_assigned_id' ]
@@ -175,6 +176,7 @@ class LastAssignedID(OTPmeDataObject):
     def add(self, callback=default_callback):
         """ Add the object. """
         # Add policy UUID to index.
+        self.add_index('id_type', self.id_type)
         self.add_index('policy_uuid', self.policy_uuid)
         # Call base class add method.
         return super(LastAssignedID, self).add(callback=callback)

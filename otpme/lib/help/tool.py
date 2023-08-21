@@ -51,6 +51,13 @@ cmd_help = {
                                 },
                 },
 
+    'check_duplicate_ids'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-tool check_duplicate_ids {object_type}',
+                    'cmd'   :   '<object_type>',
+                    '_help' :   {
+                                    'cmd'                   : 'Check for duplicate uidNumber/gidNumber.',
+                                },
+                },
 
     'add_signer'    : {
                     '_cmd_usage_help' : 'Usage: otpme-tool add_signer [--private] [--no-pin] [--tag <tag1> --tag <tag2> ...] --type {signer_type} {object_id}',

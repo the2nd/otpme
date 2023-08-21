@@ -11,7 +11,6 @@ except:
     pass
 
 from otpme.lib import oid
-from otpme.lib import json
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -492,6 +491,7 @@ class OTPmeSyncP1(OTPmeClient1):
                 config.raise_exception()
                 return False
 
+        changed_object = False
         while try_count < max_tries:
             try_count += 1
             msg = ("Config checksums differ: local=%s remote=%s"
@@ -609,7 +609,7 @@ class OTPmeSyncP1(OTPmeClient1):
                         if object_counter == object_count:
                             print_processed_msg = True
                         if print_processed_msg:
-                            msg = "Synced %s/%s objects..." % (object_counter, object_count)
+                            msg = "Received %s/%s objects..." % (object_counter, object_count)
                             self.logger.info(msg)
 
                     command_args = {}
@@ -636,19 +636,18 @@ class OTPmeSyncP1(OTPmeClient1):
                                 % object_id)
                         self.logger.warning(msg)
                     else:
-                        new_object_config = json.decode(reply,
-                                                    encoding="base64",
-                                                    compress=True)
+                        new_checksum = reply['checksum']
+                        new_object_config = reply['object_config']
                         if not ignore_changed_objects:
                             # Make sure object has not changed while synching.
                             old_checksum = object_list[object_id]['remote_checksum']
-                            new_checksum = new_object_config['SYNC_CHECKSUM']
                             if new_checksum != old_checksum:
                                 msg = ("Object changed while syncing: %s" % object_id)
                                 self.logger.warning(msg)
                                 self.sync_cache.delete(object_id)
                                 # Make sure we try again.
                                 remote_sync_list_checksum = None
+                                changed_object = True
                                 continue
                         # Check for object checksum.
                         if "CHECKSUM" not in new_object_config:
@@ -679,11 +678,14 @@ class OTPmeSyncP1(OTPmeClient1):
             if ignore_changed_objects:
                 if remote_sync_list_checksum:
                     do_recheck = False
+            if not changed_object:
+                do_recheck = False
 
             if not do_recheck:
-                msg = ("Not re-checking sync status with master node "
-                        "(--ignore-changed-objects).")
-                self.logger.info(msg)
+                if ignore_changed_objects:
+                    msg = ("Not re-checking sync status with master node "
+                            "(--ignore-changed-objects).")
+                    self.logger.info(msg)
                 sync_success = True
                 break
 

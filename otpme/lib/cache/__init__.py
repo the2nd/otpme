@@ -408,8 +408,7 @@ def get_instance(object_id, cache_type=None):
             _instance = None
         #if _instance and _instance._modified:
         if _instance:
-            if object_id.full_oid == _instance.oid.full_oid:
-                return _instance
+            return _instance
         else:
             cache_entry = None
 

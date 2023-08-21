@@ -994,7 +994,6 @@ class FileTransaction(BaseTransaction):
             logger.debug(msg)
 
         cluster_events = []
-        object_transaction = get_transaction()
         for x in self.journal:
             journal_entry = self.journal_entries[str(x)]
             action = journal_entry['action']
@@ -1005,27 +1004,25 @@ class FileTransaction(BaseTransaction):
                 logger.debug(msg)
 
             if action == "index_add":
-                object_id = journal_entry['object_id']
-                object_id = oid.get(object_id)
-                kwargs = journal_entry['kwargs']
-                autocommit = True
-                if self.no_disk_writes:
-                    autocommit = False
-                if object_transaction:
-                    autocommit = False
-                kwargs['autocommit'] = autocommit
-                self._index_add(object_id, **kwargs)
+                if not self.no_index_writes:
+                    object_id = journal_entry['object_id']
+                    object_id = oid.get(object_id)
+                    kwargs = journal_entry['kwargs']
+                    autocommit = True
+                    if self.no_disk_writes:
+                        autocommit = False
+                    kwargs['autocommit'] = autocommit
+                    self._index_add(object_id, **kwargs)
             elif action == "index_del":
-                object_id = journal_entry['object_id']
-                object_id = oid.get(object_id)
-                kwargs = journal_entry['kwargs']
-                autocommit = True
-                if self.no_disk_writes:
-                    autocommit = False
-                if object_transaction:
-                    autocommit = False
-                kwargs['autocommit'] = autocommit
-                self._index_del(object_id, **kwargs)
+                if not self.no_index_writes:
+                    object_id = journal_entry['object_id']
+                    object_id = oid.get(object_id)
+                    kwargs = journal_entry['kwargs']
+                    autocommit = True
+                    if self.no_disk_writes:
+                        autocommit = False
+                    kwargs['autocommit'] = autocommit
+                    self._index_del(object_id, **kwargs)
             elif action == "create_dir":
                 if not self.no_disk_writes:
                     directory = journal_entry['directory']
@@ -1114,8 +1111,7 @@ class FileTransaction(BaseTransaction):
                 raise OTPmeException(msg)
 
             if not self.no_disk_writes:
-                if not object_transaction:
-                    self._remove_file(journal_file)
+                self._remove_file(journal_file)
 
         for x in cluster_events:
             x.wait()

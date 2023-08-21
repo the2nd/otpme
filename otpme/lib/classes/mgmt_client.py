@@ -42,11 +42,7 @@ class OTPmeMgmtClient(object):
                                                     site=site)
             method = getattr(daemon_conn, name)
             # Try to run method.
-            try:
-                reply = method(*args, **kwargs)
-            except Exception as e:
-                msg = ("Protocol error: %s: %s" % (name, e))
-                raise OTPmeException(msg)
+            reply = method(*args, **kwargs)
             return reply
 
         return handler_function

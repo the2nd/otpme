@@ -75,7 +75,7 @@ class OTPmeLDIFHandler(object):
                                     v=v,
                                     auto_value=True,
                                     ignore_ro=True,
-                                    verify=False,
+                                    verify=True,
                                     verbose_level=verbose_level,
                                     callback=callback,
                                     **kwargs)

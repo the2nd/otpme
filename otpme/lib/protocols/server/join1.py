@@ -1107,6 +1107,7 @@ class OTPmeJoinP1(OTPmeServer1):
                                                         'name'      : name,
                                                         'start_time': time.time(),
                                                         'auth_token': auth_token,
+                                                        'pid'       : os.getpid(),
                                                         }
         if command == "join":
             try:

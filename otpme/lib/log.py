@@ -141,7 +141,7 @@ def get_logger(log_name, level, logger=None, pid=None, banner=None,
         if not log_format:
             log_format = log_format_date
         # Create handler for logfile.
-        file_handler = logging.handlers.RotatingFileHandler(logfile)
+        file_handler = logging.handlers.WatchedFileHandler(logfile,)
         # Set log format for handler.
         file_handler.setFormatter(log_format)
         # Enable logging to logfile.

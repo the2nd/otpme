@@ -455,12 +455,6 @@ def wait_pid(pid, timeout=10, recursive=False, message_method=None):
     import psutil
 
     pid_status = False
-    if message_method is None:
-        def send_msg(msg):
-            sys.stdout.write(msg)
-            sys.stdout.flush()
-        message_method = send_msg
-
     try:
         proc = psutil.Process(int(pid))
     except:

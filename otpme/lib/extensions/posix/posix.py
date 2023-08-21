@@ -24,7 +24,7 @@ REGISTER_BEFORE = []
 REGISTER_AFTER = ["otpme.lib.extensions.base.base"]
 
 def register():
-    #register_backend()
+    register_backend()
     config.register_extension(EXTENSION_NAME)
     config.register_default_extension("user", EXTENSION_NAME)
     config.register_default_extension("group", EXTENSION_NAME)
@@ -32,11 +32,11 @@ def register():
     # on token_add!
     config.register_default_extension("role", EXTENSION_NAME)
 
-#def register_backend():
-#    # Register index attributes.
-#    config.register_index_attribute('uidNumber', ldif=True)
-#    config.register_index_attribute('gidNumber', ldif=True)
-#    config.register_index_attribute('memberUid', ldif=True)
+def register_backend():
+    # Register index attributes.
+    config.register_index_attribute('uidNumber', ldif=True)
+    config.register_index_attribute('gidNumber', ldif=True)
+    config.register_index_attribute('memberUid', ldif=True)
 
 class OTPmeExtension(OTPmeLDIFHandler):
     def __init__(self):

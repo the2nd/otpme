@@ -323,7 +323,7 @@ def update(resync=False, cache_resync=False, lock=None):
             # Update group members from role members.
             updated_groups = []
             for role in set(sorted(update_roles)):
-                msg = "Updating goup members from role: %s" % role.oid
+                msg = "Updating group members from role: %s" % role.oid
                 logger.info(msg)
                 callback = config.get_callback()
                 try:

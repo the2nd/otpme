@@ -3,7 +3,6 @@
 # Distributed under the terms of the GNU General Public License v2
 import os
 import re
-import functools
 import random as _random
 
 try:
@@ -221,7 +220,7 @@ class IdrangePolicy(Policy):
 
         # Verify new free IDs? This will result in slower processing but will
         # ensure an ID is not already used by an other object.
-        self.verify_new_id = False
+        self.verify_new_id = True
         # Set default values.
         self.hooks = {
                     'all'   : [
@@ -290,7 +289,7 @@ class IdrangePolicy(Policy):
     def handle_hook(self, hook_name, callback=default_callback, **kwargs):
         """ Handle policy hooks """
         if hook_name == "get_next_free_id":
-            result = self.get_next_free_id(**kwargs)
+            result = self.get_next_free_id(callback=callback, **kwargs)
             return result
         msg = (_("Unknown policy hook: %s") % hook_name)
         return callback.error(msg)
@@ -327,17 +326,16 @@ class IdrangePolicy(Policy):
                 attribute = kwargs['attribute']
             except:
                 attribute = args[1]
-            _lock = locking.acquire_lock(LOCK_TYPE, attribute)
+            try:
+                callback = kwargs['callback']
+            except:
+                callback = None
+            _lock = locking.acquire_lock(LOCK_TYPE, attribute, callback=callback)
             try:
                 result = method(self, *args, **kwargs)
             finally:
                 _lock.release_lock()
             return result
-        # Update func/method.
-        functools.update_wrapper(wrapper, method)
-        if not hasattr(wrapper, '__wrapped__'):
-            # Python 2.7
-            wrapper.__wrapped__ = method
         return wrapper
 
     @_lock_idrange_attribute
@@ -350,8 +348,8 @@ class IdrangePolicy(Policy):
             return callback.error(msg, exception=self.policy_exception)
         id_ranges = self.id_ranges[attribute]
 
+        errors = []
         new_id = None
-        exception = None
         for x in id_ranges:
             try:
                 r = x.split(":")[1]
@@ -395,13 +393,15 @@ class IdrangePolicy(Policy):
                                                     restart_on_end=restart_on_end,
                                                     random=random_range)
                 except Exception as e:
-                    exception = str(e)
+                    errors.append(str(e))
                     continue
 
             if new_id:
                 break
 
         if not new_id:
+            for x in errors:
+                callback.send(x)
             msg = "Unable to find free ID: %s" % attribute
             raise OTPmeException(msg)
 
@@ -411,8 +411,9 @@ class IdrangePolicy(Policy):
                             attribute=attribute,
                             id=new_id,
                             callback=callback)
-        if exception:
-            raise OTPmeException(exception)
+
+        msg = "Using %s: %s" % (attribute, new_id)
+        callback.send(msg)
 
         return new_id
 
@@ -636,18 +637,19 @@ class IdrangePolicy(Policy):
         # By default we start with the first ID.
         last_id = range_start
         # Check if the range was used before.
+        search_attributes = {
+                            'id_type'       : {'value':attribute},
+                            'policy_uuid'   : {'value':self.uuid},
+                            }
         result = backend.search(object_type="last_assigned_id",
-                                attribute="policy_uuid",
-                                value=self.uuid,
+                                attributes=search_attributes,
                                 return_type="oid")
         if not result:
             return last_id
         # Get highest used ID.
-        for x in result:
-            x_id = int(x.last_assigned_id)
-            if x_id <= last_id:
-                continue
-            last_id = x_id
+        x_sort = lambda x: x.last_assigned_id
+        sorted_result = sorted(result, key=x_sort)
+        last_id = int(sorted_result[-1].last_assigned_id)
         # Remove outdated "last assigned ID" objects.
         for x in result:
             x_id = int(x.last_assigned_id)

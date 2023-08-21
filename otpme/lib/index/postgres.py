@@ -221,8 +221,8 @@ def cli():
     socket_dir = get_socket_dir()
     cli_cmd = [config.psql_bin, "-h", socket_dir, "-s", DB_NAME]
     return_code = system_command.run(command=cli_cmd,
-                                user=config.user,
-                                group=config.group,
+                                #user=config.user,
+                                #group=config.group,
                                 call=True)
     if return_code == 0:
         return True
@@ -318,7 +318,7 @@ def stop():
     logger = config.logger
     msg = "Stopping postgresql..."
     logger.debug(msg)
-    stop_cmd = [config.pg_ctl_bin, "-D", INDEX_DIR, "stop"]
+    stop_cmd = [config.pg_ctl_bin, "-D", INDEX_DIR, "-m", "immediate", "stop"]
     return_code = system_command.run(command=stop_cmd,
                                     user=config.user,
                                     group=config.group,
