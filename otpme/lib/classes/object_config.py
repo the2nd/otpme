@@ -220,6 +220,14 @@ class ObjectConfig(object):
             self.decrypted_config.pop('INCREMENTAL_UPDATES')
         except KeyError:
             pass
+        try:
+            self.encrypted_config.pop('INDEX_JOURNAL')
+        except KeyError:
+            pass
+        try:
+            self.decrypted_config.pop('INDEX_JOURNAL')
+        except KeyError:
+            pass
 
     @property
     def sync_checksum(self):

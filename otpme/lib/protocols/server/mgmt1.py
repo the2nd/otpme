@@ -44,6 +44,7 @@ valid_commands = [
                 'delete_object',
                 'get_token_type',
                 'get_policy_type',
+                'check_duplicate_ids',
                 ]
 
 REGISTER_BEFORE = []
@@ -360,6 +361,11 @@ class OTPmeMgmtP1(OTPmeServer1):
                 return self.build_response(status, message, encrypt=False)
 
         if thread or process:
+            # Start job
+            job_reply = job.start()
+            # Add job to our job list
+            self.jobs[job.uuid] = job
+            self.running_jobs[job.uuid] = job
             # Add job to multiprocessing queue.
             if not config.use_api:
                 auth_token = "API"
@@ -369,12 +375,8 @@ class OTPmeMgmtP1(OTPmeServer1):
                                                         'name'      : name,
                                                         'start_time': time.time(),
                                                         'auth_token': auth_token,
+                                                        'pid'       : job.pid,
                                                         }
-            # Start job
-            job_reply = job.start()
-            # Add job to our job list
-            self.jobs[job.uuid] = job
-            self.running_jobs[job.uuid] = job
             # Wakeup job handler thread.
             if self.new_job_event:
                 self.new_job_event.set()
@@ -920,6 +922,38 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Handle backend commands.
         if command == "backend":
             return self.handle_backend_commands(subcommand, command_args)
+
+        if command == "check_duplicate_ids":
+            if subcommand == "user":
+                id_attribute = "ldif:uidNumber"
+            elif subcommand == "group":
+                id_attribute = "ldif:gidNumber"
+            else:
+                status = False
+                response = "Need <user> or <group>."
+                return self.build_response(status, response)
+
+
+            result = backend.search(object_type=subcommand,
+                                    attribute=id_attribute,
+                                    greater_than=-1,
+                                    return_attributes=['name', id_attribute])
+            all_uids = {}
+            duplicates = []
+            for x in result:
+                x_name = result[x]['name']
+                x_uid = result[x][id_attribute][0]
+                if x_uid in all_uids:
+                    x_dup = all_uids[x_uid]
+                    duplicates.append([x_uid, x_name, x_dup])
+                all_uids[x_uid] = x_name
+
+            response = "No duplicate IDs found."
+            if duplicates:
+                response = pprint.pformat(duplicates)
+            status = True
+
+            return self.build_response(status, response)
 
         # Handle dump_object command.
         if command == "dump_object":

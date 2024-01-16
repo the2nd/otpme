@@ -109,6 +109,7 @@ class OTPmeJob(object):
         self._child.start()
 
         if self.start_process:
+            self.pid = self._child.pid
             msg = ("%s (%s)" % (msg, self._child.pid))
         self.logger.debug(msg)
 

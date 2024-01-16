@@ -1444,8 +1444,6 @@ class Resolver(OTPmeObject):
 
                 if update_object:
                     updated_objects.append(x_object.oid)
-                else:
-                    unchanged_objects.append(x_object.oid)
 
                 logger.debug("Updating resolver checksum: %s"
                             % x_object.oid)

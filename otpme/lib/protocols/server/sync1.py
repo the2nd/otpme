@@ -348,6 +348,8 @@ class OTPmeSyncP1(OTPmeServer1):
             status = status_codes.UNKNOWN_OBJECT
             response = "Unknown object: %s" % object_id
             self.logger.warning(response)
+            ## Hotfix our index.
+            #backend.index_del(object_id)
             return status, response
         # Get object.
         o = backend.get_object(object_type=object_type,
@@ -356,8 +358,6 @@ class OTPmeSyncP1(OTPmeServer1):
             status = status_codes.UNKNOWN_OBJECT
             response = "Unknown object: %s" % object_id
             self.logger.warning(response)
-            # Hotfix our index.
-            #backend.index_del(object_id)
             return status, response
         # Get sync object config.
         try:
@@ -389,10 +389,8 @@ class OTPmeSyncP1(OTPmeServer1):
                 return status, response
             sync_config['SYNC_PARENT_OBJECT_UUID'] = parent_object.uuid
 
-        # Send sync configs in JSON format.
-        response = json.encode(sync_config,
-                            encoding="base64",
-                            compress=True)
+        object_checksum = backend.get_checksum(object_id)
+        response = {'checksum':object_checksum,'object_config':sync_config}
         o_size = sys.getsizeof(response)
         object_size = units.int2size(o_size)
         msg = ("Sending object (%s): %s"

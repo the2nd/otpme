@@ -788,7 +788,7 @@ class JsonFile(object):
                         current_list.remove(value)
                     except ValueError:
                         pass
-                value = current_list
+                value = sorted(current_list)
         return value
 
     def read_file(self):
@@ -807,11 +807,18 @@ class JsonFile(object):
         return object_config
 
     def write_file(self, object_config):
-        file_content = ujson.dumps(object_config)
+        from otpme.lib import config
+        compression = None
+        if config.object_json_compression:
+            compression = config.object_json_compression
+        if config.prettify_object_json:
+            file_content = ujson.dumps(object_config, sort_keys=True, indent=4)
+        else:
+            file_content = ujson.dumps(object_config)
         try:
             create_file(path=self.file_path,
                         content=file_content,
-                        compression="lz4")
+                        compression=compression)
         except Exception as e:
             msg = "Failed to write file: %s: %s" % (self.file_path, e)
             self.logger.critical(msg)
@@ -927,8 +934,6 @@ class JsonFile(object):
                         if new_incr_id == incr_id:
                             return
 
-                # FUCK
-                #full_data_update = True
                 if full_data_update is True:
                     self.write_file(object_config)
                     return
@@ -955,7 +960,7 @@ class JsonFile(object):
                         else:
                             msg = "Unknown action: %s" % action
                             raise OTPmeException(msg)
-                        current_oc[attr] = current_list
+                        current_oc[attr] = sorted(current_list)
                     if attr in dict_attributes:
                         if value_type == "list":
                             value = x[5]

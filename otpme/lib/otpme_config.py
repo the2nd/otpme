@@ -489,6 +489,12 @@ class OTPmeConfig(object):
                                 config_file_parameter="KEY_COMMAND")
         self.register_config_var("master_key_hash_type", str, "Argon2_i",
                                 config_file_parameter="MASTER_KEY_HASH_TYPE")
+        # Compress object JSON files.
+        self.register_config_var("object_json_compression", str, None,
+                                config_file_parameter="OBJECT_JSON_COMPRESSSION")
+        # Prettify object JSON.
+        self.register_config_var("prettify_object_json", bool, False,
+                                config_file_parameter="PRETTIFY_OBJECT_JSON")
 
         # FIXME: where to configure this?
         # Index journal settings.

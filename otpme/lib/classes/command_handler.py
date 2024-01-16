@@ -1052,6 +1052,9 @@ class CommandHandler(object):
         if subcommand == "delete_object":
             return self.handle_delete_object_command(command_line)
 
+        if subcommand == "check_duplicate_ids":
+            return self.handle_duplicate_ids_command(command, subcommand)
+
         if subcommand == "dump_index":
             return self.handle_dump_index_command(command_line)
 
@@ -1382,7 +1385,9 @@ class CommandHandler(object):
 
     def handle_join_command(self, object_identifier, command_args):
         """ Handle realm join command. """
+        from otpme.lib import filetools
         from otpme.lib.register import register_modules
+        from otpme.lib.backends.file.index import INDEX_DIR
         # Register modules.
         register_modules()
         # Make sure transactions are active on join.
@@ -1450,6 +1455,11 @@ class CommandHandler(object):
         if not _cache.status():
             _cache.start()
 
+        create_db_indexes = False
+        index_created_file = os.path.join(INDEX_DIR, ".indexes_created")
+        if not os.path.exists(index_created_file):
+            create_db_indexes = True
+
         if isinstance(jotp, int) or isinstance(jotp, float):
             jotp = str(jotp)
 
@@ -1461,8 +1471,11 @@ class CommandHandler(object):
                         site_key_len=site_key_len,
                         no_daemon_start=no_daemon_start,
                         trust_site_cert=trust_site_cert,
+                        create_db_indexes=create_db_indexes,
                         fingerprint_digest=fingerprint_digest,
                         check_site_cert=site_cert_fingerprint)
+        if create_db_indexes:
+            filetools.touch(index_created_file)
         return result
 
     def handle_login_command(self, command, subcommand, command_line):
@@ -1504,6 +1517,10 @@ class CommandHandler(object):
 
     def handle_leave_command(self, object_identifier, command_args):
         """ Handle leave command. """
+        from otpme.lib import multiprocessing
+        from otpme.lib.register import register_modules
+        # Register modules.
+        register_modules()
         try:
             lotp = command_args['lotp']
         except:
@@ -1545,6 +1562,32 @@ class CommandHandler(object):
         if config.master_node:
             msg = "Master node cannot leave the realm."
             raise OTPmeException(msg)
+
+        host_type = config.host_data['type']
+        if host_type == "node" and stuff.controld_status():
+            self.init()
+            search_attrs = {
+                            'uuid'      : {'value':"*"},
+                            'enabled'   : {'value':True},
+                        }
+            enabled_nodes = backend.search(object_type="node",
+                                        attributes=search_attrs,
+                                        realm=config.realm,
+                                        site=config.site,
+                                        return_type="name")
+            missing_nodes = []
+            member_nodes = multiprocessing.get_dict("member_nodes")
+            for node_name in enabled_nodes:
+                if node_name == config.host_data['name']:
+                    continue
+                if node_name in member_nodes:
+                    continue
+                missing_nodes.append(node_name)
+            if missing_nodes:
+                missing_nodes = " ".join(missing_nodes)
+                msg = ("Please wait for nodes to join the cluster: %s"
+                            % missing_nodes)
+                raise OTPmeException(msg)
 
         # Stop OTPme daemons.
         try:
@@ -1594,6 +1637,45 @@ class CommandHandler(object):
             return self.get_help()
         object_id = command_line[0]
         return self.delete_object(object_id)
+
+    def handle_duplicate_ids_command(self, command, subcommand):
+        """ Handle check duplicate IDs command. """
+        from otpme.lib.register import register_modules
+        # Register modules.
+        register_modules()
+        if len(self.command_line) < 1:
+            return self.get_help()
+        self.init()
+        # Get command syntax.
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except:
+            return self.get_help(_("Unknown command: %s") % subcommand)
+
+        # Parse command line.
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(command_syntax=command_syntax,
+                                        command_line=self.command_line,
+                                        command_args=self.command_args)
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            elif str(e) != "":
+                return self.get_help(str(e))
+        mgmt_client = self.get_mgmt_client()
+        command = "check_duplicate_ids"
+        command_args['subcommand'] = command_args['object_type']
+        status, \
+        reply = mgmt_client.send_command(command=command,
+                                    command_args=command_args,
+                                    client_type="CLIENT")
+        if status is False:
+            raise OTPmeException(reply)
+        return reply
+
 
     def handle_dump_object_command(self, command_line):
         """ Handle dump object command. """
@@ -3774,7 +3856,7 @@ class CommandHandler(object):
     def join_realm(self, host_type, realm=None, site=None,
         domain=None, jotp=None, unit=None, host_key_len=None,
         site_key_len=None, trust_site_cert=False, no_daemon_start=False,
-        check_site_cert=None, fingerprint_digest=None):
+        check_site_cert=None, fingerprint_digest=None, create_db_indexes=False):
         """ Join host/node to realm. """
         from otpme.lib.join import JoinHandler
         # Disable interactive policies (e.g. reauth).
@@ -3798,6 +3880,7 @@ class CommandHandler(object):
                                             no_daemon_start=no_daemon_start,
                                             trust_site_cert=trust_site_cert,
                                             check_site_cert=check_site_cert,
+                                            create_db_indexes=create_db_indexes,
                                             fingerprint_digest=fingerprint_digest)
         finally:
             if disabled_interactive_policies:

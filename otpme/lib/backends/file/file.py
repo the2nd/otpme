@@ -1355,12 +1355,12 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                     like_filter = IndexObject.attributes.any(like_filter, name=attr)
                     q = q.filter(like_filter)
                     #q = q.filter(IndexObject.attributes.any(IndexObjectAttribute.value.ilike(sql_like), name=attr))
-            elif less_than is not None:
+            if less_than is not None:
                 int_filter = cast(IndexObjectAttribute.value, Integer)
                 int_filter = IndexObject.attributes.any(int_filter < less_than, name=attr)
                 q = q.filter(int_filter)
                 #q = q.filter(IndexObject.attributes.any(cast(IndexObjectAttribute.value, Integer) < less_than, name=attr))
-            elif greater_than is not None:
+            if greater_than is not None:
                 int_filter = cast(IndexObjectAttribute.value, Integer)
                 int_filter = IndexObject.attributes.any(int_filter > greater_than, name=attr)
                 q = q.filter(int_filter)
@@ -1417,70 +1417,54 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         # Get ACL query.
         acl_q = q.join(IndexObject.acls)
         acl_q = acl_q.filter(IndexObjectACL.value.in_(verify_acls))
-        q = q.union(acl_q)
-
-    # Set result order (sorting).
-    if order_by_attribute:
-        sorted_query = q.join(IndexObjectAttribute, IndexObject.attributes)
-        #sorted_query = sorted_query.filter(IndexObjectAttribute.name.is_(order_by_attribute))
-        sorted_query = sorted_query.filter(IndexObjectAttribute.name == order_by_attribute)
-        if reverse_order:
-            #sorted_query = sorted_query.distinct(IndexObjectAttribute.value)
-            sorted_query = sorted_query.order_by(desc(IndexObjectAttribute.value))
-        else:
-            #sorted_query = sorted_query.distinct(IndexObjectAttribute.value)
-            sorted_query = sorted_query.order_by(IndexObjectAttribute.value)
-    else:
-        if reverse_order:
-            #sorted_query = q.distinct(order_by)
-            sorted_query = q.order_by(desc(order_by))
-        else:
-            #sorted_query = q.distinct(order_by)
-            sorted_query = q.order_by(order_by)
+        q = q.intersect(acl_q)
 
     # Get query result count before limiting search.
     if return_query_count:
-        query_count = sorted_query.count()
+        query_count = q.count()
 
     # Handle "with ACLs" search.
     if return_acls or return_raw_acls:
-        # Join with ACL table.
-        sub_query = sorted_query.with_entities(IndexObject.id)
-        sorted_query = session.query(IndexObjectACL)
-        sorted_query = sorted_query.join(IndexObject, IndexObjectACL.ioid == IndexObject.id)
-        sorted_query = sorted_query.filter(IndexObjectACL.ioid.in_(sub_query))
-        if verify_acls:
-            sorted_query = sorted_query.filter(IndexObjectACL.value.in_(verify_acls))
+        # Apply limit to search.
+        if max_results > 0:
+            q = q.limit(max_results)
 
-        # Add ACL value attribute to be returned.
-        acl_entities = tuple(list(entities) + [IndexObjectACL.value])
-        sorted_query = sorted_query.with_entities(*acl_entities)
+        # Join with ACL table.
+        sub_query = q.with_entities(IndexObject.id)
+        acl_q = session.query(IndexObjectACL)
+        acl_q = acl_q.join(IndexObject, IndexObjectACL.ioid == IndexObject.id)
+        acl_q = acl_q.filter(IndexObjectACL.ioid.in_(sub_query))
 
         # Handle dogpile caching.
         if config.dogpile_caching:
-            sorted_query = sorted_query.options(FromCache(cache_region))
+            acl_q = acl_q.options(FromCache(cache_region))
 
         # Query result build from ACLs query.
         query_result = []
         # ACLs for each object returned by query.
         object_acls = {}
-        # Do final ordering.
-        if reverse_order:
-            sorted_query = sorted_query.order_by(desc(order_by))
-        else:
-            sorted_query = sorted_query.order_by(order_by)
-
-        # Apply limit to search.
-        if max_results > 0:
-            sorted_query = sorted_query.limit(max_results)
 
         # Query to return all ACLs of selected objects.
-        sub_query = sorted_query.with_entities(IndexObject.id)
+        sub_query = acl_q.with_entities(IndexObject.id)
         acl_q = session.query(IndexObjectACL)
         acl_q = acl_q.join(IndexObject, IndexObjectACL.ioid == IndexObject.id)
         acl_q = acl_q.filter(IndexObjectACL.ioid.in_(sub_query))
         acl_entities = tuple(list(entities) + [IndexObjectACL.value])
         acl_q = acl_q.with_entities(*acl_entities)
+
+        # Set result order (sorting).
+        if order_by_attribute:
+            acl_q = acl_q.join(IndexObjectAttribute, IndexObject.attributes)
+            acl_q = acl_q.filter(IndexObjectAttribute.name == order_by_attribute)
+            if reverse_order:
+                acl_q = acl_q.order_by(desc(IndexObjectAttribute.value))
+            else:
+                acl_q = acl_q.order_by(IndexObjectAttribute.value)
+        else:
+            if reverse_order:
+                acl_q = acl_q.order_by(desc(order_by))
+            else:
+                acl_q = acl_q.order_by(order_by)
 
         # Query objects.
         acl_result = acl_q.all()
@@ -1505,19 +1489,38 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                 x_acls = []
             x_acls.append(acl_id)
             object_acls[x_uuid] = list(set(x_acls))
-
     else:
+        # Query only requested attributes.
+        q = q.with_entities(*entities)
+
+        # Set result order (sorting).
+        if order_by_attribute:
+            q = q.join(IndexObjectAttribute, IndexObject.attributes)
+            #q = q.filter(IndexObjectAttribute.name.is_(order_by_attribute))
+            q = q.filter(IndexObjectAttribute.name == order_by_attribute)
+            if reverse_order:
+                q = q.distinct(IndexObjectAttribute.value)
+                q = q.order_by(desc(IndexObjectAttribute.value))
+            else:
+                q = q.distinct(IndexObjectAttribute.value)
+                q = q.order_by(IndexObjectAttribute.value)
+        else:
+            if reverse_order:
+                q = q.distinct(order_by)
+                q = q.order_by(desc(order_by))
+            else:
+                q = q.distinct(order_by)
+                q = q.order_by(order_by)
+
         # Apply limit to search.
         if max_results > 0:
-            sorted_query = sorted_query.limit(max_results)
-        # Query only requested attributes.
-        sorted_query = sorted_query.with_entities(*entities)
+            q = q.limit(max_results)
         # Handle dogpile caching.
         if config.dogpile_caching:
-            sorted_query = sorted_query.options(FromCache(cache_region))
+            q = q.options(FromCache(cache_region))
         # Get index result.
-        #query_result = sorted_query.limit(max_results).all()
-        query_result = sorted_query.all()
+        #query_result = q.limit(max_results).all()
+        query_result = q.all()
 
     # Handle return type/return attributes.
     result = []
@@ -1894,9 +1897,9 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
             session.delete(index_object)
             #local_object = session.merge(index_object)
             #session.delete(local_object)
-            # Make sure we commit object deletion.
-            if autocommit:
-                session.commit()
+            ## Make sure we commit object deletion.
+            #if autocommit:
+            #    session.commit()
             index_object = None
 
     if not index_object:
@@ -1904,7 +1907,6 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
 
     # Get object attributes from index DB.
     if full_index_update:
-        autocommit = False
         # Get object index.
         try:
             object_index = object_config['INDEX']
@@ -1967,8 +1969,8 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
             session.add(a)
             #local_object = session.merge(a)
             #session.add(local_object)
-        if autocommit:
-            session.commit()
+        #if autocommit:
+        #    session.commit()
     elif full_index_update:
         index_journal = []
         for attr, value in object_index:
@@ -2023,12 +2025,12 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
                 session.delete(a)
                 #local_object = session.merge(a)
                 #session.delete(local_object)
-                # Make sure we commit attribute deletion.
-                if autocommit:
-                    try:
-                        session.commit()
-                    except ObjectDeletedError:
-                        session.rollback()
+                ## Make sure we commit attribute deletion.
+                #if autocommit:
+                #    try:
+                #        session.commit()
+                #    except ObjectDeletedError:
+                #        session.rollback()
 
     # Make sure we remove orphan ACLs of an existing index object.
     clear_acl_cache = False
@@ -2045,9 +2047,6 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
             session.delete(i)
             #local_object = session.merge(i)
             #session.delete(local_object)
-            # Make sure we commit ACL deletion.
-            if autocommit:
-                session.commit()
             object_acls.remove(i)
 
     # Add ACLs.
@@ -2137,9 +2136,6 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
         session.add(index_object)
         #local_object = session.merge(index_object)
         #session.add(local_object)
-
-    if full_index_update:
-        autocommit = True
 
     # Commit changes.
     if autocommit:

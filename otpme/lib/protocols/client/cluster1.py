@@ -43,13 +43,15 @@ class OTPmeClusterP1(OTPmeClient1):
         return reply
 
     def write(self, object_id, object_config,
-        last_used=None, full_index_update=False):
+        last_used=None, full_data_update=False,
+        full_index_update=False):
         """ Send object to peer. """
         command = "write"
         command_args = {}
         command_args['object_id'] = object_id
         command_args['object_config'] = object_config
         command_args['last_used'] = last_used
+        command_args['full_data_update'] = full_data_update
         command_args['full_index_update'] = full_index_update
         status, \
         status_code, \
@@ -156,15 +158,17 @@ class OTPmeClusterP1(OTPmeClient1):
     def sync(self):
         """ Sync with peer. """
         object_types = config.get_cluster_object_types()
+        return_attributes = ['full_oid', 'sync_checksum']
         result = backend.search(object_types=object_types,
                                 attribute="uuid",
                                 value="*",
-                                return_type="instance")
+                                return_attributes=return_attributes)
         local_objects = {}
-        for x in result:
-            local_objects[x.oid.full_oid] = {}
-            local_objects[x.oid.full_oid]['last_used'] = x.last_used
-            local_objects[x.oid.full_oid]['last_modified'] = x.last_modified
+        for x_uuid in result:
+            x_oid = result[x_uuid]['full_oid']
+            x_checksum = result[x_uuid]['sync_checksum']
+            local_objects[x_oid] = {}
+            local_objects[x_oid]['sync_checksum'] = x_checksum
 
         command = "sync"
         command_args = {'remote_objects':local_objects}
@@ -196,20 +200,10 @@ class OTPmeClusterP1(OTPmeClient1):
                 if x_oid.accessgroup_uuid:
                     if not backend.get_oid(x_oid.accessgroup_uuid):
                         continue
-            x_config = x_data['object_config']
             x_last_used = x_data['last_used']
-            x_last_modified = x_data['last_modified']
-            local_object = backend.get_object(x_oid)
-            if local_object:
-                skip_object = True
-                if x_last_modified > local_object.last_modified:
-                    skip_object = False
-                if x_last_used is not None:
-                    if x_last_used > local_object.last_used:
-                        skip_object = False
-                if skip_object:
-                    continue
-            msg = "Writing received object: %s" % x_oid
+            x_config = x_data['object_config']
+            x_checksum = x_config['SYNC_CHECKSUM']
+            msg = "Writing received object: %s (%s)" % (x_oid, x_checksum)
             self.logger.debug(msg)
             x_uuid = x_config['UUID']
             if x_last_used is not None:
@@ -258,15 +252,6 @@ class OTPmeClusterP1(OTPmeClient1):
         reply = self.connection.send(command, command_args, timeout=None)
         return status
 
-    def set_member_candidate(self):
-        """ Mark node as member candidate. """
-        command = "set_member_candidate"
-        command_args = {}
-        status, \
-        status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
-        return status
-
     def set_node_sync(self, sync_time):
         """ Mark node as in sync. """
         command = "set_node_sync"
@@ -307,15 +292,6 @@ class OTPmeClusterP1(OTPmeClient1):
         """ Get node master sync status. """
         command = "get_master_sync_status"
         command_args = {}
-        status, \
-        status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
-        return status
-
-    def get_init_sync_status(self, node_name):
-        """ Get node init sync status. """
-        command = "get_init_sync_status"
-        command_args = {'node_name':node_name}
         status, \
         status_code, \
         reply = self.connection.send(command, command_args, timeout=None)

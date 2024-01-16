@@ -3256,7 +3256,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("add:user"):
-                msg = ("Permission denied.")
+                msg = ("Permission denied: %s" % self)
                 return callback.error(msg, exception=PermissionDenied)
 
         user = backend.get_object(object_type="user",
@@ -3305,7 +3305,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("remove:user"):
-                msg = ("Permission denied.")
+                msg = ("Permission denied: %s" % self)
                 return callback.error(msg, exception=PermissionDenied)
 
         # FIXME: we also need to allow to remove UUIDs of user that do not exists anymore!!!!!       
@@ -3355,7 +3355,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("add:role"):
-                msg = ("Permission denied.")
+                msg = ("Permission denied: %s" % self)
                 return callback.error(msg, exception=PermissionDenied)
 
         if "/" in role_name:
@@ -3440,7 +3440,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("remove:role"):
-                msg = ("Permission denied.")
+                msg = ("Permission denied: %s" % self)
                 return callback.error(msg, exception=PermissionDenied)
 
         # Allow removal of orphan role UUIDs.
@@ -3507,7 +3507,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("add:token"):
-                msg = ("Permission denied.")
+                msg = ("Permission denied: %s" % self)
                 return callback.error(msg, exception=PermissionDenied)
 
         if not "/" in token_path:
@@ -3773,7 +3773,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("remove:token"):
-                msg = ("Permission denied.")
+                msg = ("Permission denied: %s" % self)
                 return callback.error(msg, exception=PermissionDenied)
 
         # FIXME: we also need to allow to remove UUIDs of tokens that do not exists anymore!!!!!       
@@ -4474,7 +4474,7 @@ class OTPmeObject(OTPmeBaseObject):
         # Handle LDIF attributes.
         if verify_acls:
             if not self.verify_acl("view:attribute:" + attribute):
-                msg = ("Permission denied.")
+                msg = ("Permission denied: %s" % self)
                 return callback.error(msg, exception=PermissionDenied)
         try:
             val_list = list(self.ldif[attribute])
@@ -4982,7 +4982,7 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error("Object cannot inherit ACLs.")
 
         if not self.verify_acl("enable:acl_inheritance"):
-            msg = ("Permission denied.")
+            msg = ("Permission denied: %s" % self)
             return callback.error(msg, exception=PermissionDenied)
 
         if self.acl_inheritance_enabled:
@@ -5021,7 +5021,7 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error("Object cannot inherit ACLs.")
 
         if not self.verify_acl("disable:acl_inheritance"):
-            msg = ("Permission denied.")
+            msg = ("Permission denied: %s" % self)
             return callback.error(msg, exception=PermissionDenied)
 
         if not self.acl_inheritance_enabled:
@@ -5531,7 +5531,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl(check_acl):
-                exception = (_("Permission denied: %s") % self.oid)
+                exception = (_("Permission denied: %s") % self)
                 valid_acl = False
                 if _acl_objects and verbose_level > 1:
                     callback.send(exception, exception=PermissionDenied)
@@ -7109,8 +7109,6 @@ class OTPmeObject(OTPmeBaseObject):
                 e_default_attributes = default_attributes[e]
             except:
                 e_default_attributes = {}
-            # Disable user interaction while adding extension.
-            callback.disable()
             try:
                 self.add_extension(extension=e,
                                 default_attributes=e_default_attributes,
@@ -7119,11 +7117,7 @@ class OTPmeObject(OTPmeBaseObject):
                                 verbose_level=verbose_level)
             except Exception as e:
                 #config.raise_exception()
-                # Enable callback to get error to the client.
-                callback.enable()
-                return callback.error(str(e))
-            # Enable callback if extension was added successful.
-            callback.enable()
+                callback.error(str(e))
 
         if template:
             # Add object classes from template.

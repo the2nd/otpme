@@ -1542,8 +1542,8 @@ class User(OTPmeObject):
         encrypted_key = x.split("\0")[1].split(":")[1]
         return aes_key_enc, encrypted_key
 
-    @check_acls(acls=['edit:group'])
     @object_lock()
+    @check_acls(['edit:group'])
     def change_group(self, new_group, verbose_level=0,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
@@ -3120,7 +3120,7 @@ class User(OTPmeObject):
         if check_acls:
             if not self.verify_acl("delete:token"):
                 if not token.verify_acl("delete:object"):
-                    msg = ("Permission denied.")
+                    msg = ("Permission denied: %s" % token)
                     return callback.error(msg, exception=PermissionDenied)
 
         # Check for default token
@@ -3622,7 +3622,7 @@ class User(OTPmeObject):
                 return callback.error(msg)
             default_group = result[0]
             if verify_acls:
-                if not self.verify_acl('add:default_group_user'):
+                if not default_group.verify_acl('add:default_group_user'):
                     msg = "Group: %s: Permission denied" % group
                     return callback.error(msg)
 
@@ -3658,6 +3658,20 @@ class User(OTPmeObject):
         # Generate salt for used OTP/pass hashes.
         self.used_pass_salt = stuff.gen_secret(32)
 
+        try:
+            inherit_status = self.inherit_acls(force=True,
+                                            verify_acls=False,
+                                            verbose_level=verbose_level,
+                                            callback=callback)
+            inherit_error = ""
+        except Exception as e:
+            config.raise_exception()
+            inherit_status = False
+            inherit_error = (_("WARNING: Unable to inherit ACLs from parent "
+                                "object: %s") % e)
+        if not inherit_status:
+            return callback.error(inherit_error)
+
         # If no group and not template group is given run policies (e.g. defaultgroups).
         if run_group_policies:
             policy_hook = "set_default_group"
@@ -3689,14 +3703,19 @@ class User(OTPmeObject):
                msg = "Permission denied while setting group."
                return callback.error(msg, exception=PermissionDenied)
 
+        # Add object using parent class BEFORE adding any token etc.
+        add_result = super(User, self).add(template=template,
+                                        run_policies=False,
+                                        inherit_acls=False,
+                                        verbose_level=verbose_level,
+                                        callback=callback, **kwargs)
+        if not add_result:
+            return add_result
+
         # Internal users (e.g. TOKENSTORE) do not need any scripts etc.
         internal_users = config.get_internal_objects("user")
         if self.name in internal_users:
-            # Add object using parent class BEFORE adding any token etc.
-            add_result = super(User, self).add(template=template,
-                                            verbose_level=verbose_level,
-                                            callback=callback, **kwargs)
-            return add_result
+            return callback.ok()
 
         # Set default key script.
         if template:
@@ -3809,13 +3828,7 @@ class User(OTPmeObject):
                 else:
                     self.enable_autosign(force=True, callback=callback)
 
-        # Add object using parent class BEFORE adding any token etc.
-        add_result = super(User, self).add(template=template,
-                                        run_policies=False,
-                                        verbose_level=verbose_level,
-                                        callback=callback, **kwargs)
-        if not add_result:
-            return add_result
+        self._cache(callback=callback)
 
         # Add default token.
         if add_default_token:

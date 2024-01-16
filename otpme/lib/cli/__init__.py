@@ -1237,9 +1237,9 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
         if border:
             output = "\n".join(output.split("\n")[1:-1])
 
-        if list_len >= max_rows and object_count > max_rows:
+        if object_count > max_rows:
             footer = (_("Size limit exceeded. Listed %s %ss out of %s.")
-                        % (max_rows, object_type, object_count))
+                        % (list_len, object_type, object_count))
         else:
             footer = (_("Total %s %s(s).") % (list_len, object_type))
         output = "%s\n\n%s" % (output, footer)

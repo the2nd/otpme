@@ -443,6 +443,11 @@ def restore_object(object_data, callback=default_callback, **kwargs):
     msg = "Restoring: %s" % object_id
     callback.send(msg)
     object_config = object_data['object_config']
+    object_uuid = object_config['UUID']
+    x_object = get_object(uuid=object_uuid)
+    if x_object:
+        msg = "Object with UUID exists: %s" % x_object
+        return callback.error(msg)
     try:
         write_config(object_id=object_id,
                     object_config=object_config,
