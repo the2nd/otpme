@@ -118,6 +118,8 @@ commands = {
                                         'show_all',
                                         'output_fields',
                                         'search_regex',
+                                        'max_policies',
+                                        'max_roles',
                                         'sort_by',
                                         'reverse',
                                         'header',
@@ -428,7 +430,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'get_roles',
                     'job_type'          : 'process',
-                    'oargs'             : ['return_type'],
+                    'oargs'             : ['return_type', 'recursive'],
                     'dargs'             : {'return_type':'name', 'skip_disabled':False},
                     },
                 },
@@ -1455,6 +1457,11 @@ class Token(OTPmeObject):
                                     return_type="uuid")
         if not token_roles:
             return token_groups
+        for uuid in list(token_roles):
+            token_roles += get_roles(role_uuid=uuid,
+                                    parent=True,
+                                    recursive=True,
+                                    return_type="uuid")
         # Get groups, token roles are assigned to.
         token_groups += backend.search(object_type="group",
                                     attribute="role",
@@ -2515,13 +2522,14 @@ class Token(OTPmeObject):
             callback.send(return_message)
 
         # Remove sessions with old password.
-        token_sessions = backend.get_sessions(token=self.uuid,
-                                            return_type="instance")
-        for session in token_sessions:
-            if session.access_group == config.realm_access_group:
-                continue
-            session.delete(force=True,
-                        verify_acls=False)
+        if not temp:
+            token_sessions = backend.get_sessions(token=self.uuid,
+                                                return_type="instance")
+            for session in token_sessions:
+                if session.access_group == config.realm_access_group:
+                    continue
+                session.delete(force=True,
+                            verify_acls=False)
 
         return self._cache(callback=callback)
 

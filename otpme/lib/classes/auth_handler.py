@@ -1555,7 +1555,9 @@ class AuthHandler(object):
                 self.count_fails = False
 
         if not self.auth_failed:
-            # Make sure we got the correct JWT (challenge).
+            # Make sure we got the correct JWT. The JWT includes a challenge,
+            # so if the JWT string does not match the redirect challenge we got
+            # from OTPmeServer() authentication must fail.
             if jwt_string != self.redirect_challenge:
                 msg = "Received wrong redirect challenge."
                 self.logger.warning(msg)
@@ -1971,7 +1973,7 @@ class AuthHandler(object):
             gen_jwt can be True of False
                 - specifies if we should generated a JWT on successful auth.
             jwt_challenge must be a string
-                - optional challenge tha will be added to the JWT payload
+                - optional challenge that will be added to the JWT payload
         """
         string_vars = {
                 'password'                  : password,

@@ -116,6 +116,7 @@ commands = {
                                         'max_len',
                                         'show_all',
                                         'output_fields',
+                                        'max_policies',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',
@@ -1107,19 +1108,19 @@ class Ca(OTPmeObject):
         if timezone is None:
             timezone = config.timezone
 
-        # Build new CRL if needed.
         logger.debug("Building new CRL.")
         for serial in revoked_certs:
             try:
                 revoke_serial, \
                 revoke_until, \
                 new_crl = utils.revoke_certificate(ca_cert=self.cert,
-                                                    ca_key=self.key,
-                                                    sn=serial,
-                                                    sign_algo=sign_algo,
-                                                    timezone=timezone,
-                                                    ca_crl=new_crl,
-                                                    next_update=self.crl_validity)
+                                                ca_key=self.key,
+                                                sn=serial,
+                                                sign_algo=sign_algo,
+                                                timezone=timezone,
+                                                ca_crl=new_crl,
+                                                crl_update=True,
+                                                next_update=self.crl_validity)
             except Exception as e:
                 config.raise_exception()
                 msg = (_("Problem adding cert '%s' to CRL: %s")
@@ -1452,10 +1453,9 @@ class Ca(OTPmeObject):
         lines.append('CRL_VALIDITY="%s"' % crl_validity)
 
         last_crl_update = ""
-        if self.last_crl_update:
-            last_crl_update = self.last_crl_update
-            last_crl_update = datetime.datetime.fromtimestamp(last_crl_update)
-            last_crl_update = last_crl_update.strftime('%d.%m.%Y %H:%M:%S')
+        last_crl_update = self.last_crl_update
+        last_crl_update = datetime.datetime.fromtimestamp(last_crl_update)
+        last_crl_update = last_crl_update.strftime('%d.%m.%Y %H:%M:%S')
         lines.append('LAST_CRL_UPDATE="%s"' % last_crl_update)
 
         crl = ""

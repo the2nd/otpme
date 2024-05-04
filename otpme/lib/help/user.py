@@ -20,14 +20,15 @@ cmd_help = {
     '_usage_help'               : "Usage: otpme-user {command} [user]",
 
     'show'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-user show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [-t] [user] [token]',
-                    'cmd'   :   '--fields :output_fields: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: [|object|] [token_name]',
+                    '_cmd_usage_help' : 'Usage: otpme-user show [--fields <field1,field2,field3>] [--policy-limit <limit>] [-z <size_limit>] [-a] [-t] [user] [token]',
+                    'cmd'   :   '--policy-limit :max_policies: --fields :output_fields: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: [|object|] [token_name]',
                     '_help' :   {
                                     'cmd'                   : 'show user(s)',
                                     '-a'                    : 'Show all users.',
                                     '-t'                    : 'Show user templates.',
                                     '-z <limit>'            : 'limit output size',
                                     '--fields f1,f2,f3'     : 'output only given fields',
+                                    '--policy-limit <limit>': 'Output max policies',
                                     '--reverse'             : 'Reverse the output order.',
                                     '--sort-by <attribute>' : 'Sort output by <attribute>.',
                                     '--raw'                 : 'Output table without any headers/borders.',
@@ -362,11 +363,12 @@ cmd_help = {
                 },
 
     'move'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user move [--keep-acls] {user} {unit}',
-                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <new_unit>',
+                    '_cmd_usage_help' : 'Usage: otpme-user move --default-group {group} [--keep-acls] {user} {unit}',
+                    'cmd'   :   '--keep-acls :keep_acls=True: --default-group :default_group: <|object|> <new_unit>',
                     '_help' :   {
                                     'cmd'                   : 'change users unit',
-                                    '--keep-acls'           : 'Keep object ACLs.'
+                                    '--keep-acls'           : 'Keep object ACLs.',
+                                    '--default-group'       : 'New default group of user.'
                                 },
                 },
 

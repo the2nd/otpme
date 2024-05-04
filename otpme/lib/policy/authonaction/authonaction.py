@@ -843,7 +843,7 @@ class AuthonactionPolicy(Policy):
         if self.verify_acl("view:reauth_expiry") \
         or self.verify_acl("edit:reauth_expiry"):
             reauth_expiry = self.reauth_expiry
-        lines.append('REAUTH_TIMEOUT="%s"' % reauth_expiry)
+        lines.append('REAUTH_EXPIRY="%s"' % reauth_expiry)
 
         return Policy.show_config(self,
                                 config_lines=lines,

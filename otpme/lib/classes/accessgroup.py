@@ -61,6 +61,14 @@ read_value_acls = {
             }
 
 write_value_acls = {
+                "join"       : [
+                            "node",
+                            "host",
+                            ],
+                "leave"     : [
+                            "node",
+                            "host",
+                            ],
                 "add"       : [
                             "token",
                             "role",
@@ -131,6 +139,7 @@ commands = {
                                         'max_len',
                                         'show_all',
                                         'output_fields',
+                                        'max_policies',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',

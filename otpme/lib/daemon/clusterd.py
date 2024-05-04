@@ -904,6 +904,7 @@ class ClusterDaemon(OTPmeDaemon):
         if old_master_node != new_master_node:
             self.logger.info("Node votes: %s" % node_scores)
             import pprint
+            print("New master node: %s" % new_master_node)
             pprint.pprint(node_scores)
 
         required_votes = self.calc_quorum()[1]
@@ -1978,43 +1979,50 @@ class ClusterDaemon(OTPmeDaemon):
                     return True
                 # Update data revision on peer.
                 if config.master_node:
-                    result = backend.search(object_type="data_revision",
-                                            attribute="uuid",
-                                            value="*",
-                                            return_type="oid")
-                    if result:
-                        object_id = result[0]
-                        object_config = backend.read_config(object_id)
-                        object_config = object_config.copy()
-                        object_uuid = object_config['UUID']
-                        try:
-                            last_used = backend.get_last_used(object_id.realm,
-                                                            object_id.site,
-                                                            object_id.object_type,
-                                                            object_uuid)
-                        except Exception as e:
-                            msg = ("Failed to get last used time: %s: %s"
-                                    % (object_id, e))
-                            self.logger.warning(msg)
-                            raise OTPmeException(msg)
-                        try:
-                            self.node_conn.write(object_id.full_oid,
-                                                object_config,
-                                                last_used,
-                                                full_data_update=True,
-                                                full_index_update=True)
-                        except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                            self.node_disconnect(node_name)
-                            msg = ("Failed to send object: %s: %s: %s"
-                                    % (node_name, object_id, e))
-                            self.logger.warning(msg)
-                            raise OTPmeException(msg)
-                        except Exception as e:
-                            self.node_disconnect(node_name)
-                            msg = ("Error sending object: %s: %s: %s"
-                                    % (node_name, object_id, e))
-                            self.logger.warning(msg)
-                            raise OTPmeException(msg)
+                    try:
+                        remote_data_revision = self.node_conn.get_data_revision()
+                    except Exception as e:
+                        msg = "Failed to get data revision: %s: %s" % (node_name, e)
+                        raise OTPmeException(msg)
+                    local_data_revision = config.get_data_revision()
+                    if remote_data_revision < local_data_revision:
+                        result = backend.search(object_type="data_revision",
+                                                attribute="uuid",
+                                                value="*",
+                                                return_type="oid")
+                        if result:
+                            object_id = result[0]
+                            object_config = backend.read_config(object_id)
+                            object_config = object_config.copy()
+                            object_uuid = object_config['UUID']
+                            try:
+                                last_used = backend.get_last_used(object_id.realm,
+                                                                object_id.site,
+                                                                object_id.object_type,
+                                                                object_uuid)
+                            except Exception as e:
+                                msg = ("Failed to get last used time: %s: %s"
+                                        % (object_id, e))
+                                self.logger.warning(msg)
+                                raise OTPmeException(msg)
+                            try:
+                                self.node_conn.write(object_id.full_oid,
+                                                    object_config,
+                                                    last_used,
+                                                    full_data_update=True,
+                                                    full_index_update=True)
+                            except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                                self.node_disconnect(node_name)
+                                msg = ("Failed to send object: %s: %s: %s"
+                                        % (node_name, object_id, e))
+                                self.logger.warning(msg)
+                                raise OTPmeException(msg)
+                            except Exception as e:
+                                self.node_disconnect(node_name)
+                                msg = ("Error sending object: %s: %s: %s"
+                                        % (node_name, object_id, e))
+                                self.logger.warning(msg)
+                                raise OTPmeException(msg)
             finally:
                 multiprocessing.pause_writes.remove(self.pid)
 
@@ -2289,11 +2297,15 @@ class ClusterDaemon(OTPmeDaemon):
     def check_member_nodes(self, cluster_journal_entry):
         entry_nodes = sorted(cluster_journal_entry.get_nodes())
         member_nodes = sorted(multiprocessing.member_nodes)
+        written_nodes = 0
         member_nodes_in_sync = True
         for node_name in member_nodes:
             if node_name in entry_nodes:
+                written_nodes += 1
                 continue
             member_nodes_in_sync = False
+        if written_nodes >= 2:
+            member_nodes_in_sync = True
         if not member_nodes_in_sync:
             return False
         object_event = get_object_event(cluster_journal_entry.timestamp)

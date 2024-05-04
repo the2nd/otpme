@@ -1168,7 +1168,7 @@ class OTPmeClient(OTPmeClientBase):
                                         key_pass=config.stdin_pass,
                                         script_command=script_command,
                                         script_options=script_options)
-        # Remove temp script file.
+        # Remove sign object file.
         os.remove(sign_object_file)
 
         if script_status != 0:
@@ -1272,6 +1272,80 @@ class OTPmeClient(OTPmeClientBase):
 
         # Get decrypted data from stdout.
         response = script_stdout
+
+        return response
+
+    def move_objects(self, command_dict):
+        """ Handle objects move. """
+        # Get sign request.
+        object_data = command_dict['object_data']
+        objects = object_data['objects']
+        src_realm = object_data['src_realm']
+        src_site = object_data['src_site']
+        dst_realm = object_data['dst_realm']
+        dst_site = object_data['dst_site']
+        jwt = object_data['jwt']
+        cert = stuff.get_site_cert(realm=src_realm, site=src_site)
+        if not cert:
+            msg = "Unable to get site certificate."
+            raise OTPmeException(msg)
+        site_cert = SSLCert(cert=cert)
+        try:
+            jwt_key = RSAKey(key=site_cert.public_key())
+        except Exception as e:
+            msg = (_("Unable to get public key of site "
+                    "certificate: %s: %s") % (self.site, e))
+            raise OTPmeException(msg)
+        try:
+            jwt_data = _jwt.decode(jwt=jwt,
+                                key=jwt_key,
+                                algorithm='RS256')
+        except Exception as e:
+            msg = "JWT verification failed: %s" % e
+            self.logger.warning(msg)
+
+        if not config.force:
+            x = pprint.pformat(jwt_data)
+            msg = (_("Proceed with the following object move?\n%s\n[y/n] ") % x)
+            paras = { 'prompt':msg, 'input_prefill':None }
+            answer = self.ask(paras)
+            if answer.lower() != "y":
+                response = {'status':False, 'reply':'Object move aborted by user.'}
+                return response
+
+        username = self.username
+        try:
+            mgmt_conn = connections.get(daemon="mgmtd",
+                                    username=username,
+                                    auto_auth=False,
+                                    realm=dst_realm,
+                                    site=dst_site)
+        except ConnectionError as e:
+            msg = "Site connection failed: %s" % e
+            print(msg)
+            return
+        except Exception as e:
+            msg = (_("Unable to connect to mgmt daemon: %s") % e)
+            print(msg)
+            config.raise_exception()
+            return
+
+        command_args = {
+                        'subcommand'    : 'user',
+                        'src_realm'     : src_realm,
+                        'src_site'      : src_site,
+                        'objects'       : objects,
+                        'jwt'           : jwt,
+                    }
+
+        status, \
+        status_code, \
+        reply = mgmt_conn.send(command="move_object",
+                            command_args=command_args)
+
+        mgmt_conn.close()
+
+        response = {'status':status, 'reply':reply}
 
         return response
 
@@ -1431,6 +1505,10 @@ class OTPmeClient(OTPmeClientBase):
                     config.raise_exception()
                     raise ConnectionError(_("Communication error: %s") % e)
 
+            elif client_command == "OBJECT_MOVE":
+                send_request = True
+                request = self.move_objects(response)
+
             # Send request
             if send_request:
                 # Add job ID if we have one.
@@ -1514,6 +1592,10 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Set args to be passed on to redirect connection.
         self.redirect_args = dict(kwargs)
+        try:
+            self.redirect_args.pop("socket_uri")
+        except KeyError:
+            pass
 
         # Get logger.
         self.logger = config.logger
@@ -1947,7 +2029,7 @@ class OTPmeClient1(OTPmeClientBase):
         msg = ("Starting redirected %s to: %s/%s" % (conn_type, realm, site))
         self.logger.info(msg)
         # Send login request to users home site.
-        redirect_connection = OTPmeClient(daemon=self.daemon,
+        redirect_connection = connections.get(daemon=self.daemon,
                             #socket_uri=self.socket_uri,
                             use_ssl=self.connection.use_ssl,
                             verify_server=self.connection.verify_server,
@@ -3003,6 +3085,9 @@ class OTPmeClient1(OTPmeClientBase):
             if self.use_smartcard:
                 self.auth_type = "smartcard"
         if self.auth_type is None:
+            if self.jwt_auth:
+                self.auth_type = "jwt"
+        if self.auth_type is None:
             self.auth_type = "clear-text"
         # If we got SSH keys from agent try SSH authentication.
         if self.use_ssh_agent:
@@ -3016,8 +3101,6 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Add JWT to do redirected authentication.
         elif self.jwt:
-            if self.auth_type is None:
-                self.auth_type = "jwt"
             command_args['redirect_response'] = self.jwt
 
         # Last but not least we can try OTP/password authentication.

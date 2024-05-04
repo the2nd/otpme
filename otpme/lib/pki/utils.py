@@ -501,8 +501,8 @@ def create_certificate(cn, sn, cert_req=None, self_signed=False,
     return cert_pem, key_pem
 
 def revoke_certificate(ca_cert, ca_key, cert=None, sn=None,
-    ca_crl=None, reason=b"unspecified", next_update=365,
-    valid=3650, sign_algo="sha256", timezone="UTC"):
+    ca_crl=None, reason=b"unspecified", next_update=365, valid=3650,
+    sign_algo="sha256", timezone="UTC", crl_update=False):
     """ Revoke a certificate
             valid reasons are: unspecified, keyCompromise, CACompromise,
                                affiliationChanged, superseded,
@@ -605,12 +605,17 @@ def revoke_certificate(ca_cert, ca_key, cert=None, sn=None,
         old_crl = x509.load_pem_x509_crl(ca_crl, default_backend())
         # Add certs from old CRL.
         for x in old_crl:
-            builder.add_revoked_certificate(x)
-            # Make sure we do not add an already revoked cert.
-            if x.serial_number != sn:
-                continue
-            msg = ("Certificate already revoked.")
-            raise CertAlreadyRevoked(msg)
+            if crl_update:
+                if x.serial_number == sn:
+                    continue
+                builder.add_revoked_certificate(x)
+            else:
+                builder.add_revoked_certificate(x)
+                # Make sure we do not add an already revoked cert.
+                if x.serial_number != sn:
+                    continue
+                msg = ("Certificate already revoked.")
+                raise CertAlreadyRevoked(msg)
 
     # Create revoke object.
     revoked_cert = x509.RevokedCertificateBuilder()

@@ -582,11 +582,11 @@ class OTPmeJoinP1(OTPmeServer1):
             msg = (_("Unknown host type: %s") % host_type)
             raise OTPmeException(msg)
 
-        # Only admin users may join nodes.
-        if host_type == "node":
-            if self.authenticated and not config.auth_token.is_admin():
-                msg = (_("Permission denied."))
-                raise OTPmeException(msg)
+        ## Only admin users may join nodes.
+        #if host_type == "node":
+        #    if self.authenticated and not config.auth_token.is_admin():
+        #        msg = (_("Permission denied."))
+        #        raise OTPmeException(msg)
 
         if host_type == "host":
             if self.request_site.name != config.site:
@@ -781,7 +781,7 @@ class OTPmeJoinP1(OTPmeServer1):
                     % (host_desc, host.name, config.realm))
         self.logger.info(message)
         if host.allow_jotp_rejoin:
-            msg = (_("%s\nYou can use the following JOTP to re-join the "
+            message = (_("%s\nYou can use the following JOTP to re-join the "
                         "%s: %s") % (message, host.type, host.jotp))
         return self.build_response(status, message)
 
@@ -1080,6 +1080,38 @@ class OTPmeJoinP1(OTPmeServer1):
             message = (_("Got LOTP in unencrypted request."))
             status = False
             return self.build_response(status, message)
+
+        # Check join ACL.
+        if command == "join" and not jotp:
+            result = backend.search(object_type="accessgroup",
+                                    attribute="name",
+                                    value=config.join_access_group,
+                                    realm=config.realm,
+                                    site=config.site,
+                                    return_type="instance")
+            join_access_group = result[0]
+            join_acl = "join:%s" % host_type
+            if not join_access_group.verify_acl(join_acl):
+                message = (_("Permission denied."))
+                status = False
+                self.logger.warning(message)
+                return self.build_response(status, message)
+
+        # Check leave ACL.
+        if command == "leave" and not lotp:
+            result = backend.search(object_type="accessgroup",
+                                    attribute="name",
+                                    value=config.join_access_group,
+                                    realm=config.realm,
+                                    site=config.site,
+                                    return_type="instance")
+            join_access_group = result[0]
+            join_acl = "leave:%s" % host_type
+            if not join_access_group.verify_acl(join_acl):
+                message = (_("Permission denied."))
+                status = False
+                self.logger.warning(message)
+                return self.build_response(status, message)
 
         if not self.job_uuid:
             # Add callback with job UUID needed for proper object locking.

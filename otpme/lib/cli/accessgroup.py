@@ -77,7 +77,8 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, group_order, group_data, acls, table=None,
-    max_roles=5, max_tokens=5, output_fields=[], acl_checker=None, **kwargs):
+    max_roles=5, max_tokens=5, max_policies=5, output_fields=[],
+    acl_checker=None, **kwargs):
     """ Build table rows for accessgroups. """
     # Align table headers.
     if table:
@@ -292,7 +293,8 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="accessgroup",
-                                                    object_uuid=ag_uuid)
+                                                    object_uuid=ag_uuid,
+                                                    max_policies=max_policies)
                 row.append(policies_string)
             else:
                 row.append("-")

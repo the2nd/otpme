@@ -204,9 +204,6 @@ class MandatoryAttribute(OTPmeException):
 class BackendUnavailable(OTPmeException):
     pass
 
-class SyncListChecksumMismatch(OTPmeException):
-    pass
-
 class ObjectDeleted(OTPmeException):
     pass
 
@@ -256,6 +253,9 @@ class ProcessingFailed(OTPmeException):
     pass
 
 class ShowHelp(OTPmeException):
+    pass
+
+class OTPmeJobException(OTPmeException):
     pass
 
 class MasterNodeElectionFailed(OTPmeException):

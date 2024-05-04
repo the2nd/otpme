@@ -25,6 +25,15 @@ import setproctitle
 # python3.
 from importlib import reload
 
+# Workaround for "ValueError: unsupported hash type md4" error on hashlib.new('md4')
+import ctypes
+ctypes.CDLL("libssl.so").OSSL_PROVIDER_load(None, b"legacy")
+ctypes.CDLL("libssl.so").OSSL_PROVIDER_load(None, b"default")
+
+# Workaround for https://github.com/pyca/cryptography/issues/7236
+from cryptography.hazmat.backends.openssl import backend
+backend._rsa_skip_check_key = True
+
 def otpme_commands(no_debug=False):
     """ Handles OTPme command line tools. """
     from otpme.lib.classes.command_handler import CommandHandler

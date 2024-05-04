@@ -20,13 +20,14 @@ cmd_help = {
     '_usage_help'               : "Usage: otpme-node {command} [node]",
 
     'show'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-node show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [node]',
-                    'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    '_cmd_usage_help' : 'Usage: otpme-node show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [node]',
+                    'cmd'   :   '--policy-limit :max_policies: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
                     '_help' :   {
                                     'cmd'                   : 'show node(s)',
                                     '-a'                    : 'Show all nodes.',
                                     '-z <limit>'            : 'limit output size',
                                     '--fields f1,f2,f3'     : 'output only given fields',
+                                    '--policy-limit <limit>': 'Output max policies.',
                                     '--reverse'             : 'Reverse the output order.',
                                     '--sort-by <attribute>' : 'Sort output by <attribute>.',
                                     '--raw'                 : 'Output table without any headers/borders.',
@@ -311,14 +312,6 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : 'List assigned roles.',
-                                },
-                },
-    'list_sync_users'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-node list_sync_users {node}',
-                    'cmd'   :   '--return-type :return_type: [|object|]',
-                    '_help' :   {
-                                    'cmd'                       : 'List sync users.',
-                                    '--return-type'             : 'Attribute to return.',
                                 },
                 },
     'dump_cert'   : {

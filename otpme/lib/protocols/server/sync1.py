@@ -36,29 +36,15 @@ def register():
     config.register_otpme_protocol("syncd", PROTOCOL_VERSION, server=True)
     locking.register_lock_type(LOCK_TYPE, module=__file__)
 
-def add_sync_list_checksum(node, realm, site, checksum,
+def add_sync_list_checksum(realm, site, peer_realm, peer_site, checksum,
     object_types=None, skip_admin=False, skip_users=None,
     skip_list=None, include_templates=False,
     include_uuids=None, sync_time=None):
-    """ Update sync list checksum of node. """
-    if node.realm == config.realm \
-    and node.site == config.site:
-        # For nodes for our own site we need to add a node sync map
-        # entry.
-        peer_node = node.fqdn
-        peer_realm = node.realm
-        peer_site = node.site
-    else:
-        # For nodes from other sites we need to add a realm/site
-        # sync map entry because their master node may change.
-        peer_node = None
-        peer_realm = node.realm
-        peer_site = node.site
+    """ Update sync list checksum. """
 
     if sync_time is not None:
         sync_map = backend.get_sync_map(realm=realm,
                                         site=site,
-                                        peer_node=peer_node,
                                         peer_realm=peer_realm,
                                         peer_site=peer_site)
         try:
@@ -82,22 +68,15 @@ def add_sync_list_checksum(node, realm, site, checksum,
                                                 skip_admin=skip_admin,
                                                 include_templates=include_templates,
                                                 include_uuids=include_uuids)
-        # Only update sync map if the peer checksum matches the current
-        # object status.
-        if checksum != sync_list_checksum:
-            msg = "Peer does not match current master node state."
-            raise SyncListChecksumMismatch(msg)
-
     # Update checksum.
     backend.add_sync_map(realm=realm,
                         site=site,
-                        checksum=checksum,
-                        object_types=object_types,
-                        peer_node=peer_node,
                         peer_realm=peer_realm,
-                        peer_site=peer_site)
-    response = ("Updated %s in sync map: %s: %s/%s: %s"
-        % (update_type, node.name, realm, site, checksum))
+                        peer_site=peer_site,
+                        checksum=checksum,
+                        object_types=object_types)
+    response = ("Updated %s in sync map: %s/%s: %s/%s: %s"
+        % (update_type, peer_realm, peer_site, realm, site, checksum))
     return response
 
 class OTPmeSyncP1(OTPmeServer1):
@@ -295,9 +274,10 @@ class OTPmeSyncP1(OTPmeServer1):
         """ Handle add sync list checksum command. """
         exception = None
         try:
-            response = add_sync_list_checksum(node=self.peer,
-                                        realm=realm,
+            response = add_sync_list_checksum(realm=realm,
                                         site=site,
+                                        peer_realm=self.peer.realm,
+                                        peer_site=self.peer.site,
                                         object_types=object_types,
                                         checksum=peer_checksum,
                                         skip_admin=skip_admin,
@@ -305,9 +285,6 @@ class OTPmeSyncP1(OTPmeServer1):
                                         skip_list=skip_list,
                                         include_templates=include_templates,
                                         include_uuids=include_uuids)
-        except SyncListChecksumMismatch as e:
-            response = ("Will not update sync list checksum: %s: %s"
-                    % (self.peer, e))
         except Exception as e:
             exception = str(e)
 
@@ -389,7 +366,7 @@ class OTPmeSyncP1(OTPmeServer1):
                 return status, response
             sync_config['SYNC_PARENT_OBJECT_UUID'] = parent_object.uuid
 
-        object_checksum = backend.get_checksum(object_id)
+        object_checksum = backend.get_sync_checksum(object_id)
         response = {'checksum':object_checksum,'object_config':sync_config}
         o_size = sys.getsizeof(response)
         object_size = units.int2size(o_size)
@@ -918,6 +895,10 @@ class OTPmeSyncP1(OTPmeServer1):
         except:
             peer_skip_list = []
 
+        if command == "start_sync":
+            status, response = self.start_sync_command()
+            return self.build_response(status, response)
+
         # Only realm/site master node is allowed to sync all sites to peer.
         if self.peer.type == "node" \
         and not config.master_node:
@@ -1124,10 +1105,6 @@ class OTPmeSyncP1(OTPmeServer1):
             except Exception as e:
                 status = False
                 response = "Failed to get SSH authorized keys: %s" % e
-            return self.build_response(status, response)
-
-        if command == "start_sync":
-            status, response = self.start_sync_command()
             return self.build_response(status, response)
 
     def _close(self):

@@ -20,13 +20,14 @@ cmd_help = {
     '_usage_help'               : "Usage: otpme-resolver {command} [resolver]",
 
     'show'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-resolver show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [resolver]',
-                    'cmd'   :   '--fields :output_fields: -z :max_len: -a :show_all=True: [|object|]',
+                    '_cmd_usage_help' : 'Usage: otpme-resolver show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [resolver]',
+                    'cmd'   :   '--policy-limit :max_policies: --fields :output_fields: -z :max_len: -a :show_all=True: [|object|]',
                     '_help' :   {
                                     'cmd'                   : 'show resolvers',
                                     '-a'                    : 'Show all resolvers.',
                                     '-z <limit>'            : 'limit output size',
                                     '--fields f1,f2,f3'     : 'output only given fields',
+                                    '--policy-limit <limit>': 'Output max policies.',
                                 },
                 },
 

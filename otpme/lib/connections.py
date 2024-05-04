@@ -174,11 +174,16 @@ def get(daemon, **kwargs):
         kwargs['print_messages'] = print_messages
 
     conn_kwargs = dict(kwargs)
+    _conn_kwargs = dict(kwargs)
+    try:
+        _conn_kwargs.pop("jwt_method")
+    except KeyError:
+        pass
 
     # Generate key from func/method args.
     arguments = {
                 'args'      : (),
-                'kwargs'    : conn_kwargs,
+                'kwargs'    : _conn_kwargs,
                 }
     try:
         conn_key = stuff.args_to_hash(arguments)

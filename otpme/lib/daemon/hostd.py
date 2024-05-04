@@ -275,7 +275,7 @@ class HostDaemon(OTPmeDaemon):
                 # sync but there was no object change on this node while it is
                 # syncing and we do not want to resend a sync notify.
                 if sync_list_checksum == config.SYNCING_STATUS_STRING:
-                    msg = "Site is currently syncing: %s" % s
+                    msg = "Site is currently syncing: %s" % x
                     self.logger.debug(msg)
                 if not sync_list_checksum:
                     add_site = True
@@ -359,10 +359,11 @@ class HostDaemon(OTPmeDaemon):
             x_skip_admin = x['skip_admin']
             x_object_types = x['object_types']
             try:
-                reply = add_sync_list_checksum(node=sync_conn.peer,
-                                            sync_time=x_sync_time,
-                                            realm=x_sync_realm,
+                reply = add_sync_list_checksum(realm=x_sync_realm,
                                             site=x_sync_site,
+                                            peer_realm=sync_conn.peer.realm,
+                                            peer_site=sync_conn.peer.site,
+                                            sync_time=x_sync_time,
                                             skip_list=x_skip_list,
                                             skip_admin=x_skip_admin,
                                             object_types=x_object_types,
@@ -582,8 +583,7 @@ class HostDaemon(OTPmeDaemon):
                         o.update_object_config()
                         # Get object config of updated object.
                         object_config = o.object_config.copy()
-                    else:
-                        updated_objects += 1
+                    updated_objects += 1
                     self.logger.info("Updating object: %s" % x_oid)
                 else:
                     self.logger.info("Adding new object: %s" % x_oid)
@@ -712,17 +712,6 @@ class HostDaemon(OTPmeDaemon):
     def start_sync(self, sync_type="objects", queue=True, resync=False,
         nsscache_resync=False, offline=False, realm=None, site=None):
         """ Start sync job as child process. """
-        # No need to sync on realm master node.
-        if config.realm_master_node:
-            if sync_type == "sites":
-                return
-            if sync_type == "objects":
-                return
-            if sync_type == "used_otps":
-                return
-            if sync_type == "token_counters":
-                return
-
         if sync_type == "sites" and queue:
             # Check for existing sync child.
             try:
@@ -884,13 +873,6 @@ class HostDaemon(OTPmeDaemon):
                                 resync=False,
                                 realm=realm,
                                 site=site)
-
-        # Master node must not sync objects with itself :)
-        if config.master_node:
-            if site == config.site:
-                if sync_type == "objects":
-                    # But we need to sync nsscache.
-                    sync_type = "nsscache"
 
         # Update sync start timestamp.
         config.update_sync_status(realm=realm,
@@ -1170,6 +1152,26 @@ class HostDaemon(OTPmeDaemon):
             self.logger.critical(msg)
             sync_status = False
 
+        # Make sure we send sync notifications to all non-master nodes.
+        if config.master_node:
+            if sync_status:
+                if sync_type == "objects":
+                    all_nodes = backend.search(object_type="node",
+                                                attribute="uuid",
+                                                value="*",
+                                                realm=config.realm,
+                                                site=config.site,
+                                                return_type="oid")
+                    for node_oid in all_nodes:
+                        if node_oid == self.host.oid:
+                            continue
+                        try:
+                            self.sync_notify(realm=realm, site=site, node=node_oid)
+                        except Exception as e:
+                            msg = "Error sending sync notify: %s: %s" % (x, e)
+                            self.logger.warning(msg)
+                            config.raise_exception()
+
         # Handle exit status.
         if sync_status:
             return True
@@ -1188,6 +1190,8 @@ class HostDaemon(OTPmeDaemon):
         result = backend.search(object_type="ca",
                                 attribute="uuid",
                                 value="*",
+                                realm=config.realm,
+                                site=config.site,
                                 return_type="instance")
         for ca in result:
             crl_age = time.time() - ca.last_crl_update
@@ -1226,7 +1230,9 @@ class HostDaemon(OTPmeDaemon):
         resolvers = backend.search(object_type="resolver",
                                     attribute="uuid",
                                     value="*",
-                                    return_type="instance")
+                                    return_type="instance",
+                                    realm=config.realm,
+                                    site=config.site)
         for resolver in resolvers:
             if not config.master_node:
                 break
@@ -1339,22 +1345,22 @@ class HostDaemon(OTPmeDaemon):
 
         # Start initial sync.
         if self.host_type == "node":
-            self.start_sync(sync_type="sites", resync=False)
-            self.start_sync(sync_type="objects", resync=False)
-            self.start_sync(sync_type="nsscache", resync=False)
-            self.start_sync(sync_type="ssh_authorized_keys", resync=False)
-            self.start_sync(sync_type="used_otps", resync=False, offline=True)
-            self.start_sync(sync_type="token_counters", resync=False, offline=True)
-            self.start_sync(sync_type="notify", resync=False)
-            self.start_sync(sync_type="used_otps", resync=False)
-            self.start_sync(sync_type="token_counters", resync=False)
+            self.start_sync(sync_type="sites")
+            self.start_sync(sync_type="objects")
+            self.start_sync(sync_type="nsscache")
+            self.start_sync(sync_type="ssh_authorized_keys")
+            self.start_sync(sync_type="used_otps", offline=True)
+            self.start_sync(sync_type="token_counters", offline=True)
+            self.start_sync(sync_type="notify")
+            #self.start_sync(sync_type="used_otps")
+            #self.start_sync(sync_type="token_counters")
         else:
-            self.start_sync(sync_type="sites", resync=False)
-            self.start_sync(sync_type="objects", resync=False)
-            self.start_sync(sync_type="nsscache", resync=False)
-            self.start_sync(sync_type="ssh_authorized_keys", resync=False)
-            self.start_sync(sync_type="used_otps", resync=False, offline=True)
-            self.start_sync(sync_type="token_counters", resync=False, offline=True)
+            self.start_sync(sync_type="sites")
+            self.start_sync(sync_type="objects")
+            self.start_sync(sync_type="nsscache")
+            self.start_sync(sync_type="ssh_authorized_keys")
+            self.start_sync(sync_type="used_otps", offline=True)
+            self.start_sync(sync_type="token_counters", offline=True)
 
         return True
 
@@ -1609,29 +1615,15 @@ class HostDaemon(OTPmeDaemon):
 
                     # Object sync commands are a dict containing sync realm/site.
                     if "sync_objects" in daemon_command:
-                        if not "objects" in self.sync_by_command:
+                        if "objects" not in self.sync_by_command:
                             self.sync_by_command.append('sites')
                             self.sync_by_command.append('objects')
-                            try:
-                                sync_objects = daemon_command['sync_objects']
-                                self.sync_by_command_opts['objects'] = sync_objects
-                            except:
-                                try:
-                                    self.sync_by_command_opts.pop('objects')
-                                except:
-                                    pass
+                            self.sync_by_command_opts['objects'] = data
 
                     if "resync_objects" in daemon_command:
-                        if not "resync_objects" in self.sync_by_command:
+                        if "resync_objects" not in self.sync_by_command:
                             self.sync_by_command.append('resync_objects')
-                            try:
-                                resync_objects = daemon_command['resync_objects']
-                                self.sync_by_command_opts['resync_objects'] = resync_objects
-                            except:
-                                try:
-                                    self.sync_by_command_opts.pop('resync_objects')
-                                except:
-                                    pass
+                            self.sync_by_command_opts['resync_objects'] = data
 
                     if daemon_command == "sync_nsscache":
                         if not "nsscache" in self.sync_by_command:
@@ -1728,15 +1720,15 @@ class HostDaemon(OTPmeDaemon):
                                 sync_opts_name = "objects"
                             try:
                                 sync_realm = self.sync_by_command_opts[sync_opts_name]['realm']
-                            except:
+                            except KeyError:
                                 pass
                             try:
                                 sync_site = self.sync_by_command_opts[sync_opts_name]['site']
-                            except:
+                            except KeyError:
                                 pass
                             try:
                                 self.sync_by_command_opts.pop(sync_type)
-                            except:
+                            except KeyError:
                                 pass
 
                     else:
@@ -1784,15 +1776,6 @@ class HostDaemon(OTPmeDaemon):
                                             realm=sync_realm,
                                             site=sync_site,
                                             offline=True)
-                            # Token must also start a sync for non-offline
-                            # token data.
-                            if self.host_type == "node":
-                                self.start_sync(sync_type=sync_type,
-                                                resync=resync,
-                                                nsscache_resync=nsscache_resync,
-                                                realm=sync_realm,
-                                                site=sync_site,
-                                                offline=False)
                         else:
                             # Start sync job.
                             self.start_sync(sync_type=sync_type,
@@ -1801,7 +1784,7 @@ class HostDaemon(OTPmeDaemon):
                                             realm=sync_realm,
                                             site=sync_site)
 
-                # Start sync jobs  from queue.
+                # Start sync jobs from queue.
                 self.start_sync_job_from_queue()
 
             except (KeyboardInterrupt, SystemExit):

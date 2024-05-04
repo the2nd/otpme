@@ -20,8 +20,8 @@ cmd_help = {
     '_usage_help'               : "Usage: otpme-group {command} [group]",
 
     'show'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-group show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [group]',
-                    'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    '_cmd_usage_help' : 'Usage: otpme-group show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [group]',
+                    'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --token-limit :max_tokens: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
                     '_help' :   {
                                     'cmd'                   : 'show group(s)',
                                     '-a'                    : 'Show all groups.',
@@ -29,6 +29,9 @@ cmd_help = {
                                     '--fields f1,f2,f3'     : 'output only given fields',
                                     '--reverse'             : 'Reverse the output order.',
                                     '--sort-by <attribute>' : 'Sort output by <attribute>.',
+                                    '--role-limit <limit>'  : 'Output max roles.',
+                                    '--token-limit <limit>' : 'Output max tokens.',
+                                    '--policy-limit <limit>': 'Output max policies.',
                                     '--raw'                 : 'Output table without any headers/borders.',
                                     '--csv'                 : 'Output table as CSV.',
                                     '--csv-sep <separator>' : 'Output table as CSV.',
@@ -255,13 +258,14 @@ cmd_help = {
                 },
     'list_roles'   : {
                     '_cmd_usage_help' : 'Usage: otpme-group list_roles {group}',
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    'cmd'   :   '--return-type :return_type: -r :recursive=True: [|object|]',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
                     '_help' :   {
                                     'cmd'                   : 'List assigned roles.',
                                     '--return-type'         : 'Attribute to return.',
+                                    '-r'                    : 'List roles recursive.',
                                 },
                 },
 

@@ -320,6 +320,8 @@ class OTPmeClusterP1(OTPmeServer1):
                         sync_objects[x_oid.full_oid] = None
                         continue
                     x_object_config = backend.read_config(x_oid)
+                    if not x_object_config:
+                        continue
                     x_object_config = x_object_config.copy()
                     x_sync_checksum = backend.get_sync_checksum(x_oid)
                     x_object_config['SYNC_CHECKSUM'] = x_sync_checksum

@@ -66,7 +66,7 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, site_order, site_data, acls,
-    output_fields=[], acl_checker=None, **kwargs):
+    output_fields=[], acl_checker=None, max_policies=5, **kwargs):
     """ Build table rows for sites. """
     _result = []
     for site_uuid in site_order:
@@ -184,7 +184,8 @@ def row_getter(realm, site, site_order, site_data, acls,
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="site",
-                                                    object_uuid=site_uuid)
+                                                    object_uuid=site_uuid,
+                                                    max_policies=max_policies)
                 row.append(policies_string)
             else:
                 row.append("-")

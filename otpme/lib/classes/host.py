@@ -109,6 +109,7 @@ commands = {
                                         'max_len',
                                         'show_all',
                                         'output_fields',
+                                        'max_policies',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',
@@ -439,6 +440,16 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'get_sync_users',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'list_sync_groups'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_sync_groups',
                     'oargs'             : ['return_type'],
                     'dargs'             : {'return_type':'name'},
                     'job_type'          : 'thread',
@@ -886,7 +897,7 @@ class Host(OTPmeHost):
     def _get_object_config(self):
         """ Get object config dict. """
         host_config = {
-                        'SYNCUSERS'                 : {
+                        'SYNC_USERS'                 : {
                                                         'var_name'  : 'sync_users',
                                                         'type'      : list,
                                                         'required'  : False,
@@ -1190,6 +1201,43 @@ class Host(OTPmeHost):
                 return callback.error()
         self.sync_groups_enabled = False
         return self._cache(callback=callback)
+
+    @cli.check_rapi_opts()
+    def get_sync_groups(self, return_type="name", skip_disabled=False,
+        include_roles=False, callback=default_callback,
+        _caller="API", **kwargs):
+        """ Get all sync groups assigned to this object. """
+        exception = None
+        if not return_type in [ 'instance', 'uuid', 'oid', 'name', 'read_oid', 'full_oid']:
+            exception = "Unknown return type: %s" % return_type
+        if _caller != "API" and return_type == "instance":
+            exception = "Unknown return type: %s" % return_type
+        if exception:
+            if _caller != "API":
+                return callback.error(exception)
+            else:
+                raise Exception(exception)
+
+        result = []
+        if self.sync_groups:
+            # Remove duplicates.
+            group_uuids = sorted(list(set(self.sync_groups)))
+            # Search users (return attribute) via user UUID.
+            search_attrs = {}
+            if skip_disabled:
+                search_attrs['enabled'] = {}
+                search_attrs['enabled']['value'] = True
+            result += backend.search(object_type="group",
+                                    attribute="uuid",
+                                    values=group_uuids,
+                                    attributes=search_attrs,
+                                    return_type=return_type)
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+
+        return callback.ok(result)
 
     def show_config(self, callback=default_callback, **kwargs):
         """ Show host config. """

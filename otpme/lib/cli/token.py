@@ -19,6 +19,7 @@ from otpme.lib.classes.user import user_failcount
 from otpme.lib.classes.user import user_is_blocked
 from otpme.lib.classes.policy import get_acls
 from otpme.lib.classes.policy import get_value_acls
+from otpme.lib.classes.role import get_roles as _get_roles
 
 from otpme.lib.exceptions import *
 
@@ -107,7 +108,7 @@ def search_regex_getter():
     return search_regex
 
 def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
-    output_fields=[], acl_checker=None, **kwargs):
+    output_fields=[], acl_checker=None, max_roles=5, max_policies=5, **kwargs):
     """ Build table rows for tokens. """
     _result = []
     for token_uuid in token_order:
@@ -222,12 +223,33 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                 get_accessgroups = True
                 show_accessgroups = True
 
+        roles_result = {}
         if get_roles:
-            return_attributes = ['name', 'site']
-            roles_result = backend.search(object_type="role",
+            #return_attributes = ['name', 'site']
+            #roles_result = backend.search(object_type="role",
+            #                        attribute="token",
+            #                        value=token_uuid,
+            #                        return_attributes=return_attributes)
+            token_roles = backend.search(object_type="role",
                                     attribute="token",
                                     value=token_uuid,
-                                    return_attributes=return_attributes)
+                                    return_type="uuid")
+            return_attributes = ['name', 'site']
+            all_token_roles = list(token_roles)
+            for uuid in list(token_roles):
+                role_roles = _get_roles(role_uuid=uuid,
+                                        parent=True,
+                                        recursive=True,
+                                        return_type="uuid")
+                for x in role_roles:
+                    if x in token_roles:
+                        continue
+                    all_token_roles.append(x)
+            if all_token_roles:
+                roles_result = backend.search(object_type="role",
+                                        attribute="uuid",
+                                        values=all_token_roles,
+                                        return_attributes=return_attributes)
 
         if get_accessgroups:
             return_attributes = ['name', 'site', 'enabled']
@@ -243,16 +265,26 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                                                 return_attributes=return_attributes)
         # Roles.
         if show_roles:
-            token_roles = []
-            for role_uuid in roles_result:
+            roles_count = len(all_token_roles)
+            processed_roles = 0
+            token_roles_string = []
+            for role_uuid in all_token_roles:
                 role_name = roles_result[role_uuid]['name']
                 role_site = roles_result[role_uuid]['site']
                 if role_site != config.site:
                     role_path = "%s/%s" % (role_site, role_name)
                 else:
                     role_path = role_name
-                token_roles.append(role_path)
-            row.append("\n".join(token_roles))
+                if role_uuid not in token_roles:
+                    role_path = "(%s)" % role_path
+                token_roles_string.append(role_path)
+                processed_roles += 1
+                if processed_roles == max_roles:
+                    x = ("(%s of %s roles total)"
+                        % (processed_roles, roles_count))
+                    token_roles_string.append(x)
+                    break
+            row.append("\n".join(token_roles_string))
         else:
             row.append("-")
 
@@ -282,17 +314,19 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                         else:
                             group_status_string = ""
 
-                if group_uuid in role_ags_result:
-                    if group_site != config.site:
-                        group_string = "(%s/%s) %s" % (group_site,
-                                                    group_name,
-                                                    group_status_string)
-                    else:
-                        group_string = "(%s) %s" % (group_name,
-                                                    group_status_string)
+                if group_site == config.site:
+                    group_string = group_name
                 else:
-                    group_string = "%s %s" % (group_name, group_status_string)
+                    group_string = "%s/%s" % (group_site, group_name)
+
+                if group_status_string:
+                    group_string = "(%s %s)" % (group_string, group_status_string)
+
+                if group_uuid in role_ags_result:
+                    group_string = "(%s)" % group_string
+
                 group_strings.append(group_string)
+
             row.append("\n".join(group_strings))
         else:
             row.append("-")
@@ -365,7 +399,8 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                 policies_string = ""
                 if policies:
                     policies_string = get_policies_string(object_type="token",
-                                                        object_uuid=token_uuid)
+                                                        object_uuid=token_uuid,
+                                                        max_policies=max_policies)
                 row.append(policies_string)
             else:
                 row.append("-")

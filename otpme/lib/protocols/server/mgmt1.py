@@ -20,8 +20,10 @@ from otpme.lib import json
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import encryption
+from otpme.lib import jwt as _jwt
 from otpme.lib import multiprocessing
 from otpme.lib.encoding.base import decode
+from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.protocols import status_codes
 from otpme.lib.job.otpme_job import OTPmeJob
 from otpme.lib.protocols.utils import send_msg
@@ -38,6 +40,7 @@ command_map = {}
 valid_commands = [
                 'backend',
                 'stop_job',
+                'move_object',
                 'dump_index',
                 'dump_object',
                 'reset_reauth',
@@ -531,6 +534,277 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         return job_status, job_reply
 
+    def verify_move_jwt(self, src_realm, src_site, jwt):
+        _src_site = backend.get_object(object_type="site",
+                                        realm=src_realm,
+                                        name=src_site)
+        try:
+            jwt_key = RSAKey(key=_src_site._cert.public_key())
+        except Exception as e:
+            msg = (_("Unable to get public key of site "
+                    "certificate: %s: %s") % (src_site, e))
+            raise OTPmeException(msg)
+        try:
+            jwt_data = _jwt.decode(jwt=jwt,
+                                key=jwt_key,
+                                algorithm='RS256')
+        except Exception as e:
+            msg = "Failed to decode JWT: %s" % e
+            raise OTPmeException(msg)
+        return jwt_data
+
+    def verify_move_objects(self, jwt_data, objects):
+        """
+            Make sure we dont get objects that where not signed by the JWT.
+            This check is required to make sure we dont move objects that were
+            not show to the user when executing the move command.
+        """
+        object_ids = jwt_data['object_ids']
+        jwt_objects = {}
+        for x in object_ids:
+            x_oid = x[0]
+            x_uuid = x[1]
+            jwt_objects[x_oid] = x_uuid
+        for x_oid in objects:
+            x_oc = objects[x_oid]['object_config']
+            x_uuid = x_oc['UUID']
+            try:
+                y_uuid = jwt_objects[x_oid]
+            except KeyError:
+                msg = "Got object that was not signed by JWT: %s" % x_oid
+                raise OTPmeException(msg)
+            if x_uuid == y_uuid:
+                continue
+            msg = ("Found object UUID missmatch: %s: %s <> %s"
+                    % (x_oid, x_uuid, y_uuid))
+            raise OTPmeException(msg)
+
+    def build_move_reply(self, moved_objects):
+        """ Build reply JWT. """
+        our_site = backend.get_object(object_type="site",
+                                        realm=config.realm,
+                                        name=config.site)
+        try:
+            jwt_key = RSAKey(key=our_site.key)
+        except Exception as e:
+            msg = (_("Unable to get public key of site "
+                    "certificate: %s: %s") % (our_site, e))
+            raise OTPmeException(msg)
+        jwt = _jwt.encode(payload=moved_objects,
+                        key=jwt_key,
+                        algorithm='RS256')
+        return jwt
+
+    def move_object(self, command_args):
+        jwt = command_args['jwt']
+        src_realm = command_args['src_realm']
+        src_site = command_args['src_site']
+
+        try:
+            jwt_data = self.verify_move_jwt(src_realm, src_site, jwt)
+        except Exception as e:
+            message = "JWT verification failed"
+            msg = "%s: %s" % (message, e)
+            self.logger.warning(msg)
+            status = False
+            return self.build_response(status, message)
+
+        try:
+            objects_enc_key = jwt_data['enc_key']
+        except KeyError:
+            message = "JWT data misses decryption key."
+            self.logger.warning(message)
+            status = False
+            return self.build_response(status, message)
+
+        try:
+            default_group = jwt_data['default_group']
+        except KeyError:
+            message = "JWT data misses default group."
+            self.logger.warning(message)
+            status = False
+            return self.build_response(status, message)
+
+        # Make sure new default group exists.
+        result = backend.search(object_type="group",
+                                attribute="name",
+                                value=default_group,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="instance")
+        if not result:
+            message = "Unknown group: %s" % default_group
+            self.logger.warning(message)
+            status = False
+            return self.build_response(status, message)
+
+        _default_group = result[0]
+        if not _default_group.verify_acl("add:default_group_user"):
+            message = "Failed to set new default group: %s" % default_group
+            self.logger.warning(message)
+            status = False
+            return self.build_response(status, message)
+
+        # Get site cert to decrypt objects and verify reply JWT.
+        _dst_site = backend.get_object(object_type="site",
+                                        realm=config.realm,
+                                        name=config.site)
+        # Decrypt encryption key with site private key.
+        try:
+            site_key = RSAKey(key=_dst_site.key)
+        except Exception as e:
+            message = (_("Unable to get public key of site "
+                    "certificate: %s") % dst_site)
+            msg = "%s: %s" % e
+            self.logger.warning(msg)
+            status = False
+            return self.build_response(status, message)
+        objects_enc_key = site_key.decrypt(objects_enc_key, encoding="hex")
+
+        # Generate encryption key.
+        enc_mod = config.get_encryption_module("FERNET")
+        # Encrypt objects.
+        objects_encrypted = command_args['objects']
+        objects = json.decode(objects_encrypted,
+                            encoding="base64",
+                            encryption=enc_mod,
+                            enc_key=objects_enc_key)
+
+        try:
+            self.verify_move_objects(jwt_data, objects)
+        except Exception as e:
+            message = "Move objects verfication failed: %s" % e
+            self.logger.warning(message)
+            status = False
+            return self.build_response(status, message)
+
+        # Check if objects are moveable.
+        for x_src_oid in objects:
+            x_oc = objects[x_src_oid]['object_config']
+            try:
+                x_path = objects[x_src_oid]['path']
+            except KeyError:
+                x_path = None
+            x_src_oid = oid.get(x_src_oid)
+            x_uuid = x_oc['UUID']
+            x_oid = backend.get_oid(x_uuid)
+            if not x_oid:
+                message = "Cannot move unknown object: %s" % x_src_oid
+                status = False
+                return self.build_response(status, message)
+            if x_src_oid != x_oid:
+                message = ("Cannot move different object: %s <> %s"
+                            % (x_src_oid, x_oid))
+                status = False
+                return self.build_response(status, message)
+            if x_src_oid.object_type == "user":
+                if not x_path:
+                    message = "Missing user path."
+                    status = False
+                    return self.build_response(status, message)
+        # Actually move objects.
+        moved_objects = {}
+        for x_src_oid in objects:
+            x_oc = objects[x_src_oid]['object_config']
+            x_src_oid = oid.get(x_src_oid)
+            if x_src_oid.object_type == "user":
+                try:
+                    x_path = objects[x_src_oid]['path']
+                except KeyError:
+                    message = "Missing user path."
+                    status = False
+                    return self.build_response(status, message)
+                path_data = oid.resolve_path(object_path=x_path,
+                                            object_type="unit")
+                unit_rel_path = path_data['rel_path']
+                result = backend.search(object_type="unit",
+                                        attribute="rel_path",
+                                        value=unit_rel_path,
+                                        return_type="instance",
+                                        realm=config.realm,
+                                        site=config.site)
+                if not result:
+                    message = "Unknown unit: %s" % unit_rel_path
+                    status = False
+                    return self.build_response(status, message)
+                dst_unit = result[0]
+                if not dst_unit.verify_acl("add:user"):
+                    message = "Permission denied: %s" % dst_unit.path
+                    status = False
+                    return self.build_response(status, message)
+                try:
+                    backend.delete_object(x_src_oid)
+                except UnknownObject:
+                    pass
+                except Exception as e:
+                    message = "Failed to delete object: %s: %s" % (x_src_oid, e)
+                    status = False
+                    return self.build_response(status, message)
+                try:
+                    move_object = backend.get_instance_from_oid(x_src_oid, x_oc)
+                except Exception as e:
+                    message = "Failed to load object: %s: %s" % (x_src_oid, e)
+                    status = False
+                    return self.build_response(status, message)
+                x_dst_oid = "%s|%s/%s/%s/%s" % (x_src_oid.object_type,
+                                            config.realm,
+                                            config.site,
+                                            unit_rel_path,
+                                            x_src_oid.name)
+                x_dst_oid = oid.get(x_dst_oid)
+                move_object.realm = config.realm
+                move_object.site = config.site
+                move_object.realm_uuid = config.realm_uuid
+                move_object.site_uuid = config.site_uuid
+                move_object.set_oid(new_oid=x_dst_oid)
+                move_object.unit_uuid = dst_unit.uuid
+                move_object.set_unit()
+                move_object.group = default_group
+                move_object.update_extensions("site_move")
+                move_object._write()
+                moved_objects[x_src_oid.full_oid] = {}
+                moved_objects[x_src_oid.full_oid]['uuid'] = move_object.uuid
+                moved_objects[x_src_oid.full_oid]['dst'] = move_object.oid.full_oid
+            elif x_src_oid.object_type == "token":
+                try:
+                    backend.delete_object(x_src_oid)
+                except UnknownObject:
+                    pass
+                except Exception as e:
+                    message = "Failed to delete object: %s: %s" % (x_src_oid, e)
+                    status = False
+                    return self.build_response(status, message)
+                try:
+                    move_object = backend.get_instance_from_oid(x_src_oid, x_oc)
+                except Exception as e:
+                    message = "Failed to load object: %s: %s" % (x_src_oid, e)
+                    status = False
+                    return self.build_response(status, message)
+                x_dst_oid = "%s|%s/%s/%s/%s" % (x_src_oid.object_type,
+                                            config.realm,
+                                            config.site,
+                                            x_src_oid.user,
+                                            x_src_oid.name)
+                x_dst_oid = oid.get(x_dst_oid)
+                move_object.realm = config.realm
+                move_object.site = config.site
+                move_object.realm_uuid = config.realm_uuid
+                move_object.site_uuid = config.site_uuid
+                move_object.set_oid(new_oid=x_dst_oid)
+                move_object.update_extensions("site_move")
+                move_object._write()
+                moved_objects[x_src_oid.full_oid] = {}
+                moved_objects[x_src_oid.full_oid]['uuid'] = move_object.uuid
+                moved_objects[x_src_oid.full_oid]['dst'] = move_object.oid.full_oid
+            else:
+                message = "Unknown object type to move: %s" % x_src_oid.object_type
+                status = False
+                return self.build_response(status, message)
+
+        move_reply = self.build_move_reply(moved_objects)
+
+        return self.build_response(True, move_reply)
+
     def handle_backend_commands(self, backend_command, command_args):
         """ Handle 'backend' commands. """
         status = False
@@ -918,6 +1192,10 @@ class OTPmeMgmtP1(OTPmeServer1):
             except KeyError:
                 pass
             return self.build_response(True, None)
+
+        # Handle backend commands.
+        if command == "move_object":
+            return self.move_object(command_args)
 
         # Handle backend commands.
         if command == "backend":

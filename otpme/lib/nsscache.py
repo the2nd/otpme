@@ -79,16 +79,13 @@ def update_sync_map(lock=None, syncing=False):
                                 value="*",
                                 realm=config.realm,
                                 return_type="instance")
-    # Get our host data.
-    host_uuid = config.uuid
+    # Get users to skip.
+    skip_users = config.get_internal_objects("user")
+    # Get object types to sync.
     try:
         host_type = config.host_data['type']
     except:
         return
-    host = backend.get_object(object_type=host_type, uuid=host_uuid)
-    # Get users to skip.
-    skip_users = config.get_internal_objects("user")
-    # Get object types to sync.
     object_types = config.get_sync_object_types(host_type)
 
     for x in all_sites:
@@ -98,9 +95,10 @@ def update_sync_map(lock=None, syncing=False):
         # Set "syncing" status.
         if syncing:
             try:
-                reply = add_sync_list_checksum(node=host,
-                                            realm=x.realm,
+                reply = add_sync_list_checksum(realm=x.realm,
                                             site=x.name,
+                                            peer_realm=config.realm,
+                                            peer_site=config.site,
                                             skip_admin=False,
                                             skip_users=skip_users,
                                             object_types=object_types,
@@ -123,17 +121,15 @@ def update_sync_map(lock=None, syncing=False):
                                                     object_types=object_types)
         # Add sync list checksum to sync map.
         try:
-            reply = add_sync_list_checksum(node=host,
-                                        realm=x.realm,
+            reply = add_sync_list_checksum(realm=x.realm,
                                         site=x.name,
+                                        peer_realm=config.realm,
+                                        peer_site=config.site,
                                         skip_admin=False,
                                         skip_users=skip_users,
                                         object_types=object_types,
                                         checksum=sync_list_checksum)
             exception = None
-        except SyncListChecksumMismatch:
-            exception = None
-            reply = "Objects changed while nsscache update."
         except OTPmeException as e:
             exception = str(e)
         if exception:
@@ -198,6 +194,7 @@ def update(resync=False, cache_resync=False, lock=None):
     nsscache_config = {'dir': config.nsscache_dir}
     user_cache = files.FilesPasswdMapHandler(nsscache_config)
     group_cache = files.FilesGroupMapHandler(nsscache_config)
+    nss_cache_files = filetools.list_dir(config.nsscache_spool_dir)
 
     # Object types we support.
     object_types = NSSCACHE_ADD_ORDER
@@ -244,6 +241,107 @@ def update(resync=False, cache_resync=False, lock=None):
     updated_objects = {}
     removed_objects = {}
     files_to_remove = {}
+    update_members = True
+    if not config.use_api:
+        if not config.master_node:
+            update_members = False
+
+        if config.master_failover:
+            update_members = False
+
+        if not config.cluster_status:
+            update_members = False
+
+    if update_members:
+        # Get roles/groups to update members of.
+        update_roles = []
+        update_groups = []
+        for f in nss_cache_files:
+            file_path = os.path.join(config.nsscache_spool_dir, f)
+            x_oid = ".".join(f.split(".")[:-1]).replace("+", "/")
+            x_oid = oid.get(x_oid)
+
+            x_object = backend.get_object(x_oid)
+            if not x_object:
+                continue
+
+            if x_object.type == "user":
+                update_roles += x_object.get_roles(return_type="instance")
+                update_groups += x_object.get_groups(return_type="instance")
+
+            if x_object.type == "role":
+                if x_object.site != config.site:
+                    continue
+                update_roles.append(x_object)
+                try:
+                    filetools.delete(file_path)
+                except Exception as e:
+                    msg = ("Failed to remove nsscache file: %s: %s"
+                            % (file_path, e))
+                    logger.critical(msg)
+
+            if x_object.type == "group":
+                if x_object.site != config.site:
+                    continue
+                update_groups.append(x_object)
+
+        # Update group members from role members.
+        updated_groups = []
+        for role in set(sorted(update_roles)):
+            if role.site != config.site:
+                continue
+            msg = "Updating group members from role: %s" % role.oid
+            logger.info(msg)
+            callback = config.get_callback()
+            try:
+                updated_groups += role.update_extensions("update_members",
+                                                        callback=callback)[1]
+            except Exception as e:
+                msg = ("Failed to update role members: %s: %s"
+                        % (role.oid, e))
+            finally:
+                update_objects = False
+                if config.master_node:
+                    if config.cluster_status:
+                        if not config.master_failover:
+                            update_objects = True
+                if config.use_api:
+                    update_objects = True
+                if update_objects:
+                    callback.write_modified_objects()
+                    callback.release_cache_locks()
+
+        # Update group members (but not those processed by role updates above).
+        for _group in set(sorted(update_groups)):
+            if _group.site != config.site:
+                continue
+            if _group.oid in updated_groups:
+                continue
+            callback = config.get_callback()
+            try:
+                _group.update_extensions("update_members",
+                                        callback=callback)
+            except Exception as e:
+                msg = ("Failed to update group members: %s: %s"
+                        % (_group.oid, e))
+            finally:
+                update_objects = False
+                if config.master_node:
+                    if config.cluster_status:
+                        if not config.master_failover:
+                            update_objects = True
+                if config.use_api:
+                    update_objects = True
+                if update_objects:
+                    callback.write_modified_objects()
+                    callback.release_cache_locks()
+                    updated_groups.append(_group.oid)
+
+        for x in updated_groups:
+            update_file = gen_cachefile_path(x, UPDATE_EXT)
+            update_file = os.path.basename(update_file)
+            nss_cache_files.append(update_file)
+
     if cache_resync:
         for object_type in object_types:
             # If object type has a realm wide namespace we have to search
@@ -272,95 +370,7 @@ def update(resync=False, cache_resync=False, lock=None):
             update_sync_map(lock=lock)
             return None
 
-        update_members = True
-        if not config.use_api:
-            if not config.master_node:
-                update_members = False
-
-            if config.master_failover:
-                update_members = False
-
-            if not config.cluster_status:
-                update_members = False
-
-        if update_members:
-            # Get roles/groups to update members of.
-            update_roles = []
-            update_groups = []
-            nss_cache_files = filetools.list_dir(config.nsscache_spool_dir)
-            for f in nss_cache_files:
-                file_path = os.path.join(config.nsscache_spool_dir, f)
-                x_oid = ".".join(f.split(".")[:-1]).replace("+", "/")
-                x_oid = oid.get(x_oid)
-
-                if x_oid.object_type == "user":
-                    continue
-
-                x_object = backend.get_object(x_oid)
-                if not x_object:
-                    continue
-
-                #if x_object.type == "user":
-                #    update_roles += x_object.get_roles(return_type="instance")
-                #    update_groups += x_object.get_groups(return_type="instance")
-
-                if x_object.type == "role":
-                    if x_object.site != config.site:
-                        continue
-                    update_roles.append(x_object)
-                    try:
-                        filetools.delete(file_path)
-                    except Exception as e:
-                        msg = ("Failed to remove nsscache file: %s: %s"
-                                % (file_path, e))
-                        logger.critical(msg)
-
-                if x_object.type == "group":
-                    if x_object.site != config.site:
-                        continue
-                    update_groups.append(x_object)
-
-            # Update group members from role members.
-            updated_groups = []
-            for role in set(sorted(update_roles)):
-                msg = "Updating group members from role: %s" % role.oid
-                logger.info(msg)
-                callback = config.get_callback()
-                try:
-                    updated_groups += role.update_extensions("update_members",
-                                                            #cluster_lock=False,
-                                                            callback=callback)[1]
-                except Exception as e:
-                    msg = ("Failed to update role members: %s: %s"
-                            % (role.oid, e))
-                finally:
-                    if config.master_node:
-                        if config.cluster_status:
-                            if not config.master_failover:
-                                callback.write_modified_objects()
-                                callback.release_cache_locks()
-
-            # Update group members (but not those processed by role updates above).
-            for _group in set(sorted(update_groups)):
-                if _group.oid in updated_groups:
-                    continue
-                callback = config.get_callback()
-                try:
-                    _group.update_extensions("update_members",
-                                            #cluster_lock=False,
-                                            callback=callback)
-                except Exception as e:
-                    msg = ("Failed to update group members: %s: %s"
-                            % (_group.oid, e))
-                finally:
-                    if config.master_node:
-                        if config.cluster_status:
-                            if not config.master_failover:
-                                callback.write_modified_objects()
-                                callback.release_cache_locks()
-
-        nss_cache_files = filetools.list_dir(config.nsscache_spool_dir)
-        for f in nss_cache_files:
+        for f in set(nss_cache_files):
             file_path = os.path.join(config.nsscache_spool_dir, f)
             try:
                 files_to_remove[file_path] = os.path.getmtime(file_path)

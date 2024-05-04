@@ -86,6 +86,7 @@ commands = {
                                         'max_len',
                                         'show_all',
                                         'output_fields',
+                                        'max_policies',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',

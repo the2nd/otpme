@@ -243,7 +243,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
 
     def update_members(self, o, callback=default_callback, **kwargs):
         """ Handle update_members hook. """
-        # Get all group tokens
+        # Get all group tokens.
         group_tokens = o.get_tokens(include_roles=True, return_type="rel_path")
         # Get group members.
         group_members = []

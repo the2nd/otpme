@@ -69,7 +69,7 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, ca_order, ca_data, acls,
-    output_fields=[], acl_checker=None, **kwargs):
+    output_fields=[], acl_checker=None, max_policies=5, **kwargs):
     """ Build table rows for CAs. """
     _result = []
     for ca_uuid in ca_order:
@@ -192,7 +192,8 @@ def row_getter(realm, site, ca_order, ca_data, acls,
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="ca",
-                                                    object_uuid=ca_uuid)
+                                                    object_uuid=ca_uuid,
+                                                    max_policies=max_policies)
                 row.append(policies_string)
             else:
                 row.append("-")

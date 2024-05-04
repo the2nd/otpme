@@ -54,8 +54,9 @@ class OTPmeExtension(OTPmeLDIFHandler):
 
         self.valid_hooks = {
                             'all' : {
-                                        'rename'                        : 'rename',
-                                        'update_modified_timestamp'     : 'update_modified_timestamp',
+                                        'rename'                    : 'rename',
+                                        'update_modified_timestamp' : 'update_modified_timestamp',
+                                        'site_move'                 : 'site_move',
                                     },
                             'realm' : {
                                         'change_description'    : 'change_description',
@@ -257,6 +258,28 @@ class OTPmeExtension(OTPmeLDIFHandler):
                                 callback=callback)
         else:
             self.del_attribute(o=o, a="description", callback=callback)
+        return callback.ok()
+
+    def site_move(self, o, callback=default_callback, **kwargs):
+        """ Handle site_move hook. """
+        try:
+            dn_attribute = config.dn_attributes[o.type]
+        except:
+            return callback.ok()
+        # Remove old DN attribute.
+        current_dn = o.get_attribute("dn")[0]
+        o.del_ldif([("dn", current_dn)])
+        # Add new DN attribute
+        dn = self.build_dn(o, dn_attribute)
+        o.add_ldif([("dn", dn)])
+        # Update location.
+        self.del_attribute(o=o, a="l", callback=callback)
+        self.add_attribute_value(o=o,
+                            attribute="l",
+                            value=o.site,
+                            verify=True,
+                            auto_value=True,
+                            callback=callback)
         return callback.ok()
 
     def update_modified_timestamp(self, o, callback=default_callback, **kwargs):

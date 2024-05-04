@@ -190,3 +190,12 @@ def decrypt(query_id, data, use_rsa_key=False):
             'data'          : data,
             }
     return request
+
+def move_objects(query_id, object_data):
+    """ Sends request to client to move objects to other site. """
+    request = {
+            'query_id'      : query_id,
+            'command'       : 'OTPME_OBJECT_MOVE',
+            'object_data'   : object_data,
+            }
+    return request

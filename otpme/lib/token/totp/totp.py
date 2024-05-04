@@ -733,6 +733,10 @@ class TotpToken(OathToken):
         otp = None
         _otp = None
 
+        # Set default return values.
+        failed_return_value = False, False, False
+        return_value = None, False, False
+
         # Cannot verify token in mode2.
         if self.mode == "mode2":
             return return_value
@@ -758,10 +762,6 @@ class TotpToken(OathToken):
         otps = self.gen_otp(otp_count=self.forward_drift + 1,
                             prefix_pin=pin,
                             verify_acls=False)
-
-        # Set default return values.
-        failed_return_value = False, False, False
-        return_value = None, False, False
 
         logger.debug("Verifiying OTP within timerange: start='%s' end='%s'."
                     % (otp_validity_start_time, otp_validity_end_time))

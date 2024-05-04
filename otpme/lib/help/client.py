@@ -20,13 +20,14 @@ cmd_help = {
     '_usage_help'               : "Usage: otpme-client {command} [client]",
 
     'show'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-client show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [client]',
-                    'cmd'   :   '--fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    '_cmd_usage_help' : 'Usage: otpme-client show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [client]',
+                    'cmd'   :   '--policy-limit :max_policies: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
                     '_help' :   {
                                     'cmd'                   : 'show client(s)',
                                     '-a'                    : 'Show all clients.',
                                     '-z <limit>'            : 'limit output size',
                                     '--fields f1,f2,f3'     : 'output only given fields',
+                                    '--policy-limit <limit>': 'Output max policies.',
                                     '--reverse'             : 'Reverse the output order.',
                                     '--sort-by <attribute>' : 'Sort output by <attribute>.',
                                     '--raw'                 : 'Output table without any headers/borders.',

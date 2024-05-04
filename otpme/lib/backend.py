@@ -646,14 +646,9 @@ def get_sync_map_lock(sync_map_id, timeout=None):
                                 timeout=timeout)
     return lock
 
-def add_sync_map(realm, site, checksum, object_types,
-    peer_node=None, peer_realm=None, peer_site=None):
+def add_sync_map(realm, site, peer_realm, peer_site, checksum, object_types):
     """ Add sync list checksum to sync map. """
-    if peer_node:
-        sync_map_id = "node:%s" % peer_node
-    else:
-        sync_map_id = ("site:%s/%s"
-                    % (peer_realm, peer_site))
+    sync_map_id = ("site:%s/%s" % (peer_realm, peer_site))
     # Acquire sync map lock.
     sync_map_lock = get_sync_map_lock(sync_map_id)
 
@@ -664,7 +659,7 @@ def add_sync_map(realm, site, checksum, object_types,
     except:
         map_entry = {}
 
-    if not realm in map_entry:
+    if realm not in map_entry:
         map_entry[realm] = {}
 
     # Update map entry.
@@ -678,14 +673,9 @@ def add_sync_map(realm, site, checksum, object_types,
     # Release sync lock.
     sync_map_lock.release_lock()
 
-def get_sync_map(realm, site, peer_node=None,
-    peer_realm=None, peer_site=None, timeout=None):
+def get_sync_map(realm, site, peer_realm, peer_site, timeout=None):
     """ Get sync list checksum from sync map. """
-    if peer_node:
-        sync_map_id = "node:%s" % peer_node
-    else:
-        sync_map_id = ("site:%s/%s"
-                    % (peer_realm, peer_site))
+    sync_map_id = ("site:%s/%s" % (peer_realm, peer_site))
     # Acquire sync lock.
     sync_map_lock = get_sync_map_lock(sync_map_id, timeout=timeout)
 

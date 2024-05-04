@@ -161,11 +161,10 @@ modules {
 	}
 
 	mschap mschap_otp {
-		ntlm_auth = "otpme-auth verify_mschap --socket %{%{Stripped-User-Name}:-%{%{User-Name}:-None}} %{%{mschap_otp:Challenge}:-00} %{%{mschap_otp:NT-Response}:-00} %{NAS-Identifier} %{Client-IP-Address}"
+		ntlm_auth = "otpme-auth verify_mschap --socket '%{%{Stripped-User-Name}:-%{%{User-Name}:-None}}' '%{%{mschap_otp:Challenge}:-00}' '%{%{mschap_otp:NT-Response}:-00}' '%{NAS-Identifier}' '%{Client-IP-Address}'"
 	}
 }
 
-#$INCLUDE sites-enabled/
 # otpme virtualhost
 server otpme {
     listen {
@@ -184,7 +183,7 @@ server otpme {
         }
 
         Auth-Type MS-CHAP {
-            # use module config mschap_otp for mschap requests
+            # Use module config mschap_otp for mschap requests.
             mschap_otp
         }
     }
@@ -192,10 +191,10 @@ server otpme {
     authorize {
         eap
 
-        # use otpme to for clear-text passwords
+        # Use OTPme for clear-text passwords.
         if (!control:Auth-Type) {
             update control {
-                Auth-Type := `otpme-auth verify --socket --cache 60 %{User-Name} %{User-Password} %{NAS-Identifier} %{Client-IP-Address}`
+                Auth-Type := `otpme-auth verify --socket --cache 60 '%{User-Name}' '%{User-Password}' '%{NAS-Identifier}' '%{Client-IP-Address}'`
             }
         }
     }

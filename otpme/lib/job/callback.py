@@ -25,6 +25,7 @@ from otpme.lib.protocols.utils import decrypt
 from otpme.lib.protocols.utils import auth_jwt
 from otpme.lib.protocols.utils import send_msg
 from otpme.lib.protocols.utils import dump_data
+from otpme.lib.protocols.utils import move_objects
 from otpme.lib.protocols.utils import gen_user_keys
 
 from otpme.lib.exceptions import *
@@ -418,6 +419,22 @@ class JobCallback(object):
     def dump(self, message,  timeout=1):
         """ Dump some data on client site. """
         return self.send(message, timeout=timeout, ignore_escaping=True)
+
+    @handle_exception
+    def move_objects(self, object_data, timeout=1):
+        """ Send query to client to generate users privat/public keys. """
+        # If the callback is disabled we do not send anything to the client.
+        if not self.enabled:
+            raise OTPmeException(self.api_exception)
+        if self.api_mode:
+            raise OTPmeException(self.api_exception)
+        # Gen query ID.
+        query_id = self._gen_query_id()
+        # Build query string.
+        query = move_objects(query_id, object_data=object_data)
+        # Send query.
+        reply = self._send_query(query_id, query, timeout=timeout)
+        return reply
 
     @handle_exception
     def gen_user_keys(self, username,

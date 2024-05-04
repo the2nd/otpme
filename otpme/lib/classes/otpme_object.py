@@ -2275,7 +2275,6 @@ class OTPmeObject(OTPmeBaseObject):
                 logger.critical(msg, exc_info=True)
                 raise
 
-
         if self.offline:
             return True
 
@@ -3086,6 +3085,7 @@ class OTPmeObject(OTPmeBaseObject):
                     if child_type == "group":
                         childs = self.get_groups(return_type="instance")
                         role_roles = self.get_roles(parent=True,
+                                                recursive=True,
                                                 return_type="instance")
                         for role in role_roles:
                             childs += role.get_groups(return_type="instance")
@@ -5143,8 +5143,7 @@ class OTPmeObject(OTPmeBaseObject):
         if "acls" in acl_types:
             for i in self._acls:
                 acls.append(i)
-                if i not in self._value_acls:
-                    continue
+            for i in self._value_acls:
                 for v in self._value_acls[i]:
                     acls.append("%s:%s" % (i, v))
 
@@ -5989,9 +5988,13 @@ class OTPmeObject(OTPmeBaseObject):
             msg = ("Unknown unit: %s: %s" % (self, new_unit))
             return callback.error(msg)
 
+        add_acl = "add:%s" % self.type
+        if not _new_unit.verify_acl(add_acl):
+            msg = "Permission denied: %s" % _new_unit.path
+            return callback.error(msg)
+
         _new_unit.acquire_lock(lock_caller=lock_caller)
         try:
-
             if _new_unit.rel_path == self.unit:
                 object_type = "%s%s" % (self.type[0].upper(), self.type[1:])
                 msg = (_("%(object_type)s already in unit '%(unit)s'.")

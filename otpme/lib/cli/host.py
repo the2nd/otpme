@@ -63,7 +63,7 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, host_order, host_data, acls, object_type=None,
-    max_roles=5, max_tokens=5, max_sync_users=5,
+    max_roles=5, max_tokens=5, max_sync_users=5, max_policies=5,
     output_fields=[], acl_checker=None, **kwargs):
     """ Build table rows for hosts. """
     _result = []
@@ -288,7 +288,8 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type=object_type,
-                                                        object_uuid=host_uuid)
+                                                    object_uuid=host_uuid,
+                                                    max_policies=max_policies)
                 row.append(policies_string)
             else:
                 row.append("-")

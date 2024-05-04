@@ -57,7 +57,7 @@ def register():
                 max_len=None)
 
 def row_getter(realm, site, unit_order, unit_data, acls,
-    output_fields=[], acl_checker=None, **kwargs):
+    output_fields=[], acl_checker=None, max_policies=5, **kwargs):
     """ Build table rows for units. """
     _result = []
     for unit_uuid in unit_order:
@@ -122,7 +122,8 @@ def row_getter(realm, site, unit_order, unit_data, acls,
                 policies_string = ""
                 if policies:
                     policies_string = get_policies_string(object_type="unit",
-                                                        object_uuid=unit_uuid)
+                                                        object_uuid=unit_uuid,
+                                                        max_policies=max_policies)
                 row.append(policies_string)
             else:
                 row.append("-")

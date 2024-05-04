@@ -21,7 +21,7 @@ REGISTER_AFTER = []
 REGISTER_BEFORE = []
 
 def register():
-    config.register_config_var("dogpile_caching", bool, True)
+    config.register_config_var("dogpile_caching", bool, False)
     multiprocessing.register_shared_dict("dogpile_invalidate")
 
 # https://stackoverflow.com/questions/23102971/sqlalchemy-cache-with-dogpile

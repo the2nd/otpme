@@ -263,17 +263,17 @@ class AtomicFileLock(object):
         self.fd.unlink()
         return True
 
-def get_file_lock(path, write=True):
-    from otpme.lib import locking
-    real_path = os.path.realpath(path)
-    lock_id = real_path.replace("/", ":")
-    try:
-        _lock = locking.acquire_lock(lock_type=FILE_LOCK_TYPE,
-                                    lock_id=lock_id, write=write)
-    except OTPmeException as e:
-        msg = "Failed to acquire file lock: %s: %s" % (real_path, e)
-        raise ObjectLocked(msg)
-    return _lock
+#def get_file_lock(path, write=True):
+#    from otpme.lib import locking
+#    real_path = os.path.realpath(path)
+#    lock_id = real_path.replace("/", ":")
+#    try:
+#        _lock = locking.acquire_lock(lock_type=FILE_LOCK_TYPE,
+#                                    lock_id=lock_id, write=write)
+#    except OTPmeException as e:
+#        msg = "Failed to acquire file lock: %s: %s" % (real_path, e)
+#        raise ObjectLocked(msg)
+#    return _lock
 
 def copy_file(src, dst):
     """ Copy file and perserving ownership and permissions. """
@@ -415,34 +415,30 @@ def create_file(path, content=None, user=None, group=True, mode=0o660,
 
     # Get file real path to ensure working locking (e.g. on symlink).
     file_real_path = os.path.realpath(path)
-    # Acquire lock.
-    if lock:
-        _lock = get_file_lock(file_real_path)
-    try:
-        # Open temp file.
-        fd = AtomicFileLock(path=file_real_path,
-                            mode=write_mode,
-                            write_lock=True,
-                            perms=mode)
-        # Truncate file.
-        fd.truncate()
-        # Write data to file.
-        fd.write(content)
-        fd.close()
-        # Set ownership.
-        set_fs_ownership(path=file_real_path,
-                        user=user,
-                        group=group,
+
+    # Open temp file.
+    fd = AtomicFileLock(path=file_real_path,
+                        mode=write_mode,
+                        write_lock=True,
+                        perms=mode)
+    # Truncate file.
+    fd.truncate()
+    # Write data to file.
+    fd.write(content)
+    fd.close()
+    # Set ownership.
+    set_fs_ownership(path=file_real_path,
+                    user=user,
+                    group=group,
+                    recursive=False)
+    # Set permissions.
+    set_fs_permissions(path=file_real_path,
+                        mode=mode,
+                        user_acls=user_acls,
+                        group_acls=group_acls,
                         recursive=False)
-        # Set permissions.
-        set_fs_permissions(path=file_real_path,
-                            mode=mode,
-                            user_acls=user_acls,
-                            group_acls=group_acls,
-                            recursive=False)
-    finally:
-        if lock:
-            _lock.release_lock()
+    # Release flock.
+    fd.release_lock()
 
 def create_temp_file(content, tmp_dir="/tmp", user=False,
     group=True, mode=0o660, user_acls=[], group_acls=[]):
@@ -462,17 +458,12 @@ def create_temp_file(content, tmp_dir="/tmp", user=False,
 
 def symlink(src, dst):
     """ Create symlink. """
-    src_lock = get_file_lock(src)
-    dst_lock = get_file_lock(dst)
     try:
         os.symlink(src, dst)
     except Exception as e:
         msg = ("Failed to create symlink: %s > %s: %s"
                 % (src, dst, e))
         raise OTPmeException(msg)
-    finally:
-        src_lock.release_lock()
-        dst_lock.release_lock()
 
 def touch(path, user=None, group=True, mode=0o660,
     user_acls=[], group_acls=[]):
@@ -501,24 +492,20 @@ def touch(path, user=None, group=True, mode=0o660,
 
 def delete(path):
     """ Atomic deletion. """
-    _lock = get_file_lock(path)
-    try:
-        if os.path.islink(path):
-            try:
-                os.remove(path)
-            except Exception as e:
-                msg = "Failed to remove symlink: %s: %s" % (path, e)
-                raise OTPmeException(msg)
-            return True
-        # Lock file.
-        fd = AtomicFileLock(path=path, mode="w", write_lock=True)
+    if os.path.islink(path):
         try:
-            fd.unlink()
+            os.remove(path)
         except Exception as e:
-            msg = "Failed to delete file: %s: %s" % (path, e)
+            msg = "Failed to remove symlink: %s: %s" % (path, e)
             raise OTPmeException(msg)
-    finally:
-        _lock.release_lock()
+        return True
+    # Lock file.
+    fd = AtomicFileLock(path=path, mode="w", write_lock=True)
+    try:
+        fd.unlink()
+    except Exception as e:
+        msg = "Failed to delete file: %s: %s" % (path, e)
+        raise OTPmeException(msg)
     return True
 
 def set_fs_ownership(path, user, group=None, recursive=False):
@@ -835,17 +822,13 @@ class JsonFile(object):
             msg = "No such file or directory: %s" % self.file_path
             raise OTPmeException(msg)
 
-        _lock = get_file_lock(self.file_path, write=False)
+        object_config = self.read_file()
+        if parameters:
+            for attr in dict(object_config):
+                if attr in parameters:
+                    continue
+                object_config.pop(attr)
 
-        try:
-            object_config = self.read_file()
-            if parameters:
-                for attr in dict(object_config):
-                    if attr in parameters:
-                        continue
-                    object_config.pop(attr)
-        finally:
-            _lock.release_lock()
         return object_config
 
     def write(self, object_config, full_data_update=None,
@@ -903,133 +886,128 @@ class JsonFile(object):
         except ValueError:
             pass
 
-        _lock = get_file_lock(self.file_path)
+        new_db = False
+        if not os.path.exists(self.file_path):
+            new_db = True
+            touch(self.file_path,
+                    user=user,
+                    group=group,
+                    mode=mode,
+                    user_acls=user_acls,
+                    group_acls=group_acls)
 
-        try:
-            new_db = False
-            if not os.path.exists(self.file_path):
-                new_db = True
-                touch(self.file_path,
-                        user=user,
-                        group=group,
-                        mode=mode,
-                        user_acls=user_acls,
-                        group_acls=group_acls)
-
-            if not new_db:
-                current_oc = self.read_file()
-                new_incr_id = None
-                if incremental_updates:
-                    # Generate increment ID.
-                    new_incr_id = ujson.dumps(incremental_updates)
-                    new_incr_id = stuff.gen_md5(new_incr_id)
-                    # Skip already written increment.
-                    try:
-                        increment_ids = current_oc["INCREMENT_IDS"]
-                    except KeyError:
-                        increment_ids = []
-                    increment_ids = sorted(increment_ids)
-                    for x in increment_ids:
-                        incr_id = x[1]
-                        if new_incr_id == incr_id:
-                            return
-
-                if full_data_update is True:
-                    self.write_file(object_config)
-                    return
-
-                _modified_attributes = modified_attributes.copy()
-                for x in incremental_updates:
-                    attr = x[1]
-                    action = x[2]
-                    value_type = x[3]
-                    dict_path = x[4]
-                    if attr in list_attributes:
-                        value = x[5]
-                        try:
-                            current_list = current_oc[attr]
-                        except KeyError:
-                            current_list = []
-                        if action == "add":
-                            current_list.append(value)
-                        elif action == "del":
-                            try:
-                                current_list.remove(value)
-                            except ValueError:
-                                pass
-                        else:
-                            msg = "Unknown action: %s" % action
-                            raise OTPmeException(msg)
-                        current_oc[attr] = sorted(current_list)
-                    if attr in dict_attributes:
-                        if value_type == "list":
-                            value = x[5]
-                            key = dict_path[-1]
-                        if value_type == "dict":
-                            key = x[5]
-                            value = x[6]
-                        try:
-                            current_dict = current_oc[attr]
-                        except KeyError:
-                            current_dict = {}
-                        if dict_path:
-                            value = self.incremental_update(current_dict,
-                                                            action,
-                                                            key,
-                                                            dict_path,
-                                                            value_type,
-                                                            value)
-                            action = "add"
-                            key = dict_path[0]
-                        if action == "add":
-                            current_dict[key] = value
-                        elif action == "del":
-                            try:
-                                current_dict.pop(key)
-                            except KeyError:
-                                pass
-                        else:
-                            msg = "Unknown action: %s" % action
-                            raise OTPmeException(msg)
-                        current_oc[attr] = current_dict
-                    try:
-                        _modified_attributes.remove(attr)
-                    except ValueError:
-                        pass
-                if modified_attributes:
-                    for attr in _modified_attributes:
-                        try:
-                            value = object_config[attr]
-                        except:
-                            msg = "Missing modified attribute: %s" % attr
-                            raise OTPmeException(msg)
-                        current_oc[attr] = value
-                else:
-                    for attr in object_config:
-                        value = object_config[attr]
-                        current_oc[attr] = value
-                for attr in deleted_attributes:
-                    current_oc.pop(attr)
-            else:
-                new_incr_id = None
-                increment_ids = []
-                # Set new increment ID.
-                current_oc = object_config
-
-            # Save increment ID.
-            if new_incr_id:
+        if not new_db:
+            current_oc = self.read_file()
+            new_incr_id = None
+            if incremental_updates:
+                # Generate increment ID.
+                new_incr_id = ujson.dumps(incremental_updates)
+                new_incr_id = stuff.gen_md5(new_incr_id)
+                # Skip already written increment.
                 try:
-                    _increment_ids = current_oc['INCREMENT_IDS']
+                    increment_ids = current_oc["INCREMENT_IDS"]
                 except KeyError:
-                    _increment_ids = []
-                for x in _increment_ids:
-                    if x in increment_ids:
-                        continue
-                    increment_ids.append(x)
-                increment_ids.append([time.time(), new_incr_id])
-                increment_ids = sorted(increment_ids)[-5:]
-                current_oc['INCREMENT_IDS'] = increment_ids
-            # Make sure data is written.
-            self.write_file(current_oc)
-        finally:
-            _lock.release_lock()
+                    increment_ids = []
+                increment_ids = sorted(increment_ids)
+                for x in increment_ids:
+                    incr_id = x[1]
+                    if new_incr_id == incr_id:
+                        return
+
+            if full_data_update is True:
+                self.write_file(object_config)
+                return
+
+            _modified_attributes = modified_attributes.copy()
+            for x in incremental_updates:
+                attr = x[1]
+                action = x[2]
+                value_type = x[3]
+                dict_path = x[4]
+                if attr in list_attributes:
+                    value = x[5]
+                    try:
+                        current_list = current_oc[attr]
+                    except KeyError:
+                        current_list = []
+                    if action == "add":
+                        current_list.append(value)
+                    elif action == "del":
+                        try:
+                            current_list.remove(value)
+                        except ValueError:
+                            pass
+                    else:
+                        msg = "Unknown action: %s" % action
+                        raise OTPmeException(msg)
+                    current_oc[attr] = sorted(current_list)
+                if attr in dict_attributes:
+                    if value_type == "list":
+                        value = x[5]
+                        key = dict_path[-1]
+                    if value_type == "dict":
+                        key = x[5]
+                        value = x[6]
+                    try:
+                        current_dict = current_oc[attr]
+                    except KeyError:
+                        current_dict = {}
+                    if dict_path:
+                        value = self.incremental_update(current_dict,
+                                                        action,
+                                                        key,
+                                                        dict_path,
+                                                        value_type,
+                                                        value)
+                        action = "add"
+                        key = dict_path[0]
+                    if action == "add":
+                        current_dict[key] = value
+                    elif action == "del":
+                        try:
+                            current_dict.pop(key)
+                        except KeyError:
+                            pass
+                    else:
+                        msg = "Unknown action: %s" % action
+                        raise OTPmeException(msg)
+                    current_oc[attr] = current_dict
+                try:
+                    _modified_attributes.remove(attr)
+                except ValueError:
+                    pass
+            if modified_attributes:
+                for attr in _modified_attributes:
+                    try:
+                        value = object_config[attr]
+                    except:
+                        msg = "Missing modified attribute: %s" % attr
+                        raise OTPmeException(msg)
+                    current_oc[attr] = value
+            else:
+                for attr in object_config:
+                    value = object_config[attr]
+                    current_oc[attr] = value
+            for attr in deleted_attributes:
+                current_oc.pop(attr)
+        else:
+            new_incr_id = None
+            increment_ids = []
+            # Set new increment ID.
+            current_oc = object_config
+
+        # Save increment ID.
+        if new_incr_id:
+            try:
+                _increment_ids = current_oc['INCREMENT_IDS']
+            except KeyError:
+                _increment_ids = []
+            for x in _increment_ids:
+                if x in increment_ids:
+                    continue
+                increment_ids.append(x)
+            increment_ids.append([time.time(), new_incr_id])
+            increment_ids = sorted(increment_ids)[-5:]
+            current_oc['INCREMENT_IDS'] = increment_ids
+        # Make sure data is written.
+        self.write_file(current_oc)

@@ -13,6 +13,7 @@ except:
 
 from otpme.lib import re
 from otpme.lib import oid
+from otpme.lib import jwt
 from otpme.lib import cli
 from otpme.lib import json
 from otpme.lib import stuff
@@ -187,6 +188,7 @@ commands = {
                                         'max_len',
                                         'show_all',
                                         'output_fields',
+                                        'max_policies',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',
@@ -254,7 +256,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'move',
                     'args'              : ['new_unit'],
-                    'oargs'             : ['keep_acls'],
+                    'oargs'             : ['default_group', 'keep_acls'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1491,6 +1493,170 @@ class User(OTPmeObject):
         self.update_extensions("change_group", callback=callback)
         return result
 
+    def cross_site_move(self, path, default_group=None,
+        callback=default_callback, **kwargs):
+        """ Do cross site move of user. """
+        if config.use_api:
+            msg = "Cannot do cross-site move in API mode."
+            return callback.error(msg)
+
+        path_data = oid.resolve_path(object_path=path,
+                                        object_type="unit")
+        dst_realm = path_data['realm']
+        dst_site = path_data['site']
+
+        # Make sure we can change users default group.
+        _default_group = None
+        if self.group_uuid:
+            result = backend.search(object_type="group",
+                                    attribute="uuid",
+                                    value=self.group_uuid,
+                                    return_type="instance")
+            if result:
+                _default_group = result[0]
+                if not _default_group.verify_acl("remove:default_group_user"):
+                    msg = "Failed to change users default group: Permission denied"
+                    return callback.error(msg)
+
+        result = backend.search(object_type="group",
+                                attribute="name",
+                                value=default_group,
+                                realm=config.realm,
+                                return_type="instance")
+        if not result:
+            msg = "Unknown new default group: %s" % default_group
+            return callback.error(msg)
+        new_default_group = result[0]
+        if new_default_group.site != dst_site:
+            msg = "New default group must be from site: %s" % dst_site
+            return callback.error(msg)
+
+        object_config = self.object_config.copy()
+        object_ids = [(self.oid.full_oid, self.uuid)]
+        objects = {
+                    self.oid.full_oid   : {
+                                            'path'          : path,
+                                            'object_config' : object_config,
+                                            'default_group' : default_group,
+                                        },
+                }
+
+        token_list = self.get_tokens(return_type="instance")
+        for token in token_list:
+            token_oc = token.object_config.copy()
+            objects[token.oid.full_oid] = {}
+            objects[token.oid.full_oid]['object_config'] = token_oc
+            object_ids.append((token.oid.full_oid, token.uuid))
+
+        # Get destination site cert to encrypt objects and
+        # verify reply JWT.
+        _dst_site = backend.get_object(object_type="site",
+                                        realm=dst_realm,
+                                        name=dst_site)
+        # Generate encryption key.
+        enc_mod = config.get_encryption_module("FERNET")
+        enc_key = enc_mod.gen_key()
+        # Encrypt objects.
+        objects_encrypted = json.encode(objects,
+                                    encoding="base64",
+                                    encryption=enc_mod,
+                                    enc_key=enc_key)
+
+        # Encrypt encryption key with destination site public key.
+        try:
+            dst_site_public_key = RSAKey(key=_dst_site._cert.public_key())
+        except Exception as e:
+            msg = (_("Unable to get public key of site "
+                    "certificate: %s: %s") % (dst_site, e))
+            logger.warning(msg)
+            return callback.error(msg)
+        enc_key_encrypted = dst_site_public_key.encrypt(enc_key, encoding="hex")
+
+        # Load JWT signing key.
+        our_site = backend.get_object(uuid=config.site_uuid)
+        sign_key = our_site._key
+        # Build JWT.
+        jwt_data = {
+                'src_realm'     : config.realm,
+                'src_site'      : config.site,
+                'dst_path'      : path,
+                'dst_realm'     : dst_realm,
+                'dst_site'      : dst_site,
+                'default_group' : default_group,
+                'object_ids'    : object_ids,
+                'enc_key'       : enc_key_encrypted,
+                'reason'        : "OBJECT_MOVE",
+                }
+        # Sign object move data.
+        _jwt = jwt.encode(payload=jwt_data, key=sign_key, algorithm='RS256')
+
+        object_data = {
+                    'path'          : path,
+                    'src_realm'     : config.realm,
+                    'src_site'      : config.site,
+                    'dst_realm'     : dst_realm,
+                    'dst_site'      : dst_site,
+                    'objects'       : objects_encrypted,
+                    'jwt'           : _jwt,
+                    }
+
+        # Actually move objects to other site.
+        response = callback.move_objects(object_data)
+
+        status = response['status']
+        reply = response['reply']
+
+        if not status:
+            msg = "Object move failed: %s" % reply
+            return callback.error(msg)
+
+        # Decode reply JWT.
+        try:
+            jwt_data = jwt.decode(jwt=reply,
+                                key=dst_site_public_key,
+                                algorithm='RS256')
+        except Exception as e:
+            msg = "JWT verification failed: %s" % e
+            logger.warning(msg)
+            return callback.error(msg)
+
+        # Make sure we only delete objects if all were written on
+        # destination site.
+        for x_oid in objects:
+            x_oc = objects[x_oid]['object_config']
+            x_uuid = x_oc['UUID']
+            try:
+                y_uuid = jwt_data[x_oid]['uuid']
+            except KeyError:
+                msg = "Failed to find object in reply: %s" % x_oid
+                return callback.error(msg)
+            if x_uuid != y_uuid:
+                msg = ("UUID missmatch in reply: %s: %s <> %s"
+                        % (x_oid, x_uuid, y_uuid))
+                return callback.error(msg)
+
+
+        if _default_group:
+            _default_group.remove_default_group_user(self.uuid,
+                                            ignore_missing=True)
+
+        # Actually delete objects from backend.
+        for object_type in reversed(config.object_add_order):
+            for x_oid in objects:
+                x_oid = oid.get(x_oid)
+                if x_oid.object_type != object_type:
+                    continue
+                try:
+                    backend.delete_object(x_oid, cluster=True)
+                except UnknownObject:
+                    pass
+                except Exception as e:
+                    msg = ("Failed to delete object on source site: %s"
+                            % x_oid)
+                    callback.error(msg)
+
+        return callback.ok()
+
     def move(self, *args, callback=default_callback, **kwargs):
         """ Move user to other unit. """
         if self.name == config.admin_user_name:
@@ -1500,6 +1666,11 @@ class User(OTPmeObject):
         if self.name in internal_users:
             msg = "Moving internal user is not allowed."
             return callback.error(msg)
+        new_unit = kwargs['new_unit']
+        if new_unit.startswith("/"):
+            return self.cross_site_move(*args, path=new_unit,
+                                        callback=callback,
+                                        **kwargs)
         super(User, self).move(*args, callback=callback, **kwargs)
         token_list = self.get_tokens(return_type="instance")
         for token in token_list:
@@ -2918,6 +3089,10 @@ class User(OTPmeObject):
         verify_acls=True, verbose_level=0, callback=default_callback,
         _caller="API", **kwargs):
         """ Adds token to user. """
+        if self.template_object:
+            msg = "Cannot add token to template user."
+            return callback.error(msg)
+
         destination_token_uuid = None
         send_new_token_message = False
         if not token_store_move:
@@ -3041,7 +3216,7 @@ class User(OTPmeObject):
                                     no_token_infos=no_token_infos,
                                     destination_token_uuid=destination_token_uuid,
                                     verbose_level=verbose_level,
-                                    force=force,
+                                    force=True,
                                     callback=callback,
                                     _caller=_caller)
             if not add_status:
@@ -3449,6 +3624,15 @@ class User(OTPmeObject):
         if self.name == config.admin_user_name:
             return callback.error("Cannot rename admin user.")
 
+        result = backend.search(object_type="user",
+                                attribute="name",
+                                value=new_name)
+        if result:
+            user_uuid = result[0]
+            user_oid = backend.get_oid(user_uuid)
+            msg = "User already exists: %s" % user_oid
+            return callback.error(msg)
+
         # Get user sessions.
         sessions = backend.get_sessions(user=self.uuid)
         if len(sessions) > 0:
@@ -3487,6 +3671,16 @@ class User(OTPmeObject):
         _caller="API", verbose_level=0, callback=default_callback, **kwargs):
         """ Add user. """
 
+        # Check if user exist on any site.
+        result = backend.search(object_type="user",
+                                attribute="name",
+                                value=self.name,
+                                return_type="oid")
+        if result:
+            user_oid = result[0]
+            msg = "User already exists: %s" % user_oid
+            return callback.error(msg)
+
         # Get default token settings.
         if add_default_token is None:
             # No need to add default token for base users.
@@ -3502,7 +3696,11 @@ class User(OTPmeObject):
         if default_token is not None:
             add_default_token = True
 
-        if template_object:
+        # Set template status.
+        if template_object is not None:
+            self.template_object = template_object
+
+        if self.template_object:
             add_default_token = False
 
         if add_default_token:
@@ -3573,13 +3771,9 @@ class User(OTPmeObject):
                     return callback.error(msg)
                 _default_token = result[0]
 
-        if template_object and template_name:
+        if self.template_object and template_name:
             msg = "Cannot create template from template."
             return callback.error(msg)
-
-        # Set template status.
-        if template_object is not None:
-            self.template_object = template_object
 
         # Get template name set by policy.
         if template_name is None:

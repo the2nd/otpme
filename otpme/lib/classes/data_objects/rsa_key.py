@@ -49,7 +49,7 @@ def register_config():
                             cache_region="data_object")
 
 class OTPmeRSAKey(RSAKey):
-    """ Class that implements last used object. """
+    """ Class that implements cacheable OTPme RSA key. """
     def __init__(self, realm=None, site=None, **kwargs):
         if not realm:
             msg = "Need <realm>."

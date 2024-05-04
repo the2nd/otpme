@@ -106,6 +106,7 @@ commands = {
                                         'max_len',
                                         'show_all',
                                         'output_fields',
+                                        'max_policies',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',
@@ -376,16 +377,6 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'unlimit_logins',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    'list_sync_users'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'get_sync_users',
-                    'oargs'             : ['return_type'],
-                    'dargs'             : {'return_type':'name'},
                     'job_type'          : 'thread',
                     },
                 },

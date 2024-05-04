@@ -470,10 +470,11 @@ class HotpToken(OathToken):
             if self.mode == "mode1":
                 secret = self.get_secret(callback=callback)
             if self.mode == "mode2":
-                if not prefix_pin:
-                    msg = "Cannot generate OTP in mode2."
+                pin = callback.askpass("Please enter PIN: ")
+                if len(pin) != self.pin_len:
+                    msg = "Invalid PIN."
                     return callback.error(msg)
-                secret = self.get_secret(pin=prefix_pin, callback=callback)
+                secret = self.get_secret(pin=pin, callback=callback)
 
         if not secret:
             return callback.error("Unable to get token secret.")

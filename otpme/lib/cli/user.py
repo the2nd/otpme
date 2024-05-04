@@ -63,7 +63,7 @@ def register():
                 max_len=10)
 
 def row_getter(realm, site, user_order, user_data, acls,
-    acl_checker=None, output_fields=[], **kwargs):
+    acl_checker=None, output_fields=[], max_policies=5, **kwargs):
     """ Build table rows for users. """
     _result = []
     for user_uuid in user_order:
@@ -171,7 +171,8 @@ def row_getter(realm, site, user_order, user_data, acls,
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="user",
-                                                    object_uuid=user_uuid)
+                                                    object_uuid=user_uuid,
+                                                    max_policies=max_policies)
                 row.append(policies_string)
             else:
                 row.append("-")

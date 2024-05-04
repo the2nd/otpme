@@ -197,7 +197,11 @@ def get_unit_string(unit_uuid):
 def get_policies_string(object_type, object_uuid, max_policies=None):
     """ Get policies string of objects policies. """
     from otpme.lib import backend
+    if not isinstance(max_policies, int):
+        msg = "Max policies must be a int."
+        raise OTPmeJobException(msg)
     return_attrs = ['name', 'enabled', 'rel_path']
+    policies_count, \
     policies_result = backend.search(object_type="policy",
                             attribute="uuid",
                             value="*",
@@ -206,6 +210,7 @@ def get_policies_string(object_type, object_uuid, max_policies=None):
                             join_search_val=object_uuid,
                             join_attribute="policy",
                             order_by="rel_path",
+                            return_query_count=True,
                             max_results=max_policies,
                             return_attributes=return_attrs)
     policies_strings = []
@@ -221,10 +226,11 @@ def get_policies_string(object_type, object_uuid, max_policies=None):
             continue
         processed_policies = len(policies_strings)
         if processed_policies == max_policies:
-            x = ("(%s of %s policies total)"
-                % (processed_policies, len(o_policies)))
-            processed_policies.append(x)
-            break
+            if processed_policies < policies_count:
+                x = ("(%s of %s policies total)"
+                    % (processed_policies, policies_count))
+                policies_strings.append(x)
+                break
     policies_string = "\n".join(policies_strings)
     return policies_string
 
@@ -1036,6 +1042,10 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
         show_only_editable_objects = False
     else:
         show_only_editable_objects = True
+
+    # Handle end of line regex.
+    if search_regex.endswith("$"):
+        search_regex = search_regex[:-1]
 
     # Combine all ACLs to be checked.
     return_acls = None

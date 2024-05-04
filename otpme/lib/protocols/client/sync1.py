@@ -99,6 +99,7 @@ class OTPmeSyncP1(OTPmeClient1):
         self.failed_objects = []
         self.synced_objects = []
         self.removed_objects = []
+        self.blacklisted_users = []
         self.last_sync_status_update = 0.0
         super(OTPmeSyncP1, self).__init__(self.daemon, **kwargs)
 
@@ -895,8 +896,7 @@ class OTPmeSyncP1(OTPmeClient1):
                         msg = "Failed to get parent object UUID: %s: %s" % (object_id, e)
                         self.logger.critical(msg)
                         continue
-                    parent_object = backend.search(attribute="uuid",
-                                            value=parent_object_uuid)
+                    parent_object = backend.get_object(uuid=parent_object_uuid)
                     if not parent_object:
                         msg = ("Unable to sync object with missing parent object: "
                                 "%s: %s" % (object_id, parent_object_uuid))
@@ -924,10 +924,15 @@ class OTPmeSyncP1(OTPmeClient1):
                                             name=user_name)
                         if not new_object.template_object:
                             if backend.object_exists(local_oid):
+                                self.blacklisted_users.append(user_name)
                                 msg = ("User already exists on our site: %s"
                                         % object_id)
                                 self.logger.warning(msg)
                                 continue
+                if object_type == "token":
+                    user_name = object_id.rel_path.split("/")[0]
+                    if user_name in self.blacklisted_users:
+                        continue
 
                 # Make sure the object is valid.
                 try:
@@ -949,7 +954,7 @@ class OTPmeSyncP1(OTPmeClient1):
                 if x_object:
                     if x_object.site != new_object.site:
                         msg = ("Ignoring duplicate UUID: %s: %s <> %s"
-                                % (x_uuid, x_oid, object_id))
+                                % (new_object.uuid, x_object.oid, object_id))
                         self.logger.warning(msg)
                         continue
 
@@ -985,7 +990,10 @@ class OTPmeSyncP1(OTPmeClient1):
                             local_sync_list.pop(object_id.full_oid)
                         except KeyError:
                             pass
-                        backend.delete_object(object_id)
+                        try:
+                            backend.delete_object(object_id)
+                        except UnknownObject:
+                            pass
 
                 if current_object is None:
                     msg = ("Adding object (%s/%s): %s"
@@ -1007,10 +1015,17 @@ class OTPmeSyncP1(OTPmeClient1):
                         self.logger.info(msg)
 
                 # Write object to backend.
+                cluster = False
+                if self.host_type == "node":
+                    if realm == config.realm:
+                        if site == config.site:
+                            if config.master_node:
+                                cluster = True
                 try:
                     backend.write_config(object_id,
                                     instance=new_object,
-                                    full_data_update=True)
+                                    full_data_update=True,
+                                    cluster=cluster)
                     self.synced_objects.append(object_id)
                 except Exception as e:
                     self.failed_objects.append(object_id)
@@ -1127,8 +1142,14 @@ class OTPmeSyncP1(OTPmeClient1):
                 msg = ("Removing object (%s/%s): %s"
                     % (del_counter, del_count, object_id))
                 self.logger.debug(msg)
+                cluster = False
+                if self.host_type == "node":
+                    if realm == config.realm:
+                        if site == config.site:
+                            if config.master_node:
+                                cluster = True
                 try:
-                    backend.delete_object(object_id)
+                    backend.delete_object(object_id, cluster=cluster)
                 except Exception as e:
                     msg = "Failed to delete object: %s: %s" % (object_id, e)
                     self.logger.critical(msg)
@@ -1149,7 +1170,7 @@ class OTPmeSyncP1(OTPmeClient1):
             log_name = "token counter"
 
         self.logger.debug("Requesting list with %ss from peer: %s"
-                        % (log_name, token_oid))
+                        % (log_name, self.connection.peer.name))
 
         if offline:
             command = "sync_offline_token_data"
@@ -1179,7 +1200,7 @@ class OTPmeSyncP1(OTPmeClient1):
                 for x in reply[t]:
                     x_config = reply[t][x]
                     x_oid = oid.get(object_id=x)
-                    if not t in objects:
+                    if t not in objects:
                         objects[t] = {}
                     objects[t][x_oid] = x_config
 
@@ -1385,7 +1406,7 @@ class OTPmeSyncP1(OTPmeClient1):
         # Get list with local objects.
         local_objects = {}
         for x_object in result:
-            local_objects[x_object.oid.read_oid] = dict(x_object.object_config)
+            local_objects[x_object.oid.read_oid] = x_object.object_config.copy()
 
         # Try to get list with remote objects that we are missing.
         remote_objects = self.get_token_data(data_type=data_type,

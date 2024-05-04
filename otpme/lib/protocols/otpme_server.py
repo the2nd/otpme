@@ -16,6 +16,7 @@ except:
 from otpme.lib import re
 from otpme.lib import jwt
 from otpme.lib import json
+from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 #from otpme.lib import encryption
@@ -1262,12 +1263,14 @@ class OTPmeServer1(object):
         if redirect:
             status = "redirect_auth"
 
+        challenge = stuff.gen_secret(len=32)
         jwt_data = {
                     'user'          : user.name,
                     'realm'         : config.realm,
                     'site'          : config.site,
                     'accessgroup'   : self.access_group,
                     'reason'        : jwt_reason,
+                    'challenge'     : challenge,
                 }
         self.logger.debug("Generating redirect challenge...")
         self.redirect_challenge = jwt.encode(payload=jwt_data,
@@ -1435,33 +1438,33 @@ class OTPmeServer1(object):
                                         quiet=True)
         return valid_tokens
 
-    def get_valid_ssh_token(self, user, public_keys):
-        """ Check if we can find a valid SSH login token of the given user. """
-        token = None
-        verify_token = None
-        valid_user_tokens_ssh = self.get_valid_tokens(user=user,
-                                                pass_type="ssh_key")
-        for _token in valid_user_tokens_ssh:
-            # Make sure we use linked token if needed.
-            if _token.destination_token:
-                _verify_token = _token.get_destination_token()
-            else:
-                _verify_token = _token
-            # Workaround to detect if hardware gpg card/token is present. If
-            # the card is plugged in the public key of the card is listed two
-            # times.
-            if _verify_token.card_type == "gpg":
-                if not public_keys.count(_verify_token.ssh_public_key) > 1:
-                    continue
-            else:
-                if not public_keys.count(_verify_token.ssh_public_key) > 0:
-                    continue
-            # Set found token and stop searching.
-            verify_token = _verify_token
-            token = _token
-            break
+    #def get_valid_ssh_token(self, user, public_keys):
+    #    """ Check if we can find a valid SSH login token of the given user. """
+    #    token = None
+    #    verify_token = None
+    #    valid_user_tokens_ssh = self.get_valid_tokens(user=user,
+    #                                            pass_type="ssh_key")
+    #    for _token in valid_user_tokens_ssh:
+    #        # Make sure we use linked token if needed.
+    #        if _token.destination_token:
+    #            _verify_token = _token.get_destination_token()
+    #        else:
+    #            _verify_token = _token
+    #        # Workaround to detect if hardware gpg card/token is present. If
+    #        # the card is plugged in the public key of the card is listed two
+    #        # times.
+    #        if _verify_token.card_type == "gpg":
+    #            if not public_keys.count(_verify_token.ssh_public_key) > 1:
+    #                continue
+    #        else:
+    #            if not public_keys.count(_verify_token.ssh_public_key) > 0:
+    #                continue
+    #        # Set found token and stop searching.
+    #        verify_token = _verify_token
+    #        token = _token
+    #        break
 
-        return token, verify_token
+    #    return token, verify_token
 
     def authenticate_host(self, command, command_args):
         """ Authenticate host/node. """
@@ -1650,6 +1653,51 @@ class OTPmeServer1(object):
             response = None
             challenge = None
 
+        try:
+            login_interface = command_args.pop('login_interface')
+        except KeyError:
+            login_interface = None
+
+        try:
+            replace_sessions = command_args.pop('replace_sessions')
+        except KeyError:
+            replace_sessions = False
+
+        try:
+            client_offline_enc_type = command_args.pop('client_offline_enc_type')
+        except KeyError:
+            client_offline_enc_type = None
+
+        try:
+            reneg = command_args.pop('reneg')
+        except KeyError:
+            reneg = False
+
+        try:
+            reneg_salt = command_args.pop('reneg_salt')
+        except KeyError:
+            reneg_salt = None
+
+        try:
+            rsp_hash_type = command_args.pop('rsp_hash_type')
+        except KeyError:
+            rsp_hash_type = None
+
+        try:
+            rsp_ecdh_client_pub = command_args.pop('rsp_ecdh_client_pub')
+        except KeyError:
+            rsp_ecdh_client_pub = None
+
+        try:
+            redirect_response = command_args.pop('redirect_response')
+        except KeyError:
+            redirect_response = None
+
+        try:
+            jwt_challenge = command_args.pop('jwt_challenge')
+        except KeyError:
+            jwt_challenge = None
+
         # Set auth_mode.
         auth_mode = "auto"
         try:
@@ -1697,6 +1745,10 @@ class OTPmeServer1(object):
             if not password:
                 return passauth(query_id="password", prompt="Password/OTP:")
 
+        if command_args:
+            msg = "Got unknown command args: %s" % command_args.keys()
+            self.logger.warning(msg)
+
         # If we got a password try to auth user.
         if auth_type == "clear-text" or auth_type == "jwt":
             # Verify clear-text request.
@@ -1712,10 +1764,18 @@ class OTPmeServer1(object):
                                             host=login_host,
                                             host_ip=login_host_ip,
                                             redirect_challenge=self.redirect_challenge,
+                                            jwt_challenge=jwt_challenge,
+                                            redirect_response=redirect_response,
+                                            rsp_ecdh_client_pub=rsp_ecdh_client_pub,
+                                            rsp_hash_type=rsp_hash_type,
+                                            reneg=reneg,
+                                            client_offline_enc_type=client_offline_enc_type,
+                                            replace_sessions=replace_sessions,
+                                            login_interface=login_interface,
+                                            reneg_salt=reneg_salt,
                                             ecdh_curve=self.ecdh_curve,
                                             password=password,
-                                            verify_host=self.verify_host,
-                                            **command_args)
+                                            verify_host=self.verify_host)
             except OTPmeException:
                 raise
             except Exception as e:
@@ -1746,9 +1806,16 @@ class OTPmeServer1(object):
                                             host=login_host,
                                             host_ip=login_host_ip,
                                             ecdh_curve=self.ecdh_curve,
-                                            password=password,
                                             verify_host=self.verify_host,
-                                            **command_args)
+                                            jwt_challenge=jwt_challenge,
+                                            rsp_ecdh_client_pub=rsp_ecdh_client_pub,
+                                            rsp_hash_type=rsp_hash_type,
+                                            reneg=reneg,
+                                            reneg_salt=reneg_salt,
+                                            client_offline_enc_type=client_offline_enc_type,
+                                            replace_sessions=replace_sessions,
+                                            login_interface=login_interface,
+                                            password=password)
             except OTPmeException:
                 raise
             except Exception as e:

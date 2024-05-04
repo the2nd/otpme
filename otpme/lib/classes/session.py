@@ -430,7 +430,6 @@ class Session(OTPmeLockObject):
         now = time.time()
         expire_time = self.expire_time()
         if now > expire_time:
-            print("CCC", now, expire_time)
             msg = ("Session '%s' is expired by session timeout. "
                     "Removing..." % self.name)
             logger.debug(msg)

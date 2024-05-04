@@ -79,7 +79,7 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, resolver_order, resolver_data, acls,
-    acl_checker=None, output_fields=[], **kwargs):
+    acl_checker=None, output_fields=[], max_policies=5, **kwargs):
     """ Build table rows for resolvers. """
     _result = []
     for resolver_uuid in resolver_order:
@@ -147,7 +147,8 @@ def row_getter(realm, site, resolver_order, resolver_data, acls,
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="resolver",
-                                                    object_uuid=resolver_uuid)
+                                                    object_uuid=resolver_uuid,
+                                                    max_policies=max_policies)
                 row.append(policies_string)
             else:
                 row.append("-")

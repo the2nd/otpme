@@ -208,11 +208,16 @@ class OTPmeJob(object):
                         job_error = self.exit_info['last_error']
                     except:
                         pass
+            except OTPmeJobException as e:
+                job_error = str(e)
+                self.logger.warning(job_error)
+                job_reply.append(job_error)
+                job_status = False
             except Exception as e:
-                job_message = ("Job error running command method: %s: %s"
+                job_error = ("Job error running command method: %s: %s"
                                 % (self.target_method.__name__, e))
-                self.logger.warning(job_message)
-                job_log.append(job_message)
+                self.logger.warning(job_error)
+                job_log.append(job_error)
                 job_status = False
                 config.raise_exception()
 

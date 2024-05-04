@@ -236,10 +236,9 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
             if check_acl("view:accessgroup") \
             or check_acl("add:accessgroup") \
             or check_acl("remove:accessgroup"):
-                # Get all access groups this role is in.
+                # Get all ags this role is in.
                 role_ags = []
                 role_ag_strings = []
-                check_parent_roles = True
                 return_attrs = ['name', 'enabled']
                 role_ags_count, \
                 role_ags_result = backend.search(object_type="accessgroup",
@@ -248,70 +247,69 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                                         max_results=max_ags,
                                         return_query_count=True,
                                         return_attributes=return_attrs)
+                processed_ags = 0
                 for x_uuid in role_ags_result:
                     ag_name = role_ags_result[x_uuid]['name']
                     ag_enabled = role_ags_result[x_uuid]['enabled'][0]
-                    group_status_string = ""
+                    ag_status_string = ""
                     if not ag_enabled:
-                        group_status_string = " (D)"
-                    group_string = "%s%s" % (ag_name, group_status_string)
+                        ag_status_string = " (D)"
+                    ag_string = "%s%s" % (ag_name, ag_status_string)
                     role_ags.append(x_uuid)
-                    role_ag_strings.append(group_string)
-                    processed_ags = len(role_ags)
-                    if processed_ags == max_ags:
-                        x_uuid = ("(%s of %s roles accessgroups)"
-                            % (processed_ags, role_ags_count))
-                        role_ags.append(x_uuid)
-                        check_parent_roles = False
-                        break
+                    role_ag_strings.append(ag_string)
+                    processed_ags += 1
+                    if max_ags > 0:
+                        if processed_ags == max_ags:
+                            break
                 # Get groups from parent roles.
-                if check_parent_roles:
-                    parent_role_ags = []
-                    return_attrs = ['name', 'uuid']
-                    role_roles = get_roles(role_uuid=role_uuid,
-                                            parent=True,
-                                            recursive=True,
-                                            return_attributes=return_attrs)
-                    for x_role_data in role_roles:
-                        x_role_name = x_role_data['name']
-                        x_role_site = x_role_data['site']
-                        x_role_uuid = x_role_data['uuid']
-                        return_attrs = ['name', 'enabled']
-                        role_ags_count, \
-                        role_ags_result = backend.search(object_type="accessgroup",
-                                                attribute="role",
-                                                value=x_role_uuid,
-                                                realm=config.realm,
-                                                site=config.site,
-                                                max_results=max_ags,
-                                                return_query_count=True,
-                                                return_attributes=return_attrs)
-                        for x_uuid in role_ags_result:
-                            if x_uuid in role_ags:
-                                continue
-                            if x_uuid in parent_role_ags:
-                                continue
-                            ag_name = role_ags_result[x_uuid]['name']
-                            ag_enabled = role_ags_result[x_uuid]['enabled'][0]
-                            group_status_string = ""
-                            if not ag_enabled:
-                                group_status_string = " (D)"
-                            if x_role_site != config.site:
-                                group_string = ("%s (%s/%s)"
-                                            % (ag_name, x_role_site, x_role_name))
-                            else:
-                                group_string = "%s (%s)" % (ag_name, x_role_name)
-                            if group_status_string:
-                                group_string = "%s (%s)" % (group_string,
-                                                            group_status_string)
-                            parent_role_ags.append(x_uuid)
-                            role_ag_strings.append(group_string)
-                            processed_ags = len(parent_role_ags)
+                parent_role_ags = []
+                return_attrs = ['name', 'uuid']
+                role_roles = get_roles(role_uuid=role_uuid,
+                                        parent=True,
+                                        recursive=True,
+                                        return_attributes=return_attrs)
+                for x_role_data in role_roles:
+                    x_role_name = x_role_data['name']
+                    x_role_site = x_role_data['site']
+                    x_role_uuid = x_role_data['uuid']
+                    return_attrs = ['name', 'enabled']
+                    parent_role_ags_count, \
+                    parent_ags_result = backend.search(object_type="accessgroup",
+                                                        attribute="role",
+                                                        value=x_role_uuid,
+                                                        max_results=max_ags,
+                                                        return_query_count=True,
+                                                        return_attributes=return_attrs)
+                    role_ags_count += parent_role_ags_count
+                    for x_uuid in parent_ags_result:
+                        if x_uuid in role_ags:
+                            continue
+                        if x_uuid in parent_role_ags:
+                            continue
+                        ag_name = parent_ags_result[x_uuid]['name']
+                        ag_enabled = parent_ags_result[x_uuid]['enabled'][0]
+                        ag_status_string = ""
+                        if not ag_enabled:
+                            ag_status_string = " (D)"
+                        if x_role_site != config.site:
+                            ag_string = ("%s (%s/%s)"
+                                        % (ag_name, x_role_site, x_role_name))
+                        else:
+                            ag_string = "%s (%s)" % (ag_name, x_role_name)
+                        if ag_status_string:
+                            ag_string = "%s (%s)" % (ag_string,
+                                                    ag_status_string)
+                        parent_role_ags.append(x_uuid)
+                        if max_ags > 0:
                             if processed_ags == max_ags:
-                                x = ("(%s of %s roles accessgroups)"
-                                    % (processed_ags, role_ags_count))
-                                parent_role_ags.append(x)
                                 break
+                        processed_ags += 1
+                        role_ag_strings.append(ag_string)
+                if processed_ags == max_ags:
+                    if role_ags_count > max_ags:
+                        x = ("(%s of %s accessgroups)"
+                            % (processed_ags, role_ags_count))
+                        role_ag_strings.append(x)
                 row.append("\n".join(role_ag_strings))
             else:
                 row.append("-")
@@ -323,7 +321,6 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 # Get all groups this role is in.
                 role_groups = []
                 role_group_stings = []
-                check_parent_roles = True
                 return_attrs = ['name', 'enabled']
                 role_groups_count, \
                 role_groups_result = backend.search(object_type="group",
@@ -332,68 +329,69 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                                         max_results=max_groups,
                                         return_query_count=True,
                                         return_attributes=return_attrs)
+                processed_groups = 0
                 for x_uuid in role_groups_result:
-                    ag_name = role_groups_result[x_uuid]['name']
-                    ag_enabled = role_groups_result[x_uuid]['enabled'][0]
+                    group_name = role_groups_result[x_uuid]['name']
+                    group_enabled = role_groups_result[x_uuid]['enabled'][0]
                     group_status_string = ""
-                    if not ag_enabled:
+                    if not group_enabled:
                         group_status_string = " (D)"
-                    group_string = "%s%s" % (ag_name, group_status_string)
+                    group_string = "%s%s" % (group_name, group_status_string)
                     role_groups.append(x_uuid)
                     role_group_stings.append(group_string)
-                    processed_ags = len(role_groups)
-                    if processed_ags == max_ags:
-                        x_uuid = ("(%s of %s roles groups)"
-                            % (processed_ags, role_groups_count))
-                        role_groups.append(x_uuid)
-                        check_parent_roles = False
-                        break
+                    processed_groups += 1
+                    if max_groups > 0:
+                        if processed_groups == max_groups:
+                            break
                 # Get groups from parent roles.
-                if check_parent_roles:
-                    parent_role_ags = []
-                    return_attrs = ['name', 'uuid']
-                    role_roles = get_roles(role_uuid=role_uuid,
-                                            parent=True,
-                                            recursive=True,
-                                            return_attributes=return_attrs)
-                    for x_role_data in role_roles:
-                        x_role_name = x_role_data['name']
-                        x_role_site = x_role_data['site']
-                        x_role_uuid = x_role_data['uuid']
-                        return_attrs = ['name', 'enabled']
-                        role_groups_count, \
-                        role_groups_result = backend.search(object_type="group",
-                                                attribute="role",
-                                                value=x_role_uuid,
-                                                max_results=max_groups,
-                                                return_query_count=True,
-                                                return_attributes=return_attrs)
-                        for x_uuid in role_groups_result:
-                            if x_uuid in role_groups:
-                                continue
-                            if x_uuid in parent_role_ags:
-                                continue
-                            ag_name = role_groups_result[x_uuid]['name']
-                            ag_enabled = role_groups_result[x_uuid]['enabled'][0]
-                            group_status_string = ""
-                            if not ag_enabled:
-                                group_status_string = " (D)"
-                            if x_role_site != config.site:
-                                group_string = ("%s (%s/%s)"
-                                            % (ag_name, x_role_site, x_role_name))
-                            else:
-                                group_string = "%s (%s)" % (ag_name, x_role_name)
-                            if group_status_string:
-                                group_string = "%s (%s)" % (group_string,
-                                                            group_status_string)
-                            parent_role_ags.append(x_uuid)
-                            role_group_stings.append(group_string)
-                            processed_ags = len(parent_role_ags)
-                            if processed_ags == max_ags:
-                                x = ("(%s of %s roles groups)"
-                                    % (processed_ags, role_groups_count))
-                                parent_role_ags.append(x)
+                parent_role_groups = []
+                return_attrs = ['name', 'uuid']
+                role_roles = get_roles(role_uuid=role_uuid,
+                                        parent=True,
+                                        recursive=True,
+                                        return_attributes=return_attrs)
+                for x_role_data in role_roles:
+                    x_role_name = x_role_data['name']
+                    x_role_site = x_role_data['site']
+                    x_role_uuid = x_role_data['uuid']
+                    return_attrs = ['name', 'enabled']
+                    parent_role_groups_count, \
+                    parent_groups_result = backend.search(object_type="group",
+                                                        attribute="role",
+                                                        value=x_role_uuid,
+                                                        max_results=max_groups,
+                                                        return_query_count=True,
+                                                        return_attributes=return_attrs)
+                    role_groups_count += parent_role_groups_count
+                    for x_uuid in parent_groups_result:
+                        if x_uuid in role_groups:
+                            continue
+                        if x_uuid in parent_role_groups:
+                            continue
+                        group_name = parent_groups_result[x_uuid]['name']
+                        group_enabled = parent_groups_result[x_uuid]['enabled'][0]
+                        group_status_string = ""
+                        if not group_enabled:
+                            group_status_string = " (D)"
+                        if x_role_site != config.site:
+                            group_string = ("%s (%s/%s)"
+                                        % (group_name, x_role_site, x_role_name))
+                        else:
+                            group_string = "%s (%s)" % (group_name, x_role_name)
+                        if group_status_string:
+                            group_string = "%s (%s)" % (group_string,
+                                                        group_status_string)
+                        parent_role_groups.append(x_uuid)
+                        if max_groups > 0:
+                            if processed_groups == max_groups:
                                 break
+                        processed_groups += 1
+                        role_group_stings.append(group_string)
+                if processed_groups == max_groups:
+                    if role_groups_count > max_groups:
+                        x = ("(%s of %s groups)"
+                            % (processed_groups, role_groups_count))
+                        role_group_stings.append(x)
                 row.append("\n".join(role_group_stings))
             else:
                 row.append("-")
@@ -403,7 +401,8 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="accessgroup",
-                                                    object_uuid=role_uuid)
+                                                    object_uuid=role_uuid,
+                                                    max_policies=max_policies)
                 row.append(policies_string)
             else:
                 row.append("-")

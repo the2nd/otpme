@@ -661,6 +661,8 @@ def get_roles(role_uuid=None, skip_disabled=False, parent=False,
     while True:
         for uuid in list(check_roles):
             x_role_data = check_roles.pop(uuid)
+            if uuid == role_uuid:
+                continue
             # Get role data.
             x_name = x_role_data['name']
             x_site = x_role_data['site']
@@ -705,6 +707,8 @@ def get_roles(role_uuid=None, skip_disabled=False, parent=False,
             break
         if loop_found:
             break
+    if not return_attributes:
+        result = sorted(result)
     return result
 
 class Role(OTPmeObject):
@@ -737,6 +741,7 @@ class Role(OTPmeObject):
                             "EXTENSIONS",
                             "OBJECT_CLASSES",
                             "TOKENS",
+                            "ROLES",
                             "SYNC_USERS",
                             ]
                         },
@@ -746,6 +751,7 @@ class Role(OTPmeObject):
                             "EXTENSIONS",
                             "OBJECT_CLASSES",
                             "TOKENS",
+                            "ROLES",
                             "SYNC_USERS",
                             ]
                         },
@@ -855,7 +861,6 @@ class Role(OTPmeObject):
                             return_type=return_type,
                             skip_disabled=skip_disabled,
                             recursive=recursive)
-
         if _caller == "API":
             return result
         if _caller == "RAPI":

@@ -60,7 +60,8 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
-    max_tokens=5, max_sync_users=5, output_fields=[], acl_checker=None, **kwargs):
+    max_tokens=5, max_sync_users=5, max_policies=5, output_fields=[],
+    acl_checker=None, **kwargs):
     """ Build table rows for groups. """
     _result = []
     for group_uuid in group_order:
@@ -214,7 +215,7 @@ def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
 
             if group_tokens_count > max_tokens:
                 x = ("(%s of %s tokens total)"
-                    % (len(processed_tokens), tokens_count))
+                    % (len(processed_tokens), group_tokens_count))
                 member_tokens.append(x)
 
             row.append("\n".join(member_tokens))
@@ -276,7 +277,8 @@ def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
             or check_acl("add:policy") \
             or check_acl("remove:policy"):
                 policies_string = get_policies_string(object_type="group",
-                                                    object_uuid=group_uuid)
+                                                    object_uuid=group_uuid,
+                                                    max_policies=max_policies)
                 row.append(policies_string)
             else:
                 row.append("-")

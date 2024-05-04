@@ -20,13 +20,15 @@ cmd_help = {
     '_usage_help'               : "Usage: otpme-token {command} [token]",
 
     'show'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-token show [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [token]',
-                    'cmd'   :   '--fields :output_fields: -z :max_len: -a :show_all=True: [|object|]',
+                    '_cmd_usage_help' : 'Usage: otpme-token show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [token]',
+                    'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --fields :output_fields: -z :max_len: -a :show_all=True: [|object|]',
                     '_help' :   {
                                     'cmd'                   : 'Show token(s).',
                                     '-a'                    : 'Show all tokens.',
                                     '-z <limit>'            : 'Limit output size.',
                                     '--fields f1,f2,f3'     : 'Output only given fields.',
+                                    '--role-limit <limit>'  : 'Output max roles.',
+                                    '--policy-limit <limit>': 'Output max policies.',
                                 },
                 },
 
@@ -347,14 +349,15 @@ cmd_help = {
                 },
 
     'list_roles'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-token list_roles {token}',
-                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    '_cmd_usage_help' : 'Usage: otpme-token list_roles [--return-type <return_type>] [-r] {token}',
+                    'cmd'   :   '--return-type :return_type: -r :recursive=True: [|object|]',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },
                     '_help' :   {
                                     'cmd'                   : 'List assigned roles.',
                                     '--return-type'         : 'Attribute to return.',
+                                    '-r'                    : 'List roles recursive.',
                                 },
                 },
 

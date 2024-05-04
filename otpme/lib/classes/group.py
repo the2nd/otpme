@@ -95,6 +95,9 @@ commands = {
                                         'max_len',
                                         'show_all',
                                         'output_fields',
+                                        'max_policies',
+                                        'max_roles',
+                                        'max_tokens',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',
@@ -279,7 +282,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'get_roles',
                     'job_type'          : 'process',
-                    'oargs'             : ['return_type'],
+                    'oargs'             : ['return_type', 'recursive'],
                     'dargs'             : {'return_type':'name'},
                     },
                 },

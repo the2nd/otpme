@@ -189,6 +189,7 @@ commands = {
                                         'max_len',
                                         'show_all',
                                         'output_fields',
+                                        'max_policies',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',
@@ -688,7 +689,7 @@ def register():
     register_hooks()
     register_config()
     register_backend()
-    register_sync_settings()
+    #register_sync_settings()
     register_templates_unit()
     register_commands("site", commands)
     register_module("otpme.lib.classes.data_objects.rsa_key")

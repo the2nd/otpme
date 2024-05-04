@@ -368,7 +368,7 @@ class CommandHandler(object):
 
         if command == "cluster":
             if subcommand == "status":
-                return self.handle_cluster_status()
+                return self.handle_cluster_status(command, subcommand)
 
             if subcommand == "master_failover":
                 try:
@@ -1332,7 +1332,7 @@ class CommandHandler(object):
                 reply = srv.SendPacket(req)
                 status = False
                 if reply.code == pyrad.packet.AccessAccept:
-                	status = True
+                    status = True
             if not status:
                 msg = "Radius request failed."
                 raise OTPmeException(msg)
@@ -5036,7 +5036,7 @@ class CommandHandler(object):
 
         return user_key
 
-    def handle_cluster_status(self):
+    def handle_cluster_status(self, command, subcommand):
         """ Handle auth command. """
         from termcolor import colored
         register_module("otpme.lib.classes.realm")
@@ -5046,6 +5046,32 @@ class CommandHandler(object):
         # Init otpme.
         #init_otpme()
         self.init()
+
+        # Get command syntax.
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except:
+            return self.get_help(_("Unknown command: %s") % subcommand)
+
+        # Parse command line.
+        command_line = list(self.command_line)
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(command_syntax=command_syntax,
+                                        command_line=command_line,
+                                        command_args={})
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            elif str(e) != "":
+                return self.get_help(str(e))
+
+        try:
+            diff_data = command_args['diff_data']
+        except KeyError:
+            diff_data = False
 
         try:
             hostd_conn = connections.get("hostd")
@@ -5226,188 +5252,189 @@ class CommandHandler(object):
             if x_node == master_node:
                 continue
 
-            already_missed_datas= {}
-            already_missed_objects = {}
-            already_missed_sesssions = {}
-            already_diffed_datas = {}
-            already_diffed_objects = {}
-            already_diffed_sessions = {}
-            try:
-                m_data_checksums = node_checksums[master_node]['data_checksums']
-            except KeyError:
-                m_data_checksums = {}
-            try:
-                m_object_checksums = node_checksums[master_node]['object_checksums']
-            except KeyError:
-                m_object_checksums = {}
-            try:
-                m_session_checksums = node_checksums[master_node]['session_checksums']
-            except KeyError:
-                m_session_checksums = {}
+            if diff_data:
+                already_missed_datas= {}
+                already_missed_objects = {}
+                already_missed_sesssions = {}
+                already_diffed_datas = {}
+                already_diffed_objects = {}
+                already_diffed_sessions = {}
+                try:
+                    m_data_checksums = node_checksums[master_node]['data_checksums']
+                except KeyError:
+                    m_data_checksums = {}
+                try:
+                    m_object_checksums = node_checksums[master_node]['object_checksums']
+                except KeyError:
+                    m_object_checksums = {}
+                try:
+                    m_session_checksums = node_checksums[master_node]['session_checksums']
+                except KeyError:
+                    m_session_checksums = {}
 
-            try:
-                n_data_checksums = node_checksums[x_node]['data_checksums']
-            except KeyError:
-                n_data_checksums = {}
-            try:
-                n_object_checksums = node_checksums[x_node]['object_checksums']
-            except KeyError:
-                n_object_checksums = {}
-            try:
-                n_session_checksums = node_checksums[x_node]['session_checksums']
-            except KeyError:
-                n_session_checksums = {}
+                try:
+                    n_data_checksums = node_checksums[x_node]['data_checksums']
+                except KeyError:
+                    n_data_checksums = {}
+                try:
+                    n_object_checksums = node_checksums[x_node]['object_checksums']
+                except KeyError:
+                    n_object_checksums = {}
+                try:
+                    n_session_checksums = node_checksums[x_node]['session_checksums']
+                except KeyError:
+                    n_session_checksums = {}
 
-            # Diff objects.
-            if do_diff_objects:
-                for m_object in m_object_checksums:
-                    m_checksum = m_object_checksums[m_object]
-                    try:
-                        n_checksum = n_object_checksums[m_object]
-                    except:
+                # Diff objects.
+                if do_diff_objects:
+                    for m_object in m_object_checksums:
+                        m_checksum = m_object_checksums[m_object]
                         try:
-                            n_missing_objects = already_missed_objects[x_node]
-                        except KeyError:
-                            n_missing_objects = []
-                        if m_object in n_missing_objects:
+                            n_checksum = n_object_checksums[m_object]
+                        except:
+                            try:
+                                n_missing_objects = already_missed_objects[x_node]
+                            except KeyError:
+                                n_missing_objects = []
+                            if m_object in n_missing_objects:
+                                continue
+                            n_missing_objects.append(m_object)
+                            already_missed_objects[x_node] = n_missing_objects
+                            msg = "Object %s missing on node %s." % (m_object, x_node)
+                            msg = colored(msg, 'red')
+                            missing_objects.append(msg)
                             continue
-                        n_missing_objects.append(m_object)
-                        already_missed_objects[x_node] = n_missing_objects
-                        msg = "Object %s missing on node %s." % (m_object, x_node)
-                        msg = colored(msg, 'red')
-                        missing_objects.append(msg)
-                        continue
-                    if n_checksum == m_checksum:
-                        continue
-                    try:
-                        n_diffed_objects = already_diffed_objects[x_node]
-                    except KeyError:
-                        n_diffed_objects = []
-                    if m_object in n_diffed_objects:
-                        continue
-                    n_diffed_objects.append(m_object)
-                    already_diffed_objects[x_node] = n_diffed_objects
-                    msg = "Object %s differs on node %s." % (m_object, x_node)
-                    msg = colored(msg, 'yellow')
-                    diff_objects.append(msg)
-
-                for n_object in n_object_checksums:
-                    try:
-                        m_object_checksums[n_object]
-                    except KeyError:
+                        if n_checksum == m_checksum:
+                            continue
                         try:
-                            m_missing_objects = already_missed_objects[master_node]
+                            n_diffed_objects = already_diffed_objects[x_node]
                         except KeyError:
-                            m_missing_objects = []
-                        if n_object in m_missing_objects:
+                            n_diffed_objects = []
+                        if m_object in n_diffed_objects:
                             continue
-                        m_missing_objects.append(n_object)
-                        already_missed_objects[master_node] = m_missing_objects
-                        msg = "Object %s missing on node %s." % (n_object, master_node)
-                        msg = colored(msg, 'red')
-                        missing_objects.append(msg)
-                        continue
+                        n_diffed_objects.append(m_object)
+                        already_diffed_objects[x_node] = n_diffed_objects
+                        msg = "Object %s differs on node %s." % (m_object, x_node)
+                        msg = colored(msg, 'yellow')
+                        diff_objects.append(msg)
 
-            # Diff data objects.
-            if do_diff_data:
-                for m_data in m_data_checksums:
-                    m_checksum = m_data_checksums[m_data]
-                    try:
-                        n_checksum = n_data_checksums[m_data]
-                    except:
+                    for n_object in n_object_checksums:
                         try:
-                            n_missing_datas = already_missed_datas[x_node]
+                            m_object_checksums[n_object]
                         except KeyError:
-                            n_missing_datas = []
-                        if m_data in n_missing_datas:
+                            try:
+                                m_missing_objects = already_missed_objects[master_node]
+                            except KeyError:
+                                m_missing_objects = []
+                            if n_object in m_missing_objects:
+                                continue
+                            m_missing_objects.append(n_object)
+                            already_missed_objects[master_node] = m_missing_objects
+                            msg = "Object %s missing on node %s." % (n_object, master_node)
+                            msg = colored(msg, 'red')
+                            missing_objects.append(msg)
                             continue
-                        n_missing_datas.append(m_data)
-                        already_missed_datas[x_node] = n_missing_datas
-                        msg = "Object %s missing on node %s." % (m_data, x_node)
-                        msg = colored(msg, 'red')
-                        missing_objects.append(msg)
-                        continue
-                    if n_checksum == m_checksum:
-                        continue
-                    try:
-                        n_diffed_datas = already_diffed_datas[x_node]
-                    except KeyError:
-                        n_diffed_datas = []
-                    if m_data in n_diffed_datas:
-                        continue
-                    n_diffed_datas.append(m_data)
-                    already_diffed_datas[x_node] = n_diffed_datas
-                    msg = "Object %s differs on node %s." % (m_data, x_node)
-                    msg = colored(msg, 'yellow')
-                    diff_objects.append(msg)
 
-                for n_data in n_data_checksums:
-                    try:
-                        m_data_checksums[n_data]
-                    except KeyError:
+                # Diff data objects.
+                if do_diff_data:
+                    for m_data in m_data_checksums:
+                        m_checksum = m_data_checksums[m_data]
                         try:
-                            m_missing_datas = already_missed_datas[master_node]
-                        except KeyError:
-                            m_missing_datas = []
-                        if n_data in m_missing_datas:
+                            n_checksum = n_data_checksums[m_data]
+                        except:
+                            try:
+                                n_missing_datas = already_missed_datas[x_node]
+                            except KeyError:
+                                n_missing_datas = []
+                            if m_data in n_missing_datas:
+                                continue
+                            n_missing_datas.append(m_data)
+                            already_missed_datas[x_node] = n_missing_datas
+                            msg = "Object %s missing on node %s." % (m_data, x_node)
+                            msg = colored(msg, 'red')
+                            missing_objects.append(msg)
                             continue
-                        m_missing_datas.append(n_data)
-                        already_missed_datas[master_node] = m_missing_datas
-                        msg = "Object %s missing on node %s." % (n_data, master_node)
-                        msg = colored(msg, 'red')
-                        missing_objects.append(msg)
-                        continue
+                        if n_checksum == m_checksum:
+                            continue
+                        try:
+                            n_diffed_datas = already_diffed_datas[x_node]
+                        except KeyError:
+                            n_diffed_datas = []
+                        if m_data in n_diffed_datas:
+                            continue
+                        n_diffed_datas.append(m_data)
+                        already_diffed_datas[x_node] = n_diffed_datas
+                        msg = "Object %s differs on node %s." % (m_data, x_node)
+                        msg = colored(msg, 'yellow')
+                        diff_objects.append(msg)
 
-            # Diff session objects.
-            if do_diff_sessions:
-                for m_session in m_session_checksums:
-                    m_checksum = m_session_checksums[m_session]
-                    try:
-                        n_checksum = n_session_checksums[m_session]
-                    except KeyError:
+                    for n_data in n_data_checksums:
                         try:
-                            n_missing_sessions = already_missed_sesssions[x_node]
+                            m_data_checksums[n_data]
                         except KeyError:
-                            n_missing_sessions = []
-                        if m_session in n_missing_sessions:
+                            try:
+                                m_missing_datas = already_missed_datas[master_node]
+                            except KeyError:
+                                m_missing_datas = []
+                            if n_data in m_missing_datas:
+                                continue
+                            m_missing_datas.append(n_data)
+                            already_missed_datas[master_node] = m_missing_datas
+                            msg = "Object %s missing on node %s." % (n_data, master_node)
+                            msg = colored(msg, 'red')
+                            missing_objects.append(msg)
                             continue
-                        n_missing_sessions.append(m_session)
-                        already_missed_sesssions[x_node] = n_missing_sessions
-                        msg = "Session %s missing on node %s." % (m_session, x_node)
-                        msg = colored(msg, 'red')
-                        missing_objects.append(msg)
-                        continue
-                    if n_checksum == m_checksum:
-                        continue
-                    try:
-                        n_diffed_sessions = already_diffed_sessions[x_node]
-                    except KeyError:
-                        n_diffed_sessions = []
-                    if m_session in n_diffed_sessions:
-                        continue
-                    n_diffed_sessions.append(m_session)
-                    already_diffed_sessions[x_node] = n_diffed_sessions
-                    msg = "Session %s differs on node %s." % (m_session, x_node)
-                    msg = colored(msg, 'yellow')
-                    diff_objects.append(msg)
 
-                for n_session in n_session_checksums:
-                    n_checksum = n_session_checksums[n_session]
-                    try:
-                        m_session_checksums[n_session]
-                    except:
+                # Diff session objects.
+                if do_diff_sessions:
+                    for m_session in m_session_checksums:
+                        m_checksum = m_session_checksums[m_session]
                         try:
-                            m_missing_sessions = already_missed_sesssions[master_node]
+                            n_checksum = n_session_checksums[m_session]
                         except KeyError:
-                            m_missing_sessions = []
-                        if n_session in m_missing_sessions:
+                            try:
+                                n_missing_sessions = already_missed_sesssions[x_node]
+                            except KeyError:
+                                n_missing_sessions = []
+                            if m_session in n_missing_sessions:
+                                continue
+                            n_missing_sessions.append(m_session)
+                            already_missed_sesssions[x_node] = n_missing_sessions
+                            msg = "Session %s missing on node %s." % (m_session, x_node)
+                            msg = colored(msg, 'red')
+                            missing_objects.append(msg)
                             continue
-                        m_missing_sessions.append(n_session)
-                        already_missed_sesssions[master_node] = m_missing_sessions
-                        msg = "Session %s missing on node %s." % (n_session, master_node)
-                        msg = colored(msg, 'red')
-                        missing_objects.append(msg)
-                        continue
+                        if n_checksum == m_checksum:
+                            continue
+                        try:
+                            n_diffed_sessions = already_diffed_sessions[x_node]
+                        except KeyError:
+                            n_diffed_sessions = []
+                        if m_session in n_diffed_sessions:
+                            continue
+                        n_diffed_sessions.append(m_session)
+                        already_diffed_sessions[x_node] = n_diffed_sessions
+                        msg = "Session %s differs on node %s." % (m_session, x_node)
+                        msg = colored(msg, 'yellow')
+                        diff_objects.append(msg)
+
+                    for n_session in n_session_checksums:
+                        n_checksum = n_session_checksums[n_session]
+                        try:
+                            m_session_checksums[n_session]
+                        except:
+                            try:
+                                m_missing_sessions = already_missed_sesssions[master_node]
+                            except KeyError:
+                                m_missing_sessions = []
+                            if n_session in m_missing_sessions:
+                                continue
+                            m_missing_sessions.append(n_session)
+                            already_missed_sesssions[master_node] = m_missing_sessions
+                            msg = "Session %s missing on node %s." % (n_session, master_node)
+                            msg = colored(msg, 'red')
+                            missing_objects.append(msg)
+                            continue
 
         diff_details = diff_objects + missing_objects
         if diff_details:
@@ -5417,6 +5444,7 @@ class CommandHandler(object):
             diff_details.append(msg)
             diff_details.append("")
             cluster_status_str = diff_details + cluster_status_str
+
         cluster_status_str = "\n".join(cluster_status_str)
         return cluster_status_str
 
@@ -5619,12 +5647,12 @@ class CommandHandler(object):
             print(msg)
             # Get all member nodes
             try:
-            	member_nodes = clusterd_conn.get_member_nodes()
+                member_nodes = clusterd_conn.get_member_nodes()
             except Exception as e:
-            	msg = ("Failed to get cluster nodes: %s: %s"
-            			% (this_node.name, e))
-            	self.logger.warning(msg)
-            	return msg
+                msg = ("Failed to get cluster nodes: %s: %s"
+                        % (this_node.name, e))
+                self.logger.warning(msg)
+                return msg
             try:
                 member_nodes.remove(this_node.name)
             except ValueError:

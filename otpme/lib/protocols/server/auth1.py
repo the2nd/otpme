@@ -124,6 +124,12 @@ class OTPmeAuthP1(OTPmeServer1):
                 message = "AUTHD_INCOMPLETE_COMMAND"
                 return self.build_response(status, message)
 
+            token_accessgroups = config.auth_token.get_access_groups()
+            if jwt_accessgroup not in token_accessgroups:
+                status = False
+                message = "AUTHD_PERMISSION_DENIED"
+                return self.build_response(status, message)
+
             # Load JWT signing key.
             user_site = backend.get_object(uuid=config.auth_token.site_uuid)
             sign_key = user_site._key

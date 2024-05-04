@@ -1041,6 +1041,7 @@ class OTPmeAgent(UnixDaemon):
             try:
                 self.login_user(login_pid, realm, site, use_dns=use_dns)
             except Exception as e:
+                config.raise_exception()
                 msg = (_("Unable to login to: %s/%s: %s") % (realm, site, e))
                 raise OTPmeException(msg)
 
