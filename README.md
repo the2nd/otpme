@@ -21,7 +21,7 @@ python3 -m venv /opt/otpme
 . /opt/otpme/bin/activate
 
 ### Install otpme and dependencies
-pip3 install cython
+pip3 install cython  
 pip3 install otpme
 
 ### Edit /etc/otpme/otpme.conf
