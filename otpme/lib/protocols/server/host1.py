@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 
 try:
@@ -170,9 +169,10 @@ class OTPmeHostP1(OTPmeServer1):
                         ]
 
         if command in valid_commands:
-            msg = ("Received command %s from client: %s"
-                    % (command, self.client))
-            logger.debug(msg)
+            if config.debug_level() > 3:
+                msg = ("Received command %s from client: %s"
+                        % (command, self.client))
+                logger.debug(msg)
         else:
             msg = ("Received unknown command %s from client: %s"
                     % (command, self.client))

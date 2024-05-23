@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 
@@ -508,9 +507,11 @@ class AuthHandler(object):
                                         uuid=session_uuid)
             if not session:
                 continue
-            # Check if session exists (e.g. expired sessions get removed when
-            # they are loaded).
-            if not session.exists(outdate=True):
+            # Outdate expired session.
+            try:
+                if not session.exists(outdate=True):
+                    continue
+            except LockWaitAbort:
                 continue
 
             ## We can only verify sessions that match the requests auth type.
@@ -598,9 +599,13 @@ class AuthHandler(object):
             # Get session instance.
             session = backend.get_object(object_type="session",
                                         uuid=session_uuid)
-            # Check if session exists (e.g. expired sessions get removed when
-            # they are loaded).
             if not session:
+                continue
+            # Outdate sessions.
+            try:
+                if not session.exists(outdate=True):
+                    continue
+            except LockWaitAbort:
                 continue
             # Try to verify session.
             verify_reply = session.verify(password=slp,
@@ -1705,8 +1710,13 @@ class AuthHandler(object):
             # Get session instance for already existing session.
             session_x = backend.get_object(object_type="session",
                                             uuid=session_uuid)
-            # Skip outdated sessions.
             if not session_x:
+                continue
+            # Outdate sessions.
+            try:
+                if not session_x.exists(outdate=True):
+                    continue
+            except LockWaitAbort:
                 continue
             session_list.append(session_x)
 
@@ -2569,6 +2579,12 @@ class AuthHandler(object):
 
             # Reset failed login counter for this user/group.
             self.reset_user_fail_counter()
+
+            # Get users login token.
+            login_token_uuid = None
+            if self.auth_token:
+                login_token_uuid = self.auth_token.uuid
+            auth_reply['login_token_uuid'] = login_token_uuid
 
             # Get users login script.
             login_script = None

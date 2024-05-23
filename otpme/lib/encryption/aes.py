@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import modes
@@ -69,7 +68,7 @@ def decrypt(key, aesdata, encoding=None, mode="CFB", backend=None):
     """ Decrypt data with given AES key. """
     if aesdata == "":
         return ""
-    aesdata = aesdata.encode("ascii")
+    #aesdata = aesdata.encode("ascii")
     try:
         mode = getattr(modes, mode)
     except:

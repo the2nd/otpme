@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 import glob
@@ -62,6 +61,7 @@ def register():
     multiprocessing.register_shared_list("master_sync_done")
     multiprocessing.register_shared_dict("member_candidates")
     multiprocessing.register_shared_dict("radius_reload_queue")
+    multiprocessing.register_shared_dict("daemon_reload_queue")
     multiprocessing.register_shared_dict("nsscache_sync_queue")
     multiprocessing.register_shared_dict("peer_nodes_set_online")
     register_cluster_journal()
@@ -132,6 +132,21 @@ def cluster_radius_reload():
     reload_time = time.time() + 5
     try:
         multiprocessing.radius_reload_queue[reload_time] = []
+    except ValueError:
+        pass
+    if not multiprocessing.cluster_out_event:
+        return
+    multiprocessing.cluster_out_event.set()
+
+def cluster_daemon_reload():
+    if config.use_api:
+        return
+    if config.one_node_setup:
+        return
+    multiprocessing.daemon_reload_queue.clear()
+    reload_time = time.time() + 5
+    try:
+        multiprocessing.daemon_reload_queue[reload_time] = []
     except ValueError:
         pass
     if not multiprocessing.cluster_out_event:
@@ -579,7 +594,7 @@ class ClusterDaemon(OTPmeDaemon):
         if os.getpid() != self.pid:
             return
         msg = ("Received SIGTERM.")
-        self.logger.debug(msg)
+        self.logger.info(msg)
         if config.start_freeradius:
             self.stop_freeradius()
         self.close_childs()
@@ -629,7 +644,7 @@ class ClusterDaemon(OTPmeDaemon):
     def member_candidate(self, value):
         multiprocessing.member_candidates[self.node_name] = value
 
-    def start_childs(self):
+    def start_childs(self, reload=False):
         """ Start child processes childs. """
         msg = "Starting cluster communication..."
         self.logger.info(msg)
@@ -638,7 +653,8 @@ class ClusterDaemon(OTPmeDaemon):
                                         target=self.start_interprocess_comm)
         # Start cluster communication.
         self.cluster_comm_child = multiprocessing.start_process(name=self.name,
-                                        target=self.start_cluster_communication)
+                                        target=self.start_cluster_communication,
+                                        target_kwargs={'reload':reload})
         # Start in journal handler.
         self.cluster_in_journal_child = multiprocessing.start_process(name=self.name,
                                         target=self.start_in_journal_handler)
@@ -902,9 +918,14 @@ class ClusterDaemon(OTPmeDaemon):
         except KeyError:
             old_master_node = None
         if old_master_node != new_master_node:
+            node_name = config.host_data['name']
+            if new_master_node == node_name:
+                sync_time = time.time()
+                config.touch_node_sync_file(sync_time)
             self.logger.info("Node votes: %s" % node_scores)
-            import pprint
             print("New master node: %s" % new_master_node)
+
+            import pprint
             pprint.pprint(node_scores)
 
         required_votes = self.calc_quorum()[1]
@@ -1341,16 +1362,16 @@ class ClusterDaemon(OTPmeDaemon):
             break
         return sync_status
 
-    def start_cluster_communication(self):
+    def start_cluster_communication(self, **kwargs):
         """ Start cluster communication. """
         try:
-            self._start_cluster_communication()
+            self._start_cluster_communication(**kwargs)
         except Exception as e:
             msg = "Error in cluster communication method: %s" % e
             self.logger.critical(msg)
             config.raise_exception()
 
-    def _start_cluster_communication(self):
+    def _start_cluster_communication(self, reload=False):
         """ Start cluster communication. """
         # Set proctitle.
         new_proctitle = "%s (Cluster communication)" % self.full_name
@@ -1375,10 +1396,13 @@ class ClusterDaemon(OTPmeDaemon):
         self.logger = config.setup_logger(banner=log_banner,
                                         pid=self.pid,
                                         existing_logger=config.logger)
-        multiprocessing.master_node.clear()
-        multiprocessing.master_sync_done.clear()
-        multiprocessing.radius_reload_queue.clear()
-        multiprocessing.nsscache_sync_queue.clear()
+
+        if not reload:
+            multiprocessing.master_node.clear()
+            multiprocessing.radius_reload_queue.clear()
+            multiprocessing.nsscache_sync_queue.clear()
+            multiprocessing.daemon_reload_queue.clear()
+            multiprocessing.master_sync_done.clear()
 
         config.cluster_status = False
         config.cluster_vote_participation = True
@@ -1865,6 +1889,12 @@ class ClusterDaemon(OTPmeDaemon):
 
             try:
                 self.handle_radius_reload(node_name)
+            except Exception as e:
+                msg = "Radius reload request failed: %s" % e
+                self.logger.critical(msg)
+
+            try:
+                self.handle_daemon_reload(node_name)
             except Exception as e:
                 msg = "Radius reload request failed: %s" % e
                 self.logger.critical(msg)
@@ -2430,6 +2460,68 @@ class ClusterDaemon(OTPmeDaemon):
             finally:
                 multiprocessing.radius_reload_queue.release()
 
+    def handle_daemon_reload(self, node_name):
+        # Handle daemon reload requests.
+        for reload_time in multiprocessing.daemon_reload_queue:
+            if node_name not in multiprocessing.member_nodes:
+                continue
+            all_nodes_reloaded = True
+            for x_node in multiprocessing.member_nodes:
+                multiprocessing.daemon_reload_queue.lock()
+                try:
+                    node_list = multiprocessing.daemon_reload_queue[reload_time]
+                except KeyError:
+                    continue
+                finally:
+                    multiprocessing.daemon_reload_queue.release()
+                if x_node in node_list:
+                    continue
+                all_nodes_reloaded = False
+                break
+            if all_nodes_reloaded:
+                multiprocessing.daemon_reload_queue.lock()
+                try:
+                    multiprocessing.daemon_reload_queue.pop(reload_time)
+                except KeyError:
+                    pass
+                finally:
+                    multiprocessing.daemon_reload_queue.release()
+                # Reload ourselves.
+                try:
+                    self.comm_handler.send("controld", command="reload")
+                except Exception as e:
+                    msg = "Failed to send reload command to controld: %s" % e
+                    self.logger.critical(msg)
+                return
+            try:
+                node_list = multiprocessing.daemon_reload_queue[reload_time]
+            except KeyError:
+                continue
+            if node_name in node_list:
+                continue
+            multiprocessing.daemon_reload_queue.lock()
+            try:
+                self.node_conn.do_daemon_reload()
+            except Exception as e:
+                self.node_disconnect(node_name)
+                msg = "Failed to send daemon reload request: %s" % e
+                self.logger.warning(msg)
+                break
+            else:
+                try:
+                    node_list = multiprocessing.daemon_reload_queue[reload_time]
+                except KeyError:
+                    continue
+                node_list.append(node_name)
+                try:
+                    multiprocessing.daemon_reload_queue[reload_time] = node_list
+                except KeyError:
+                    pass
+                msg = "Daemon reload request sent to node: %s" % node_name
+                self.logger.info(msg)
+            finally:
+                multiprocessing.daemon_reload_queue.release()
+
     def start_freeradius(self):
         from otpme.lib.freeradius import start
         from otpme.lib.freeradius import status
@@ -2502,7 +2594,7 @@ class ClusterDaemon(OTPmeDaemon):
         for node_name in list(self.node_write_connections):
             self.close_node_write_connection(node_name)
 
-    def _run(self, **kwargs):
+    def _run(self, reload=False, master_node=False, **kwargs):
         """ Start daemon loop. """
         # FIXME: where to configure max_conn?
         # Set max client connections.
@@ -2514,6 +2606,16 @@ class ClusterDaemon(OTPmeDaemon):
         config.cluster_quorum = False
         multiprocessing.cluster_quorum.clear()
         multiprocessing.sync_nodes.clear()
+        # On daemon reload we have to keep master node status.
+        if reload:
+            if master_node:
+                sync_time = time.time()
+                config.touch_node_sync_file(sync_time)
+            else:
+                config.remove_node_sync_file()
+        else:
+            # On daemon startup we will decide by data revision which node gets master.
+            config.remove_node_sync_file()
         # Configure ourselves (e.g. certificates etc.).
         try:
             self.configure()
@@ -2564,7 +2666,7 @@ class ClusterDaemon(OTPmeDaemon):
         try:
             self.comm_handler.send("controld", command="ready")
         except Exception as e:
-            msg = "Failed to send read message to controld: %s" % e
+            msg = "Failed to send ready message to controld: %s" % e
             self.logger.critical(msg)
 
         self.logger.info("%s started" % self.full_name)
@@ -2586,7 +2688,7 @@ class ClusterDaemon(OTPmeDaemon):
         self.comm_handler.send("controld", "pong")
 
         # Start child processes.
-        self.start_childs()
+        self.start_childs(reload=reload)
 
         while True:
             if config.daemon_shutdown:

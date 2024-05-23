@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import sys
 import pwd
@@ -142,7 +141,7 @@ def signal_handler(_signal, frame):
     # Get logger.
     logger = config.logger
     msg = "Received SIGTERM."
-    logger.debug(msg)
+    logger.info(msg)
     os._exit(0)
 
 def atfork(keep_locks=False, quiet=True,
@@ -175,8 +174,9 @@ def atfork(keep_locks=False, quiet=True,
     log.atfork()
     # Get logger.
     logger = config.logger
-    msg = "Process forked: %s" % pid
-    logger.debug(msg)
+    if config.debug_level() > 3:
+        msg = "Process forked: %s" % pid
+        logger.debug(msg)
     # Make sure we do not handle locks of parent process.
     if not keep_locks:
         locking.atfork()
@@ -422,20 +422,22 @@ def drop_privileges(user=None, group=None):
         try:
             gid = grp.getgrnam(group).gr_gid
             os.setgid(gid)
-            logger.debug("Changed group to: %s" % group)
         except Exception as e:
             msg = "Failed to drop privileges (group)"
             raise OTPmeException(msg)
+        if config.debug_level() > 3:
+            logger.debug("Changed group to: %s" % group)
 
     # Drop user privileges.
     if user:
         try:
             uid = pwd.getpwnam(user).pw_uid
             os.setuid(uid)
-            logger.debug("Changed user to: %s" % user)
         except Exception as e:
             msg = "Failed to drop privileges (group)"
             raise OTPmeException(msg)
+        if config.debug_level() > 3:
+            logger.debug("Changed user to: %s" % user)
         # Change to users home directory to prevent any chdir() problems.
         try:
             os.chdir(os.path.expanduser("~%s" % user))

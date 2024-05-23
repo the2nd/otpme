@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import sys
 import time
@@ -169,7 +168,7 @@ class ScriptDaemon(OTPmeDaemon):
         if os.getpid() != self.pid:
             return
         msg = ("Received SIGTERM.")
-        self.logger.debug(msg)
+        self.logger.info(msg)
         self.close_childs()
         return super(ScriptDaemon, self).signal_handler(_signal, frame)
 

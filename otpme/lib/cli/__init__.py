@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import sys
 import pprint
@@ -905,10 +904,10 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
         max_rows = 1024
 
     # Add object related ACLs to check for.
-    write_acls += object_register[object_type]['write_acls']
-    read_acls += object_register[object_type]['read_acls']
+    write_acls += list(object_register[object_type]['write_acls'])
+    read_acls += list(object_register[object_type]['read_acls'])
     # Get object related table columns/headers.
-    table_headers = object_register[object_type]['table_headers']
+    table_headers = list(object_register[object_type]['table_headers'])
     # Get function to handle object row data.
     row_getter = object_register[object_type]['row_getter']
     # Get ID attribute (e.g. rel_path for tokens).

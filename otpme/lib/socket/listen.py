@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import ssl
 import time
@@ -459,7 +458,8 @@ class ListenSocket(object):
                 break
 
             # Log new connection.
-            self.logger.debug("New connection from '%s'" % client)
+            if config.debug_level() > 3:
+                self.logger.debug("New connection from '%s'" % client)
 
             # Start child process to handle new connection.
             p = multiprocessing.start_process(name=self.name,
@@ -557,7 +557,8 @@ class ListenSocket(object):
             except:
                 pass
 
-        self.logger.debug("Client '%s' disconnected." % client)
+        if config.debug_level() > 3:
+            self.logger.debug("Client '%s' disconnected." % client)
 
         # Run connection cleanup (e.g. remove locks).
         if conn_handler:
@@ -776,7 +777,8 @@ class Connection(object):
         """ Close connection. """
         if not self.connected:
             return
-        self.logger.debug("Closing connection to '%s'" % self.client)
+        if config.debug_level() > 3:
+            self.logger.debug("Closing connection to '%s'" % self.client)
         self.send("quit", timeout=0.01)
         self.connected = False
         self._close()

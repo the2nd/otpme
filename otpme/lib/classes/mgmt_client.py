@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 
 try:
@@ -51,9 +50,11 @@ class OTPmeMgmtClient(object):
         """ Connect to mgmtd in the given realm/site. """
         try:
             username = self.login_data[realm]['username']
-            password = self.login_data[realm]['password']
         except:
             username = None
+        try:
+            password = self.login_data[realm]['password']
+        except:
             password = None
         daemon_conn = connections.get("mgmtd",
                                     realm=realm,

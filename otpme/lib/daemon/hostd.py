@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import sys
 import time
@@ -92,7 +91,7 @@ class HostDaemon(OTPmeDaemon):
         if os.getpid() != self.pid:
             return
         msg = ("Received SIGTERM.")
-        self.logger.debug(msg)
+        self.logger.info(msg)
         # Stop resolver runs.
         self.stop_resolvers()
         # Shutdown sync childs.
@@ -417,7 +416,10 @@ class HostDaemon(OTPmeDaemon):
         #        self.logger.warning(msg)
         #        return
 
-        if config.realm_master_node:
+        # Remember master node status (e.g. master node switch while running sites sync).
+        is_master_node = config.realm_master_node
+
+        if is_master_node:
             # Realm master nodes must connect to each site.
             connect_sites = backend.search(object_type="site",
                                             attribute="uuid",
@@ -501,7 +503,7 @@ class HostDaemon(OTPmeDaemon):
                 site_oid = oid.get(object_id=x)
                 # The realm master node must receive the right site object from
                 # the site it is connected to.
-                if config.realm_master_node:
+                if is_master_node:
                     if site_oid != site.oid:
                         msg = ("Uuuh received wrong site object from site %s: %s"
                                     % (site.oid, site_oid))
@@ -609,7 +611,7 @@ class HostDaemon(OTPmeDaemon):
         for site in local_sites:
             # For realm master nodes we have to check if there was a problem
             # getting the site object from its master node.
-            if config.realm_master_node:
+            if is_master_node:
                 # If we were not able to get site from the master node (e.g. a
                 # connection problem) we must not remove it.
                 if site.oid not in reached_sites:

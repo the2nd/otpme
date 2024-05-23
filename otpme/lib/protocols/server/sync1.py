@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import sys
 import time
@@ -67,7 +66,8 @@ def add_sync_list_checksum(realm, site, peer_realm, peer_site, checksum,
                                                 skip_users=skip_users,
                                                 skip_admin=skip_admin,
                                                 include_templates=include_templates,
-                                                include_uuids=include_uuids)
+                                                include_uuids=include_uuids,
+                                                quiet=True)
     # Update checksum.
     backend.add_sync_map(realm=realm,
                         site=site,
@@ -116,10 +116,6 @@ class OTPmeSyncP1(OTPmeServer1):
             return
 
         site = result[0]
-
-        # We do not sync disabled sites.
-        if not site.enabled:
-            return
 
         # Realm master node must not send node from other site its own site.
         if config.realm_master_node:
@@ -249,7 +245,8 @@ class OTPmeSyncP1(OTPmeServer1):
                                                     skip_users=skip_users,
                                                     include_templates=include_templates,
                                                     include_uuids=include_uuids,
-                                                    skip_admin=skip_admin)
+                                                    skip_admin=skip_admin,
+                                                    quiet=True)
         finally:
             # Release sync lock.
             sync_lock.release_lock()
@@ -852,8 +849,9 @@ class OTPmeSyncP1(OTPmeServer1):
                         return self.build_response(status, response, encrypt=False)
 
         if command != "get_object":
-            msg = ("Processing sync command: %s" % command)
-            self.logger.debug(msg)
+            if config.debug_level() > 3:
+                msg = ("Processing sync command: %s" % command)
+                self.logger.debug(msg)
 
         # Check if sync with peer realm is disabled.
         peer_realm = backend.get_object(object_type="realm",

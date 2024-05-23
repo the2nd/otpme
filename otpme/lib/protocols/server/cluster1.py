@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 import ujson
@@ -148,6 +147,7 @@ class OTPmeClusterP1(OTPmeServer1):
                             "get_master_node",
                             "do_radius_reload",
                             "do_nsscache_sync",
+                            "do_daemon_reload",
                             "get_member_nodes",
                             "get_data_revision",
                             "do_master_failover",
@@ -642,6 +642,14 @@ class OTPmeClusterP1(OTPmeServer1):
             else:
                 msg = "Freeradius reloaded."
                 logger.info(msg)
+
+        elif command == "do_daemon_reload":
+            # Reload after adding new CRL.
+            self._send_daemon_msg(daemon="controld",
+                                    command="reload",
+                                    timeout=1)
+            status = True
+            message = "Daemonreload queued."
 
         elif command == "do_master_failover":
             status = True

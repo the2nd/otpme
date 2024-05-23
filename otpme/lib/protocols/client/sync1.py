@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 
@@ -441,7 +440,8 @@ class OTPmeSyncP1(OTPmeClient1):
                                         include_templates=include_templates,
                                         include_uuids=include_uuids,
                                         object_types=sync_object_types,
-                                        checksum_only_types=checksum_only_types)
+                                        checksum_only_types=checksum_only_types,
+                                        quiet=True)
         if resync:
             local_sync_list = []
             remote_sync_list_checksum = "RESYNC"

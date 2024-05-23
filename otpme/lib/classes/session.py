@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 from datetime import datetime
@@ -600,7 +599,6 @@ class Session(OTPmeLockObject):
         self.auth_token = self.get_config_parameter('AUTH_TOKEN')
         self.last_login = self.get_config_parameter('LAST_LOGIN')
         self.login_count = self.get_config_parameter('LOGIN_COUNT')
-        #self.last_used = self.get_config_parameter('LAST_USED')
         self.timeout = self.get_config_parameter('SESSION_TIMEOUT')
         self.unused_timeout = self.get_config_parameter('UNUSED_SESSION_TIMEOUT')
         self.origin = self.get_config_parameter('ORIGIN')
@@ -650,7 +648,7 @@ class Session(OTPmeLockObject):
             if last_used_age < 30:
                 return
 
-        logger.debug("Updating last used timestamp of session '%s'."
+        logger.debug("Updating last used timestamp of session: %s"
                     % self.name)
         self.last_used = time.time()
 
@@ -1272,6 +1270,8 @@ class Session(OTPmeLockObject):
 
         try:
             backend.delete_object(self.oid, cluster=True)
+        except UnknownObject:
+            pass
         except Exception as e:
             config.raise_exception()
             msg = (_("Error removing session '%s': %s") % (self.name, e))

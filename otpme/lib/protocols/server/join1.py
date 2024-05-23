@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 
@@ -23,6 +22,7 @@ from otpme.lib.classes.node import Node
 from otpme.lib.protocols import status_codes
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.otpme_server import OTPmeServer1
+from otpme.lib.daemon.clusterd import cluster_daemon_reload
 
 from otpme.lib.exceptions import *
 
@@ -1243,9 +1243,10 @@ class OTPmeJoinP1(OTPmeServer1):
                 # Update realm CA data.
                 site_ca.update_realm_ca_data()
                 # Reload after adding new CRL.
-                self._send_daemon_msg(daemon="controld",
-                                        command="reload",
-                                        timeout=1)
+                cluster_daemon_reload()
+                #self._send_daemon_msg(daemon="controld",
+                #                        command="reload",
+                #                        timeout=1)
 
             return self.build_response(status, message)
 

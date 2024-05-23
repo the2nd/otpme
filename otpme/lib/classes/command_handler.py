@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import sys
 import time
@@ -238,6 +237,8 @@ class CommandHandler(object):
             object_list = [object_list]
 
         if daemon == "mgmtd":
+            if config.use_api:
+                username = config.system_user()
             # Get management client.
             mgmt_client = self.get_mgmt_client(username, password)
             status, \
@@ -429,14 +430,14 @@ class CommandHandler(object):
                 return self.get_help()
             return self.get_authorized_keys(username)
 
-        if command == "tool":
-            return self.handle_tool_command(command, subcommand, command_line)
-
         # Get login user needed for some commnads.
         if not config.login_user:
             config.login_user = self.get_login_user()
             ## Make sure user config file is loaded.
             #config.reload()
+
+        if command == "tool":
+            return self.handle_tool_command(command, subcommand, command_line)
 
         if command == "pinentry":
             self.start_pinentry()
@@ -2085,8 +2086,10 @@ class CommandHandler(object):
             raise OTPmeException(msg)
 
         # Make sure script output is string.
-        script_stdout = script_stdout.decode()
-        script_stderr = script_stderr.decode()
+        if isinstance(script_stdout, bytes):
+            script_stdout = script_stdout.decode()
+        if isinstance(script_stderr, bytes):
+            script_stderr = script_stderr.decode()
 
         if script_status != 0:
             if script_stderr == "":
@@ -4576,8 +4579,10 @@ class CommandHandler(object):
                                         call=False)
 
         # Make sure script output is string.
-        script_stdout = script_stdout.decode()
-        script_stderr = script_stderr.decode()
+        if isinstance(script_stdout, bytes):
+            script_stdout = script_stdout.decode()
+        if isinstance(script_stderr, bytes):
+            script_stderr = script_stderr.decode()
 
         if script_status != 0:
             self.newline = False
@@ -4974,7 +4979,7 @@ class CommandHandler(object):
 
         if sign_mode == "server":
             # Get private key.
-            user_key = self.send_command(daemon="mgmtd", client_type="RAPI")[0]
+            user_key = self.send_command(daemon="mgmtd", client_type="RAPI")
             self.newline = True
 
         if sign_mode == "client":
@@ -5822,9 +5827,7 @@ class CommandHandler(object):
 
     def handle_auth_command(self, command, subcommand, command_line):
         """ Handle auth command. """
-        # Enable cache.
         register_module("otpme.lib.classes.realm")
-        # Init otpme.
         self.init(use_backend=False)
         cache.init()
         cache.enable()
@@ -5852,12 +5855,6 @@ class CommandHandler(object):
         socket_uri = None
         if use_socket:
             socket_uri = config.authd_socket_path
-        else:
-            register_module("otpme.lib.classes.realm")
-            # Init otpme.
-            self.init(use_backend=False)
-            cache.init()
-            cache.enable()
 
         result = self.send_command(daemon="authd",
                                 command=subcommand,
@@ -6000,8 +5997,10 @@ class CommandHandler(object):
                                         script_options=script_options)
 
         # Make sure script output is string.
-        script_stdout = script_stdout.decode()
-        script_stderr = script_stderr.decode()
+        if isinstance(script_stdout, bytes):
+            script_stdout = script_stdout.decode()
+        if isinstance(script_stderr, bytes):
+            script_stderr = script_stderr.decode()
 
         self.newline = False
         if script_status != 0:

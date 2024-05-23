@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import signal
 import importlib
@@ -121,7 +120,8 @@ class OTPmeDaemon(object):
 
     def _preload_modules(self):
         """ Preload modules """
-        self.logger.debug("Preloading modules...")
+        if config.debug_level("module_loading") > 0:
+            self.logger.debug("Preloading modules...")
         count = 0
         for m in preload_modules:
             try:
@@ -130,9 +130,11 @@ class OTPmeDaemon(object):
             except Exception as e:
                 msg = ("Failed to preload module: %s: %s" % (m, e))
                 self.logger.critical(msg, exc_info=True)
-        self.logger.debug("Preloaded %s modules..." % count)
+        if config.debug_level("module_loading") > 0:
+            self.logger.debug("Preloaded %s modules..." % count)
 
-        self.logger.debug("Loading token modules...")
+        if config.debug_level("module_loading") > 0:
+            self.logger.debug("Loading token modules...")
         # Preload token modules.
         from otpme.lib.token import utils
         try:
@@ -140,7 +142,8 @@ class OTPmeDaemon(object):
         except Exception as e:
             self.logger.critical("Failed to preload token modules: %s" % e)
 
-        self.logger.debug("Loading resolver modules...")
+        if config.debug_level("module_loading") > 0:
+            self.logger.debug("Loading resolver modules...")
         # Preload resolver modules.
         from otpme.lib.resolver import utils
         try:
@@ -148,7 +151,8 @@ class OTPmeDaemon(object):
         except Exception as e:
             self.logger.critical("Failed to preload resolver modules: %s" % e)
 
-        self.logger.debug("Loading policy modules...")
+        if config.debug_level("module_loading") > 0:
+            self.logger.debug("Loading policy modules...")
         # Preload policy modules.
         from otpme.lib.policy import utils
         try:
@@ -156,7 +160,8 @@ class OTPmeDaemon(object):
         except Exception as e:
             self.logger.critical("Failed to preload policy modules: %s" % e)
 
-        self.logger.debug("Loading protocol modules...")
+        if config.debug_level("module_loading") > 0:
+            self.logger.debug("Loading protocol modules...")
         # Preload protocol modules.
         from otpme.lib.protocols import utils
         try:

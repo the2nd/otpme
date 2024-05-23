@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 
 try:
@@ -625,7 +624,7 @@ class Client(OTPmeClientObject):
     """ Creates client object """
     commands = commands
     def __init__(self, object_id=None, name=None, realm=None,
-        unit=None, site=None, path=None, **kwargs):
+        unit=None, site=None, path=None, access_group=None, **kwargs):
         # Set our type (used in parent class).
         self.type = "client"
 
@@ -644,6 +643,9 @@ class Client(OTPmeClientObject):
 
         self.access_group = None
         self.access_group_uuid = None
+        if access_group:
+            self.change_access_group(access_group=access_group,
+                                    verify_acls=False)
 
         self.secret = None
         self.secret_len = 32

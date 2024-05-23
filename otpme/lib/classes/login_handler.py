@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 
 try:
@@ -278,7 +277,6 @@ class LoginHandler(object):
             msg = (_("Authentication failed: %s") % e)
             status_message = (_("%s (online: %s)") % (agent_username, msg))
         except Exception as e:
-            print("KKKKKK", e)
             status_message = (_("%s (offline)") % agent_username)
 
         if mgmt_conn:

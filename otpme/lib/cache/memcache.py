@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 """Module for handling memcached/memcachedb caching.
 
 http://sendapatch.se/projects/pylibmc/reference.html
@@ -52,7 +51,7 @@ class MemcacheHandler(object):
 
     def start(self):
         msg = "Starting %s..." % self.name
-        self.logger.debug(msg)
+        self.logger.info(msg)
         return self.start_function()
 
     def wait_for_start(self, timeout=5):
@@ -78,7 +77,7 @@ class MemcacheHandler(object):
             msg = "%s not running." % self.name
             raise NotRunning(msg)
         msg = "Stopping %s..." % self.name
-        self.logger.debug(msg)
+        self.logger.info(msg)
         pid = self.get_pid()
         stuff.kill_pid(pid, timeout=10)
         if not os.path.exists(self.socket):

@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import sys
 import time
@@ -926,7 +925,7 @@ class ControlDaemon(UnixDaemon):
             raise NotRunning(msg)
         _cache.flushall()
 
-    def start_daemon(self, daemon_name):
+    def start_daemon(self, daemon_name, reload=False, master_node=False):
         """ Start child daemon by name. """
         # Set daemon user/group.
         daemon_user = config.user
@@ -961,7 +960,8 @@ class ControlDaemon(UnixDaemon):
             return
 
         try:
-            add_result = self.add_child(daemon)
+            add_result = self.add_child(daemon, reload=reload,
+                                        master_node=master_node)
         except Exception as e:
             msg = "Failed to start child daemon: %s: %s" % (daemon.name, e)
             add_result = False
@@ -1131,22 +1131,28 @@ class ControlDaemon(UnixDaemon):
                 msg = ("Child daemon '%s' needs a restart to "
                         "reload its config." % daemon_name)
                 self.logger.info(msg)
+                master_node = config.master_node
                 self.stop_child(daemon_name)
-                self.start_daemon(daemon_name)
+                self.start_daemon(daemon_name, reload=True,
+                                master_node=master_node)
                 break
             if reply == "reload_done":
                 self.childs[sender]['status'] = "ready"
                 break
 
-    def add_child(self, daemon):
+    def add_child(self, daemon, reload=False, master_node=False):
         """ Start a child daemon and add it to self.childs dictionary. """
         # We must use the sync manager here to get a successful daemon shutdown.
         comm_handler = self.comm_queue.get_handler(daemon.name)
 
+        # Add reload kwarg to daemon start.
+        target_kwargs = {'reload':reload, 'master_node':master_node}
+
         # Create process instance.
         p = multiprocessing.start_process(name=daemon.name,
                                         target=daemon.run,
-                                        target_args=(comm_handler,))
+                                        target_args=(comm_handler,),
+                                        target_kwargs=target_kwargs)
         startup_timeout = 15
         try:
             sender, \

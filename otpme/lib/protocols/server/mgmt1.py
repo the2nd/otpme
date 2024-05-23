@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 import signal
@@ -119,7 +118,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         if os.getpid() != self.pid:
             return
         msg = ("Received SIGTERM.")
-        self.logger.debug(msg)
+        self.logger.info(msg)
 
         for job_uuid in dict(self.jobs):
             job = self.jobs[job_uuid]

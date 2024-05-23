@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 
@@ -811,6 +810,8 @@ class Token(OTPmeObject):
         path=None, realm=None, site=None, dummy=False, **kwargs):
         # Set our type (used in parent class)
         self.type = "token"
+
+        self.mode = None
 
         # Needed for set_path in parent class init.
         self.rel_path = None
@@ -3320,7 +3321,7 @@ class Token(OTPmeObject):
         lines.append('AUTH_SCRIPT="%s"' % auth_script)
         lines.append('AUTH_SCRIPT_OPTIONS="%s"' % auth_script_options)
 
-        if self.auth_script_enabled != None:
+        if self.auth_script_enabled is not None:
             if self.verify_acl("view:auth_script") \
                 or self.verify_acl("enable:auth_script") \
                 or self.verify_acl("disable:auth_script"):
@@ -3360,7 +3361,7 @@ class Token(OTPmeObject):
             else:
                 lines.append('KEEP_SESSION=""')
 
-        if self.used_otp_salt != None:
+        if self.used_otp_salt is not None:
             if self.verify_acl("view_all:used_otp_salt") \
             or self.verify_acl("edit:used_otp_salt"):
                 used_otp_salt = self.used_otp_salt
@@ -3368,7 +3369,7 @@ class Token(OTPmeObject):
                 used_otp_salt = ""
             lines.append('USED_OTP_SALT="%s"' % used_otp_salt)
 
-        if self.mode != None:
+        if self.mode is not None:
             if self.verify_acl("view:mode") or self.verify_acl("edit:mode"):
                 lines.append('MODE="%s"' % self.mode)
             else:

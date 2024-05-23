@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 
@@ -2140,10 +2139,12 @@ class Site(OTPmeObject):
         base_clients = config.get_base_objects("client")
         for c in base_clients:
             template = base_clients[c]['template']
+            attributes = base_clients[c]['attributes']
             client = Client(name=c,
                             realm=self.realm,
                             site=self.name,
-                            template=template)
+                            template=template,
+                            **attributes)
             if client.exists():
                 client.add_default_policies()
                 continue
@@ -2251,6 +2252,7 @@ class Site(OTPmeObject):
         self.add_object_templates(callback=callback)
 
         # Run base policies post methods.
+        self.add_base_policies(callback=callback)
         for policy in self._base_policies_post_methods:
             post_methods = self._base_policies_post_methods[policy]
             for x in post_methods:
@@ -2559,10 +2561,10 @@ class Site(OTPmeObject):
             for object_id in objects[object_type]:
                 msg = "Deleting: %s" % object_id
                 callback.send(msg)
-                backend.delete_object(object_id)
+                backend.delete_object(object_id, cluster=True)
 
         # Delete object using parent class.
-        return OTPmeObject.delete(self, verbose_level=verbose_level,
+        return super(Site, self).delete(verbose_level=verbose_level,
                                     force=force, callback=callback)
 
     @check_acls(['delete:orphans'])

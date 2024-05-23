@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 
 try:
@@ -83,7 +82,7 @@ cmd_help = {
 
 
     'gen_keys'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user gen_keys {user}',
+                    '_cmd_usage_help' : 'Usage: otpme-user gen_keys [--server] [-b <bits>] [--pass-hash-type <hash_type>] [-n] {user}',
                     'cmd'   :   '-b :key_len: --server :sign_mode=server: --pass-hash-type :pass_hash_type: -n :encrypt_key=False: --stdin-pass :stdin_pass=True: <|object|>',
                     '_help' :   {
                                     'cmd'                               : 'Generate users RSA key pair',

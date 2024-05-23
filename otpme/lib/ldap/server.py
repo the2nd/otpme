@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 import copy
@@ -83,7 +82,7 @@ def register_config():
     config.register_config_var("ldap_client_name", str, LDAP_CLIENT_NAME)
     config.register_config_var("ldap_access_group", str, LDAP_ACCESSGROUP)
     config.register_base_object("accessgroup",  LDAP_ACCESSGROUP)
-    client_attrs = {'accessgroup':LDAP_ACCESSGROUP}
+    client_attrs = {'access_group':LDAP_ACCESSGROUP}
     config.register_base_object(object_type="client",
                             name=config.ldap_client_name,
                             attributes=client_attrs)
@@ -205,18 +204,17 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             r = []
             realm = None
             for i in reversed(self.dn.getText().split(",")):
-                if i.startswith("dc="):
-                    if realm:
-                        # Get OTPme client from DN.
-                        self.client = i.split("=")[1]
-                        #msg = "Using client from DN: %s" % self.client
-                        #log.msg(msg, logLevel=logging.DEBUG)
-                    r.insert(0, i.replace("dc=", ""))
-                    x = ".".join(r)
-                    if x == config.realm:
-                        realm = x
-                else:
+                if not i.startswith("dc="):
                     break
+                if realm:
+                    # Get OTPme client from DN.
+                    self.client = i.split("=")[1]
+                    #msg = "Using client from DN: %s" % self.client
+                    #log.msg(msg, logLevel=logging.DEBUG)
+                r.insert(0, i.replace("dc=", ""))
+                x = ".".join(r)
+                if x == config.realm:
+                    realm = x
 
             # Handle OTPme object requests.
             otpme_oid = get_oid_from_path(self.path)
@@ -284,42 +282,62 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
     def _bind(self, password):
         """ Authenticate user against OTPme. """
-        #realm = None
-        #auth_status = False
+        if self.client is None:
+            msg = "Missing client DC: %s" % self.dn.getText()
+            logger.warning(msg)
+            raise ldaperrors.LDAPInvalidCredentials
 
+        # Get username from DN.
         username = self.dn.getText().split(",")[0].split("=")[1]
-        #r = []
-        #for i in reversed(self.dn.getText().split(",")):
-        #    if not i.startswith("dc="):
-        #        break
-        #    r.insert(0, i.replace("dc=", ""))
-        #    x = ".".join(r)
-        #    if x == config.realm:
-        #        realm = x
 
+        # Get authd connection.
         try:
             authd_conn = connections.get("authd",
                                         realm=config.realm,
                                         site=config.site,
-                                        client=self.client,
                                         auto_auth=False,
+                                        do_preauth=False,
+                                        auto_preauth=False,
                                         interactive=False,
                                         handle_response=True,
-                                        username=username,
-                                        password=password)
+                                        socket_uri=config.authd_socket_path,
+                                        local_socket=True,
+                                        use_ssl=False,
+                                        handle_host_auth=False,
+                                        handle_user_auth=False,
+                                        encrypt_session=False)
         except Exception as e:
             msg = "Failed to get authd connection: %s" % e
             logger.critical(msg)
             raise
+
+        # Build command args.
+        command_args = {
+                        'username'  : username,
+                        'password'  : password,
+                        'client'    : self.client,
+                        }
+
+        # Send verify request.
         try:
-            authd_conn.authenticate("auth")
+            status, \
+            status_code, \
+            auth_reply = authd_conn.send(command="verify",
+                                command_args=command_args)
         except Exception as e:
             msg = "Failed to authenticate user: %s" % e
             logger.warning(msg)
             raise ldaperrors.LDAPInvalidCredentials
+
+        if status is False:
+            msg = "Failed to authenticate user: %s" % auth_reply
+            logger.warning(msg)
+            raise ldaperrors.LDAPInvalidCredentials
+
         # Set auth token.
-        login_token_uuid = authd_conn.auth_reply['login_token_uuid']
+        login_token_uuid = auth_reply[0]['login_token_uuid']
         self.auth_token = backend.get_object(uuid=login_token_uuid)
+
         return self
 
     def parent(self):
@@ -437,7 +455,6 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             dn_parts = object_dn.split(",")
             dn_parts.reverse()
             r = []
-            count = 0
             for i in dn_parts:
                 if i.startswith("dc="):
                     if realm:
@@ -452,7 +469,6 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 if i.startswith("ou="):
                     site = re.sub('^ou=', '', i)
                     break
-                count += 1
 
             # Make sure we do not add <site> parameter when searching for a
             # site object.
@@ -625,10 +641,10 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 attribute = attribute.decode("utf-8")
             if isinstance(value, bytes):
                 value = value.decode("utf-8")
-            if attribute and (value != None
-                            or less_than != None
-                            or greater_than != None
-                            or value != None):
+            if attribute and (value is not None
+                            or less_than is not None
+                            or greater_than is not None
+                            or value is not None):
 
                 # Try to get case sensitive attribute name.
                 x = attribute.lower()
@@ -1184,7 +1200,7 @@ class LDAPServer(object):
     def signal_handler(self, _signal, frame):
         """ Exit on signal. """
         msg = ("Received SIGTERM.")
-        logger.debug(msg)
+        logger.info(msg)
         os._exit(0)
 
     def listen(self, use_ssl=False, cert=None, key=None):

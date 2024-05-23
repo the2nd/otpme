@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import sys
 import time
@@ -856,8 +855,12 @@ class OTPmeConfig(object):
         if self.use_api:
             if self.connect_realm:
                 self.realm = self.connect_realm
+            else:
+                self.connect_realm = self.realm
             if self.connect_site:
                 self.site = self.connect_site
+            else:
+                self.connect_site = self.site
         else:
             if not self.connect_realm:
                 self.connect_realm = self.realm

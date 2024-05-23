@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 import datetime
@@ -1214,7 +1213,7 @@ class User(OTPmeObject):
         self.sign_mode = "client"
         # Will hold users RSA private key or stuff needed to get it
         # via self.key_script.
-        self.private_key = None
+        #self.private_key = {}
         # Will hold users RSA public key.
         self.public_key = None
         # Indicates if user auto-sign feature is enabled.
@@ -1304,8 +1303,9 @@ class User(OTPmeObject):
 
                         'PRIVATE_KEY'               : {
                                                         'var_name'  : 'private_key',
-                                                        'type'      : str,
+                                                        'type'      : dict,
                                                         'required'  : False,
+                                                        'encoding'  : 'BASE64',
                                                         'encryption': config.disk_encryption,
                                                     },
 
@@ -1699,19 +1699,22 @@ class User(OTPmeObject):
         """ Get users sign mode. """
         return callback.ok(self.sign_mode)
 
-    def _encode_key(self, aes_key, rsa_key):
+    def _set_key(self, aes_key=None, rsa_key=None, encrypted=False):
         """
         Encode (create one line string with AES+RSA key) private key string.
         """
-        key_pack = 'AESKEY:%s\0RSAKEY:%s' % (aes_key, rsa_key)
-        return key_pack
+        self.private_key = {'aes_key':aes_key, 'rsa_key':rsa_key, 'encrypted':encrypted}
 
-    def _decode_key(self):
-        """ Decode (split AES key from RSA key) private key string """
-        x = self.private_key.split("{")[1].split("}")[0]
-        aes_key_enc = x.split("\0")[0].split(":")[1]
-        encrypted_key = x.split("\0")[1].split(":")[1]
-        return aes_key_enc, encrypted_key
+    def _get_key(self):
+        if self.sign_mode == "server":
+            aes_key = self.private_key['aes_key']
+            rsa_key = self.private_key['rsa_key']
+            encrypted = self.private_key['encrypted']
+        else:
+            aes_key = None
+            rsa_key = self.private_key['key_blob']
+            encrypted = False
+        return aes_key, rsa_key, encrypted
 
     @object_lock()
     @check_acls(['edit:group'])
@@ -1995,12 +1998,13 @@ class User(OTPmeObject):
 
             # Get keys from reply.
             try:
-                self.private_key = reply['private_key']
-            except:
+                self.private_key = {}
+                self.private_key['key_blob'] = reply['private_key']
+            except KeyError:
                 pass
             try:
                 self.public_key = reply['public_key']
-            except:
+            except KeyError:
                 pass
 
             if not self.public_key:
@@ -2034,14 +2038,12 @@ class User(OTPmeObject):
             try:
                 key_encrypted = key.encrypt_key(aes_key=aes_key,
                                             hash_type=pass_hash_type)
-                key_pack = self._encode_key(aes_key_enc, key_encrypted)
+                self._set_key(aes_key_enc, key_encrypted, encrypted=True)
             except Exception as e:
                 msg = (_("Error encrypting private key: %s") % e)
                 return callback.error(msg)
-            self.private_key = "RSA{%s}" % key_pack
         else:
-            private_key = encode(key.private_key_base64, "base64")
-            self.private_key = "RSA[%s]" % private_key
+            self._set_key(rsa_key=private_key_base64)
 
         # Set public key.
         self.public_key = encode(key.public_key_base64, "base64")
@@ -2094,43 +2096,35 @@ class User(OTPmeObject):
         if not self.private_key:
             msg = "No private key set."
             return callback.error(msg)
-        if self.private_key.startswith("RSA["):
-            try:
-                private_key = self.private_key.split("[")[1].split("]")[0]
-                private_key = decode(private_key, "base64")
-            except:
-                msg = "Error decoding private key value."
-                return callback.error(msg)
-        elif self.private_key.startswith("RSA{"):
-            try:
-                aes_key_enc, encrypted_key = self._decode_key()
-            except:
-                msg = "Error decoding private key value."
-                return callback.error(msg)
+        # Decode private key stuff.
+        aes_key, rsa_key, encrypted = self._get_key()
+        if encrypted:
             if decrypt:
                 if not aes_key:
                     if _caller == "API":
                         msg = ("Need 'aes_key' to decrypt private key.")
                         raise OTPmeException(msg)
-                    # Try to decrypt AES key.
-                    aes_key = callback.decrypt(aes_key_enc)
-                    if not isinstance(aes_key, str):
-                        msg = ("Unable to decrypt private key.")
-                        return callback.error(msg)
+                # Try to decrypt AES key.
+                aes_key = callback.decrypt(aes_key)
+                if not isinstance(aes_key, str):
+                    msg = ("Unable to decrypt private key.")
+                    return callback.error(msg)
                 # Try to decrypt RSA key.
+                key = RSAKey(key=rsa_key, aes_key=aes_key)
                 try:
-                    key = RSAKey(key=encrypted_key, aes_key=aes_key)
+                    key = RSAKey(key=rsa_key, aes_key=aes_key)
                     private_key = key.private_key_base64
                 except Exception as e:
+                    config.raise_exception()
                     msg = (_("Error decrypting private key: %s") % e)
                     return callback.error(msg)
             else:
-                private_key = encrypted_key
+                private_key = rsa_key
         else:
-            private_key = self.private_key
+            private_key = decode(rsa_key, "base64")
 
         # We must not use callback here to prevent sending private key to the
-        # client by accident!!
+        # client by accident!
         return private_key
 
     @check_acls(['edit:private_key_pass'])
@@ -2203,9 +2197,7 @@ class User(OTPmeObject):
                 msg = (_("Error encrypting private key: %s") % e)
                 return callback.error(msg)
             # Encode keys.
-            key_pack = self._encode_key(aes_key_enc, key_encrypted)
-            # Set new private key string.
-            self.private_key = "RSA{%s}" % key_pack
+            self._set_key(aes_key_enc, key_encrypted, encrypted=True)
 
         return self._cache(callback=callback)
 
@@ -2651,10 +2643,10 @@ class User(OTPmeObject):
         for x in token_list:
             token_groups = x.get_groups(return_type=return_type)
             # FIXME: how to handle groups from other sites?
-            for x in token_groups:
-                if x in result:
+            for g in token_groups:
+                if g in result:
                     continue
-                result.append(x)
+                result.append(g)
 
         if _caller == "RAPI":
             result = ",".join(result)
@@ -2673,10 +2665,10 @@ class User(OTPmeObject):
         for x in token_list:
             token_groups = x.get_access_groups(return_type=return_type)
             # FIXME: how to handle groups from other sites?
-            for x in token_groups:
-                if x in result:
+            for g in token_groups:
+                if g in result:
                     continue
-                result.append(x)
+                result.append(g)
 
         if _caller == "RAPI":
             result = ",".join(result)

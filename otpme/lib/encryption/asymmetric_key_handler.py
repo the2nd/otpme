@@ -1,16 +1,13 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
-from cryptography import exceptions
+import json
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import utils
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.hazmat.primitives.serialization import PublicFormat
 from cryptography.hazmat.primitives.serialization import NoEncryption
 from cryptography.hazmat.primitives.serialization import PrivateFormat
-from cryptography.hazmat.primitives.asymmetric import padding as _padding
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
@@ -240,87 +237,24 @@ class AsymmetricKeyHandler(object):
             salt = "NULL"
         encrypted_key = encryption.aes.encrypt(aes_key, self.private_key_base64)
         encoded_key = encode(encrypted_key, "hex")
-        key_pack = 'SALT:%s\0KEY:%s\0HASH_TYPE:%s' % (salt, encoded_key, hash_type)
-        return encode(key_pack, encoding)
+        key_pack = {'salt':salt, 'key':encoded_key, 'hash_type':hash_type}
+        key_pack = json.dumps(key_pack)
+        return key_pack
 
     def decrypt_key(self, key_pack, password=None, aes_key=None, encoding="base64"):
         """ Decrypt AES encrypted private key. """
         if not password and not aes_key:
             raise Exception("Need 'password' or 'aes_key'.")
-        decoded_key_pack = decode(key_pack, encoding)
+        decoded_key_pack = json.loads(key_pack)
         if password:
-            salt = decoded_key_pack.split('\0')[0].split(":")[1]
-            hash_type = decoded_key_pack.split('\0')[2].split(":")[1]
+            salt = decoded_key_pack['salt']
+            hash_type = decoded_key_pack['hash_type']
             aes_key = encryption.derive_key(password,
                                         salt=salt,
                                         hash_type=hash_type)['key']
             # Remember hash type.
             self.pass_hash_type = hash_type
-        encrypted_key = decode(decoded_key_pack.split('\0')[1].split(":")[1], "hex")
+        encrypted_key = decoded_key_pack['key']
+        encrypted_key = decode(encrypted_key, "hex")
         private_key = encryption.aes.decrypt(aes_key, encrypted_key)
         return private_key
-
-    def sign(self, message=None, digest=None, padding='PSS', algorithm="SHA256"):
-        """ Sign data with our private key. """
-        if not message and not digest:
-            raise OTPmeException("Need at least 'message' or 'digest'.")
-        try:
-            hash_algo_method = getattr(hashes, algorithm)
-        except:
-            msg = "Unknown hash algorithm: %s" % algorithm
-            raise OTPmeException(msg)
-        if padding == 'PSS':
-            _mgf = _padding.MGF1(algorithm=hash_algo_method())
-            padding = _padding.PSS(mgf=_mgf, salt_length=_padding.PSS.MAX_LENGTH)
-        elif padding == "PKCS1v15":
-            padding = _padding.PKCS1v15()
-        else:
-            msg = "Invalid padding: %s" % padding
-            raise OTPmeException(msg)
-        if message:
-            message = message.encode()
-        if digest:
-            digest = decode(digest, "hex")
-            pre_hashed = utils.Prehashed(hash_algo_method())
-            signature = self.private_key.sign(digest, padding, pre_hashed)
-        else:
-            signature = self.private_key.sign(message, padding, hash_algo_method())
-
-        return signature
-
-    def verify(self, signature, message=None, digest=None, padding='PSS', algorithm="SHA256"):
-        """ Verify signed data and clear-text with public key. """
-        if not message and not digest:
-            raise OTPmeException("Need at least 'message' or 'digest'.")
-        try:
-            hash_algo_method = getattr(hashes, algorithm)
-        except:
-            msg = "Unknown hash algorithm: %s" % algorithm
-            raise OTPmeException(msg)
-        if padding == 'PSS':
-            _mgf = _padding.MGF1(algorithm=hash_algo_method())
-            padding = _padding.PSS(mgf=_mgf, salt_length=_padding.PSS.MAX_LENGTH)
-        elif padding == "PKCS1v15":
-            padding = _padding.PKCS1v15()
-        else:
-            msg = "Invalid padding: %s" % padding
-            raise OTPmeException(msg)
-        if message:
-            message = message.encode()
-        if digest:
-            digest = decode(digest, "hex")
-            pre_hashed = utils.Prehashed(hash_algo_method())
-            try:
-                signature = self.public_key.verify(signature, digest, padding, pre_hashed)
-                verify_result = True
-            except exceptions.InvalidSignature:
-                verify_result = False
-        else:
-            try:
-                self.public_key.verify(signature, message, padding, hash_algo_method())
-                verify_result = True
-            except exceptions.InvalidSignature:
-                verify_result = False
-        if verify_result is True:
-            return True
-        return False

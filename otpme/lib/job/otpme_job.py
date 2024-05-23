@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 import setproctitle
@@ -156,7 +155,7 @@ class OTPmeJob(object):
                 # Get logger.
                 logger = config.logger
                 msg = "Received SIGTERM."
-                logger.debug(msg)
+                logger.info(msg)
                 if _signal == 2:
                     self.callback.stop_job = True
                 if _signal == 15:

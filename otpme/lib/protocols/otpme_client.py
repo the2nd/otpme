@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 # FIXME: We should use re2 anywhere but currently it seems like re2 is not
 #        compatible to re in every case. The code below demonstrates one issue.
 #        import re2 as re
@@ -581,7 +580,7 @@ class OTPmeClient(OTPmeClientBase):
             exception = None
             # Set agent protocol we negotiated.
             self.agent_protocol = response.split(":")[1].replace(" ", "")
-            if config.debug_level(DEBUG_SLOT) > 0:
+            if config.debug_level(DEBUG_SLOT) > 3:
                 msg = ("Agent supports protocol version: %s" % self.agent_protocol)
                 self.logger.debug(msg)
             # Try to get agent protocol class.
@@ -635,7 +634,7 @@ class OTPmeClient(OTPmeClientBase):
         # Set server protocol we negotiated.
         self.protocol = response.split(":")[1].replace(" ", "")
         config.client_protocol = self.protocol
-        if config.debug_level(DEBUG_SLOT) > 0:
+        if config.debug_level(DEBUG_SLOT) > 3:
             msg = ("Server supports protocol version: %s" % self.protocol)
             self.logger.debug(msg)
         self.set_proto_handler()
@@ -983,7 +982,7 @@ class OTPmeClient(OTPmeClientBase):
             else:
                 ssh_key_pass = self.password
 
-            if config.debug_level(DEBUG_SLOT) > 0:
+            if config.debug_level(DEBUG_SLOT) > 3:
                 self.logger.debug("Adding SSH key passphrase to agent...")
             # Add SSH key pass to agent.
             try:
@@ -993,7 +992,7 @@ class OTPmeClient(OTPmeClientBase):
                 msg = (_("Error adding SSH key passphrase to agent: %s") % e)
                 raise OTPmeException(msg)
 
-        if config.debug_level(DEBUG_SLOT) > 0:
+        if config.debug_level(DEBUG_SLOT) > 3:
             self.logger.debug("Signing SSH challenge...")
         # Try to sign challenge with via running SSH agent.
         try:
@@ -1129,6 +1128,7 @@ class OTPmeClient(OTPmeClientBase):
 
         # Load sign data.
         try:
+            sign_mode = sign_request['sign_mode']
             sign_info = sign_request['sign_info']
             sign_data = sign_request['sign_data']
         except Exception as e:
@@ -1156,8 +1156,10 @@ class OTPmeClient(OTPmeClientBase):
                                             user=config.system_user(),
                                             mode=0o700)
 
-        ## Build key script command to sign data.
+        # Build key script command to sign data.
         script_command = [ "sign" ]
+        if sign_mode == "server":
+            script_command.append("--server-key")
         script_options = [ sign_object_file, '/dev/stdout' ]
 
         # Run key script.
@@ -1168,6 +1170,12 @@ class OTPmeClient(OTPmeClientBase):
                                         key_pass=config.stdin_pass,
                                         script_command=script_command,
                                         script_options=script_options)
+        # Make sure script output is string.
+        if isinstance(script_stdout, bytes):
+            script_stdout = script_stdout.decode()
+        if isinstance(script_stderr, bytes):
+            script_stderr = script_stderr.decode()
+
         # Remove sign object file.
         os.remove(sign_object_file)
 
@@ -1180,7 +1188,7 @@ class OTPmeClient(OTPmeClientBase):
             raise OTPmeException(msg)
 
         # Get signature from key script stdout
-        script_stdout = script_stdout.decode()
+        #script_stdout = script_stdout.decode()
         for line in script_stdout.split("\n"):
             if line.startswith('SIGNATURE='):
                 signature = re.sub('^SIGNATURE=["]+([^"]*)["]+$', r'\1', line)
@@ -1220,6 +1228,11 @@ class OTPmeClient(OTPmeClientBase):
         # Check script return code.
         script_stdout = proc.stdout.read()
         script_stderr = proc.stderr.read()
+        ## Make sure script output is string.
+        #if isinstance(script_stdout, bytes):
+        #    script_stdout = script_stdout.decode()
+        #if isinstance(script_stderr, bytes):
+        #    script_stderr = script_stderr.decode()
         proc.wait()
         script_returncode = proc.returncode
         if script_returncode != 0:
@@ -1264,6 +1277,11 @@ class OTPmeClient(OTPmeClientBase):
         # Check script return code.
         script_stdout = proc.stdout.read()
         script_stderr = proc.stderr.read()
+        # Make sure script output is string.
+        if isinstance(script_stdout, bytes):
+            script_stdout = script_stdout.decode()
+        if isinstance(script_stderr, bytes):
+            script_stderr = script_stderr.decode()
         proc.wait()
         script_returncode = proc.returncode
         if script_returncode != 0:
@@ -2228,7 +2246,7 @@ class OTPmeClient1(OTPmeClientBase):
             enc_mod = self.session_enc_mod
             enc_key = enc_mod.gen_key()
             # Load site key.
-            if config.debug_level(DEBUG_SLOT) > 0:
+            if config.debug_level(DEBUG_SLOT) > 3:
                 self.logger.debug("Loading site key.")
             try:
                 site_key = RSAKey(key=self.site_cert.public_key())
@@ -2237,7 +2255,7 @@ class OTPmeClient1(OTPmeClientBase):
                 msg = (_("Failed to load site key."))
                 raise OTPmeException(msg)
             # Encrypt AES key with site public key.
-            if config.debug_level(DEBUG_SLOT) > 0:
+            if config.debug_level(DEBUG_SLOT) > 3:
                 self.logger.debug("Encrypting preauth key...")
             try:
                 _enc_key = site_key.encrypt(enc_key)
@@ -2252,7 +2270,7 @@ class OTPmeClient1(OTPmeClientBase):
             # Add encrypted AES key.
             command_args['enc_key'] = _enc_key
             # Generating DH parameters.
-            if config.debug_level(DEBUG_SLOT) > 0:
+            if config.debug_level(DEBUG_SLOT) > 3:
                 self.logger.debug("Generating DH parameters for session key...")
             try:
                 ecdh_key = ECKey()
@@ -2285,7 +2303,7 @@ class OTPmeClient1(OTPmeClientBase):
         else:
             msg = ("Sending preauth request to %s %s/%s..."
                     % (self.daemon, self.realm, self.site))
-        if config.debug_level(DEBUG_SLOT) > 0:
+        if config.debug_level(DEBUG_SLOT) > 3:
             self.logger.debug(msg)
         try:
             status, \
@@ -2440,13 +2458,13 @@ class OTPmeClient1(OTPmeClientBase):
                 msg = (_("Site signature verification failed: %s: %s")
                         % (self.site_cert.get_cn(), e))
                 raise AuthFailed(msg)
-            if config.debug_level(DEBUG_SLOT) > 0:
+            if config.debug_level(DEBUG_SLOT) > 3:
                 msg = ("Site signature verification successful: %s" % self.site)
                 self.logger.debug(msg)
 
         if self.connection.encrypt_session:
             # Generate session key via DH.
-            if config.debug_level(DEBUG_SLOT) > 0:
+            if config.debug_level(DEBUG_SLOT) > 3:
                 self.logger.debug("Generating session key via DH.")
             try:
                 ecdh_server_pub = ecdh_key.load_public_key(ecdh_server_pub_pem)
@@ -2488,7 +2506,7 @@ class OTPmeClient1(OTPmeClientBase):
             elif self.logout:
                 # No need to redirect request on logout as its
                 # done via SLP from otpme-agent.
-                if config.debug_level(DEBUG_SLOT) > 0:
+                if config.debug_level(DEBUG_SLOT) > 3:
                     self.logger.debug("Doing cross-site logout.")
 
             elif preauth_status == "redirect_auth":
@@ -2647,7 +2665,7 @@ class OTPmeClient1(OTPmeClientBase):
         #    if not self.login_session_id:
         #        return
         #    # If we got a login session ID try to auth with agent.
-        #    if config.debug_level(DEBUG_SLOT) > 0:
+        #    if config.debug_level(DEBUG_SLOT) > 3:
         #        self.logger.debug("Using login session ID: %s"
         #                        % self.login_session_id)
         #    command_args = {
@@ -3015,7 +3033,7 @@ class OTPmeClient1(OTPmeClientBase):
             command_args['client_offline_enc_type'] = self._offline_token.enc_type
 
             # Generate DH stuff used to calculate RSP.
-            if config.debug_level(DEBUG_SLOT) > 0:
+            if config.debug_level(DEBUG_SLOT) > 3:
                 self.logger.debug("Generating DH key for RSP.")
 
             self.rsp_ecdh_key = ECKey()
@@ -3262,7 +3280,7 @@ class OTPmeClient1(OTPmeClientBase):
 
             if self.login:
                 # Calculate RSP.
-                if config.debug_level(DEBUG_SLOT) > 0:
+                if config.debug_level(DEBUG_SLOT) > 3:
                     self.logger.debug("Generating RSP via ECDH...")
                 rsp_ecdh_server_pub = self.auth_reply['ecdh_server_pub']
                 server_pubkey = self.rsp_ecdh_key.load_public_key(rsp_ecdh_server_pub)
@@ -3494,7 +3512,7 @@ class OTPmeClient1(OTPmeClientBase):
         peer_type = self.peer.type[0].upper() + self.peer.type[1:].lower()
         response = (_("%s response verification successful: %s")
                                 % (peer_type, self.peer.fqdn))
-        if config.debug_level(DEBUG_SLOT) > 0:
+        if config.debug_level(DEBUG_SLOT) > 3:
             self.logger.debug(response)
 
         return response

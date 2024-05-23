@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 import datetime
@@ -134,6 +133,7 @@ class OTPmeHost(OTPmeClientObject):
         self.join_node_cache = None
         self.join_token = None
         self.join_token_cache  = None
+        self.private_key = None
 
     def _get_object_config(self, object_config=None):
         """ Get object config dict """
@@ -813,7 +813,8 @@ class OTPmeHost(OTPmeClientObject):
         if private:
             key_type = "private"
         msg = ("Loading %s %s auth key." % (self.type, key_type))
-        logger.debug(msg)
+        if config.debug_level() > 3:
+            logger.debug(msg)
         try:
             if private:
                 auth_key = config.host_data['auth_key']
@@ -827,7 +828,8 @@ class OTPmeHost(OTPmeClientObject):
 
     def gen_challenge(self):
         """ Generate host authentication challenge. """
-        logger.debug("Generating %s auth challenge." % self.type)
+        if config.debug_level() > 3:
+            logger.debug("Generating %s auth challenge." % self.type)
         epoch_time = str(int(time.time()))
         nonce = stuff.gen_secret(len=32)
         challenge = "%s:%s" % (epoch_time, nonce)
@@ -836,7 +838,8 @@ class OTPmeHost(OTPmeClientObject):
     def sign_challenge(self, challenge):
         """ Sign authentication challenge. """
         auth_key = self.load_auth_key(private=True)
-        logger.debug("Signing %s auth challenge." % self.type)
+        if config.debug_level() > 3:
+            logger.debug("Signing %s auth challenge." % self.type)
         response = auth_key.sign(challenge)
         response = encode(response, "hex")
         return response
@@ -845,7 +848,8 @@ class OTPmeHost(OTPmeClientObject):
         """ Verify authentication challenge/response. """
         auth_key = self.load_auth_key()
         response = decode(response, "hex")
-        logger.debug("Verifying %s auth challenge." % self.type)
+        if config.debug_level() > 3:
+            logger.debug("Verifying %s auth challenge." % self.type)
         # Verify challenge/response.
         if auth_key.verify(response, challenge):
             epoch_time = int(time.time())

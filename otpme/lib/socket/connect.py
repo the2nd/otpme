@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import ssl
 import socket
@@ -329,7 +328,8 @@ class ConnectSocket(object):
         if not self.connected:
             return
         self.connected = False
-        self.logger.debug("Closing connection to '%s'" % self.socket_uri)
+        if config.debug_level() > 3:
+            self.logger.debug("Closing connection to '%s'" % self.socket_uri)
         self.send("quit", timeout=0.01)
         self._close()
 

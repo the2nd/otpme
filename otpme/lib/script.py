@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 # python3.
 try:
@@ -253,7 +252,9 @@ def run(script_type, script_path, realm=None, site=None, options=None,
             return_val.wait()
             # Remove temporary script file.
             os.remove(script_file)
-        multiprocessing.start_thread(_remove_file, ())
+        multiprocessing.start_thread(name="remove_script",
+                                    target=_remove_file,
+                                    daemon=True)
         return return_val
 
     # Remove temporary script file.

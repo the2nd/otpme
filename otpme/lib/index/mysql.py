@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 import shutil
@@ -259,7 +258,7 @@ def stop():
         raise NotRunning(msg)
     logger = config.logger
     msg = "Stopping mysql..."
-    logger.debug(msg)
+    logger.info(msg)
     socket_file = get_socket_file()
     stop_cmd = [ config.mysql_admin_bin,
                 "-u", config.user,

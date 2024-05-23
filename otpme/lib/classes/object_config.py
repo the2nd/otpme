@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 # NOTE: Its important to use the same JSON module on each host
 #       when generating the checksums, so we do not use otpme.lib.json.

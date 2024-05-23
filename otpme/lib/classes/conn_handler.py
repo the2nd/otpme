@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 
 try:
@@ -49,8 +48,9 @@ class ConnHandler(object):
                 continue
             except ConnectionQuit:
                 self.connection._close()
-                msg = "Client closed connection."
-                self.logger.debug(msg)
+                if config.debug_level() > 3:
+                    msg = "Client closed connection."
+                    self.logger.debug(msg)
                 break
             except Exception as e:
                 msg = "Failed to receive data from client: %s" % e
@@ -82,7 +82,7 @@ class ConnHandler(object):
                     break
                 except Exception as e:
                     msg = ("Exception in protocol handler: %s" % e)
-                    self.logger.critical(msg)
+                    self.logger.critical(msg, exc_info=True)
                     final_response = "Internal server error"
                     status = status_codes.SERVER_QUIT
                     config.raise_exception()
@@ -155,9 +155,10 @@ class ConnHandler(object):
                         status = status_codes.SERVER_QUIT
                         #config.raise_exception()
                         break
-                    msg = ("Using protocol %s for client: %s"
-                            % (self.protocol, client_ip))
-                    self.logger.debug(msg)
+                    if config.debug_level() > 3:
+                        msg = ("Using protocol %s for client: %s"
+                                % (self.protocol, client_ip))
+                        self.logger.debug(msg)
 
                 elif command == "quit":
                     final_response = "Bye bye..."

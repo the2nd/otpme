@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 import signal
@@ -365,7 +364,8 @@ class OTPmeServer1(object):
         """ Load site certificate. """
         if self._site_cert:
             return self._site_cert
-        self.logger.debug("Loading site certificate.")
+        if config.debug_level() > 3:
+            self.logger.debug("Loading site certificate.")
         own_site = backend.get_object(object_type="site",
                                     uuid=config.site_uuid)
         self._site_cert = own_site._cert
@@ -387,7 +387,8 @@ class OTPmeServer1(object):
             raise OTPmeException(msg)
         # Sing challenge with site cert.
         site_cert = self._get_site_cert()
-        self.logger.debug("Signing ident challenge.")
+        if config.debug_level() > 3:
+            self.logger.debug("Signing ident challenge.")
         try:
             ident_response = site_cert.sign(data=ident_challenge,
                                             encoding="base64")
@@ -490,7 +491,8 @@ class OTPmeServer1(object):
                 self.logger.warning(msg)
                 raise ServerQuit(msg)
             msg = ("Found valid peer %s: %s" % (self.peer.type, self.peer.name))
-            self.logger.debug(msg)
+            if config.debug_level() > 3:
+                self.logger.debug(msg)
         # Allow "quit" also for disabled hosts.
         if command == "quit":
             msg = "Bye bye..."
@@ -537,7 +539,8 @@ class OTPmeServer1(object):
         if command == "preauth_check":
             msg = ("Processing 'preauth_check' command for client: %s"
                     % self.client_name)
-            self.logger.debug(msg)
+            if config.debug_level() > 3:
+                self.logger.debug(msg)
             try:
                 enc_key = command_args['enc_key']
             except:
@@ -766,7 +769,8 @@ class OTPmeServer1(object):
                                 "public key."))
                     raise OTPmeException(msg)
         msg = "Decrypting preauth request key..."
-        self.logger.debug(msg)
+        if config.debug_level() > 3:
+            self.logger.debug(msg)
         try:
             enc_key = decode(enc_key, "hex")
             enc_key = self.site_key.decrypt(enc_key)
@@ -779,7 +783,8 @@ class OTPmeServer1(object):
 
         # Decode/decrypt preauth request.
         msg = "Decrypting preauth request..."
-        self.logger.debug(msg)
+        if config.debug_level() > 3:
+            self.logger.debug(msg)
         try:
             decoded_request = json.decode(preauth_request,
                                         encoding="base64",
@@ -944,7 +949,8 @@ class OTPmeServer1(object):
                 'preauth_reply' : preauth_reply,
                 }
 
-        self.logger.debug("Sending preauth reply.")
+        if config.debug_level() > 3:
+            self.logger.debug("Sending preauth reply.")
 
         # The outer request is sent unencrypted!
         return self.build_response(status, reply, encrypt=False)
@@ -958,7 +964,8 @@ class OTPmeServer1(object):
         if challenge:
             # Load site certificate.
             site_cert = self._get_site_cert()
-            self.logger.debug("Signing preauth challenge.")
+            if config.debug_level() > 3:
+                self.logger.debug("Signing preauth challenge.")
             try:
                 preauth_response = site_cert.sign(data=challenge, encoding="base64")
             except Exception as e:
@@ -969,7 +976,8 @@ class OTPmeServer1(object):
         ecdh_server_pub_pem =   None
         if self.encrypt_session:
             # Generate session key via DH.
-            self.logger.debug("Generating session key via DH.")
+            if config.debug_level() > 3:
+                self.logger.debug("Generating session key via DH.")
             try:
                 ecdh_key = ECKey()
                 ecdh_key.gen_key(curve=self.ecdh_curve)
@@ -1494,7 +1502,8 @@ class OTPmeServer1(object):
 
             msg = ("Peer response verification successful: %s"
                     % self.peer.name)
-            self.logger.debug(msg)
+            if config.debug_level() > 3:
+                self.logger.debug(msg)
 
             self.authenticated = True
             reply = "Host authentication successful."
@@ -1508,7 +1517,8 @@ class OTPmeServer1(object):
             self.logger.warning(msg)
             raise OTPmeException(msg)
 
-        self.logger.debug("Verified peer certificate CN: %s" % self.peer.fqdn)
+        if config.debug_level() > 3:
+            self.logger.debug("Verified peer certificate CN: %s" % self.peer.fqdn)
 
         # Set proctitle to contain peer name.
         peer_type = self.peer.type[0].upper() + self.peer.type[1:].lower()

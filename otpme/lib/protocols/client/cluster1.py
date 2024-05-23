@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 
 try:
@@ -282,6 +281,15 @@ class OTPmeClusterP1(OTPmeClient1):
     def do_radius_reload(self):
         """ Do radius reload. """
         command = "do_radius_reload"
+        command_args = {}
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args, timeout=None)
+        return status
+
+    def do_daemon_reload(self):
+        """ Send daemon reload command. """
+        command = "do_daemon_reload"
         command_args = {}
         status, \
         status_code, \

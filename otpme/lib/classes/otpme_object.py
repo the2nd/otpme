@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import sys
 import copy
@@ -792,7 +791,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         self._cert_public_key_oid = None
         self.key = None
         self._key_oid = None
-        self.private_key = None
+        #self.private_key = None
         self._private_key_oid = None
         self.public_key = None
         self._public_key_oid = None
@@ -947,6 +946,8 @@ class OTPmeBaseObject(OTPmeLockObject):
                                     incremental_data=self.incremental_updates)
             if cur_attr:
                 for k in cur_attr:
+                    if k in _dict:
+                        continue
                     v = cur_attr[k]
                     x_attr.incremental_del(k, v)
             setattr(self, attr, x_attr)
@@ -1965,21 +1966,10 @@ class OTPmeObject(OTPmeBaseObject):
         self.access_group = None
         self.path = None
         self.rel_path = None
-        #self.acls = []
         self._enabled = False
         self.acl_inheritance_enabled = None
-        #self.ldif = {}
-        #self.ldif_attributes = []
-        #self.object_classes = []
-        #self.extensions = []
         self._extensions = {}
-        #self._extension_attributes = {}
-        #self.policies = []
-        #self.policy_options = {}
-        #self.tokens = None
         self.token_owner = None
-        #self.roles = None
-        #self.sync_users = None
         self.description = ""
         self.secret = None
         self.secret_format_regex = None
@@ -1993,9 +1983,6 @@ class OTPmeObject(OTPmeBaseObject):
         self.auto_disable = ""
         self.unused_disable = False
         self.auto_disable_start_time = 0.0
-
-        # Config params of this object.
-        #self.config_params = {}
 
         self._base_sync_fields = {
                     'host'  : {
@@ -4277,6 +4264,7 @@ class OTPmeObject(OTPmeBaseObject):
                                     values=user_uuids,
                                     attributes=search_attrs,
                                     return_type=return_type)
+            result.sort()
         if _caller == "RAPI":
             result = ",".join(result)
         if _caller == "CLIENT":
@@ -6358,6 +6346,7 @@ class OTPmeObject(OTPmeBaseObject):
         sign_info = sig.get_sign_info()
         # Build sign request.
         sign_request = {
+                            'sign_mode' : signer.sign_mode,
                             'sign_info' : sign_info,
                             'sign_data' : sign_template,
                         }
@@ -6762,7 +6751,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         for user in user_list:
             try:
-                user_signs = self.signatures[user.uuid]
+                user_signs = self.signatures[user.uuid].copy()
             except:
                 continue
 
@@ -7521,7 +7510,7 @@ class OTPmeObject(OTPmeBaseObject):
         return return_status
 
     def show_config_parameters(self, callback=default_callback, **kwargs):
-        result = self.config_params
+        result = self.config_params.copy()
         return callback.ok(result)
 
     def show_config(self, config_lines=[],

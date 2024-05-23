@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 
 try:
@@ -664,9 +663,10 @@ class Script(OTPmeObject):
         """ Add a script. """
         if verify_acls:
             if replace:
-                if not self.verify_acl("edit:script"):
-                    msg = ("Permission denied.")
-                    return callback.error(msg, exception=PermissionDenied)
+                if self.exists():
+                    if not self.verify_acl("edit:script"):
+                        msg = ("Permission denied.")
+                        return callback.error(msg, exception=PermissionDenied)
             else:
                 _unit = backend.get_object(object_type="unit",
                                         uuid=self.unit_uuid)

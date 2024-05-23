@@ -1,10 +1,9 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
 
-# Protocol modules to register.
+# Object modules to register.
 modules = [
         'otpme.lib.classes.otpme_object',
         'otpme.lib.classes.user',

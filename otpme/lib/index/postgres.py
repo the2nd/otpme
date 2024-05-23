@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import time
 import shutil
@@ -317,7 +316,7 @@ def stop():
         raise NotRunning(msg)
     logger = config.logger
     msg = "Stopping postgresql..."
-    logger.debug(msg)
+    logger.info(msg)
     stop_cmd = [config.pg_ctl_bin, "-D", INDEX_DIR, "-m", "immediate", "stop"]
     return_code = system_command.run(command=stop_cmd,
                                     user=config.user,

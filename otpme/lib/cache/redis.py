@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 """Module for handling of redis caching.
 
 https://redis-py.readthedocs.io/en/stable/
@@ -262,7 +261,7 @@ def start():
     # Get logger.
     logger = config.logger
     msg = "Starting redis..."
-    logger.debug(msg)
+    logger.info(msg)
     # Make sure cache dir exists.
     if config.redis_persistence:
         init_cache_dir()
@@ -305,7 +304,7 @@ def stop():
     # Get logger.
     logger = config.logger
     msg = "Stopping redis..."
-    logger.debug(msg)
+    logger.info(msg)
     redis_socket = get_socket()
     stop_cmd = [config.redis_cli_bin, "-s", redis_socket, "shutdown"]
     return_code = system_command.run(command=stop_cmd,

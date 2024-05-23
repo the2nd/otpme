@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 import os
 import atexit
 
@@ -68,9 +67,9 @@ atexit.register(close_connections)
 def add_connection(proc_id, daemon, key, connection):
     """ Add connection to dict. """
     global connections
-    if not proc_id in connections:
+    if proc_id not in connections:
         connections[proc_id] = {}
-    if not daemon in connections[proc_id]:
+    if daemon not in connections[proc_id]:
         connections[proc_id][daemon] = {}
     connections[proc_id][daemon][key] = connection
 

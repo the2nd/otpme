@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-# Distributed under the terms of the GNU General Public License v2
 
 # http://stackoverflow.com/questions/6031584/importing-from-builtin-library-when-module-with-same-name-exists
 import socket
