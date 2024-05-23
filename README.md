@@ -16,6 +16,9 @@ systemctl disable freeradius
 ### Add otpme system user
 useradd -r -U -d /var/lib/otpme otpme
 
+### Enable nsswitch nsscache module
+Edit /etc/nsswitch.conf and append 'cache' to the lines passwd and group.
+
 ### Create python venv
 python3 -m venv /opt/otpme
 . /opt/otpme/bin/activate
