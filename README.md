@@ -4,12 +4,12 @@
 apt-get install python3.11-venv gobjc++ python3-pybind11 python3-dev build-essential cmake gcc dbus-x11 freeradius libacl1-dev libnss-cache liboath0 liboath-dev libpcsclite1 libpq-dev libre2-9 libre2-dev libsystemd-dev pkg-config postgresql postgresql-server-dev-all pwgen pyflakes3 redis redis-server redis-tools
 
 ### Disable installed services
-systemctl stop redis
-systemctl disable redis
-systemctl stop postgresql
-systemctl disable postgresql
-systemctl stop freeradius
-systemctl disable freeradius
+systemctl stop redis  
+systemctl disable redis  
+systemctl stop postgresql  
+systemctl disable postgresql  
+systemctl stop freeradius  
+systemctl disable freeradius  
 
 ## Install otpme
 
