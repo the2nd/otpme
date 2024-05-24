@@ -28,7 +28,7 @@ pip3 install cython
 pip3 install otpme
 
 ## Copy configuration files
-cp -a /opt/otpme/lib/python3.11/site-packages/etc/otpme /etc/
+cp -a /opt/otpme/lib/python3.11/site-packages/etc/otpme /etc/  
 cp -a /etc/otpme/otpme.conf.dist /etc/otpme/otpme.conf
 
 ### Edit /etc/otpme/otpme.conf
