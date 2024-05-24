@@ -20,7 +20,7 @@ useradd -r -U -d /var/lib/otpme otpme
 Edit /etc/nsswitch.conf and append 'cache' to the lines passwd and group.
 
 ### Create python venv
-python3 -m venv /opt/otpme
+python3 -m venv /opt/otpme  
 . /opt/otpme/bin/activate
 
 ### Install otpme and dependencies
@@ -35,7 +35,7 @@ cp -a /etc/otpme/otpme.conf.dist /etc/otpme/otpme.conf
 POSTGRES_PG_CTL_BIN="/usr/lib/postgresql/15/bin/pg_ctl"
 
 ## Init your otpme realm
-otpme-realm --api -ddee --color-logs -f init --ca-key-len 2048 --site-key-len 2048 --node-key-len 2048 --dicts english,en-top10000,common-passwords,us-female,us-male,us-surnames,abbreviations-it --id-ranges "uidNumber:s:100000-200000,gidNumber:s:100000-200000" yourrealm.tld yoursite localhost 127.0.0.1
+otpme-realm --api -ddee --color-logs -f init --ca-key-len 2048 --site-key-len 2048 --node-key-len 2048 --dicts english,en-top10000,common-passwords,us-female,us-male,us-surnames,abbreviations-it --id-ranges "uidNumber:s:100000-200000,gidNumber:s:100000-200000" yourrealm.tld yoursite localhost 127.0.0.1  
 
 Note: Scan the generated QRCode with the "Google Autenticator App" and note the PIN of the admin token.
 
