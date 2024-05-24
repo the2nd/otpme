@@ -198,7 +198,15 @@ data_files = [
                         'bash_completion/otpme',
                     ]
                 ),
-                ('/etc/otpme/deploy/',
+                ('/etc/otpme/deploy/pam/',
+                    [
+                        'deploy/pam/README',
+                        'deploy/pam/otpme-auth',
+                        'deploy/pam/otpme-account',
+                        'deploy/pam/otpme-session',
+                    ]
+                ),
+                ('/etc/otpme/deploy/pam/pam-python',
                     [
                         'deploy/pam/pam_otpme.py',
                         'deploy/pam/pam-python/README',
