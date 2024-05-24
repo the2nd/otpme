@@ -1,0 +1,64 @@
+[build-system]
+requires = [
+    "setuptools",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "otpme"
+description = "OTPme: A flexible One-Time-Password system"
+authors = [
+  {name = "The2nd", email = "the2nd@otpme.org"},
+]
+maintainers = [
+  {name = "The2nd", email = "the2nd@otpme.org"},
+]
+readme = {file = "README.md", content-type = "text/markdown"}
+license = {file = "LICENSE"}
+keywords = ['OTP, U2F, fido2, two factor authentication, PAM, LDAP']
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  #"Development Status :: 4 - Beta",
+  #"Development Status :: 5 - Production/Stable",
+  "Programming Language :: Python :: 3",
+]
+#version = "0.3.0a69"
+dynamic = ["version", "dependencies"]
+
+[project.urls]
+Homepage = "https://www.otpme.org/redmine"
+#Documentation = "https://readthedocs.org"
+Repository = "https://github.com/the2nd/otpme.git"
+Issues = "https://github.com/the2nd/otpme/issues"
+#Changelog = "https://github.com/me/spam/blob/master/CHANGELOG.md"
+
+[project.scripts]
+otpme-agent = "otpme.command:otpme_commands"
+otpme-cluster = "otpme.command:otpme_commands"
+otpme-accessgroup = "otpme.command:otpme_commands"
+otpme-auth = "otpme.command:otpme_commands"
+otpme-ca = "otpme.command:otpme_commands"
+otpme-client = "otpme.command:otpme_commands"
+otpme-controld = "otpme.command:otpme_commands"
+otpme-group = "otpme.command:otpme_commands"
+otpme-host = "otpme.command:otpme_commands"
+otpme-node = "otpme.command:otpme_commands"
+otpme-realm = "otpme.command:otpme_commands"
+otpme-role = "otpme.command:otpme_commands"
+otpme-session = "otpme.command:otpme_commands"
+otpme-site = "otpme.command:otpme_commands"
+otpme-token = "otpme.command:otpme_commands"
+otpme-tool = "otpme.command:otpme_commands"
+otpme-unit = "otpme.command:otpme_commands"
+otpme-user = "otpme.command:otpme_commands"
+otpme-script = "otpme.command:otpme_commands"
+otpme-policy = "otpme.command:otpme_commands"
+otpme-dictionary = "otpme.command:otpme_commands"
+otpme-resolver = "otpme.command:otpme_commands"
+otpme-pinentry = "otpme.command:otpme_commands"
+otpme-get-authorized-keys = "otpme.command:otpme_commands"
+
+[tool.setuptools.dynamic]
+version = {attr = "otpme.__version__"}
+dependencies = {file = ["requirements.txt"]}
+#readme = {file = ["README.md"]}
