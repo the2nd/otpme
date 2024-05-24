@@ -178,14 +178,6 @@ cmd_help = {
                                 },
                 },
 
-    'test'          : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy test {policy} [policy_parameters]',
-                    'cmd'   :   '<|object|> [policy_parameters]',
-                    '_help' :   {
-                                    'cmd'                   : 'test policy',
-                                },
-                },
-
     'add_policy'    : {
                     '_cmd_usage_help' : 'Usage: otpme-policy add_policy {policy} {policy}',
                     'cmd'   :   '<|object|> <policy_name>',

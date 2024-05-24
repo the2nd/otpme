@@ -2412,15 +2412,23 @@ class AuthHandler(object):
                 self.logger.debug("Verifying script_otp tokens...")
                 self.verify_user_tokens(tokens=self.valid_user_tokens_script_otp)
 
-        # Check token role/group policies.
+        # Check policies.
         if not self.auth_failed:
             authorize_token = False
             if self.check_policies and self.auth_token:
                 if self.auth_host:
                     if self.auth_host.site == config.site:
                         authorize_token = True
+                if self.auth_client:
+                    authorize_token = True
             if authorize_token:
                 try:
+                    # Check token policies.
+                    self.auth_token.run_policies("authorize",
+                                            token=self.auth_token)
+                    # Check user policies.
+                    self.user.run_policies("authorize",
+                                        token=self.auth_token)
                     # Check accessgroup policies.
                     self.auth_group.run_policies("authorize",
                                             token=self.auth_token)

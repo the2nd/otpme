@@ -49,25 +49,12 @@ write_acls =  []
 read_value_acls = {
                 "view"      : [
                             "login_times",
-                            "ignore_empty",
                             ],
         }
 
 write_value_acls = {
-                "add"       : [
-                            "token",
-                            ],
-                "remove"    : [
-                            "token",
-                            ],
                 "edit"      : [
                             "login_times",
-                            ],
-                "enable"    : [
-                            "ignore_empty",
-                            ],
-                "disable"   : [
-                            "ignore_empty",
                             ],
                 }
 
@@ -94,58 +81,6 @@ commands = {
                     'method'            : 'change_login_times',
                     'args'              : ['login_times'],
                     'job_type'          : 'process',
-                    },
-                },
-            },
-    'add_token'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'add_token',
-                    'args'              : ['token_path'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'remove_token'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'remove_token',
-                    'args'              : ['token_path'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'add_role'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'add_role',
-                    'args'              : ['role_name'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'remove_role'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'remove_role',
-                    'args'              : ['role_name'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'enable_ignore_empty'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'enable_ignore_empty',
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
-    'disable_ignore_empty'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'disable_ignore_empty',
-                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -295,7 +230,6 @@ class LogintimesPolicy(Policy):
         self.allow_multiple = False
         self.token_options = {}
         self.token_login_interfaces = {}
-        self.ignore_empty = False
 
     def _get_object_config(self):
         """ Merge policy config with config from parent class. """
@@ -313,11 +247,6 @@ class LogintimesPolicy(Policy):
             'LOGIN_TIMES'               : {
                                             'var_name'      : 'login_times',
                                             'type'          : str,
-                                            'required'      : False,
-                                        },
-            'IGNORE_EMPTY'              : {
-                                            'var_name'      : 'ignore_empty',
-                                            'type'          : bool,
                                             'required'      : False,
                                         },
             }
@@ -396,7 +325,7 @@ class LogintimesPolicy(Policy):
 
         msg = (_("Login times restricted by policy: %s: %s")
                             % (self.name, hook_object.rel_path))
-        return callback.error(msg, exception=self.policy_exception)
+        raise self.policy_exception(msg)
 
     def test(self, object_type, test_object, token, force=False,
         verbose_level=0, _caller="API", callback=default_callback):
@@ -422,14 +351,20 @@ class LogintimesPolicy(Policy):
             msg = "Unknown token: %s" % token
             return callback.error(msg)
         _token = result[0]
-        test_result = self.handle_hook(hook_object=hook_object,
-                                        hook_name="authorize",
-                                        token=_token,
-                                        callback=callback)
-        if test_result:
+        try:
+            self.handle_hook(hook_object=hook_object,
+                                            hook_name="authorize",
+                                            token=_token,
+                                            callback=callback)
+        except PolicyException as e:
+            msg = str(e)
+            return callback.error(msg)
+        except Exception as e:
+            msg = "Error running policy: %s" % e
+            return callback.error(msg)
+        else:
             msg = "Policy verfied successful."
             return callback.ok(msg)
-        return test_result
 
     def handle_hook(self, hook_object, hook_name, token,
         callback=default_callback, **kwargs):
@@ -437,30 +372,12 @@ class LogintimesPolicy(Policy):
         if hook_name == "authorize":
             if token.is_admin():
                 return callback.ok()
-            if self.ignore_empty:
-                if not self.tokens:
-                    if not self.roles:
-                        return callback.ok()
-            token_match = False
-            role_match = False
-            if self.tokens:
-                if token.uuid in self.tokens:
-                    token_match = True
-            if not token_match:
-                if self.roles:
-                    token_roles = token.get_roles(return_type="uuid")
-                    for role_uuid in token_roles:
-                        if role_uuid not in self.roles:
-                            continue
-                        role_match = True
-            if not token_match and not role_match:
-                if self.ignore_empty:
-                    return callback.ok()
-            return self.check_login_times(hook_object=hook_object,
-                                        login_times=self.login_times,
-                                        callback=callback)
-        msg = (_("Unknown policy hook: %s") % hook_name)
-        return callback.error(msg)
+            self.check_login_times(hook_object=hook_object,
+                                login_times=self.login_times,
+                                callback=callback)
+        else:
+            msg = (_("Unknown policy hook: %s") % hook_name)
+            return callback.error(msg)
 
     @check_acls(['edit:login_times'])
     @object_lock()
@@ -537,28 +454,6 @@ class LogintimesPolicy(Policy):
         self.login_times = login_times
         return self._cache(callback=callback)
 
-    @check_acls(['enable:ignore_empty'])
-    @object_lock()
-    @backend.transaction
-    def enable_ignore_empty(self, callback=default_callback, **kwargs):
-        """ Enable 'ignore if empty' feature. """
-        if self.ignore_empty is True:
-            msg = "Ignore empty already enabled."
-            return callback.error(msg)
-        self.ignore_empty = True
-        return self._cache(callback=callback)
-
-    @check_acls(['disable:ignore_empty'])
-    @object_lock()
-    @backend.transaction
-    def disable_ignore_empty(self, callback=default_callback, **kwargs):
-        """ Disable 'ignore if empty' feature. """
-        if self.ignore_empty is False:
-            msg = "Ignore empty already disabled."
-            return callback.error(msg)
-        self.ignore_empty = False
-        return self._cache(callback=callback)
-
     @object_lock(full_lock=True)
     def _add(self, callback=default_callback, **kwargs):
         """ Add a policy """
@@ -578,30 +473,6 @@ class LogintimesPolicy(Policy):
             login_times = self.login_times
         lines.append('LOGIN_TIMES="%s"' % login_times)
 
-        tokens = []
-        if self.verify_acl("view:token") \
-        or self.verify_acl("add:token") \
-        or self.verify_acl("remove:token"):
-            for token in self.get_tokens():
-                tokens.append(token)
-        tokens = ",".join(tokens)
-        lines.append('TOKENS="%s"' % tokens)
-
-        roles = []
-        if self.verify_acl("view:role") \
-        or self.verify_acl("add:role") \
-        or self.verify_acl("remove:role"):
-            for role in self.get_roles():
-                roles.append(role)
-        roles = ",".join(roles)
-        lines.append('ROLES="%s"' % roles)
-
-        ignore_empty = ""
-        if self.verify_acl("view:ignore_empty") \
-        or self.verify_acl("enable:ignore_empty") \
-        or self.verify_acl("disable:ignore_empty"):
-            ignore_empty = self.ignore_empty
-        lines.append('IGNORE_EMPTY="%s"' % ignore_empty)
         return Policy.show_config(self,
                                 config_lines=lines,
                                 callback=callback,

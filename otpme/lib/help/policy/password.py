@@ -71,4 +71,13 @@ cmd_help = {
                                     'cmd'                   : 'change strength checker options',
                                 },
                 },
+    'test'          : {
+                    '_cmd_usage_help' : 'Usage: otpme-policy test [--password <password>] [--pin <pin>] {policy}',
+                    'cmd'   :   '--password :password: --pin :pin: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'test policy',
+                                    '--password'            : 'Password to test.',
+                                    '--pin'                 : 'PIN to test.',
+                                },
+                },
     }

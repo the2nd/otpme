@@ -418,7 +418,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_name'],
-                    'oargs'             : ['token_type', 'destination_token', 'replace'],
+                    'oargs'             : ['token_type', 'destination_token', 'replace', 'gen_qrcode', 'enable_mschap'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1668,9 +1668,12 @@ class User(OTPmeObject):
             return callback.error(msg)
         new_unit = kwargs['new_unit']
         if new_unit.startswith("/"):
-            return self.cross_site_move(*args, path=new_unit,
-                                        callback=callback,
-                                        **kwargs)
+            path_data = oid.resolve_path(new_unit, object_type="user")
+            new_site = path_data['site']
+            if new_site != self.site:
+                return self.cross_site_move(*args, path=new_unit,
+                                            callback=callback,
+                                            **kwargs)
         super(User, self).move(*args, callback=callback, **kwargs)
         token_list = self.get_tokens(return_type="instance")
         for token in token_list:
@@ -3077,8 +3080,8 @@ class User(OTPmeObject):
     @backend.transaction
     def add_token(self, token_name=None, token_type=None, token_uuid=None,
         new_token=None, destination_token=None, replace=False, gen_qrcode=True,
-        no_token_infos=False, token_store_move=False, force=False, run_policies=True,
-        verify_acls=True, verbose_level=0, callback=default_callback,
+        no_token_infos=False, token_store_move=False, force=False, enable_mschap=False,
+        run_policies=True, verify_acls=True, verbose_level=0, callback=default_callback,
         _caller="API", **kwargs):
         """ Adds token to user. """
         if self.template_object:
@@ -3203,6 +3206,7 @@ class User(OTPmeObject):
             add_status = new_token.add(uuid=token_uuid,
                                     owner_uuid=self.uuid,
                                     gen_qrcode=gen_qrcode,
+                                    enable_mschap=enable_mschap,
                                     run_policies=run_policies,
                                     verify_acls=verify_acls,
                                     no_token_infos=no_token_infos,

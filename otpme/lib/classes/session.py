@@ -543,21 +543,10 @@ class Session(OTPmeLockObject):
         self.object_config['SYNC_CHECKSUM'] = self.sync_checksum
 
         # Update reneg stuff.
-        if self.reneg_started:
-            self.object_config['RENEG_STARTED'] = self.reneg_started
-        else:
-            if 'RENEG_STARTED' in self.object_config:
-                self.object_config.pop('RENEG_STARTED')
-        if self.reneg_hash:
-            self.object_config['RENEG_HASH'] = self.reneg_hash
-        else:
-            if 'RENEG_HASH' in self.object_config:
-                self.object_config.pop('RENEG_HASH')
-        if self.last_reneg:
-            self.object_config['LAST_RENEG'] = self.last_reneg
-
-        if self.old_checksum is not None:
-            self.object_config['OLD_CHECKSUM'] = self.old_checksum
+        self.object_config['RENEG_STARTED'] = self.reneg_started
+        self.object_config['RENEG_HASH'] = self.reneg_hash
+        self.object_config['LAST_RENEG'] = self.last_reneg
+        self.object_config['OLD_CHECKSUM'] = self.old_checksum
 
         # Write session config.
         try:

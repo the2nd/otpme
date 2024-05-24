@@ -84,6 +84,20 @@ default_acls = []
 recursive_default_acls = []
 
 commands = {
+    'add'   : {
+            'OTPme-mgmt-1.0'    : {
+                'missing'    : {
+                    'method'            : 'add',
+                    'oargs'             : ['enable_mschap'],
+                    'job_type'          : 'process',
+                    },
+                'exists'    : {
+                    'method'            : 'add',
+                    'oargs'              : ['enable_mschap'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'password'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -613,8 +627,11 @@ class PasswordToken(Token):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def _add(self, callback=default_callback, **kwargs):
+    def _add(self, enable_mschap=False, callback=default_callback, **kwargs):
         """ Add a token. """
+        if enable_mschap:
+            self.enable_mschap(force=True, quiet=True, callback=callback)
+
         pass_len = self.get_config_parameter("default_static_pass_len")
         new_pass = stuff.gen_password(pass_len)
 
@@ -623,12 +640,17 @@ class PasswordToken(Token):
                                 force=True,
                                 callback=callback)
 
-        return_message = ("NOTE: You may want to add a second factor token "
-                        "(e.g. OTP token) to improve security.")
+        return_message = ""
+        if not enable_mschap:
+            return_message = ("NOTE: You may want to add a second factor token "
+                            "(e.g. OTP token) to improve security.")
 
         if self.verify_acl("view:password"):
-            return_message = ("%s\nToken password: %s"
-                            % (return_message, new_pass))
+            token_pass_msg = ("Token password: %s" % new_pass)
+            if return_message:
+                return_message = ("%s\n%s" % (return_message, token_pass_msg))
+            else:
+                return_message = token_pass_msg
 
         return callback.ok(return_message)
 

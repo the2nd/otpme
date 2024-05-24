@@ -30,46 +30,15 @@ cmd_help = {
                                     'cmd'                   : 'Change login times.',
                                 },
                 },
-    'add_token'          : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy add_token {policy} {token_path}',
-                    'cmd'   :   '<|object|> <token_path>',
+
+    'test'          : {
+                    '_cmd_usage_help' : 'Usage: otpme-policy test --object-type <object_type> --test-object <test_object> --token <token> {policy}',
+                    'cmd'   :   '--object-type ::object_type:: --test-object ::test_object:: --token ::token:: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'Add token to policy.',
-                                },
-                },
-    'remove_token'          : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy remove_token {policy} {token_path}',
-                    'cmd'   :   '<|object|> <token_path>',
-                    '_help' :   {
-                                    'cmd'                   : 'Remove token to policy.',
-                                },
-                },
-    'add_role'          : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy add_role {policy} {role_name}',
-                    'cmd'   :   '<|object|> <role_name>',
-                    '_help' :   {
-                                    'cmd'                   : 'Add role to policy.',
-                                },
-                },
-    'remove_role'          : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy remove_role {policy} {role_name}',
-                    'cmd'   :   '<|object|> <role_name>',
-                    '_help' :   {
-                                    'cmd'                   : 'Remove role to policy.',
-                                },
-                },
-    'enable_ignore_empty'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy enable_ignore_empty {policy}',
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : 'Enable ignore on empty feature.',
-                                },
-                },
-    'disable_ignore_empty'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy disable_ignore_empty {policy}',
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : 'Disable ignore on empty feature.',
+                                    'cmd'                   : 'test policy',
+                                    '--object-type'         : 'Object type to assume policy is assigned to.',
+                                    '--test-object'         : 'Object name/rel_path of object.',
+                                    '--token'               : 'Token to test with.',
                                 },
                 },
     }

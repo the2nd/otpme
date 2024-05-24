@@ -17,11 +17,12 @@ cmd_help = {
     '_need_command'             : True,
     '_usage_help'               : "Usage: otpme-token --type password {command} [token]",
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token add [-r] {token}',
-                    'cmd'   :   '-r :replace=True: <|object|>:',
+                    '_cmd_usage_help' : 'Usage: otpme-token add [-r] [--enable-mschap] {token}',
+                    'cmd'   :   '-r :replace=True: --enable-mschap :enable_mschap=True: <|object|>:',
                     '_help' :   {
-                                    'cmd'                   : 'add new token',
-                                    '-r'                    : 'replace existing token and keep its UUID',
+                                    'cmd'                   : 'Add new token',
+                                    '-r'                    : 'Replace existing token and keep its UUID',
+                                    '--enable-mschap'       : 'Enable MSCHAP for this token',
                                 },
                 },
 

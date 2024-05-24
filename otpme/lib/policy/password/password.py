@@ -144,7 +144,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'test',
-                    'args'              : ['password', 'pin'],
+                    'oargs'             : ['password', 'pin'],
                     'job_type'          : 'process',
                     'extend'            : True,
                     },
@@ -338,11 +338,15 @@ class PasswordPolicy(Policy):
         callback=default_callback):
         """ Test the policy. """
         if password:
+            # Make sure password is string.
+            password = str(password)
             return self.check_password(password,
                                     return_result=True,
                                     callback=callback,
                                     verbose_level=verbose_level)
         if pin:
+            # Make sure pin is string.
+            pin = str(pin)
             return self.check_pin(pin, callback=callback,
                                 verbose_level=verbose_level)
 
@@ -402,9 +406,9 @@ class PasswordPolicy(Policy):
                 return callback.ok()
 
         if self.strength_checker == "spsc":
-            if not "dict_order" in self.strength_checker_opts:
+            if "dict_order" not in self.strength_checker_opts:
                 return callback.error("Missing option 'dict_order'.")
-            if not "min_score" in self.strength_checker_opts:
+            if "min_score" not in self.strength_checker_opts:
                 return callback.error("Missing option 'min_score'.")
             # Get dictionaries in configured order.
             dict_order = []

@@ -1883,11 +1883,12 @@ class Token(OTPmeObject):
     @check_acls(['enable:mschap'])
     @object_lock()
     @backend.transaction
-    def enable_mschap(self, run_policies=True,
+    def enable_mschap(self, run_policies=True, force=False, quiet=False,
         callback=default_callback, _caller="API", **kwargs):
         """ Enable optional MSCHAP authentication. """
-        if not self.password_hash:
-            return callback.error("Token does not have a password.")
+        if not force:
+            if not self.password_hash:
+                return callback.error("Token does not have a password.")
 
         # Check if MSCHAP is already enabled.
         if self.mschap_enabled:
@@ -1906,8 +1907,9 @@ class Token(OTPmeObject):
 
         self.mschap_enabled = True
 
-        callback.send(_("You have to set the token password after enabling "
-                        "MSCHAP authentication."))
+        if not quiet:
+            callback.send(_("You have to set the token password after enabling "
+                            "MSCHAP authentication."))
 
         return self._cache(callback=callback)
 
@@ -2354,7 +2356,7 @@ class Token(OTPmeObject):
             return None, False, False
 
         if not self.mschap_enabled:
-            logger.debug("No MSCHAP authentication enabled for this token.")
+            logger.warning("No MSCHAP authentication enabled for this token.")
             return None, False, False
 
         if temp:

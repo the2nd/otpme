@@ -182,8 +182,8 @@ cmd_help = {
                 },
 
     'add_token'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user add_token [-r] [--type <token_type>] [--name <token_name>] [--destination <dst_token>] {user}',
-                    'cmd'   :   '-r :replace=True: --name :token_name: --type :token_type: --destination :destination_token: <|object|>',
+                    '_cmd_usage_help' : 'Usage: otpme-user add_token [-r] [--no-qrcode] [--enable-mschap] [--type <token_type>] [--name <token_name>] [--destination <dst_token>] {user}',
+                    'cmd'   :   '-r :replace=True: --no-qrcode :gen_qrcode=False: --enable-mschap :enable_mschap=True: --name :token_name: --type :token_type: --destination :destination_token: <|object|>',
                     '_help' :   {
                                     'cmd'                   : 'Add new token.',
                                     '--name'                : 'Token name.',

@@ -536,9 +536,6 @@ class CommandHandler(object):
         or subcommand == "decrypt":
             self.handle_user_key_command()
 
-        if command == "policy" and subcommand == "test":
-            self.handle_policy_test_command(command, subcommand)
-
         if command == "dictionary" and subcommand == "word_import":
             self.handle_dictionary_word_import_command(command, subcommand)
 
@@ -4365,43 +4362,6 @@ class CommandHandler(object):
         word_list = spsc.dump(object_identifier)
         self.command_line = [ object_identifier ]
         self.command_args = { 'word_list' : word_list }
-
-    def handle_policy_test_command(self, command, subcommand):
-        """ Handle policy test command. """
-        # Show help if needed.
-        if len(self.command_line) < 1:
-            return self.get_help()
-
-        # Get command syntax.
-        try:
-            command_syntax = self.get_command_syntax(command, subcommand)
-        except:
-            return self.get_help(_("Unknown command: %s") % subcommand)
-
-        # Parse command line.
-        local_command_args = {}
-        try:
-            object_cmd, \
-            object_required, \
-            object_identifier, \
-            local_command_args = cli.get_opts(command_syntax=command_syntax,
-                                            command_line=self.command_line,
-                                            command_args=local_command_args)
-        except Exception as e:
-            if str(e) == "help":
-                return self.get_help()
-            elif str(e) != "":
-                return self.get_help(str(e))
-
-        # Get policy parameters from command line.
-        if "policy_parameters" in local_command_args:
-            policy_parameters = local_command_args['policy_parameters']
-            for x in policy_parameters.split(","):
-                attr = x.split("=")[0]
-                val = "=".join(x.split("=")[1:])
-                self.command_args[attr] = val
-
-        self.command_line = [ object_identifier ]
 
     def handle_script_run_command(self, command, subcommand):
         """ Handle script run command. """
