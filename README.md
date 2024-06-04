@@ -43,5 +43,5 @@ Note: Scan the generated QRCode with the "Google Autenticator App" and note the 
 otpme-controld start
 
 ## Login with admin token
-You need to input <pin><otp>.  
+You need to input pin+otp.  
 otpme-tool login
