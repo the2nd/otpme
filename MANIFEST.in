@@ -13,6 +13,8 @@ include deploy/pam/pam-python/README
 # Include schema files.
 recursive-include deploy/schema *
 recursive-include otpme/lib/dicts *
+recursive-include otpme/web/app/templates *
+recursive-include otpme/web/app/static *
 
 # Include the examples files
 #recursive-include deploy/examples *

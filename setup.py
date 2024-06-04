@@ -258,8 +258,10 @@ setup(
     #entry_points=entry_points,
     #extras_require=extras_require,
     #install_requires=install_requires,
-    #include_package_data=True,
-
+    include_package_data=True,
+	package_data={
+			'otpme': ['otpme/web/app/static/*', 'otpme/web/app/templates/*'],
+		},
     zip_safe=False,
     #long_description=read_file('README.rst')
 
