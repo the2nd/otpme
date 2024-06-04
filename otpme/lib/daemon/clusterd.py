@@ -154,7 +154,7 @@ def cluster_daemon_reload():
     multiprocessing.cluster_out_event.set()
 
 def cluster_sync_object(object_uuid, object_id, action, object_config=None,
-    new_object_id=None, checksum=None, wait_for_write=True):
+    new_object_id=None, checksum=None, index_journal=None, wait_for_write=True):
     if not multiprocessing.cluster_out_event:
         return
     if config.one_node_setup:
@@ -173,6 +173,7 @@ def cluster_sync_object(object_uuid, object_id, action, object_config=None,
                                                     object_uuid=object_uuid,
                                                     object_id=object_id,
                                                     checksum=checksum,
+                                                    index_journal=index_journal,
                                                     object_config=object_config,
                                                     new_object_id=new_object_id)
         except AlreadyExists:
@@ -398,7 +399,7 @@ class ClusterJournalEntry(ClusterEntry):
     """ Cluster journal entry. """
     def __init__(self, timestamp, object_uuid=None, action=None,
         object_id=None, checksum=None, object_config=None,
-        new_object_id=None):
+        index_journal=None, new_object_id=None):
         journal_dir = config.cluster_out_journal_dir
         super(ClusterJournalEntry, self).__init__(journal_dir=journal_dir,
                                                     _lock_type=JOURNAL_LOCK_TYPE,
@@ -408,6 +409,7 @@ class ClusterJournalEntry(ClusterEntry):
         self.object_uuid_file = os.path.join(self.entry_dir, "object_uuid")
         self.new_object_id_file = os.path.join(self.entry_dir, "new_object_id")
         self.object_checksum_file = os.path.join(self.entry_dir, "object_checksum")
+        self.index_journal_file = os.path.join(self.entry_dir, "index_journal")
         if action is not None:
             self.action = action
         if object_id is not None:
@@ -416,6 +418,8 @@ class ClusterJournalEntry(ClusterEntry):
             self.object_uuid = object_uuid
         if object_config is not None:
             self.object_config = object_config
+        if index_journal is not None:
+            self.index_journal = index_journal
         if checksum is not None:
             self.object_checksum = checksum
         if new_object_id is not None:
@@ -452,7 +456,7 @@ class ClusterJournalEntry(ClusterEntry):
             object_id = None
         except Exception as e:
             object_id = None
-            msg = ("Failed to read object ID from lock entry: %s: %s"
+            msg = ("Failed to read object ID from cluster entry: %s: %s"
                     % (self.timestamp, e))
             self.logger.critical(msg)
         return object_id
@@ -477,7 +481,7 @@ class ClusterJournalEntry(ClusterEntry):
             new_object_id = None
         except Exception as e:
             new_object_id = None
-            msg = ("Failed to read new object ID from lock entry: %s: %s"
+            msg = ("Failed to read new object ID from cluster entry: %s: %s"
                     % (self.timestamp, e))
             self.logger.critical(msg)
         return new_object_id
@@ -502,7 +506,7 @@ class ClusterJournalEntry(ClusterEntry):
             object_uuid = None
         except Exception as e:
             object_uuid = None
-            msg = ("Failed to read object UUID from lock entry: %s: %s"
+            msg = ("Failed to read object UUID from cluster entry: %s: %s"
                     % (self.timestamp, e))
             self.logger.critical(msg)
         return object_uuid
@@ -527,7 +531,7 @@ class ClusterJournalEntry(ClusterEntry):
             object_checksum = None
         except Exception as e:
             object_checksum = None
-            msg = ("Failed to read object checksum from lock entry: %s: %s"
+            msg = ("Failed to read object checksum from cluster entry: %s: %s"
                     % (self.timestamp, e))
             self.logger.critical(msg)
         return object_checksum
@@ -540,6 +544,33 @@ class ClusterJournalEntry(ClusterEntry):
                                     content=object_checksum)
         except Exception as e:
             msg = ("Failed to add object checksum to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
+
+    @property
+    @entry_lock(write=False)
+    def index_journal(self):
+        try:
+            index_journal = filetools.read_file(self.index_journal_file)
+        except FileNotFoundError:
+            index_journal = None
+        except Exception as e:
+            index_journal = None
+            msg = ("Failed to read index journal from cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
+        index_journal = ujson.loads(index_journal)
+        return index_journal
+
+    @index_journal.setter
+    #@entry_lock(write=True)
+    def index_journal(self, index_journal):
+        index_journal = ujson.dumps(index_journal)
+        try:
+            filetools.create_file(path=self.index_journal_file,
+                                    content=index_journal)
+        except Exception as e:
+            msg = ("Failed to add index journal to cluster entry: %s: %s"
                     % (self.timestamp, e))
             self.logger.critical(msg)
 
@@ -778,7 +809,7 @@ class ClusterDaemon(OTPmeDaemon):
                 msg = "Failed to sync with node: %s: %s" % (node_name, e)
                 self.logger.warning(msg)
                 time.sleep(1)
-                config.raise_exception()
+                #config.raise_exception()
 
     def start_interprocess_comm(self):
         """ Start cluster interprocess communication. """
@@ -1072,6 +1103,8 @@ class ClusterDaemon(OTPmeDaemon):
         all_nodes = {}
         enabled_nodes = {}
         for node in result:
+            if node.uuid == config.uuid:
+                continue
             all_nodes[node.name] = node
             if not node.enabled:
                 continue
@@ -1219,7 +1252,7 @@ class ClusterDaemon(OTPmeDaemon):
                 clusterd_conn = self.get_clusterd_connection(master_node)
             except Exception as e:
                 self.node_disconnect(master_node)
-                msg = ("Failed to get cluster connection: %s: %s"
+                msg = ("Error getting cluster connection: %s: %s"
                         % (master_node, e))
                 self.logger.warning(msg)
                 current_try += 1
@@ -1267,20 +1300,21 @@ class ClusterDaemon(OTPmeDaemon):
             try:
                 self.node_conn = self.get_clusterd_connection(node_name)
             except Exception as e:
-                self.node_leave(node_name)
                 if not self.node_offline:
                     if not quiet:
                         msg = ("Failed to get cluster connection: %s: %s"
                                 % (node_name, e))
                         self.logger.warning(msg)
+                    self.node_leave(node_name)
                     self.node_offline = True
                 return None
             else:
                 multiprocessing.online_nodes[node_name] = True
-                self.node_offline = False
-                if not quiet:
-                    msg = "Node is online: %s" % node_name
-                    self.logger.info(msg)
+                if self.node_offline:
+                    if not quiet:
+                        msg = "Node is online: %s" % node_name
+                        self.logger.info(msg)
+                    self.node_offline = False
                 return self.node_conn
 
     def do_node_check(self, node_name):
@@ -1369,7 +1403,7 @@ class ClusterDaemon(OTPmeDaemon):
         except Exception as e:
             msg = "Error in cluster communication method: %s" % e
             self.logger.critical(msg)
-            config.raise_exception()
+            #config.raise_exception()
 
     def _start_cluster_communication(self, reload=False):
         """ Start cluster communication. """
@@ -1549,6 +1583,14 @@ class ClusterDaemon(OTPmeDaemon):
                 time.sleep(quorum_check_interval)
                 continue
 
+            while True:
+                cluster_journal_files = self.get_cluster_in_journal()
+                if not cluster_journal_files:
+                    break
+                msg = "Waiting for cluster in journal to be processed..."
+                self.logger.info(msg)
+                time.sleep(1)
+
             try:
                 self.switch_master_node(current_master_node, new_master_node)
             except Exception as e:
@@ -1658,20 +1700,11 @@ class ClusterDaemon(OTPmeDaemon):
                 last_used = object_data['last_used']
                 full_data_update = object_data['full_data_update']
                 full_index_update = object_data['full_index_update']
+                index_journal = object_data['index_journal']
                 object_config = object_data['object_config']
                 object_config = ObjectConfig(object_id, object_config)
                 object_config = object_config.decrypt(config.master_key)
                 object_uuid = object_config['UUID']
-
-                index_auto_update = False
-                if full_index_update:
-                    index_journal = []
-                else:
-                    try:
-                        index_journal = object_config['INDEX_JOURNAL']
-                    except KeyError:
-                        index_auto_update = True
-                        index_journal = []
 
                 x_object = backend.get_object(object_id)
                 if x_object:
@@ -1685,7 +1718,6 @@ class ClusterDaemon(OTPmeDaemon):
                     try:
                         backend.write_config(object_id=object_id,
                                             cluster=False,
-                                            index_auto_update=index_auto_update,
                                             full_data_update=full_data_update,
                                             full_index_update=full_index_update,
                                             index_journal=index_journal,
@@ -1796,7 +1828,7 @@ class ClusterDaemon(OTPmeDaemon):
         except Exception as e:
             msg = "Error in two node handler: %s" % e
             self.logger.critical(msg)
-            config.raise_exception()
+            #config.raise_exception()
 
     def _start_two_node_handler(self):
         """ Start two node handler. """
@@ -1905,7 +1937,7 @@ class ClusterDaemon(OTPmeDaemon):
         except Exception as e:
             msg = "Error in node write connection: %s" % e
             self.logger.critical(msg)
-            config.raise_exception()
+            #config.raise_exception()
 
     def _start_node_write_connection(self, node_name):
         """ Start cluster write communication with node. """
@@ -1989,7 +2021,7 @@ class ClusterDaemon(OTPmeDaemon):
             except Exception as e:
                 msg = "Error processing cluster journal: %s" % e
                 self.logger.critical(msg)
-                config.raise_exception()
+                #config.raise_exception()
                 return True
             if not self.member_candidate:
                 break
@@ -2005,7 +2037,7 @@ class ClusterDaemon(OTPmeDaemon):
                 except Exception as e:
                     msg = "Error processing cluster journal: %s" % e
                     self.logger.critical(msg)
-                    config.raise_exception()
+                    #config.raise_exception()
                     return True
                 # Update data revision on peer.
                 if config.master_node:
@@ -2080,7 +2112,7 @@ class ClusterDaemon(OTPmeDaemon):
                 if not cluster_journal_entry.committed:
                     break
                 if node_name in cluster_journal_entry.get_nodes():
-                    # Check if object was written to member nodes
+                    # Check if object was written to member nodes.
                     if self.check_member_nodes(cluster_journal_entry):
                         # Check if object was written to all online nodes.
                         self.check_online_nodes(cluster_journal_entry)
@@ -2123,6 +2155,7 @@ class ClusterDaemon(OTPmeDaemon):
                             try:
                                 self.unset_node_sync(node_name)
                             except:
+                                self.check_member_nodes(cluster_journal_entry)
                                 raise ProcessingFailed()
                 # Write object to peer.
                 if action == "write":
@@ -2155,6 +2188,9 @@ class ClusterDaemon(OTPmeDaemon):
                             full_index_update = True
                             full_object_update = True
                             object_config = oc.copy()
+                    index_journal = []
+                    if not full_index_update:
+                        index_journal = cluster_journal_entry.index_journal
                     try:
                         last_used = backend.get_last_used(object_id.realm,
                                                         object_id.site,
@@ -2168,19 +2204,24 @@ class ClusterDaemon(OTPmeDaemon):
                         write_status = node_conn.write(object_id.full_oid,
                                                         object_config,
                                                         last_used,
+                                                        index_journal=index_journal,
+                                                        #full_data_update=True,
                                                         full_data_update=full_data_update,
+                                                        #full_index_update=True)
                                                         full_index_update=full_index_update)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_disconnect(node_name)
+                        self.node_leave(node_name)
                         msg = ("Failed to send object: %s: %s: %s"
                                 % (node_name, object_id, e))
                         self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
                         raise ProcessingFailed(msg)
                     except Exception as e:
-                        self.node_disconnect(node_name)
+                        self.node_leave(node_name)
                         msg = ("Error sending object: %s: %s: %s"
                                 % (node_name, object_id, e))
                         self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
                         raise ProcessingFailed(msg)
                     if write_status != "done":
                         continue
@@ -2200,16 +2241,18 @@ class ClusterDaemon(OTPmeDaemon):
                         rename_status = node_conn.rename(object_id=object_id.full_oid,
                                                         new_object_id=new_object_id.full_oid)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_disconnect(node_name)
+                        self.node_leave(node_name)
                         msg = ("Failed to rename object: %s: %s: %s"
                                 % (node_name, object_id, e))
                         self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
                         raise ProcessingFailed(msg)
                     except Exception as e:
-                        self.node_disconnect(node_name)
+                        self.node_leave(node_name)
                         msg = ("Failed to rename object: %s: %s: %s"
                                 % (node_name, object_id, e))
                         self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
                         raise ProcessingFailed(msg)
                     if rename_status != "done":
                         continue
@@ -2222,14 +2265,16 @@ class ClusterDaemon(OTPmeDaemon):
                     try:
                         del_status = node_conn.delete(object_id.full_oid)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_disconnect(node_name)
+                        self.node_leave(node_name)
                         msg = "Failed to delete object: %s: %s" % (object_id, e)
                         self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
                         raise ProcessingFailed(msg)
                     except Exception as e:
-                        self.node_disconnect(node_name)
+                        self.node_leave(node_name)
                         msg = "Failed to delete object: %s: %s" % (object_id, e)
                         self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
                         raise ProcessingFailed(msg)
                     if del_status != "done":
                         continue
@@ -2280,13 +2325,13 @@ class ClusterDaemon(OTPmeDaemon):
         try:
             self.node_conn.unset_node_sync()
         except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-            self.node_disconnect(node_name)
+            self.node_leave(node_name)
             msg = ("Failed to unset cluster sync state: %s: %s"
                     % (node_name, e))
             self.logger.warning(msg)
             raise
         except Exception as e:
-            self.node_disconnect(node_name)
+            self.node_leave(node_name)
             msg = ("Error unsetting cluster sync state: %s: %s"
                     % (node_name, e))
             self.logger.warning(msg)
@@ -2733,4 +2778,4 @@ class ClusterDaemon(OTPmeDaemon):
             except Exception as e:
                 msg = ("Unhandled error in clusterd: %s" % e)
                 self.logger.critical(msg, exc_info=True)
-                config.raise_exception()
+                #config.raise_exception()

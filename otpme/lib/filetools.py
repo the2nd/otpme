@@ -11,6 +11,7 @@ import fcntl
 import pprint
 import shutil
 from pathlib import Path
+from functools import wraps
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -261,18 +262,6 @@ class AtomicFileLock(object):
         # Remove file.
         self.fd.unlink()
         return True
-
-#def get_file_lock(path, write=True):
-#    from otpme.lib import locking
-#    real_path = os.path.realpath(path)
-#    lock_id = real_path.replace("/", ":")
-#    try:
-#        _lock = locking.acquire_lock(lock_type=FILE_LOCK_TYPE,
-#                                    lock_id=lock_id, write=write)
-#    except OTPmeException as e:
-#        msg = "Failed to acquire file lock: %s: %s" % (real_path, e)
-#        raise ObjectLocked(msg)
-#    return _lock
 
 def copy_file(src, dst):
     """ Copy file and perserving ownership and permissions. """
@@ -692,6 +681,28 @@ def write_data_file(filename, *args, **kwargs):
     _file = JsonFile(filename)
     return _file.write(*args, **kwargs)
 
+def write_lock(write=True):
+    """ Decorator to handle write lock. """
+    def wrapper(f):
+        @wraps(f)
+        def wrapped(self, *f_args, **f_kwargs):
+            from otpme.lib import locking
+            lock_id = self.file_path.replace("/", ":")
+            try:
+                _lock = locking.acquire_lock(lock_type=FILE_LOCK_TYPE,
+                                            lock_id=lock_id, write=write)
+            except OTPmeException as e:
+                msg = "Failed to acquire file lock: %s: %s" % (self.file_path, e)
+                raise ObjectLocked(msg)
+            # Call given class method.
+            try:
+                result = f(self, *f_args, **f_kwargs)
+            finally:
+                _lock.release_lock()
+            return result
+        return wrapped
+    return wrapper
+
 class JsonFile(object):
     def __init__(self, file_path):
         from otpme.lib import config
@@ -830,6 +841,7 @@ class JsonFile(object):
 
         return object_config
 
+    @write_lock(write=True)
     def write(self, object_config, full_data_update=None,
         user=None, group=True, mode=0o660, user_acls=[], group_acls=[]):
         """ Write dictionary to JSON config file. """

@@ -362,6 +362,69 @@ cmd_help = {
                                 },
                 },
 
+    'enable_sso'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-client enable_sso {client}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Enable SSO app for this client.',
+                                },
+                },
+
+    'disable_sso'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-client disable_sso {client}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Disable SSO app for this client.',
+                                },
+                },
+
+    'sso_name'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-client sso_name {client} {sso_name}',
+                    'cmd'   :   '<|object|> <sso_name>',
+                    '_help' :   {
+                                    'cmd'                   : 'Change clients SSO name.',
+                                },
+                },
+
+    'sso_logo'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-client sso_logo {client} {image_path}',
+                    'cmd'   :   '<|object|> <file:image_data>',
+                    '_help' :   {
+                                    'cmd'                   : 'Add SSO logo.',
+                                },
+                },
+
+    'dump_sso_logo'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-client dump_sso_logo {client}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Dump SSO logo as base64.',
+                                },
+                },
+
+    'del_sso_logo'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-client del_sso_logo {client}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Delete SSO logo.',
+                                },
+                },
+
+    'login_url'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-client login_url {client} {login_url}',
+                    'cmd'   :   '<|object|> <login_url>',
+                    '_help' :   {
+                                    'cmd'                   : 'Change clients login URL.',
+                                },
+                },
+
+    'helper_url'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-client helper_url {client} {helper_url}',
+                    'cmd'   :   '<|object|> <helper_url>',
+                    '_help' :   {
+                                    'cmd'                   : 'Change clients SSO helper URL.',
+                                },
+                },
 
     'add_address'   : {
                     '_cmd_usage_help' : 'Usage: otpme-client add_address {client} {address}',

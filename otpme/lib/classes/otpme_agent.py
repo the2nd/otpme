@@ -618,12 +618,9 @@ class OTPmeAgent(UnixDaemon):
             rsp_hash = otpme_pass.gen_one_iter_hash(login_user, new_rsp)
             # Gen SRP.
             new_srp = srp.gen(rsp_hash)
-            # Gen SLP.
-            new_slp = slp.gen(rsp_hash)
             # Update session auth data.
             session['rsp'] = new_rsp
             session['srp'] = new_srp
-            session['slp'] = new_slp
             # Update timestamps.
             session['next_reneg'] = None
             session['next_retry'] = None

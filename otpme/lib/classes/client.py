@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import magic
+import base64
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -47,20 +49,38 @@ read_value_acls =    {
                                 "group",
                                 "accessgroup",
                                 "secret",
+                                "login_url",
+                                "sso_enabled",
+                                "sso_name",
+                                "helper_url",
                                 "address",
+                                ],
+                    "dump"      : [
+                                "sso_logo",
                                 ],
             }
 
 write_value_acls = {
                     "add"       : [
                                 "address",
+                                "sso_logo",
                                 ],
                     "delete"    : [
                                 "address",
+                                "sso_logo",
+                                ],
+                    "enable"    : [
+                                "sso",
+                                ],
+                    "disable"   : [
+                                "sso",
                                 ],
                     "edit"      : [
                                 "accessgroup",
                                 "secret",
+                                "login_url",
+                                "helper_url",
+                                "sso_name",
                                 ],
                 }
 
@@ -216,6 +236,74 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'show_secret',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'sso_logo'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_sso_logo',
+                    'args'              : ['image_data'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'dump_sso_logo'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'dump_sso_logo',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'del_sso_logo'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_sso_logo',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'enable_sso'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_sso',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_sso'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_sso',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'sso_name'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_sso_name',
+                    'oargs'             : ['sso_name'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'login_url'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_login_url',
+                    'oargs'             : ['login_url'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'helper_url'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_helper_url',
+                    'oargs'             : ['helper_url'],
                     'job_type'          : 'process',
                     },
                 },
@@ -543,6 +631,7 @@ def register():
     register_commands("client", commands)
     # Register index attributes.
     config.register_index_attribute("address")
+    config.register_index_attribute("sso_enabled")
 
 def register_hooks():
     config.register_auth_on_action_hook("client", "add_token")
@@ -550,6 +639,13 @@ def register_hooks():
     config.register_auth_on_action_hook("client", "add_address")
     config.register_auth_on_action_hook("client", "del_address")
     config.register_auth_on_action_hook("client", "change_secret")
+    config.register_auth_on_action_hook("client", "change_login_url")
+    config.register_auth_on_action_hook("client", "add_sso_logo")
+    config.register_auth_on_action_hook("client", "del_sso_logo")
+    config.register_auth_on_action_hook("client", "dump_sso_logo")
+    config.register_auth_on_action_hook("client", "enable_sso")
+    config.register_auth_on_action_hook("client", "disable_sso")
+    config.register_auth_on_action_hook("client", "change_helper_url")
     config.register_auth_on_action_hook("client", "change_access_group")
     config.register_auth_on_action_hook("client", "show_secret")
     config.register_auth_on_action_hook("client", "limit_logins")
@@ -653,6 +749,10 @@ class Client(OTPmeClientObject):
         self.acl_inheritance_enabled = False
         self.logins_limited = False
         self.radius_reload = False
+        self.sso_name = self.name
+        self.sso_enabled = False
+        self.login_url = None
+        self.helper_url = None
 
         self._sync_fields = {
                     'node'  : {
@@ -703,11 +803,36 @@ class Client(OTPmeClientObject):
                                                         'type'      : dict,
                                                         'required'  : False,
                                                     },
-                        'SECRET'    : {
+                        'SECRET'                    : {
                                                         'var_name'  : 'secret',
                                                         'type'      : str,
                                                         'required'  : False,
                                                         'encryption': config.disk_encryption,
+                                                    },
+                        'SSO_LOGO'                  : {
+                                                        'var_name'  : 'sso_logo',
+                                                        'type'      : dict,
+                                                        'required'  : False,
+                                                    },
+                        'SSO_NAME'                  : {
+                                                        'var_name'  : 'sso_name',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'SSO_ENABLED'               : {
+                                                        'var_name'  : 'sso_enabled',
+                                                        'type'      : bool,
+                                                        'required'  : False,
+                                                    },
+                        'LOGIN_URL'                 : {
+                                                        'var_name'  : 'login_url',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'HELPER_URL'                : {
+                                                        'var_name'  : 'helper_url',
+                                                        'type'      : str,
+                                                        'required'  : False,
                                                     },
             }
 
@@ -838,8 +963,200 @@ class Client(OTPmeClientObject):
 
         return self._cache(callback=callback)
 
+    @check_acls(['add:sso_logo'])
     @object_lock()
+    def add_sso_logo(self, image_data, run_policies=True,
+        _caller="API", callback=default_callback, **kwargs):
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_sso_logo",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        # Check if data is base64 and decode.
+        if stuff.is_base64(image_data):
+            image_data = base64.b64decode(image_data)
+
+        magic_handler = magic.Magic(mime=True, uncompress=True)
+        image_type = magic_handler.from_buffer(image_data)
+        print(image_type)
+        if isinstance(image_data, str):
+            image_data = image_data.encode()
+        image_base64 = base64.b64encode(image_data)
+        image_base64 = image_base64.decode()
+        self.sso_logo['image_data'] = image_base64
+        self.sso_logo['image_type'] = image_type
+
+        return self._write(callback=callback)
+
+    @check_acls(['del:sso_logo'])
+    @object_lock()
+    def del_sso_logo(self, run_policies=True,
+        _caller="API", callback=default_callback, **kwargs):
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("del_sso_logo",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.sso_logo = {}
+
+        return self._write(callback=callback)
+
+    @check_acls(['dump:sso_logo'])
+    @object_lock()
+    def dump_sso_logo(self, run_policies=True,
+        _caller="API", callback=default_callback, **kwargs):
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("dump_sso_logo",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        if not self.sso_logo:
+            msg = "No logo set."
+            return callback.error(msg)
+
+        return callback.ok(self.sso_logo)
+
+    @check_acls(['edit:sso_name'])
+    @object_lock()
+    def change_sso_name(self, sso_name, run_policies=True,
+        _caller="API", callback=default_callback, **kwargs):
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_sso_name",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.sso_name = sso_name
+
+        return self._write(callback=callback)
+
+    @check_acls(['enable:sso'])
+    @object_lock()
+    def enable_sso(self, run_policies=True, _caller="API",
+        callback=default_callback, **kwargs):
+        """ Enable SSO portal app. """
+        if self.sso_enabled:
+            msg = (_("SSO already enabled."))
+            return callback.error(msg)
+
+        if not self.login_url:
+            msg = "Login URL not configured."
+            return callback.error(msg)
+
+        if not self.helper_url:
+            msg = "Helper URL not configured."
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_sso",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.sso_enabled = True
+        self.update_index("sso_enabled", self.sso_enabled)
+
+        return self._write(callback=callback)
+
+    @check_acls(['disable:sso'])
+    @object_lock()
+    def disable_sso(self, run_policies=True, _caller="API",
+        callback=default_callback, **kwargs):
+        """ Disable SSO portal app. """
+        if self.sso_disabled:
+            msg = (_("SSO already disabled."))
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_sso",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.sso_enabled = False
+        self.update_index("sso_enabled", self.sso_enabled)
+
+        return self._write(callback=callback)
+
+    @object_lock()
+    @check_acls(acls=['edit:login_url'])
+    def change_login_url(self, login_url=False, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Change object login_url """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_login_url",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        # Set new login_url.
+        self.login_url = login_url
+
+        return self._cache(callback=callback)
+
+    @object_lock()
+    @check_acls(acls=['edit:helper_url'])
+    def change_helper_url(self, helper_url=False, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Change object helper_url """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_helper_url",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        # Set new helper_url.
+        self.helper_url = helper_url
+
+        return self._cache(callback=callback)
+
     @check_acls(['remove:orphans'])
+    @object_lock()
     def remove_orphans(self, force=False, run_policies=True,
         verbose_level=0, callback=default_callback,
         _caller="API", **kwargs):
@@ -1051,6 +1368,26 @@ class Client(OTPmeClientObject):
         lines.append('SECRET="%s"' % secret)
 
         lines.append('TOKENS="%s"' % token_list)
+
+        sso_name = ""
+        if self.verify_acl("view:sso_name"):
+            sso_name = self.sso_name
+        lines.append('SSO_NAME="%s"' % sso_name)
+
+        sso_enabled = ""
+        if self.verify_acl("view:sso_enabled"):
+            sso_enabled = self.sso_enabled
+        lines.append('SSO_ENABLED="%s"' % sso_enabled)
+
+        login_url = ""
+        if self.verify_acl("view:login_url"):
+            login_url = self.login_url
+        lines.append('LOGIN_URL="%s"' % login_url)
+
+        helper_url = ""
+        if self.verify_acl("view:helper_url"):
+            helper_url = self.helper_url
+        lines.append('HELPER_URL="%s"' % helper_url)
 
         return super(Client, self).show_config(config_lines=lines,
                                         callback=callback, **kwargs)

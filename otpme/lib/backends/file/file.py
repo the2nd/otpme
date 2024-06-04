@@ -599,7 +599,7 @@ def write(object_id, object_config, index_journal=None,
                                 cluster=cluster)
 
     if cluster:
-        write_transaction.cluster_write(uuid, object_id, object_config)
+        write_transaction.cluster_write(uuid, object_id, index_journal, object_config)
 
     # Commit and remove write transaction.
     if transaction_replay:
@@ -1984,52 +1984,53 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
 
     # Handle index journal.
     attributes = []
-    for x_entry in index_journal:
-        x_entry_type = x_entry[0]
-        x_attribute = x_entry[1]
-        x_value = x_entry[2]
+    if index_journal:
+        for x_entry in index_journal:
+            x_entry_type = x_entry[0]
+            x_attribute = x_entry[1]
+            x_value = x_entry[2]
 
-        # Add attributes.
-        if x_entry_type == "add":
-            # Add attribute.
-            #if x_attribute == "ldif:memberUid":
-                #print("AAAA", x_attribute, x_value)
-            a = IndexObjectAttribute(realm=object_realm,
-                                    site=object_site,
-                                    object_type=object_type,
-                                    name=x_attribute, value=x_value)
-            # If the object already exists in the DB we just have to add the
-            # new/changed attribute.
-            if index_object:
-                # Reference attribute to existing index object.
-                a.ioid = index_object.id
-                session.add(a)
-                #local_object = session.merge(a)
-                #session.add(local_object)
-            else:
-                # Add attribute to list of attributes for the new index object.
-                attributes.append(a)
+            # Add attributes.
+            if x_entry_type == "add":
+                # Add attribute.
+                #if x_attribute == "ldif:memberUid":
+                    #print("AAAA", x_attribute, x_value)
+                a = IndexObjectAttribute(realm=object_realm,
+                                        site=object_site,
+                                        object_type=object_type,
+                                        name=x_attribute, value=x_value)
+                # If the object already exists in the DB we just have to add the
+                # new/changed attribute.
+                if index_object:
+                    # Reference attribute to existing index object.
+                    a.ioid = index_object.id
+                    session.add(a)
+                    #local_object = session.merge(a)
+                    #session.add(local_object)
+                else:
+                    # Add attribute to list of attributes for the new index object.
+                    attributes.append(a)
 
-        if x_entry_type == "del":
-            if not index_object:
-                continue
-            #if x_attribute == "ldif:memberUid":
-            #    print("dddd", x_attribute, x_value)
-            q = session.query(IndexObjectAttribute)
-            q = q.filter(IndexObjectAttribute.ioid == index_object.id)
-            q = q.filter(IndexObjectAttribute.name == x_attribute)
-            q = q.filter(IndexObjectAttribute.value == x_value)
-            result = q.all()
-            for a in result:
-                session.delete(a)
-                #local_object = session.merge(a)
-                #session.delete(local_object)
-                ## Make sure we commit attribute deletion.
-                #if autocommit:
-                #    try:
-                #        session.commit()
-                #    except ObjectDeletedError:
-                #        session.rollback()
+            if x_entry_type == "del":
+                if not index_object:
+                    continue
+                #if x_attribute == "ldif:memberUid":
+                #    print("dddd", x_attribute, x_value)
+                q = session.query(IndexObjectAttribute)
+                q = q.filter(IndexObjectAttribute.ioid == index_object.id)
+                q = q.filter(IndexObjectAttribute.name == x_attribute)
+                q = q.filter(IndexObjectAttribute.value == x_value)
+                result = q.all()
+                for a in result:
+                    session.delete(a)
+                    #local_object = session.merge(a)
+                    #session.delete(local_object)
+                    ## Make sure we commit attribute deletion.
+                    #if autocommit:
+                    #    try:
+                    #        session.commit()
+                    #    except ObjectDeletedError:
+                    #        session.rollback()
 
     # Make sure we remove orphan ACLs of an existing index object.
     clear_acl_cache = False

@@ -1,0 +1,9 @@
+.logo-container {
+  width: 200px; /* Gewünschte Breite des Containers */
+  height: 100px; /* Gewünschte Höhe des Containers */
+}
+
+.logo {
+  width: 100%; /* Das Logo soll die volle Breite des Containers einnehmen */
+  height: auto; /* Die Höhe wird automatisch angepasst, um das Seitenverhältnis beizubehalten */
+}

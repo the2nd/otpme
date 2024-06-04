@@ -12,7 +12,6 @@ except:
     pass
 
 from otpme.lib import re
-from otpme.lib import slp
 from otpme.lib import srp
 from otpme.lib import json
 from otpme.lib import stuff
@@ -688,6 +687,11 @@ class OTPmeAgentP1(object):
                 message = "AGENT_INCOMPLETE_COMMAND"
                 status = False
             try:
+                slp = command_args['slp']
+            except:
+                message = "AGENT_INCOMPLETE_COMMAND"
+                status = False
+            try:
                 login_time = float(command_args['login_time'])
             except:
                 message = "AGENT_INCOMPLETE_COMMAND"
@@ -760,8 +764,7 @@ class OTPmeAgentP1(object):
                 _srp = srp.gen(rsp_hash)
                 session['srp'] = _srp
                 # Gen SLP.
-                _slp = slp.gen(rsp_hash)
-                session['slp'] = _slp
+                session['slp'] = slp
                 # Add session public key.
                 session['session_key'] = session_key
                 # Add login time.

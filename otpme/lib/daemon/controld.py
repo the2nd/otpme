@@ -28,6 +28,7 @@ from otpme.lib.daemon.mgmtd import MgmtDaemon
 from otpme.lib.daemon.syncd import SyncDaemon
 from otpme.lib.daemon.hostd import HostDaemon
 from otpme.lib.daemon.joind import JoinDaemon
+from otpme.lib.daemon.httpd import HttpDaemon
 from otpme.lib.daemon.scriptd import ScriptDaemon
 from otpme.lib.daemon.clusterd import ClusterDaemon
 from otpme.lib.daemon.unix_daemon import UnixDaemon
@@ -468,6 +469,7 @@ class ControlDaemon(UnixDaemon):
                     'syncd',
                     'authd',
                     'clusterd',
+                    'httpd',
                     ]
 
             # Set child daemons.
@@ -475,6 +477,7 @@ class ControlDaemon(UnixDaemon):
             child_daemons["hostd"] = {}
             child_daemons["joind"] = {}
             child_daemons["ldapd"] = {}
+            child_daemons["httpd"] = {}
             child_daemons["mgmtd"] = {}
             child_daemons["syncd"] = {}
             child_daemons["scriptd"] = {}
@@ -937,6 +940,8 @@ class ControlDaemon(UnixDaemon):
             daemon_class = HostDaemon
         elif daemon_name == "joind":
             daemon_class = JoinDaemon
+        elif daemon_name == "httpd":
+            daemon_class = HttpDaemon
         elif daemon_name == "ldapd":
             daemon_class = LdapDaemon
         elif daemon_name == "mgmtd":

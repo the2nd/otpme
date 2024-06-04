@@ -1476,9 +1476,6 @@ class OTPmeServer1(object):
 
     def authenticate_host(self, command, command_args):
         """ Authenticate host/node. """
-        # FIXME: xxx remove!!!
-        self.authenticated = True
-
         if self.peer_challenge:
             try:
                 peer_response = command_args['client_response']

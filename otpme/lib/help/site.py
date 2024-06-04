@@ -350,6 +350,54 @@ cmd_help = {
                                 },
                 },
 
+    'sso_cert'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-site sso_cert {site} {sso_cert}',
+                    'cmd'   :   '<|object|> <file:sso_cert>',
+                    '_help' :   {
+                                    'cmd'                   : 'Change SSO certificate.',
+                                },
+                },
+
+    'sso_key'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-site sso_key {site} {sso_key}',
+                    'cmd'   :   '<|object|> <file:sso_key>',
+                    '_help' :   {
+                                    'cmd'                   : 'Change SSO certificate key.',
+                                },
+                },
+
+    'del_sso_cert'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-site del_sso_cert {site}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Delete SSO certificate.',
+                                },
+                },
+
+    'del_sso_key'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-site del_sso_key {site}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Delete SSO key.',
+                                },
+                },
+
+    'sso_secret'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-site sso_secret {site} {sso_secret}',
+                    'cmd'   :   '<|object|> <secret>',
+                    '_help' :   {
+                                    'cmd'                   : 'Change SSO secret.',
+                                },
+                },
+
+    'sso_csrf_secret'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-site sso_csrf_secret {site} {sso_csrf_secret}',
+                    'cmd'   :   '<|object|> <secret>',
+                    '_help' :   {
+                                    'cmd'                   : 'Change SSO CSRF secret.',
+                                },
+                },
+
     'dump_ca_chain'   : {
                     '_cmd_usage_help' : 'Usage: otpme-site dump_ca_chain {site}',
                     'cmd'   :   '<|object|>',

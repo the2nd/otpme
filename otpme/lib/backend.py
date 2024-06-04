@@ -3,7 +3,6 @@
 import os
 import time
 import json
-import copy
 import pprint
 from functools import wraps
 
@@ -244,8 +243,7 @@ def read_config(object_id, read_from_cache=True,
 @handle_daemon_shutdown()
 #@oid_lock(args_oid_pos=[0], write=True)
 def write_config(object_id, instance=None, object_config=None, cluster=False,
-    index_auto_update=True, full_index_update=False, full_data_update=None,
-    index_journal=[], index_journal_start_id=None,
+    full_index_update=False, full_data_update=None, index_journal=[],
     no_transaction=False, encrypt=True):
     """ Write object config to backend and update config cache. """
     # Get logger.
@@ -254,20 +252,8 @@ def write_config(object_id, instance=None, object_config=None, cluster=False,
         msg = "Missing AES master key. Unable to encrypt config data."
         logger.critical(msg)
         raise OTPmeException(msg)
-    if index_auto_update and index_journal:
-        msg = "You can use only one of <index_auto_update> or <index_journal>."
-        raise OTPmeException(msg)
-    if index_journal_start_id and index_journal:
-        msg = "You can use only one of <index_journal> or <index_journal_start_id>."
-        raise OTPmeException(msg)
-    if full_index_update and index_auto_update:
-        msg = "You can use only one of <full_index_update> or <index_auto_update>."
-        raise OTPmeException(msg)
     if full_index_update and index_journal:
         msg = "You can use only one of <full_index_update> or <index_journal>."
-        raise OTPmeException(msg)
-    if full_index_update and index_journal_start_id:
-        msg = "You can use only one of <full_index_update> or <index_journal_start_id>."
         raise OTPmeException(msg)
 
     # Replay any leftover transaction.
@@ -279,56 +265,11 @@ def write_config(object_id, instance=None, object_config=None, cluster=False,
     else:
         object_config = ObjectConfig(object_id, object_config, encrypted=False)
 
-    if index_auto_update:
-        # By default do a full index update.
-        full_index_update = True
-        # The index journal ID of the object.
-        index_journal_start_id = None
-        # Read object config to get last journal ID.
-        try:
-            x_object_config = read(object_id, parameters=['INDEX_JOURNAL_ID'])
-        except Exception as e:
-            msg = "Failed to read index journal: %s: %s" % (object_id, e)
-            logger.critical(msg)
-        # Get journal ID.
-        try:
-            index_journal_start_id = x_object_config['INDEX_JOURNAL_ID']
-            full_index_update = False
-        except:
-            pass
-
     # Encrypt object config and update checksums.
     if encrypt:
         object_config = object_config.encrypt(config.master_key)
     else:
         object_config = object_config.copy()
-
-    if index_journal_start_id:
-        # Get object index journal archive.
-        try:
-            index_journal_archive = object_config['INDEX_JOURNAL_ARCHIVE']
-        except:
-            msg = "Invalid object config: %s: Missing index journal archive"
-            raise OTPmeException(msg)
-        # Get only index journal entries not already applied to this object.
-        index_journal = []
-        found_start_id = False
-        x_sort = lambda x: float(x)
-        for x in sorted(index_journal_archive, key=x_sort):
-            if float(x) < float(index_journal_start_id):
-                continue
-            if float(x) == float(index_journal_start_id):
-                found_start_id = True
-                continue
-            index_journal += copy.deepcopy(index_journal_archive[x]['data'])
-        # Fallback to full index update.
-        if not found_start_id:
-            # Log warning a index journal exists but cannot be used.
-            if index_journal_archive:
-                msg = ("Index journal out of sync, will do full index "
-                        "update: %s" % object_id)
-                logger.info(msg)
-            full_index_update = True
 
     # Write config file.
     write_status = write(object_id=object_id,
@@ -452,7 +393,6 @@ def restore_object(object_data, callback=default_callback, **kwargs):
                     object_config=object_config,
                     full_index_update=True,
                     full_data_update=True,
-                    index_auto_update=False,
                     encrypt=False,
                     cluster=True)
     except Exception as e:
@@ -804,7 +744,6 @@ def get_sync_list(realm, site, object_types=None, skip_users=None,
                         "dictionary",
                         "ca",
                         "used_otp",
-                        "used_slp",
                         "used_sotp",
                         "failed_pass",
                         "token_counter",

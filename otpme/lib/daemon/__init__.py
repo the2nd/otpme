@@ -14,6 +14,7 @@ modules = [
         'otpme.lib.daemon.mgmtd',
         'otpme.lib.daemon.hostd',
         'otpme.lib.daemon.ldapd',
+        'otpme.lib.daemon.httpd',
         'otpme.lib.daemon.clusterd',
         ]
 

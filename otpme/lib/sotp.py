@@ -47,7 +47,8 @@ def derive_rsp(secret, hash_type, salt, rsp_len=None):
     return rsp
 
 def verify(password_hash, epoch_time=None, validity_range=None, reneg=False,
-    password=None, challenge=None, response=None, sotp_len=None):
+    password=None, challenge=None, response=None,
+    sotp_len=None, access_group=None):
     """ Verify session OTP. """
     if sotp_len is None:
         sotp_len = config.sotp_len
@@ -69,6 +70,8 @@ def verify(password_hash, epoch_time=None, validity_range=None, reneg=False,
     # Check for renegotiation OTP if needed
     if reneg:
         secret = "RENEG:%s" % password_hash
+    elif access_group:
+        secret = "%s:%s" % (access_group, password_hash)
     else:
         secret = password_hash
 
@@ -93,8 +96,8 @@ def verify(password_hash, epoch_time=None, validity_range=None, reneg=False,
                 return mschap_verify_status, nt_key, o, o_hash
         return False, None, None, None
 
-def gen(epoch_time=None, password_hash=None,
-    sotp_len=None, reneg=False, rsp_hash_type=None):
+def gen(epoch_time=None, password_hash=None, sotp_len=None,
+    reneg=False, rsp_hash_type=None, access_group=None):
     """ Generate session OTP. """
     if not epoch_time:
         # get epoch time (10 second timestep)
@@ -110,6 +113,8 @@ def gen(epoch_time=None, password_hash=None,
             raise OTPmeException(msg)
         secret = "RENEG:%s" % password_hash
         reneg_salt = stuff.gen_secret(32)
+    elif access_group:
+        secret = "%s:%s" % (access_group, password_hash)
     else:
         secret = password_hash
 

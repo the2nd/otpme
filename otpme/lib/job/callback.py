@@ -405,14 +405,25 @@ class JobCallback(object):
             jwt_data = _jwt.decode(jwt=jwt,
                                    key=jwt_key,
                                    algorithm='RS256')
-        except Exception:
-            return False
-        jwt_token = jwt_data['login_token']
+        except Exception as e:
+            msg = "JWT decoding failed."
+            raise OTPmeException(msg)
+        # We do not allow SOTP generated JWTs. A login with a real
+        # token is required.
+        jwt_auth_type = jwt_data['auth_type']
+        if jwt_auth_type != "token":
+            msg = "Need token login, got: %s" % jwt_auth_type
+            raise OTPmeException(msg)
+        # Verify challenge.
         jwt_challenge = jwt_data['challenge']
-        if jwt_challenge == challenge:
-            if jwt_token == config.auth_token.uuid:
-                return jwt_data
-        return False
+        if jwt_challenge != challenge:
+            msg = "Wrong JWT challenge."
+            raise OTPmeException(msg)
+        # Verify JWT token.
+        jwt_token = jwt_data['login_token']
+        if jwt_token != config.auth_token.uuid:
+            msg = "Wrong login token: %s" % jwt_token
+            raise OTPmeException(msg)
 
     @handle_exception
     def dump(self, message,  timeout=1):

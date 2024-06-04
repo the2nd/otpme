@@ -41,14 +41,15 @@ class OTPmeClusterP1(OTPmeClient1):
         reply = self.connection.send(command, command_args)
         return reply
 
-    def write(self, object_id, object_config,
-        last_used=None, full_data_update=False,
+    def write(self, object_id, object_config, last_used=None,
+        index_journal=None, full_data_update=False,
         full_index_update=False):
         """ Send object to peer. """
         command = "write"
         command_args = {}
         command_args['object_id'] = object_id
         command_args['object_config'] = object_config
+        command_args['index_journal'] = index_journal
         command_args['last_used'] = last_used
         command_args['full_data_update'] = full_data_update
         command_args['full_index_update'] = full_index_update

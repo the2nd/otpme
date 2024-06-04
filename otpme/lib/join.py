@@ -421,8 +421,7 @@ class JoinHandler(object):
                 # Write object to backend.
                 try:
                     backend.write_config(object_id=object_id,
-                                    index_auto_update=True,
-                                    #full_index_update=True,
+                                    full_index_update=True,
                                     object_config=object_config)
                 except Exception as e:
                     config.raise_exception()

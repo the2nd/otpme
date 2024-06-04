@@ -3,8 +3,10 @@
 import os
 import sys
 import pprint
+import base64
 import inspect
 from functools import wraps
+from binaryornot.check import is_binary
 
 #from prettytable import ALL
 from prettytable import FRAME
@@ -673,9 +675,18 @@ def get_opts(command_syntax, command_line, command_args,
                 if para_var:
                     if para_is_file:
                         para_file = command_line[0]
-                        fd = open(para_file, "r")
-                        para_val = fd.read()
-                        fd.close()
+                        file_is_binary = is_binary(para_file)
+                        if file_is_binary:
+                            fd = open(para_file, "rb")
+                        else:
+                            fd = open(para_file, "r")
+                        try:
+                            para_val = fd.read()
+                        finally:
+                            fd.close()
+                        if file_is_binary:
+                            para_val = base64.b64encode(para_val)
+                            para_val = para_val.decode()
                     else:
                         para_val = command_line[0]
                     try:
@@ -1347,34 +1358,24 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
 
 
     write_acls = [
-                "edit:session",
+                "delete:session",
                 ]
 
     read_acls = [
                 "view:session",
             ]
 
+    # Combine all ACLs to be checked.
+    verify_acls = write_acls + read_acls
+
     show_username = False
-    show_only_editable_objects = True
     if show_all:
         show_username = True
         if search_regex is None:
             search_regex = "*"
-        if config.auth_token:
-            if config.auth_token.is_admin():
-                show_only_editable_objects = False
 
     if search_regex is not None:
         show_username = True
-
-    # Combine all ACLs to be checked.
-    verify_acls = write_acls + read_acls
-
-    # If we will show only objects the user has edit permissions on
-    # we do not have to query for any "view-only" ACLs. This way the
-    # query is faster.
-    if show_only_editable_objects:
-        verify_acls = write_acls
 
     # Admin user does not need ACL check.
     if config.auth_token:

@@ -269,6 +269,15 @@ def is_uuid(uuid):
         return False
     return True
 
+def is_base64(s):
+    import base64
+    import binascii
+    try:
+        base64.b64decode(s, validate=True)
+        return True
+    except binascii.Error:
+        return False
+
 def copy_object(d):
     """ Deepcopy alternative (faster). """
     #import pickle

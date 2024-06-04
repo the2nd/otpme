@@ -209,6 +209,22 @@ cmd_help = {
                                 },
                 },
 
+    'enable_disabled_login'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user _disabled_loginenable {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Enable user to login even if e.g. accessgroup is disabled.',
+                                },
+                },
+
+    'disable_disabled_login'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user _disabled_logindisable {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Disable user to login even if e.g. accessgroup is disabled.',
+                                },
+                },
+
     'enable'    : {
                     '_cmd_usage_help' : 'Usage: otpme-user enable {user}',
                     'cmd'   :   '<|object|>',

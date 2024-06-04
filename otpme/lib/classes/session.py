@@ -13,7 +13,6 @@ except:
 
 from otpme.lib import cli
 from otpme.lib import srp
-from otpme.lib import slp
 from otpme.lib import oid
 from otpme.lib import json
 from otpme.lib import sotp
@@ -182,7 +181,7 @@ class Session(OTPmeLockObject):
     def __init__(self, session_type=None, username=None, access_group=None,
         object_id=None, object_config=None, uuid=None, cache=False,
         pass_hash=None, pass_hash_params=None, session_id=None, token=None,
-        client=None, client_ip=None):
+        client=None, client_ip=None, slp=None):
         """ Init. """
         super(Session, self).__init__()
         self.realm = config.realm
@@ -194,6 +193,7 @@ class Session(OTPmeLockObject):
         # Set password hash.
         self.pass_hash = pass_hash
         self.pass_hash_params = pass_hash_params
+        self.slp = slp
         # Stuff for session renegotiation.
         self.reneg_started = False
         self.last_reneg = False
@@ -514,6 +514,8 @@ class Session(OTPmeLockObject):
         # Make sure password hashes etc. get encrypted.
         self.object_config.add(key='PASS_HASH', value=self.pass_hash,
                                     encryption=config.disk_encryption)
+        self.object_config.add(key='SLP', value=self.slp,
+                                    encryption=config.disk_encryption)
         if self.offline_data_key:
             self.object_config.add(key='OFFLINE_DATA_KEY',
                                     value=self.offline_data_key,
@@ -553,7 +555,7 @@ class Session(OTPmeLockObject):
             backend.write_config(object_id=self.oid,
                                 instance=self,
                                 cluster=True,
-                                index_auto_update=True)
+                                full_index_update=True)
         except Exception as e:
             msg = "Failed to write session: %s: %s" % (self.oid, e)
             logger.warning(msg)
@@ -580,6 +582,7 @@ class Session(OTPmeLockObject):
         self.creation_time = self.get_config_parameter('CREATION_TIME')
         self.user_uuid = self.get_config_parameter('USER_UUID')
         self.pass_hash = self.get_config_parameter('PASS_HASH')
+        self.slp = self.get_config_parameter('SLP')
         self.pass_hash_params = self.get_config_parameter('PASS_HASH_PARAMS')
         self.session_type = self.get_config_parameter('SESSION_TYPE')
         self.access_group_uuid = self.get_config_parameter('ACCESS_GROUP_UUID')
@@ -646,8 +649,11 @@ class Session(OTPmeLockObject):
 
         # Update child sessions.
         for session_id in self.child_sessions:
-            session = backend.get_sessions(session_id=session_id,
-                                        return_type="instance")[0]
+            result = backend.get_sessions(session_id=session_id,
+                                        return_type="instance")
+            if not result:
+                continue
+            session = result[0]
             if not session:
                 continue
             # FIXME: Do we need this? disabled groups would be still denied
@@ -773,7 +779,7 @@ class Session(OTPmeLockObject):
 
     def _verify(self, auth_type, session_hash, password=None,
         password_hash=None, challenge=None, response=None, check_sotp=False,
-        do_reneg=False, reneg_salt=None, rsp_hash_type=None,
+        do_reneg=False, reneg_salt=None, rsp_hash_type=None, auth_ag=None,
         check_auth=True, check_slp=True, check_srp=True):
         """ Verify given session hash via password or MSCHAP challenge/response. """
         # default should be None -> session does not match request
@@ -897,23 +903,20 @@ class Session(OTPmeLockObject):
 
         # Check for SLP.
         if check_slp:
-            # Build logout pass from session hash.
-            _slp = slp.gen(session_hash)
-
             if auth_type == "clear-text":
                 # Check if given password matches logout password of this
                 # session.
-                if _slp == password:
+                if self.slp == password:
                     verify_reply = {
                                     'type'      : 'logout',
                                     'status'    : True,
-                                    'slp'       : _slp,
+                                    'slp'       : self.slp,
                                     }
                     return verify_reply
 
             if auth_type == "mschap":
                 # Generate password hash of logout password of this session.
-                _slp_hash = stuff.gen_nt_hash(_slp)
+                _slp_hash = stuff.gen_nt_hash(self.slp)
                 # Try to verify challenge/response with logout password hash for
                 # this session.
                 try:
@@ -922,14 +925,14 @@ class Session(OTPmeLockObject):
                                                                 response)
                 except Exception as e:
                     verify_status = None
-                    msg = ("bError verifying MSCHAP request (SLP): %s: %s"
+                    msg = ("Error verifying MSCHAP request (SLP): %s: %s"
                             % (self.session_id, e))
                     logger.critical(msg)
                 if verify_status:
                     verify_reply = {
                                     'type'      : 'logout',
                                     'status'    : True,
-                                    'slp'       : _slp,
+                                    'slp'       : self.slp,
                                     'slp_hash'  : _slp_hash,
                                     'nt_key'    : nt_key,
                                     }
@@ -978,9 +981,22 @@ class Session(OTPmeLockObject):
         # Check for SOTP.
         if check_sotp:
             if auth_type == "clear-text":
+                auth_ag_uuid = None
+                if auth_ag:
+                    # Get sotp auth accessgroup.
+                    result = backend.search(object_type="accessgroup",
+                                            attribute="name",
+                                            value=auth_ag,
+                                            return_type="uuid")
+                    if not result:
+                        msg = "Unknown accessgroup: %s" % auth_ag
+                        logger.critical(msg)
+                        return verify_reply
+                    auth_ag_uuid = result[0]
                 # Check if given password matches an SOTP of this session.
                 sotp_verify_status = sotp.verify(password_hash=session_hash,
-                                                password=password)
+                                                password=password,
+                                                access_group=auth_ag_uuid)
                 if sotp_verify_status:
                     verify_reply = {
                                     'type'      : 'reauth',
@@ -999,7 +1015,7 @@ class Session(OTPmeLockObject):
                                                 response=response)
                 except Exception as e:
                     verify_status = None
-                    msg = ("dError verifying MSCHAP request (SOTP): %s: %s"
+                    msg = ("Error verifying MSCHAP request (SOTP): %s: %s"
                             % (self.session_id, e))
                     logger.critical(msg)
 
@@ -1094,6 +1110,7 @@ class Session(OTPmeLockObject):
             child_session = Session(self.session_type,
                                     self.username,
                                     pass_hash=self.pass_hash,
+                                    pass_hash_params=self.pass_hash_params,
                                     token=self.auth_token,
                                     access_group=c,
                                     client=client,

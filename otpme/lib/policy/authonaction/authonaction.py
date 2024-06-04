@@ -420,11 +420,12 @@ class AuthonactionPolicy(Policy):
         _caller="API", callback=default_callback):
         """ Test the policy. """
         challenge = stuff.gen_secret(32)
-        status = callback.auth_jwt(reason="authonaction",
-                                    challenge=challenge)
-        if status:
-            return callback.ok("JWT auth succeeded.")
-        return callback.error("JWT auth failed.")
+        try:
+            callback.auth_jwt(reason="authonaction",
+                            challenge=challenge)
+        except OTPmeException as e:
+            return callback.error("JWT auth failed.")
+        return callback.ok("JWT auth succeeded.")
 
     def handle_hook(self, hook_object, hook_name,
         callback=default_callback, **kwargs):
@@ -515,9 +516,10 @@ class AuthonactionPolicy(Policy):
             callback.send(msg)
             # Verify auth token.
             challenge = stuff.gen_secret(32)
-            verify_status = callback.auth_jwt(reason="authonaction",
-                                                challenge=challenge)
-            if not verify_status:
+            try:
+                callback.auth_jwt(reason="authonaction",
+                                challenge=challenge)
+            except OTPmeException as e:
                 if config.auth_token.uuid in config.first_reauth:
                     config.first_reauth.pop(config.auth_token.uuid)
                 if config.auth_token.uuid in config.last_reauth:

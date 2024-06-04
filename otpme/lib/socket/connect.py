@@ -2,7 +2,9 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import ssl
+import signal
 import socket
+import threading
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -36,6 +38,15 @@ class ConnectSocket(object):
         self.ca_data_file = None
         self.connected = False
         self.logger = config.logger
+
+        #is_main_thread = isinstance(threading.current_thread(), threading._MainThread)
+        #if is_main_thread:
+        #    # Save original signal handler.
+        #    self.org_sigint_handler = signal.getsignal(signal.SIGINT)
+        #    self.org_sigterm_handler = signal.getsignal(signal.SIGTERM)
+        #    # Install the new SIGINT handler.
+        #    signal.signal(signal.SIGTERM, self.signal_handler)
+        #    signal.signal(signal.SIGINT, self.signal_handler)
 
         # Handle unix sockets.
         if self.socket_uri.startswith("socket://"):
@@ -169,6 +180,15 @@ class ConnectSocket(object):
     def __getattr__(self, name):
         """ Map to original methods. """
         return getattr(self._socket, name)
+
+    def signal_handler(self, _signal, frame):
+        """ Handle signals """
+        if _signal != 15:
+            return
+        self.remove_cert_files()
+        # Return control to original signal handler.
+        signal.signal(signal.SIGINT, self.org_sigint_handler)
+        signal.signal(signal.SIGINT, self.org_sigterm_handler)
 
     def connect(self, timeout=15, connect_timeout=3, quiet=False, **kwargs):
         """ Connect to remote socket and read first packet. """
@@ -314,9 +334,10 @@ class ConnectSocket(object):
 
     def remove_cert_files(self):
         """ Remove temporary SSL cert/key files. """
-        if self.cert_file and self.key_file:
+        if self.cert_file:
             if os.path.exists(self.cert_file):
                 os.remove(self.cert_file)
+        if self.key_file:
             if os.path.exists(self.key_file):
                 os.remove(self.key_file)
         if self.ca_data_file:

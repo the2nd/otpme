@@ -379,6 +379,9 @@ class IdrangePolicy(Policy):
                     # range_end.
                     restart_on_end = True
                     new_id = start_id
+                else:
+                    start_id = range_start
+                    new_id = range_start
             if self.verify_new_id or random_range:
                 try:
                     ldif_attribute = "ldif:%s" % attribute

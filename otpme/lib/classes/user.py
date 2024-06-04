@@ -32,7 +32,6 @@ from otpme.lib.policy import one_time_policy_run
 from otpme.lib.otpme_acl import check_special_user
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
-from otpme.lib.classes.data_objects.used_slp import UsedSLP
 from otpme.lib.classes.data_objects.used_sotp import UsedSOTP
 from otpme.lib.classes.data_objects.failed_pass import FailedPass
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
@@ -111,12 +110,14 @@ write_value_acls = {
                                 "auto_disable",
                                 ],
                     "enable"    : [
+                                "disabled_login",
                                 "autosign",
                                 "auth_script",
                                 "login_script",
                                 "token"
                                 ],
                     "disable"   : [
+                                "disabled_login",
                                 "autosign",
                                 "auth_script",
                                 "login_script",
@@ -282,6 +283,22 @@ commands = {
                     'method'            : 'change_group',
                     'args'              : ['new_group'],
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'enable_disabled_login'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_disabled_login',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_disabled_login'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_disabled_login',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -859,7 +876,6 @@ def register():
     register_config_parameters()
     register_commands("user", commands)
     register_module("otpme.lib.classes.session")
-    register_module("otpme.lib.classes.data_objects.used_slp")
     register_module("otpme.lib.classes.data_objects.used_sotp")
     register_module("otpme.lib.classes.data_objects.failed_pass")
     register_module("otpme.lib.classes.data_objects.last_assigned_id")
@@ -1208,6 +1224,8 @@ class User(OTPmeObject):
 
         # Users primary group cache.
         self._group_uuid = None
+        # Indicates that the user is allowed to login even if realm/site/accessgroup/unit is disabled.
+        self.allow_disabled_login = False
         # Users keys can be handled by the key script on client side or by this
         # class.
         self.sign_mode = "client"
@@ -1226,6 +1244,8 @@ class User(OTPmeObject):
         self.login_script = None
         self.login_script_enabled = False
         self.used_pass_salt = None
+        # SSO session data.
+        self.sso_session_data = {}
         self.auth_script = None
         self.auth_script_enabled = False
         self.acl_inheritance_enabled = False
@@ -1243,6 +1263,7 @@ class User(OTPmeObject):
                             "EXTENSIONS",
                             "EXTENSION_ATTRIBUTES",
                             "AUTOSIGN_ENABLED",
+                            "ALLOW_DISABLED_LOGIN",
                             "OBJECT_CLASSES",
                             "homeDirectory",
                             "loginShell",
@@ -1260,6 +1281,7 @@ class User(OTPmeObject):
                             "EXTENSIONS",
                             "EXTENSION_ATTRIBUTES",
                             "AUTOSIGN_ENABLED",
+                            "ALLOW_DISABLED_LOGIN",
                             "OBJECT_CLASSES",
                             "USED_PASS_SALT",
                             "ACLS",
@@ -1288,6 +1310,11 @@ class User(OTPmeObject):
                                                         'required'  : False,
                                                     },
 
+                        'ALLOW_DISABLED_LOGIN'      : {
+                                                        'var_name'  : 'allow_disabled_login',
+                                                        'type'      : bool,
+                                                        'required'  : False,
+                                                    },
 
                         'SIGN_MODE'                 : {
                                                         'var_name'  : 'sign_mode',
@@ -1382,6 +1409,12 @@ class User(OTPmeObject):
                                                         'required'  : False,
                                                         'encryption': config.disk_encryption,
                                                     },
+                        'SSO_SESSION_DATA'          : {
+                                                        'var_name'  : 'sso_session_data',
+                                                        'type'      : dict,
+                                                        'required'  : False,
+                                                        'encryption': config.disk_encryption,
+                                                    },
                         }
 
         return object_config
@@ -1410,6 +1443,19 @@ class User(OTPmeObject):
                 msg = (_("Username must be lowercase."))
                 raise OTPmeException(msg)
         self.name = name
+
+    def get_id(self):
+        return self.uuid
+
+    @property
+    def is_active(self):
+        return self.enabled
+
+    @property
+    def is_authenticated(self):
+        if config.auth_token:
+            return True
+        return False
 
     @property
     def group(self):
@@ -2702,24 +2748,17 @@ class User(OTPmeObject):
 
         return x_hash
 
-    def _get_used(self, otype):
+    def _get_used_sotp(self):
         """ Get users used SOTP/SLP hashes. """
-        if otype == "sotp":
-            object_type = "used_sotp"
-        elif otype == "slp":
-            object_type = "used_slp"
-        else:
-            raise OTPmeException("Unknown type: %s" % otype)
-
-        used_objects = backend.search(object_type=object_type,
+        used_objects = backend.search(object_type="used_sotp",
                                     attribute="user_uuid",
                                     value=self.uuid,
                                     return_attributes=['uuid', 'expiry'])
         return used_objects
 
-    def is_used(self, otype, hash, challenge=None, response=None):
+    def is_used_sotp(self, hash, challenge=None, response=None):
         """
-        Check if given SOTP/SLP hash is already used and remove outdated hashes
+        Check if given SOTP hash is already used and remove outdated hashes
         from cache.
         """
         from otpme.lib import mschap_util
@@ -2729,13 +2768,12 @@ class User(OTPmeObject):
         # Generate hash.
         _hash = self._gen_used_hash(hash)
 
-        _used = self._get_used(otype)
+        _used = self._get_used_sotp()
         for uuid in _used:
             used_expiry = _used[uuid]['expiry'][0]
             # Check if object has expired.
             if time.time() > used_expiry:
-                msg = ("Removing expired used %s from backend: %s"
-                        % (otype.upper(), self.name))
+                msg = ("Removing expired used SOTP from backend: %s" % self.name)
                 logger.debug(msg)
                 used_object = backend.get_object(uuid=uuid)
                 if not used_object:
@@ -2774,16 +2812,8 @@ class User(OTPmeObject):
                     break
         return was_used
 
-    # FIXME: add proto to cluster this list!
-    def add_used(self, otype, hash):
-        """ Add SOTP/SLP hash to list of already used hashes for this user. """
-        if otype == "sotp":
-            object_class = UsedSOTP
-        elif otype == "slp":
-            object_class = UsedSLP
-        else:
-            raise OTPmeException("Unknown type: %s" % otype)
-
+    def add_used_sotp(self, hash):
+        """ Add SOTP hash to list of already used hashes for this user. """
         # Generate hash
         _hash = self._gen_used_hash(hash)
 
@@ -2795,7 +2825,7 @@ class User(OTPmeObject):
         # Get epoch time.
         expiry_timestamp = time.time() + cache_time
 
-        used_object = object_class(user_uuid=self.uuid,
+        used_object = UsedSOTP(user_uuid=self.uuid,
                                 object_hash=_hash,
                                 expiry=expiry_timestamp,
                                 realm=config.realm,
@@ -2808,7 +2838,7 @@ class User(OTPmeObject):
         except LockWaitAbort:
             pass
         except OTPmeException as e:
-            msg = "Failed to add used %s" % otype
+            msg = "Failed to add used SOTP."
             logger.warning(msg)
 
     def remove_outdated_failed_pass_hashes(self, access_group):
@@ -3348,6 +3378,46 @@ class User(OTPmeObject):
             pass
         # Update index.
         self.del_index('token', token.uuid)
+
+        return self._cache(callback=callback)
+
+    @check_acls(['enable:disabled_login'])
+    @object_lock()
+    def enable_disabled_login(self, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Enable user disabled login. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_disabled_login",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.allow_disabled_login = True
+
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:disabled_login'])
+    @object_lock()
+    def disable_disabled_login(self, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Disable user disabled login. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_disabled_login",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.allow_disabled_login = False
 
         return self._cache(callback=callback)
 
@@ -4203,17 +4273,16 @@ class User(OTPmeObject):
             self.tokens.remove(token.uuid)
 
         # Remove used SOTPs/SLPs.
-        for otype in ['sotp', 'slp']:
-            _used = self._get_used(otype)
-            for uuid in _used:
-                used_oid = backend.get_oid(uuid)
-                used_oid = oid.get(used_oid)
-                try:
-                    backend.delete_object(used_oid)
-                except Exception as e:
-                    msg = ("Error removing used %s '%s' from backend: %s"
-                            % (otype.upper(), used_object, e))
-                    logger.critical(msg)
+        _used = self._get_used()
+        for uuid in _used:
+            used_oid = backend.get_oid(uuid)
+            used_oid = oid.get(used_oid)
+            try:
+                backend.delete_object(used_oid)
+            except Exception as e:
+                msg = ("Error removing used SOTP '%s' from backend: %s"
+                        % (used_object, e))
+                logger.critical(msg)
 
         # Make sure to remove user from signers cache.
         sign_key_cache.del_cache(self.oid)
@@ -4377,6 +4446,12 @@ class User(OTPmeObject):
             if self.autosign_enabled:
                 autosign = "Enabled"
             lines.append("\tauto-sign:\t\t%s\n" % autosign)
+
+        if view_acl or edit_acl:
+            allow_disabled_login = "Disabled"
+            if self.allow_disabled_login:
+                allow_disabled_login = "Enabled"
+            lines.append("\tallow-disabled-login:\t%s\n" % allow_disabled_login)
 
         if self.verify_acl("view:auth_script") \
         or self.verify_acl("enable:auth_script") \

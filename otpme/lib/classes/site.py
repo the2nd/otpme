@@ -63,6 +63,8 @@ read_value_acls = {
                                 "admin_role",
                                 "user_role",
                                 "admin_token",
+                                "sso_secret",
+                                "sso_csrf_secret",
                                 ],
         }
 
@@ -89,6 +91,10 @@ write_value_acls = {
                                 "mgmt_fqdn",
                                 "radius_cert",
                                 "radius_key",
+                                "sso_cert",
+                                "sso_key",
+                                "sso_secret",
+                                "sso_csrf_secret",
                                 ],
                     "renew"     : [
                                 "cert",
@@ -511,6 +517,58 @@ commands = {
                     },
                 },
             },
+    'sso_cert'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_sso_cert',
+                    'args'              : ['sso_cert'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'sso_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_sso_key',
+                    'args'              : ['sso_key'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_sso_cert'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_sso_cert',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_sso_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_sso_key',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'sso_secret'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_sso_secret',
+                    'args'              : ['secret'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'sso_csrf_secret'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_sso_csrf_secret',
+                    'args'              : ['secret'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'add_trust'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -680,6 +738,9 @@ REGISTER_AFTER = [
                 "otpme.lib.classes.realm",
                 ]
 
+SSO_CLIENT_NAME = "SSO"
+SSO_ACCESSGROUP = "SSO"
+
 TEMPLATES_UNIT = "templates"
 
 def register():
@@ -710,6 +771,14 @@ def register_config():
     """ Register config stuff. """
     config.register_config_var("default_site_validity", int, 5475)
     config.register_config_var("default_site_key_len", int, 2048)
+    # Register SSO base client and accessgroup.
+    config.register_config_var("sso_client_name", str, SSO_CLIENT_NAME)
+    config.register_config_var("sso_access_group", str, SSO_ACCESSGROUP)
+    config.register_base_object("accessgroup",  SSO_ACCESSGROUP)
+    client_attrs = {'access_group':SSO_ACCESSGROUP}
+    config.register_base_object(object_type="client",
+                            name=config.sso_client_name,
+                            attributes=client_attrs)
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")
@@ -813,6 +882,10 @@ class Site(OTPmeObject):
         self.radius_cert = None
         self.radius_key = None
         self.radius_reload = False
+        self.sso_cert = None
+        self.sso_key = None
+        self.sso_secret = None
+        self.sso_csrf_secret = None
 
         self._acls = get_acls()
         self._value_acls = get_value_acls()
@@ -964,6 +1037,32 @@ class Site(OTPmeObject):
                                             'encryption'    : config.disk_encryption,
                                         },
 
+            'SSO_CERT'                  : {
+                                            'var_name'  : 'sso_cert',
+                                            'type'      : str,
+                                            'required'  : False,
+                                            'encoding'  : 'BASE64',
+                                        },
+
+            'SSO_KEY'                   : {
+                                            'var_name'  : 'sso_key',
+                                            'type'      : str,
+                                            'required'  : False,
+                                            'encryption'    : config.disk_encryption,
+                                        },
+
+            'SSO_SECRET'                : {
+                                            'var_name'  : 'sso_secret',
+                                            'type'      : str,
+                                            'required'  : False,
+                                            'encryption'    : config.disk_encryption,
+                                        },
+            'SSO_CSRF_SECRET'           : {
+                                            'var_name'  : 'sso_csrf_secret',
+                                            'type'      : str,
+                                            'required'  : False,
+                                            'encryption'    : config.disk_encryption,
+                                        },
             }
 
         return object_config
@@ -1205,6 +1304,120 @@ class Site(OTPmeObject):
         self.radius_key = None
         # Make sure radius gets reloaded.
         self.radius_reload = True
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:sso_cert'])
+    @object_lock()
+    @backend.transaction
+    def change_sso_cert(self, sso_cert, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Change sso cert. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_sso_cert",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.sso_cert = sso_cert
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:sso_cert'])
+    @object_lock()
+    @backend.transaction
+    def del_sso_cert(self, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Delete sso cert. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("del_sso_cert",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.sso_cert = None
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:sso_key'])
+    @object_lock()
+    @backend.transaction
+    def change_sso_key(self, sso_key, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Change sso cert. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_sso_key",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.sso_key = sso_key
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:sso_cert'])
+    @object_lock()
+    @backend.transaction
+    def del_sso_key(self, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Delete sso key. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("del_sso_key",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.sso_key = None
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:sso_secret'])
+    @object_lock()
+    @backend.transaction
+    def change_sso_secret(self, secret, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Change sso secret. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_sso_secret",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.sso_secret = secret
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:sso_csrf_secret'])
+    @object_lock()
+    @backend.transaction
+    def change_sso_csrf_secret(self, secret, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Change sso CSRF secret. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_sso_csrf_secret",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.sso_csrf_secret = secret
         return self._cache(callback=callback)
 
     @check_acls(['enable:auth'])
@@ -1834,6 +2047,10 @@ class Site(OTPmeObject):
         # Set site address.
         self.address = site_address
 
+        # Set flask secrets.
+        self.sso_secret = stuff.gen_secret(len=64, encoding="hex")
+        self.sso_csrf_secret = stuff.gen_secret(len=64, encoding="hex")
+
         # Set config site.
         config.set_site(name=self.name,
                         uuid=self.uuid,
@@ -2119,6 +2336,18 @@ class Site(OTPmeObject):
                 group.change_relogin_timeout(verify_acls=False,
                                             relogin_timeout="1m",
                                             callback=callback)
+            if group.name == config.sso_access_group:
+                # Set max sessions for SSO portal group to 3.
+                group.change_max_sessions(verify_acls=False,
+                                        max_sessions=3,
+                                        callback=callback)
+                # Set relogin timeout for SSO portal to 1 second.
+                group.change_relogin_timeout(verify_acls=False,
+                                            relogin_timeout="1m",
+                                            callback=callback)
+                # Enable session master for SSO portal.
+                group.enable_session_master(verify_acls=False,
+                                            callback=callback)
             if group.name == config.ldap_access_group:
                 # Set max sessions for ldap (ldaptor) group to 3.
                 group.change_max_sessions(verify_acls=False,
@@ -2129,6 +2358,7 @@ class Site(OTPmeObject):
                                             relogin_timeout="1m",
                                             callback=callback)
             if group.name != config.realm_access_group \
+            and group.name != config.sso_access_group \
             and group.name != config.join_access_group:
                 # Add some base groups as child groups of REALM group.
                 realm_access_group.add_child_group(verify_acls=False,
@@ -2711,8 +2941,19 @@ class Site(OTPmeObject):
         else:
             lines.append('ADDRESS=""')
 
+        if self.verify_acl("view:sso_secret") \
+        or self.verify_acl("edit:sso_secret"):
+            lines.append('SSO_SECRET="%s"' % self.sso_secret)
+        else:
+            lines.append('SSO_SECRET=""')
+
+        if self.verify_acl("view:sso_csrf_secret") \
+        or self.verify_acl("edit:sso_csrf_secret"):
+            lines.append('SSO_CSRF_SECRET="%s"' % self.sso_csrf_secret)
+        else:
+            lines.append('SSO_CSRF_SECRET=""')
+
         lines.append('CA="%s"' % site_ca)
-        lines.append('MASTER="%s"' % master_node)
 
         lines.append('ADMIN_ROLE="%s"' % admin_role)
         lines.append('USER_ROLE="%s"' % user_role)

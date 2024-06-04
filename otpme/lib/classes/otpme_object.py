@@ -791,17 +791,13 @@ class OTPmeBaseObject(OTPmeLockObject):
         self._cert_public_key_oid = None
         self.key = None
         self._key_oid = None
-        #self.private_key = None
         self._private_key_oid = None
         self.public_key = None
         self._public_key_oid = None
         self.pickable = True
         self.cache_expire = 30
         self.sub_type = None
-        #self.index = []
         self.index_journal = []
-        self.index_journal_id = None
-        #self.index_journal_archive = {}
         self.incremental_updates = []
         self.list_attributes = []
         self.dict_attributes = []
@@ -1740,11 +1736,10 @@ class OTPmeBaseObject(OTPmeLockObject):
             # Update last modified timestamp.
             self.update_last_modified()
 
-        # Add in index journal to archive.
+        # Process index journal.
         index_journal = []
         if self.index_journal:
             index_journal = copy.deepcopy(self.index_journal)
-            self.add_index_journal(self.index_journal)
         self.index_journal = []
 
         # Update object config from variables.
@@ -1782,7 +1777,6 @@ class OTPmeBaseObject(OTPmeLockObject):
             write_method(object_id=self.oid,
                         instance=self,
                         cluster=cluster,
-                        index_auto_update=False,
                         no_transaction=self.no_transaction,
                         index_journal=index_journal)
         except Exception as e:
@@ -1799,35 +1793,6 @@ class OTPmeBaseObject(OTPmeLockObject):
                 return callback.error(msg)
 
         return callback.ok()
-
-    def add_index_journal(self, journal):
-        """ Add index journal and remove outdated entries. """
-        # Get current time.
-        now = time.time()
-        # Make sure we do not use the same timestamp for different entries.
-        if self.index_journal_id is not None:
-            if self.index_journal_id == str(now):
-                now += 1
-        # Gen ID for journal entry.
-        self.index_journal_id = str(now)
-        # Save journal entry.
-        journal_entry = {
-                        'time'  : now,
-                        'data'  : list(journal),
-                        }
-        self.index_journal_archive[self.index_journal_id] = journal_entry
-
-        # Remove outdated journal entries.
-        counter = 0
-        x_sort = lambda x: float(x)
-        for x in sorted(self.index_journal_archive, key=x_sort, reverse=True):
-            counter += 1
-            # Compare values as float() because json dict keys are always strings.
-            if float(x) >= float(self.index_journal_id):
-                continue
-            if counter < config.index_journal_max:
-                continue
-            self.index_journal_archive.pop(x)
 
     def update_index(self, key, value, **kwargs):
         """ Update attribute in object index. """
@@ -1994,8 +1959,6 @@ class OTPmeObject(OTPmeBaseObject):
                             "NAME",
                             "TYPE",
                             "INDEX",
-                            "INDEX_JOURNAL_ID",
-                            "INDEX_JOURNAL_ARCHIVE",
                             "ENABLED",
                             "LDIF",
                             "LDIF_ATTRIBUTES",
@@ -2025,8 +1988,6 @@ class OTPmeObject(OTPmeBaseObject):
                             "TYPE",
                             "CERT",
                             "INDEX",
-                            "INDEX_JOURNAL_ID",
-                            "INDEX_JOURNAL_ARCHIVE",
                             "TEMPLATE_INDEX",
                             "LDIF",
                             "LDIF_ATTRIBUTES",
@@ -2593,16 +2554,6 @@ class OTPmeObject(OTPmeBaseObject):
             'INDEX'                     : {
                                             'var_name'      : 'index',
                                             'type'          : list,
-                                            'required'      : False,
-                                        },
-            'INDEX_JOURNAL_ID'          : {
-                                            'var_name'      : 'index_journal_id',
-                                            'type'          : str,
-                                            'required'      : False,
-                                        },
-            'INDEX_JOURNAL_ARCHIVE'     : {
-                                            'var_name'      : 'index_journal_archive',
-                                            'type'          : dict,
                                             'required'      : False,
                                         },
             'ORIGIN'                    : {
@@ -7962,8 +7913,6 @@ class OTPmeDataObject(OTPmeBaseObject):
                             "SITE",
                             "TYPE",
                             "INDEX",
-                            "INDEX_JOURNAL_ID",
-                            "INDEX_JOURNAL_ARCHIVE",
                             "CHECKSUM",
                             "SYNC_CHECKSUM",
                             "SALT",
@@ -7978,8 +7927,6 @@ class OTPmeDataObject(OTPmeBaseObject):
                             "SITE",
                             "TYPE",
                             "INDEX",
-                            "INDEX_JOURNAL_ID",
-                            "INDEX_JOURNAL_ARCHIVE",
                             "CHECKSUM",
                             "SYNC_CHECKSUM",
                             "SALT",
@@ -8108,16 +8055,6 @@ class OTPmeDataObject(OTPmeBaseObject):
             'INDEX'                     : {
                                             'var_name'      : 'index',
                                             'type'          : list,
-                                            'required'      : False,
-                                        },
-            'INDEX_JOURNAL_ID'          : {
-                                            'var_name'      : 'index_journal_id',
-                                            'type'          : str,
-                                            'required'      : False,
-                                        },
-            'INDEX_JOURNAL_ARCHIVE'     : {
-                                            'var_name'      : 'index_journal_archive',
-                                            'type'          : dict,
                                             'required'      : False,
                                         },
             'CREATE_TIME'               : {

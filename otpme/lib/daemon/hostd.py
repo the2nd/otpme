@@ -577,8 +577,6 @@ class HostDaemon(OTPmeDaemon):
                         # Preserve auth/sync settings.
                         o.auth_enabled = x_object.auth_enabled
                         o.sync_enabled = x_object.sync_enabled
-                        # Preserve journal ID to get sane index update.
-                        o.index_journal_id = x_object.index_journal_id
                         # Update object config.
                         o._set_variables()
                         o.set_variables()
@@ -596,11 +594,17 @@ class HostDaemon(OTPmeDaemon):
                 try:
                     backend.write_config(object_id=x_oid,
                                     object_config=object_config,
-                                    index_auto_update=True)
+                                    full_index_update=True)
                 except Exception as e:
                     msg = "Failed to write object: %s: %s" % (x_oid, e)
                     self.logger.critical(msg)
                     config.raise_exception()
+
+        # Realm master nodes must not delete realms/sites.
+        if is_master_node:
+            if sync_status:
+                self.update_realm_data()
+            return True
 
         # Remove remote missing sites.
         local_sites = backend.search(object_type="site",
@@ -609,14 +613,6 @@ class HostDaemon(OTPmeDaemon):
                                     return_type="instance")
         removed_objects = 0
         for site in local_sites:
-            # For realm master nodes we have to check if there was a problem
-            # getting the site object from its master node.
-            if is_master_node:
-                # If we were not able to get site from the master node (e.g. a
-                # connection problem) we must not remove it.
-                if site.oid not in reached_sites:
-                    continue
-
             # If the site is in the list of sites we received from master node
             # there is no need to remove it.
             if site.oid in sync_sites:

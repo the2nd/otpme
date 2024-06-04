@@ -198,7 +198,7 @@ class AgentConn(object):
             raise OTPmeException(msg)
         return reply
 
-    def add_rsp(self, realm, site, rsp, login_time, timeout, unused_timeout,
+    def add_rsp(self, realm, site, rsp, slp, login_time, timeout, unused_timeout,
         rsp_signature=None, session_key=None, offline=False):
         """ Add RSP to otpme-agent. """
         command_args = {
@@ -206,6 +206,7 @@ class AgentConn(object):
                         'site'          : site,
                         'rsp'           : rsp,
                         'rsp_signature' : rsp_signature,
+                        'slp'           : slp,
                         'session_key'   : session_key,
                         'offline'       : offline,
                         'login_time'    : login_time,

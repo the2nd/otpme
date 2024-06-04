@@ -3322,8 +3322,10 @@ class OTPmeClient1(OTPmeClientBase):
                     #self.offline_session_key = self._offline_token.session_key_public
                     self.offline_session_key = self._offline_token.session_key_private
 
+                # Get SLP for this session.
+                slp = self.auth_reply['slp']
                 # Add login session to agent, handle offline tokens etc.
-                self._add_login_session()
+                self._add_login_session(slp)
 
             elif self.reneg:
                 if reply_message == "AUTH_SESSION_RENEG_START":
@@ -3517,7 +3519,7 @@ class OTPmeClient1(OTPmeClientBase):
 
         return response
 
-    def _add_login_session(self):
+    def _add_login_session(self, slp):
         """ Create login session file and add RSP to otpme-agent. """
         # Indicates if we have to cache offline tokens.
         cache_offline_tokens = False
@@ -3596,14 +3598,15 @@ class OTPmeClient1(OTPmeClientBase):
                         user=self.otpme_agent_user)
         try:
             agent_conn.add_rsp(realm=self.realm,
-                                site=self.site,
-                                rsp=self.rsp,
-                                rsp_signature=rsp_signature,
-                                session_key=self.offline_session_key,
-                                login_time=login_time,
-                                timeout=session_timeout,
-                                unused_timeout=session_unused_timeout,
-                                offline=keep_offline_session)
+                            site=self.site,
+                            rsp=self.rsp,
+                            slp=slp,
+                            rsp_signature=rsp_signature,
+                            session_key=self.offline_session_key,
+                            login_time=login_time,
+                            timeout=session_timeout,
+                            unused_timeout=session_unused_timeout,
+                            offline=keep_offline_session)
         except Exception as e:
             msg = ("Error adding RSP to otpme-agent: %s" % e)
             self.logger.critical(msg)

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block content %}
+    <style type="text/css">
+        html, body { background-color:#fff; font-weight:normal; font-family:Arial; font-size:90%; width:100%; height:100%; margin:0; padding:0;}
+
+    	/* Body width over full window size. */
+        body {
+            min-width:100%;
+        }
+    </style>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<style>
+		.kachel {
+		  border: 1px solid #ccc;
+		  padding: 10px;
+		  margin-bottom: 10px;
+		}
+  	</style>
+
+    <title>SSO Portal</title>
+    <script>
+		function openTabAndSendPost(sso_url, data) {
+		  const newTab = window.open('', '_blank');
+
+		  if (newTab) {
+			const form = newTab.document.createElement('form');
+			form.method = 'POST';
+			form.action = sso_url;
+			form.target = '_top';
+
+			for (const key in data) {
+			  const input = newTab.document.createElement('input');
+			  input.type = 'hidden';
+			  input.name = key;
+			  input.value = data[key];
+			  form.appendChild(input);
+			}
+
+			newTab.document.body.appendChild(form);
+			form.submit();
+		  }
+		}
+
+		function addApps() {
+			url = "{{ url_for('get_apps', _external=True, _scheme='https') }}";
+			fetch(url)
+			  .then(response => response.json())
+			  .then(data => {
+				const kachelContainer = document.getElementById('kacheln');
+
+				data.forEach(item => {
+				  	const kachel = document.createElement('div');
+				  	kachel.classList.add('kachel');
+
+					// Set app name.
+				  	if ( item.app_name ) {
+						const appNameElement = document.createElement('p');
+						appNameElement.textContent = item.app_name;
+						kachel.appendChild(appNameElement);
+					}
+
+					// Set app logo.
+				  	if ( item.logo_type ) {
+						const picElement = document.createElement('img');
+						picElement.src = "data:" + item.logo_type + ";base64," + item.logo_data;
+						picElement.alt = "App Logo";
+						kachel.appendChild(picElement);
+					}
+
+				  	const openButton = document.createElement('button');
+				  	openButton.textContent = 'Open';
+  				  	openButton.addEventListener('click', () => {
+					sotp_url = "{{ url_for('get_sotp', _external=True, _scheme='https') }}" + "?access_group=" + item.app_ag;
+					fetch(sotp_url)
+					  .then(response => response.json())
+					  .then(sotp => {
+						const login_data = {
+						  username: '{{ g.user.name }}',
+						  password: sotp,
+						  redirect_url: item.login_url,
+						}
+						openTabAndSendPost(item.helper_url, login_data);
+					  })
+					  .catch(error => {
+						console.error('Fehler beim Abrufen der Daten:', error);
+					  });
+          		  });
+				  kachel.appendChild(openButton);
+
+				  kachelContainer.appendChild(kachel);
+				});
+			  })
+			  .catch(error => {
+				console.error('Fehler beim Abrufen der Daten:', error);
+			  });
+			}
+    </script>
+</head>
+<body>
+
+  <div id="kacheln"></div>
+
+  <script>
+	addApps();
+
+  </script>
+</body>
+</html>
+
+
+{% endblock %}

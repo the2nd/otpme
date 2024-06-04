@@ -10,6 +10,7 @@ except:
     pass
 
 from otpme.lib import jwt
+from otpme.lib import slp
 from otpme.lib import sotp
 from otpme.lib import stuff
 from otpme.lib import config
@@ -61,10 +62,6 @@ class AuthHandler(object):
         if not self.nt_hash:
             self.nt_hash = stuff.gen_nt_hash(self.password)
 
-        # If we already have a password hash there is nothing to do.
-        if self.password_hash:
-            return
-
         if self.auth_type == "mschap":
             self.password_hash = self.nt_hash
             return
@@ -101,7 +98,8 @@ class AuthHandler(object):
             # auth_session.
             self.auth_session = session
             # If we have a session no need to create a new one.
-            self.create_sessions = False
+            if self.auth_session.access_group == self.access_group:
+                self.create_sessions = False
             # Set password hash from matched session hash.
             self.password_hash = session.pass_hash
             if self.auth_type == "mschap":
@@ -172,7 +170,7 @@ class AuthHandler(object):
                 # because one of the child sessions may have been created by
                 # this SOTP.
                 if session.access_group == config.realm_access_group:
-                    if self.user.is_used(otype="sotp", hash=self.one_iter_hash):
+                    if self.user.is_used_sotp(hash=self.one_iter_hash):
                         return None
 
             if self.auth_type == "clear-text":
@@ -186,7 +184,7 @@ class AuthHandler(object):
 
             self.found_sotp = True
             # Add SOTP to list of users used SOTPs.
-            self.user.add_used(otype="sotp", hash=self.one_iter_hash)
+            self.user.add_used_sotp(hash=self.one_iter_hash)
             # Set auth session if we found an SOTP.
             self.auth_session = session
             # Update session (e.g. last used timestamp).
@@ -363,6 +361,10 @@ class AuthHandler(object):
 
         # Set auth token from session.
         self.auth_token = token
+        if self.found_sotp:
+            config.auth_type = "sotp"
+        else:
+            config.auth_type = "token"
 
         # On session logout we are done here.
         if self.session_logout:
@@ -422,8 +424,6 @@ class AuthHandler(object):
                 self.auth_message = "SESSION_LOGOUT_OK"
             # Delete session if this is a logout request.
             session.delete(force=True, recursive=True, verify_acls=False)
-            # Add SLP hash to used SLPs list of the user.
-            self.user.add_used(otype="slp", hash=self.one_iter_hash)
             # On session logout authentication fails but the action was
             # successful. Thus loglevel INFO is sufficient.
             self.error_log_method = self.logger.info
@@ -461,48 +461,27 @@ class AuthHandler(object):
 
     def verify_user_sessions(self):
         """ Verify user sessions. """
-        return_attributes = ['uuid', 'session_id']
+        return_attributes = ['uuid', 'session_id', 'accessgroup']
         # Get REALM sessions for this user.
         result = backend.search(object_type="accessgroup",
                                 attribute="name",
                                 value=config.realm_access_group,
                                 return_type="uuid")
         realm_access_group_uuid = result[0]
-        user_sessions = backend.get_sessions(user=self.user.uuid,
+        user_realm_sessions = backend.get_sessions(user=self.user.uuid,
                                     access_group=realm_access_group_uuid,
                                     return_attributes=return_attributes)
                                     # We have to check all sessions here because
                                     # e.g. a smartcard session will do SOTP auth
                                     # when connecting to mgmtd.
                                     #session_type=self.auth_type)
-        # Get realm session IDs.
+
+        # Get realm sessions that have the requested accessgroup as child.
+        verify_sessions = []
         realm_session_ids = []
-        for session_uuid in user_sessions:
-            session_id = user_sessions[session_uuid]['session_id'][0]
-            realm_session_ids.append(session_id)
-
-        # Get sessions for this user/accessgroup.
-        if self.auth_group.uuid != realm_access_group_uuid:
-            group_session_ids = backend.get_sessions(user=self.user.uuid,
-                                            access_group=self.auth_group.uuid,
-                                            return_attributes=return_attributes,
-                                            session_type=self.auth_type)
-            for x in group_session_ids:
-                if x in user_sessions:
-                    continue
-                user_sessions[x] = group_session_ids[x]
-
-        if not user_sessions:
-            self.logger.debug("No session found for this request.")
-
-        # Check users sessions.
-        processed_sessions = []
-        for session_uuid in user_sessions:
-            if session_uuid in processed_sessions:
-                continue
-            processed_sessions.append(session_uuid)
+        for session_uuid in user_realm_sessions:
             # Get session instance.
-            session_id = user_sessions[session_uuid]['session_id'][0]
+            session_id = user_realm_sessions[session_uuid]['session_id'][0]
             session = backend.get_object(object_type="session",
                                         uuid=session_uuid)
             if not session:
@@ -513,37 +492,107 @@ class AuthHandler(object):
                     continue
             except LockWaitAbort:
                 continue
+            realm_session_ids.append(session_id)
+            session_ag_uuid = user_realm_sessions[session_uuid]['accessgroup'][0]
+            session_ag = backend.get_object(uuid=session_ag_uuid)
+            session_ag_childs = session_ag.childs(recursive=True)
+            if self.auth_group.uuid != session_ag.uuid:
+                if self.auth_group.name not in session_ag_childs:
+                    continue
+            verify_sessions.append(session)
 
-            ## We can only verify sessions that match the requests auth type.
-            #if self.auth_type != session.session_type:
-            #    self.logger.debug("Ignoring %s session for %s request."
-            #                % (session.session_type, self.auth_type))
-            #    continue
+        # Get sessions for the session master.
+        session_master = self.auth_group.parents(recursive=True,
+                                                session_master=True,
+                                                return_type="instance")
+        session_master_session_ids = []
+        if session_master:
+            session_master_sessions = backend.get_sessions(user=self.user.uuid,
+                                                access_group=session_master.uuid,
+                                                return_attributes=return_attributes,
+                                                session_type=self.auth_type)
+            for session_uuid in session_master_sessions:
+                # Get session instance.
+                session_id = session_master_sessions[session_uuid]['session_id'][0]
+                session = backend.get_object(object_type="session",
+                                            uuid=session_uuid)
+                if not session:
+                    continue
+                # Outdate expired session.
+                try:
+                    if not session.exists(outdate=True):
+                        continue
+                except LockWaitAbort:
+                    continue
+                if session in verify_sessions:
+                    continue
+                verify_sessions.append(session)
+                session_master_session_ids.append(session_id)
+
+        # Get sessions for this user/accessgroup.
+        if self.auth_group.uuid != realm_access_group_uuid:
+            group_session_ids = backend.get_sessions(user=self.user.uuid,
+                                            access_group=self.auth_group.uuid,
+                                            return_attributes=return_attributes,
+                                            session_type=self.auth_type)
+            for session_uuid in group_session_ids:
+                # Get session instance.
+                session_id = group_session_ids[session_uuid]['session_id'][0]
+                session = backend.get_object(object_type="session",
+                                            uuid=session_uuid)
+                if not session:
+                    continue
+                # Outdate expired session.
+                try:
+                    if not session.exists(outdate=True):
+                        continue
+                except LockWaitAbort:
+                    continue
+                if session in verify_sessions:
+                    continue
+                verify_sessions.append(session)
+
+        if not verify_sessions:
+            self.logger.debug("No session found for this request.")
+
+        # Check users sessions.
+        processed_sessions = []
+        for session in verify_sessions:
+            if session.uuid in processed_sessions:
+                continue
+            processed_sessions.append(session.uuid)
+
+            check_for_used_sotp = False
+            if session.session_id in realm_session_ids:
+                check_for_used_sotp = True
+            if session.session_id in session_master_session_ids:
+                check_for_used_sotp = True
+
+            if check_for_used_sotp:
+                # For clear-text sessions we can check for an already used
+                # SOTP before verifying the session.
+                if self.auth_type == "clear-text":
+                    # We use just one iteration for SOTPs because of performance
+                    # reasons (e.g. login and session renegotiation). This should
+                    # not be a problem because everyone with access to the OTPme
+                    # server can still do bad stuff and the RSP itself changes on
+                    # each login or renegotiation.
+                    password_hash = self.one_iter_hash
+                    # If we found an already used SOTP there is no need to
+                    # check tis REALM session again. But we have to check if
+                    # the child session this OTP created still exists and
+                    # must be verified. We can NOT use self.check_used()
+                    # here because this will make this request fail.
+                    if self.user.is_used_sotp(hash=password_hash):
+                        continue
 
             self.logger.debug("Verifying session '%s'." % session.name)
 
             # FIXME: implement session reneg for non-REALM sessions???
-            if session_id in realm_session_ids:
+            if session.session_id in realm_session_ids:
                 # Add realm session childs to list.
                 realm_session_ids += session.child_sessions
-                # We use just one iteration for RSPs because of performance
-                # reasons (e.g. login and session renegotiation). This should
-                # not be a problem because everyone with access to the OTPme
-                # server can still do bad stuff and the RSP itself changes on
-                # each login or renegotiation.
-                password_hash = self.one_iter_hash
-
                 if session.access_group == config.realm_access_group:
-                    # For clear-text sessions we can check for an already used
-                    # SOTP before verifying the session.
-                    if self.auth_type == "clear-text":
-                        # If we found an already used SOTP there is no need to
-                        # check tis REALM session again. But we have to check if
-                        # the child session this OTP created still exists and
-                        # must be verified. We can NOT use self.check_used()
-                        # here because this will make this request fail.
-                        if self.user.is_used(otype="sotp", hash=password_hash):
-                            continue
                     check_auth = False
                     check_sotp = True
                     # No need to check for session renegotiation with MSCHAP
@@ -556,14 +605,18 @@ class AuthHandler(object):
                     check_auth = True
                     check_sotp = False
                     do_reneg = False
-
             else:
                 # Make sure we have a password hash.
                 self.gen_pass_hash(hash_params=session.pass_hash_params)
                 password_hash = self.password_hash
+                do_reneg = False
                 check_auth = True
                 check_sotp = False
-                do_reneg = False
+                if self.access_group == config.sso_access_group:
+                    check_sotp = True
+                if session_master:
+                    if session_master.name == config.sso_access_group:
+                        check_sotp = True
 
             if self.session_reneg is not None:
                 do_reneg = self.session_reneg
@@ -579,6 +632,9 @@ class AuthHandler(object):
                 'challenge'         : self.challenge,
                 'response'          : self.response,
                 }
+
+            if self.access_group != config.realm_access_group:
+                kwargs['auth_ag'] = self.access_group
 
             # Try to verify session.
             if self.verify_session(session, **kwargs) is not None:
@@ -622,42 +678,38 @@ class AuthHandler(object):
             request_type = verify_reply['type']
             # Found SLP.
             if request_type == "logout":
-                # Gen SLP hash.
-                slp_hash = self.get_one_iter_hash(slp, quiet=True)
-                # Add SLP hash to used SLPs list of the user.
-                self.user.add_used(otype="slp", hash=slp_hash)
                 # Delete session if it matches the given SLP.
                 session.delete(force=True, recursive=True, verify_acls=False)
                 self.logger.debug("Logged out old user session: %s" % session.name)
                 return session_status
 
-    def check_used(self, pass_type):
-        """ Verify request password against already used SLPs/SOTPs. """
+    def check_used(self):
+        """ Verify request password against already used SOTPs. """
         # Without password we cannot check.
         if not self.password:
             return
 
-        self.logger.debug("Checking for used %s..." % pass_type.upper())
+        self.logger.debug("Checking for used SOTP...")
         if not self.one_iter_hash:
             raise Exception("You have to set self.one_iter_hash first.")
 
         # Check if we checked this hash before (in this auth request). This is
         # to lower our load.
-        if self.one_iter_hash in self.checked_hashes[pass_type]:
+        if self.one_iter_hash in self.checked_hashes:
             return
 
         # Add hash to processed hashes.
-        self.checked_hashes[pass_type].append(self.one_iter_hash)
+        self.checked_hashes.append(self.one_iter_hash)
 
-        # This check is needed because we dont want to count recurring SLP/SOTP
+        # This check is needed because we dont want to count recurring SOTP
         # requests as failed logins.
-        if self.user.is_used(otype=pass_type, hash=self.one_iter_hash):
-            self.logger.warning("Request contains an already used %s. "
-                            "Authentication will fail." % pass_type.upper())
-            # If the password from this request is an already used SLP/SOTP
+        if self.user.is_used_sotp(hash=self.one_iter_hash):
+            self.logger.warning("Request contains an already used SOTP. "
+                                "Authentication will fail.")
+            # If the password from this request is an already used SOTP
             # authentication must fail.
             self.auth_failed = True
-            self.auth_message = "AUTH_ALREADY_USED_%s" % pass_type.upper()
+            self.auth_message = "AUTH_ALREADY_USED_SOTP"
 
     def get_client(self):
         """ Try to get client of this request. """
@@ -753,7 +805,7 @@ class AuthHandler(object):
             return
 
         # If client is not enabled authentication must fail.
-        if not self.auth_client.enabled:
+        if not self.auth_client.enabled and not self.user.allow_disabled_login:
             self.logger.debug("Client '%s' is disabled." % self.client)
             # If client is disabled auth must fail.
             self.auth_failed = True
@@ -814,8 +866,8 @@ class AuthHandler(object):
             return
 
         # If group is not enabled authentication must fail.
-        if not self.auth_group.enabled:
-            self.logger.debug("Access group '%s' is disabled." % self.access_group)
+        if not self.auth_group.enabled and not self.user.allow_disabled_login:
+            self.logger.warning("Access group '%s' is disabled." % self.access_group)
             # If group is disabled auth must fail.
             self.auth_failed = True
             self.auth_message = "AUTH_GROUP_DISABLED"
@@ -842,31 +894,46 @@ class AuthHandler(object):
             return
 
         # Make sure authentication with users realm is not disabled.
-        if not self.user.is_admin() and not self.realm_logout:
+        if not self.user.is_admin() \
+        and not self.realm_logout \
+        and not self.user.allow_disabled_login:
             user_realm = backend.get_object(object_type="realm",
                                         uuid=self.user.realm_uuid)
             if not user_realm.auth_enabled:
-                self.logger.debug("Authentication with realm is disabled: %s"
+                self.logger.warning("Authentication with realm is disabled: %s"
                                     % (user_realm.name))
                 self.auth_failed = True
                 self.count_fails = False
-                self.auth_message = "AUTH_WITH_REALM_DISABLED"
+                self.auth_message = "AUTH_REALM_DISABLED"
                 return
 
             # Make sure authentication with users site is not disabled.
             user_site = backend.get_object(object_type="site",
                                     uuid=self.user.site_uuid)
             if not user_site.auth_enabled:
-                self.logger.debug("Authentication with site is disabled: %s/%s"
+                self.logger.warning("Authentication with site is disabled: %s/%s"
                                     % (user_site.realm, user_site.name))
                 self.auth_failed = True
                 self.count_fails = False
-                self.auth_message = "AUTH_WITH_SITE_DISABLED"
+                self.auth_message = "AUTH_SITE_DISABLED"
+                return
+
+        # Make sure users unit is not disabled.
+        if not self.user.is_admin() \
+        and not self.realm_logout \
+        and not self.user.allow_disabled_login:
+            users_unit = self.user.get_parent_object()
+            if not users_unit.enabled:
+                self.logger.warning("Users unit is disabled: %s"
+                                    % (users_unit.name))
+                self.auth_failed = True
+                self.count_fails = False
+                self.auth_message = "AUTH_UNIT_DISABLED"
                 return
 
         # If user is disabled or locked authentication is failed.
         if not self.user.enabled:
-            self.logger.debug("User '%s' is disabled." % self.user.name)
+            self.logger.warning("User '%s' is disabled." % self.user.name)
             self.auth_failed = True
             self.auth_message = "AUTH_USER_DISABLED"
             return
@@ -1227,6 +1294,10 @@ class AuthHandler(object):
         # If status is not None we found token of this request.
         self.auth_token = token
         self.verify_token = _verify_token
+        if self.found_sotp:
+            config.auth_type = "sotp"
+        else:
+            config.auth_type = "token"
 
         # Verify auth token.
         if not self.auth_failed:
@@ -1835,17 +1906,21 @@ class AuthHandler(object):
             self.logger.debug("Found a valid session master: '%s'."
                         % session_master)
             self.session_start_group = session_master.name
-
         else:
             # If there is no session master use accessgroup from request as
             # session start group.
             self.session_start_group = self.access_group
 
         if not self.auth_failed:
+            # Make sure we have a valid password hash.
+            if not self.realm_login:
+                self.gen_pass_hash()
             # Create parent session instance.
+            session_logout_pass = slp.gen(self.one_iter_hash)
             session = Session(self.auth_type, self.user.name,
                                 pass_hash=self.password_hash,
                                 pass_hash_params=self.pass_hash_params,
+                                slp=session_logout_pass,
                                 token=self.auth_token.uuid,
                                 uuid=self.new_session_uuid,
                                 access_group=self.session_start_group,
@@ -2121,7 +2196,7 @@ class AuthHandler(object):
         # Will hold NT hash of the request password.
         self.nt_hash = None
         # Will hold a one iteration hash of the password which is used for
-        # REALM sessions and to check for already used SOTP/SLP.
+        # REALM sessions and to check for already used SOTP.
         self.one_iter_hash = None
         # Will hold NT Key (if this is an MSCHAP request)
         self.nt_key = None
@@ -2132,7 +2207,7 @@ class AuthHandler(object):
         # Will hold the SRP.
         self.auth_srp = None
         # Will hold all checked password hashes. (e.g checked for already used SOTP)
-        self.checked_hashes = { 'sotp' : [], 'slp' : [] }
+        self.checked_hashes = []
         # Indicates if we should verify sessions.
         self.verify_sessions = True
         # Indicates if we should create sessions.
@@ -2302,7 +2377,7 @@ class AuthHandler(object):
 
         if not self.auth_failed and self.auth_status is False:
             # Generate hash to be used for REALM sessions and to check for used
-            # SLP/SOTP.
+            # SOTP.
             if self.password and not self.one_iter_hash:
                 self.one_iter_hash = self.get_one_iter_hash(self.password)
 
@@ -2310,11 +2385,7 @@ class AuthHandler(object):
             if not self.auth_failed and not self.auth_status:
                 if self.access_group == config.realm_access_group:
                     if not self.session_logout and not self.realm_logout:
-                        self.check_used(pass_type="sotp")
-
-            # Check if request contains an already used SLP.
-            if self.session_logout or self.realm_logout:
-                self.check_used(pass_type="slp")
+                        self.check_used()
 
         # Try to verify request against existing session if enabled.
         if not self.auth_failed and self.verify_sessions:
@@ -2516,11 +2587,6 @@ class AuthHandler(object):
                 # Set password hash to realm session password hash.
                 self.password_hash = rsp_hash
 
-            ## Handle non-realm logins.
-            #else:
-            #    # Make sure we have a password hash.
-            #    self.gen_pass_hash(self.pass_hash_params)
-
             # Build JWT.
             if self.gen_jwt:
                 reason = "REALM_AUTH"
@@ -2646,8 +2712,12 @@ class AuthHandler(object):
                                 % self.verify_token.rel_path)
                     ssh_private_key = self.verify_token._ssh_private_key
             auth_reply['ssh_private_key'] = ssh_private_key
-
             auth_reply['request_cacheable'] = self.request_cacheable
+            if self.auth_session:
+                auth_reply['slp'] = self.auth_session.slp
+
+            if self.access_group == config.sso_access_group:
+                auth_reply['session_hash'] = self.auth_session.pass_hash
 
             # Update last used timestamps for user and token.
             self.user.update_last_used_time()

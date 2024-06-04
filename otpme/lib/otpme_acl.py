@@ -501,12 +501,12 @@ def get_raw_acls(acls, token):
         acl_list.append(acl)
 
         # Add "edit" ACL.
-        if acl_name == "edit":
+        if acl_name == "edit" and acl_value  is None:
             acl_list.append("edit")
             acl_list.append("edit:attribute")
 
         # Add "view" ACL.
-        if acl_name == "view":
+        if acl_name == "view" and acl_value  is None:
             acl_list.append("view")
             acl_list.append("view_all")
             acl_list.append("view:attribute")

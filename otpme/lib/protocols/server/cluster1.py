@@ -364,6 +364,11 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = "Missing object config."
                 status = False
             try:
+                index_journal = command_args['index_journal']
+            except:
+                message = "Missing index journal."
+                status = False
+            try:
                 last_used = command_args['last_used']
             except:
                 last_used = None
@@ -380,8 +385,7 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = False
             if status:
                 object_checksum = object_config['CHECKSUM']
-                msg = ("Writing object (node:%s): %s (%s)"
-                    % (self.peer.name, object_id, object_checksum))
+                msg = ("Writing object: %s (%s)" % (object_id, object_checksum))
                 logger.debug(msg)
                 message = "done"
                 while True:
@@ -398,6 +402,7 @@ class OTPmeClusterP1(OTPmeServer1):
                                 'object_id'         : object_id,
                                 'last_used'         : last_used,
                                 'object_config'     : object_config,
+                                'index_journal'     : index_journal,
                                 'full_data_update'  : full_data_update,
                                 'full_index_update' : full_index_update,
                             }

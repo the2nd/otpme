@@ -99,6 +99,11 @@ class OTPmeAuthP1(OTPmeServer1):
                 self.require_auth = "user"
                 return self.build_response(status, message)
 
+            if config.auth_type != "token":
+                message = "Need token login."
+                status = False
+                return self.build_response(status, message)
+
             # Set proctitle to contain username.
             self.set_proctitle(self.username)
 
@@ -148,6 +153,7 @@ class OTPmeAuthP1(OTPmeServer1):
                     'challenge'         : jwt_challenge,
                     'login_time'        : time.time(),
                     'login_token'       : config.auth_token.uuid,
+                    'auth_type'         : config.auth_type,
                     'accessgroup'       : jwt_accessgroup,
                     }
 

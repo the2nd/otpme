@@ -322,6 +322,8 @@ class OTPmeConfig(object):
         # Users token (instance) that was used to authenticate the user of the current
         # connection.
         self.register_config_var("auth_token", None, None)
+        # Which auth type the user authenticated (e.g. sotp)
+        self.register_config_var("auth_type", None, None)
         # Token with realm admin rights.
         self.register_config_var("admin_token_uuid", str, None)
         # OTPme site admin role UUID.

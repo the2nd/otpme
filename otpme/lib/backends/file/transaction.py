@@ -802,7 +802,7 @@ class FileTransaction(BaseTransaction):
         # Call parent class write method to finalize write.
         return super(FileTransaction, self)._write()
 
-    def cluster_write(self, object_uuid, object_id, object_config):
+    def cluster_write(self, object_uuid, object_id, index_journal, object_config):
         """ Cluster write action. """
         action = "cluster_write"
         journal_file = self.get_journal_file(action)
@@ -810,6 +810,7 @@ class FileTransaction(BaseTransaction):
                         'action'        : action,
                         'object_uuid'   : object_uuid,
                         'object_id'     : object_id.full_oid,
+                        'index_journal' : index_journal,
                         'object_config' : object_config,
                         'journal_file'  : journal_file,
                         }
@@ -1055,14 +1056,17 @@ class FileTransaction(BaseTransaction):
                     self._update_nsscache(object_id, nsscache_action)
             elif action == "cluster_write":
                 if not self.no_disk_writes:
+                    object_config = journal_entry['object_config']
+                    index_journal = journal_entry['index_journal']
                     object_uuid = journal_entry['object_uuid']
                     object_id = journal_entry['object_id']
                     object_id = oid.get(object_id)
-                    object_config = journal_entry['object_config']
-                    # Decrypt object config.
+                    ## Get current object config.
+                    #object_config = read(object_id)
                     object_config = ObjectConfig(object_id, object_config)
+                    # Decrypt object config.
                     object_config = object_config.decrypt(config.master_key)
-                    checksum = object_config['CHECKSUM']
+                    object_checksum = object_config['CHECKSUM']
                     wait_for_write = True
                     if self._replay:
                         wait_for_write = False
@@ -1070,7 +1074,8 @@ class FileTransaction(BaseTransaction):
                                                     object_id=object_id,
                                                     object_config=object_config,
                                                     action="write",
-                                                    checksum=checksum,
+                                                    checksum=object_checksum,
+                                                    index_journal=index_journal,
                                                     wait_for_write=wait_for_write)
                     if cluster_event:
                         cluster_events.append(cluster_event)

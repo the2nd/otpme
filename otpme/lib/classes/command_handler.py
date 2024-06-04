@@ -884,7 +884,6 @@ class CommandHandler(object):
                                         object_config=x_oc,
                                         full_index_update=True,
                                         full_data_update=True,
-                                        index_auto_update=False,
                                         encrypt=False)
                 except Exception as e:
                     msg = "Failed to restore object: %s: %s" % (x_oid, e)
