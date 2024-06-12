@@ -328,12 +328,12 @@ class AuthHandler(object):
                 self.count_fails = False
                 return
 
-        # Check if token is valid for the accessgroup or one of its parents.
+        # Check if token is valid for the accessgroup.
         if not self.auth_group.is_assigned_token(self.auth_token.uuid):
             # But we want to ignore token group validity for logout requests.
             if not self.session_logout:
                 self.logger.warning("Verification failed because token is not valid "
-                            "for accessgroup '%s' or one of its parents."
+                            "for accessgroup '%s'."
                             % self.access_group)
                 self.auth_failed = True
                 self.count_fails = False
@@ -1058,14 +1058,14 @@ class AuthHandler(object):
                                                 pass_type="static",
                                                 token_types=self.require_token_types,
                                                 access_group=self.auth_group,
-                                                check_parent_groups=True,
+                                                #check_parent_groups=True,
                                                 host=self.auth_host,
                                                 client=self.auth_client,
                                                 return_type="instance", quiet=False)
                 self.valid_user_tokens_script_static += self.user.get_tokens(
                                                 pass_type="script_static",
                                                 access_group=self.auth_group,
-                                                check_parent_groups=True,
+                                                #check_parent_groups=True,
                                                 token_types=self.require_token_types,
                                                 host=self.auth_host,
                                                 client=self.auth_client,
@@ -1075,7 +1075,7 @@ class AuthHandler(object):
                 self.valid_user_tokens_otp += self.user.get_tokens(
                                                 pass_type="otp",
                                                 access_group=self.auth_group,
-                                                check_parent_groups=True,
+                                                #check_parent_groups=True,
                                                 token_types=self.require_token_types,
                                                 host=self.auth_host,
                                                 client=self.auth_client,
@@ -1083,7 +1083,7 @@ class AuthHandler(object):
                 self.valid_user_tokens_script_otp += self.user.get_tokens(
                                                 pass_type="script_otp",
                                                 access_group=self.auth_group,
-                                                check_parent_groups=True,
+                                                #check_parent_groups=True,
                                                 token_types=self.require_token_types,
                                                 host=self.auth_host,
                                                 client=self.auth_client,
@@ -1091,7 +1091,7 @@ class AuthHandler(object):
                 self.valid_user_tokens_otp_push += self.user.get_tokens(
                                                 pass_type="otp_push",
                                                 access_group=self.auth_group,
-                                                check_parent_groups=True,
+                                                #check_parent_groups=True,
                                                 token_types=self.require_token_types,
                                                 host=self.auth_host,
                                                 client=self.auth_client,
@@ -1101,7 +1101,7 @@ class AuthHandler(object):
                 self.valid_user_tokens_ssh += self.user.get_tokens(
                                             pass_type="ssh_key",
                                             access_group=self.auth_group,
-                                            check_parent_groups=True,
+                                            #check_parent_groups=True,
                                             token_types=self.require_token_types,
                                             host=self.auth_host,
                                             client=self.auth_client,

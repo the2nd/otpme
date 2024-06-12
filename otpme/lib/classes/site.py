@@ -740,6 +740,7 @@ REGISTER_AFTER = [
 
 SSO_CLIENT_NAME = "SSO"
 SSO_ACCESSGROUP = "SSO"
+SSO_USER_ROLE = "SSO_USER"
 
 TEMPLATES_UNIT = "templates"
 
@@ -779,6 +780,8 @@ def register_config():
     config.register_base_object(object_type="client",
                             name=config.sso_client_name,
                             attributes=client_attrs)
+    config.register_config_var("sso_user_role", str, SSO_USER_ROLE)
+    config.register_base_object("role", SSO_USER_ROLE)
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")
@@ -867,6 +870,7 @@ class Site(OTPmeObject):
         self.ca = None
         self.admin_role_uuid = None
         self.user_role_uuid = None
+        self.sso_user_role_uuid = None
 
         self.auth_fqdn = None
         self.mgmt_fqdn = None
@@ -983,6 +987,12 @@ class Site(OTPmeObject):
 
             'USER_ROLE'                 : {
                                             'var_name'  : 'user_role_uuid',
+                                            'type'      : 'uuid',
+                                            'required'  : False,
+                                        },
+
+            'SSO_USER_ROLE'             : {
+                                            'var_name'  : 'sso_user_role_uuid',
                                             'type'      : 'uuid',
                                             'required'  : False,
                                         },
@@ -2337,6 +2347,7 @@ class Site(OTPmeObject):
                                             relogin_timeout="1m",
                                             callback=callback)
             if group.name == config.sso_access_group:
+                sso_access_group = group
                 # Set max sessions for SSO portal group to 3.
                 group.change_max_sessions(verify_acls=False,
                                         max_sessions=3,
@@ -2472,12 +2483,21 @@ class Site(OTPmeObject):
             if role.name == config.realm_user_role:
                 realm_user_role = role
                 self.user_role_uuid = role.uuid
+            # Set SSO users role.
+            if role.name == config.sso_user_role:
+                sso_user_role = role
+                self.sso_user_role_uuid = role.uuid
 
         # Add REALM_USER role to site users group.
         users_group.add_role(realm_user_role.name,
                             verify_acls=False,
                             callback=callback)
         users_group._write(callback=callback)
+        # Add SSO_USER role to SSO accessgroup.
+        sso_access_group.add_role(sso_user_role.name,
+                            verify_acls=False,
+                            callback=callback)
+        sso_access_group._write(callback=callback)
 
         self.add_object_templates(callback=callback)
 

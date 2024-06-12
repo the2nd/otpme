@@ -4,7 +4,7 @@ import os
 import ssl
 import signal
 import socket
-import threading
+#import threading
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":

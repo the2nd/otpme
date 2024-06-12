@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import ssl
 #import time
 import signal
 from gevent.pywsgi import WSGIServer
 from gevent import sleep as gevent_sleep
+from otpme.lib.pki.utils import check_ssl_cert_key
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -17,6 +19,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import filetools
 from otpme.lib import multiprocessing
+from otpme.lib.pki.cert import SSLCert
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
 
 from otpme.web.app import app
@@ -60,8 +63,25 @@ class HttpDaemon(OTPmeDaemon):
 
         # Create cert/key files for flask.
         own_site = backend.get_object(uuid=config.site_uuid)
-        ssl_cert = own_site.cert
-        ssl_key = own_site.key
+        sso_cert_ready = False
+        if own_site.sso_cert and own_site.sso_key:
+            try:
+                check_ssl_cert_key(own_site.sso_cert, own_site.sso_key)
+                sso_cert_ready = True
+            except:
+                sso_cert_ready = False
+        if sso_cert_ready:
+            ssl_cert = own_site.sso_cert
+            ssl_key = own_site.sso_key
+        else:
+            ssl_cert = own_site.cert
+            ssl_key = own_site.key
+
+        # Encrypt cert private key with password.
+        key_pass = stuff.gen_secret(len=32)
+        key_pass = key_pass.encode()
+        _cert = SSLCert(key=ssl_key)
+        ssl_key = _cert.encrypt_key(passphrase=key_pass)
 
         # Temp file paths.
         self.cert_file = "%s/%s-cert.pem" % (config.tmp_dir,
@@ -100,8 +120,7 @@ class HttpDaemon(OTPmeDaemon):
             except:
                 raise
 
-        # We need to start the main loop in child thread because of some
-        # high CPU load bug when running reactor.run() in child thread.
+        # Start run method in extra thread.
         multiprocessing.start_thread(name=self.name,
                                     target=self.__run,
                                     daemon=True)
@@ -116,10 +135,18 @@ class HttpDaemon(OTPmeDaemon):
             SECRET_KEY = own_site.sso_secret,
             )
 
-        #app.run(host="0.0.0.0", debug=True, use_reloader=False)
-        http_server = WSGIServer(("0.0.0.0", 443), app,
+        # Load SSL context with encrypted key.
+        context = ssl.SSLContext(ssl_version=ssl.PROTOCOL_SSLv23)
+        context.load_cert_chain(certfile=self.cert_file,
                                 keyfile=self.key_file,
-                                certfile=self.cert_file)
+                                password=key_pass)
+        # Start http server.
+        http_server = WSGIServer(('0.0.0.0', 443), app, ssl_context=context)
+
+        #app.run(host="0.0.0.0", debug=True, use_reloader=False)
+        #http_server = WSGIServer(("0.0.0.0", 443), app,
+        #                        keyfile=self.key_file,
+        #                        certfile=self.cert_file)
         #http_server.serve_forever()
         http_server.start()
 

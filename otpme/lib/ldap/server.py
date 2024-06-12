@@ -201,20 +201,20 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             ldif = "%s\n" % ldif
 
         else:
-            r = []
-            realm = None
-            for i in reversed(self.dn.getText().split(",")):
-                if not i.startswith("dc="):
-                    break
-                if realm:
-                    # Get OTPme client from DN.
-                    self.client = i.split("=")[1]
-                    #msg = "Using client from DN: %s" % self.client
-                    #log.msg(msg, logLevel=logging.DEBUG)
-                r.insert(0, i.replace("dc=", ""))
-                x = ".".join(r)
-                if x == config.realm:
-                    realm = x
+            #r = []
+            #realm = None
+            #for i in reversed(self.dn.getText().split(",")):
+            #    if not i.startswith("dc="):
+            #        break
+            #    if realm:
+            #        # Get OTPme client from DN.
+            #        self.client = i.split("=")[1]
+            #        #msg = "Using client from DN: %s" % self.client
+            #        #log.msg(msg, logLevel=logging.DEBUG)
+            #    r.insert(0, i.replace("dc=", ""))
+            #    x = ".".join(r)
+            #    if x == config.realm:
+            #        realm = x
 
             # Handle OTPme object requests.
             otpme_oid = get_oid_from_path(self.path)
@@ -257,12 +257,6 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         except Exception as e:
             msg = "Failed to load LDIF: %s" % e
             logger.critical(msg)
-        #try:
-        #    parser.connectionLost(failure.Failure(error.ConnectionDone))
-        #except Exception as e:
-        #    print("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", e)
-
-        #assert parser.done
 
         entries = parser.seen
 
@@ -442,7 +436,6 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         Lookup the given object (dn) and return it as
         distinguishedname.DistinguishedName.
         """
-        #dn = distinguishedname.DistinguishedName(dn)
         object_dn = dn.getText()
 
         if object_dn == "cn=Subschema":
@@ -509,15 +502,16 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         if not os.path.isdir(config_dir):
             return defer.fail(ldaperrors.LDAPNoSuchObject(dn))
 
-        # Build object's DN.
-        dn = self.dn
-        for i in dn_parts:
-            dn = distinguishedname.DistinguishedName(
-                listOfRDNs=((distinguishedname.RelativeDistinguishedName(i),)
-                            + dn.split()))
+        ## Build object's DN.
+        #dn = self.dn
+        #for i in dn_parts:
+        #    dn = distinguishedname.DistinguishedName(
+        #        listOfRDNs=((distinguishedname.RelativeDistinguishedName(i),)
+        #                    + dn.split()))
+        dn = distinguishedname.DistinguishedName(object_dn)
 
         # Create object instance and return it.
-        e = self.__class__(config_dir, dn)
+        e = self.__class__(config_dir, dn, self.auth_token, self.client)
         return defer.succeed(e)
 
     def __repr__(self):
@@ -620,10 +614,10 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                 value = "%s*%s" % (value, s_value)
                     sub_count += 1
 
-                #print("REGEX", value)
+                #print("REGEX", attribute, value)
 
             elif isinstance(filterObject, pureldap.LDAPFilter_greaterOrEqual):
-                #print("GREATER OR EQUAL FILTER"9
+                #print("GREATER OR EQUAL FILTER")
                 attribute = filterObject.attributeDesc.value
                 greater_than = str(int(filterObject.assertionValue.value) - 1)
             elif isinstance(filterObject, pureldap.LDAPFilter_lessOrEqual):
@@ -888,10 +882,6 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         """ Search LDAP object. """
         from ldaptor.protocols import pureldap
         results = []
-        debug_times = False
-        if debug_times:
-            print("GOOOOOOOOOOOOOOOOOOOOOOOOO")
-
         schema_search = False
 
         if scope is None:
@@ -924,8 +914,6 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
         if not schema_search:
             # Handle OTPme object search requests.
-            if debug_times:
-                start_t = time.time()
             try:
                 result_uuids = self.search_otpme(filterText=filterText,
                                                 filterObject=filterObject,
@@ -936,13 +924,6 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             except SizeLimitExceeded as e:
                 log.msg(str(e), logLevel=logging.WARNING)
                 raise ldaperrors.LDAPSizeLimitExceeded()
-
-            if debug_times:
-                t = time.time() - start_t
-                print("SEARCH: ", t)
-
-            if debug_times:
-                start_t = time.time()
 
             result_objects = {}
             for x_uuid in result_uuids:
@@ -967,38 +948,31 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                             object_dn = entry.dn.getText()
 
                 if not object_dn:
-                    if debug_times:
-                        print("GET_OBJECT", object_id)
                     if object_id:
-                        object_data = self.get_object(object_id)
+                        object_data = self.get_object(object_id, fake_dc=self.client)
                         object_dn = object_data['ldif'][0][4:]
                         object_id = object_data['read_oid']
                         object_id = oid.get(object_id)
                         object_checksum = object_data['checksum']
 
-                        # Add fake DC to DN. This is used to allow LDAP authentication
-                        # to different clients/accessgroups by specifying the client as DC.
-                        if self.client:
-                            realm_len = len(config.realm.split("."))
-                            x = object_dn.split(",")
-                            x.insert(-realm_len, "dc=%s" % self.client)
-                            object_dn = ",".join(x)
                         object_path = get_config_paths(object_id=object_id)['config_dir']
-                        object_base = object_dn.split(",")[0]
 
-                        dn_parts = object_dn.split(",")[1:]
-                        dn_parts.reverse()
-                        dn = None
-                        for x in dn_parts:
-                            if not dn:
-                                dn = distinguishedname.DistinguishedName(x)
-                            else:
-                                dn = distinguishedname.DistinguishedName(
-                                    listOfRDNs=((distinguishedname.RelativeDistinguishedName(x),)
-                                                + dn.split()))
-                        dn = distinguishedname.DistinguishedName(
-                            listOfRDNs=((distinguishedname.RelativeDistinguishedName(object_base),)
-                                        + dn.split()))
+                        #object_base = object_dn.split(",")[0]
+                        #dn_parts = object_dn.split(",")[1:]
+                        #dn_parts.reverse()
+                        #dn = None
+                        #for x in dn_parts:
+                        #    if not dn:
+                        #        dn = distinguishedname.DistinguishedName(x)
+                        #    else:
+                        #        dn = distinguishedname.DistinguishedName(
+                        #            listOfRDNs=((distinguishedname.RelativeDistinguishedName(x),)
+                        #                        + dn.split()))
+                        #dn = distinguishedname.DistinguishedName(
+                        #    listOfRDNs=((distinguishedname.RelativeDistinguishedName(object_base),)
+                        #                + dn.split()))
+
+                        dn = distinguishedname.DistinguishedName(object_dn)
 
                         # Create new entry and pass on auth token and client.
                         entry = self.__class__(object_path, dn, self.auth_token, self.client)
@@ -1021,23 +995,12 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                     dn_path_len = str(len(object_dn.split(",")))
                     result_objects["%s %s" % (dn_path_len, object_dn)] = entry
 
-            if debug_times:
-                t = time.time() - start_t
-                print("OBJECT_GET: ", t)
-
-            if debug_times:
-                start_t = time.time()
-
             for key in sorted(result_objects):
                 entry = result_objects[key]
                 if callback is None:
                     results.append(entry)
                 else:
                     callback(entry)
-
-            if debug_times:
-                t = time.time() - start_t
-                print("CALLBACK: ", t)
 
         if callback is None:
             return defer.succeed(results)
@@ -1134,7 +1097,6 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
             raise ldaperrors.LDAPStrongAuthRequired()
         return ldapserver.LDAPServer.handle_LDAPSearchRequest(self, request, controls, reply)
 
-    # applied patch https://github.com/twisted/ldaptor/commit/b96df7543c4d491ba1d7c7624bc7ae9d4ec9118c
     def _cbSearchGotBase(self, base, dn, request, reply):
         def _sendEntryToClient(entry):
             requested_attribs = request.attributes

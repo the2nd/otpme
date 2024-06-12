@@ -78,7 +78,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
         self.object_types = [ 'user', 'group', 'role' ]
 
         self.object_classes = {
-                            'user' : [ 'posixAccount' ],
+                            'user' : [ 'posixAccount', 'shadowAccount' ],
                             'group' : [ 'posixGroup' ],
                             'role' : [],
                         }

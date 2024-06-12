@@ -983,7 +983,7 @@ class AccessGroup(OTPmeObject):
 
     @assigned_token_cache.cache_method()
     def is_assigned_token(self, token_uuid, skip_disabled_roles=True,
-        skip_disabled_groups=True, check_parent_groups=True):
+        skip_disabled_groups=True, check_parent_groups=False):
         """ Check if token is assigned to this acccessgroup. """
         from otpme.lib.classes.role import get_roles
         if token_uuid in self.tokens:
