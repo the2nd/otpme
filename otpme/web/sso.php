@@ -1,15 +1,14 @@
-<!DOCTYPE html>
 <?php
 $username = $_POST['username'] ?? '';
 $password = $_POST['password'] ?? '';
 $redirect_url = $_POST['redirect_url'] ?? '';
-#$url_path = $_POST['url_path'] ?? '';
+//$url_path = $_POST['url_path'] ?? '';
 
 $username = htmlspecialchars($username);
 $password = htmlspecialchars($password);
 $redirect_url = htmlspecialchars($redirect_url);
-#$url_path = htmlspecialchars($url_path);
-$url_path = "/"
+//$url_path = htmlspecialchars($url_path);
+$url_path = "/";
 
 //echo "username: " . $username . "<br>";
 //echo "password: " . $password;
@@ -43,8 +42,7 @@ setcookie("url_path", $url_path, $expire, $url_path);
 	function handleLogin(newTab) {
 		let usernameCookie = getCookie("username");
 		let passwordCookie = getCookie("password");
-		//let urlPath = getCookie("url_path");
-		let urlPath = "/";
+		let urlPath = getCookie("url_path");
 		deleteCookie('username', urlPath);
 		deleteCookie('password', urlPath);
 
@@ -82,8 +80,7 @@ setcookie("url_path", $url_path, $expire, $url_path);
 
 	function openAndCheckWindow() {
 		let redirectURL = getCookie("redirect_url");
-		//let urlPath = getCookie("url_path");
-		let urlPath = "/";
+		let urlPath = getCookie("url_path");
 		deleteCookie('redirect_url', urlPath);
 		const newTab = window.open(redirectURL, '_blank');
 

@@ -186,6 +186,8 @@ def get_apps():
     result = backend.search(object_type="client",
                             attribute="sso_enabled",
                             value=True,
+                            realm=config.realm,
+                            site=config.site,
                             return_type="instance")
     if not result:
         return jsonify(app_data)

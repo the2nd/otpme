@@ -277,6 +277,8 @@ class Session(OTPmeLockObject):
         result = backend.search(object_type="accessgroup",
                                 attribute="name",
                                 value=access_group,
+                                realm=config.realm,
+                                site=config.site,
                                 return_type="uuid")
         if not result:
             msg = "Unknown accessgroup: %s" % access_group

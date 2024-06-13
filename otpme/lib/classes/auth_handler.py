@@ -466,6 +466,8 @@ class AuthHandler(object):
         result = backend.search(object_type="accessgroup",
                                 attribute="name",
                                 value=config.realm_access_group,
+                                realm=config.realm,
+                                site=config.site,
                                 return_type="uuid")
         realm_access_group_uuid = result[0]
         user_realm_sessions = backend.get_sessions(user=self.user.uuid,

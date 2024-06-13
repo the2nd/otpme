@@ -1718,7 +1718,7 @@ class OTPmeClient1(OTPmeClientBase):
             if self.request_jwt is None:
                 self.request_jwt = True
                 self.verify_jwt = True
-        # The interace the user loggs in (e.g. tty, gui, ssh).
+        # The interface the user loggs in (e.g. tty, gui, ssh).
         self.login_interface = login_interface
         # Indicates if we should send a screen unlock request.
         self.unlock = unlock
@@ -1855,7 +1855,7 @@ class OTPmeClient1(OTPmeClientBase):
         # Add default agent ACL.
         if self.add_agent_acl:
             agent_acl = (username, 'all')
-            if not agent_acl in self.agent_acls:
+            if agent_acl not in self.agent_acls:
                 self.agent_acls.append(agent_acl)
 
         # Will hold ssh-agent connection when doing login/logout.

@@ -13,6 +13,7 @@ except:
 from otpme.lib import jwt
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib import connections
 from otpme.lib import multiprocessing
 
 from otpme.lib.protocols import status_codes
@@ -166,6 +167,74 @@ class OTPmeAuthP1(OTPmeServer1):
 
             return self.build_response(True, _jwt)
 
+        # Try to get username.
+        try:
+            username = command_args['username']
+        except:
+            username = None
+
+        # Check if user exists.
+        user = backend.get_object(object_type="user",
+                                name=username,
+                                realm=config.realm,
+                                run_policies=True,
+                                _no_func_cache=True)
+        if not user:
+            message = "AUTH_FAILED"
+            status = False
+            command_error = message
+            msg = ("%s: user=%s token=%s access_group=%s client=%s client_ip=%s "
+                    "auth_mode=%s auth_type=%s session=%s"
+                            % (command_error,
+                            log_username,
+                            log_token_name,
+                            log_access_group,
+                            log_client,
+                            log_client_ip,
+                            log_auth_mode,
+                            log_auth_type,
+                            log_session_id))
+            self.logger.error(msg)
+            return self.build_response(status, message)
+
+        redirect_connection = False
+        if user.realm != config.realm:
+            redirect_connection = True
+        if user.site != config.site:
+            redirect_connection = True
+
+        if redirect_connection:
+            # Get authd connection.
+            try:
+                authd_conn = connections.get("authd",
+                                            realm=user.realm,
+                                            site=user.site,
+                                            auto_preauth=True,
+                                            auto_auth=False)
+            except Exception as e:
+                message = "Failed to get redirect connection"
+                msg = "%s: %s" % (message, e)
+                self.logger.critical(msg)
+                status = False
+                return self.build_response(status, message)
+
+            # Send verify request.
+            try:
+                status, \
+                status_code, \
+                auth_reply = authd_conn.send(command="verify",
+                                    command_args=command_args)
+            except Exception as e:
+                message = "Failed to authenticate user"
+                msg = "%s: %s" % (message, e)
+                self.logger.critical(msg)
+                status = False
+                return self.build_response(status, message)
+            finally:
+                authd_conn.close()
+
+            return self.build_response(status, auth_reply)
+
         # Indicates if authentication was successful.
         auth_status = False
         # Variables to build log entry if something goes wrong before we could
@@ -230,12 +299,6 @@ class OTPmeAuthP1(OTPmeServer1):
             mschap_response = command_args['mschap_response']
         except:
             mschap_response = None
-
-        # Try to get username.
-        try:
-            username = command_args['username']
-        except:
-            username = None
 
         # Set auth mode.
         if command == "verify" or command == "verify_mschap":
@@ -308,30 +371,6 @@ class OTPmeAuthP1(OTPmeServer1):
 
         # Set log user.
         log_username = username
-
-        # Check if user exists.
-        user = backend.get_object(object_type="user",
-                                name=username,
-                                realm=config.realm,
-                                run_policies=True,
-                                _no_func_cache=True)
-        if not user:
-            message = "AUTH_FAILED"
-            status = False
-            command_error = message
-            msg = ("%s: user=%s token=%s access_group=%s client=%s client_ip=%s "
-                    "auth_mode=%s auth_type=%s session=%s"
-                            % (command_error,
-                            log_username,
-                            log_token_name,
-                            log_access_group,
-                            log_client,
-                            log_client_ip,
-                            log_auth_mode,
-                            log_auth_type,
-                            log_session_id))
-            self.logger.error(msg)
-            return self.build_response(status, message)
 
         # Set proctitle to contain username.
         self.set_proctitle(username)

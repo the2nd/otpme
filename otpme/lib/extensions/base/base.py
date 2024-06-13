@@ -129,7 +129,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
                             'realm' : [ 'dc' ],
                             'site' : [ 'ou', 'description' ],
                             'unit' : [ 'ou', 'description' ],
-                            'user' : [ 'uid', 'sn', 'cn', 'l', 'description' ],
+                            'user' : [ 'uid', 'sn', 'cn', 'displayName', 'l', 'description' ],
                             'role' : [ 'cn', 'description' ],
                             'group' : [],
                             'all' : [ 'entryUUID', 'createTimestamp', 'modifyTimestamp' ],
@@ -145,6 +145,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
                                 'user' : {
                                             'uid' : [ 'name' ],
                                             'cn' : [ 'givenName', 'sn', 'name' ],
+                                            'displayName' : [ 'givenName', 'sn', 'name' ],
                                         },
                                 'role' : {
                                             'cn' : [ 'name' ],

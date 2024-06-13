@@ -648,8 +648,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                     try:
                         ldif_attribute = config.ldap_attribute_type_mappings[x]
                     except:
-                        msg = "Unknown LDAP attribute: %s" % attribute
-                        raise OTPmeException(msg)
+                        return result_uuids
                 ldif_attribute = "ldif:%s" % ldif_attribute
 
                 # Search objects.
@@ -807,20 +806,15 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         #return_attributes = ['read_oid', 'name', 'object_type', 'path', 'ldif', 'checksum']
         return_attributes = ['read_oid', 'name', 'object_type', 'ldif', 'checksum']
 
-        try:
-            result = backend.search(object_type=object_type,
-                                    attributes=search_attributes,
-                                    case_sensitive=False,
-                                    return_raw_acls=True,
-                                    less_than=less_than,
-                                    greater_than=greater_than,
-                                    return_attributes=return_attributes,
-                                    size_limit=size_limit,
-                                    _debug=True)
-        except SizeLimitExceeded as e:
-            msg = "Failed to do otpme search: %s" % e
-            log.msg(msg, logLevel=logging.WARNING)
-            raise ldaperrors.LDAPSizeLimitExceeded()
+        result = backend.search(object_type=object_type,
+                                attributes=search_attributes,
+                                case_sensitive=False,
+                                return_raw_acls=True,
+                                less_than=less_than,
+                                greater_than=greater_than,
+                                return_attributes=return_attributes,
+                                max_results=size_limit,
+                                _debug=True)
 
         acls = result['acls']
         objects = result['objects']
@@ -1023,7 +1017,7 @@ def otpme_log_translate(conf):
     if message:
         if debug_message:
             if config.loglevel == "DEBUG" or config.debug_enabled:
-                #logger.debug(message)
+                logger.debug(message)
                 pass
         else:
             if loglevel == "CRITICAL":
@@ -1097,40 +1091,10 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
             raise ldaperrors.LDAPStrongAuthRequired()
         return ldapserver.LDAPServer.handle_LDAPSearchRequest(self, request, controls, reply)
 
-    def _cbSearchGotBase(self, base, dn, request, reply):
-        def _sendEntryToClient(entry):
-            requested_attribs = request.attributes
-            if len(requested_attribs) > 0:
-                filtered_attribs = [
-                    (k, entry.get(k)) for k in requested_attribs if k in entry]
-            else:
-                filtered_attribs = entry.items()
-            if len(filtered_attribs) > 0:
-                #print("BEFORE", time.time())
-                #r = pureldap.LDAPSearchResultEntry(objectName=entry.dn.getText(), attributes=filtered_attribs,)
-                #reply(r)
-                #print("AFTER", time.time())
-                reply(pureldap.LDAPSearchResultEntry(
-                    objectName=entry.dn.getText(),
-                    attributes=filtered_attribs,
-                    ))
-
-        # Pass on auth token.
-        base.auth_token = self.boundUser.auth_token
-
-        d = base.search(filterObject=request.filter,
-                        attributes=request.attributes,
-                        scope=request.scope,
-                        derefAliases=request.derefAliases,
-                        sizeLimit=request.sizeLimit,
-                        timeLimit=request.timeLimit,
-                        typesOnly=request.typesOnly,
-                        callback=_sendEntryToClient,
-                        )
-        def _done(_):
-            return pureldap.LDAPSearchResultDone(resultCode=ldaperrors.Success.resultCode)
-        d.addCallback(_done)
-        return d
+    #def _cbSearchGotBase(self, base, dn, request, reply):
+    #    # Pass on auth token.
+    #    base.auth_token = self.boundUser.auth_token
+    #    return super(OTPmeLDAPServer, self)._cbSearchGotBase(base, dn, request, reply)
 
 class LDAPServer(object):
     """ Class to start an LDAP server as OTPme daemon using ldaptor. """
