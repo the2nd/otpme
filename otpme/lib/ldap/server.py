@@ -57,6 +57,7 @@ from otpme.lib.backends.file.file import OBJECTS_DIR
 from otpme.lib.exceptions import *
 
 ldap_cache = {}
+ldap_query_cache = {}
 
 uuid_to_oid = {}
 user_ldif_cache = {}
@@ -87,33 +88,67 @@ def register_config():
                             name=config.ldap_client_name,
                             attributes=client_attrs)
 
-def get_ldap_cache(auth_token, object_id):
+def get_ldap_cache(auth_token, client, object_id):
     """ Get cached entry. """
     global ldap_cache
     read_oid = object_id.read_oid
-    if not auth_token.uuid in ldap_cache:
-        return
-    if read_oid not in ldap_cache[auth_token.uuid]:
+    try:
+        cached_object_checksum = ldap_cache[auth_token.uuid][client][read_oid]['CHECKSUM']
+    except KeyError:
         return
     try:
         object_checksum = backend.get_checksum(object_id)
     except:
         object_checksum = None
-    cached_object_checksum = ldap_cache[auth_token.uuid][read_oid]['CHECKSUM']
     if object_checksum == cached_object_checksum:
-        cache_entry = ldap_cache[auth_token.uuid][read_oid]
+        cache_entry = ldap_cache[auth_token.uuid][client][read_oid]['ENTRY']
         return cache_entry
 
-def update_ldap_cache(auth_token, object_id, entry, checksum):
+def update_ldap_cache(auth_token, client, object_id, ldap_entry, checksum):
     """ Add cache entry. """
     global ldap_cache
     read_oid = object_id.read_oid
-    if not auth_token.uuid in ldap_cache:
+    if auth_token.uuid not in ldap_cache:
         ldap_cache[auth_token.uuid] = {}
-    if not read_oid in ldap_cache:
-        ldap_cache[auth_token.uuid][read_oid] = {}
-    ldap_cache[auth_token.uuid][read_oid]['CHECKSUM'] = checksum
-    ldap_cache[auth_token.uuid][read_oid]['ENTRY'] = entry
+    if client not in ldap_cache[auth_token.uuid]:
+        ldap_cache[auth_token.uuid][client] = {}
+    if read_oid not in ldap_cache[auth_token.uuid][client]:
+        ldap_cache[auth_token.uuid][client][read_oid] = {}
+    ldap_cache[auth_token.uuid][client][read_oid]['ENTRY'] = ldap_entry
+    ldap_cache[auth_token.uuid][client][read_oid]['CHECKSUM'] = checksum
+
+def get_ldap_search_cache(auth_token, client, cache_key):
+    """ Get cached entry. """
+    global ldap_query_cache
+    if config.ldap_cache_clear:
+        ldap_query_cache.clear()
+        config.ldap_cache_clear = False
+        return
+    try:
+        cache_time = ldap_query_cache[auth_token.uuid][client][cache_key]['time']
+        cache_entry = ldap_query_cache[auth_token.uuid][client][cache_key]['entries']
+    except KeyError:
+        return
+    cache_age = time.time() - cache_time
+    if cache_age >= 300:
+        if config.ldap_object_changed:
+            ldap_query_cache.clear()
+            config.ldap_object_changed = False
+        return
+    cache_entry = copy.deepcopy(cache_entry)
+    return cache_entry
+
+def update_ldap_search_cache(auth_token, client, cache_key, entries):
+    """ Add cache entry. """
+    global ldap_query_cache
+    if not auth_token.uuid in ldap_query_cache:
+        ldap_query_cache[auth_token.uuid] = {}
+    if client not in ldap_query_cache[auth_token.uuid]:
+        ldap_query_cache[auth_token.uuid][client] = {}
+    if cache_key not in ldap_query_cache[auth_token.uuid][client]:
+        ldap_query_cache[auth_token.uuid][client][cache_key] = {}
+    ldap_query_cache[auth_token.uuid][client][cache_key]['entries'] = entries
+    ldap_query_cache[auth_token.uuid][client][cache_key]['time'] = time.time()
 
 class LDIFTreeEntryContainsMultipleEntries(Exception):
     """LDIFTree entry contains multiple LDIF entries."""
@@ -145,6 +180,8 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
     def __init__(self, path, dn=None, auth_token=None, client=None, *a, **kw):
         if dn is None:
             dn = ''
+
+        self.auth_token_uuid = None
 
         if auth_token:
             self.auth_token = auth_token
@@ -217,13 +254,12 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             #        realm = x
 
             # Handle OTPme object requests.
-            otpme_oid = get_oid_from_path(self.path)
-            if not otpme_oid:
+            if not self.otpme_oid:
                 msg = (_("Not an OTPme file backend path: %s") % self.path)
                 raise OTPmeException(msg)
 
             # Get object data from cache.
-            object_data = self.get_object(otpme_oid, fake_dc=self.client)
+            object_data = self.get_object(self.otpme_oid, fake_dc=self.client)
             object_name = object_data['name']
             object_type = object_data['type']
             ldif = object_data['ldif']
@@ -329,10 +365,26 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             raise ldaperrors.LDAPInvalidCredentials
 
         # Set auth token.
-        login_token_uuid = auth_reply[0]['login_token_uuid']
-        self.auth_token = backend.get_object(uuid=login_token_uuid)
+        self.auth_token_uuid = auth_reply[0]['login_token_uuid']
+        #self.auth_token = backend.get_object(uuid=auth_token_uuid)
 
         return self
+
+    @property
+    def otpme_oid(self):
+        otpme_oid = get_oid_from_path(self.path)
+        return otpme_oid
+
+    @property
+    def auth_token(self):
+        if not self.auth_token_uuid:
+            return
+        auth_token = backend.get_object(uuid=self.auth_token_uuid)
+        return auth_token
+
+    @auth_token.setter
+    def auth_token(self, auth_token):
+        self.auth_token_uuid = auth_token.uuid
 
     def parent(self):
         if self.dn == '':
@@ -342,7 +394,6 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         return self.__class__(parentPath, self.dn.up())
 
     #def _sync_children(self):
-    #    print("_SYNC_CHILDREN")
     #    child_objects = {}
     #    children = []
     #    get_childs = True
@@ -502,12 +553,6 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         if not os.path.isdir(config_dir):
             return defer.fail(ldaperrors.LDAPNoSuchObject(dn))
 
-        ## Build object's DN.
-        #dn = self.dn
-        #for i in dn_parts:
-        #    dn = distinguishedname.DistinguishedName(
-        #        listOfRDNs=((distinguishedname.RelativeDistinguishedName(i),)
-        #                    + dn.split()))
         dn = distinguishedname.DistinguishedName(object_dn)
 
         # Create object instance and return it.
@@ -517,8 +562,86 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
     def __repr__(self):
         return '%s(%r, %r)' % (self.__class__.__name__, self.path, self.dn.getText())
 
+    def gen_cache_key(self, filterObject, sizeLimit=0, timeLimit=0):
+        """ Generate cache key for ldap search cache. """
+        value =  None
+        cache_key = self.dn.getText()
+
+        if isinstance(filterObject, pureldap.LDAPFilter_and):
+            cache_key += "+and"
+            for f in filterObject:
+                cache_key += self.gen_cache_key(f)
+
+        elif isinstance(filterObject, pureldap.LDAPFilter_or):
+            cache_key += "+or"
+            for f in filterObject:
+                cache_key += self.gen_cache_key(f)
+        else:
+            if isinstance(filterObject, pureldap.LDAPFilter_present):
+                cache_key += "+present="
+                cache_key += filterObject.value.decode()
+            elif isinstance(filterObject, pureldap.LDAPFilter_equalityMatch):
+                cache_key += "+equalityMatch="
+                cache_key += filterObject.attributeDesc.value.decode()
+                cache_key += filterObject.assertionValue.value.decode()
+            elif isinstance(filterObject, pureldap.LDAPFilter_substrings):
+                cache_key += "+substrings="
+                cache_key += filterObject.type.decode()
+                sub_count = 0
+                for s in filterObject.substrings:
+                    s_value = s.value
+                    if isinstance(s_value, bytes):
+                        s_value = s_value.decode("utf-8")
+                        cache_key += s_value
+                    if isinstance(filterObject.substrings[sub_count],
+                                pureldap.LDAPFilter_substrings_initial):
+                        if not value:
+                            value = "%s*" % s_value
+                        else:
+                            value = "%s%s%s*" % (value, value, s_value)
+                        cache_key += value
+                    elif isinstance(filterObject.substrings[sub_count],
+                                    pureldap.LDAPFilter_substrings_any):
+                        if not value:
+                            value = "*%s*" % s_value
+                        else:
+                            if value.endswith("*"):
+                                value = "%s%s*" % (value, s_value)
+                            else:
+                                value = "%s*%s*" % (value, s_value)
+                        cache_key += value
+                    elif isinstance(filterObject.substrings[sub_count],
+                                    pureldap.LDAPFilter_substrings_final):
+                        if not value:
+                            value = "*%s" % s_value
+                        else:
+                            if value.endswith("*"):
+                                value = "%s%s" % (value, s_value)
+                            else:
+                                value = "%s*%s" % (value, s_value)
+                        cache_key += value
+                    sub_count += 1
+
+            elif isinstance(filterObject, pureldap.LDAPFilter_greaterOrEqual):
+                cache_key += "+greaterOrEqual="
+                cache_key += filterObject.attributeDesc.value
+                cache_key += str(int(filterObject.assertionValue.value) - 1)
+            elif isinstance(filterObject, pureldap.LDAPFilter_lessOrEqual):
+                cache_key += "+lessOrEqual="
+                cache_key += filterObject.attributeDesc.value
+                cache_key += str(int(filterObject.assertionValue.value) + 1)
+            elif isinstance(filterObject, pureldap.LDAPFilter_not):
+                cache_key += "+not="
+                cache_key += filterObject.value.attributeDesc.value
+                cache_key += '[^%s]' % filterObject.value.assertionValue.value
+
+        cache_key += "%s" % sizeLimit
+        cache_key += "%s" % timeLimit
+
+        return cache_key
+
     def search_otpme(self, filterText=None, filterObject=None,
-        attributes=(), sizeLimit=0, timeLimit=0, typesOnly=0):
+        attributes=(), sizeLimit=0, timeLimit=0, typesOnly=0, **kwargs):
         """ Search OTPme backend. """
         result_uuids = []
         value = None
@@ -541,50 +664,44 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             pass
 
         if isinstance(filterObject, pureldap.LDAPFilter_and):
-            #print("AND FILTER")
             counter = 0
             for f in filterObject:
                 search_result = self.search_otpme(filterText=None,
                                                 filterObject=f,
                                                 attributes=(),
-                                                sizeLimit=sizeLimit,
-                                                timeLimit=timeLimit,
-                                                typesOnly=typesOnly)
+                                                #sizeLimit=sizeLimit,
+                                                #timeLimit=timeLimit,
+                                                typesOnly=typesOnly,
+                                                **kwargs)
                 if counter == 0:
                     result_uuids = search_result
                 else:
                     for o in list(result_uuids):
-                        if not o in search_result:
+                        if o not in search_result:
                             result_uuids.remove(o)
                 counter += 1
 
         elif isinstance(filterObject, pureldap.LDAPFilter_or):
-            #print("OR FILTER")
             for f in filterObject:
-                filter_result = self.search_otpme(filterText=None,
+                result_uuids += self.search_otpme(filterText=None,
                                                 filterObject=f,
                                                 attributes=(),
-                                                sizeLimit=sizeLimit,
-                                                timeLimit=timeLimit,
-                                                typesOnly=typesOnly)
-                result_uuids += filter_result
+                                                #sizeLimit=sizeLimit,
+                                                #timeLimit=timeLimit,
+                                                typesOnly=typesOnly,
+                                                **kwargs)
         else:
             if isinstance(filterObject, pureldap.LDAPFilter_present):
-                #print("VALUE FILTER", filterObject.value)
-                attribute = filterObject.value
+                attribute = filterObject.value.decode()
                 value = "*"
             elif isinstance(filterObject, pureldap.LDAPFilter_equalityMatch):
-                #print("EQUAL FILTER")
-                attribute = filterObject.attributeDesc.value
-                value = filterObject.assertionValue.value.lower()
+                attribute = filterObject.attributeDesc.value.decode()
+                value = filterObject.assertionValue.value.decode().lower()
             elif isinstance(filterObject, pureldap.LDAPFilter_substrings):
-                #print("SUBSTRING FILTER")
-                #print("FILTER ATTRIBUTE", filterObject.type)
 
-                attribute = filterObject.type
+                attribute = filterObject.type.decode()
                 sub_count = 0
                 for s in filterObject.substrings:
-                    #print("SUBSTRING VALUE", s.value)
                     s_value = s.value
                     if isinstance(s_value, bytes):
                         s_value = s_value.decode("utf-8")
@@ -614,18 +731,13 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                 value = "%s*%s" % (value, s_value)
                     sub_count += 1
 
-                #print("REGEX", attribute, value)
-
             elif isinstance(filterObject, pureldap.LDAPFilter_greaterOrEqual):
-                #print("GREATER OR EQUAL FILTER")
                 attribute = filterObject.attributeDesc.value
                 greater_than = str(int(filterObject.assertionValue.value) - 1)
             elif isinstance(filterObject, pureldap.LDAPFilter_lessOrEqual):
-                #print("LESS OR EQUAL FILTER")
                 attribute = filterObject.attributeDesc.value
                 less_than = str(int(filterObject.assertionValue.value) + 1)
             elif isinstance(filterObject, pureldap.LDAPFilter_not):
-                #print("NOT FILTER")
                 attribute = filterObject.value.attributeDesc.value
                 value = '[^%s]' % filterObject.value.assertionValue.value
             else:
@@ -656,7 +768,10 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                             value=value,
                                             less_than=less_than,
                                             greater_than=greater_than,
-                                            size_limit=sizeLimit)
+                                            size_limit=sizeLimit,
+                                            **kwargs)
+        if sizeLimit > 0:
+            result_uuids = result_uuids[:sizeLimit]
         return result_uuids
 
     def get_object(self, object_id, verify_acls=None, fake_dc=None):
@@ -775,7 +890,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
     @ldap_search_cache.cache_method()
     def _search_otpme(self, attribute, value, object_type=None,
-        less_than=None, greater_than=None, size_limit=1024):
+        less_than=None, greater_than=None, size_limit=1024, scope="one"):
         """ Search OTPme objects. """
         global global_ldif_cache
         global uuid_to_oid
@@ -803,7 +918,16 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                 'template'  : {'value':False,},
                             }
 
-        #return_attributes = ['read_oid', 'name', 'object_type', 'path', 'ldif', 'checksum']
+        ldap_settings = config.get_ldap_settings(self.otpme_oid.object_type)
+        if ldap_settings:
+            object_scopes = ldap_settings['scopes']
+            default_scope = ldap_settings['default_scope']
+            if scope not in object_scopes:
+                scope = default_scope
+            if scope == "one":
+                object_type = self.otpme_oid.object_type
+                search_attributes['name'] = {'value':self.otpme_oid.name}
+
         return_attributes = ['read_oid', 'name', 'object_type', 'ldif', 'checksum']
 
         result = backend.search(object_type=object_type,
@@ -907,87 +1031,82 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                     callback(e)
 
         if not schema_search:
-            # Handle OTPme object search requests.
-            try:
-                result_uuids = self.search_otpme(filterText=filterText,
-                                                filterObject=filterObject,
-                                                attributes=(),
-                                                sizeLimit=sizeLimit,
-                                                timeLimit=timeLimit,
-                                                typesOnly=typesOnly)
-            except SizeLimitExceeded as e:
-                log.msg(str(e), logLevel=logging.WARNING)
-                raise ldaperrors.LDAPSizeLimitExceeded()
-
-            result_objects = {}
-            for x_uuid in result_uuids:
-                object_dn = None
-                scope_match = False
+            cached_entry = None
+            if self.auth_token:
+                cache_key = self.gen_cache_key(filterObject, sizeLimit, timeLimit)
+                cached_entry = get_ldap_search_cache(self.auth_token, self.client, cache_key)
+            if cached_entry is not None:
+                result_objects = cached_entry
+            else:
+                # Handle OTPme object search requests.
                 try:
-                    object_id = uuid_to_oid[x_uuid]
-                    object_id = oid.get(object_id)
-                except Exception as e:
-                    object_id = backend.get_oid(uuid=x_uuid, instance=True)
+                    result_uuids = self.search_otpme(filterText=filterText,
+                                                    filterObject=filterObject,
+                                                    attributes=(),
+                                                    sizeLimit=sizeLimit,
+                                                    timeLimit=timeLimit,
+                                                    typesOnly=typesOnly,
+                                                    scope=scope)
+                except SizeLimitExceeded as e:
+                    log.msg(str(e), logLevel=logging.WARNING)
+                    raise ldaperrors.LDAPSizeLimitExceeded()
 
-                # Skip orphan objects.
-                if not object_id:
-                    continue
+                result_objects = {}
+                for x_uuid in result_uuids:
+                    object_dn = None
+                    scope_match = False
+                    try:
+                        object_id = uuid_to_oid[x_uuid]
+                        object_id = oid.get(object_id)
+                    except Exception as e:
+                        object_id = backend.get_oid(uuid=x_uuid, instance=True)
 
-                # Try to get entry from cache.
-                if self.auth_token:
-                    cached_entry = get_ldap_cache(self.auth_token, object_id)
-                    if cached_entry:
-                        entry = cached_entry['ENTRY']
-                        if entry.client == self.client:
+                    # Skip orphan objects.
+                    if not object_id:
+                        continue
+
+                    # Try to get entry from cache.
+                    if self.auth_token:
+                        entry = get_ldap_cache(self.auth_token, self.client, object_id)
+                        if entry:
                             object_dn = entry.dn.getText()
 
-                if not object_dn:
-                    if object_id:
-                        object_data = self.get_object(object_id, fake_dc=self.client)
-                        object_dn = object_data['ldif'][0][4:]
-                        object_id = object_data['read_oid']
-                        object_id = oid.get(object_id)
-                        object_checksum = object_data['checksum']
+                    if not object_dn:
+                        if object_id:
+                            object_data = self.get_object(object_id, fake_dc=self.client)
+                            object_dn = object_data['ldif'][0][4:]
+                            object_id = object_data['read_oid']
+                            object_id = oid.get(object_id)
+                            object_checksum = object_data['checksum']
 
-                        object_path = get_config_paths(object_id=object_id)['config_dir']
+                            object_path = get_config_paths(object_id=object_id)['config_dir']
 
-                        #object_base = object_dn.split(",")[0]
-                        #dn_parts = object_dn.split(",")[1:]
-                        #dn_parts.reverse()
-                        #dn = None
-                        #for x in dn_parts:
-                        #    if not dn:
-                        #        dn = distinguishedname.DistinguishedName(x)
-                        #    else:
-                        #        dn = distinguishedname.DistinguishedName(
-                        #            listOfRDNs=((distinguishedname.RelativeDistinguishedName(x),)
-                        #                        + dn.split()))
-                        #dn = distinguishedname.DistinguishedName(
-                        #    listOfRDNs=((distinguishedname.RelativeDistinguishedName(object_base),)
-                        #                + dn.split()))
+                            dn = distinguishedname.DistinguishedName(object_dn)
 
-                        dn = distinguishedname.DistinguishedName(object_dn)
+                            # Create new entry and pass on auth token and client.
+                            entry = self.__class__(object_path, dn, self.auth_token, self.client)
+                            # Update cache.
+                            if self.auth_token:
+                                update_ldap_cache(self.auth_token, self.client,
+                                                object_id, entry, object_checksum)
 
-                        # Create new entry and pass on auth token and client.
-                        entry = self.__class__(object_path, dn, self.auth_token, self.client)
-                        # Update cache.
-                        if self.auth_token:
-                            update_ldap_cache(self.auth_token, object_id,
-                                                entry, object_checksum)
+                    if scope == "base":
+                        if self.dn.getText() == object_dn:
+                            scope_match = True
+                    elif scope == "one":
+                        if len(object_dn.split(",")) == (len(self.dn.getText().split(",")) + 1):
+                            scope_match = True
+                    elif scope == "sub":
+                        if self.dn.getText() in object_dn:
+                            scope_match = True
 
-                if scope == "base":
-                    if self.dn.getText() == object_dn:
-                        scope_match = True
-                elif scope == "one":
-                    if len(object_dn.split(",")) == (len(self.dn.getText().split(",")) + 1):
-                        scope_match = True
-                elif scope == "sub":
-                    if self.dn.getText() in object_dn:
-                        scope_match = True
+                    if scope_match:
+                        dn_path_len = str(len(object_dn.split(",")))
+                        result_objects["%s %s" % (dn_path_len, object_dn)] = entry
 
-                if scope_match:
-                    dn_path_len = str(len(object_dn.split(",")))
-                    result_objects["%s %s" % (dn_path_len, object_dn)] = entry
+            # Update ldap search cache.
+            if self.auth_token:
+                update_ldap_search_cache(self.auth_token, self.client, cache_key, result_objects)
 
             for key in sorted(result_objects):
                 entry = result_objects[key]
@@ -1016,9 +1135,9 @@ def otpme_log_translate(conf):
 
     if message:
         if debug_message:
-            if config.loglevel == "DEBUG" or config.debug_enabled:
-                logger.debug(message)
-                pass
+            pass
+            #if config.loglevel == "DEBUG" or config.debug_enabled:
+            #    logger.debug(message)
         else:
             if loglevel == "CRITICAL":
                 logger.critical(message)
@@ -1091,10 +1210,10 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
             raise ldaperrors.LDAPStrongAuthRequired()
         return ldapserver.LDAPServer.handle_LDAPSearchRequest(self, request, controls, reply)
 
-    #def _cbSearchGotBase(self, base, dn, request, reply):
-    #    # Pass on auth token.
-    #    base.auth_token = self.boundUser.auth_token
-    #    return super(OTPmeLDAPServer, self)._cbSearchGotBase(base, dn, request, reply)
+    def _cbSearchGotBase(self, base, dn, request, reply):
+        # Pass on auth token.
+        base.auth_token = self.boundUser.auth_token
+        return super(OTPmeLDAPServer, self)._cbSearchGotBase(base, dn, request, reply)
 
 class LDAPServer(object):
     """ Class to start an LDAP server as OTPme daemon using ldaptor. """

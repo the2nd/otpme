@@ -375,6 +375,8 @@ def outdate_object(object_id, cache_type=None):
     # Clear ACL cache.
     if object_uuid:
         cache.outdate_acl_cache(object_uuid=object_uuid)
+    if object_type == "user" or object_type == "group":
+        config.ldap_object_changed = True
 
 def restore_object(object_data, callback=default_callback, **kwargs):
     """ Restore object. """

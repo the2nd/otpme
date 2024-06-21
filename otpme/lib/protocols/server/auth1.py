@@ -167,6 +167,17 @@ class OTPmeAuthP1(OTPmeServer1):
 
             return self.build_response(True, _jwt)
 
+        # Variables to build log entry if something goes wrong before we could
+        # call User().authenticate()
+        log_username = ""
+        log_token_name = ""
+        log_access_group = ""
+        log_client = ""
+        log_client_ip = ""
+        log_session_id = ""
+        log_auth_type = ""
+        log_auth_mode = ""
+
         # Try to get username.
         try:
             username = command_args['username']
@@ -237,16 +248,6 @@ class OTPmeAuthP1(OTPmeServer1):
 
         # Indicates if authentication was successful.
         auth_status = False
-        # Variables to build log entry if something goes wrong before we could
-        # call User().authenticate()
-        log_username = ""
-        log_token_name = ""
-        log_access_group = ""
-        log_client = ""
-        log_client_ip = ""
-        log_session_id = ""
-        log_auth_type = ""
-        log_auth_mode = ""
 
         try:
             client = command_args['client']

@@ -31,6 +31,7 @@ from otpme.lib import encryption
 from otpme.lib.humanize import units
 from otpme.lib import multiprocessing
 from otpme.lib.pki.cert import SSLCert
+from otpme.lib.extensions import utils
 from otpme.lib.cache import ldif_cache
 from otpme.lib.cache import config_cache
 from otpme.lib.locking import object_lock
@@ -416,13 +417,12 @@ def get_ldif(ldif, attributes=None, verify_acl_func=None,
                     attr = "%s:: %s" % (a, v)
             _ldif.append(attr)
 
-    if _ldif:
-        if attributes is None or "objectClass" in attributes:
-            if _ocs:
-                _ocs.sort(reverse=True)
-            for x in _ocs:
-                _ldif.insert(0, 'objectClass: %s' % x)
-            _ldif.insert(0, 'dn: %s' % _dn)
+    if attributes is None or "objectClass" in attributes:
+        if _ocs:
+            _ocs.sort(reverse=True)
+        for x in _ocs:
+            _ldif.insert(0, 'objectClass: %s' % x)
+        _ldif.insert(0, 'dn: %s' % _dn)
 
     result = _ldif.copy()
     if text:
@@ -2870,7 +2870,6 @@ class OTPmeObject(OTPmeBaseObject):
         run_policies=True, verbose_level=0, _caller="API",
         callback=default_callback, **kwargs):
         """ Add OTPme extension to object. """
-        from otpme.lib.extensions import utils
         if extension in self.extensions:
             msg = (_("Extension already enabled for this object."))
             return callback.error(msg)
@@ -8011,8 +8010,8 @@ class OTPmeDataObject(OTPmeBaseObject):
 
     @object_lock(full_lock=True)
     def add(self, creator=None, resolver=None, extensions=[],
-        enabled=True, default_attributes={}, verbose_level=0,
-        callback=default_callback, write=True, **kwargs):
+        enabled=True, verbose_level=0, callback=default_callback,
+        write=True, **kwargs):
         """ Add the object. """
         if backend.object_exists(self.oid):
             msg = (_("%s%s already exists.")

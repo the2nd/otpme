@@ -147,13 +147,8 @@ class LdapDaemon(OTPmeDaemon):
                 except DaemonQuit:
                     break
                 except DaemonReload:
-                    # FIXME: How to do reload without daemon shutdown with
-                    #        ldaptor e.g. clear LDIF cache?
-                    self.comm_handler.send("controld", command="reload_shutdown")
-                    #break
-                    ## check for config changes
-                    #self.configure()
-                    #self.comm_handler.send("controld", command="reload_done")
+                    config.ldap_cache_clear = True
+                    self.comm_handler.send("controld", command="reload_done")
             except (KeyboardInterrupt, SystemExit):
                 pass
             except Exception as e:

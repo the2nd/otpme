@@ -372,6 +372,8 @@ class OTPmeConfig(object):
         self.register_config_var("name_uniq_objects", list, [])
         # Attributes to build backup filename.
         self.register_config_var("backup_attributes", dict, {})
+        # LDAP object types.
+        self.register_config_var("ldap_object_types", dict, {})
 
         # Objects we cache and their limit.
         self.register_config_var("cache_objects", dict, {})
@@ -1237,6 +1239,14 @@ class OTPmeConfig(object):
         """ Get list with supported smartcard types. """
         return list(self.supported_smartcards)
 
+    def get_ldap_settings(self, object_type):
+        """ Return sub object types.. """
+        try:
+            ldap_settings = self.ldap_object_types[object_type]
+        except:
+            ldap_settings = {}
+        return ldap_settings
+
     def get_sub_object_types(self, object_type):
         """ Return sub object types.. """
         try:
@@ -1299,6 +1309,16 @@ class OTPmeConfig(object):
             raise AlreadyRegistered(msg)
         sub_types.append(stype)
         self.sub_object_types[object_type] = sub_types
+
+    def register_ldap_object(self, object_type,
+        default_scope="one", scopes=['sub', 'one', 'base']):
+        """ Register LDAP object type. """
+        if object_type in self.ldap_object_types:
+            msg = ("LDAP object type already registered: %s: %s"
+                    % (object_type))
+            raise AlreadyRegistered(msg)
+        settings = {'default_scope':default_scope, 'scopes':scopes}
+        self.ldap_object_types[object_type] = settings
 
     def get_backup_attributes(self, object_type):
         if object_type not in self.backup_attributes:

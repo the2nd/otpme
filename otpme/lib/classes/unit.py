@@ -541,6 +541,7 @@ def register():
     register_oid()
     register_hooks()
     register_backend()
+    register_ldap_object()
     register_sync_settings()
     register_commands("unit", commands)
 
@@ -612,6 +613,10 @@ def register_sync_settings():
     """ Register sync settings. """
     config.register_object_sync(host_type="node", object_type="unit")
     config.register_object_sync(host_type="host", object_type="unit")
+
+def register_ldap_object():
+    """ Register LDAP object settings. """
+    config.register_ldap_object(object_type="unit", scopes=['one', 'base', 'sub'])
 
 class Unit(OTPmeObject):
     """ Creates unit object. """

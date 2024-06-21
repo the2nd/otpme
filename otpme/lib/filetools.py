@@ -182,12 +182,14 @@ class AtomicFileLock(object):
     def acquire_lock(self, exclusive=False, block=True, timeout=None,
         callback=None, log_wait_message=False, wait_message=None):
         from otpme.lib import stuff
+        from otpme.lib import config
         lock_status = self._acquire_lock_atomic(exclusive=exclusive, block=False)
         if lock_status:
             return lock_status
         if wait_message is not None:
             if log_wait_message:
-                self.logger.debug(wait_message)
+                if config.debug_level() >= 2:
+                    self.logger.debug(wait_message)
             if callback:
                 callback.send(wait_message)
         if timeout is None:

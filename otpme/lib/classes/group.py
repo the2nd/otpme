@@ -554,6 +554,7 @@ def register():
     register_hooks()
     register_backend()
     register_object_unit()
+    register_ldap_object()
     register_sync_settings()
     register_commands("group", commands)
     register_module("otpme.lib.classes.token")
@@ -626,6 +627,12 @@ def register_sync_settings():
     """ Register sync settings. """
     config.register_object_sync(host_type="node", object_type="group")
     config.register_object_sync(host_type="host", object_type="group")
+
+def register_ldap_object():
+    """ Register LDAP object settings. """
+    config.register_ldap_object(object_type="group",
+                                default_scope="one",
+                                scopes=['one'])
 
 class Group(OTPmeObject):
     """ Creates access group object. """

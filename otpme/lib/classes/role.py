@@ -534,6 +534,7 @@ def register():
     register_hooks()
     register_backend()
     register_object_unit()
+    register_ldap_object()
     register_sync_settings()
     register_commands("role", commands)
     register_module("otpme.lib.classes.token")
@@ -614,6 +615,12 @@ def register_sync_settings():
     """ Register sync settings. """
     config.register_object_sync(host_type="node", object_type="role")
     config.register_object_sync(host_type="host", object_type="role")
+
+def register_ldap_object():
+    """ Register LDAP object settings. """
+    config.register_ldap_object(object_type="role",
+                                default_scope="one",
+                                scopes=['one'])
 
 def get_roles(role_uuid=None, skip_disabled=False, parent=False,
     recursive=True, return_type="name", return_attributes=None):

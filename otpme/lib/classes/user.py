@@ -137,7 +137,7 @@ commands = {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : [],
-                    'oargs'             : ['add_default_token', 'default_token', 'default_token_type', 'default_roles', 'groups', 'unit', 'group', 'template_object', 'template_name', 'gen_qrcode', 'no_token_infos'],
+                    'oargs'             : ['add_default_token', 'default_token', 'default_token_type', 'default_roles', 'groups', 'unit', 'group', 'template_object', 'template_name', 'gen_qrcode', 'no_token_infos', 'ldif_attributes'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
@@ -869,6 +869,7 @@ def register():
     register_backend()
     register_template()
     register_object_unit()
+    register_ldap_object()
     register_user_scripts()
     register_sync_settings()
     register_shared_objects()
@@ -1123,6 +1124,12 @@ def register_sync_settings():
     """ Register sync settings. """
     config.register_object_sync(host_type="host", object_type="user")
     config.register_object_sync(host_type="node", object_type="user")
+
+def register_ldap_object():
+    """ Register LDAP object settings. """
+    config.register_ldap_object(object_type="user",
+                                default_scope="one",
+                                scopes=['one'])
 
 def user_failcount(user_uuid, access_group):
     group_oid = oid.get(object_type="accessgroup",
@@ -3732,11 +3739,10 @@ class User(OTPmeObject):
     @run_pre_post_add_policies()
     def add(self, group=None, add_default_token=None, default_token=None,
         default_token_type=None, template_name=None, template_object=None,
-        gen_qrcode=True, no_token_infos=False, run_policies=True,
-        force=False, verify_acls=True, groups=None, default_roles=None,
+        gen_qrcode=True, no_token_infos=False, run_policies=True, force=False,
+        verify_acls=True, groups=None, default_roles=None, ldif_attributes=None,
         _caller="API", verbose_level=0, callback=default_callback, **kwargs):
         """ Add user. """
-
         # Check if user exist on any site.
         result = backend.search(object_type="user",
                                 attribute="name",
@@ -3963,14 +3969,40 @@ class User(OTPmeObject):
                msg = "Permission denied while setting group."
                return callback.error(msg, exception=PermissionDenied)
 
+        # Handle given LDIF attributes.
+        default_attributes = {}
+        if ldif_attributes:
+            try:
+                default_extensions = config.default_extensions[self.type]
+            except:
+                default_extensions = []
+            for ext in default_extensions:
+                ext_attrs = config.get_ldif_attributes(ext, self.type)
+                for x in ldif_attributes.split(","):
+                    try:
+                        attr = x.split("=")[0]
+                        value = x.split("=")[1]
+                    except:
+                        msg = "Invalid attribute: %s" % x
+                        return callback.error(msg)
+                    if attr not in ext_attrs:
+                        continue
+                    if ext not in default_attributes:
+                        default_attributes[ext] = {}
+                    default_attributes[ext][attr] = value
+
         # Add object using parent class BEFORE adding any token etc.
         add_result = super(User, self).add(template=template,
                                         run_policies=False,
                                         inherit_acls=False,
+                                        default_attributes=default_attributes,
                                         verbose_level=verbose_level,
                                         callback=callback, **kwargs)
         if not add_result:
             return add_result
+
+        # Make sure user has displayName attribute.
+        self.add_attribute(attribute="displayName")
 
         # Internal users (e.g. TOKENSTORE) do not need any scripts etc.
         internal_users = config.get_internal_objects("user")
@@ -4272,8 +4304,8 @@ class User(OTPmeObject):
                 return callback.error(msg)
             self.tokens.remove(token.uuid)
 
-        # Remove used SOTPs/SLPs.
-        _used = self._get_used()
+        # Remove used SOTPs.
+        _used = self._get_used_sotp()
         for uuid in _used:
             used_oid = backend.get_oid(uuid)
             used_oid = oid.get(used_oid)

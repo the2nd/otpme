@@ -19,7 +19,7 @@ default_callback = config.get_callback()
 REGISTER_BEFORE = []
 REGISTER_AFTER = ["otpme.lib.extensions.ldif_handler"]
 
-WHITELIST_ATTRIBUTES = ['dn', 'objectClass', 'uid', 'cn']
+WHITELIST_ATTRIBUTES = ['dn', 'objectClass', 'uid', 'cn', 'displayName', 'entryUUID']
 
 def register():
     #register_backend()
@@ -129,7 +129,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
                             'realm' : [ 'dc' ],
                             'site' : [ 'ou', 'description' ],
                             'unit' : [ 'ou', 'description' ],
-                            'user' : [ 'uid', 'sn', 'cn', 'displayName', 'l', 'description' ],
+                            'user' : [ 'uid', 'sn', 'cn', 'l', 'description' ],
                             'role' : [ 'cn', 'description' ],
                             'group' : [],
                             'all' : [ 'entryUUID', 'createTimestamp', 'modifyTimestamp' ],
@@ -144,8 +144,8 @@ class OTPmeExtension(OTPmeLDIFHandler):
                                         },
                                 'user' : {
                                             'uid' : [ 'name' ],
-                                            'cn' : [ 'givenName', 'sn', 'name' ],
-                                            'displayName' : [ 'givenName', 'sn', 'name' ],
+                                            'cn' : [ ('givenName', 'sn'), 'name' ],
+                                            'displayName' : [ ('givenName', 'sn'), 'name' ],
                                         },
                                 'role' : {
                                             'cn' : [ 'name' ],

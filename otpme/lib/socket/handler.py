@@ -85,9 +85,8 @@ class SocketProtoHandler(object):
         except socket.timeout as e:
             raise ConnectionTimeout(_("Connection timed out."))
         except ssl.SSLError as e:
-            raise OTPmeException(_("SSL error: %s") % e)
             if e.errno != errno.EINTR:
-                raise
+                raise OTPmeException(_("SSL error: %s") % e)
             data = self.connection.recv(recv_buffer)
         except socket.error as e:
             if e.errno != errno.EINTR:

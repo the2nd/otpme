@@ -58,12 +58,37 @@ class OTPmeLDIFHandler(object):
                             % self.name)
                     raise OTPmeException(msg)
 
+        # Get non default attributes.
+        non_default_attributes = dict(default_attributes)
+        for at in self.get_default_attributes(o.type):
+            try:
+                non_default_attributes.pop(at)
+            except KeyError:
+                pass
+
+        # Add non default attributes.
+        for at in dict(non_default_attributes):
+            v = non_default_attributes.pop(at)
+            add_result = self.add_attribute(o=o,
+                                    a=at,
+                                    v=v,
+                                    auto_value=True,
+                                    ignore_ro=True,
+                                    verify=True,
+                                    verbose_level=verbose_level,
+                                    callback=callback,
+                                    **kwargs)
+            if not add_result:
+                msg = (_("Extension %s: Error adding attribute: %s")
+                        % (self.name, at))
+                raise OTPmeException(msg)
+
         # Try to add default attributes.
         for at in self.get_default_attributes(o.type):
             if o.get_extension_attribute(extension=self.name, attribute=at):
                 continue
             if at in default_attributes:
-                v = default_attributes[at]
+                v = default_attributes.pop(at)
             else:
                 try:
                     v = self.get_attribute_values(o=o, attribute=at)[0]
@@ -82,6 +107,7 @@ class OTPmeLDIFHandler(object):
                 msg = (_("Extension %s: Error adding default attribute: %s")
                         % (self.name, at))
                 raise OTPmeException(msg)
+
         return callback.ok()
 
     def get_default_attributes(self, object_type):
@@ -358,8 +384,8 @@ class OTPmeLDIFHandler(object):
                 if not at in o.ldif_attributes:
                     # xxxx
                     # FIXME: do we need the check below?
-                    if not at in self.attribute_mappings[o.type]:
-                        if not at in missing_attributes:
+                    if at not in self.attribute_mappings[o.type]:
+                        if at not in missing_attributes:
                             missing_attributes.append(at)
 
         if len(missing_attributes) > 0:
@@ -463,14 +489,25 @@ class OTPmeLDIFHandler(object):
         mappings = o_mappings + a_mappings
 
         for a in mappings:
-            try:
-                # For attribute mappings we always use the first value of the
-                # mapped attribute (if there is more than one value).
-                val = self.get_attribute_values(o=o, attribute=a)[0]
-            except:
-                val = None
-            if val:
-                at.append(val)
+            if isinstance(a, tuple):
+                vals = []
+                for attr in a:
+                    try:
+                        val = self.get_attribute_values(o=o, attribute=attr)[0]
+                    except:
+                        val = None
+                    if val:
+                        vals.append(val)
+                if vals:
+                    vals = " ".join(vals)
+                    at.append(vals)
+            else:
+                try:
+                    val = self.get_attribute_values(o=o, attribute=a)[0]
+                except:
+                    val = None
+                if val:
+                    at.append(val)
 
         return at
 
