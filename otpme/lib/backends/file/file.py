@@ -794,15 +794,16 @@ def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
     # Name of the file transaction.
     transaction_name = "delete:%s" % object_id
     if not no_exists_check:
-        if not object_exists(object_id):
-            # Make sure commit files are removed.
-            del_transaction = FileTransaction(transaction_name,
-                                            no_index_writes=no_index_writes,
-                                            commit_files=commit_files)
-            del_transaction.begin()
-            del_transaction.remove()
-            del_transaction.release_lock()
-            return False
+        if not index_get(object_id):
+            if not object_exists(object_id):
+                # Make sure commit files are removed.
+                del_transaction = FileTransaction(transaction_name,
+                                                no_index_writes=no_index_writes,
+                                                commit_files=commit_files)
+                del_transaction.begin()
+                del_transaction.remove()
+                del_transaction.release_lock()
+                return False
 
     # Get object type.
     object_type = object_id.object_type
@@ -1295,16 +1296,16 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                 x_values = values
             x_tuple = []
             for x_val in x_values:
-                if "*" in str(x_val):
+                sql_like = str(x_val)
+                if "*" in sql_like:
                     sql_like = x_val.replace("*", "%")
-                    x_tuple.append(IndexObjectACL.value.like(sql_like))
-                    #q = q.filter(IndexObjectACL.value.like(sql_like))
+                    if "_" in sql_like:
+                        sql_like = sql_like.replace("_", "!_")
+                    x_tuple.append(IndexObjectACL.value.like(sql_like, escape="!"))
                 else:
-                    #q = q.filter(IndexObjectACL.value.is_(x_val))
                     x_tuple.append(IndexObjectACL.value.is_(x_val))
             q = q.filter(or_(*x_tuple))
 
-            #q = q.order_by(order_by)
         # Search by base attributes (e.g. name).
         elif attr in config.otpme_base_attributes:
             if isinstance(value, bool):
@@ -1313,12 +1314,15 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                 q = q.filter(getattr(IndexObject, attr).in_(values))
                 q = q.options(contains_eager(IndexObject.attributes))
             elif value is not None:
-                if "*" in str(value):
-                    sql_like = value.replace("*", "%")
+                sql_like = str(value)
+                if "*" in sql_like:
+                    sql_like = sql_like.replace("*", "%")
+                    if "_" in sql_like:
+                        sql_like = sql_like.replace("_", "!_")
                     if case_sensitive:
-                        q = q.filter(getattr(IndexObject, attr).like(sql_like))
+                        q = q.filter(getattr(IndexObject, attr).like(sql_like, escape="!"))
                     else:
-                        q = q.filter(getattr(IndexObject, attr).ilike(sql_like))
+                        q = q.filter(getattr(IndexObject, attr).ilike(sql_like, escape="!"))
                 else:
                     if case_sensitive:
                         q = q.filter(getattr(IndexObject, attr)==value)
@@ -1341,29 +1345,27 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                     attribute_table_joined = True
                 q = q.filter(IndexObjectAttribute.value.in_(values))
             elif value is not None:
-                sql_like = value
-                if "*" in str(value):
-                    sql_like = value.replace("*", "%")
+                sql_like = str(value)
+                if "*" in sql_like:
+                    sql_like = sql_like.replace("*", "%")
+                if "_" in sql_like:
+                    sql_like = sql_like.replace("_", "!_")
                 if case_sensitive:
-                    like_filter = IndexObjectAttribute.value.like(sql_like)
+                    like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
                     like_filter = IndexObject.attributes.any(like_filter, name=attr)
                     q = q.filter(like_filter)
-                    #q = q.filter(IndexObject.attributes.any(IndexObjectAttribute.value.like(sql_like), name=attr))
                 else:
-                    like_filter = IndexObjectAttribute.value.ilike(sql_like)
+                    like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
                     like_filter = IndexObject.attributes.any(like_filter, name=attr)
                     q = q.filter(like_filter)
-                    #q = q.filter(IndexObject.attributes.any(IndexObjectAttribute.value.ilike(sql_like), name=attr))
             if less_than is not None:
                 int_filter = cast(IndexObjectAttribute.value, Integer)
                 int_filter = IndexObject.attributes.any(int_filter < less_than, name=attr)
                 q = q.filter(int_filter)
-                #q = q.filter(IndexObject.attributes.any(cast(IndexObjectAttribute.value, Integer) < less_than, name=attr))
             if greater_than is not None:
                 int_filter = cast(IndexObjectAttribute.value, Integer)
                 int_filter = IndexObject.attributes.any(int_filter > greater_than, name=attr)
                 q = q.filter(int_filter)
-                #q = q.filter(IndexObject.attributes.any(cast(IndexObjectAttribute.value, Integer) > greater_than, name=attr))
 
     # Make sure we query only requested attributes.
     x_attrs = []
@@ -1394,13 +1396,10 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         elif x == "object_type":
             entities.append(IndexObject.object_type)
         elif x == "checksum":
-            #entities.append(IndexObject.full_oid)
             entities.append(IndexObject.checksum)
         elif x == "sync_checksum":
-            #entities.append(IndexObject.full_oid)
             entities.append(IndexObject.sync_checksum)
         elif x == "template":
-            #entities.append(IndexObject.full_oid)
             entities.append(IndexObject.template)
         elif x == "ldif":
             entities.append(IndexObject.ldif)
@@ -1424,10 +1423,6 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
 
     # Handle "with ACLs" search.
     if return_acls or return_raw_acls:
-        # Apply limit to search.
-        if max_results > 0:
-            q = q.limit(max_results)
-
         # Join with ACL table.
         sub_query = q.with_entities(IndexObject.id)
         acl_q = session.query(IndexObjectACL)
@@ -1468,6 +1463,9 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         # Query objects.
         acl_result = acl_q.all()
         for x in acl_result:
+            if max_results > 0:
+                if len(query_result) >= max_results:
+                    break
             # Get result attributes.
             x_uuid = x[1]
             x_raw_acl = x[-1]
@@ -1495,7 +1493,6 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         # Set result order (sorting).
         if order_by_attribute:
             q = q.join(IndexObjectAttribute, IndexObject.attributes)
-            #q = q.filter(IndexObjectAttribute.name.is_(order_by_attribute))
             q = q.filter(IndexObjectAttribute.name == order_by_attribute)
             if reverse_order:
                 q = q.distinct(IndexObjectAttribute.value)
@@ -1518,7 +1515,6 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         if config.dogpile_caching:
             q = q.options(FromCache(cache_region))
         # Get index result.
-        #query_result = q.limit(max_results).all()
         query_result = q.all()
 
     # Handle return type/return attributes.
@@ -1527,10 +1523,6 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     for r in query_result:
         index_id = r[0]
         x_uuid = r[1]
-        #if return_type == "uuid":
-        #    x_value = r[1]
-        #elif return_type is not None:
-        #    x_value = r[2]
         # Add UUID <> Primary key mapping to search LDIF attributes below.
         if x_attrs:
             result_db_ids[index_id] = x_uuid
@@ -1677,10 +1669,6 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                 'objects'   : result,
                 'acls'      : object_acls,
                 }
-    #duration = debug.end_timing(0.1)
-    #if duration is not None:
-    #    import sys
-    #    sys.exit()
     if return_query_count:
         result = query_count, result
     return result
@@ -1992,9 +1980,6 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
 
             # Add attributes.
             if x_entry_type == "add":
-                # Add attribute.
-                #if x_attribute == "ldif:memberUid":
-                    #print("AAAA", x_attribute, x_value)
                 a = IndexObjectAttribute(realm=object_realm,
                                         site=object_site,
                                         object_type=object_type,
@@ -2005,8 +1990,6 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
                     # Reference attribute to existing index object.
                     a.ioid = index_object.id
                     session.add(a)
-                    #local_object = session.merge(a)
-                    #session.add(local_object)
                 else:
                     # Add attribute to list of attributes for the new index object.
                     attributes.append(a)
@@ -2014,8 +1997,6 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
             if x_entry_type == "del":
                 if not index_object:
                     continue
-                #if x_attribute == "ldif:memberUid":
-                #    print("dddd", x_attribute, x_value)
                 q = session.query(IndexObjectAttribute)
                 q = q.filter(IndexObjectAttribute.ioid == index_object.id)
                 q = q.filter(IndexObjectAttribute.name == x_attribute)
@@ -2023,14 +2004,6 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
                 result = q.all()
                 for a in result:
                     session.delete(a)
-                    #local_object = session.merge(a)
-                    #session.delete(local_object)
-                    ## Make sure we commit attribute deletion.
-                    #if autocommit:
-                    #    try:
-                    #        session.commit()
-                    #    except ObjectDeletedError:
-                    #        session.rollback()
 
     # Make sure we remove orphan ACLs of an existing index object.
     clear_acl_cache = False
@@ -2045,8 +2018,6 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
                 continue
             clear_acl_cache = True
             session.delete(i)
-            #local_object = session.merge(i)
-            #session.delete(local_object)
             object_acls.remove(i)
 
     # Add ACLs.

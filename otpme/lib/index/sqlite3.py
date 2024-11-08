@@ -46,7 +46,6 @@ def cleanup():
     pass
 
 def atfork():
-    """ Reload backend stuff. """
     global engine
     if not engine:
         return

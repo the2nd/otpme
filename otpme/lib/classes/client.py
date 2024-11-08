@@ -51,6 +51,7 @@ read_value_acls =    {
                                 "secret",
                                 "login_url",
                                 "sso_enabled",
+                                "sso_popup_enabled",
                                 "sso_name",
                                 "helper_url",
                                 "address",
@@ -71,9 +72,11 @@ write_value_acls = {
                                 ],
                     "enable"    : [
                                 "sso",
+                                "sso_popup",
                                 ],
                     "disable"   : [
                                 "sso",
+                                "sso_popup",
                                 ],
                     "edit"      : [
                                 "accessgroup",
@@ -305,6 +308,22 @@ commands = {
                     'method'            : 'change_helper_url',
                     'oargs'             : ['helper_url'],
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'enable_sso_popup'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_sso_popup',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_sso_popup'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_sso_popup',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -645,6 +664,8 @@ def register_hooks():
     config.register_auth_on_action_hook("client", "dump_sso_logo")
     config.register_auth_on_action_hook("client", "enable_sso")
     config.register_auth_on_action_hook("client", "disable_sso")
+    config.register_auth_on_action_hook("client", "enable_sso_popup")
+    config.register_auth_on_action_hook("client", "disable_sso_popup")
     config.register_auth_on_action_hook("client", "change_helper_url")
     config.register_auth_on_action_hook("client", "change_access_group")
     config.register_auth_on_action_hook("client", "show_secret")
@@ -751,6 +772,7 @@ class Client(OTPmeClientObject):
         self.radius_reload = False
         self.sso_name = self.name
         self.sso_enabled = False
+        self.sso_popup = False
         self.login_url = None
         self.helper_url = None
 
@@ -832,6 +854,11 @@ class Client(OTPmeClientObject):
                         'HELPER_URL'                : {
                                                         'var_name'  : 'helper_url',
                                                         'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'SSO_POPUP'                 : {
+                                                        'var_name'  : 'sso_popup',
+                                                        'type'      : bool,
                                                         'required'  : False,
                                                     },
             }
@@ -984,7 +1011,6 @@ class Client(OTPmeClientObject):
 
         magic_handler = magic.Magic(mime=True, uncompress=True)
         image_type = magic_handler.from_buffer(image_data)
-        print(image_type)
         if isinstance(image_data, str):
             image_data = image_data.encode()
         image_base64 = base64.b64encode(image_data)
@@ -1091,7 +1117,7 @@ class Client(OTPmeClientObject):
     def disable_sso(self, run_policies=True, _caller="API",
         callback=default_callback, **kwargs):
         """ Disable SSO portal app. """
-        if self.sso_disabled:
+        if not self.sso_enabled:
             msg = (_("SSO already disabled."))
             return callback.error(msg)
 
@@ -1154,6 +1180,62 @@ class Client(OTPmeClientObject):
         self.helper_url = helper_url
 
         return self._cache(callback=callback)
+
+    @check_acls(['enable:sso_popup'])
+    @object_lock()
+    def enable_sso_popup(self, run_policies=True, _caller="API",
+        callback=default_callback, **kwargs):
+        """ Enable SSO portal app. """
+        if self.sso_popup:
+            msg = (_("SSO popup already enabled."))
+            return callback.error(msg)
+
+        if not self.login_url:
+            msg = "Login URL not configured."
+            return callback.error(msg)
+
+        if not self.helper_url:
+            msg = "Helper URL not configured."
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_sso_popup",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.sso_popup = True
+
+        return self._write(callback=callback)
+
+    @check_acls(['disable:sso_popup'])
+    @object_lock()
+    def disable_sso_popup(self, run_policies=True, _caller="API",
+        callback=default_callback, **kwargs):
+        """ Disable SSO portal app. """
+        if not self.sso_popup:
+            msg = (_("SSO popup already disabled."))
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_sso_popup",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.sso_popup = False
+
+        return self._write(callback=callback)
 
     @check_acls(['remove:orphans'])
     @object_lock()

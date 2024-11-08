@@ -229,11 +229,16 @@ def register():
     config.register_config_var("_ldap_cache_clear", None, False)
     # Register ldap object changed property.
     def ldap_object_changed_getter(self):
+        if isinstance(config._ldap_object_changed, bool):
+            return config._ldap_object_changed
         try:
             return config._ldap_object_changed.value
         except AttributeError:
             return False
     def ldap_object_changed_setter(self, new_status):
+        if isinstance(config._ldap_object_changed, bool):
+            config._ldap_object_changed = new_status
+            return
         config._ldap_object_changed.value = new_status
     config.register_property(name="ldap_object_changed",
                             getx=ldap_object_changed_getter,
@@ -367,7 +372,7 @@ class ControlDaemon(UnixDaemon):
                 % config._daemon_shutdown.name)
             self.logger.critical(msg)
         try:
-            config._daemon_shutdown.close()
+            config._cluster_quorum.close()
         except Exception as e:
             msg = ("Failed to close shared bool: %s"
                 % config._cluster_quorum.name)
@@ -407,6 +412,18 @@ class ControlDaemon(UnixDaemon):
         except Exception as e:
             msg = ("Failed to close shared bool: %s"
                 % config._site_init.name)
+            self.logger.critical(msg)
+        try:
+            config._ldap_cache_clear.close()
+        except Exception as e:
+            msg = ("Failed to close shared bool: %s"
+                % config._ldap_cache_clear.name)
+            self.logger.critical(msg)
+        try:
+            config._ldap_object_changed.close()
+        except Exception as e:
+            msg = ("Failed to close shared bool: %s"
+                % config._ldap_object_changed.name)
             self.logger.critical(msg)
         #try:
         #    multiprocessing.cluster_lock_event.unlink()

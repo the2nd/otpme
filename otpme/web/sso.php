@@ -39,7 +39,21 @@ setcookie("url_path", $url_path, $expire, $url_path);
 	    document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=" + path + ";";
 	}
 
-	function handleLogin(newTab) {
+	function sleepThenDo(callback) {
+		  setTimeout(callback, 1000);
+	}
+
+	function setInputValue(input, value) {
+	  // Setze den Wert
+	  input.value = value;
+	  
+	  // Löse verschiedene Events aus
+	  input.dispatchEvent(new Event('input', { bubbles: true }));
+	  input.dispatchEvent(new Event('change', { bubbles: true }));
+	  input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+	}
+
+	async function handleLogin(newTab) {
 		let usernameCookie = getCookie("username");
 		let passwordCookie = getCookie("password");
 		let urlPath = getCookie("url_path");
@@ -48,37 +62,52 @@ setcookie("url_path", $url_path, $expire, $url_path);
 
 		usernameInput = null;
 		passwordInput = null;
-		const forms = newTab.document.getElementsByTagName('form');
 
-		for (const form of forms) {
-			let hasUsernameField = false;
-			let hasPasswordField = false;
-
-			const inputs = form.getElementsByTagName('input');
-			for (const input of inputs) {
-				const type = input.type.toLowerCase();
-				if (type === 'text') {
-					hasUsernameField = true;
-					usernameInput = input;
-					usernameInput.style.display = 'none';
-				} else if (type === 'password') {
-					hasPasswordField = true;
-					passwordInput = input;
-					passwordInput.style.display = 'none';
-				}
-			}
-
-			if (usernameInput && passwordInput) {
-			      usernameInput.setAttribute('autocomplete', 'off');
-			      passwordInput.setAttribute('autocomplete', 'off');
-			      usernameInput.value = usernameCookie;
-			      passwordInput.value = passwordCookie;
-			      form.submit();
+		function checkForLoginForm() {
+			const forms = newTab.document.getElementsByTagName('form');
+			if (forms) {
+				return forms;
 			}
 		}
+
+		while (1 == 1) {
+			forms = checkForLoginForm();
+			if (forms) {
+				break;
+			}
+		}
+
+		//sleepThenDo(() => {
+			for (const form of forms) {
+				const submitButton = form.querySelector('input[type="submit"], button[type="submit"]');
+				const inputs = form.getElementsByTagName('input');
+				for (const input of inputs) {
+					const type = input.type.toLowerCase();
+					if (type === 'text') {
+						usernameInput = input;
+						//usernameInput.style.display = 'none';
+					} else if (type === 'password') {
+						passwordInput = input;
+						//passwordInput.style.display = 'none';
+					}
+				}
+
+				if (usernameInput && passwordInput) {
+				      	usernameInput.setAttribute('autocomplete', 'off');
+				      	passwordInput.setAttribute('autocomplete', 'off');
+					setInputValue(usernameInput, usernameCookie);
+					setInputValue(passwordInput, passwordCookie);
+				      	//usernameInput.value = usernameCookie;
+				      	//passwordInput.value = passwordCookie;
+				      	submitButton.click();
+				      	//form.submit();
+				}
+			}
+			window.close();
+		//});
 	}
 
-	function openAndCheckWindow() {
+	async function openAndCheckWindow() {
 		let redirectURL = getCookie("redirect_url");
 		let urlPath = getCookie("url_path");
 		deleteCookie('redirect_url', urlPath);
@@ -90,7 +119,6 @@ setcookie("url_path", $url_path, $expire, $url_path);
 				if (newTab.document.readyState === 'complete') {
 					clearInterval(checkIfLoaded);
 					handleLogin(newTab);
-					window.close();
 				}
 				} catch (e) {
 					console.error(e);

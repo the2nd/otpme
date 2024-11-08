@@ -410,7 +410,6 @@ def get(daemon, **kwargs):
                 % (site_fqdn, connect_addresses))
         logger.info(msg)
 
-    #connect_addresses = ['10.219.195.227', '10.219.195.228']
     connect_exception = None
     for connect_address in connect_addresses:
         # Set daemon port.

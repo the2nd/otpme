@@ -60,6 +60,7 @@ from otpme.lib.backends.file.file import register_object_type as _register_objec
 # Imports to be used by other modules.
 from otpme.lib.backends.file.file import index_add
 from otpme.lib.backends.file.file import index_del
+from otpme.lib.backends.file.file import index_get
 from otpme.lib.backends.file.file import get_data_dir
 from otpme.lib.backends.file.file import get_site_dir
 from otpme.lib.backends.file.file import get_object_dir
@@ -324,9 +325,10 @@ def delete_object(object_id, no_transaction=False, cluster=False):
         raise Exception("Cannot delete own realm.")
     if object_uuid == config.site_uuid:
         raise Exception("Cannot delete own site.")
-    if not object_exists(object_id):
-        msg = "Unknown object: %s" % object_id
-        raise UnknownObject(msg)
+    if not index_get(object_id):
+        if not object_exists(object_id):
+            msg = "Unknown object: %s" % object_id
+            raise UnknownObject(msg)
     # Remove object from backend.
     delete(object_id, no_transaction=no_transaction, cluster=cluster)
     # Remove last used file.
@@ -375,7 +377,9 @@ def outdate_object(object_id, cache_type=None):
     # Clear ACL cache.
     if object_uuid:
         cache.outdate_acl_cache(object_uuid=object_uuid)
-    if object_type == "user" or object_type == "group":
+
+    # Make sure we notify ldapd about changed objects (e.g. clear ldap search cache).
+    if config.get_ldap_settings(object_type):
         config.ldap_object_changed = True
 
 def restore_object(object_data, callback=default_callback, **kwargs):

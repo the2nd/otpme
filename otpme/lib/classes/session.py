@@ -127,7 +127,7 @@ def register_backend():
                             perms=0o770)
     def path_getter(object_id):
         session_name = object_id.name
-        config_file_name = "%s.sqlite" % session_name
+        config_file_name = "%s.json" % session_name
         config_file = os.path.join(SESSIONS_DIR, config_file_name)
         config_paths = {}
         config_paths['config_file'] = config_file

@@ -426,6 +426,22 @@ cmd_help = {
                                 },
                 },
 
+    'enable_sso_popup'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-client enable_sso_popup {client}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Enable SSO popup for this client.',
+                                },
+                },
+
+    'disable_sso_popup'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-client disable_sso_popup {client}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Disable SSO popup app for this client.',
+                                },
+                },
+
     'add_address'   : {
                     '_cmd_usage_help' : 'Usage: otpme-client add_address {client} {address}',
                     'cmd'   :   '<|object|> <address>',

@@ -250,7 +250,16 @@ class JobCallback(object):
     def error(self, message='\0OTPME_NULL\0',
         raise_exception=None, exception=None, timeout=1):
         """ Send error message to user. """
+        if raise_exception is None:
+            if self.raise_exception:
+                raise_exception = True
+
         if self.enabled:
+            # When enabled and not in API mode we will not raise any exception.
+            if not self.api_mode:
+                if raise_exception is None:
+                    raise_exception = False
+
             if message != '\0OTPME_NULL\0':
                 if self.job._caller == "CLIENT":
                     # Make sure message is string.
@@ -264,24 +273,14 @@ class JobCallback(object):
                             self.logger.critical(msg)
 
                     # Add the message to callback channel.
-                    if not raise_exception:
+                    if raise_exception is False:
                         try:
                             self.send(message, error=True, timeout=timeout)
                         except:
                             pass
                 else:
                     # For API/RAPI calls we have to set the return value.
-                    if self.job._caller != "CLIENT":
-                        self.job.return_value = message
-
-            # When enabled and not in API mode we will not raise any exception.
-            if not self.api_mode:
-                if raise_exception is None:
-                    raise_exception = False
-
-        if raise_exception is None:
-            if self.raise_exception:
-                raise_exception = True
+                    self.job.return_value = message
 
         if raise_exception:
             # If we got no exception to raise use the default.

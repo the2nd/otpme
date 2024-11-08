@@ -201,7 +201,10 @@ def cleanup():
         Session.remove()
 
 def atfork():
-    return
+    global engine
+    global Session
+    engine = None
+    Session = None
 
 def print_message(msg, **kwargs):
     from otpme.lib.messages import message

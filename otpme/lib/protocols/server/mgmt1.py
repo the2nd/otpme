@@ -1264,8 +1264,9 @@ class OTPmeMgmtP1(OTPmeServer1):
             def delete_object(object_id, force=False, verbose_level=0,
                 callback=default_callback, **kwargs):
                 object_id = oid.get(object_id=object_id)
-                if not backend.object_exists(object_id):
-                    return callback.error("Object does not exist.")
+                if not backend.index_get(object_id):
+                    if not backend.object_exists(object_id):
+                        return callback.error("Object does not exist.")
                 if not force:
                     ask = callback.ask("Delete object? ")
                     if str(ask).lower() != "y":

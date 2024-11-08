@@ -100,11 +100,6 @@ class OTPmeAuthP1(OTPmeServer1):
                 self.require_auth = "user"
                 return self.build_response(status, message)
 
-            if config.auth_type != "token":
-                message = "Need token login."
-                status = False
-                return self.build_response(status, message)
-
             # Set proctitle to contain username.
             self.set_proctitle(self.username)
 
@@ -167,9 +162,15 @@ class OTPmeAuthP1(OTPmeServer1):
 
             return self.build_response(True, _jwt)
 
+        # Try to get username.
+        try:
+            username = command_args['username']
+        except:
+            username = None
+
         # Variables to build log entry if something goes wrong before we could
         # call User().authenticate()
-        log_username = ""
+        log_username = username
         log_token_name = ""
         log_access_group = ""
         log_client = ""
@@ -177,12 +178,6 @@ class OTPmeAuthP1(OTPmeServer1):
         log_session_id = ""
         log_auth_type = ""
         log_auth_mode = ""
-
-        # Try to get username.
-        try:
-            username = command_args['username']
-        except:
-            username = None
 
         # Check if user exists.
         user = backend.get_object(object_type="user",
@@ -193,7 +188,7 @@ class OTPmeAuthP1(OTPmeServer1):
         if not user:
             message = "AUTH_FAILED"
             status = False
-            command_error = message
+            command_error = "AUTH_UNKOWN_USER"
             msg = ("%s: user=%s token=%s access_group=%s client=%s client_ip=%s "
                     "auth_mode=%s auth_type=%s session=%s"
                             % (command_error,
@@ -205,7 +200,7 @@ class OTPmeAuthP1(OTPmeServer1):
                             log_auth_mode,
                             log_auth_type,
                             log_session_id))
-            self.logger.error(msg)
+            self.logger.warning(msg)
             return self.build_response(status, message)
 
         redirect_connection = False

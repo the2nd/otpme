@@ -728,13 +728,13 @@ def clear(object_id=None, cache_type=None,
         object_ids.append(object_id)
     else:
         if MULTIPROCESSING_CACHE in clear_cache_types:
-            for x in multiprocessing.instance_cache:
+            for x in dict(multiprocessing.instance_cache):
                 x_oid = oid.get(x)
                 if x_oid in object_ids:
                     continue
                 object_ids.append(x_oid)
         if PROCESS_CACHE in clear_cache_types:
-            for x in process_cache:
+            for x in dict(process_cache):
                 x_oid = oid.get(x)
                 if x_oid in object_ids:
                     continue

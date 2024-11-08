@@ -93,16 +93,24 @@ def get_ldap_cache(auth_token, client, object_id):
     global ldap_cache
     read_oid = object_id.read_oid
     try:
-        cached_object_checksum = ldap_cache[auth_token.uuid][client][read_oid]['CHECKSUM']
+        cache_time = ldap_cache[auth_token.uuid][client][read_oid]['TIME']
     except KeyError:
         return
-    try:
-        object_checksum = backend.get_checksum(object_id)
-    except:
-        object_checksum = None
-    if object_checksum == cached_object_checksum:
-        cache_entry = ldap_cache[auth_token.uuid][client][read_oid]['ENTRY']
-        return cache_entry
+    cache_age = time.time() - cache_time
+    if cache_age >= 300:
+        try:
+            cached_object_checksum = ldap_cache[auth_token.uuid][client][read_oid]['CHECKSUM']
+        except KeyError:
+            return
+        try:
+            object_checksum = backend.get_checksum(object_id)
+        except:
+            object_checksum = None
+        if object_checksum != cached_object_checksum:
+            return
+    ldap_cache[auth_token.uuid][client][read_oid]['TIME'] = time.time()
+    cache_entry = ldap_cache[auth_token.uuid][client][read_oid]['ENTRY']
+    return cache_entry
 
 def update_ldap_cache(auth_token, client, object_id, ldap_entry, checksum):
     """ Add cache entry. """
@@ -114,6 +122,7 @@ def update_ldap_cache(auth_token, client, object_id, ldap_entry, checksum):
         ldap_cache[auth_token.uuid][client] = {}
     if read_oid not in ldap_cache[auth_token.uuid][client]:
         ldap_cache[auth_token.uuid][client][read_oid] = {}
+    ldap_cache[auth_token.uuid][client][read_oid]['TIME'] = time.time()
     ldap_cache[auth_token.uuid][client][read_oid]['ENTRY'] = ldap_entry
     ldap_cache[auth_token.uuid][client][read_oid]['CHECKSUM'] = checksum
 
@@ -135,7 +144,7 @@ def get_ldap_search_cache(auth_token, client, cache_key):
             ldap_query_cache.clear()
             config.ldap_object_changed = False
         return
-    cache_entry = copy.deepcopy(cache_entry)
+    #cache_entry = copy.deepcopy(cache_entry)
     return cache_entry
 
 def update_ldap_search_cache(auth_token, client, cache_key, entries):
@@ -157,6 +166,8 @@ class LDIFTreeEntryContainsNoEntries(Exception):
     """LDIFTree entry does not contain a valid LDIF entry."""
 
 class StoreParsedLDIF(ldifprotocol.LDIF):
+    # Allow bigger jpgPhoto.
+    MAX_LENGTH = 1024000000
     def __init__(self):
         self.done = False
         self.seen = []
@@ -358,6 +369,8 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             msg = "Failed to authenticate user: %s" % e
             logger.warning(msg)
             raise ldaperrors.LDAPInvalidCredentials
+        finally:
+            authd_conn.close()
 
         if status is False:
             msg = "Failed to authenticate user: %s" % auth_reply
@@ -366,7 +379,6 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
         # Set auth token.
         self.auth_token_uuid = auth_reply[0]['login_token_uuid']
-        #self.auth_token = backend.get_object(uuid=auth_token_uuid)
 
         return self
 
@@ -785,6 +797,9 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             if self.auth_token:
                 if not self.auth_token.is_admin():
                     verify_acls = True
+
+        if not config.ldap_verify_acls:
+            verify_acls = False
 
         if verify_acls and not self.auth_token:
             msg = "Unable to verify ACLs without token."
@@ -1246,6 +1261,9 @@ class LDAPServer(object):
         """ Exit on signal. """
         msg = ("Received SIGTERM.")
         logger.info(msg)
+        if config.print_timing_results:
+            from otpme.lib import debug
+            debug.print_timing_result(print_status=True)
         os._exit(0)
 
     def listen(self, use_ssl=False, cert=None, key=None):

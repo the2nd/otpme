@@ -47,13 +47,14 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user add [--no-default-token] [--default-token <default_token>] [--default-token-type <token_type>] [--group <group>] [--groups <group1,group2>] [--roles <role1,role2>] [--attributes <attr1=val1,attr2=val2...> [-t] [--template <template_name>] [--no-qrcode] {user}',
-                    'cmd'   :   '--group :group: --groups :[groups]: --roles :[default_roles]: --no-default-token :add_default_token=False: --default-token :default_token: --default-token-type :default_token_type: --attributes :ldif_attributes: -t :template_object=True: --template :template_name: --no-qrcode :gen_qrcode=False: <|object|>',
+                    '_cmd_usage_help' : 'Usage: otpme-user add [--no-default-token] [--default-token <default_token>] [--default-token-type <token_type>] [--group <group>] [--groups <group1,group2>] [--role <default_role>] [--roles <role1,role2>] [--attributes <attr1=val1,attr2=val2...> [-t] [--template <template_name>] [--no-qrcode] {user}',
+                    'cmd'   :   '--group :group: --groups :[groups]: --role :default_role: --roles :[default_roles]: --no-default-token :add_default_token=False: --default-token :default_token: --default-token-type :default_token_type: --attributes :ldif_attributes: -t :template_object=True: --template :template_name: --no-qrcode :gen_qrcode=False: <|object|>',
                     '_help' :   {
                                     'cmd'                                   : 'Add new user.',
                                     '--group <group>'                       : 'Users default group.',
                                     '--groups <group1,group2>'              : 'Groups to add user to.',
-                                    '--roles <role1,role2>'                 : 'Default role to add user to.',
+                                    '--role <default_role>'                 : 'Default role to add users default token to.',
+                                    '--roles <role1,role2>'                 : 'Roles to add user to.',
                                     '--no-default-token'                    : 'Do not create default token.',
                                     '--no-qrcode'                           : 'Do not gen default token qrcode.',
                                     '--default-token <token_name>'          : 'Get default token from TOKENSTORE.',
@@ -619,6 +620,29 @@ cmd_help = {
                     '_help' :   {
                                     'cmd'                   : 'List users roles.',
                                     '--return-type'         : 'Attribute to return.',
+                                },
+                },
+    'photo'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-user photo {user} {image_path}',
+                    'cmd'   :   '<|object|> <file:image_data>',
+                    '_help' :   {
+                                    'cmd'                   : 'Add user photo (jpeg).',
+                                },
+                },
+
+    'dump_photo'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-user dump_photo {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Dump user photo as base64.',
+                                },
+                },
+
+    'del_photo'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-user del_photo {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Delete user photo.',
                                 },
                 },
     }

@@ -13,7 +13,6 @@ try:
 except:
     pass
 
-from otpme.lib import slp
 from otpme.lib import srp
 from otpme.lib import stuff
 from otpme.lib import cache
@@ -952,6 +951,7 @@ class OTPmeAgent(UnixDaemon):
         login_time = auth_reply['login_time']
         timeout = auth_reply['timeout']
         unused_timeout = auth_reply['unused_timeout']
+        _slp = auth_reply['slp']
 
         # Build session dict.
         session = {}
@@ -964,8 +964,7 @@ class OTPmeAgent(UnixDaemon):
         # Gen SRP.
         _srp = srp.gen(rsp_hash)
         session['srp'] = _srp
-        # Gen SLP.
-        _slp = slp.gen(rsp_hash)
+        # Add SLP.
         session['slp'] = _slp
         # Add login time.
         session['login_time'] = login_time

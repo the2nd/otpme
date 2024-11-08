@@ -201,6 +201,10 @@ class HostDaemon(OTPmeDaemon):
                                             uuid=config.uuid)
         except LockWaitTimeout:
             host = None
+        except Exception as e:
+            host = None
+            msg = "Failed to reload host object: %s" % e
+            self.logger.critical(msg)
         if host:
             self.host = host
 
@@ -1207,7 +1211,7 @@ class HostDaemon(OTPmeDaemon):
             callback.release_cache_locks()
 
     def run_resolvers(self):
-        """ Start clear outdated cache objects als child process. """
+        """ Run resolvers as child process. """
         if not config.master_node:
             return
         if self.resolver_run_child:
@@ -1220,7 +1224,7 @@ class HostDaemon(OTPmeDaemon):
         self.resolver_run_child = child
 
     def _run_resolvers(self):
-        """ Clear outdated cache objects. """
+        """ Run resolvers. """
         # Set proctitle for new child process.
         self.set_proctitle(proctitle="Run resolvers")
         # Handle multiprocessing stuff.
@@ -1241,9 +1245,12 @@ class HostDaemon(OTPmeDaemon):
                 continue
             msg = "Running resolver: %s" % resolver.oid
             self.logger.info(msg)
+            callback = config.get_callback()
+            callback.disable()
             resolver.run(daemon_run=True,
                         interactive=False,
-                        verify_acls=False)
+                        verify_acls=False,
+                        callback=callback)
         # Do some cleanup.
         multiprocessing.cleanup()
 

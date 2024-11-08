@@ -1803,25 +1803,27 @@ class AuthHandler(object):
                     % self.auth_group.max_sessions)
         # If relogin timeout is set check if there is a session we can
         # replace.
-        if self.auth_group.relogin_timeout > 0:
-            self.logger.debug("Checking for sessions older than relogin "
-                        "timeout: %s" % self.auth_group.relogin_timeout)
-            # Walk through session list.
-            for session_x in session_list:
-                # Add sessions to dict with a dict key that starts
-                # with last used timestamp.
-                dict_key = "%s %s" % (session_x.last_used,
-                                    session_x.session_id)
-                dict_entry = { dict_key : session_x }
-                user_sessions.update(dict_entry)
+        if (len(session_list) + 1) >= self.auth_group.max_sessions:
+            if self.auth_group.relogin_timeout > 0:
+                self.logger.debug("Checking for sessions older than relogin "
+                            "timeout: %s" % self.auth_group.relogin_timeout)
+                # Walk through session list.
+                for session_x in session_list:
+                    # Add sessions to dict with a dict key that starts
+                    # with last used timestamp.
+                    dict_key = "%s %s" % (session_x.last_used,
+                                        session_x.session_id)
+                    dict_entry = { dict_key : session_x }
+                    user_sessions.update(dict_entry)
 
-            found_obsolete_session = False
-            # Walk through user sessions list reverse sorted by last
-            # used timestamp.
-            for dict_key in sorted(user_sessions, reverse=False):
-                session_x = user_sessions[dict_key]
-                session_age = time.time() - session_x.last_used
-                if session_age >= self.auth_group.relogin_timeout:
+                found_obsolete_session = False
+                # Walk through user sessions list reverse sorted by last
+                # used timestamp.
+                for dict_key in sorted(user_sessions, reverse=False):
+                    session_x = user_sessions[dict_key]
+                    session_age = time.time() - session_x.last_used
+                    if session_age < self.auth_group.relogin_timeout:
+                        continue
                     self.logger.debug("Deleting session '%s' based on "
                                 "max_sessions/relogin_timeout "
                                 "configured for this group."
@@ -1830,20 +1832,14 @@ class AuthHandler(object):
                                     verify_acls=False)
                     session_list.remove(session_x)
                     found_obsolete_session = True
-            if not found_obsolete_session:
-                self.logger.debug("Max sessions reached for this accessgroup "
-                            "and no outdated session found.")
-                self.auth_failed = True
-                self.auth_status = False
-            if (len(session_list) + 1) >= self.auth_group.max_sessions:
-                self.logger.debug("Max sessions reached for this accessgroup.")
-                self.auth_failed = True
-                self.auth_status = False
-        else:
-            self.logger.debug("Max sessions reached for this accessgroup and "
-                        "no relogin allowed.")
-            self.auth_failed = True
-            self.auth_status = False
+                    break
+                if not found_obsolete_session:
+                    if (len(session_list) + 1) >= self.auth_group.max_sessions:
+                        self.logger.debug("Max sessions reached for this accessgroup "
+                                    "and no outdated session found.")
+            else:
+                self.logger.debug("Max sessions reached for this accessgroup and "
+                            "no relogin allowed.")
 
         if self.auth_failed:
             # If relogin is disabled or we havent found a obsolete
@@ -2562,7 +2558,8 @@ class AuthHandler(object):
         if not self.auth_failed:
             if self.auth_group.max_sessions > 0:
                 if self.create_sessions:
-                    self.check_max_sessions()
+                    if not self.realm_logout:
+                        self.check_max_sessions()
 
         # If authentication was successful.
         ecdh_server_pub_pem = None
@@ -2767,7 +2764,12 @@ class AuthHandler(object):
         # If we reached this point auth has failed and we can count failed login
         # if enabled and we got an accessgroup and a password hash.
         if self.count_fails:
-            if not self.access_group:
+            if self.access_group:
+                if self.auth_group.max_fail == 0:
+                    self.logger.warning("Will not count failed logins because of"
+                                        "max_fail=0.")
+                self.count_fails = False
+            else:
                 self.logger.critical("Cannot count failed login without "
                                     "accessgroup.")
                 self.count_fails = False

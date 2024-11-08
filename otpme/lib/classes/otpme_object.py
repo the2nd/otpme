@@ -230,6 +230,8 @@ def run_pre_post_add_policies():
                     except PolicyException as e:
                         msg = str(e)
                         return callback.error(msg)
+            # Disable temporary policy ignorance.
+            self.ignore_policy_types = []
             return result
         return wrapped
     return wrapper
@@ -414,6 +416,8 @@ def get_ldif(ldif, attributes=None, verify_acl_func=None,
             if isinstance(v, str):
                 if stuff.contains_non_ascii(v):
                     v = encode(v, "base64")
+                    attr = "%s:: %s" % (a, v)
+                if a == "jpegPhoto":
                     attr = "%s:: %s" % (a, v)
             _ldif.append(attr)
 
@@ -1944,6 +1948,8 @@ class OTPmeObject(OTPmeBaseObject):
         self.creator = None
         self.creator_cache = None
         self.template_object = template
+        # Temporary disable policy runs.
+        self.ignore_policy_types = []
 
         self.auto_disable = ""
         self.unused_disable = False
@@ -4062,6 +4068,10 @@ class OTPmeObject(OTPmeBaseObject):
         # Without policy we are done.
         if not policies:
             return success_policy_types
+
+        # Merge ignore_policy_types.
+        ignore_policy_types += self.ignore_policy_types
+        ignore_policy_types = list(set(ignore_policy_types))
 
         for x in policies:
             if not x.enabled:
@@ -6866,7 +6876,8 @@ class OTPmeObject(OTPmeBaseObject):
         parent_object.run_policies(policy_hook,
                                 child_object=child_object,
                                 callback=callback,
-                                _caller=_caller)
+                                _caller=_caller,
+                                **kwargs)
 
     def _prepare_add(self, uuid=None, handle_uuid=True,
         add_acl=None, verify_acls=True, need_exact_acl=False,
@@ -7058,8 +7069,8 @@ class OTPmeObject(OTPmeBaseObject):
                                 callback=callback,
                                 verbose_level=verbose_level)
             except Exception as e:
-                #config.raise_exception()
                 callback.error(str(e))
+                config.raise_exception()
 
         if template:
             # Add object classes from template.
@@ -7154,7 +7165,8 @@ class OTPmeObject(OTPmeBaseObject):
                                         parent_object=parent_object,
                                         child_object=self,
                                         callback=callback,
-                                            _caller=_caller)
+                                        _caller=_caller,
+                                        **kwargs)
 
     def _run_post_add_policies(self, callback=default_callback,
         verbose_level=0, _caller="API", **kwargs):
@@ -7168,7 +7180,8 @@ class OTPmeObject(OTPmeBaseObject):
                                         parent_object=parent_object,
                                         child_object=self,
                                         callback=callback,
-                                        _caller=_caller)
+                                        _caller=_caller,
+                                        **kwargs)
 
     @check_acls(acls=['rename:object'])
     @object_lock(recursive=True, full_lock=True)

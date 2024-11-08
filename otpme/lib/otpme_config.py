@@ -111,6 +111,9 @@ class OTPmeConfig(object):
         self.register_config_var("pinentry", str, "otpme-pinentry",
                                 config_file_parameter="PINENTRY",
                                 user_config_file_parameter="PINENTRY")
+        # LDAP verify ACLs.
+        self.register_config_var("ldap_verify_acls", bool, False,
+                                config_file_parameter="LDAP_VERIFY_ACLS")
         self.register_config_var("_logger", None, None)
         # Index type to use.
         self.register_config_var("index_type", str, "postgres",

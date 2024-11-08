@@ -255,6 +255,8 @@ class DefaultrolesPolicy(Policy):
                                                     uuid=role_uuid)
                         if not role:
                             continue
+                        old_exc_val = callback.raise_exception
+                        callback.raise_exception = True
                         try:
                             role.add_token(default_token, callback=callback)
                         except AlreadyExists:
@@ -262,8 +264,11 @@ class DefaultrolesPolicy(Policy):
                         except Exception as e:
                             msg = ("Failed to add default token to role: %s: "
                                     "%s: %s" % (role.name, default_token, e))
+                            callback.raise_exception = old_exc_val
                             config.raise_exception()
                             return callback.error(msg)
+                        finally:
+                            callback.raise_exception = old_exc_val
         else:
             msg = (_("Unknown policy hook: %s") % hook_name)
             return callback.error(msg, exception=self.policy_exception)

@@ -17,13 +17,13 @@ from otpme.lib.help import global_opts
 from otpme.lib.help import command_map
 from otpme.lib.register import register_modules
 from otpme.lib.help.register import register_help
-from otpme.lib.classes.command_handler import CommandHandler
 
 register_help()
 
 def show_compgen():
     """ Print valid compgen commands """
     from otpme.lib import config
+    from otpme.lib.classes.command_handler import CommandHandler
     cur = None
     counter = 0
     comp_words = None

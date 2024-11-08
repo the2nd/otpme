@@ -188,7 +188,7 @@ class ConnectSocket(object):
         self.remove_cert_files()
         # Return control to original signal handler.
         signal.signal(signal.SIGINT, self.org_sigint_handler)
-        signal.signal(signal.SIGINT, self.org_sigterm_handler)
+        signal.signal(signal.SIGTERM, self.org_sigterm_handler)
 
     def connect(self, timeout=15, connect_timeout=3, quiet=False, **kwargs):
         """ Connect to remote socket and read first packet. """
@@ -205,9 +205,10 @@ class ConnectSocket(object):
             connect_timeout_msg = "%ss" % connect_timeout
 
         if not quiet:
-            msg = ("Connecting to '%s' (tmo=%s/%s)"
-                % (self.socket_uri, connect_timeout_msg, timeout_msg))
-            self.logger.debug(msg)
+            if config.debug_level() > 3:
+                msg = ("Connecting to '%s' (tmo=%s/%s)"
+                    % (self.socket_uri, connect_timeout_msg, timeout_msg))
+                self.logger.debug(msg)
 
         try:
             # Set connect timeout.

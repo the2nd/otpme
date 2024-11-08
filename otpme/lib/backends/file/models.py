@@ -7,8 +7,12 @@ from otpme.lib import config
 
 class JsonEncodedData(TypeDecorator):
     """Enables JSON storage by encoding and decoding on the fly."""
-    from sqlalchemy.types import VARCHAR
-    impl = VARCHAR
+    if config.index_type == "mysql":
+        from sqlalchemy.types import TEXT
+        impl = TEXT
+    else:
+        from sqlalchemy.types import VARCHAR
+        impl = VARCHAR
     cache_ok = False
     def process_bind_param(self, value, dialect):
         try:
@@ -108,7 +112,7 @@ class IndexObjectAttribute(object):
     # Attribute name (e.g. uidNumber)
     name = Column(String(512), unique=False, nullable=False, index=False)
     # Attribute value.
-    value = Column(JsonEncodedData(4096), unique=False, nullable=False, index=False)
+    value = Column(JsonEncodedData(1024000), unique=False, nullable=False, index=False)
     # Object type of the object this attributes belong to.
     object_type = Column(String(128), unique=False, nullable=False, index=False)
 

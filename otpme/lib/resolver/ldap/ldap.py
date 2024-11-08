@@ -668,7 +668,8 @@ class LdapResolver(Resolver):
         ldap_server = ldap3.Server(host=server_address,
                                 port=server_port,
                                 use_ssl=use_ssl,
-                                get_info='ALL')
+                                get_info='ALL',
+                                connect_timeout=3)
         login_dn = None
         login_password = None
         if self.login_password:

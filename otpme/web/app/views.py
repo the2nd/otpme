@@ -203,6 +203,7 @@ def get_apps():
                     'app_name':client.sso_name,
                     'login_url':client.login_url,
                     'helper_url':client.helper_url,
+                    'sso_popup':client.sso_popup,
                     }
         if client.sso_logo:
             client_data['logo_type'] = client.sso_logo['image_type']

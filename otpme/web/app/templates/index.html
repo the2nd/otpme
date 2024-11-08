@@ -2,11 +2,6 @@
 {% block content %}
     <style type="text/css">
         html, body { background-color:#fff; font-weight:normal; font-family:Arial; font-size:90%; width:100%; height:100%; margin:0; padding:0;}
-
-    	/* Body width over full window size. */
-        body {
-            min-width:100%;
-        }
     </style>
 <head>
     <meta charset="UTF-8">
@@ -80,6 +75,8 @@
 						  username: '{{ g.user.name }}',
 						  password: sotp,
 						  redirect_url: item.login_url,
+						  sso_popup: item.sso_popup,
+						  app_name: item.app_name,
 						}
 						openTabAndSendPost(item.helper_url, login_data);
 					  })

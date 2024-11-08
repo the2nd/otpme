@@ -2,6 +2,8 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
+import magic
+import base64
 import datetime
 
 try:
@@ -82,14 +84,19 @@ read_value_acls = {
                         "session",
                         "auto_disable",
                         ],
+            "dump"      : [
+                        "photo",
+                        ],
         }
 
 write_value_acls = {
                     "add"       : [
                                 "token",
+                                "photo",
                                 ],
                     "delete"    : [
                                 "token",
+                                "photo",
                                 "session",
                                 ],
                     "rename"    : [
@@ -137,7 +144,7 @@ commands = {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : [],
-                    'oargs'             : ['add_default_token', 'default_token', 'default_token_type', 'default_roles', 'groups', 'unit', 'group', 'template_object', 'template_name', 'gen_qrcode', 'no_token_infos', 'ldif_attributes'],
+                    'oargs'             : ['add_default_token', 'default_token', 'default_token_type', 'default_role', 'default_roles', 'groups', 'unit', 'group', 'template_object', 'template_name', 'gen_qrcode', 'no_token_infos', 'ldif_attributes'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
@@ -702,6 +709,31 @@ commands = {
                     },
                 },
             },
+    'photo'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_photo',
+                    'args'              : ['image_data'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'dump_photo'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'dump_photo',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'del_photo'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_photo',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'export'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -925,6 +957,9 @@ def register_hooks():
     config.register_auth_on_action_hook("user", "verify")
     config.register_auth_on_action_hook("user", "encrypt")
     config.register_auth_on_action_hook("user", "decrypt")
+    config.register_auth_on_action_hook("user", "add_photo")
+    config.register_auth_on_action_hook("user", "del_photo")
+    config.register_auth_on_action_hook("user", "dump_photo")
 
 def register_user_scripts():
     """ Registger user scripts. """
@@ -1255,6 +1290,8 @@ class User(OTPmeObject):
         self.sso_session_data = {}
         self.auth_script = None
         self.auth_script_enabled = False
+        # User photo.
+        self.photo = None
         self.acl_inheritance_enabled = False
         self.track_last_used = True
 
@@ -1421,6 +1458,11 @@ class User(OTPmeObject):
                                                         'type'      : dict,
                                                         'required'  : False,
                                                         'encryption': config.disk_encryption,
+                                                    },
+                        'PHOTO'                     : {
+                                                        'var_name'  : 'photo',
+                                                        'type'      : str,
+                                                        'required'  : False,
                                                     },
                         }
 
@@ -1732,6 +1774,85 @@ class User(OTPmeObject):
         for token in token_list:
             token._write(callback=callback)
         return callback.ok()
+
+    @check_acls(['add:photo'])
+    @object_lock()
+    def add_photo(self, image_data, run_policies=True,
+        _caller="API", callback=default_callback, **kwargs):
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_photo",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        # Check if data is base64 and decode.
+        if stuff.is_base64(image_data):
+            image_data = base64.b64decode(image_data)
+
+        magic_handler = magic.Magic(mime=True, uncompress=True)
+        image_type = magic_handler.from_buffer(image_data)
+
+        if image_type != "image/jpeg":
+            msg = "Photo must be in jpeg format."
+            return callback.error(msg)
+
+        if isinstance(image_data, str):
+            image_data = image_data.encode()
+
+        image_base64 = base64.b64encode(image_data)
+        image_base64 = image_base64.decode()
+
+        self.photo = image_base64
+
+        self.add_attribute(attribute="jpegPhoto", value=self.photo)
+
+        return self._write(callback=callback)
+
+    @check_acls(['del:photo'])
+    @object_lock()
+    def del_photo(self, run_policies=True,
+        _caller="API", callback=default_callback, **kwargs):
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("del_photo",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.photo = None
+        self.del_attribute(attribute="jpegPhoto")
+
+        return self._write(callback=callback)
+
+    @check_acls(['dump:photo'])
+    @object_lock()
+    def dump_photo(self, run_policies=True,
+        _caller="API", callback=default_callback, **kwargs):
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("dump_photo",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        if not self.photo:
+            msg = "No photo set."
+            return callback.error(msg)
+
+        return callback.ok(self.photo)
 
     def get_members(self, return_type="full_oid", **kwargs):
         """ Get all user tokens. """
@@ -2885,7 +3006,6 @@ class User(OTPmeObject):
             for x in result[0:del_failed_pass]:
                 x.delete()
 
-    # FIXME: make this cluster aware! add shared list and proto to sync this!
     def count_fail(self, pass_hash, access_group):
         """ Increase login failures for user or user/group. """
         # FIXME: NOFIX: One could think count_fail() should be method of
@@ -3737,10 +3857,11 @@ class User(OTPmeObject):
     @backend.transaction
     @one_time_policy_run
     @run_pre_post_add_policies()
-    def add(self, group=None, add_default_token=None, default_token=None,
-        default_token_type=None, template_name=None, template_object=None,
-        gen_qrcode=True, no_token_infos=False, run_policies=True, force=False,
-        verify_acls=True, groups=None, default_roles=None, ldif_attributes=None,
+    def add(self, group=None, default_role=None, add_default_token=None,
+        default_token=None, default_token_type=None, template_name=None,
+        template_object=None, gen_qrcode=True, no_token_infos=False,
+        run_policies=True, force=False, verify_acls=True, groups=None,
+        default_roles=None, ldif_attributes=None, default_attributes={},
         _caller="API", verbose_level=0, callback=default_callback, **kwargs):
         """ Add user. """
         # Check if user exist on any site.
@@ -3767,6 +3888,15 @@ class User(OTPmeObject):
             default_token_type = self.get_config_parameter('default_token_type')
         if default_token is not None:
             add_default_token = True
+
+        # If user gave us a default role we will not run defaultroles policy.
+        if default_role:
+            self.ignore_policy_types.append("defaultroles")
+            if default_roles:
+                default_roles.append(default_role)
+                default_roles = list(set(default_roles))
+            else:
+                default_roles = [default_role]
 
         # Set template status.
         if template_object is not None:
@@ -3821,8 +3951,6 @@ class User(OTPmeObject):
                     if not _role.verify_acl("add:token"):
                         msg = "Role: %s: Permission denied" % role_name
                         return callback.error(msg)
-                # Acquire lock.
-                #_role._cache(callback=callback)
                 _default_roles.append(_role)
 
         # Handle default token from TOKENSTORE.
@@ -3970,7 +4098,6 @@ class User(OTPmeObject):
                return callback.error(msg, exception=PermissionDenied)
 
         # Handle given LDIF attributes.
-        default_attributes = {}
         if ldif_attributes:
             try:
                 default_extensions = config.default_extensions[self.type]
