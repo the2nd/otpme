@@ -268,6 +268,14 @@ cmd_help = {
                                 },
                 },
 
+    'show_config'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-user show_config',
+                    'cmd'   :   '[|object|]',
+                    '_help' :   {
+                                    'cmd'                   : 'Show user config parameters',
+                                },
+                },
+
      'add_extension'    : {
                     '_cmd_usage_help' : 'Usage: otpme-user add_extension {user} {extension}',
                     'cmd'   :   '<|object|> <extension>',

@@ -86,11 +86,19 @@ cmd_help = {
                                 },
                 },
 
-     'config'    : {
+    'config'    : {
                     '_cmd_usage_help' : 'Usage: otpme-host config {host} {param} [value]',
                     'cmd'   :   '<|object|> <parameter> [value]',
                     '_help' :   {
                                     'cmd'                   : 'Add config parameter to host.',
+                                },
+                },
+
+    'show_config'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-host show_config',
+                    'cmd'   :   '[|object|]',
+                    '_help' :   {
+                                    'cmd'                   : 'Show host config parameters',
                                 },
                 },
 

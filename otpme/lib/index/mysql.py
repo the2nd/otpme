@@ -637,5 +637,7 @@ def get_db_engine():
 
 def get_db_connection():
     global Session
+    if Session is None:
+        get_db_engine()
     session = Session()
     return session

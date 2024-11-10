@@ -103,6 +103,14 @@ cmd_help = {
                                 },
                 },
 
+    'show_config'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-group show_config',
+                    'cmd'   :   '[|object|]',
+                    '_help' :   {
+                                    'cmd'                   : 'Show group config parameters',
+                                },
+                },
+
      'add_extension'    : {
                     '_cmd_usage_help' : 'Usage: otpme-group add_extension {group} {extension}',
                     'cmd'   :   '<|object|> <extension>',

@@ -1155,6 +1155,7 @@ class Site(OTPmeObject):
                     add_status = unit_inherit_method(acl=acl,
                                     recursive_acls=recursive_acls,
                                     apply_default_acls=apply_default_acls,
+                                    object_types=object_types,
                                     verify_acls=verify_acls,
                                     verbose_level=verbose_level,
                                     callback=callback,
@@ -2552,6 +2553,7 @@ class Site(OTPmeObject):
             self.add_acl(acl=acl,
                         recursive_acls=True,
                         apply_default_acls=True,
+                        object_types=view_objects,
                         verify_acls=False,
                         verbose_level=1,
                         callback=callback)
@@ -2563,6 +2565,7 @@ class Site(OTPmeObject):
             self.add_acl(acl=acl,
                         recursive_acls=True,
                         apply_default_acls=True,
+                        object_types=view_objects,
                         verify_acls=False,
                         verbose_level=1,
                         callback=callback)

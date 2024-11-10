@@ -110,7 +110,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'enable_id_check',
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -118,7 +118,23 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable_id_check',
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'enable_id_range_recheck'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_id_range_recheck',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_id_range_recheck'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_id_range_recheck',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -220,6 +236,9 @@ class IdrangePolicy(Policy):
         # Verify new free IDs? This will result in slower processing but will
         # ensure an ID is not already used by an other object.
         self.verify_new_id = True
+        # Check already used ID ranges for free numbers. May slow down finding of free IDs.
+        self.recheck_id_ranges = False
+
         # Set default values.
         self.hooks = {
                     'all'   : [
@@ -259,13 +278,18 @@ class IdrangePolicy(Policy):
     def _get_object_config(self):
         """ Merge policy config with config from parent class. """
         policy_config = {
-            'ID_RANGES'             : {
+            'ID_RANGES'                 : {
                                             'var_name'      : 'id_ranges',
                                             'type'          : dict,
                                             'required'      : False,
                                         },
-            'VERIFY_NEW_ID'         : {
+            'VERIFY_NEW_ID'             : {
                                             'var_name'      : 'verify_new_id',
+                                            'type'          : bool,
+                                            'required'      : False,
+                                        },
+            'RECHECK_ID_RANGES'         : {
+                                            'var_name'      : 'recheck_id_ranges',
                                             'type'          : bool,
                                             'required'      : False,
                                         },
@@ -313,6 +337,28 @@ class IdrangePolicy(Policy):
             msg = "ID check already disabled."
             return callback.error(msg)
         self.verify_new_id = False
+        return self._cache(callback=callback)
+
+    @check_acls(['enable:id_range_recheck'])
+    @object_lock()
+    @backend.transaction
+    def enable_id_range_recheck(self, callback=default_callback, **kwargs):
+        """ Enable ID range re-check. """
+        if self.recheck_id_ranges:
+            msg = "ID range re-check already enabled."
+            return callback.error(msg)
+        self.recheck_id_ranges = True
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:id_range_recheck'])
+    @object_lock()
+    @backend.transaction
+    def disable_id_range_recheck(self, callback=default_callback, **kwargs):
+        """ Disable ID range re-check. """
+        if not self.recheck_id_ranges:
+            msg = "ID range re-check already disabled."
+            return callback.error(msg)
+        self.recheck_id_ranges = False
         return self._cache(callback=callback)
 
     def _lock_idrange_attribute(method):
@@ -374,15 +420,15 @@ class IdrangePolicy(Policy):
                 start_id = last_assigend + 1
                 # Make sure start ID is within ID range.
                 if start_id >= range_start and start_id <= range_end:
-                    # If we do not start at range_start we have to restart the
-                    # search if no free ID was found between start_id and
-                    # range_end.
-                    restart_on_end = True
-                    new_id = start_id
+                    if not self.verify_new_id:
+                        new_id = start_id
+                        break
                 else:
+                    if not self.recheck_id_ranges:
+                        continue
                     start_id = range_start
-                    new_id = range_start
-            if self.verify_new_id or random_range:
+                    restart_on_end = True
+            if self.verify_new_id or random_range or restart_on_end:
                 try:
                     ldif_attribute = "ldif:%s" % attribute
                     msg = ("Searching free ID for attribute: %s" % attribute)
@@ -409,10 +455,11 @@ class IdrangePolicy(Policy):
 
         # For non-random ID range we need to remember the last
         # assigned ID.
-        self.set_last_assigned(idrange=x,
-                            attribute=attribute,
-                            id=new_id,
-                            callback=callback)
+        if last_assigend != new_id:
+            self.set_last_assigned(idrange=x,
+                                attribute=attribute,
+                                id=new_id,
+                                callback=callback)
 
         msg = "Using %s: %s" % (attribute, new_id)
         callback.send(msg)

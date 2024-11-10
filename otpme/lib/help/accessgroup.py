@@ -101,6 +101,14 @@ cmd_help = {
                                 },
                 },
 
+    'show_config'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-accessgroup show_config',
+                    'cmd'   :   '[|object|]',
+                    '_help' :   {
+                                    'cmd'                   : 'Show accessgroup config parameters',
+                                },
+                },
+
      'add_extension'    : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup add_extension {accessgroup} {extension}',
                     'cmd'   :   '<|object|> <extension>',

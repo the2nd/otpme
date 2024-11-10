@@ -78,6 +78,14 @@ cmd_help = {
                                 },
                 },
 
+    'show_config'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-policy show_config',
+                    'cmd'   :   '[|object|]',
+                    '_help' :   {
+                                    'cmd'                   : 'Show policy config parameters',
+                                },
+                },
+
     'add_acl'   : {
                     '_cmd_usage_help' : 'Usage: otpme-policy add_acl {policy} {role|token} {role_path|token_path} {acl[:value]}',
                     'cmd'   :   '<|object|> <owner_type> <owner_name> <acl>',

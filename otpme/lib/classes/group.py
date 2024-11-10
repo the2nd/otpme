@@ -149,6 +149,15 @@ commands = {
                     },
                 },
             },
+    'show_config'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_config_parameters',
+                    'oargs'              : [],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'enable'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -820,11 +829,20 @@ class Group(OTPmeObject):
                     msg = (_("Permission denied: %s") % self.name)
                     return callback.error(msg, exception=PermissionDenied)
 
-        #base_groups = config.get_base_objects("group")
-        #if self.name in base_groups:
-        #    return callback.error("Cannot delete base group.")
         if self.is_special_object(return_true_false=True):
             msg = "Cannot delete special group: %s" % self.name
+            return callback.error(msg)
+
+        if self.default_group_users:
+            msg = "The group has default group users assigned."
+            return callback.error(msg)
+
+        if self.tokens:
+            msg = "The group has tokens assigned."
+            return callback.error(msg)
+
+        if self.roles:
+            msg = "The group has roles assigned."
             return callback.error(msg)
 
         if run_policies:

@@ -105,6 +105,14 @@ cmd_help = {
                                 },
                 },
 
+    'show_config'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-role show_config',
+                    'cmd'   :   '[|object|]',
+                    '_help' :   {
+                                    'cmd'                   : 'Show role config parameters',
+                                },
+                },
+
      'add_extension'    : {
                     '_cmd_usage_help' : 'Usage: otpme-role add_extension {role} {extension}',
                     'cmd'   :   '<|object|> <extension>',

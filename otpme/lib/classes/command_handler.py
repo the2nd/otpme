@@ -802,6 +802,8 @@ class CommandHandler(object):
                 backup_file_name = "%s.json" % backup_file_name
                 backup_file = os.path.join(backup_dir, backup_file_name)
                 x_oc = backend.read_config(x_oid, decrypt=False)
+                if not x_oc:
+                    continue
                 x_uuid = x_oc['UUID']
                 msg = "Backing up: %s" % x_oid
                 print(msg)
@@ -5003,10 +5005,17 @@ class CommandHandler(object):
     def handle_cluster_status(self, command, subcommand):
         """ Handle auth command. """
         from termcolor import colored
+        from otpme.lib.daemon.controld import ControlDaemon
         register_module("otpme.lib.classes.realm")
         if config.system_user() != "root":
             msg = ("You must be root for this command.")
             raise OTPmeException(msg)
+
+        control_daemon = ControlDaemon(config.controld_pidfile)
+        if not control_daemon.status(quiet=True)[0]:
+            msg = "OTPme daemon not running."
+            raise OTPmeException(msg)
+
         # Init otpme.
         #init_otpme()
         self.init()

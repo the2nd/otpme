@@ -953,7 +953,10 @@ class JsonFile(object):
                     else:
                         msg = "Unknown action: %s" % action
                         raise OTPmeException(msg)
-                    current_oc[attr] = sorted(current_list)
+                    try:
+                        current_oc[attr] = sorted(current_list)
+                    except TypeError:
+                        current_oc[attr] = current_list
                 if attr in dict_attributes:
                     if value_type == "list":
                         value = x[5]

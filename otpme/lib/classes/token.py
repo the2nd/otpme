@@ -170,6 +170,15 @@ commands = {
                     },
                 },
             },
+    'show_config'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_config_parameters',
+                    'oargs'              : [],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'enable'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -1188,6 +1197,9 @@ class Token(OTPmeObject):
             if x_val is None:
                 x_val = hash_opts[x_opt]['default']
             hash_args[x_arg] = x_val
+        # Generate salt used for password hashing.
+        salt = stuff.gen_secret(16)
+        hash_args['salt'] = salt
         return hash_args
 
     def gen_password_hash(self, password, quiet=True):

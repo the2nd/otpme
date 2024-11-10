@@ -115,6 +115,14 @@ cmd_help = {
                                 },
                 },
 
+    'show_config'      : {
+                    '_cmd_usage_help' : 'Usage: otpme-token show_config',
+                    'cmd'   :   '[|object|]',
+                    '_help' :   {
+                                    'cmd'                   : 'Show token config parameters',
+                                },
+                },
+
      'add_extension'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token add_extension {token} {extension}',
                     'cmd'   :   '<|object|> <extension>',

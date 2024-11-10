@@ -1243,10 +1243,11 @@ class OTPmeJoinP1(OTPmeServer1):
                 # Update realm CA data.
                 site_ca.update_realm_ca_data()
                 # Reload after adding new CRL.
+                self._send_daemon_msg(daemon="controld",
+                                        command="reload",
+                                        timeout=1)
+                # Make sure member nodes do a daemon reload.
                 cluster_daemon_reload()
-                #self._send_daemon_msg(daemon="controld",
-                #                        command="reload",
-                #                        timeout=1)
 
             return self.build_response(status, message)
 

@@ -140,6 +140,15 @@ commands = {
                     },
                 },
             },
+    'show_config'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_config_parameters',
+                    'oargs'              : [],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'enable'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -956,6 +965,14 @@ class Role(OTPmeObject):
                 if not parent_object.verify_acl(del_acl):
                     msg = (_("Permission denied: %s") % self.name)
                     return callback.error(msg, exception=PermissionDenied)
+
+        if self.tokens:
+            msg = "The role has tokens assigned."
+            return callback.error(msg)
+
+        if self.roles:
+            msg = "The role has roles assigned."
+            return callback.error(msg)
 
         if run_policies:
             try:

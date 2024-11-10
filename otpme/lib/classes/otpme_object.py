@@ -44,6 +44,8 @@ from otpme.lib.policy import one_time_policy_run
 from otpme.lib.cache import supported_acls_cache
 from otpme.lib.otpme_acl import check_special_user
 from otpme.lib.classes.object_config import ObjectConfig
+from otpme.lib.incremental_objects import IncrementalDict
+from otpme.lib.incremental_objects import IncrementalList
 
 from otpme.lib.exceptions import *
 
@@ -433,240 +435,6 @@ def get_ldif(ldif, attributes=None, verify_acl_func=None,
         result = "\n".join(result)
 
     return result
-
-class IncrementaObject(object):
-    def set_normal_attrs(self, value):
-        if isinstance(value, IncrementalList):
-            normal_value = value.copy()
-        elif isinstance(value, IncrementalDict):
-            normal_value = value.copy()
-        else:
-            normal_value = value
-        return normal_value
-
-    def set_incremental_attrs(self, value, dict_path, _set=False):
-        if isinstance(value, list):
-            _list = value
-            if _set:
-                _list = []
-            inc_value = IncrementalList(data=_list,
-                                    key=self.key,
-                                    dict_path=dict_path,
-                                    incremental_data=self.incremental_data)
-            if _set:
-                inc_value.set(value)
-        elif isinstance(value, dict):
-            _dict = value
-            if _set:
-                _dict = {}
-            inc_value = IncrementalDict(data=_dict,
-                                    key=self.key,
-                                    dict_path=dict_path,
-                                    incremental_data=self.incremental_data)
-            if _set:
-                inc_value.set(value)
-        else:
-            inc_value = value
-        return inc_value
-
-class IncrementalDict(IncrementaObject):
-    """ Handle incremental updates of dict attribute. """
-    def __init__(self, data={}, key=None, dict_path=[], incremental_data=[]):
-        self.key = key
-        self.data = {}
-        self.type = "dict"
-        self.dict_path = dict_path
-        self.incremental_data = incremental_data
-        for x in data:
-            self.__setitem__(x, data[x])
-
-    @property
-    def modified(self):
-        for x in self.incremental_data:
-            if self.key not in x:
-                continue
-            return True
-        return False
-
-    def incremental_add(self, key, value):
-        if isinstance(value, IncrementalDict):
-            value = value.copy()
-        if isinstance(value, IncrementalList):
-            value = value.copy()
-        self.incremental_data.append((time.time(),
-                                    self.key,
-                                    'add',
-                                    self.type,
-                                    self.dict_path,
-                                    key, value))
-
-    def incremental_del(self, key, value):
-        if isinstance(value, IncrementalDict):
-            value = value.copy()
-        if isinstance(value, IncrementalList):
-            value = value.copy()
-        self.incremental_data.append((time.time(),
-                                    self.key,
-                                    'del',
-                                    self.type,
-                                    self.dict_path,
-                                    key, value))
-
-    def __getitem__(self, key):
-        key = str(key)
-        return self.data[key]
-
-    def copy(self):
-        dict_copy = {}
-        for x in self.data:
-            x_val = self.data[x]
-            if isinstance(x_val, IncrementalDict):
-                x_val = x_val.copy()
-            if isinstance(x_val, IncrementalList):
-                x_val = x_val.copy()
-            x_normal_value = self.set_normal_attrs(x_val)
-            dict_copy[x] = x_normal_value
-        return dict_copy
-
-    def __setitem__(self, key, value):
-        key = str(key)
-        dict_path = self.dict_path.copy()
-        dict_path.append(key)
-        inc_value = self.set_incremental_attrs(value, dict_path)
-        self.data[key] = inc_value
-        add_value  = True
-        if isinstance(value, list):
-            add_value = False
-        if isinstance(value, dict):
-            add_value = False
-        if not add_value:
-            return
-        self.incremental_add(key, value)
-
-    def __delitem__(self, key):
-        key = str(key)
-        del_val = self.data.pop(key)
-        self.incremental_del(key, del_val)
-
-    def __len__(self):
-        return len(self.data)
-
-    def __iter__(self):
-        return iter(self.data)
-
-    def __repr__(self):
-        return self.__str__()
-
-    def __str__(self):
-        _str = self.data.__str__()
-        return _str
-
-    def values(self):
-        return self.data.values()
-
-    def items(self):
-        return self.data.items()
-
-    def keys(self):
-        return self.data.keys()
-
-    def pop(self, key):
-        key = str(key)
-        del_val = self.data.pop(key)
-        self.incremental_del(key, del_val)
-        return del_val
-
-    def set(self, _dict):
-        self.data = {}
-        for key in _dict:
-            key = str(key)
-            val = _dict[key]
-            dict_path = self.dict_path.copy()
-            dict_path.append(key)
-            inc_value = self.set_incremental_attrs(val, dict_path, _set=True)
-            self.data[key] = inc_value
-
-class IncrementalList(list, IncrementaObject):
-    """ Handle incremental updates of list attribute. """
-    def __init__(self, data=[], key=None, dict_path=[], incremental_data=[]):
-        self.key = key
-        self.type = "list"
-        self.dict_path = dict_path
-        self.incremental_data = incremental_data
-        _list = []
-        if data is not None:
-            _list = data
-        for x in _list:
-            self.append(x)
-        #return super(IncrementalList, self).__init__(_list)
-
-    @property
-    def modified(self):
-        for x in self.incremental_data:
-            if self.key not in x:
-                continue
-            return True
-        return False
-
-    def incremental_add(self, item):
-        if isinstance(item, IncrementalDict):
-            item = item.copy()
-        if isinstance(item, IncrementalList):
-            item = item.copy()
-        self.incremental_data.append((time.time(),
-                                    self.key,
-                                    'add',
-                                    self.type,
-                                    self.dict_path,
-                                    item))
-
-    def incremental_del(self, item):
-        self.incremental_data.append((time.time(),
-                                    self.key,
-                                    'del',
-                                    self.type,
-                                    self.dict_path,
-                                    item))
-
-    def __setitem__(self, index, item):
-        self.incremental_add(item)
-        return super(IncrementalList, self).__setitem__(index, item)
-
-    def __delitem__(self, index):
-        del_item = self[index]
-        self.incremental_del(del_item)
-        return super(IncrementalList, self).__delitem__(index)
-
-    #def copy(self):
-    #    list_copy = super(IncrementalList, self).copy()
-    #    for x in list_copy:
-    #        if isinstance(x, IncrementalDict):
-    #            x = x.copy()
-    #        if isinstance(x, IncrementalList):
-    #            x = x.copy()
-    #        #x_normal_value = self.set_normal_attrs(x)
-    #        #dict_copy[x] = x_normal_value
-    #    return list_copy
-
-    def append(self, value):
-        self.incremental_add(value)
-        return super(IncrementalList, self).append(value)
-
-    def insert(self, index, value):
-        self.incremental_add(value)
-        return super(IncrementalList, self).insert(index, value)
-
-    def pop(self, index=-1):
-        del_item = super(IncrementalList, self).pop(index)
-        self.incremental_del(del_item)
-        return del_item
-
-    def remove(self, value):
-        self.incremental_del(value)
-        return super(IncrementalList, self).remove(value)
-
-    def set(self, _list):
-        super(IncrementalList, self).__init__(_list)
 
 class OTPmeLockObject(object):
     """ OTPme lock object. """
@@ -1472,12 +1240,10 @@ class OTPmeBaseObject(OTPmeLockObject):
                 if isinstance(val, IncrementalDict):
                     if not val.modified:
                         return
-                    #print("IIIIIIIIIIIIIIIIIIIIIIIII", self, id(self), var_name, self.incremental_updates)
                     val = val.copy()
                 if isinstance(val, IncrementalList):
                     if not val.modified:
                         return
-                    #print("iiiiiiiiiiiiiiiiiiiiiii", self, id(self), var_name, self.incremental_updates)
                     val = val.copy()
         else:
             try:
@@ -2302,7 +2068,13 @@ class OTPmeObject(OTPmeBaseObject):
         except:
             default_value = None
 
-        parent_object = self
+        # If we have an authenticated user we have to check from users token on
+        # because user/token settings are preferred over object settings.
+        if config.auth_token:
+            parent_object = config.auth_token
+        else:
+            parent_object = self
+
         while True:
             try:
                 value = parent_object.config_params[parameter]

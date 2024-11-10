@@ -649,12 +649,12 @@ class OTPmeClusterP1(OTPmeServer1):
                 logger.info(msg)
 
         elif command == "do_daemon_reload":
-            # Reload after adding new CRL.
+            # Reload e.g. after adding new CRL.
             self._send_daemon_msg(daemon="controld",
                                     command="reload",
                                     timeout=1)
             status = True
-            message = "Daemonreload queued."
+            message = "Daemon reload queued."
 
         elif command == "do_master_failover":
             status = True

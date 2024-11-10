@@ -224,6 +224,15 @@ commands = {
                     },
                 },
             },
+    'show_config'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_config_parameters',
+                    'oargs'              : [],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'enable'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -4409,9 +4418,10 @@ class User(OTPmeObject):
         # Remove user from group.
         if self.group_uuid:
             default_group = backend.get_object(uuid=self.group_uuid)
-            default_group.remove_default_group_user(self.uuid,
-                                            verify_acls=False,
-                                            ignore_missing=True)
+            if default_group:
+                default_group.remove_default_group_user(self.uuid,
+                                                verify_acls=False,
+                                                ignore_missing=True)
 
         # Delete user sessions.
         session_list = backend.get_sessions(user=self.uuid,

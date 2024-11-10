@@ -54,4 +54,20 @@ cmd_help = {
                                     'cmd'                   : 'Disable check if new ID is already used.',
                                 },
                 },
+
+    'enable_id_range_recheck'              : {
+                    '_cmd_usage_help' : 'Usage: otpme-policy enable_id_range_recheck {policy}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Enable ID range re-check.',
+                                },
+                },
+
+    'disable_id_range_recheck'              : {
+                    '_cmd_usage_help' : 'Usage: otpme-policy disable_id_range_recheck {policy}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Disable ID range re-check.',
+                                },
+                },
     }

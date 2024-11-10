@@ -158,6 +158,15 @@ commands = {
                     },
                 },
             },
+    'show_config'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_config_parameters',
+                    'oargs'              : [],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'enable'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {

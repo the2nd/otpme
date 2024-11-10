@@ -471,7 +471,6 @@
 #: otpme/lib/classes/data_objects/cert.py:7
 #: otpme/lib/classes/data_objects/token_counter.py:7
 #: otpme/lib/classes/data_objects/last_assigned_id.py:7
-#: otpme/lib/classes/data_objects/skip_sync.py:7
 #: otpme/lib/classes/data_objects/failed_pass.py:7
 #: otpme/lib/classes/data_objects/data_revision.py:7
 #: otpme/lib/classes/data_objects/used_hash.py:7
@@ -527,7 +526,9 @@
 #: otpme/lib/daemon/controld.py:11 otpme/lib/daemon/syncd.py:8
 #: otpme/lib/daemon/clusterd.py:14 otpme/lib/daemon/joind.py:8
 #: otpme/lib/pki/cert.py:14 otpme/lib/pki/utils.py:19
-#: otpme/lib/pki/utils_openssl.py:14
+#: otpme/lib/pki/utils_openssl.py:14 otpme/lib/cli/__init__.py:18
+#: otpme/lib/classes/user.py:11 otpme/lib/classes/client.py:9
+#: otpme/lib/socket/connect.py:11 otpme/lib/daemon/httpd.py:13
 #, python-format
 msgid "Loading module: %s"
 msgstr ""
@@ -571,6 +572,8 @@ msgstr ""
 #: otpme/lib/stuff.py:1624 otpme/lib/stuff.py:1656 otpme/lib/stuff.py:1693
 #: otpme/lib/stuff.py:1735 otpme/lib/stuff.py:1631 otpme/lib/stuff.py:1660
 #: otpme/lib/stuff.py:1697 otpme/lib/stuff.py:1734 otpme/lib/stuff.py:1776
+#: otpme/lib/stuff.py:1640 otpme/lib/stuff.py:1669 otpme/lib/stuff.py:1706
+#: otpme/lib/stuff.py:1743 otpme/lib/stuff.py:1785
 #, python-format
 msgid "Error connecting to hostd: %s"
 msgstr ""
@@ -661,6 +664,7 @@ msgstr ""
 #: otpme/lib/offline_token.py:1168 otpme/lib/classes/site.py:1813
 #: otpme/lib/offline_token.py:1119 otpme/lib/classes/site.py:2005
 #: otpme/lib/classes/site.py:2404 otpme/lib/offline_token.py:1124
+#: otpme/lib/classes/site.py:2420
 #, python-format
 msgid "Error reading script file: %s"
 msgstr ""
@@ -770,21 +774,21 @@ msgstr ""
 
 #: otpme/lib/cli.py:83 otpme/lib/cli.py:91 otpme/lib/cli/__init__.py:299
 #: otpme/lib/cli/__init__.py:327 otpme/lib/cli/__init__.py:334
-#: otpme/lib/cli/__init__.py:339
+#: otpme/lib/cli/__init__.py:339 otpme/lib/cli/__init__.py:341
 #, python-format
 msgid "Password too short. (min. %s chars)"
 msgstr ""
 
 #: otpme/lib/cli.py:191 otpme/lib/cli.py:278 otpme/lib/cli/__init__.py:486
 #: otpme/lib/cli/__init__.py:512 otpme/lib/cli/__init__.py:519
-#: otpme/lib/cli/__init__.py:531
+#: otpme/lib/cli/__init__.py:531 otpme/lib/cli/__init__.py:533
 #, python-format
 msgid "Unknown parameter in command template: %s"
 msgstr ""
 
 #: otpme/lib/cli.py:227 otpme/lib/cli.py:330 otpme/lib/cli/__init__.py:538
 #: otpme/lib/cli/__init__.py:564 otpme/lib/cli/__init__.py:583
-#: otpme/lib/cli/__init__.py:595
+#: otpme/lib/cli/__init__.py:595 otpme/lib/cli/__init__.py:597
 #, python-format
 msgid "Option requires value: %s"
 msgstr ""
@@ -806,7 +810,7 @@ msgstr ""
 
 #: otpme/lib/cli.py:310 otpme/lib/cli.py:426 otpme/lib/cli/__init__.py:634
 #: otpme/lib/cli/__init__.py:660 otpme/lib/cli/__init__.py:709
-#: otpme/lib/cli/__init__.py:729
+#: otpme/lib/cli/__init__.py:729 otpme/lib/cli/__init__.py:740
 #, python-format
 msgid "Command incomplete: Missing options: %s"
 msgstr ""
@@ -814,7 +818,7 @@ msgstr ""
 #: otpme/lib/cli.py:1391 otpme/lib/cli.py:2454 otpme/lib/cli.py:1522
 #: otpme/lib/cli.py:2672 otpme/lib/cli/__init__.py:1194
 #: otpme/lib/cli/__init__.py:1225 otpme/lib/cli/__init__.py:1402
-#: otpme/lib/cli/__init__.py:1450
+#: otpme/lib/cli/__init__.py:1450 otpme/lib/cli/__init__.py:1461
 #, python-format
 msgid "Unknown field: %s"
 msgstr ""
@@ -826,7 +830,7 @@ msgstr ""
 
 #: otpme/lib/cli.py:2325 otpme/lib/cli.py:2544 otpme/lib/cli/__init__.py:1061
 #: otpme/lib/cli/__init__.py:1093 otpme/lib/cli/__init__.py:1220
-#: otpme/lib/cli/__init__.py:1250
+#: otpme/lib/cli/__init__.py:1250 otpme/lib/cli/__init__.py:1261
 #, python-format
 msgid "Size limit exceeded. Listed %s %ss out of %s."
 msgstr ""
@@ -838,14 +842,14 @@ msgstr ""
 
 #: otpme/lib/cli.py:2590 otpme/lib/cli.py:2809 otpme/lib/cli/__init__.py:1326
 #: otpme/lib/cli/__init__.py:1357 otpme/lib/cli/__init__.py:1520
-#: otpme/lib/cli/__init__.py:1573
+#: otpme/lib/cli/__init__.py:1573 otpme/lib/cli/__init__.py:1584
 #, python-format
 msgid "Size limit exceeded. Listed %s sessions out of %s."
 msgstr ""
 
 #: otpme/lib/cli.py:2593 otpme/lib/cli.py:2812 otpme/lib/cli/__init__.py:1329
 #: otpme/lib/cli/__init__.py:1360 otpme/lib/cli/__init__.py:1523
-#: otpme/lib/cli/__init__.py:1576
+#: otpme/lib/cli/__init__.py:1576 otpme/lib/cli/__init__.py:1587
 #, python-format
 msgid "Total %s sessions."
 msgstr ""
@@ -865,7 +869,7 @@ msgstr ""
 
 #: otpme/lib/socket/connect.py:58 otpme/lib/socket/connect.py:60
 #: otpme/lib/socket/connect.py:57 otpme/lib/socket/connect.py:49
-#: otpme/lib/socket/connect.py:52
+#: otpme/lib/socket/connect.py:52 otpme/lib/socket/connect.py:59
 #, python-format
 msgid "Unix socket does not exist: %s"
 msgstr ""
@@ -874,14 +878,15 @@ msgstr ""
 #: otpme/lib/socket/connect.py:67 otpme/lib/socket/connect.py:90
 #: otpme/lib/socket/connect.py:64 otpme/lib/socket/connect.py:56
 #: otpme/lib/socket/connect.py:79 otpme/lib/socket/connect.py:59
-#: otpme/lib/socket/connect.py:82
+#: otpme/lib/socket/connect.py:82 otpme/lib/socket/connect.py:66
+#: otpme/lib/socket/connect.py:89
 #, python-format
 msgid "Failed to create socket. Error code: %s, Error message: %s"
 msgstr ""
 
 #: otpme/lib/socket/connect.py:244 otpme/lib/socket/connect.py:252
 #: otpme/lib/socket/connect.py:241 otpme/lib/socket/connect.py:201
-#: otpme/lib/socket/connect.py:212
+#: otpme/lib/socket/connect.py:212 otpme/lib/socket/connect.py:223
 #, python-format
 msgid "Error connecting to '%s': %s"
 msgstr ""
@@ -889,6 +894,7 @@ msgstr ""
 #: otpme/lib/socket/connect.py:254 otpme/lib/socket/connect.py:262
 #: otpme/lib/socket/connect.py:251 otpme/lib/socket/connect.py:255
 #: otpme/lib/socket/connect.py:212 otpme/lib/socket/connect.py:223
+#: otpme/lib/socket/connect.py:234
 #, python-format
 msgid "Error receiving data from '%s': %s"
 msgstr ""
@@ -897,7 +903,7 @@ msgstr ""
 #: otpme/lib/socket/connect.py:291 otpme/lib/socket/connect.py:298
 #: otpme/lib/socket/connect.py:317 otpme/lib/socket/connect.py:262
 #: otpme/lib/socket/connect.py:284 otpme/lib/socket/connect.py:273
-#: otpme/lib/socket/connect.py:295
+#: otpme/lib/socket/connect.py:295 otpme/lib/socket/connect.py:306
 #, python-format
 msgid "Error sending data: %s"
 msgstr ""
@@ -905,6 +911,7 @@ msgstr ""
 #: otpme/lib/socket/connect.py:283 otpme/lib/socket/connect.py:293
 #: otpme/lib/socket/connect.py:306 otpme/lib/socket/connect.py:339
 #: otpme/lib/socket/connect.py:309 otpme/lib/socket/connect.py:320
+#: otpme/lib/socket/connect.py:331
 #, python-format
 msgid "Error receiving data: %s"
 msgstr ""
@@ -916,7 +923,7 @@ msgstr ""
 #: otpme/lib/socket/connect.py:256 otpme/lib/socket/connect.py:278
 #: otpme/lib/socket/connect.py:300 otpme/lib/socket/connect.py:267
 #: otpme/lib/socket/connect.py:289 otpme/lib/socket/connect.py:311
-#: otpme/lib/socket/handler.py:86
+#: otpme/lib/socket/handler.py:86 otpme/lib/socket/connect.py:322
 msgid "Connection timed out."
 msgstr ""
 
@@ -1035,6 +1042,7 @@ msgstr ""
 #: otpme/lib/otpme_config.py:2209 otpme/lib/otpme_config.py:2224
 #: otpme/lib/__init__.py:71 otpme/lib/__init__.py:68
 #: otpme/lib/otpme_config.py:2346 otpme/lib/otpme_config.py:2378
+#: otpme/lib/otpme_config.py:2369 otpme/lib/otpme_config.py:2401
 #, python-format
 msgid "Unknown realm: %s"
 msgstr ""
@@ -1075,7 +1083,10 @@ msgstr ""
 #: otpme/lib/protocols/server/join1.py:156
 #: otpme/lib/protocols/server/join1.py:837
 #: otpme/lib/protocols/server/mgmt1.py:1511
-#: otpme/lib/protocols/client/host1.py:75
+#: otpme/lib/protocols/client/host1.py:75 otpme/lib/stuff.py:1663
+#: otpme/lib/stuff.py:1700 otpme/lib/stuff.py:1735 otpme/lib/stuff.py:1774
+#: otpme/lib/classes/site.py:1815 otpme/lib/classes/site.py:1865
+#: otpme/lib/protocols/server/mgmt1.py:1512
 #, python-format
 msgid "Unknown site: %s"
 msgstr ""
@@ -1154,6 +1165,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:64
 #: otpme/lib/extensions/ldif_handler.py:86
 #: otpme/lib/extensions/ldif_handler.py:82
+#: otpme/lib/extensions/ldif_handler.py:107
 #, python-format
 msgid "Extension %s: Error adding default attribute: %s"
 msgstr ""
@@ -1176,6 +1188,9 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:692
 #: otpme/lib/extensions/ldif_handler.py:637
 #: otpme/lib/extensions/ldif_handler.py:746
+#: otpme/lib/extensions/ldif_handler.py:621
+#: otpme/lib/extensions/ldif_handler.py:674
+#: otpme/lib/extensions/ldif_handler.py:783
 #, python-format
 msgid "Attribute '%s' is readonly."
 msgstr ""
@@ -1186,6 +1201,8 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:598
 #: otpme/lib/extensions/ldif_handler.py:588
 #: otpme/lib/extensions/ldif_handler.py:641
+#: otpme/lib/extensions/ldif_handler.py:625
+#: otpme/lib/extensions/ldif_handler.py:678
 #, python-format
 msgid "Object type not supported by this extension: %s"
 msgstr ""
@@ -1204,6 +1221,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:628
 #: otpme/lib/extensions/ldif_handler.py:615
 #: otpme/lib/extensions/ldif_handler.py:669
+#: otpme/lib/extensions/ldif_handler.py:706
 #, python-format
 msgid "Unable to get attribute value: %s: %s"
 msgstr ""
@@ -1220,6 +1238,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:670
 #: otpme/lib/extensions/ldif_handler.py:657
 #: otpme/lib/extensions/ldif_handler.py:711
+#: otpme/lib/extensions/ldif_handler.py:748
 #, python-format
 msgid "Adding needed object class: %s"
 msgstr ""
@@ -1229,6 +1248,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:705
 #: otpme/lib/extensions/ldif_handler.py:686
 #: otpme/lib/extensions/ldif_handler.py:726
+#: otpme/lib/extensions/ldif_handler.py:763
 #, python-format
 msgid "Attribute '%s' needs one of the following object classes: %s"
 msgstr ""
@@ -1239,6 +1259,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:710
 #: otpme/lib/extensions/ldif_handler.py:696
 #: otpme/lib/extensions/ldif_handler.py:750
+#: otpme/lib/extensions/ldif_handler.py:787
 #, python-format
 msgid "Unable to delete attribute from object type '%s'."
 msgstr ""
@@ -1249,6 +1270,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:724
 #: otpme/lib/extensions/ldif_handler.py:710
 #: otpme/lib/extensions/ldif_handler.py:764
+#: otpme/lib/extensions/ldif_handler.py:801
 #, python-format
 msgid "Object does not have attribute '%s'."
 msgstr ""
@@ -1268,6 +1290,8 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:810
 #: otpme/lib/extensions/ldif_handler.py:842
 #: otpme/lib/extensions/ldif_handler.py:864
+#: otpme/lib/extensions/ldif_handler.py:879
+#: otpme/lib/extensions/ldif_handler.py:901
 #, python-format
 msgid "Cannot remove attribute '%s' needed by object class: %s"
 msgstr ""
@@ -1290,6 +1314,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:854
 #: otpme/lib/extensions/ldif_handler.py:839
 #: otpme/lib/extensions/ldif_handler.py:893
+#: otpme/lib/extensions/ldif_handler.py:930
 #, python-format
 msgid "Object class not known to this extension: %s"
 msgstr ""
@@ -1300,6 +1325,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:870
 #: otpme/lib/extensions/ldif_handler.py:855
 #: otpme/lib/extensions/ldif_handler.py:909
+#: otpme/lib/extensions/ldif_handler.py:946
 #, python-format
 msgid "Adding default attribute: %s"
 msgstr ""
@@ -1310,6 +1336,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:910
 #: otpme/lib/extensions/ldif_handler.py:896
 #: otpme/lib/extensions/ldif_handler.py:950
+#: otpme/lib/extensions/ldif_handler.py:987
 #, python-format
 msgid ""
 "%s: The following attributes depend on the object class and will also be "
@@ -1324,7 +1351,8 @@ msgstr ""
 #: otpme/lib/classes/user.py:1622 otpme/lib/protocols/otpme_client.py:1314
 #: otpme/lib/protocols/otpme_client.py:2236
 #: otpme/lib/protocols/server/mgmt1.py:543
-#: otpme/lib/protocols/server/mgmt1.py:589
+#: otpme/lib/protocols/server/mgmt1.py:589 otpme/lib/job/callback.py:400
+#: otpme/lib/classes/user.py:1664
 #, python-format
 msgid "Unable to get public key of site certificate: %s: %s"
 msgstr ""
@@ -1644,7 +1672,7 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:2993
 #: otpme/lib/classes/command_handler.py:3025
 #: otpme/lib/classes/command_handler.py:3059
-#: otpme/lib/protocols/otpme_client.py:2732
+#: otpme/lib/protocols/otpme_client.py:2732 otpme/lib/stuff.py:1599
 #, python-format
 msgid "Error getting agent connection: %s"
 msgstr ""
@@ -1693,6 +1721,9 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3258
 #: otpme/lib/classes/otpme_object.py:6161 otpme/lib/classes/session.py:387
 #: otpme/lib/classes/token.py:2936 otpme/lib/protocols/otpme_client.py:2989
+#: otpme/lib/classes/otpme_object.py:3207
+#: otpme/lib/classes/otpme_object.py:3261
+#: otpme/lib/classes/otpme_object.py:6168 otpme/lib/classes/session.py:389
 #, python-format
 msgid "Unknown user: %s"
 msgstr ""
@@ -2331,7 +2362,7 @@ msgstr ""
 #: otpme/lib/protocols/client/mgmt1.py:282 otpme/lib/classes/otpme_agent.py:746
 #: otpme/lib/classes/otpme_agent.py:759 otpme/lib/classes/otpme_agent.py:792
 #: otpme/lib/classes/otpme_agent.py:785 otpme/lib/classes/otpme_agent.py:878
-#: otpme/lib/classes/otpme_agent.py:881
+#: otpme/lib/classes/otpme_agent.py:881 otpme/lib/classes/otpme_agent.py:880
 #, python-format
 msgid "Error requesting JWT: %s"
 msgstr ""
@@ -2474,6 +2505,7 @@ msgstr ""
 #: otpme/lib/protocols/server/mgmt1.py:1089
 #: otpme/lib/protocols/server/mgmt1.py:1077
 #: otpme/lib/protocols/server/mgmt1.py:1517
+#: otpme/lib/protocols/server/mgmt1.py:1518
 msgid "You have to delete sites on the master site."
 msgstr ""
 
@@ -2555,7 +2587,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:1250 otpme/lib/join.py:479
 #: otpme/lib/classes/site.py:1267 otpme/lib/join.py:477
 #: otpme/lib/classes/site.py:1386 otpme/lib/join.py:483
-#: otpme/lib/classes/site.py:1783
+#: otpme/lib/classes/site.py:1783 otpme/lib/classes/site.py:1794
 #, python-format
 msgid "Error writing UUID file: %s"
 msgstr ""
@@ -3003,7 +3035,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:1582 otpme/lib/pki/cert.py:265
 #: otpme/lib/classes/user.py:1739 otpme/lib/pki/cert.py:261
 #: otpme/lib/classes/user.py:2086 otpme/lib/classes/user.py:2336
-#: otpme/lib/pki/cert.py:266
+#: otpme/lib/pki/cert.py:266 otpme/lib/classes/user.py:2457
 #, python-format
 msgid "Error verifying signature: %s"
 msgstr ""
@@ -3011,6 +3043,7 @@ msgstr ""
 #: otpme/lib/filetools.py:89 otpme/lib/filetools.py:87
 #: otpme/lib/filetools.py:290 otpme/lib/filetools.py:277
 #: otpme/lib/filetools.py:350 otpme/lib/filetools.py:353
+#: otpme/lib/filetools.py:355
 #, python-format
 msgid "Directory not empty: %s"
 msgstr ""
@@ -3023,6 +3056,8 @@ msgstr ""
 #: otpme/lib/otpme_config.py:1793 otpme/lib/otpme_config.py:2143
 #: otpme/lib/classes/otpme_agent.py:221 otpme/lib/otpme_config.py:1923
 #: otpme/lib/otpme_config.py:2270 otpme/lib/classes/otpme_agent.py:220
+#: otpme/lib/otpme_config.py:1946 otpme/lib/otpme_config.py:2293
+#: otpme/lib/classes/otpme_agent.py:219
 #, python-format
 msgid "Error reading config file: %s"
 msgstr ""
@@ -3036,6 +3071,7 @@ msgstr ""
 #: otpme/lib/filetools.py:427 otpme/lib/filetools.py:423
 #: otpme/lib/filetools.py:749 otpme/lib/filetools.py:721
 #: otpme/lib/filetools.py:774 otpme/lib/filetools.py:666
+#: otpme/lib/filetools.py:668
 #, python-format
 msgid "Cannot create file '%s'. Directory does not exist: %s"
 msgstr ""
@@ -3078,6 +3114,7 @@ msgstr ""
 
 #: otpme/lib/backend.py:405 otpme/lib/backend.py:517 otpme/lib/backend.py:608
 #: otpme/lib/backend.py:529 otpme/lib/backend.py:439 otpme/lib/backend.py:466
+#: otpme/lib/backend.py:472
 #, python-format
 msgid "Object '%(object_id)s' already exists. Override?: "
 msgstr ""
@@ -3410,6 +3447,7 @@ msgstr ""
 #: otpme/lib/daemon/controld.py:152 otpme/lib/host.py:411
 #: otpme/lib/daemon/controld.py:161 otpme/lib/daemon/controld.py:385
 #: otpme/lib/host.py:426 otpme/lib/daemon/controld.py:455
+#: otpme/lib/daemon/controld.py:496
 #, python-format
 msgid ""
 "Uuhh, '%s' does not have host type set. This is most likely a result of a "
@@ -3494,6 +3532,7 @@ msgstr ""
 #: otpme/lib/daemon/controld.py:104 otpme/lib/daemon/controld.py:122
 #: otpme/lib/daemon/controld.py:147 otpme/lib/daemon/controld.py:156
 #: otpme/lib/daemon/controld.py:380 otpme/lib/daemon/controld.py:450
+#: otpme/lib/daemon/controld.py:491
 #, python-format
 msgid ""
 "Don't know my hostname. Please make sure %s points to the correct OTPme "
@@ -3502,7 +3541,7 @@ msgstr ""
 
 #: otpme/lib/daemon/controld.py:494 otpme/lib/daemon/controld.py:560
 #: otpme/lib/daemon/controld.py:644 otpme/lib/daemon/controld.py:837
-#: otpme/lib/daemon/controld.py:956
+#: otpme/lib/daemon/controld.py:956 otpme/lib/daemon/controld.py:1012
 #, python-format
 msgid "Got unknon daemon: %s"
 msgstr ""
@@ -3548,6 +3587,7 @@ msgstr ""
 #: otpme/lib/policy/logintimes/logintimes.py:379
 #: otpme/lib/policy/idrange/idrange.py:293
 #: otpme/lib/policy/objecttemplates/objecttemplates.py:267
+#: otpme/lib/policy/defaultroles/defaultroles.py:273
 #, python-format
 msgid "Unknown policy hook: %s"
 msgstr ""
@@ -3670,6 +3710,8 @@ msgstr ""
 #: otpme/lib/policy/defaultpolicies/defaultpolicies.py:325
 #: otpme/lib/classes/otpme_object.py:3817
 #: otpme/lib/classes/otpme_object.py:3877
+#: otpme/lib/classes/otpme_object.py:3820
+#: otpme/lib/classes/otpme_object.py:3880
 #, python-format
 msgid "Unknown policy: %s"
 msgstr ""
@@ -3861,12 +3903,13 @@ msgstr ""
 #: otpme/lib/resolver/ldap/ldap.py:551 otpme/lib/resolver/ldap/ldap.py:678
 #: otpme/lib/resolver/ldap/ldap.py:768 otpme/lib/resolver/ldap/ldap.py:755
 #: otpme/lib/resolver/ldap/ldap.py:813 otpme/lib/resolver/ldap/ldap.py:916
+#: otpme/lib/resolver/ldap/ldap.py:917
 msgid "LDAP search result for one or more servers differs."
 msgstr ""
 
 #: otpme/lib/config.py:74 otpme/lib/config.py:83 otpme/lib/config.py:86
 #: otpme/lib/otpme_config.py:691 otpme/lib/otpme_config.py:758
-#: otpme/lib/otpme_config.py:787
+#: otpme/lib/otpme_config.py:787 otpme/lib/otpme_config.py:792
 msgid "locale_test"
 msgstr ""
 
@@ -3901,7 +3944,8 @@ msgstr ""
 #: otpme/lib/classes/site.py:2188 otpme/lib/classes/command_handler.py:2270
 #: otpme/lib/classes/command_handler.py:4228
 #: otpme/lib/classes/command_handler.py:4342
-#: otpme/lib/classes/command_handler.py:4584
+#: otpme/lib/classes/command_handler.py:4584 otpme/lib/otpme_config.py:2058
+#: otpme/lib/classes/site.py:2199
 #, python-format
 msgid "No such file or directory: %s"
 msgstr ""
@@ -3941,48 +3985,54 @@ msgstr ""
 #: otpme/lib/classes/realm.py:1510 otpme/lib/classes/realm.py:1537
 #: otpme/lib/classes/role.py:950 otpme/lib/classes/token.py:3121
 #: otpme/lib/classes/policy.py:545 otpme/lib/classes/policy.py:550
-#: otpme/lib/classes/client.py:981
+#: otpme/lib/classes/client.py:981 otpme/lib/otpme_config.py:2061
+#: otpme/lib/otpme_config.py:2070 otpme/lib/classes/group.py:820
+#: otpme/lib/classes/otpme_object.py:5479
+#: otpme/lib/classes/otpme_object.py:6911
+#: otpme/lib/classes/otpme_object.py:6916 otpme/lib/classes/user.py:4363
+#: otpme/lib/classes/user.py:4367 otpme/lib/classes/site.py:2773
+#: otpme/lib/classes/role.py:957 otpme/lib/classes/client.py:1380
 #, python-format
 msgid "Permission denied: %s"
 msgstr ""
 
 #: otpme/lib/config.py:332 otpme/lib/config.py:497 otpme/lib/config.py:544
 #: otpme/lib/otpme_config.py:1788 otpme/lib/otpme_config.py:1922
-#: otpme/lib/otpme_config.py:2053
+#: otpme/lib/otpme_config.py:2053 otpme/lib/otpme_config.py:2076
 msgid "KEY_COMMAND is not set to a file. Unable to generate AES key."
 msgstr ""
 
 #: otpme/lib/config.py:341 otpme/lib/config.py:506 otpme/lib/config.py:555
 #: otpme/lib/otpme_config.py:1799 otpme/lib/otpme_config.py:1933
-#: otpme/lib/otpme_config.py:2064
+#: otpme/lib/otpme_config.py:2064 otpme/lib/otpme_config.py:2087
 #, python-format
 msgid "Warning: Key file '%s' exists. Overwrite?: "
 msgstr ""
 
 #: otpme/lib/config.py:372 otpme/lib/config.py:542 otpme/lib/config.py:591
 #: otpme/lib/otpme_config.py:1836 otpme/lib/otpme_config.py:1970
-#: otpme/lib/otpme_config.py:2101
+#: otpme/lib/otpme_config.py:2101 otpme/lib/otpme_config.py:2124
 #, python-format
 msgid "Error writing master key file: %s"
 msgstr ""
 
 #: otpme/lib/config.py:380 otpme/lib/config.py:552 otpme/lib/config.py:601
 #: otpme/lib/otpme_config.py:1846 otpme/lib/otpme_config.py:1980
-#: otpme/lib/otpme_config.py:2111
+#: otpme/lib/otpme_config.py:2111 otpme/lib/otpme_config.py:2134
 #, python-format
 msgid "Error writing master key salt file: %s"
 msgstr ""
 
 #: otpme/lib/config.py:403 otpme/lib/config.py:578 otpme/lib/config.py:627
 #: otpme/lib/otpme_config.py:1869 otpme/lib/otpme_config.py:2003
-#: otpme/lib/otpme_config.py:2134
+#: otpme/lib/otpme_config.py:2134 otpme/lib/otpme_config.py:2157
 #, python-format
 msgid "Error running KEY_COMMAND: %s"
 msgstr ""
 
 #: otpme/lib/config.py:427 otpme/lib/config.py:603 otpme/lib/config.py:653
 #: otpme/lib/otpme_config.py:1892 otpme/lib/otpme_config.py:2026
-#: otpme/lib/otpme_config.py:2157
+#: otpme/lib/otpme_config.py:2157 otpme/lib/otpme_config.py:2180
 #, python-format
 msgid "Error writing salt file: %s"
 msgstr ""
@@ -4013,7 +4063,7 @@ msgstr ""
 
 #: otpme/lib/config.py:626 otpme/lib/config.py:753 otpme/lib/config.py:808
 #: otpme/lib/otpme_config.py:2041 otpme/lib/otpme_config.py:2137
-#: otpme/lib/otpme_config.py:2264
+#: otpme/lib/otpme_config.py:2264 otpme/lib/otpme_config.py:2287
 #, python-format
 msgid "Missing config file: %s"
 msgstr ""
@@ -4075,21 +4125,21 @@ msgstr ""
 
 #: otpme/lib/config.py:2703 otpme/lib/config.py:3352 otpme/lib/config.py:3309
 #: otpme/lib/otpme_config.py:946 otpme/lib/otpme_config.py:980
-#: otpme/lib/otpme_config.py:1017
+#: otpme/lib/otpme_config.py:1017 otpme/lib/otpme_config.py:1022
 #, python-format
 msgid "Debug Level: %s"
 msgstr ""
 
 #: otpme/lib/config.py:2704 otpme/lib/config.py:3353 otpme/lib/config.py:3307
 #: otpme/lib/otpme_config.py:944 otpme/lib/otpme_config.py:978
-#: otpme/lib/otpme_config.py:1015
+#: otpme/lib/otpme_config.py:1015 otpme/lib/otpme_config.py:1020
 #, python-format
 msgid "Tracebacks: %s"
 msgstr ""
 
 #: otpme/lib/config.py:2705 otpme/lib/config.py:3354 otpme/lib/config.py:3308
 #: otpme/lib/otpme_config.py:945 otpme/lib/otpme_config.py:979
-#: otpme/lib/otpme_config.py:1016
+#: otpme/lib/otpme_config.py:1016 otpme/lib/otpme_config.py:1021
 #, python-format
 msgid "Logging to file: %s"
 msgstr ""
@@ -4447,6 +4497,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:1923 otpme/lib/classes/user.py:1981
 #: otpme/lib/token/ssh/ssh.py:574 otpme/lib/token/ssh/ssh.py:587
 #: otpme/lib/classes/user.py:2175 otpme/lib/classes/user.py:2233
+#: otpme/lib/classes/user.py:2296 otpme/lib/classes/user.py:2354
 #, python-format
 msgid "Error decrypting private key: %s"
 msgstr ""
@@ -4695,7 +4746,7 @@ msgstr ""
 
 #: otpme/lib/ldap/server.py:191 otpme/lib/ldap/server.py:195
 #: otpme/lib/ldap/server.py:215 otpme/lib/ldap/server.py:224
-#: otpme/lib/ldap/server.py:222
+#: otpme/lib/ldap/server.py:222 otpme/lib/ldap/server.py:269
 #, python-format
 msgid "Not an OTPme file backend path: %s"
 msgstr ""
@@ -4775,6 +4826,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:447 otpme/lib/classes/site.py:462
 #: otpme/lib/classes/site.py:870 otpme/lib/classes/site.py:889
 #: otpme/lib/classes/site.py:1001 otpme/lib/classes/site.py:1430
+#: otpme/lib/classes/site.py:1441
 #, python-format
 msgid "Authentication with site '%s' is already enabled."
 msgstr ""
@@ -4782,12 +4834,14 @@ msgstr ""
 #: otpme/lib/classes/site.py:451 otpme/lib/classes/site.py:479
 #: otpme/lib/classes/site.py:887 otpme/lib/classes/site.py:906
 #: otpme/lib/classes/site.py:1018 otpme/lib/classes/site.py:1447
+#: otpme/lib/classes/site.py:1458
 msgid "Enable authentication for own site? "
 msgstr ""
 
 #: otpme/lib/classes/site.py:456 otpme/lib/classes/site.py:485
 #: otpme/lib/classes/site.py:893 otpme/lib/classes/site.py:912
 #: otpme/lib/classes/site.py:1024 otpme/lib/classes/site.py:1453
+#: otpme/lib/classes/site.py:1464
 #, python-format
 msgid "Enable authentication with site '%s'?: "
 msgstr ""
@@ -4795,6 +4849,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:474 otpme/lib/classes/site.py:502
 #: otpme/lib/classes/site.py:910 otpme/lib/classes/site.py:928
 #: otpme/lib/classes/site.py:1042 otpme/lib/classes/site.py:1471
+#: otpme/lib/classes/site.py:1482
 #, python-format
 msgid "Authentication with site '%s' is already disabled."
 msgstr ""
@@ -4802,12 +4857,14 @@ msgstr ""
 #: otpme/lib/classes/site.py:478 otpme/lib/classes/site.py:519
 #: otpme/lib/classes/site.py:927 otpme/lib/classes/site.py:945
 #: otpme/lib/classes/site.py:1059 otpme/lib/classes/site.py:1488
+#: otpme/lib/classes/site.py:1499
 msgid "Disable authentication for own site? This will disable ALL logins!: "
 msgstr ""
 
 #: otpme/lib/classes/site.py:484 otpme/lib/classes/site.py:526
 #: otpme/lib/classes/site.py:934 otpme/lib/classes/site.py:952
 #: otpme/lib/classes/site.py:1066 otpme/lib/classes/site.py:1495
+#: otpme/lib/classes/site.py:1506
 #, python-format
 msgid "Disable authentication with site '%s'?: "
 msgstr ""
@@ -4815,6 +4872,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:501 otpme/lib/classes/site.py:543
 #: otpme/lib/classes/site.py:951 otpme/lib/classes/site.py:968
 #: otpme/lib/classes/site.py:1083 otpme/lib/classes/site.py:1512
+#: otpme/lib/classes/site.py:1523
 #, python-format
 msgid "Synchronization with site '%s' is already enabled."
 msgstr ""
@@ -4822,6 +4880,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:505 otpme/lib/classes/site.py:559
 #: otpme/lib/classes/site.py:967 otpme/lib/classes/site.py:984
 #: otpme/lib/classes/site.py:1099 otpme/lib/classes/site.py:1528
+#: otpme/lib/classes/site.py:1539
 #, python-format
 msgid "Enable synchronization of own site '%s'?: "
 msgstr ""
@@ -4829,6 +4888,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:511 otpme/lib/classes/site.py:566
 #: otpme/lib/classes/site.py:974 otpme/lib/classes/site.py:991
 #: otpme/lib/classes/site.py:1106 otpme/lib/classes/site.py:1535
+#: otpme/lib/classes/site.py:1546
 #, python-format
 msgid "Enable synchronization with site '%s'?: "
 msgstr ""
@@ -4836,12 +4896,14 @@ msgstr ""
 #: otpme/lib/classes/site.py:529 otpme/lib/classes/site.py:583
 #: otpme/lib/classes/site.py:991 otpme/lib/classes/site.py:1007
 #: otpme/lib/classes/site.py:1123 otpme/lib/classes/site.py:1552
+#: otpme/lib/classes/site.py:1563
 msgid "Cannot disable synchronization of own site."
 msgstr ""
 
 #: otpme/lib/classes/site.py:532 otpme/lib/classes/site.py:587
 #: otpme/lib/classes/site.py:995 otpme/lib/classes/site.py:1011
 #: otpme/lib/classes/site.py:1127 otpme/lib/classes/site.py:1556
+#: otpme/lib/classes/site.py:1567
 #, python-format
 msgid "Synchronization with site '%s' is already disabled."
 msgstr ""
@@ -4849,6 +4911,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:536 otpme/lib/classes/site.py:604
 #: otpme/lib/classes/site.py:1012 otpme/lib/classes/site.py:1028
 #: otpme/lib/classes/site.py:1144 otpme/lib/classes/site.py:1573
+#: otpme/lib/classes/site.py:1584
 #, python-format
 msgid "Disable synchronization with site '%s'?: "
 msgstr ""
@@ -4872,6 +4935,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:571 otpme/lib/classes/site.py:654
 #: otpme/lib/classes/site.py:1062 otpme/lib/classes/site.py:1080
 #: otpme/lib/classes/site.py:1193 otpme/lib/classes/site.py:1594
+#: otpme/lib/classes/site.py:1605
 #, python-format
 msgid "Generating site certificate (%s bits)."
 msgstr ""
@@ -4879,6 +4943,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:582 otpme/lib/classes/site.py:666
 #: otpme/lib/classes/site.py:1074 otpme/lib/classes/site.py:1092
 #: otpme/lib/classes/site.py:1205 otpme/lib/classes/site.py:1606
+#: otpme/lib/classes/site.py:1617
 #, python-format
 msgid "Unable to create site certificate: %s"
 msgstr ""
@@ -4886,6 +4951,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:597 otpme/lib/classes/site.py:691
 #: otpme/lib/classes/site.py:1099 otpme/lib/classes/site.py:1114
 #: otpme/lib/classes/site.py:1228 otpme/lib/classes/site.py:1629
+#: otpme/lib/classes/site.py:1640
 #, python-format
 msgid "Generating new site certificate (%s bits)."
 msgstr ""
@@ -4896,6 +4962,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:1140 otpme/lib/classes/otpme_host.py:889
 #: otpme/lib/classes/otpme_host.py:706 otpme/lib/classes/site.py:1254
 #: otpme/lib/classes/otpme_host.py:692 otpme/lib/classes/site.py:1655
+#: otpme/lib/classes/site.py:1666
 #, python-format
 msgid "Unable to revoke certificate: %s"
 msgstr ""
@@ -4903,6 +4970,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:647 otpme/lib/classes/site.py:740
 #: otpme/lib/classes/site.py:1147 otpme/lib/classes/site.py:1164
 #: otpme/lib/classes/site.py:1278 otpme/lib/classes/site.py:1679
+#: otpme/lib/classes/site.py:1690
 #, python-format
 msgid "Loading realm CA '%s'."
 msgstr ""
@@ -4910,6 +4978,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:650 otpme/lib/classes/site.py:743
 #: otpme/lib/classes/site.py:1150 otpme/lib/classes/site.py:1167
 #: otpme/lib/classes/site.py:1281 otpme/lib/classes/site.py:1682
+#: otpme/lib/classes/site.py:1693
 #, python-format
 msgid "Problem loading realm CA '%s'."
 msgstr ""
@@ -4917,6 +4986,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:663 otpme/lib/classes/site.py:757
 #: otpme/lib/classes/site.py:1164 otpme/lib/classes/site.py:1181
 #: otpme/lib/classes/site.py:1295 otpme/lib/classes/site.py:1696
+#: otpme/lib/classes/site.py:1707
 #, python-format
 msgid "Error creating site CA cert: %s"
 msgstr ""
@@ -4924,6 +4994,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:667 otpme/lib/classes/site.py:761
 #: otpme/lib/classes/site.py:1168 otpme/lib/classes/site.py:1185
 #: otpme/lib/classes/site.py:1299 otpme/lib/classes/site.py:1700
+#: otpme/lib/classes/site.py:1711
 #, python-format
 msgid "Adding site CA '%s'."
 msgstr ""
@@ -4931,6 +5002,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:682 otpme/lib/classes/site.py:776
 #: otpme/lib/classes/site.py:1183 otpme/lib/classes/site.py:1200
 #: otpme/lib/classes/site.py:1314 otpme/lib/classes/site.py:1715
+#: otpme/lib/classes/site.py:1726
 #, python-format
 msgid "Problem adding site CA '%s'."
 msgstr ""
@@ -4945,6 +5017,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:720 otpme/lib/classes/site.py:816
 #: otpme/lib/classes/site.py:1223 otpme/lib/classes/site.py:1240
 #: otpme/lib/classes/site.py:1358 otpme/lib/classes/site.py:1758
+#: otpme/lib/classes/site.py:1769
 #, python-format
 msgid "Error: node '%s' already exists."
 msgstr ""
@@ -4952,6 +5025,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:737 otpme/lib/classes/site.py:829
 #: otpme/lib/classes/site.py:1235 otpme/lib/classes/site.py:1252
 #: otpme/lib/classes/site.py:1371 otpme/lib/classes/site.py:1771
+#: otpme/lib/classes/site.py:1782
 #, python-format
 msgid "Error adding node: %s"
 msgstr ""
@@ -4959,6 +5033,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:744 otpme/lib/classes/site.py:837
 #: otpme/lib/classes/site.py:1243 otpme/lib/classes/site.py:1260
 #: otpme/lib/classes/site.py:1379 otpme/lib/classes/site.py:1776
+#: otpme/lib/classes/site.py:1787
 #, python-format
 msgid "Writing node UUID to file: %s"
 msgstr ""
@@ -4966,12 +5041,14 @@ msgstr ""
 #: otpme/lib/classes/site.py:776 otpme/lib/classes/site.py:870
 #: otpme/lib/classes/site.py:1276 otpme/lib/classes/site.py:1292
 #: otpme/lib/classes/site.py:1413 otpme/lib/classes/site.py:1810
+#: otpme/lib/classes/site.py:1821
 msgid "Cannot add trust relationship with site itself."
 msgstr ""
 
 #: otpme/lib/classes/site.py:780 otpme/lib/classes/site.py:874
 #: otpme/lib/classes/site.py:1280 otpme/lib/classes/site.py:1296
 #: otpme/lib/classes/site.py:1417 otpme/lib/classes/site.py:1814
+#: otpme/lib/classes/site.py:1825
 #, python-format
 msgid "Relationship with site already exists: %s"
 msgstr ""
@@ -4979,6 +5056,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:811 otpme/lib/classes/site.py:916
 #: otpme/lib/classes/site.py:1322 otpme/lib/classes/site.py:1337
 #: otpme/lib/classes/site.py:1462 otpme/lib/classes/site.py:1859
+#: otpme/lib/classes/site.py:1870
 #, python-format
 msgid "Relationship with site does not exist: %s"
 msgstr ""
@@ -4991,6 +5069,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:894 otpme/lib/classes/site.py:1057
 #: otpme/lib/classes/site.py:1472 otpme/lib/classes/site.py:1491
 #: otpme/lib/classes/site.py:1640 otpme/lib/classes/site.py:2032
+#: otpme/lib/classes/site.py:2043
 #, python-format
 msgid "Host already exists: %s"
 msgstr ""
@@ -4998,6 +5077,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:900 otpme/lib/classes/site.py:1066
 #: otpme/lib/classes/site.py:1481 otpme/lib/classes/site.py:1501
 #: otpme/lib/classes/site.py:1648 otpme/lib/classes/site.py:2040
+#: otpme/lib/classes/site.py:2051
 #, python-format
 msgid "Node already exists: %s"
 msgstr ""
@@ -5015,6 +5095,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6098 otpme/lib/classes/script.py:614
 #: otpme/lib/classes/script.py:696 otpme/lib/classes/otpme_object.py:6278
 #: otpme/lib/classes/otpme_object.py:6954 otpme/lib/classes/script.py:704
+#: otpme/lib/classes/otpme_object.py:6962
 #, python-format
 msgid "UUID conflict: %s <> %s"
 msgstr ""
@@ -5039,6 +5120,8 @@ msgstr ""
 #: otpme/lib/classes/site.py:1722 otpme/lib/classes/site.py:1757
 #: otpme/lib/classes/site.py:1864 otpme/lib/classes/site.py:2119
 #: otpme/lib/classes/site.py:2154 otpme/lib/classes/site.py:2255
+#: otpme/lib/classes/site.py:2130 otpme/lib/classes/site.py:2165
+#: otpme/lib/classes/site.py:2266
 #, python-format
 msgid "Problem adding base unit '%s'."
 msgstr ""
@@ -5052,6 +5135,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:1037 otpme/lib/classes/site.py:1199
 #: otpme/lib/classes/site.py:1598 otpme/lib/classes/site.py:1627
 #: otpme/lib/classes/site.py:1783 otpme/lib/classes/site.py:2180
+#: otpme/lib/classes/site.py:2191
 #, python-format
 msgid "Problem adding base dictionary '%s'."
 msgstr ""
@@ -5059,6 +5143,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:1048 otpme/lib/classes/site.py:1211
 #: otpme/lib/classes/site.py:1610 otpme/lib/classes/site.py:1639
 #: otpme/lib/classes/site.py:1795 otpme/lib/classes/site.py:2192
+#: otpme/lib/classes/site.py:2203
 #, python-format
 msgid "Processing file: %s "
 msgstr ""
@@ -5072,6 +5157,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:1086 otpme/lib/classes/site.py:1255
 #: otpme/lib/classes/site.py:1649 otpme/lib/classes/site.py:1680
 #: otpme/lib/classes/site.py:2216 otpme/lib/classes/site.py:2627
+#: otpme/lib/classes/site.py:2654
 #, python-format
 msgid "Problem adding base policy '%s'."
 msgstr ""
@@ -5085,6 +5171,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:1122 otpme/lib/classes/site.py:1324
 #: otpme/lib/classes/site.py:1709 otpme/lib/classes/site.py:1742
 #: otpme/lib/classes/site.py:1924 otpme/lib/classes/site.py:2316
+#: otpme/lib/classes/site.py:2327
 #, python-format
 msgid "Problem adding base accessgroup '%s'."
 msgstr ""
@@ -5098,6 +5185,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:1162 otpme/lib/classes/site.py:1372
 #: otpme/lib/classes/site.py:1751 otpme/lib/classes/site.py:1785
 #: otpme/lib/classes/site.py:1976 otpme/lib/classes/site.py:2379
+#: otpme/lib/classes/site.py:2395
 #, python-format
 msgid "Problem adding base client '%s'."
 msgstr ""
@@ -5112,6 +5200,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:1190 otpme/lib/classes/site.py:1412
 #: otpme/lib/classes/site.py:1785 otpme/lib/classes/site.py:1819
 #: otpme/lib/classes/site.py:2011 otpme/lib/classes/site.py:2410
+#: otpme/lib/classes/site.py:2426
 #, python-format
 msgid "Error adding script: %s"
 msgstr ""
@@ -5125,6 +5214,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:1202 otpme/lib/classes/site.py:1433
 #: otpme/lib/classes/site.py:1800 otpme/lib/classes/site.py:1835
 #: otpme/lib/classes/site.py:2245 otpme/lib/classes/site.py:2657
+#: otpme/lib/classes/site.py:2684
 #, python-format
 msgid "Problem adding base group '%s'."
 msgstr ""
@@ -5138,6 +5228,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:1222 otpme/lib/classes/site.py:1459
 #: otpme/lib/classes/site.py:1821 otpme/lib/classes/site.py:1858
 #: otpme/lib/classes/site.py:2044 otpme/lib/classes/site.py:2443
+#: otpme/lib/classes/site.py:2459
 #, python-format
 msgid "Problem adding base role '%s'."
 msgstr ""
@@ -5145,12 +5236,14 @@ msgstr ""
 #: otpme/lib/classes/site.py:1235 otpme/lib/classes/site.py:1472
 #: otpme/lib/classes/site.py:1834 otpme/lib/classes/site.py:1871
 #: otpme/lib/classes/site.py:2057 otpme/lib/classes/site.py:2456
+#: otpme/lib/classes/site.py:2472
 msgid "Unable to find realm accessgroup."
 msgstr ""
 
 #: otpme/lib/classes/site.py:1303 otpme/lib/classes/site.py:1559
 #: otpme/lib/classes/site.py:1907 otpme/lib/classes/site.py:1944
 #: otpme/lib/classes/site.py:2252 otpme/lib/classes/site.py:2664
+#: otpme/lib/classes/site.py:2691
 #, python-format
 msgid "Adding admin user: %s"
 msgstr ""
@@ -5158,6 +5251,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:1312 otpme/lib/classes/site.py:1569
 #: otpme/lib/classes/site.py:1916 otpme/lib/classes/site.py:1953
 #: otpme/lib/classes/site.py:2263 otpme/lib/classes/site.py:2676
+#: otpme/lib/classes/site.py:2703
 #, python-format
 msgid "Problem adding admin user: %s"
 msgstr ""
@@ -5171,6 +5265,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:1400 otpme/lib/classes/site.py:1733
 #: otpme/lib/classes/site.py:2064 otpme/lib/classes/site.py:2104
 #: otpme/lib/classes/site.py:2348 otpme/lib/classes/site.py:2763
+#: otpme/lib/classes/site.py:2790
 #, python-format
 msgid "Delete site '%s'?: "
 msgstr ""
@@ -5193,7 +5288,9 @@ msgstr ""
 #: otpme/lib/classes/unit.py:1159 otpme/lib/classes/group.py:905
 #: otpme/lib/classes/unit.py:1225 otpme/lib/classes/accessgroup.py:1949
 #: otpme/lib/classes/site.py:2820 otpme/lib/classes/role.py:1039
-#: otpme/lib/classes/client.py:870
+#: otpme/lib/classes/client.py:870 otpme/lib/classes/group.py:912
+#: otpme/lib/classes/unit.py:1231 otpme/lib/classes/site.py:2847
+#: otpme/lib/classes/role.py:1046 otpme/lib/classes/client.py:1269
 #, python-format
 msgid "%s%s|%s: Found the following orphan ACLs: %s\n"
 msgstr ""
@@ -5207,6 +5304,8 @@ msgstr ""
 #: otpme/lib/classes/group.py:857 otpme/lib/classes/user.py:3876
 #: otpme/lib/classes/site.py:2409 otpme/lib/classes/group.py:923
 #: otpme/lib/classes/user.py:4345 otpme/lib/classes/site.py:2824
+#: otpme/lib/classes/group.py:930 otpme/lib/classes/user.py:4497
+#: otpme/lib/classes/site.py:2851
 #, python-format
 msgid "%sRemove?: "
 msgstr ""
@@ -5229,6 +5328,7 @@ msgstr ""
 #: otpme/lib/classes/site.py:2182 otpme/lib/classes/unit.py:1048
 #: otpme/lib/classes/site.py:2430 otpme/lib/classes/unit.py:1183
 #: otpme/lib/classes/unit.py:1249 otpme/lib/classes/site.py:2845
+#: otpme/lib/classes/unit.py:1255 otpme/lib/classes/site.py:2872
 #, python-format
 msgid "Processing %s"
 msgstr ""
@@ -5260,6 +5360,10 @@ msgstr ""
 #: otpme/lib/classes/unit.py:1259 otpme/lib/classes/accessgroup.py:2002
 #: otpme/lib/classes/user.py:4383 otpme/lib/classes/site.py:2854
 #: otpme/lib/classes/role.py:1088 otpme/lib/classes/client.py:906
+#: otpme/lib/classes/group.py:965 otpme/lib/classes/otpme_object.py:7448
+#: otpme/lib/classes/unit.py:1265 otpme/lib/classes/user.py:4535
+#: otpme/lib/classes/site.py:2881 otpme/lib/classes/role.py:1095
+#: otpme/lib/classes/client.py:1305
 #, python-format
 msgid "No orphan objects found for %s: %s"
 msgstr ""
@@ -5584,6 +5688,7 @@ msgstr ""
 #: otpme/lib/classes/client.py:257 otpme/lib/classes/client.py:248
 #: otpme/lib/classes/client.py:625 otpme/lib/classes/client.py:649
 #: otpme/lib/classes/client.py:729 otpme/lib/classes/client.py:756
+#: otpme/lib/classes/client.py:908
 #, python-format
 msgid "Address '%s' already added to this client."
 msgstr ""
@@ -5591,6 +5696,7 @@ msgstr ""
 #: otpme/lib/classes/client.py:269 otpme/lib/classes/client.py:270
 #: otpme/lib/classes/client.py:647 otpme/lib/classes/client.py:670
 #: otpme/lib/classes/client.py:752 otpme/lib/classes/client.py:781
+#: otpme/lib/classes/client.py:933
 #, python-format
 msgid "Address '%s' is not an address of this client."
 msgstr ""
@@ -5612,6 +5718,7 @@ msgstr ""
 #: otpme/lib/classes/client.py:340 otpme/lib/classes/client.py:369
 #: otpme/lib/classes/client.py:746 otpme/lib/classes/client.py:765
 #: otpme/lib/classes/client.py:777 otpme/lib/classes/client.py:808
+#: otpme/lib/classes/client.py:960
 #, python-format
 msgid "Group '%s' is already access group of this client."
 msgstr ""
@@ -5619,6 +5726,7 @@ msgstr ""
 #: otpme/lib/classes/client.py:349 otpme/lib/classes/client.py:387
 #: otpme/lib/classes/client.py:764 otpme/lib/classes/client.py:783
 #: otpme/lib/classes/client.py:795 otpme/lib/classes/client.py:826
+#: otpme/lib/classes/client.py:978
 #, python-format
 msgid "Group '%s' does not exist."
 msgstr ""
@@ -5650,6 +5758,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3480
 #: otpme/lib/classes/otpme_object.py:3734 otpme/lib/classes/user.py:4409
 #: otpme/lib/protocols/server/sync1.py:558
+#: otpme/lib/classes/otpme_object.py:3483
+#: otpme/lib/classes/otpme_object.py:3737 otpme/lib/classes/user.py:4561
 #, python-format
 msgid "Unknown token: %s"
 msgstr ""
@@ -5676,7 +5786,8 @@ msgstr ""
 #: otpme/lib/classes/client.py:845 otpme/lib/classes/role.py:1001
 #: otpme/lib/classes/accessgroup.py:1921 otpme/lib/classes/group.py:911
 #: otpme/lib/classes/accessgroup.py:1953 otpme/lib/classes/role.py:1045
-#: otpme/lib/classes/client.py:876
+#: otpme/lib/classes/client.py:876 otpme/lib/classes/group.py:918
+#: otpme/lib/classes/role.py:1052 otpme/lib/classes/client.py:1275
 #, python-format
 msgid "%s%s|%s: Found the following orphan policies: %s\n"
 msgstr ""
@@ -5693,7 +5804,8 @@ msgstr ""
 #: otpme/lib/classes/client.py:849 otpme/lib/classes/role.py:1005
 #: otpme/lib/classes/accessgroup.py:1925 otpme/lib/classes/group.py:915
 #: otpme/lib/classes/accessgroup.py:1957 otpme/lib/classes/role.py:1049
-#: otpme/lib/classes/client.py:880
+#: otpme/lib/classes/client.py:880 otpme/lib/classes/group.py:922
+#: otpme/lib/classes/role.py:1056 otpme/lib/classes/client.py:1279
 #, python-format
 msgid "%s%s|%s: Found the following orphan token UUIDs: %s\n"
 msgstr ""
@@ -5716,6 +5828,8 @@ msgstr ""
 #: otpme/lib/classes/group.py:942 otpme/lib/classes/otpme_host.py:1192
 #: otpme/lib/classes/accessgroup.py:1986 otpme/lib/classes/user.py:4365
 #: otpme/lib/classes/role.py:1070 otpme/lib/classes/client.py:896
+#: otpme/lib/classes/group.py:949 otpme/lib/classes/user.py:4517
+#: otpme/lib/classes/role.py:1077 otpme/lib/classes/client.py:1295
 #, python-format
 msgid "Removing orphan token UUID: %s"
 msgstr ""
@@ -5747,6 +5861,7 @@ msgstr ""
 #: otpme/lib/classes/client.py:580 otpme/lib/classes/client.py:525
 #: otpme/lib/classes/client.py:905 otpme/lib/classes/client.py:922
 #: otpme/lib/classes/client.py:939 otpme/lib/classes/client.py:997
+#: otpme/lib/classes/client.py:1396
 #, python-format
 msgid "Delete client '%s'?: "
 msgstr ""
@@ -5812,6 +5927,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6548
 #: otpme/lib/classes/otpme_object.py:6058
 #: otpme/lib/classes/otpme_object.py:7218 otpme/lib/classes/token.py:3059
+#: otpme/lib/classes/otpme_object.py:6065
+#: otpme/lib/classes/otpme_object.py:7228
 #, python-format
 msgid "Error renaming %s '%s': %s"
 msgstr ""
@@ -5859,7 +5976,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:3318 otpme/lib/classes/user.py:3501
 #: otpme/lib/classes/otpme_host.py:1348 otpme/lib/classes/user.py:3864
 #: otpme/lib/classes/otpme_host.py:1178 otpme/lib/classes/otpme_host.py:1166
-#: otpme/lib/classes/user.py:4333
+#: otpme/lib/classes/user.py:4333 otpme/lib/classes/user.py:4485
 #, python-format
 msgid "%s|%s: Found the following orphan ACLs: %s\n"
 msgstr ""
@@ -5869,7 +5986,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:3322 otpme/lib/classes/user.py:3505
 #: otpme/lib/classes/otpme_host.py:1354 otpme/lib/classes/user.py:3868
 #: otpme/lib/classes/otpme_host.py:1184 otpme/lib/classes/otpme_host.py:1172
-#: otpme/lib/classes/user.py:4337
+#: otpme/lib/classes/user.py:4337 otpme/lib/classes/user.py:4489
 #, python-format
 msgid "%s|%s: Found the following orphan policies: %s\n"
 msgstr ""
@@ -5879,7 +5996,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:3326 otpme/lib/classes/user.py:3509
 #: otpme/lib/classes/otpme_host.py:1358 otpme/lib/classes/user.py:3872
 #: otpme/lib/classes/otpme_host.py:1188 otpme/lib/classes/otpme_host.py:1176
-#: otpme/lib/classes/user.py:4341
+#: otpme/lib/classes/user.py:4341 otpme/lib/classes/user.py:4493
 #, python-format
 msgid "%s|%s: Found the following orphan token UUIDs: %s\n"
 msgstr ""
@@ -5896,6 +6013,8 @@ msgstr ""
 #: otpme/lib/classes/user.py:3169 otpme/lib/classes/user.py:3230
 #: otpme/lib/classes/user.py:1896 otpme/lib/classes/user.py:1930
 #: otpme/lib/classes/user.py:3483 otpme/lib/classes/user.py:3544
+#: otpme/lib/classes/user.py:2017 otpme/lib/classes/user.py:2051
+#: otpme/lib/classes/user.py:3603 otpme/lib/classes/user.py:3664
 #, python-format
 msgid "Script does not exist: %s"
 msgstr ""
@@ -5903,6 +6022,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:661 otpme/lib/classes/user.py:652
 #: otpme/lib/classes/user.py:1278 otpme/lib/classes/user.py:1438
 #: otpme/lib/classes/user.py:1743 otpme/lib/classes/user.py:2004
+#: otpme/lib/classes/user.py:2125
 #, python-format
 msgid "Key bits must be one of: %s"
 msgstr ""
@@ -5910,6 +6030,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:670 otpme/lib/classes/user.py:730
 #: otpme/lib/classes/user.py:1356 otpme/lib/classes/user.py:1516
 #: otpme/lib/classes/user.py:1823 otpme/lib/classes/user.py:2085
+#: otpme/lib/classes/user.py:2206
 #, python-format
 msgid "Generating keys (%s bits)..."
 msgstr ""
@@ -5917,6 +6038,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:675 otpme/lib/classes/user.py:735
 #: otpme/lib/classes/user.py:1361 otpme/lib/classes/user.py:1521
 #: otpme/lib/classes/user.py:1828 otpme/lib/classes/user.py:2090
+#: otpme/lib/classes/user.py:2211
 #, python-format
 msgid "Error creating RSA key: %s"
 msgstr ""
@@ -5927,6 +6049,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:1530 otpme/lib/classes/user.py:1654
 #: otpme/lib/classes/user.py:1837 otpme/lib/classes/user.py:2001
 #: otpme/lib/classes/user.py:2099 otpme/lib/classes/user.py:2253
+#: otpme/lib/classes/user.py:2220 otpme/lib/classes/user.py:2374
 #, python-format
 msgid "Error encrypting private key: %s"
 msgstr ""
@@ -5937,6 +6060,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:1698 otpme/lib/classes/user.py:1805
 #: otpme/lib/classes/user.py:2045 otpme/lib/classes/user.py:2152
 #: otpme/lib/classes/user.py:2295 otpme/lib/classes/user.py:2402
+#: otpme/lib/classes/user.py:2416 otpme/lib/classes/user.py:2523
 #, python-format
 msgid "Error loading private key: %s"
 msgstr ""
@@ -5944,6 +6068,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:840 otpme/lib/classes/user.py:921
 #: otpme/lib/classes/user.py:1547 otpme/lib/classes/user.py:1705
 #: otpme/lib/classes/user.py:2052 otpme/lib/classes/user.py:2302
+#: otpme/lib/classes/user.py:2423
 #, python-format
 msgid "Error siging data: %s"
 msgstr ""
@@ -5954,6 +6079,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:1732 otpme/lib/classes/user.py:1767
 #: otpme/lib/classes/user.py:2079 otpme/lib/classes/user.py:2114
 #: otpme/lib/classes/user.py:2329 otpme/lib/classes/user.py:2364
+#: otpme/lib/classes/user.py:2450 otpme/lib/classes/user.py:2485
 #, python-format
 msgid "Error loading public key: %s"
 msgstr ""
@@ -5961,6 +6087,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:893 otpme/lib/classes/user.py:991
 #: otpme/lib/classes/user.py:1617 otpme/lib/classes/user.py:1773
 #: otpme/lib/classes/user.py:2120 otpme/lib/classes/user.py:2370
+#: otpme/lib/classes/user.py:2491
 #, python-format
 msgid "Error encrypting data: %s"
 msgstr ""
@@ -5968,6 +6095,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:925 otpme/lib/classes/user.py:1030
 #: otpme/lib/classes/user.py:1656 otpme/lib/classes/user.py:1811
 #: otpme/lib/classes/user.py:2158 otpme/lib/classes/user.py:2408
+#: otpme/lib/classes/user.py:2529
 #, python-format
 msgid "Error decrypting data: %s"
 msgstr ""
@@ -5978,6 +6106,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:2577 otpme/lib/classes/user.py:2755
 #: otpme/lib/classes/user.py:2806 otpme/lib/classes/user.py:2972
 #: otpme/lib/classes/user.py:3050 otpme/lib/classes/user.py:3238
+#: otpme/lib/classes/user.py:3170 otpme/lib/classes/user.py:3358
 #, python-format
 msgid "Problem loading token type '%s': %s"
 msgstr ""
@@ -5998,6 +6127,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:1583 otpme/lib/classes/user.py:1734
 #: otpme/lib/classes/user.py:2417 otpme/lib/classes/user.py:2600
 #: otpme/lib/classes/user.py:2830 otpme/lib/classes/user.py:3082
+#: otpme/lib/classes/user.py:3202
 #, python-format
 msgid "Creating new token of type '%s' to deploy token: %s"
 msgstr ""
@@ -6008,7 +6138,8 @@ msgstr ""
 #: otpme/lib/classes/auth_handler.py:1081 otpme/lib/classes/user.py:2684
 #: otpme/lib/classes/auth_handler.py:1076 otpme/lib/classes/user.py:2900
 #: otpme/lib/classes/auth_handler.py:893 otpme/lib/classes/user.py:3165
-#: otpme/lib/classes/auth_handler.py:991
+#: otpme/lib/classes/auth_handler.py:991 otpme/lib/classes/user.py:3285
+#: otpme/lib/classes/auth_handler.py:988
 #, python-format
 msgid "Token does not exist: %s"
 msgstr ""
@@ -6016,6 +6147,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:1659 otpme/lib/classes/user.py:1838
 #: otpme/lib/classes/user.py:2522 otpme/lib/classes/user.py:2705
 #: otpme/lib/classes/user.py:2920 otpme/lib/classes/user.py:3185
+#: otpme/lib/classes/user.py:3305
 #, python-format
 msgid "Token does not support cross site links: %s"
 msgstr ""
@@ -6023,6 +6155,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:1690 otpme/lib/classes/user.py:1870
 #: otpme/lib/classes/user.py:2554 otpme/lib/classes/user.py:2737
 #: otpme/lib/classes/user.py:2952 otpme/lib/classes/user.py:3218
+#: otpme/lib/classes/user.py:3338
 #, python-format
 msgid "Error removing token '%s': %s"
 msgstr ""
@@ -6030,18 +6163,21 @@ msgstr ""
 #: otpme/lib/classes/user.py:1905 otpme/lib/classes/user.py:2128
 #: otpme/lib/classes/user.py:2814 otpme/lib/classes/user.py:2997
 #: otpme/lib/classes/user.py:3200 otpme/lib/classes/user.py:3514
+#: otpme/lib/classes/user.py:3634
 msgid "Authorization script already disabled for this user."
 msgstr ""
 
 #: otpme/lib/classes/user.py:1930 otpme/lib/classes/user.py:2163
 #: otpme/lib/classes/user.py:2849 otpme/lib/classes/user.py:3033
 #: otpme/lib/classes/user.py:3235 otpme/lib/classes/user.py:3549
+#: otpme/lib/classes/user.py:3669
 msgid "Login script already enabled for this user."
 msgstr ""
 
 #: otpme/lib/classes/user.py:1950 otpme/lib/classes/user.py:2189
 #: otpme/lib/classes/user.py:2875 otpme/lib/classes/user.py:3058
 #: otpme/lib/classes/user.py:3260 otpme/lib/classes/user.py:3574
+#: otpme/lib/classes/user.py:3694
 msgid "Login script already disabled for this user."
 msgstr ""
 
@@ -6066,7 +6202,7 @@ msgstr ""
 #: otpme/lib/policy/defaultgroups/defaultgroups.py:314
 #: otpme/lib/policy/defaultgroups/defaultgroups.py:350
 #: otpme/lib/policy/defaultgroups/defaultgroups.py:386
-#: otpme/lib/classes/user.py:1790
+#: otpme/lib/classes/user.py:1790 otpme/lib/classes/user.py:1911
 #, python-format
 msgid "Unknown group: %s"
 msgstr ""
@@ -6074,6 +6210,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:2162 otpme/lib/classes/user.py:2426
 #: otpme/lib/classes/user.py:3104 otpme/lib/classes/user.py:3285
 #: otpme/lib/classes/user.py:3566 otpme/lib/classes/user.py:4003
+#: otpme/lib/classes/user.py:4155
 #, python-format
 msgid "Setting default key script: %s"
 msgstr ""
@@ -6081,6 +6218,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:2169 otpme/lib/classes/user.py:2434
 #: otpme/lib/classes/user.py:3112 otpme/lib/classes/user.py:3294
 #: otpme/lib/classes/user.py:3588 otpme/lib/classes/user.py:4025
+#: otpme/lib/classes/user.py:4177
 #, python-format
 msgid "Setting default agent script: %s"
 msgstr ""
@@ -6088,6 +6226,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:2176 otpme/lib/classes/user.py:2442
 #: otpme/lib/classes/user.py:3120 otpme/lib/classes/user.py:3303
 #: otpme/lib/classes/user.py:3611 otpme/lib/classes/user.py:4048
+#: otpme/lib/classes/user.py:4200
 #, python-format
 msgid "Setting default login script: %s"
 msgstr ""
@@ -6095,6 +6234,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:2183 otpme/lib/classes/user.py:2450
 #: otpme/lib/classes/user.py:3128 otpme/lib/classes/user.py:3312
 #: otpme/lib/classes/user.py:3640 otpme/lib/classes/user.py:4077
+#: otpme/lib/classes/user.py:4229
 #, python-format
 msgid "Setting default auth script: %s"
 msgstr ""
@@ -6102,6 +6242,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:2272 otpme/lib/classes/user.py:2564
 #: otpme/lib/classes/user.py:3237 otpme/lib/classes/user.py:3421
 #: otpme/lib/classes/user.py:3773 otpme/lib/classes/user.py:4242
+#: otpme/lib/classes/user.py:4394
 #, python-format
 msgid ""
 "User has tokens: %(token_list)s\n"
@@ -6118,6 +6259,7 @@ msgstr ""
 #: otpme/lib/classes/user.py:2292 otpme/lib/classes/user.py:2595
 #: otpme/lib/classes/user.py:3265 otpme/lib/classes/user.py:3449
 #: otpme/lib/classes/user.py:3808 otpme/lib/classes/user.py:4278
+#: otpme/lib/classes/user.py:4430
 #, python-format
 msgid "Unable to remove token: %s"
 msgstr ""
@@ -6284,6 +6426,8 @@ msgstr ""
 #: otpme/lib/policy/defaultroles/defaultroles.py:322
 #: otpme/lib/policy/authonaction/authonaction.py:711
 #: otpme/lib/policy/authonaction/authonaction.py:770
+#: otpme/lib/policy/defaultroles/defaultroles.py:291
+#: otpme/lib/policy/defaultroles/defaultroles.py:327
 #, python-format
 msgid "Unknown role: %s"
 msgstr ""
@@ -6415,6 +6559,7 @@ msgstr ""
 #: otpme/lib/classes/group.py:1282 otpme/lib/classes/accessgroup.py:1825
 #: otpme/lib/classes/group.py:853 otpme/lib/classes/accessgroup.py:1929
 #: otpme/lib/classes/group.py:919 otpme/lib/classes/accessgroup.py:1961
+#: otpme/lib/classes/group.py:926
 #, python-format
 msgid "%s%s|%s: Found the following orphan role UUIDs: %s\n"
 msgstr ""
@@ -6439,6 +6584,7 @@ msgstr ""
 #: otpme/lib/classes/group.py:1326 otpme/lib/classes/accessgroup.py:1859
 #: otpme/lib/classes/group.py:885 otpme/lib/classes/accessgroup.py:1963
 #: otpme/lib/classes/group.py:951 otpme/lib/classes/accessgroup.py:1995
+#: otpme/lib/classes/group.py:958
 #, python-format
 msgid "Removing orphan role UUID: %s"
 msgstr ""
@@ -6562,6 +6708,9 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:5797
 #: otpme/lib/classes/command_handler.py:5866
 #: otpme/lib/protocols/server/join1.py:805
+#: otpme/lib/classes/command_handler.py:5025
+#: otpme/lib/classes/command_handler.py:5804
+#: otpme/lib/classes/command_handler.py:5873
 #, python-format
 msgid "Unknown command: %s"
 msgstr ""
@@ -6592,6 +6741,7 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:4590
 #: otpme/lib/classes/command_handler.py:5004
 #: otpme/lib/classes/command_handler.py:5836
+#: otpme/lib/classes/command_handler.py:5843
 #, python-format
 msgid "Error reading users file: %s"
 msgstr ""
@@ -6615,6 +6765,7 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:4685
 #: otpme/lib/classes/command_handler.py:4921
 #: otpme/lib/classes/command_handler.py:5894
+#: otpme/lib/classes/command_handler.py:5901
 #, python-format
 msgid "Error getting sign mode: %s"
 msgstr ""
@@ -7047,6 +7198,7 @@ msgstr ""
 #: otpme/lib/classes/session.py:124 otpme/lib/classes/session.py:134
 #: otpme/lib/classes/session.py:302 otpme/lib/classes/session.py:357
 #: otpme/lib/classes/session.py:404 otpme/lib/classes/session.py:393
+#: otpme/lib/classes/session.py:395
 msgid "Unable to generate session ID: User is missing used_pass_salt parameter"
 msgstr ""
 
@@ -7056,6 +7208,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2160 otpme/lib/classes/session.py:472
 #: otpme/lib/classes/session.py:504 otpme/lib/classes/otpme_object.py:2346
 #: otpme/lib/classes/otpme_object.py:2770 otpme/lib/classes/session.py:417
+#: otpme/lib/classes/otpme_object.py:2774 otpme/lib/classes/session.py:419
 #, python-format
 msgid "Object '%s' does not exist."
 msgstr ""
@@ -7063,12 +7216,14 @@ msgstr ""
 #: otpme/lib/classes/session.py:467 otpme/lib/classes/session.py:475
 #: otpme/lib/classes/session.py:780 otpme/lib/classes/session.py:826
 #: otpme/lib/classes/session.py:821 otpme/lib/classes/session.py:757
+#: otpme/lib/classes/session.py:759
 msgid "Need 'password' or 'challenge' + 'response'!"
 msgstr ""
 
 #: otpme/lib/classes/session.py:933 otpme/lib/classes/session.py:945
 #: otpme/lib/classes/session.py:1260 otpme/lib/classes/session.py:1301
 #: otpme/lib/classes/session.py:1297 otpme/lib/classes/session.py:1234
+#: otpme/lib/classes/session.py:1248
 #, python-format
 msgid ""
 "Session '%(session_name)s' has child sessions:\n"
@@ -7079,6 +7234,7 @@ msgstr ""
 #: otpme/lib/classes/session.py:942 otpme/lib/classes/session.py:954
 #: otpme/lib/classes/session.py:1269 otpme/lib/classes/session.py:1310
 #: otpme/lib/classes/session.py:1306 otpme/lib/classes/session.py:1243
+#: otpme/lib/classes/session.py:1257
 #, python-format
 msgid ""
 "Session '%(session_name)s' has child sessions:\n"
@@ -7089,6 +7245,7 @@ msgstr ""
 #: otpme/lib/classes/session.py:952 otpme/lib/classes/session.py:964
 #: otpme/lib/classes/session.py:1279 otpme/lib/classes/session.py:1320
 #: otpme/lib/classes/session.py:1316 otpme/lib/classes/session.py:1253
+#: otpme/lib/classes/session.py:1267
 #, python-format
 msgid "Delete session '%s'?: "
 msgstr ""
@@ -7096,6 +7253,7 @@ msgstr ""
 #: otpme/lib/classes/session.py:967 otpme/lib/classes/session.py:980
 #: otpme/lib/classes/session.py:1294 otpme/lib/classes/session.py:1336
 #: otpme/lib/classes/session.py:1332 otpme/lib/classes/session.py:1271
+#: otpme/lib/classes/session.py:1285
 #, python-format
 msgid "Error removing session '%s': %s"
 msgstr ""
@@ -7107,7 +7265,7 @@ msgstr ""
 #: otpme/lib/classes/unit.py:243 otpme/lib/classes/unit.py:304
 #: otpme/lib/classes/unit.py:252 otpme/lib/classes/unit.py:567
 #: otpme/lib/classes/unit.py:586 otpme/lib/classes/unit.py:646
-#: otpme/lib/classes/unit.py:708
+#: otpme/lib/classes/unit.py:708 otpme/lib/classes/unit.py:713
 #, python-format
 msgid "* Reading objects from unit %s..."
 msgstr ""
@@ -7135,7 +7293,7 @@ msgstr ""
 #: otpme/lib/classes/unit.py:474 otpme/lib/classes/unit.py:543
 #: otpme/lib/classes/unit.py:573 otpme/lib/classes/unit.py:916
 #: otpme/lib/classes/unit.py:928 otpme/lib/classes/unit.py:1047
-#: otpme/lib/classes/unit.py:1113
+#: otpme/lib/classes/unit.py:1113 otpme/lib/classes/unit.py:1119
 #, python-format
 msgid "Uuhhh site does not exist: %s"
 msgstr ""
@@ -7148,6 +7306,7 @@ msgstr ""
 #: otpme/lib/classes/unit.py:538 otpme/lib/classes/unit.py:568
 #: otpme/lib/classes/unit.py:910 otpme/lib/classes/unit.py:922
 #: otpme/lib/classes/unit.py:1041 otpme/lib/classes/unit.py:1107
+#: otpme/lib/classes/unit.py:1113
 #, python-format
 msgid "Parent unit does not exist: %s"
 msgstr ""
@@ -7165,6 +7324,7 @@ msgstr ""
 #: otpme/lib/classes/unit.py:578 otpme/lib/classes/unit.py:619
 #: otpme/lib/classes/unit.py:962 otpme/lib/classes/unit.py:975
 #: otpme/lib/classes/unit.py:1110 otpme/lib/classes/unit.py:1176
+#: otpme/lib/classes/unit.py:1182
 #, python-format
 msgid "Delete unit '%s'?: "
 msgstr ""
@@ -7172,6 +7332,7 @@ msgstr ""
 #: otpme/lib/classes/unit.py:589 otpme/lib/classes/unit.py:631
 #: otpme/lib/classes/unit.py:974 otpme/lib/classes/unit.py:987
 #: otpme/lib/classes/unit.py:1122 otpme/lib/classes/unit.py:1188
+#: otpme/lib/classes/unit.py:1194
 #, python-format
 msgid "Unable to delete %s '%s': %s"
 msgstr ""
@@ -7186,6 +7347,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_agent.py:889 otpme/lib/classes/otpme_agent.py:911
 #: otpme/lib/classes/otpme_agent.py:942 otpme/lib/classes/otpme_agent.py:932
 #: otpme/lib/classes/otpme_agent.py:1037 otpme/lib/classes/otpme_agent.py:1041
+#: otpme/lib/classes/otpme_agent.py:1040
 #, python-format
 msgid "Unable to login to: %s/%s: %s"
 msgstr ""
@@ -7199,6 +7361,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_agent.py:960 otpme/lib/classes/otpme_agent.py:986
 #: otpme/lib/classes/otpme_agent.py:1010 otpme/lib/classes/otpme_agent.py:1000
 #: otpme/lib/classes/otpme_agent.py:1100 otpme/lib/classes/otpme_agent.py:1104
+#: otpme/lib/classes/otpme_agent.py:1103
 #, python-format
 msgid "Error reading session infos: %s"
 msgstr ""
@@ -7206,6 +7369,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_agent.py:973 otpme/lib/classes/otpme_agent.py:999
 #: otpme/lib/classes/otpme_agent.py:1023 otpme/lib/classes/otpme_agent.py:1013
 #: otpme/lib/classes/otpme_agent.py:1113 otpme/lib/classes/otpme_agent.py:1118
+#: otpme/lib/classes/otpme_agent.py:1117
 #, python-format
 msgid "Authentication failed while connecting to daemon: %s: %s"
 msgstr ""
@@ -7220,6 +7384,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_agent.py:1017 otpme/lib/classes/otpme_agent.py:1042
 #: otpme/lib/classes/otpme_agent.py:1065 otpme/lib/classes/otpme_agent.py:1055
 #: otpme/lib/classes/otpme_agent.py:1155 otpme/lib/classes/otpme_agent.py:1160
+#: otpme/lib/classes/otpme_agent.py:1159
 #, python-format
 msgid "Error updating daemon connection: %s"
 msgstr ""
@@ -7227,6 +7392,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_agent.py:1030 otpme/lib/classes/otpme_agent.py:1055
 #: otpme/lib/classes/otpme_agent.py:1078 otpme/lib/classes/otpme_agent.py:1068
 #: otpme/lib/classes/otpme_agent.py:1168 otpme/lib/classes/otpme_agent.py:1173
+#: otpme/lib/classes/otpme_agent.py:1172
 #, python-format
 msgid "Error updating connecton keepalive timestamp: %s"
 msgstr ""
@@ -7234,6 +7400,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_agent.py:1038 otpme/lib/classes/otpme_agent.py:1063
 #: otpme/lib/classes/otpme_agent.py:1086 otpme/lib/classes/otpme_agent.py:1076
 #: otpme/lib/classes/otpme_agent.py:1176 otpme/lib/classes/otpme_agent.py:1181
+#: otpme/lib/classes/otpme_agent.py:1180
 #, python-format
 msgid "Error updating connecton usage timestamp: %s"
 msgstr ""
@@ -7241,6 +7408,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_agent.py:1663 otpme/lib/classes/otpme_agent.py:1737
 #: otpme/lib/classes/otpme_agent.py:1806 otpme/lib/classes/otpme_agent.py:1804
 #: otpme/lib/classes/otpme_agent.py:1844 otpme/lib/classes/otpme_agent.py:1849
+#: otpme/lib/classes/otpme_agent.py:1848
 #, python-format
 msgid "Error renaming current logfile: %s"
 msgstr ""
@@ -7248,6 +7416,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_agent.py:1670 otpme/lib/classes/otpme_agent.py:1745
 #: otpme/lib/classes/otpme_agent.py:1814 otpme/lib/classes/otpme_agent.py:1812
 #: otpme/lib/classes/otpme_agent.py:1852 otpme/lib/classes/otpme_agent.py:1857
+#: otpme/lib/classes/otpme_agent.py:1856
 #, python-format
 msgid "Error opening current logfile: %s"
 msgstr ""
@@ -7255,18 +7424,21 @@ msgstr ""
 #: otpme/lib/classes/otpme_agent.py:1675 otpme/lib/classes/otpme_agent.py:1751
 #: otpme/lib/classes/otpme_agent.py:1820 otpme/lib/classes/otpme_agent.py:1818
 #: otpme/lib/classes/otpme_agent.py:1858 otpme/lib/classes/otpme_agent.py:1863
+#: otpme/lib/classes/otpme_agent.py:1862
 msgid "Error opening rotation logfile: "
 msgstr ""
 
 #: otpme/lib/classes/otpme_agent.py:1680 otpme/lib/classes/otpme_agent.py:1757
 #: otpme/lib/classes/otpme_agent.py:1826 otpme/lib/classes/otpme_agent.py:1824
 #: otpme/lib/classes/otpme_agent.py:1864 otpme/lib/classes/otpme_agent.py:1869
+#: otpme/lib/classes/otpme_agent.py:1868
 msgid "Error while compressing logfile: "
 msgstr ""
 
 #: otpme/lib/classes/otpme_agent.py:1685 otpme/lib/classes/otpme_agent.py:1763
 #: otpme/lib/classes/otpme_agent.py:1832 otpme/lib/classes/otpme_agent.py:1830
 #: otpme/lib/classes/otpme_agent.py:1870 otpme/lib/classes/otpme_agent.py:1875
+#: otpme/lib/classes/otpme_agent.py:1874
 #, python-format
 msgid "Error removing temporary logfile: %s"
 msgstr ""
@@ -7328,6 +7500,7 @@ msgstr ""
 #: otpme/lib/protocols/server/join1.py:856
 #: otpme/lib/classes/auth_handler.py:2272
 #: otpme/lib/protocols/server/join1.py:582
+#: otpme/lib/classes/auth_handler.py:2267
 #, python-format
 msgid "Unknown host type: %s"
 msgstr ""
@@ -7375,6 +7548,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2575
 #: otpme/lib/classes/otpme_object.py:2802
 #: otpme/lib/classes/otpme_object.py:3486
+#: otpme/lib/classes/otpme_object.py:3489
 #, python-format
 msgid "Orphan token: Unknown user: %s"
 msgstr ""
@@ -7418,6 +7592,7 @@ msgstr ""
 #: otpme/lib/classes/role.py:679 otpme/lib/classes/otpme_object.py:3260
 #: otpme/lib/classes/role.py:657 otpme/lib/classes/otpme_object.py:3510
 #: otpme/lib/classes/otpme_object.py:4029 otpme/lib/classes/role.py:692
+#: otpme/lib/classes/otpme_object.py:4032 otpme/lib/classes/role.py:699
 #, python-format
 msgid "Unknown return type: %s"
 msgstr ""
@@ -7435,6 +7610,7 @@ msgstr ""
 #: otpme/lib/classes/role.py:664 otpme/lib/classes/role.py:439
 #: otpme/lib/classes/role.py:809 otpme/lib/classes/role.py:844
 #: otpme/lib/classes/role.py:928 otpme/lib/classes/role.py:972
+#: otpme/lib/classes/role.py:979
 #, python-format
 msgid "%sRole has member tokens: %s\n"
 msgstr ""
@@ -7442,6 +7618,7 @@ msgstr ""
 #: otpme/lib/classes/role.py:671 otpme/lib/classes/role.py:446
 #: otpme/lib/classes/role.py:816 otpme/lib/classes/role.py:851
 #: otpme/lib/classes/role.py:935 otpme/lib/classes/role.py:979
+#: otpme/lib/classes/role.py:986
 #, python-format
 msgid "%sRole is member of this access groups: %s\n"
 msgstr ""
@@ -7449,6 +7626,7 @@ msgstr ""
 #: otpme/lib/classes/role.py:676 otpme/lib/classes/role.py:451
 #: otpme/lib/classes/role.py:821 otpme/lib/classes/role.py:856
 #: otpme/lib/classes/role.py:946 otpme/lib/classes/role.py:990
+#: otpme/lib/classes/role.py:997
 #, python-format
 msgid "%sDelete role '%s'?: "
 msgstr ""
@@ -7456,6 +7634,7 @@ msgstr ""
 #: otpme/lib/classes/role.py:682 otpme/lib/classes/role.py:457
 #: otpme/lib/classes/role.py:827 otpme/lib/classes/role.py:862
 #: otpme/lib/classes/role.py:957 otpme/lib/classes/role.py:1001
+#: otpme/lib/classes/role.py:1008
 #, python-format
 msgid "Delete role '%s'?: "
 msgstr ""
@@ -7570,6 +7749,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:1539 otpme/lib/classes/mgmt_client.py:111
 #: otpme/lib/classes/mgmt_client.py:103 otpme/lib/classes/otpme_object.py:1691
 #: otpme/lib/classes/mgmt_client.py:105 otpme/lib/classes/otpme_object.py:2071
+#: otpme/lib/classes/otpme_object.py:2075
 #, python-format
 msgid "Invalid path: %s"
 msgstr ""
@@ -7587,6 +7767,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:1519
 #: otpme/lib/classes/otpme_object.py:1671
 #: otpme/lib/classes/otpme_object.py:2051
+#: otpme/lib/classes/otpme_object.py:2055
 msgid "Unknown realm '%'."
 msgstr ""
 
@@ -7600,6 +7781,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:7301
 #: otpme/lib/classes/otpme_object.py:2134
 #: otpme/lib/classes/otpme_object.py:7981
+#: otpme/lib/classes/otpme_object.py:2138
+#: otpme/lib/classes/otpme_object.py:7991
 #, python-format
 msgid "Unknown site '%s'."
 msgstr ""
@@ -7609,6 +7792,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:1598
 #: otpme/lib/classes/otpme_object.py:1762
 #: otpme/lib/classes/otpme_object.py:2142
+#: otpme/lib/classes/otpme_object.py:2146
 #, python-format
 msgid "Invalid name: %s"
 msgstr ""
@@ -7635,6 +7819,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:510 otpme/lib/classes/otpme_object.py:909
 #: otpme/lib/classes/otpme_object.py:1064
 #: otpme/lib/classes/otpme_object.py:1447
+#: otpme/lib/classes/otpme_object.py:1451
 #, python-format
 msgid "Got no variable name for attribute: %s"
 msgstr ""
@@ -7651,6 +7836,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:582 otpme/lib/classes/otpme_object.py:982
 #: otpme/lib/classes/otpme_object.py:1125
 #: otpme/lib/classes/otpme_object.py:1518
+#: otpme/lib/classes/otpme_object.py:1520
 #, python-format
 msgid ""
 "Got unknown compression type '%(compression)s' for attribute: %(attribute)s"
@@ -7660,6 +7846,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:592 otpme/lib/classes/otpme_object.py:992
 #: otpme/lib/classes/otpme_object.py:1135
 #: otpme/lib/classes/otpme_object.py:1528
+#: otpme/lib/classes/otpme_object.py:1530
 #, python-format
 msgid "Got unknown encoding type '%(encoding)s' for attribute: %(attribute)s"
 msgstr ""
@@ -7668,6 +7855,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:602 otpme/lib/classes/otpme_object.py:1002
 #: otpme/lib/classes/otpme_object.py:1145
 #: otpme/lib/classes/otpme_object.py:1538
+#: otpme/lib/classes/otpme_object.py:1540
 #, python-format
 msgid ""
 "Got unknown encryption type '%(encryption)s for attribute: %(attribute)s"
@@ -7684,6 +7872,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:718 otpme/lib/classes/otpme_object.py:1125
 #: otpme/lib/classes/otpme_object.py:1255
 #: otpme/lib/classes/otpme_object.py:1650
+#: otpme/lib/classes/otpme_object.py:1652
 #, python-format
 msgid "Got unknown value type: %s"
 msgstr ""
@@ -7692,6 +7881,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:818 otpme/lib/classes/otpme_object.py:1229
 #: otpme/lib/classes/otpme_object.py:1369
 #: otpme/lib/classes/otpme_object.py:1784
+#: otpme/lib/classes/otpme_object.py:1786
 #, python-format
 msgid "Error writing config for %s '%s': %s"
 msgstr ""
@@ -7702,6 +7892,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2250
 #: otpme/lib/classes/otpme_object.py:2438
 #: otpme/lib/classes/otpme_object.py:2863
+#: otpme/lib/classes/otpme_object.py:2867
 #, python-format
 msgid "Failed to load extension: %s: %s"
 msgstr ""
@@ -7712,6 +7903,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2262
 #: otpme/lib/classes/otpme_object.py:2450
 #: otpme/lib/classes/otpme_object.py:2875
+#: otpme/lib/classes/otpme_object.py:2878
 msgid "Extension already enabled for this object."
 msgstr ""
 
@@ -7721,6 +7913,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2272
 #: otpme/lib/classes/otpme_object.py:2460
 #: otpme/lib/classes/otpme_object.py:2885
+#: otpme/lib/classes/otpme_object.py:2888
 #, python-format
 msgid "Extension '%s' not valid for this object type."
 msgstr ""
@@ -7731,6 +7924,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2291
 #: otpme/lib/classes/otpme_object.py:2479
 #: otpme/lib/classes/otpme_object.py:2904
+#: otpme/lib/classes/otpme_object.py:2907
 #, python-format
 msgid ""
 "Cannot add extension '%(ext_name)s' that depends on extension %(dep_ext)s'."
@@ -7742,6 +7936,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2330
 #: otpme/lib/classes/otpme_object.py:2520
 #: otpme/lib/classes/otpme_object.py:2943
+#: otpme/lib/classes/otpme_object.py:2946
 #, python-format
 msgid "Cannot remove extension '%(ext)s' needed by: %(dep_ext)s"
 msgstr ""
@@ -7752,6 +7947,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3080
 #: otpme/lib/classes/otpme_object.py:3308
 #: otpme/lib/classes/otpme_object.py:3823
+#: otpme/lib/classes/otpme_object.py:3826
 #, python-format
 msgid "Policy not valid for object type: %s"
 msgstr ""
@@ -7762,6 +7958,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3086
 #: otpme/lib/classes/otpme_object.py:3314
 #: otpme/lib/classes/otpme_object.py:3829
+#: otpme/lib/classes/otpme_object.py:3832
 msgid "Policy of this type already exists."
 msgstr ""
 
@@ -7771,6 +7968,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3099
 #: otpme/lib/classes/otpme_object.py:3327
 #: otpme/lib/classes/otpme_object.py:3842
+#: otpme/lib/classes/otpme_object.py:3845
 msgid "Policy already enabled for this object."
 msgstr ""
 
@@ -7780,6 +7978,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3139
 #: otpme/lib/classes/otpme_object.py:3368
 #: otpme/lib/classes/otpme_object.py:3883
+#: otpme/lib/classes/otpme_object.py:3886
 #, python-format
 msgid "Policy not enabled for this object: %s"
 msgstr ""
@@ -7790,6 +7989,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3351
 #: otpme/lib/classes/otpme_object.py:7075
 #: otpme/lib/classes/otpme_object.py:7756
+#: otpme/lib/classes/otpme_object.py:7766
 #, python-format
 msgid "Invalid object type: %s"
 msgstr ""
@@ -7800,6 +8000,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3609
 #: otpme/lib/classes/otpme_object.py:3870
 #: otpme/lib/classes/otpme_object.py:4452
+#: otpme/lib/classes/otpme_object.py:4459
 #, python-format
 msgid "Using extension '%(ext)s' to add attribute '%(attribute)s' to object."
 msgstr ""
@@ -7817,6 +8018,10 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:688
 #: otpme/lib/classes/otpme_object.py:4472
 #: otpme/lib/classes/otpme_object.py:4532
+#: otpme/lib/extensions/ldif_handler.py:652
+#: otpme/lib/extensions/ldif_handler.py:725
+#: otpme/lib/classes/otpme_object.py:4479
+#: otpme/lib/classes/otpme_object.py:4539
 #, python-format
 msgid "Unable to add attribute: %s: %s"
 msgstr ""
@@ -7827,6 +8032,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3658
 #: otpme/lib/classes/otpme_object.py:3929
 #: otpme/lib/classes/otpme_object.py:4572
+#: otpme/lib/classes/otpme_object.py:4579
 #, python-format
 msgid "Using extension '%(ext)s' to delete attribute '%(attr)s' from object."
 msgstr ""
@@ -7837,6 +8043,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3674
 #: otpme/lib/classes/otpme_object.py:3948
 #: otpme/lib/classes/otpme_object.py:4591
+#: otpme/lib/classes/otpme_object.py:4598
 #, python-format
 msgid "Unable to delete mandatory attribute: %s"
 msgstr ""
@@ -7847,6 +8054,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3677
 #: otpme/lib/classes/otpme_object.py:3951
 #: otpme/lib/classes/otpme_object.py:4594
+#: otpme/lib/classes/otpme_object.py:4601
 #, python-format
 msgid "Unable to delete attribute: %s: %s"
 msgstr ""
@@ -7857,6 +8065,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3757
 #: otpme/lib/classes/otpme_object.py:4008
 #: otpme/lib/classes/otpme_object.py:4651
+#: otpme/lib/classes/otpme_object.py:4658
 #, python-format
 msgid "Using extension '%(ext)s' to add object class '%(oc)s' to object."
 msgstr ""
@@ -7874,6 +8083,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3774
 #: otpme/lib/classes/otpme_object.py:4026
 #: otpme/lib/classes/otpme_object.py:4669
+#: otpme/lib/classes/otpme_object.py:4676
 #, python-format
 msgid "Error adding object class: %s"
 msgstr ""
@@ -7884,6 +8094,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3801
 #: otpme/lib/classes/otpme_object.py:4053
 #: otpme/lib/classes/otpme_object.py:4696
+#: otpme/lib/classes/otpme_object.py:4703
 msgid "%(object)s does not have object class '%s' assigned."
 msgstr ""
 
@@ -7893,6 +8104,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3969
 #: otpme/lib/classes/otpme_object.py:4179
 #: otpme/lib/classes/otpme_object.py:4823
+#: otpme/lib/classes/otpme_object.py:4830
 #, python-format
 msgid "%s already enabled."
 msgstr ""
@@ -7903,6 +8115,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3982
 #: otpme/lib/classes/otpme_object.py:4192
 #: otpme/lib/classes/otpme_object.py:4826
+#: otpme/lib/classes/otpme_object.py:4833
 #, python-format
 msgid "Enable %(object_type)s '%(object_name)s'?: "
 msgstr ""
@@ -7920,6 +8133,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4035
 #: otpme/lib/classes/otpme_object.py:4245
 #: otpme/lib/classes/otpme_object.py:4879
+#: otpme/lib/classes/otpme_object.py:4886
 #, python-format
 msgid "%(object_type)s '%(object_name)s' already disabled."
 msgstr ""
@@ -7930,6 +8144,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4054
 #: otpme/lib/classes/otpme_object.py:4264
 #: otpme/lib/classes/otpme_object.py:4890
+#: otpme/lib/classes/otpme_object.py:4897
 #, python-format
 msgid "Disable %(object_type)s '%(object_name)s'?: "
 msgstr ""
@@ -7971,6 +8186,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4623
 #: otpme/lib/classes/otpme_object.py:5181
 #: otpme/lib/classes/otpme_object.py:5241
+#: otpme/lib/classes/otpme_object.py:5188
+#: otpme/lib/classes/otpme_object.py:5248
 #, python-format
 msgid "ACL inheritance disabled for object %s"
 msgstr ""
@@ -7993,6 +8210,9 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5311
 #: otpme/lib/classes/otpme_object.py:5503
 #: otpme/lib/classes/otpme_object.py:5578 otpme/lib/classes/unit.py:1055
+#: otpme/lib/classes/otpme_object.py:5318
+#: otpme/lib/classes/otpme_object.py:5510
+#: otpme/lib/classes/otpme_object.py:5585 otpme/lib/classes/unit.py:1061
 #, python-format
 msgid "Error decoding ACL: %s: %s"
 msgstr ""
@@ -8008,6 +8228,7 @@ msgstr ""
 #: otpme/lib/protocols/server/join1.py:919
 #: otpme/lib/classes/otpme_object.py:5532
 #: otpme/lib/protocols/server/join1.py:632
+#: otpme/lib/classes/otpme_object.py:5539
 #, python-format
 msgid "Unknown %s: %s"
 msgstr ""
@@ -8018,6 +8239,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4702
 #: otpme/lib/classes/otpme_object.py:4917
 #: otpme/lib/classes/otpme_object.py:5536
+#: otpme/lib/classes/otpme_object.py:5543
 #, python-format
 msgid "Found multiple objects for '%s': %s"
 msgstr ""
@@ -8033,6 +8255,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4727 otpme/lib/classes/signing.py:331
 #: otpme/lib/classes/signing.py:321 otpme/lib/classes/otpme_object.py:4942
 #: otpme/lib/classes/otpme_object.py:5561 otpme/lib/classes/signing.py:320
+#: otpme/lib/classes/otpme_object.py:5568
 #, python-format
 msgid "Unknown object: %s"
 msgstr ""
@@ -8052,6 +8275,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4760
 #: otpme/lib/classes/otpme_object.py:4975
 #: otpme/lib/classes/otpme_object.py:5594
+#: otpme/lib/classes/otpme_object.py:5601
 #, python-format
 msgid "Unsupported ACL: %s: %s"
 msgstr ""
@@ -8072,6 +8296,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4782
 #: otpme/lib/classes/otpme_object.py:4997
 #: otpme/lib/classes/otpme_object.py:5619
+#: otpme/lib/classes/otpme_object.py:5626
 #, python-format
 msgid "Adding ACL %(resolved_acl)s to %(object_id)s"
 msgstr ""
@@ -8090,6 +8315,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4833
 #: otpme/lib/classes/otpme_object.py:5048
 #: otpme/lib/classes/otpme_object.py:5667
+#: otpme/lib/classes/otpme_object.py:5674
 msgid "Command failed. Please try (-vv) to see all errors."
 msgstr ""
 
@@ -8099,6 +8325,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4792
 #: otpme/lib/classes/otpme_object.py:5007
 #: otpme/lib/classes/otpme_object.py:5628
+#: otpme/lib/classes/otpme_object.py:5635
 #, python-format
 msgid "Removing ACL %(resolved_acl)s from %(object_id)s"
 msgstr ""
@@ -8109,6 +8336,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4844
 #: otpme/lib/classes/otpme_object.py:5059
 #: otpme/lib/classes/otpme_object.py:5678
+#: otpme/lib/classes/otpme_object.py:5685
 #, python-format
 msgid "Error writing %(object_type)s config: %(object_id)s"
 msgstr ""
@@ -8125,6 +8353,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5226
 #: otpme/lib/classes/otpme_object.py:5860
 #: otpme/lib/classes/otpme_object.py:5892
+#: otpme/lib/classes/otpme_object.py:5867
+#: otpme/lib/classes/otpme_object.py:5899
 #, python-format
 msgid "%s does not have a certificate."
 msgstr ""
@@ -8135,6 +8365,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4989
 #: otpme/lib/classes/otpme_object.py:5204
 #: otpme/lib/classes/otpme_object.py:5870
+#: otpme/lib/classes/otpme_object.py:5877
 #, python-format
 msgid "%s does not have a private key."
 msgstr ""
@@ -8145,6 +8376,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5048
 #: otpme/lib/classes/otpme_object.py:5268
 #: otpme/lib/classes/otpme_object.py:5939
+#: otpme/lib/classes/otpme_object.py:5946
 #, python-format
 msgid "%(object_type)s already in unit '%(unit)s'."
 msgstr ""
@@ -8155,6 +8387,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5090
 #: otpme/lib/classes/otpme_object.py:5313
 #: otpme/lib/classes/otpme_object.py:5984
+#: otpme/lib/classes/otpme_object.py:5991
 msgid "ACL inheritance for admin users not allowed"
 msgstr ""
 
@@ -8164,6 +8397,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5095
 #: otpme/lib/classes/otpme_object.py:5318
 #: otpme/lib/classes/otpme_object.py:5989
+#: otpme/lib/classes/otpme_object.py:5996
 msgid "ACL inheritance for admin tokens not allowed"
 msgstr ""
 
@@ -8173,6 +8407,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5101
 #: otpme/lib/classes/otpme_object.py:5324
 #: otpme/lib/classes/otpme_object.py:5995
+#: otpme/lib/classes/otpme_object.py:6002
 msgid "ACL inheritance for admin role not allowed"
 msgstr ""
 
@@ -8192,6 +8427,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6002
 #: otpme/lib/protocols/server/join1.py:1180
 #: otpme/lib/protocols/server/join1.py:1214
+#: otpme/lib/classes/otpme_object.py:6009
 msgid "Permission denied"
 msgstr ""
 
@@ -8201,6 +8437,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5112
 #: otpme/lib/classes/otpme_object.py:5340
 #: otpme/lib/classes/otpme_object.py:6011
+#: otpme/lib/classes/otpme_object.py:6018
 msgid "* Removing default ACLs of old unit..."
 msgstr ""
 
@@ -8210,6 +8447,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5123
 #: otpme/lib/classes/otpme_object.py:5351
 #: otpme/lib/classes/otpme_object.py:6022
+#: otpme/lib/classes/otpme_object.py:6029
 #, python-format
 msgid "Error removing unit default ACLs: %s"
 msgstr ""
@@ -8220,6 +8458,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5126
 #: otpme/lib/classes/otpme_object.py:5354
 #: otpme/lib/classes/otpme_object.py:6025
+#: otpme/lib/classes/otpme_object.py:6032
 #, python-format
 msgid "* NOT applying/removing default ACLs of new/old unit: %s"
 msgstr ""
@@ -8234,6 +8473,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5192
 #: otpme/lib/classes/otpme_object.py:5400
 #: otpme/lib/classes/otpme_object.py:6071
+#: otpme/lib/classes/otpme_object.py:6078
 msgid "* Applying default ACLs of new unit..."
 msgstr ""
 
@@ -8245,7 +8485,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4364
 #: otpme/lib/classes/otpme_object.py:4998
 #: otpme/lib/classes/otpme_object.py:5224 otpme/lib/classes/user.py:1521
-#: otpme/lib/classes/user.py:1782
+#: otpme/lib/classes/user.py:1782 otpme/lib/classes/user.py:1903
 msgid "Missing group."
 msgstr ""
 
@@ -8255,6 +8495,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5294
 #: otpme/lib/classes/otpme_object.py:5457
 #: otpme/lib/classes/otpme_object.py:6128
+#: otpme/lib/classes/otpme_object.py:6135
 #, python-format
 msgid "Unknown script: %s"
 msgstr ""
@@ -8265,6 +8506,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5335
 #: otpme/lib/classes/otpme_object.py:5497
 #: otpme/lib/classes/otpme_object.py:6168
+#: otpme/lib/classes/otpme_object.py:6175
 #, python-format
 msgid "Cannot find user with UUID: %s"
 msgstr ""
@@ -8281,6 +8523,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5828
 #: otpme/lib/classes/otpme_object.py:6174
 #: otpme/lib/classes/otpme_object.py:6500
+#: otpme/lib/classes/otpme_object.py:6181
+#: otpme/lib/classes/otpme_object.py:6507
 #, python-format
 msgid "No signature found for user: %s"
 msgstr ""
@@ -8291,6 +8535,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5349
 #: otpme/lib/classes/otpme_object.py:5511
 #: otpme/lib/classes/otpme_object.py:6182
+#: otpme/lib/classes/otpme_object.py:6189
 #, python-format
 msgid "Found signature of orphan user: %s"
 msgstr ""
@@ -8301,6 +8546,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5546
 #: otpme/lib/classes/otpme_object.py:5717
 #: otpme/lib/classes/otpme_object.py:6389
+#: otpme/lib/classes/otpme_object.py:6396
 msgid "A valid signature already exists. Use -f to override."
 msgstr ""
 
@@ -8314,6 +8560,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5598
 #: otpme/lib/classes/otpme_object.py:5769
 #: otpme/lib/classes/otpme_object.py:6441
+#: otpme/lib/classes/otpme_object.py:6448
 msgid "Object is not signable."
 msgstr ""
 
@@ -8323,6 +8570,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5648
 #: otpme/lib/classes/otpme_object.py:5819
 #: otpme/lib/classes/otpme_object.py:6491
+#: otpme/lib/classes/otpme_object.py:6498
 #, python-format
 msgid "Unable to find user: %s"
 msgstr ""
@@ -8355,6 +8603,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5813
 #: otpme/lib/classes/otpme_object.py:5991
 #: otpme/lib/classes/otpme_object.py:6663
+#: otpme/lib/classes/otpme_object.py:6670
 #, python-format
 msgid "No signature found with ID: %s"
 msgstr ""
@@ -8371,6 +8620,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6061
 #: otpme/lib/classes/otpme_object.py:6669
 #: otpme/lib/classes/otpme_object.py:6733
+#: otpme/lib/classes/otpme_object.py:6676
+#: otpme/lib/classes/otpme_object.py:6740
 #, python-format
 msgid "No signature found with tags: %s"
 msgstr ""
@@ -8381,6 +8632,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5885
 #: otpme/lib/classes/otpme_object.py:6063
 #: otpme/lib/classes/otpme_object.py:6735
+#: otpme/lib/classes/otpme_object.py:6742
 msgid "No signature found."
 msgstr ""
 
@@ -8394,6 +8646,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:1362
 #: otpme/lib/classes/otpme_object.py:1497
 #: otpme/lib/classes/otpme_object.py:1887
+#: otpme/lib/classes/otpme_object.py:1889
 #, python-format
 msgid "Invalid last used timestamp: %s: %s"
 msgstr ""
@@ -8405,7 +8658,8 @@ msgstr ""
 #: otpme/lib/classes/realm.py:1470 otpme/lib/classes/site.py:1879
 #: otpme/lib/classes/site.py:1900 otpme/lib/classes/site.py:2270
 #: otpme/lib/classes/site.py:2291 otpme/lib/classes/realm.py:1390
-#: otpme/lib/classes/realm.py:1464
+#: otpme/lib/classes/realm.py:1464 otpme/lib/classes/site.py:2281
+#: otpme/lib/classes/site.py:2302
 #, python-format
 msgid "Unknown default policy: %s"
 msgstr ""
@@ -8416,6 +8670,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6190
 #: otpme/lib/classes/otpme_object.py:6373
 #: otpme/lib/classes/otpme_object.py:7049
+#: otpme/lib/classes/otpme_object.py:7057
 #, python-format
 msgid "Adding default extension: %s"
 msgstr ""
@@ -8426,6 +8681,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6226
 #: otpme/lib/classes/otpme_object.py:6435
 #: otpme/lib/classes/otpme_object.py:7105 otpme/lib/classes/user.py:3937
+#: otpme/lib/classes/otpme_object.py:7113 otpme/lib/classes/user.py:4064
 #, python-format
 msgid "WARNING: Unable to inherit ACLs from parent object: %s"
 msgstr ""
@@ -8441,6 +8697,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6604
 #: otpme/lib/classes/otpme_object.py:6519
 #: otpme/lib/classes/otpme_object.py:7277
+#: otpme/lib/classes/otpme_object.py:6526
+#: otpme/lib/classes/otpme_object.py:7287
 #, python-format
 msgid "Failed to revoke signature: %s"
 msgstr ""
@@ -8455,6 +8713,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:935 otpme/lib/classes/otpme_object.py:1338
 #: otpme/lib/classes/otpme_object.py:1473
 #: otpme/lib/classes/otpme_object.py:1864
+#: otpme/lib/classes/otpme_object.py:1866
 #, python-format
 msgid "Error removing %(object_type)s 's(rel_path)s': %(error)s"
 msgstr ""
@@ -8465,6 +8724,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6392
 #: otpme/lib/classes/otpme_object.py:6653
 #: otpme/lib/classes/otpme_object.py:7326
+#: otpme/lib/classes/otpme_object.py:7336
 #, python-format
 msgid ""
 "%s|%s: Found the following orphan ACLs: %s\n"
@@ -8477,6 +8737,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6402
 #: otpme/lib/classes/otpme_object.py:6663
 #: otpme/lib/classes/otpme_object.py:7336
+#: otpme/lib/classes/otpme_object.py:7346
 #, python-format
 msgid "Removing orphan ACL: %s"
 msgstr ""
@@ -8487,6 +8748,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6409
 #: otpme/lib/classes/otpme_object.py:6670
 #: otpme/lib/classes/otpme_object.py:7343
+#: otpme/lib/classes/otpme_object.py:7353
 #, python-format
 msgid "No orphan ACLs found for %s: %s"
 msgstr ""
@@ -8497,6 +8759,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6434
 #: otpme/lib/classes/otpme_object.py:6695
 #: otpme/lib/classes/otpme_object.py:7368
+#: otpme/lib/classes/otpme_object.py:7378
 #, python-format
 msgid ""
 "%s|%s: Found the following orphan policies: %s\n"
@@ -8509,6 +8772,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6444
 #: otpme/lib/classes/otpme_object.py:6705
 #: otpme/lib/classes/otpme_object.py:7378
+#: otpme/lib/classes/otpme_object.py:7388
 #, python-format
 msgid "Removing orphan policy: %s"
 msgstr ""
@@ -8519,6 +8783,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6454
 #: otpme/lib/classes/otpme_object.py:6715
 #: otpme/lib/classes/otpme_object.py:7388
+#: otpme/lib/classes/otpme_object.py:7398
 #, python-format
 msgid "No orphan policies found for %s: %s"
 msgstr ""
@@ -8529,6 +8794,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6482
 #: otpme/lib/classes/otpme_object.py:6743
 #: otpme/lib/classes/otpme_object.py:7416
+#: otpme/lib/classes/otpme_object.py:7426
 #, python-format
 msgid ""
 "%s|%s: Found the following orphan signer UUIDs: %s\n"
@@ -8541,6 +8807,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6494
 #: otpme/lib/classes/otpme_object.py:6755
 #: otpme/lib/classes/otpme_object.py:7428
+#: otpme/lib/classes/otpme_object.py:7438
 #, python-format
 msgid "Removing orphan signature: %s"
 msgstr ""
@@ -8615,6 +8882,7 @@ msgstr ""
 #: otpme/lib/classes/group.py:671 otpme/lib/classes/group.py:545
 #: otpme/lib/classes/group.py:1121 otpme/lib/classes/group.py:1152
 #: otpme/lib/classes/group.py:773 otpme/lib/classes/group.py:839
+#: otpme/lib/classes/group.py:846
 #, python-format
 msgid "%sGroup '%s' has member roles: %s\n"
 msgstr ""
@@ -8622,6 +8890,7 @@ msgstr ""
 #: otpme/lib/classes/group.py:682 otpme/lib/classes/group.py:556
 #: otpme/lib/classes/group.py:1132 otpme/lib/classes/group.py:1163
 #: otpme/lib/classes/group.py:784 otpme/lib/classes/group.py:850
+#: otpme/lib/classes/group.py:857
 #, python-format
 msgid "%sGroup '%s' has member tokens: %s\n"
 msgstr ""
@@ -8647,6 +8916,7 @@ msgstr ""
 #: otpme/lib/classes/group.py:720 otpme/lib/classes/group.py:594
 #: otpme/lib/classes/group.py:1170 otpme/lib/classes/group.py:1201
 #: otpme/lib/classes/group.py:795 otpme/lib/classes/group.py:861
+#: otpme/lib/classes/group.py:868
 #, python-format
 msgid "%sDelete group?: "
 msgstr ""
@@ -9077,24 +9347,28 @@ msgstr ""
 
 #: otpme/lib/stuff.py:1058 otpme/lib/stuff.py:1251 otpme/lib/stuff.py:1362
 #: otpme/lib/stuff.py:1187 otpme/lib/stuff.py:943 otpme/lib/stuff.py:947
+#: otpme/lib/stuff.py:956
 #, python-format
 msgid "Wrong config file format: %s"
 msgstr ""
 
 #: otpme/lib/stuff.py:1172 otpme/lib/stuff.py:1369 otpme/lib/stuff.py:1479
 #: otpme/lib/stuff.py:1302 otpme/lib/stuff.py:1058 otpme/lib/stuff.py:1062
+#: otpme/lib/stuff.py:1071
 #, python-format
 msgid "System user does not exist: %s"
 msgstr ""
 
 #: otpme/lib/stuff.py:1181 otpme/lib/stuff.py:1378 otpme/lib/stuff.py:1488
 #: otpme/lib/stuff.py:1310 otpme/lib/stuff.py:1066 otpme/lib/stuff.py:1070
+#: otpme/lib/stuff.py:1079
 #, python-format
 msgid "System group does not exist: %s"
 msgstr ""
 
 #: otpme/lib/stuff.py:1307 otpme/lib/stuff.py:1577 otpme/lib/stuff.py:1691
 #: otpme/lib/stuff.py:1511 otpme/lib/stuff.py:1259 otpme/lib/stuff.py:1264
+#: otpme/lib/stuff.py:1273
 #, python-format
 msgid "Starting otpme-agent failed: %s"
 msgstr ""
@@ -9106,12 +9380,14 @@ msgstr ""
 
 #: otpme/lib/stuff.py:1345 otpme/lib/stuff.py:1615 otpme/lib/stuff.py:1729
 #: otpme/lib/stuff.py:1565 otpme/lib/stuff.py:1326 otpme/lib/stuff.py:1331
+#: otpme/lib/stuff.py:1340
 #, python-format
 msgid "Starting OTPme daemons failed: %s"
 msgstr ""
 
 #: otpme/lib/stuff.py:1370 otpme/lib/stuff.py:1645 otpme/lib/stuff.py:1759
 #: otpme/lib/stuff.py:1594 otpme/lib/stuff.py:1357 otpme/lib/stuff.py:1364
+#: otpme/lib/stuff.py:1373
 #, python-format
 msgid "Stopping OTPme daemons failed: %s"
 msgstr ""
@@ -9126,6 +9402,7 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:2265 otpme/lib/stuff.py:1397
 #: otpme/lib/stuff.py:1431 otpme/lib/stuff.py:1495 otpme/lib/stuff.py:1404
 #: otpme/lib/stuff.py:1502 otpme/lib/classes/command_handler.py:2431
+#: otpme/lib/stuff.py:1413 otpme/lib/stuff.py:1447 otpme/lib/stuff.py:1511
 #, python-format
 msgid "Error getting user key script: %s"
 msgstr ""
@@ -9134,6 +9411,7 @@ msgstr ""
 #: otpme/lib/stuff.py:1795 otpme/lib/stuff.py:1809 otpme/lib/stuff.py:1909
 #: otpme/lib/stuff.py:1643 otpme/lib/stuff.py:1741 otpme/lib/stuff.py:1405
 #: otpme/lib/stuff.py:1503 otpme/lib/stuff.py:1412 otpme/lib/stuff.py:1510
+#: otpme/lib/stuff.py:1421 otpme/lib/stuff.py:1519
 #, python-format
 msgid "Users key script does not exist or is empty: %s"
 msgstr ""
@@ -9158,6 +9436,7 @@ msgstr ""
 
 #: otpme/lib/stuff.py:1872 otpme/lib/stuff.py:2143 otpme/lib/stuff.py:2135
 #: otpme/lib/stuff.py:2000 otpme/lib/stuff.py:1747 otpme/lib/stuff.py:1788
+#: otpme/lib/stuff.py:1797
 #, python-format
 msgid "Unable to get site trust status: %s"
 msgstr ""
@@ -9205,12 +9484,14 @@ msgstr ""
 
 #: otpme/lib/stuff.py:2229 otpme/lib/stuff.py:2187 otpme/lib/stuff.py:2207
 #: otpme/lib/stuff.py:2025 otpme/lib/stuff.py:1772 otpme/lib/stuff.py:1813
+#: otpme/lib/stuff.py:1822
 #, python-format
 msgid "User denied by DENY_LOGIN_USERS: %s"
 msgstr ""
 
 #: otpme/lib/stuff.py:2248 otpme/lib/stuff.py:2206 otpme/lib/stuff.py:2226
 #: otpme/lib/stuff.py:2044 otpme/lib/stuff.py:1791 otpme/lib/stuff.py:1832
+#: otpme/lib/stuff.py:1841
 #, python-format
 msgid "User denied: Not found in VALID_LOGIN_USERS: %s"
 msgstr ""
@@ -9349,20 +9630,20 @@ msgstr ""
 
 #: otpme/lib/cli.py:1108 otpme/lib/cli/__init__.py:654
 #: otpme/lib/cli/__init__.py:680 otpme/lib/cli/__init__.py:838
-#: otpme/lib/cli/__init__.py:864
+#: otpme/lib/cli/__init__.py:864 otpme/lib/cli/__init__.py:875
 msgid "<max_len> must be <int>."
 msgstr ""
 
 #: otpme/lib/cli.py:2547 otpme/lib/cli/__init__.py:1064
 #: otpme/lib/cli/__init__.py:1096 otpme/lib/cli/__init__.py:1223
-#: otpme/lib/cli/__init__.py:1253
+#: otpme/lib/cli/__init__.py:1253 otpme/lib/cli/__init__.py:1264
 #, python-format
 msgid "Total %s %s(s)."
 msgstr ""
 
 #: otpme/lib/init.py:42 otpme/lib/__init__.py:301 otpme/lib/__init__.py:326
 #: otpme/lib/__init__.py:350 otpme/lib/__init__.py:279
-#: otpme/lib/daemon/controld.py:523
+#: otpme/lib/daemon/controld.py:523 otpme/lib/daemon/controld.py:564
 msgid "Host is not a realm member."
 msgstr ""
 
@@ -10383,13 +10664,14 @@ msgid "Missing arguments: %s"
 msgstr ""
 
 #: otpme/lib/backend.py:507 otpme/lib/backend.py:598 otpme/lib/backend.py:519
-#: otpme/lib/backend.py:429 otpme/lib/backend.py:456
+#: otpme/lib/backend.py:429 otpme/lib/backend.py:456 otpme/lib/backend.py:462
 #, python-format
 msgid "UUID conflict: %(object_id)s <> %(xoid)s"
 msgstr ""
 
 #: otpme/lib/backend.py:2052 otpme/lib/backend.py:1155
 #: otpme/lib/backend.py:1049 otpme/lib/backend.py:904 otpme/lib/backend.py:932
+#: otpme/lib/backend.py:938
 #, python-format
 msgid "Error creating %(object_type)s class '%(object_id)s': %(error)s"
 msgstr ""
@@ -10423,7 +10705,7 @@ msgstr ""
 
 #: otpme/lib/script.py:146 otpme/lib/stuff.py:1753 otpme/lib/stuff.py:1867
 #: otpme/lib/stuff.py:1700 otpme/lib/script.py:136 otpme/lib/stuff.py:1462
-#: otpme/lib/stuff.py:1469 otpme/lib/script.py:135
+#: otpme/lib/stuff.py:1469 otpme/lib/script.py:135 otpme/lib/stuff.py:1478
 #, python-format
 msgid "Error verifying signatures: %s"
 msgstr ""
@@ -10649,7 +10931,7 @@ msgstr ""
 
 #: otpme/lib/config.py:243 otpme/lib/config.py:267
 #: otpme/lib/otpme_config.py:1524 otpme/lib/otpme_config.py:1651
-#: otpme/lib/otpme_config.py:1779
+#: otpme/lib/otpme_config.py:1779 otpme/lib/otpme_config.py:1802
 msgid ""
 "WARNING!!!!! Raising exceptions is enabled (-dee). This exception would not "
 "occur in normal operation mode!"
@@ -10659,14 +10941,15 @@ msgstr ""
 #: otpme/lib/config.py:2265 otpme/lib/otpme_config.py:757
 #: otpme/lib/otpme_config.py:1688 otpme/lib/otpme_config.py:806
 #: otpme/lib/otpme_config.py:1821 otpme/lib/otpme_config.py:835
-#: otpme/lib/otpme_config.py:1951
+#: otpme/lib/otpme_config.py:1951 otpme/lib/otpme_config.py:840
+#: otpme/lib/otpme_config.py:1974
 #, python-format
 msgid "Unknown config file parameter: %s: %s"
 msgstr ""
 
 #: otpme/lib/config.py:672 otpme/lib/config.py:721
 #: otpme/lib/otpme_config.py:1955 otpme/lib/otpme_config.py:2089
-#: otpme/lib/otpme_config.py:2226
+#: otpme/lib/otpme_config.py:2226 otpme/lib/otpme_config.py:2249
 #, python-format
 msgid "Failed to load module 'colorlog': %s"
 msgstr ""
@@ -10683,28 +10966,28 @@ msgstr ""
 
 #: otpme/lib/config.py:984 otpme/lib/config.py:1086
 #: otpme/lib/otpme_config.py:2232 otpme/lib/otpme_config.py:2472
-#: otpme/lib/otpme_config.py:2566
+#: otpme/lib/otpme_config.py:2566 otpme/lib/otpme_config.py:2589
 #, python-format
 msgid "Invalid status: %s [%s]"
 msgstr ""
 
 #: otpme/lib/config.py:1017 otpme/lib/config.py:1125
 #: otpme/lib/otpme_config.py:2271 otpme/lib/otpme_config.py:2516
-#: otpme/lib/otpme_config.py:2610
+#: otpme/lib/otpme_config.py:2610 otpme/lib/otpme_config.py:2633
 #, python-format
 msgid "Unable to save sync status: %s"
 msgstr ""
 
 #: otpme/lib/config.py:1030 otpme/lib/config.py:1143
 #: otpme/lib/otpme_config.py:2287 otpme/lib/otpme_config.py:2532
-#: otpme/lib/otpme_config.py:2626
+#: otpme/lib/otpme_config.py:2626 otpme/lib/otpme_config.py:2649
 #, python-format
 msgid "Unable to load sync status: %s"
 msgstr ""
 
 #: otpme/lib/config.py:1037 otpme/lib/config.py:1152
 #: otpme/lib/otpme_config.py:2296 otpme/lib/otpme_config.py:2541
-#: otpme/lib/otpme_config.py:2635
+#: otpme/lib/otpme_config.py:2635 otpme/lib/otpme_config.py:2658
 #, python-format
 msgid "Unable to decode sync status: %s"
 msgstr ""
@@ -10797,6 +11080,8 @@ msgstr ""
 #: otpme/lib/classes/site.py:1551 otpme/lib/classes/site.py:1591
 #: otpme/lib/classes/site.py:2180 otpme/lib/classes/site.py:1946
 #: otpme/lib/classes/site.py:1986 otpme/lib/classes/site.py:2592
+#: otpme/lib/classes/site.py:1957 otpme/lib/classes/site.py:1997
+#: otpme/lib/classes/site.py:2619
 #, python-format
 msgid "Problem adding user: %s"
 msgstr ""
@@ -10909,50 +11194,50 @@ msgstr ""
 
 #: otpme/lib/classes/user.py:431 otpme/lib/classes/user.py:1046
 #: otpme/lib/classes/user.py:1216 otpme/lib/classes/user.py:1379
-#: otpme/lib/classes/user.py:1450
+#: otpme/lib/classes/user.py:1450 otpme/lib/classes/user.py:1492
 msgid "Username must be lowercase."
 msgstr ""
 
 #: otpme/lib/classes/user.py:1808 otpme/lib/classes/user.py:2491
 #: otpme/lib/classes/user.py:2674 otpme/lib/classes/user.py:2890
-#: otpme/lib/classes/user.py:3155
+#: otpme/lib/classes/user.py:3155 otpme/lib/classes/user.py:3275
 msgid "Please give link destination."
 msgstr ""
 
 #: otpme/lib/classes/user.py:1826 otpme/lib/classes/user.py:2510
 #: otpme/lib/classes/user.py:2693 otpme/lib/classes/user.py:2909
-#: otpme/lib/classes/user.py:3174
+#: otpme/lib/classes/user.py:3174 otpme/lib/classes/user.py:3294
 msgid "Destination token does not exist."
 msgstr ""
 
 #: otpme/lib/classes/user.py:1830 otpme/lib/classes/user.py:2514
 #: otpme/lib/classes/user.py:2697 otpme/lib/classes/user.py:2913
-#: otpme/lib/classes/user.py:3178
+#: otpme/lib/classes/user.py:3178 otpme/lib/classes/user.py:3298
 msgid "Cannot link already linked token."
 msgstr ""
 
 #: otpme/lib/classes/user.py:1874 otpme/lib/classes/user.py:2558
 #: otpme/lib/classes/user.py:2741 otpme/lib/classes/user.py:2956
-#: otpme/lib/classes/user.py:3222
+#: otpme/lib/classes/user.py:3222 otpme/lib/classes/user.py:3342
 #, python-format
 msgid "Token already exists: %s"
 msgstr ""
 
 #: otpme/lib/classes/user.py:2013 otpme/lib/classes/user.py:2699
 #: otpme/lib/classes/user.py:2882 otpme/lib/classes/user.py:3082
-#: otpme/lib/classes/user.py:3356
+#: otpme/lib/classes/user.py:3356 otpme/lib/classes/user.py:3476
 msgid "Cannot delete token used at login."
 msgstr ""
 
 #: otpme/lib/classes/user.py:2113 otpme/lib/classes/user.py:2799
 #: otpme/lib/classes/user.py:2981 otpme/lib/classes/user.py:3185
-#: otpme/lib/classes/user.py:3499
+#: otpme/lib/classes/user.py:3499 otpme/lib/classes/user.py:3619
 msgid "Authorization script already enabled for this user."
 msgstr ""
 
 #: otpme/lib/classes/user.py:2496 otpme/lib/classes/user.py:3172
 #: otpme/lib/classes/user.py:3355 otpme/lib/classes/user.py:3698
-#: otpme/lib/classes/user.py:4165
+#: otpme/lib/classes/user.py:4165 otpme/lib/classes/user.py:4317
 #, python-format
 msgid "Unable to find %s role."
 msgstr ""
@@ -11164,7 +11449,7 @@ msgstr ""
 
 #: otpme/lib/classes/unit.py:164 otpme/lib/classes/unit.py:480
 #: otpme/lib/classes/unit.py:503 otpme/lib/classes/unit.py:563
-#: otpme/lib/classes/unit.py:625
+#: otpme/lib/classes/unit.py:625 otpme/lib/classes/unit.py:630
 msgid "Need <object_id> or <path> or <realm>+<site>+[unit]+<name>!"
 msgstr ""
 
@@ -11173,20 +11458,21 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4474 otpme/lib/classes/unit.py:860
 #: otpme/lib/classes/unit.py:978 otpme/lib/classes/otpme_object.py:4685
 #: otpme/lib/classes/otpme_object.py:5303 otpme/lib/classes/unit.py:1043
+#: otpme/lib/classes/otpme_object.py:5310 otpme/lib/classes/unit.py:1049
 #, python-format
 msgid "Unable to get parent object: %s: %s"
 msgstr ""
 
 #: otpme/lib/classes/unit.py:600 otpme/lib/classes/unit.py:943
 #: otpme/lib/classes/unit.py:956 otpme/lib/classes/unit.py:1078
-#: otpme/lib/classes/unit.py:1144
+#: otpme/lib/classes/unit.py:1144 otpme/lib/classes/unit.py:1150
 #, python-format
 msgid "Unit '%(unit)s' contains %(object_type)ss: %(objects)s"
 msgstr ""
 
 #: otpme/lib/classes/unit.py:613 otpme/lib/classes/unit.py:956
 #: otpme/lib/classes/unit.py:969 otpme/lib/classes/unit.py:1098
-#: otpme/lib/classes/unit.py:1164
+#: otpme/lib/classes/unit.py:1164 otpme/lib/classes/unit.py:1170
 #, python-format
 msgid ""
 "%s\n"
@@ -11197,6 +11483,7 @@ msgstr ""
 #: otpme/lib/classes/auth_handler.py:2608
 #: otpme/lib/classes/auth_handler.py:2630
 #: otpme/lib/classes/auth_handler.py:2465
+#: otpme/lib/classes/auth_handler.py:2570
 msgid "Authentication request misses DH public key."
 msgstr ""
 
@@ -11308,6 +11595,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:1706 otpme/lib/classes/otpme_object.py:542
 #: otpme/lib/classes/session.py:429 otpme/lib/classes/session.py:472
 #: otpme/lib/classes/otpme_object.py:738 otpme/lib/classes/otpme_object.py:709
+#: otpme/lib/classes/otpme_object.py:713
 #, python-format
 msgid "Failed to acquire lock: %s"
 msgstr ""
@@ -11317,6 +11605,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2210
 #: otpme/lib/classes/otpme_object.py:2398
 #: otpme/lib/classes/otpme_object.py:2823
+#: otpme/lib/classes/otpme_object.py:2827
 #, python-format
 msgid "Unable to get parent object of: %s"
 msgstr ""
@@ -11326,6 +11615,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2217 otpme/lib/classes/token.py:967
 #: otpme/lib/classes/token.py:1031 otpme/lib/classes/otpme_object.py:2405
 #: otpme/lib/classes/otpme_object.py:2830 otpme/lib/classes/token.py:1101
+#: otpme/lib/classes/otpme_object.py:2834
 #, python-format
 msgid "Unknown parent object: %s"
 msgstr ""
@@ -11340,6 +11630,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3029
 #: otpme/lib/classes/otpme_object.py:3443
 #: otpme/lib/classes/otpme_object.py:3709
+#: otpme/lib/classes/otpme_object.py:3446
+#: otpme/lib/classes/otpme_object.py:3712
 msgid "Object does not support tokens."
 msgstr ""
 
@@ -11353,6 +11645,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:7081
 #: otpme/lib/classes/otpme_object.py:3465
 #: otpme/lib/classes/otpme_object.py:7765
+#: otpme/lib/classes/otpme_object.py:3468
+#: otpme/lib/classes/otpme_object.py:7775
 #, python-format
 msgid "Unknown login interface: %s"
 msgstr ""
@@ -11362,6 +11656,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2553
 #: otpme/lib/classes/otpme_object.py:2784
 #: otpme/lib/classes/otpme_object.py:3468
+#: otpme/lib/classes/otpme_object.py:3471
 msgid "You cannot mix positive/negative interface options."
 msgstr ""
 
@@ -11370,6 +11665,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2606
 #: otpme/lib/classes/otpme_object.py:2834
 #: otpme/lib/classes/otpme_object.py:3518
+#: otpme/lib/classes/otpme_object.py:3521
 #, python-format
 msgid "Token is already assigned to %s '%s'."
 msgstr ""
@@ -11379,6 +11675,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2610
 #: otpme/lib/classes/otpme_object.py:2838
 #: otpme/lib/classes/otpme_object.py:3524
+#: otpme/lib/classes/otpme_object.py:3527
 msgid "Would you like to modify current token options? "
 msgstr ""
 
@@ -11387,6 +11684,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2614
 #: otpme/lib/classes/otpme_object.py:2842
 #: otpme/lib/classes/otpme_object.py:3530
+#: otpme/lib/classes/otpme_object.py:3533
 msgid "Would you like to modify current token login interfaces? "
 msgstr ""
 
@@ -11395,6 +11693,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2663
 #: otpme/lib/classes/otpme_object.py:2891
 #: otpme/lib/classes/otpme_object.py:3576
+#: otpme/lib/classes/otpme_object.py:3579
 msgid "Cannot sign without login token."
 msgstr ""
 
@@ -11403,6 +11702,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2757
 #: otpme/lib/classes/otpme_object.py:2985
 #: otpme/lib/classes/otpme_object.py:3670
+#: otpme/lib/classes/otpme_object.py:3673
 #, python-format
 msgid "Using existing signature: %s"
 msgstr ""
@@ -11412,6 +11712,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2766
 #: otpme/lib/classes/otpme_object.py:2994
 #: otpme/lib/classes/otpme_object.py:3679
+#: otpme/lib/classes/otpme_object.py:3682
 msgid "Signing error."
 msgstr ""
 
@@ -11420,6 +11721,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2770
 #: otpme/lib/classes/otpme_object.py:2998
 #: otpme/lib/classes/otpme_object.py:3683
+#: otpme/lib/classes/otpme_object.py:3686
 #, python-format
 msgid "Error signing token: %s"
 msgstr ""
@@ -11429,6 +11731,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2825
 #: otpme/lib/classes/otpme_object.py:3058
 #: otpme/lib/classes/otpme_object.py:3738
+#: otpme/lib/classes/otpme_object.py:3741
 #, python-format
 msgid "Token is not assigned to %s '%s'."
 msgstr ""
@@ -11438,6 +11741,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2854
 #: otpme/lib/classes/otpme_object.py:3087
 #: otpme/lib/classes/otpme_object.py:3767
+#: otpme/lib/classes/otpme_object.py:3770
 #, python-format
 msgid ""
 "Remove signature?\n"
@@ -11456,6 +11760,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3219
 #: otpme/lib/classes/otpme_object.py:3291
 #: otpme/lib/classes/otpme_object.py:3376
+#: otpme/lib/classes/otpme_object.py:3294
+#: otpme/lib/classes/otpme_object.py:3379
 msgid "Object does not support roles."
 msgstr ""
 
@@ -11464,6 +11770,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2947
 #: otpme/lib/classes/otpme_object.py:3158
 #: otpme/lib/classes/otpme_object.py:3320
+#: otpme/lib/classes/otpme_object.py:3323
 #, python-format
 msgid "Role is already a member of %s '%s'."
 msgstr ""
@@ -11473,6 +11780,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2967
 #: otpme/lib/classes/otpme_object.py:3179
 #: otpme/lib/classes/otpme_object.py:3341
+#: otpme/lib/classes/otpme_object.py:3344
 msgid ""
 "WARNING: Please make sure role ACLs do not allow any privilege escalation "
 "when adding a role to a role!"
@@ -11483,6 +11791,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3027
 #: otpme/lib/classes/otpme_object.py:3253
 #: otpme/lib/classes/otpme_object.py:3410
+#: otpme/lib/classes/otpme_object.py:3413
 #, python-format
 msgid "Role is not a member of %s '%s'."
 msgstr ""
@@ -11492,6 +11801,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3320
 #: otpme/lib/classes/otpme_object.py:3571
 #: otpme/lib/classes/otpme_object.py:4090
+#: otpme/lib/classes/otpme_object.py:4097
 #, python-format
 msgid "Policy exception: %s: %s"
 msgstr ""
@@ -11501,6 +11811,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3327
 #: otpme/lib/classes/otpme_object.py:3579
 #: otpme/lib/classes/otpme_object.py:4098
+#: otpme/lib/classes/otpme_object.py:4105
 #, python-format
 msgid "Internal server error running policy: %s"
 msgstr ""
@@ -11523,6 +11834,9 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:7794
 #: otpme/lib/classes/otpme_object.py:7832
 #: otpme/lib/classes/otpme_object.py:7861
+#: otpme/lib/classes/otpme_object.py:7804
+#: otpme/lib/classes/otpme_object.py:7842
+#: otpme/lib/classes/otpme_object.py:7871
 #, python-format
 msgid "Access denied by login interface option: %s: %s"
 msgstr ""
@@ -11542,6 +11856,9 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:7798
 #: otpme/lib/classes/otpme_object.py:7836
 #: otpme/lib/classes/otpme_object.py:7865
+#: otpme/lib/classes/otpme_object.py:7808
+#: otpme/lib/classes/otpme_object.py:7846
+#: otpme/lib/classes/otpme_object.py:7875
 #, python-format
 msgid "Access denied: Login interface not allowed: %s: %s"
 msgstr ""
@@ -11551,6 +11868,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3407
 #: otpme/lib/classes/otpme_object.py:7135
 #: otpme/lib/classes/otpme_object.py:7819
+#: otpme/lib/classes/otpme_object.py:7829
 #, python-format
 msgid "Unable to find accessgroup: %s"
 msgstr ""
@@ -11567,6 +11885,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3502
 #: otpme/lib/classes/otpme_object.py:7201
 #: otpme/lib/classes/otpme_object.py:7885
+#: otpme/lib/classes/otpme_object.py:7895
 #, python-format
 msgid "Login interface valid by: %s: %s"
 msgstr ""
@@ -11576,6 +11895,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4717
 #: otpme/lib/classes/otpme_object.py:4932
 #: otpme/lib/classes/otpme_object.py:5551
+#: otpme/lib/classes/otpme_object.py:5558
 #, python-format
 msgid "Found multiple %(owner_type)s's for UUID '%(owner_uuid)s': %(result)s"
 msgstr ""
@@ -11585,6 +11905,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4733
 #: otpme/lib/classes/otpme_object.py:4948
 #: otpme/lib/classes/otpme_object.py:5567
+#: otpme/lib/classes/otpme_object.py:5574
 msgid "Need at least <owner_type> + <owner_name> or <owner_uuid>"
 msgstr ""
 
@@ -11593,6 +11914,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5203
 #: otpme/lib/classes/otpme_object.py:5411
 #: otpme/lib/classes/otpme_object.py:6082
+#: otpme/lib/classes/otpme_object.py:6089
 #, python-format
 msgid "Error adding unit default ACLs: %s"
 msgstr ""
@@ -11602,6 +11924,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5422
 #: otpme/lib/classes/otpme_object.py:5584
 #: otpme/lib/classes/otpme_object.py:6255
+#: otpme/lib/classes/otpme_object.py:6262
 msgid "<tags> must be list."
 msgstr ""
 
@@ -11610,6 +11933,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5474
 #: otpme/lib/classes/otpme_object.py:5639
 #: otpme/lib/classes/otpme_object.py:6311
+#: otpme/lib/classes/otpme_object.py:6318
 msgid "Got empty signature."
 msgstr ""
 
@@ -11618,6 +11942,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5485
 #: otpme/lib/classes/otpme_object.py:5649
 #: otpme/lib/classes/otpme_object.py:6321
+#: otpme/lib/classes/otpme_object.py:6328
 #, python-format
 msgid "Got invalid signature: %s"
 msgstr ""
@@ -11627,6 +11952,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5517
 #: otpme/lib/classes/otpme_object.py:5688
 #: otpme/lib/classes/otpme_object.py:6360
+#: otpme/lib/classes/otpme_object.py:6367
 #, python-format
 msgid "Invalid signature type: %s"
 msgstr ""
@@ -11636,6 +11962,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5564
 #: otpme/lib/classes/otpme_object.py:5735
 #: otpme/lib/classes/otpme_object.py:6407
+#: otpme/lib/classes/otpme_object.py:6414
 #, python-format
 msgid "Failed to revoke old signature: %s"
 msgstr ""
@@ -11645,6 +11972,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5665
 #: otpme/lib/classes/otpme_object.py:5836
 #: otpme/lib/classes/otpme_object.py:6508
+#: otpme/lib/classes/otpme_object.py:6515
 #, python-format
 msgid "No signature with given tags found: %s"
 msgstr ""
@@ -11654,6 +11982,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5668
 #: otpme/lib/classes/otpme_object.py:5839
 #: otpme/lib/classes/otpme_object.py:6511
+#: otpme/lib/classes/otpme_object.py:6518
 msgid "No signature without tags found."
 msgstr ""
 
@@ -11662,6 +11991,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6039
 #: otpme/lib/classes/otpme_object.py:6190
 #: otpme/lib/classes/otpme_object.py:6862
+#: otpme/lib/classes/otpme_object.py:6869
 #, python-format
 msgid "Cannot run policies without parent object: %s"
 msgstr ""
@@ -11674,6 +12004,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:7338
 #: otpme/lib/classes/otpme_object.py:6886
 #: otpme/lib/classes/otpme_object.py:8018 otpme/lib/classes/user.py:3910
+#: otpme/lib/classes/otpme_object.py:6894
+#: otpme/lib/classes/otpme_object.py:8028 otpme/lib/classes/user.py:4037
 #, python-format
 msgid "%s%s already exists."
 msgstr ""
@@ -11683,6 +12015,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6068
 #: otpme/lib/classes/otpme_object.py:6223
 #: otpme/lib/classes/otpme_object.py:6895
+#: otpme/lib/classes/otpme_object.py:6903
 #, python-format
 msgid "Cannot verify ACLs without parent object: %s"
 msgstr ""
@@ -11692,6 +12025,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6138
 #: otpme/lib/classes/otpme_object.py:6319
 #: otpme/lib/classes/otpme_object.py:6995
+#: otpme/lib/classes/otpme_object.py:7003
 msgid "Creator must be a UUID."
 msgstr ""
 
@@ -11700,6 +12034,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6252
 #: otpme/lib/classes/otpme_object.py:6520
 #: otpme/lib/classes/otpme_object.py:7190
+#: otpme/lib/classes/otpme_object.py:7200
 #, python-format
 msgid "New name matches current name: %s"
 msgstr ""
@@ -11709,6 +12044,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6257
 #: otpme/lib/classes/otpme_object.py:6525
 #: otpme/lib/classes/otpme_object.py:7195
+#: otpme/lib/classes/otpme_object.py:7205
 #, python-format
 msgid "Cannot rename. %s%s '%s' exists."
 msgstr ""
@@ -11718,6 +12054,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6746
 #: otpme/lib/classes/otpme_object.py:7270
 #: otpme/lib/classes/otpme_object.py:7950
+#: otpme/lib/classes/otpme_object.py:7960
 #, python-format
 msgid "Unknown realm '%s'."
 msgstr ""
@@ -11786,28 +12123,28 @@ msgid "Unknown encryption: %s"
 msgstr ""
 
 #: otpme/lib/stuff.py:1710 otpme/lib/stuff.py:1824 otpme/lib/stuff.py:1657
-#: otpme/lib/stuff.py:1419 otpme/lib/stuff.py:1426
+#: otpme/lib/stuff.py:1419 otpme/lib/stuff.py:1426 otpme/lib/stuff.py:1435
 msgid "Need 'key_script_path' when 'key_script' is given."
 msgstr ""
 
 #: otpme/lib/stuff.py:1737 otpme/lib/stuff.py:1851 otpme/lib/stuff.py:1684
-#: otpme/lib/stuff.py:1446 otpme/lib/stuff.py:1453
+#: otpme/lib/stuff.py:1446 otpme/lib/stuff.py:1453 otpme/lib/stuff.py:1462
 msgid "Key script verification failed: No key script signatures found."
 msgstr ""
 
 #: otpme/lib/stuff.py:1749 otpme/lib/stuff.py:1863 otpme/lib/stuff.py:1696
-#: otpme/lib/stuff.py:1458 otpme/lib/stuff.py:1465
+#: otpme/lib/stuff.py:1458 otpme/lib/stuff.py:1465 otpme/lib/stuff.py:1474
 #, python-format
 msgid "No valid key script signatures found: %s"
 msgstr ""
 
 #: otpme/lib/stuff.py:1774 otpme/lib/stuff.py:1888 otpme/lib/stuff.py:1720
-#: otpme/lib/stuff.py:1482 otpme/lib/stuff.py:1489
+#: otpme/lib/stuff.py:1482 otpme/lib/stuff.py:1489 otpme/lib/stuff.py:1498
 msgid "Need 'key_script_uuid' when 'key_script' is given."
 msgstr ""
 
 #: otpme/lib/stuff.py:1791 otpme/lib/stuff.py:1905 otpme/lib/stuff.py:1737
-#: otpme/lib/stuff.py:1499 otpme/lib/stuff.py:1506
+#: otpme/lib/stuff.py:1499 otpme/lib/stuff.py:1506 otpme/lib/stuff.py:1515
 msgid "User does not have a key script configured."
 msgstr ""
 
@@ -11834,6 +12171,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:365
 #: otpme/lib/extensions/ldif_handler.py:358
 #: otpme/lib/extensions/ldif_handler.py:370
+#: otpme/lib/extensions/ldif_handler.py:396
 #, python-format
 msgid "Object is missing the following attributes: %s: %s: %s"
 msgstr ""
@@ -11842,6 +12180,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:604
 #: otpme/lib/extensions/ldif_handler.py:594
 #: otpme/lib/extensions/ldif_handler.py:647
+#: otpme/lib/extensions/ldif_handler.py:684
 #, python-format
 msgid "Cannot add unknown attribute: %s: %s"
 msgstr ""
@@ -11850,6 +12189,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:633
 #: otpme/lib/extensions/ldif_handler.py:620
 #: otpme/lib/extensions/ldif_handler.py:674
+#: otpme/lib/extensions/ldif_handler.py:711
 #, python-format
 msgid "Missing value for attribute: %s: %s: %s"
 msgstr ""
@@ -11858,6 +12198,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:716
 #: otpme/lib/extensions/ldif_handler.py:702
 #: otpme/lib/extensions/ldif_handler.py:756
+#: otpme/lib/extensions/ldif_handler.py:793
 #, python-format
 msgid "Cannot delete unknown attribute: %s: %s"
 msgstr ""
@@ -11866,6 +12207,7 @@ msgstr ""
 #: otpme/lib/extensions/ldif_handler.py:781
 #: otpme/lib/extensions/ldif_handler.py:765
 #: otpme/lib/extensions/ldif_handler.py:819
+#: otpme/lib/extensions/ldif_handler.py:856
 #, python-format
 msgid "Unknown attribute value: %s: %s"
 msgstr ""
@@ -11986,6 +12328,7 @@ msgstr ""
 #: otpme/lib/daemon/mgmtd.py:60 otpme/lib/daemon/ldapd.py:138
 #: otpme/lib/daemon/httpd.py:148 otpme/lib/daemon/syncd.py:64
 #: otpme/lib/daemon/clusterd.py:2752 otpme/lib/daemon/joind.py:64
+#: otpme/lib/daemon/hostd.py:1561 otpme/lib/daemon/httpd.py:180
 #, python-format
 msgid "Error receiving daemon message: %s"
 msgstr ""
@@ -11997,12 +12340,14 @@ msgstr ""
 
 #: otpme/lib/daemon/controld.py:121 otpme/lib/daemon/controld.py:132
 #: otpme/lib/daemon/controld.py:356 otpme/lib/daemon/controld.py:426
+#: otpme/lib/daemon/controld.py:467
 #, python-format
 msgid "Unable to configure floating IP for site: %s: %s"
 msgstr ""
 
 #: otpme/lib/daemon/controld.py:138 otpme/lib/daemon/controld.py:148
 #: otpme/lib/daemon/controld.py:372 otpme/lib/daemon/controld.py:442
+#: otpme/lib/daemon/controld.py:483
 #, python-format
 msgid "Unable to deconfigure floating IP for site: %s: %s"
 msgstr ""
@@ -12074,6 +12419,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:656 otpme/lib/classes/otpme_object.py:1056
 #: otpme/lib/classes/otpme_object.py:1193
 #: otpme/lib/classes/otpme_object.py:1586
+#: otpme/lib/classes/otpme_object.py:1588
 #, python-format
 msgid ""
 "Cannot update. Got wrong value for '%(attribute)s': %(object_id)s: Wanted: "
@@ -12083,6 +12429,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:727 otpme/lib/classes/otpme_object.py:1134
 #: otpme/lib/classes/otpme_object.py:1264
 #: otpme/lib/classes/otpme_object.py:1659
+#: otpme/lib/classes/otpme_object.py:1661
 #, python-format
 msgid ""
 "Cannot load. Got wrong value for '%(attribute)s': %(object_id)s: Wanted: "
@@ -12098,6 +12445,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:1635
 #: otpme/lib/classes/otpme_object.py:1799
 #: otpme/lib/classes/otpme_object.py:2179
+#: otpme/lib/classes/otpme_object.py:2183
 #, python-format
 msgid "Failed to acquire lock of new OID: %s: %s"
 msgstr ""
@@ -12111,7 +12459,7 @@ msgid "Unable to load key from file: %s"
 msgstr ""
 
 #: otpme/lib/otpme_config.py:854 otpme/lib/otpme_config.py:896
-#: otpme/lib/otpme_config.py:930
+#: otpme/lib/otpme_config.py:930 otpme/lib/otpme_config.py:935
 #, python-format
 msgid "Failed to load disk encryption module: %s"
 msgstr ""
@@ -12184,12 +12532,14 @@ msgid "Failed to load encryption module: %s"
 msgstr ""
 
 #: otpme/lib/stuff.py:1535 otpme/lib/stuff.py:1283 otpme/lib/stuff.py:1288
+#: otpme/lib/stuff.py:1297
 msgid "Timeout waiting for agent socket to appear."
 msgstr ""
 
 #: otpme/lib/extensions/ldif_handler.py:765
 #: otpme/lib/extensions/ldif_handler.py:753
 #: otpme/lib/extensions/ldif_handler.py:807
+#: otpme/lib/extensions/ldif_handler.py:844
 #, python-format
 msgid "Cannot remove single value attribute '%s' needed by object class: %s"
 msgstr ""
@@ -12205,12 +12555,12 @@ msgid "Calculating timing results"
 msgstr ""
 
 #: otpme/lib/socket/handler.py:134 otpme/lib/socket/handler.py:133
-#: otpme/lib/socket/handler.py:132
+#: otpme/lib/socket/handler.py:132 otpme/lib/socket/handler.py:131
 msgid "Socket protocol negotiation ended by peer."
 msgstr ""
 
 #: otpme/lib/socket/handler.py:138 otpme/lib/socket/handler.py:137
-#: otpme/lib/socket/handler.py:136
+#: otpme/lib/socket/handler.py:136 otpme/lib/socket/handler.py:135
 #, python-format
 msgid "Unknown socket protocol response from peer: %s"
 msgstr ""
@@ -12272,11 +12622,13 @@ msgid "Error reading token counter file: %s"
 msgstr ""
 
 #: otpme/lib/otpme_config.py:2419 otpme/lib/otpme_config.py:2512
+#: otpme/lib/otpme_config.py:2535
 #, python-format
 msgid "Unable to read realm data file: %s"
 msgstr ""
 
 #: otpme/lib/otpme_config.py:2448 otpme/lib/otpme_config.py:2542
+#: otpme/lib/otpme_config.py:2565
 #, python-format
 msgid "Unable to save realm data: %s"
 msgstr ""
@@ -12287,16 +12639,19 @@ msgid "Error: Unable to get data len from queue request: %s"
 msgstr ""
 
 #: otpme/lib/classes/group.py:677 otpme/lib/classes/group.py:742
+#: otpme/lib/classes/group.py:749
 #, python-format
 msgid "User already added to group '%s'."
 msgstr ""
 
 #: otpme/lib/classes/group.py:694 otpme/lib/classes/group.py:759
+#: otpme/lib/classes/group.py:766
 #, python-format
 msgid "User not in group '%s'."
 msgstr ""
 
 #: otpme/lib/classes/user.py:3765 otpme/lib/classes/user.py:4234
+#: otpme/lib/classes/user.py:4386
 #, python-format
 msgid ""
 "User has tokens: %(token_list)s\n"
@@ -12314,7 +12669,7 @@ msgstr ""
 
 #: otpme/lib/classes/token.py:3004 otpme/lib/classes/resolver.py:1393
 #: otpme/lib/classes/unit.py:1092 otpme/lib/classes/unit.py:1158
-#: otpme/lib/classes/token.py:3189
+#: otpme/lib/classes/token.py:3189 otpme/lib/classes/unit.py:1164
 #, python-format
 msgid ""
 "%s\n"
@@ -12324,16 +12679,19 @@ msgstr ""
 #: otpme/lib/classes/token.py:3015 otpme/lib/classes/role.py:953
 #: otpme/lib/classes/unit.py:1105 otpme/lib/classes/unit.py:1171
 #: otpme/lib/classes/role.py:997 otpme/lib/classes/token.py:3200
+#: otpme/lib/classes/unit.py:1177 otpme/lib/classes/role.py:1004
 #, python-format
 msgid "Please type '%s' to delete object: "
 msgstr ""
 
 #: otpme/lib/classes/site.py:1569 otpme/lib/classes/site.py:1964
+#: otpme/lib/classes/site.py:1975
 #, python-format
 msgid "Adding %s template: %s"
 msgstr ""
 
 #: otpme/lib/classes/site.py:2026 otpme/lib/classes/site.py:2425
+#: otpme/lib/classes/site.py:2441
 #, python-format
 msgid "Problem adding site users group '%s'."
 msgstr ""
@@ -12361,6 +12719,7 @@ msgid "Input format for --stdin-pass is: old_pass"
 msgstr ""
 
 #: otpme/lib/classes/role.py:941 otpme/lib/classes/role.py:985
+#: otpme/lib/classes/role.py:992
 #, python-format
 msgid "%sPlease type '%s' to delete object: "
 msgstr ""
@@ -12400,34 +12759,41 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3246
 #: otpme/lib/classes/otpme_object.py:3314
 #: otpme/lib/classes/otpme_object.py:3403
+#: otpme/lib/classes/otpme_object.py:3317
+#: otpme/lib/classes/otpme_object.py:3406
 #, python-format
 msgid "Unknown role: %s/%s"
 msgstr ""
 
 #: otpme/lib/classes/otpme_object.py:4016
 #: otpme/lib/classes/otpme_object.py:4659
+#: otpme/lib/classes/otpme_object.py:4666
 #, python-format
 msgid "Unable to find extension to add object class to object: %s"
 msgstr ""
 
 #: otpme/lib/classes/otpme_object.py:5654
 #: otpme/lib/classes/otpme_object.py:6326
+#: otpme/lib/classes/otpme_object.py:6333
 #, python-format
 msgid "Failed to verify signature: %s"
 msgstr ""
 
 #: otpme/lib/classes/otpme_object.py:5656
 #: otpme/lib/classes/otpme_object.py:6328
+#: otpme/lib/classes/otpme_object.py:6335
 msgid "Failed to verify signature"
 msgstr ""
 
 #: otpme/lib/classes/otpme_object.py:7028
 #: otpme/lib/classes/otpme_object.py:7709
+#: otpme/lib/classes/otpme_object.py:7719
 msgid "Logins already limited."
 msgstr ""
 
 #: otpme/lib/classes/otpme_object.py:7049
 #: otpme/lib/classes/otpme_object.py:7730
+#: otpme/lib/classes/otpme_object.py:7740
 msgid "Logins already unlimited."
 msgstr ""
 
@@ -12485,6 +12851,7 @@ msgid "Error enabling %s: %s"
 msgstr ""
 
 #: otpme/lib/stuff.py:1670 otpme/lib/stuff.py:1671 otpme/lib/stuff.py:1711
+#: otpme/lib/stuff.py:1680 otpme/lib/stuff.py:1720
 #, python-format
 msgid "Error getting site address from hostd: %s"
 msgstr ""
@@ -12499,6 +12866,7 @@ msgid "%s disabled by policy: %s: %s"
 msgstr ""
 
 #: otpme/lib/extensions/ldif_handler.py:594
+#: otpme/lib/extensions/ldif_handler.py:631
 #, python-format
 msgid "Cannot modify unknown attribute: %s: %s"
 msgstr ""
@@ -12534,46 +12902,52 @@ msgstr ""
 
 #: otpme/lib/classes/otpme_object.py:3192
 #: otpme/lib/classes/otpme_object.py:3241
+#: otpme/lib/classes/otpme_object.py:3195
+#: otpme/lib/classes/otpme_object.py:3244
 msgid "Object does not support users."
 msgstr ""
 
 #: otpme/lib/classes/otpme_object.py:3262
+#: otpme/lib/classes/otpme_object.py:3265
 #, python-format
 msgid "User is not assigned to %s '%s'."
 msgstr ""
 
 #: otpme/lib/classes/otpme_object.py:4512
+#: otpme/lib/classes/otpme_object.py:4519
 #, python-format
 msgid ""
 "Using extension '%(ext)s' to modify attribute '%(attribute)s' of object."
 msgstr ""
 
 #: otpme/lib/classes/otpme_object.py:5717
+#: otpme/lib/classes/otpme_object.py:5724
 #, python-format
 msgid "%s auto-disabled: %s"
 msgstr ""
 
 #: otpme/lib/classes/otpme_object.py:5720
+#: otpme/lib/classes/otpme_object.py:5727
 #, python-format
 msgid "Cannot auto-disable object: %s: %s"
 msgstr ""
 
-#: otpme/lib/classes/user.py:3054
+#: otpme/lib/classes/user.py:3054 otpme/lib/classes/user.py:3174
 #, python-format
 msgid "Unable to find token class to deploy hardware token: %s"
 msgstr ""
 
-#: otpme/lib/classes/user.py:3069
+#: otpme/lib/classes/user.py:3069 otpme/lib/classes/user.py:3189
 #, python-format
 msgid "Existing token '%s (%s)' does not support hardware token type: %s"
 msgstr ""
 
-#: otpme/lib/classes/user.py:4251
+#: otpme/lib/classes/user.py:4251 otpme/lib/classes/user.py:4403
 #, python-format
 msgid "Please type '%(user_name)s' to delete object: "
 msgstr ""
 
-#: otpme/lib/classes/otpme_agent.py:1123
+#: otpme/lib/classes/otpme_agent.py:1123 otpme/lib/classes/otpme_agent.py:1122
 #, python-format
 msgid "Error getting daemon connection: %s: %s"
 msgstr ""
@@ -12657,4 +13031,25 @@ msgstr ""
 #: otpme/lib/smartcard/fido2/fido2.py:171
 #, python-format
 msgid "Error authenticating fido2 token: %s"
+msgstr ""
+
+#: otpme/lib/extensions/ldif_handler.py:82
+#, python-format
+msgid "Extension %s: Error adding attribute: %s"
+msgstr ""
+
+#: otpme/lib/classes/client.py:1088
+msgid "SSO already enabled."
+msgstr ""
+
+#: otpme/lib/classes/client.py:1121
+msgid "SSO already disabled."
+msgstr ""
+
+#: otpme/lib/classes/client.py:1190
+msgid "SSO popup already enabled."
+msgstr ""
+
+#: otpme/lib/classes/client.py:1222
+msgid "SSO popup already disabled."
 msgstr ""

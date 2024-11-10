@@ -759,6 +759,7 @@ class Unit(OTPmeObject):
                     if inherit_acl:
                         o_inherit_method = getattr(o, inherit_method)
                         add_status = o_inherit_method(acl=acl,
+                                        object_types=object_types,
                                         verify_acls=verify_acls,
                                         verbose_level=verbose_level,
                                         callback=callback)

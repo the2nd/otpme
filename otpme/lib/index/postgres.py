@@ -582,6 +582,20 @@ def get_db_engine():
                     "attempting to check out in pid %s" % (connection_record.info["pid"], pid)
                 )
 
+        #@event.listens_for(engine, "before_cursor_execute")
+        #def before_cursor_execute(conn, cursor, statement,
+        #                        parameters, context, executemany):
+        #    conn.info.setdefault('query_start_time', []).append(time.time())
+        #    #print("Start Query: %s" % statement)
+
+        #@event.listens_for(engine, "after_cursor_execute")
+        #def after_cursor_execute(conn, cursor, statement,
+	    #                        parameters, context, executemany):
+        #    total = time.time() - conn.info['query_start_time'].pop(-1)
+        #    if total >= 0.01:
+        #        print(statement)
+        #        print("Total Time: %f" % total)
+
         # Create dogpile cache regions.
         sessionmaker_kwargs = {'bind':engine}
         if config.dogpile_caching:
