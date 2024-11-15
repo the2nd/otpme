@@ -285,6 +285,16 @@ commands = {
                     },
                 },
             },
+    'list_default_group_users'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'list_default_group_users',
+                    'oargs'             : ['return_type'],
+                    'dargs'             : {'return_type':'name'},
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'list_roles'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -782,6 +792,36 @@ class Group(OTPmeObject):
         self.del_index('user', user_uuid)
         return self._cache(callback=callback)
 
+    @object_lock()
+    def list_default_group_users(self, return_type="name", verbose_level=0,
+        _caller="API", callback=default_callback, **kwargs):
+        """ List default group users. """
+        exception = None
+        if not return_type in [ 'uuid', 'oid', 'name', 'read_oid', 'full_oid']:
+            exception = "Unknown return type: %s" % return_type
+        if exception:
+            if _caller != "API":
+                return callback.error(exception)
+            else:
+                raise Exception(exception)
+        result = []
+        user_uuids = self.default_group_users.copy()
+        if user_uuids:
+            # Search users (return attribute) via user UUID.
+            search_attrs = {}
+            result = backend.search(object_type="user",
+                                    attribute="uuid",
+                                    values=user_uuids,
+                                    attributes=search_attrs,
+                                    return_type=return_type)
+            result.sort()
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+
+        return callback.ok(result)
+
     @object_lock(full_lock=True)
     @backend.transaction
     def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
@@ -978,10 +1018,8 @@ class Group(OTPmeObject):
             self.roles.remove(i)
 
         if not object_changed:
-            msg = None
-            if verbose_level > 0:
-                msg = (_("No orphan objects found for %s: %s")
-                        % (self.type, self.name))
+            msg = (_("No orphan objects found for %s: %s")
+                    % (self.type, self.name))
             return callback.ok(msg)
 
         return self._cache(callback=callback)

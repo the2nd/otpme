@@ -80,6 +80,8 @@ class IndexObject(object):
     checksum = Column(String(128), unique=False, nullable=False, index=False)
     # Objects sync checksum.
     sync_checksum = Column(String(128), unique=False, nullable=False, index=False)
+    # Last index ID of index object.
+    last_index_id = Column(String(128), unique=False, nullable=True, index=False)
     # Create timestamp of index object.
     created_at = Column(DateTime, default=datetime.utcnow, index=False)
     # Indicates this is a template object.

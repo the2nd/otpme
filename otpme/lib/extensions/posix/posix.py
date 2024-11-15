@@ -113,7 +113,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
                             'group'  : [ 'cn' ],
                         }
 
-        self.rename_no_update = [ 'uidNumber', 'gidNumber' ]
+        self.rename_no_update = [ 'uidNumber', 'gidNumber', 'memberUid' ]
 
         self.acls = []
         self.value_acls = {}

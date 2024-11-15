@@ -569,7 +569,6 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.pickable = True
         self.cache_expire = 30
         self.sub_type = None
-        self.index_journal = []
         self.incremental_updates = []
         self.list_attributes = []
         self.dict_attributes = []
@@ -594,6 +593,8 @@ class OTPmeBaseObject(OTPmeLockObject):
         self._sub_sync_fields = {}
         self._base_sync_fields = {}
         self.object_config = {}
+        self.index_journal = []
+        self.index_journal_archive = []
         self.no_transaction = no_transaction
         self.kwargs_object_config = object_config
         # Object version.
@@ -1511,6 +1512,18 @@ class OTPmeBaseObject(OTPmeLockObject):
         if self.index_journal:
             index_journal = copy.deepcopy(self.index_journal)
         self.index_journal = []
+        self.index_journal_archive += index_journal
+        try:
+            last_journal_entry = index_journal[-1]
+        except IndexError:
+            last_journal_entry = None
+        max_journal_archive_entries = 250
+        if last_journal_entry:
+            journal_id_pos = self.index_journal_archive.index(last_journal_entry)
+            journal_archive_del_pos = len(self.index_journal_archive) - max_journal_archive_entries
+            if journal_id_pos <= journal_archive_del_pos:
+                max_journal_archive_entries = len(self.index_journal_archive) - journal_id_pos
+        self.index_journal_archive = self.index_journal_archive[-max_journal_archive_entries:]
 
         # Update object config from variables.
         self.update_object_config()
@@ -1574,7 +1587,8 @@ class OTPmeBaseObject(OTPmeLockObject):
         if [key, value] in self.index:
             return
         self.index.append([key, value])
-        self.index_journal.append(('add', key, value))
+        now = time.time_ns()
+        self.index_journal.append([now, 'add', key, value])
 
     def del_index(self, key, value=None):
         """ Remove attribute from object index. """
@@ -1583,7 +1597,8 @@ class OTPmeBaseObject(OTPmeLockObject):
                 self.index.remove([key, value])
             except ValueError:
                 pass
-            self.index_journal.append(('del', key, value))
+            now = time.time_ns()
+            self.index_journal.append([now, 'del', key, value])
             return
         for x in list(self.index):
             x_key = x[0]
@@ -1591,7 +1606,8 @@ class OTPmeBaseObject(OTPmeLockObject):
                 continue
             self.index.remove(x)
             x_val = x[1]
-            self.index_journal.append(('del', x_key, x_val))
+            now = time.time_ns()
+            self.index_journal.append([now, 'del', x_key, x_val])
 
     def add(self, uuid=None, verbose_level=0, callback=default_callback,
         write=True, **kwargs):
@@ -1735,6 +1751,7 @@ class OTPmeObject(OTPmeBaseObject):
                             "LDIF",
                             "LDIF_ATTRIBUTES",
                             "EXTENSION_ATTRIBUTES",
+                            "INDEX_JOURNAL_ARCHIVE",
                             "POLICIES",
                             "POLICY_OPTIONS",
                             "CONFIG_PARAMS",
@@ -1764,6 +1781,7 @@ class OTPmeObject(OTPmeBaseObject):
                             "LDIF",
                             "LDIF_ATTRIBUTES",
                             "EXTENSION_ATTRIBUTES",
+                            "INDEX_JOURNAL_ARCHIVE",
                             "ENABLED",
                             "UNUSED_DISABLE",
                             "AUTO_DISABLE",
@@ -2190,6 +2208,12 @@ class OTPmeObject(OTPmeBaseObject):
             'EXTENSION_ATTRIBUTES'      : {
                                             'var_name'      : 'extension_attributes',
                                             'type'          : dict,
+                                            'required'      : False,
+                                        },
+
+            'INDEX_JOURNAL_ARCHIVE'      : {
+                                            'var_name'      : 'index_journal_archive',
+                                            'type'          : list,
                                             'required'      : False,
                                         },
 
@@ -6841,8 +6865,7 @@ class OTPmeObject(OTPmeBaseObject):
                                 callback=callback,
                                 verbose_level=verbose_level)
             except Exception as e:
-                callback.error(str(e))
-                config.raise_exception()
+                return callback.error(str(e))
 
         if template:
             # Add object classes from template.
@@ -7180,8 +7203,9 @@ class OTPmeObject(OTPmeBaseObject):
         signers_list = []
         for i in self.signatures:
             user_oid = backend.get_oid(object_type="user", uuid=i)
-            if not user_oid:
-                signers_list.append(i)
+            if user_oid:
+                continue
+            signers_list.append(i)
         return signers_list
 
     @check_acls(acls=['remove:orphans'])

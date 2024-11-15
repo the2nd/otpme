@@ -1568,19 +1568,14 @@ class OTPmeClient(OTPmeClientBase):
 
     def close(self):
         """ Close our connection. """
-        if not self.connected:
-            return
-        # Set status.
-        self.connected = False
-        # In API mode we have no connection
-        if config.use_api:
-            return True
         # Close redirect connection.
         if self.redirect_connection:
             self.redirect_connection.close()
         # Close connection.
         if self.connection:
             self.connection.close()
+        # Set status.
+        self.connected = False
 
     def cleanup(self):
         """ Prepare a clean exit. """

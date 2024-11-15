@@ -443,7 +443,7 @@ cmd_help = {
 
 
     'add_trust'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-site add_trust [-r -a] {site} {trusted_site}',
+                    '_cmd_usage_help' : 'Usage: otpme-site add_trust {site} {trusted_site}',
                     'cmd'   :   '<|object|> <site_name>',
                     '_help' :   {
                                     'cmd'                   : 'Add trust relationship',

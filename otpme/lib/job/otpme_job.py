@@ -188,37 +188,42 @@ class OTPmeJob(object):
         # Set job start time.
         self.start_time = time.time()
 
+        if config.debug_level("debug_profile") > 0:
+            import pstats
+            import cProfile
+            profiler = cProfile.Profile()
+            profiler.enable()
+
         # Start the job.
-        if job_status:
-            # For methods with object lock decorator we force not to
-            # wait for an existing lock.
-            try:
-                self.target_method.object_lock
-                self.args['lock_timeout'] = self.lock_timeout
-                self.args['lock_wait_timeout'] = self.lock_wait_timeout
-                self.args['lock_reload_on_change'] = self.reload_objects_on_change
-            except:
-                pass
-            try:
-                job_status = self.target_method(**self.args)
-                # If the job return failure try to get its last error.
-                if job_status is False:
-                    try:
-                        job_error = self.exit_info['last_error']
-                    except:
-                        pass
-            except OTPmeJobException as e:
-                job_error = str(e)
-                self.logger.warning(job_error)
-                job_reply.append(job_error)
-                job_status = False
-            except Exception as e:
-                job_error = ("Job error running command method: %s: %s"
-                                % (self.target_method.__name__, e))
-                self.logger.warning(job_error)
-                job_log.append(job_error)
-                job_status = False
-                config.raise_exception()
+        # For methods with object lock decorator we force not to
+        # wait for an existing lock.
+        try:
+            self.target_method.object_lock
+            self.args['lock_timeout'] = self.lock_timeout
+            self.args['lock_wait_timeout'] = self.lock_wait_timeout
+            self.args['lock_reload_on_change'] = self.reload_objects_on_change
+        except:
+            pass
+        try:
+            job_status = self.target_method(**self.args)
+            # If the job return failure try to get its last error.
+            if job_status is False:
+                try:
+                    job_error = self.exit_info['last_error']
+                except:
+                    pass
+        except OTPmeJobException as e:
+            job_error = str(e)
+            self.logger.warning(job_error)
+            job_reply.append(job_error)
+            job_status = False
+        except Exception as e:
+            job_error = ("Job error running command method: %s: %s"
+                            % (self.target_method.__name__, e))
+            self.logger.warning(job_error)
+            job_log.append(job_error)
+            job_status = False
+            config.raise_exception()
 
         if job_status:
             # Write changed objects. This also happens on cache.flush() but
@@ -261,6 +266,12 @@ class OTPmeJob(object):
         if config.print_timing_results and config.daemon_mode:
             from otpme.lib import debug
             debug.print_timing_result(print_status=True)
+
+        if config.debug_level("debug_profile") > 0:
+            profiler.disable()
+            sort_by = config.debug_profile_sort
+            stats = pstats.Stats(profiler).sort_stats(sort_by)
+            stats.print_stats(10)
 
         # Do some cleanup.
         if self.start_process:

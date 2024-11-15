@@ -5066,6 +5066,8 @@ class CommandHandler(object):
         for node in result:
             if not node.enabled:
                 continue
+            msg = "Reading cluster data from node: %s" % node.name
+            print(msg)
             try:
                 socket_uri = hostd_conn.get_daemon_socket("clusterd", node.name)
             except Exception as e:

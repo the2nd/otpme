@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-#import time
+import time
 #import pprint
 import collections
 
@@ -425,9 +425,10 @@ def read(object_id, parameters=None, no_lock=False, use_index=True):
 
 #@oid_lock(args_oid_pos=[0], write=True)
 def write(object_id, object_config, index_journal=None,
-    full_index_update=False, no_lock=False, commit_files=None,
-    full_data_update=None, cluster=False, no_index_writes=False,
-    parent_dir_check=True, no_transaction=False, transaction_replay=False):
+    full_index_update=False, index_auto_update=False, no_lock=False,
+    commit_files=None, full_data_update=None, cluster=False,
+    no_index_writes=False, parent_dir_check=True,
+    no_transaction=False, transaction_replay=False):
     """ Write object config and update config cache. """
     from otpme.lib.backend import outdate_object
     if object_id.full_oid is None:
@@ -472,6 +473,7 @@ def write(object_id, object_config, index_journal=None,
                                 object_config=object_config,
                                 index_journal=index_journal,
                                 full_index_update=full_index_update,
+                                index_auto_update=index_auto_update,
                                 cluster=cluster)
         # Get write transaction.
         write_transaction = FileTransaction(transaction_name,
@@ -559,6 +561,7 @@ def write(object_id, object_config, index_journal=None,
                 object_config=object_config,
                 index_journal=index_journal,
                 full_index_update=full_index_update,
+                index_auto_update=index_auto_update,
                 no_transaction=no_transaction)
 
     # If we got child objects to modify we have to check if there is a active
@@ -1759,7 +1762,7 @@ def index_dump(object_id=None, uuid=None, session=None, **kwargs):
 @handle_transaction
 #@oid_lock(args_oid_pos=[0], write=True)
 def index_add(object_id, object_paths=None, object_config=None, uuid=None,
-    checksum=None, sync_checksum=None, index_journal=[],
+    checksum=None, sync_checksum=None, index_journal=[], index_auto_update=False,
     full_index_update=False, object_acls=[], autocommit=True,
     no_lock=False, session=None, **kwargs):
     """ Add object to search index. """
@@ -1771,6 +1774,9 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
         raise OTPmeException(msg)
     if full_index_update and not object_config:
         msg = "Need <object_config> on full_index_update=True."
+        raise OTPmeException(msg)
+    if full_index_update and index_auto_update:
+        msg = "Cannot use <full_index_update> with <index_auto_update>."
         raise OTPmeException(msg)
 
     # Gen read OID of object.
@@ -1891,6 +1897,21 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
 
     if not index_object:
         full_index_update = True
+        index_auto_update = False
+
+    if index_auto_update and index_object:
+        last_index_id = None
+        if index_object.last_index_id:
+            last_index_id = json.loads(index_object.last_index_id)
+        if last_index_id and last_index_id in index_journal:
+            index_auto_update_start_pos = index_journal.index(last_index_id) + 1
+            index_journal = index_journal.copy()
+            index_journal = index_journal[index_auto_update_start_pos:]
+        else:
+            if last_index_id:
+                msg = "Index journal out of sync. Will do a full index update: %s" % object_id
+                logger.info(msg)
+            full_index_update = True
 
     # Get object attributes from index DB.
     if full_index_update:
@@ -1961,7 +1982,8 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
     elif full_index_update:
         index_journal = []
         for attr, value in object_index:
-            index_journal.append(("add", attr, value))
+            now = time.time_ns()
+            index_journal.append((now, "add", attr, value))
 
     # If the object exists get its ACLs from index DB.
     object_acls = None
@@ -1974,9 +1996,9 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
     attributes = []
     if index_journal:
         for x_entry in index_journal:
-            x_entry_type = x_entry[0]
-            x_attribute = x_entry[1]
-            x_value = x_entry[2]
+            x_entry_type = x_entry[1]
+            x_attribute = x_entry[2]
+            x_value = x_entry[3]
 
             # Add attributes.
             if x_entry_type == "add":
@@ -2004,6 +2026,9 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
                 result = q.all()
                 for a in result:
                     session.delete(a)
+        if index_object:
+            last_index_id = json.dumps(index_journal[-1])
+            index_object.last_index_id = last_index_id
 
     # Make sure we remove orphan ACLs of an existing index object.
     clear_acl_cache = False

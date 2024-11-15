@@ -1559,6 +1559,16 @@ class User(OTPmeObject):
         """ Change users group. """
         # Remove user from current group.
         current_group_uuid = None
+        # Get new group.
+        result = backend.search(object_type="group",
+                                attribute="uuid",
+                                value=group_uuid,
+                                return_type="instance")
+        if not result:
+            msg = "Unknown group: %s" % group_uuid
+            raise UnknownObject(msg)
+        new_group = result[0]
+        # Check current group.
         if self._group_uuid:
             current_group_uuid = self._group_uuid
         else:
@@ -1568,30 +1578,25 @@ class User(OTPmeObject):
                                     return_type="uuid")
             if result:
                 current_group_uuid = result[0]
+        if current_group_uuid == group_uuid:
+            msg = "User already in group: %s" % new_group
+            return callback.error(msg)
+        msg = "Setting group: %s" % new_group.name
         if current_group_uuid:
             result = backend.search(object_type="group",
                                     attribute="uuid",
                                     value=current_group_uuid,
                                     return_type="instance")
             if result:
-                group = result[0]
-                group.remove_default_group_user(self.uuid,
+                old_group = result[0]
+                old_group.remove_default_group_user(self.uuid,
                                             verify_acls=verify_acls,
                                             ignore_missing=True)
         # Add user to new group.
-        result = backend.search(object_type="group",
-                                attribute="uuid",
-                                value=group_uuid,
-                                return_type="instance")
-        if not result:
-            msg = "Unknown group: %s" % group_uuid
-            raise UnknownObject(msg)
-        group = result[0]
-        msg = "Setting group: %s" % group.name
         callback.send(msg)
-        self._group_uuid = group.uuid
+        self._group_uuid = new_group.uuid
         self.update_index('group', self._group_uuid)
-        result = group.add_default_group_user(self.uuid,
+        result = new_group.add_default_group_user(self.uuid,
                                             verify_acls=verify_acls,
                                             callback=callback)
         self.update_extensions("change_group", callback=callback)
@@ -4540,10 +4545,8 @@ class User(OTPmeObject):
                     object_changed = True
 
         if not object_changed:
-            msg = None
-            if verbose_level > 0:
-                msg = (_("No orphan objects found for %s: %s")
-                        % (self.type, self.name))
+            msg = (_("No orphan objects found for %s: %s")
+                    % (self.type, self.name))
             return callback.ok(msg)
 
         return self._cache(callback=callback)

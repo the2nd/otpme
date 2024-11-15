@@ -254,6 +254,14 @@ cmd_help = {
                                     '--return-type'             : 'Attribute to return.',
                                 },
                 },
+    'list_default_group_users'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-group list_default_group_users {group}',
+                    'cmd'   :   '--return-type :return_type: [|object|]',
+                    '_help' :   {
+                                    'cmd'                       : 'List default group users.',
+                                    '--return-type'             : 'Attribute to return.',
+                                },
+                },
     'list_tokens'   : {
                     '_cmd_usage_help' : 'Usage: otpme-group list_tokens {group}',
                     'cmd'   :   '--return-type :return_type: --token-types :[token_types]: [|object|]',

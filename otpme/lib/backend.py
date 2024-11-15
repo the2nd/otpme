@@ -245,7 +245,7 @@ def read_config(object_id, read_from_cache=True,
 #@oid_lock(args_oid_pos=[0], write=True)
 def write_config(object_id, instance=None, object_config=None, cluster=False,
     full_index_update=False, full_data_update=None, index_journal=[],
-    no_transaction=False, encrypt=True):
+    index_auto_update=False, no_transaction=False, encrypt=True):
     """ Write object config to backend and update config cache. """
     # Get logger.
     logger = config.logger
@@ -255,6 +255,9 @@ def write_config(object_id, instance=None, object_config=None, cluster=False,
         raise OTPmeException(msg)
     if full_index_update and index_journal:
         msg = "You can use only one of <full_index_update> or <index_journal>."
+        raise OTPmeException(msg)
+    if full_index_update and index_auto_update:
+        msg = "You can use only one of <full_index_update> or <index_auto_update>."
         raise OTPmeException(msg)
 
     # Replay any leftover transaction.
@@ -278,6 +281,7 @@ def write_config(object_id, instance=None, object_config=None, cluster=False,
                     index_journal=index_journal,
                     full_index_update=full_index_update,
                     full_data_update=full_data_update,
+                    index_auto_update=index_auto_update,
                     no_transaction=no_transaction,
                     cluster=cluster)
     # Update config cache.

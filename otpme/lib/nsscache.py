@@ -184,6 +184,8 @@ def update(resync=False, cache_resync=False, lock=None):
     # Get logger.
     logger = config.logger
 
+    logger.info("Starting sync of nsscache...")
+
     if lock is None:
         lock = locking.OTPmeFakeLock(lock_type=LOCK_TYPE, lock_id="fake")
 
@@ -197,8 +199,6 @@ def update(resync=False, cache_resync=False, lock=None):
 
     # Object types we support.
     object_types = NSSCACHE_ADD_ORDER
-
-    # Realm wide objects we have to add.
 
     # Nsscache caches we need.
     nsscache_caches = {
@@ -253,12 +253,18 @@ def update(resync=False, cache_resync=False, lock=None):
 
     if update_members:
         # Get roles/groups to update members of.
+        counter = 0
         update_roles = []
         update_groups = []
+        update_objects = len(nss_cache_files)
         for f in nss_cache_files:
             file_path = os.path.join(config.nsscache_spool_dir, f)
             x_oid = ".".join(f.split(".")[:-1]).replace("+", "/")
             x_oid = oid.get(x_oid)
+
+            counter += 1
+            msg = "Reading nsscache (%s/%s): %s" % (counter, update_objects, x_oid)
+            logger.debug(msg)
 
             x_object = backend.get_object(x_oid)
             if not x_object:
@@ -367,6 +373,8 @@ def update(resync=False, cache_resync=False, lock=None):
         # No spool dir, no updates ;)
         if not os.path.exists(config.nsscache_spool_dir):
             update_sync_map(lock=lock)
+            msg = "No nsscache updates found."
+            logger.info(msg)
             return None
 
         for f in set(nss_cache_files):
@@ -403,9 +411,9 @@ def update(resync=False, cache_resync=False, lock=None):
 
     if len(updated_objects) + len(removed_objects) == 0:
         update_sync_map(lock=lock)
+        msg = "No nsscache updates found."
+        logger.info(msg)
         return None
-
-    logger.info("Starting sync of nsscache...")
 
     object_count = 0
     object_attributes = {}

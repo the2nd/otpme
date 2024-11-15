@@ -502,7 +502,7 @@ class OTPmeServer1(object):
         if self.peer and not self.peer.enabled:
             status = status_codes.HOST_DISABLED
             message = "%s is disabled: %s" % (self.peer.type, self.peer.fqdn)
-            self.logger.warning(message)
+            #self.logger.warning(message)
             return self.build_response(status, message, encrypt=False)
 
         if command == 'get_proto':

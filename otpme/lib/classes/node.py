@@ -949,12 +949,12 @@ class Node(OTPmeHost):
         self.vote_script_enabled = False
         return self._cache(callback=callback)
 
-    def disable(self, *args, force=False, callback=default_callback, **kwargs):
-        if not force:
-            if self.name == config.master_node:
+    def disable(self, *args, callback=default_callback, **kwargs):
+        if config.master_node:
+            if self.name == config.host_data['name']:
                 msg = "Cannot disable master node."
                 return callback.error(msg)
-        return super(Node, self).disable(*args, force=force, callback=callback, **kwargs)
+        return super(Node, self).disable(*args, callback=callback, **kwargs)
 
     def show_config(self, callback=default_callback, **kwargs):
         """ Show host config. """

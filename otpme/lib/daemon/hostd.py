@@ -916,21 +916,22 @@ class HostDaemon(OTPmeDaemon):
             except HostDisabled as e:
                 self.logger.warning("Host disabled: %s" % e)
                 # Disable ourselves based on peer reply.
-                if self.host.enabled:
-                    self.logger.info("Disabling ourselves...")
-                    try:
-                        self.host.disable(verify_acls=False, force=True)
-                    except Exception as e:
-                        msg = "Failed to disable host: %s" % e
-                        self.logger.critical(msg)
-                    lock_caller = "hostd_sync"
-                    self.host.acquire_lock(lock_caller=lock_caller)
-                    self.host._write()
-                    self.host.release_lock(lock_caller=lock_caller)
-                    # Clear caches because hosts are read-only and cache
-                    # orphans are detected by their checksums.
-                    if self.host.type == "host":
-                        cache.clear(self.host.oid)
+                if self.host.type == "host":
+                    if self.host.enabled:
+                        self.logger.info("Disabling ourselves...")
+                        try:
+                            self.host.disable(verify_acls=False, force=True)
+                        except Exception as e:
+                            msg = "Failed to disable host: %s" % e
+                            self.logger.critical(msg)
+                        lock_caller = "hostd_sync"
+                        self.host.acquire_lock(lock_caller=lock_caller)
+                        self.host._write()
+                        self.host.release_lock(lock_caller=lock_caller)
+                        # Clear caches because hosts are read-only and cache
+                        # orphans are detected by their checksums.
+                        if self.host.type == "host":
+                            cache.clear(self.host.oid)
                 # Update sync status.
                 config.update_sync_status(realm=realm,
                                         site=site,
@@ -958,18 +959,19 @@ class HostDaemon(OTPmeDaemon):
                 resync_token_data = False
                 if sync_type == "objects":
                     # Re-enable host if connection was successful.
-                    if not self.host.enabled:
-                        self.logger.info("Enabling ourselves...")
-                        self.host.enable(verify_acls=False, force=True)
-                        lock_caller = "hostd_sync_objects"
-                        self.host.acquire_lock(lock_caller=lock_caller)
-                        self.host._write()
-                        self.host.release_lock(lock_caller=lock_caller)
-                        # Clear caches because hosts are read-only and cache
-                        # orphans are detected by their checksums.
-                        if self.host.type == "host":
-                            cache.clear(self.host.oid)
-                        resync_token_data = True
+                    if self.host.type == "host":
+                        if not self.host.enabled:
+                            self.logger.info("Enabling ourselves...")
+                            self.host.enable(verify_acls=False, force=True)
+                            lock_caller = "hostd_sync_objects"
+                            self.host.acquire_lock(lock_caller=lock_caller)
+                            self.host._write()
+                            self.host.release_lock(lock_caller=lock_caller)
+                            # Clear caches because hosts are read-only and cache
+                            # orphans are detected by their checksums.
+                            if self.host.type == "host":
+                                cache.clear(self.host.oid)
+                            resync_token_data = True
 
                 # Get sync protocol.
                 if sync_conn:

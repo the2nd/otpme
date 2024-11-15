@@ -393,61 +393,88 @@ class IdrangePolicy(Policy):
             return callback.error(msg, exception=self.policy_exception)
         id_ranges = self.id_ranges[attribute]
 
-        errors = []
-        new_id = None
-        for x in id_ranges:
-            try:
-                r = x.split(":")[1]
-                range_type = x.split(":")[0]
-                range_start = int(r.split("-")[0])
-                range_end = int(r.split("-")[1])
-            except:
-                msg = ("Invalid ID range: %s: %s" % (self.name, x))
-                logger.warning(msg)
-                continue
+        id_range_rechecked = False
+        while True:
+            errors = []
             new_id = None
-            start_id = None
-            random_range = False
-            restart_on_end = False
-            if range_type == "r":
-                random_range = True
-            # For sequentially ID ranges we have to get the last assigned ID
-            # as start ID to improve performance of find_free_number().
-            if not random_range:
-                last_assigend = self.get_last_assigned(idrange=x,
-                                                    attribute=attribute,
-                                                    callback=callback)
-                start_id = last_assigend + 1
-                # Make sure start ID is within ID range.
-                if start_id >= range_start and start_id <= range_end:
-                    if not self.verify_new_id:
-                        new_id = start_id
-                        break
-                else:
-                    if not self.recheck_id_ranges:
-                        continue
-                    start_id = range_start
-                    restart_on_end = True
-            if self.verify_new_id or random_range or restart_on_end:
+            for x in id_ranges:
                 try:
-                    ldif_attribute = "ldif:%s" % attribute
-                    msg = ("Searching free ID for attribute: %s" % attribute)
-                    logger.debug(msg)
-                    new_id = self.find_free_number(object_type=object_type,
-                                                    attribute=ldif_attribute,
-                                                    range_start=range_start,
-                                                    range_end=range_end,
-                                                    start_id=start_id,
-                                                    restart_on_end=restart_on_end,
-                                                    random=random_range)
-                except Exception as e:
-                    errors.append(str(e))
+                    r = x.split(":")[1]
+                    range_type = x.split(":")[0]
+                    range_start = int(r.split("-")[0])
+                    range_end = int(r.split("-")[1])
+                except:
+                    msg = ("Invalid ID range: %s: %s" % (self.name, x))
+                    logger.warning(msg)
                     continue
+                new_id = None
+                start_id = None
+                random_range = False
+                restart_on_end = False
+                if range_type == "r":
+                    random_range = True
+                # For sequentially ID ranges we have to get the last assigned ID
+                # as start ID to improve performance of find_free_number().
+                if not random_range:
+                    last_assigend = self.get_last_assigned(idrange=x,
+                                                        attribute=attribute,
+                                                        callback=callback)
+                    start_id = last_assigend + 1
+                    # Make sure start ID is within ID range.
+                    if start_id >= range_start and start_id <= range_end:
+                        if not self.verify_new_id:
+                            new_id = start_id
+                            break
+                    else:
+                        # If the start ID is not from this range check remaining.
+                        found_valid_range = False
+                        for i in id_ranges:
+                            try:
+                                r = i.split(":")[1]
+                                x_range_start = int(r.split("-")[0])
+                                x_range_end = int(r.split("-")[1])
+                            except:
+                                msg = ("Invalid ID range: %s: %s" % (self.name, i))
+                                logger.warning(msg)
+                                continue
+                            if start_id >= x_range_start and start_id <= x_range_end:
+                                found_valid_range = True
+                                break
+                        # If we found a other valid range skip this range.
+                        if found_valid_range:
+                            continue
+                        start_id = range_start
+                        restart_on_end = True
+                if self.verify_new_id or random_range or restart_on_end:
+                    try:
+                        ldif_attribute = "ldif:%s" % attribute
+                        msg = ("Searching free ID for attribute: %s" % attribute)
+                        callback.send(msg)
+                        new_id = self.find_free_number(object_type=object_type,
+                                                        attribute=ldif_attribute,
+                                                        range_start=range_start,
+                                                        range_end=range_end,
+                                                        start_id=start_id,
+                                                        restart_on_end=restart_on_end,
+                                                        random=random_range)
+                    except Exception as e:
+                        errors.append(str(e))
+                        continue
+                # If we found a free ID break loop through ID ranges.
+                if new_id:
+                    break
 
+            # If we found a free ID break loop.
             if new_id:
                 break
 
-        if not new_id:
+            # If ID range re-check is enabled continue.
+            if self.recheck_id_ranges:
+                if not id_range_rechecked:
+                    id_range_rechecked = True
+                    continue
+
+            # Without free ID throw exception.
             for x in errors:
                 callback.send(x)
             msg = "Unable to find free ID: %s" % attribute

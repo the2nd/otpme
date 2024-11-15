@@ -610,6 +610,7 @@ class ClusterDaemon(OTPmeDaemon):
         self.two_node_handler_child = None
         self.interprocess_comm_child = None
         self.cluster_in_journal_child = None
+        self.node_disabled_child = None
         self._processed_journal_entries = []
         self.all_nodes = []
         self.member_nodes = []
@@ -675,25 +676,105 @@ class ClusterDaemon(OTPmeDaemon):
     def member_candidate(self, value):
         multiprocessing.member_candidates[self.node_name] = value
 
-    def start_childs(self, reload=False):
+    def handle_childs(self, reload=False):
         """ Start child processes childs. """
-        msg = "Starting cluster communication..."
-        self.logger.info(msg)
+        if self.node_disabled:
+            if config.two_node_setup:
+                # Wakeup two node handler to notice node disabled status.
+                multiprocessing.two_node_setup_event.set()
+                multiprocessing.two_node_setup_event.close()
+            if self.cluster_in_journal_child:
+                if not self.cluster_in_journal_child.is_alive():
+                    self.cluster_in_journal_child.join()
+                    self.cluster_in_journal_child = None
+                    msg = "Stopped cluster process: Cluster in-journal: Node disabled"
+                    self.logger.warning(msg)
+            if self.cluster_comm_child:
+                if not self.cluster_comm_child.is_alive():
+                    self.cluster_comm_child.join()
+                    self.cluster_comm_child = None
+                    msg = "Stopped cluster process: Cluster communication: Node disabled"
+                    self.logger.warning(msg)
+            if self.interprocess_comm_child:
+                # Wakeup interprocess comm process.
+                multiprocessing.cluster_out_event.set()
+                multiprocessing.cluster_out_event.close()
+                if not self.interprocess_comm_child.is_alive():
+                    self.interprocess_comm_child.join()
+                    self.interprocess_comm_child = None
+                    msg = "Stopped cluster process: Cluster IPC: Node disabled"
+                    self.logger.warning(msg)
+            if config.start_freeradius:
+                self.stop_freeradius()
+            if self.node_disabled_child:
+                if not self.node_disabled_child.is_alive():
+                    self.node_disabled_child.join()
+                    self.node_disabled_child = None
+            if not self.node_disabled_child:
+                self.node_disabled_child = multiprocessing.start_process(name=self.name,
+                                                    target=self.start_node_disabled_check)
+            return
+
+        start_interprocess = True
+        if self.interprocess_comm_child:
+            if self.interprocess_comm_child.is_alive():
+                start_interprocess = False
+        start_cluster_comm = True
+        if self.cluster_comm_child:
+            if self.cluster_comm_child.is_alive():
+                start_cluster_comm = False
+        start_in_journal = True
+        if self.cluster_in_journal_child:
+            if self.cluster_in_journal_child.is_alive():
+                start_in_journal = False
+
+        log_start_message = False
+        if start_interprocess:
+            log_start_message = True
+        if start_cluster_comm:
+            log_start_message = True
+        if start_in_journal:
+            log_start_message = True
+
+        if self.node_disabled_child:
+            if not self.node_disabled_child.is_alive():
+                self.node_disabled_child.join()
+                self.node_disabled_child = None
+
+        if log_start_message:
+            msg = "Starting cluster communication..."
+            self.logger.info(msg)
+
         # Interprocess communication.
-        self.interprocess_comm_child = multiprocessing.start_process(name=self.name,
-                                        target=self.start_interprocess_comm)
+        if start_interprocess:
+            self.interprocess_comm_child = multiprocessing.start_process(name=self.name,
+                                            target=self.start_interprocess_comm)
         # Start cluster communication.
-        self.cluster_comm_child = multiprocessing.start_process(name=self.name,
-                                        target=self.start_cluster_communication,
-                                        target_kwargs={'reload':reload})
-        # Start in journal handler.
-        self.cluster_in_journal_child = multiprocessing.start_process(name=self.name,
-                                        target=self.start_in_journal_handler)
+        if start_cluster_comm:
+            self.cluster_comm_child = multiprocessing.start_process(name=self.name,
+                                            target=self.start_cluster_communication,
+                                            target_kwargs={'reload':reload})
+        # Start in-journal handler.
+        if start_in_journal:
+            self.cluster_in_journal_child = multiprocessing.start_process(name=self.name,
+                                            target=self.start_in_journal_handler)
 
     def close_childs(self):
         """ Stop cluster communication childs. """
-        msg = "Stopping cluster communication..."
-        self.logger.info(msg)
+        log_stop_message = False
+        if self.interprocess_comm_child:
+            log_stop_message = True
+        if self.cluster_comm_child:
+            log_stop_message = True
+        if self.cluster_in_journal_child:
+            log_stop_message = True
+        if self.two_node_handler_child:
+            log_stop_message = True
+        if self.node_disabled_child:
+            log_stop_message = True
+        if log_stop_message:
+            msg = "Stopping cluster communication..."
+            self.logger.info(msg)
         if self.interprocess_comm_child:
             try:
                 self.interprocess_comm_child.terminate()
@@ -722,6 +803,45 @@ class ClusterDaemon(OTPmeDaemon):
             except Exception as e:
                 msg = "Failed to stop two node child: %s" % e
                 self.logger.warning(msg)
+        if self.node_disabled_child:
+            try:
+                self.node_disabled_child.terminate()
+                self.node_disabled_child.join()
+            except Exception as e:
+                msg = "Failed to stop node check child: %s" % e
+                self.logger.warning(msg)
+
+    def exit_child(self):
+        # Wakeup main process to handle childs.
+        self.comm_handler.send("clusterd", command="handle_childs")
+        os._exit(0)
+
+    def start_node_disabled_check(self):
+        # Set proctitle.
+        new_proctitle = ("%s Cluster node disabled check" % (self.full_name))
+        setproctitle.setproctitle(new_proctitle)
+        while True:
+            if config.daemon_shutdown:
+                os._exit(0)
+            try:
+                clusterd_conn = connections.get("clusterd",
+                                                timeout=3,
+                                                quiet_autoconnect=True,
+                                                compress_request=False)
+            except HostDisabled as e:
+                time.sleep(1)
+                continue
+            except Exception as e:
+                time.sleep(1)
+                continue
+            else:
+                msg = "Node is enabled again."
+                self.logger.info(msg)
+                self.enable_node()
+                # Wakeup main process to start childs.
+                self.comm_handler.send("clusterd", command="handle_childs")
+                clusterd_conn.close()
+                os._exit(0)
 
     @property
     def host_name(self):
@@ -732,6 +852,34 @@ class ClusterDaemon(OTPmeDaemon):
     def host_type(self):
         host_type = config.host_data['type']
         return host_type
+
+    def enable_node(self):
+        node_uuid = config.uuid
+        node = backend.get_object(uuid=node_uuid)
+        if node.enabled:
+            return
+        node.enable(force=True, verify_acls=False)
+        node.acquire_lock(lock_caller="clusterd")
+        node._write(cluster=False)
+        node.release_lock(lock_caller="clusterd")
+
+    def disable_node(self):
+        node_uuid = config.uuid
+        node = backend.get_object(uuid=node_uuid)
+        if not node.enabled:
+            return
+        node.disable(force=True, verify_acls=False)
+        node.acquire_lock(lock_caller="clusterd")
+        node._write(cluster=False)
+        node.release_lock(lock_caller="clusterd")
+
+    @property
+    def node_disabled(self):
+        node_uuid = config.uuid
+        node = backend.get_object(uuid=node_uuid)
+        if node.enabled:
+            return False
+        return True
 
     def get_cluster_out_journal(self):
         journal_dirs = sorted(glob.glob(CLUSTER_OUT_JOURNAL_DIR + "/[0-9]*[!.deleting]"))
@@ -790,6 +938,8 @@ class ClusterDaemon(OTPmeDaemon):
         while True:
             if config.daemon_shutdown:
                 os._exit(0)
+            if self.node_disabled:
+                self.exit_child()
             try:
                 clusterd_conn = self.get_clusterd_connection(node_name)
             except Exception as e:
@@ -829,6 +979,8 @@ class ClusterDaemon(OTPmeDaemon):
         while True:
             if config.daemon_shutdown:
                 os._exit(0)
+            if self.node_disabled:
+                self.exit_child()
             multiprocessing.cluster_out_event.wait()
             if config.two_node_setup:
                 multiprocessing.two_node_setup_event.set()
@@ -847,6 +999,8 @@ class ClusterDaemon(OTPmeDaemon):
         while True:
             if config.daemon_shutdown:
                 os._exit(0)
+            if self.node_disabled:
+                self.exit_child()
             enabled_nodes = list(self.get_enabled_nodes())
             try:
                 master_node = multiprocessing.master_node['master']
@@ -1248,6 +1402,8 @@ class ClusterDaemon(OTPmeDaemon):
         while True:
             if config.daemon_shutdown:
                 os._exit(0)
+            if self.node_disabled:
+                self.exit_child()
             try:
                 clusterd_conn = self.get_clusterd_connection(master_node)
             except Exception as e:
@@ -1274,13 +1430,21 @@ class ClusterDaemon(OTPmeDaemon):
                 break
             time.sleep(1)
 
-    def get_clusterd_connection(self, node_name, timeout=None, quiet=True):
+    def get_clusterd_connection(self, node_name, timeout=None,
+        quiet=True, exit_on_node_disabled=True):
         socket_uri = stuff.get_daemon_socket("clusterd", node_name)
-        clusterd_conn = connections.get("clusterd",
-                                        timeout=timeout,
-                                        socket_uri=socket_uri,
-                                        quiet_autoconnect=quiet,
-                                        compress_request=False)
+        try:
+            clusterd_conn = connections.get("clusterd",
+                                            timeout=timeout,
+                                            socket_uri=socket_uri,
+                                            quiet_autoconnect=quiet,
+                                            compress_request=False)
+        except HostDisabled as e:
+            msg = "Failed to get cluster connection: %s" % e
+            self.logger.warning(msg)
+            self.disable_node()
+            if exit_on_node_disabled:
+                self.exit_child()
         return clusterd_conn
 
     def get_node_connection(self, node_name, quiet=False):
@@ -1334,7 +1498,6 @@ class ClusterDaemon(OTPmeDaemon):
             try:
                 if not self.node_conn.get_master_sync_status():
                     msg = "Waiting for node to finish master sync: %s" % node_name
-                    #print(msg)
                     self.logger.info(msg)
                     return False
             except Exception as e:
@@ -1367,6 +1530,8 @@ class ClusterDaemon(OTPmeDaemon):
         while True:
             if config.daemon_shutdown:
                 os._exit(0)
+            if self.node_disabled:
+                self.exit_child()
             skip_deletions = True
             if os.path.exists(config.node_joined_file):
                 skip_deletions = False
@@ -1448,6 +1613,8 @@ class ClusterDaemon(OTPmeDaemon):
         while True:
             if config.daemon_shutdown:
                 os._exit(0)
+            if self.node_disabled:
+                self.exit_child()
             # Handle node connections.
             self.handle_node_connections()
 
@@ -1587,7 +1754,7 @@ class ClusterDaemon(OTPmeDaemon):
                 cluster_journal_files = self.get_cluster_in_journal()
                 if not cluster_journal_files:
                     break
-                msg = "Waiting for cluster in journal to be processed..."
+                msg = "Waiting for cluster in-journal to be processed..."
                 self.logger.info(msg)
                 time.sleep(1)
 
@@ -1647,7 +1814,7 @@ class ClusterDaemon(OTPmeDaemon):
         return True
 
     def start_in_journal_handler(self):
-        """ Start cluster in journal handler. """
+        """ Start cluster in-journal handler. """
         # Set proctitle.
         new_proctitle = ("%s Cluster in-journal" % self.full_name)
         setproctitle.setproctitle(new_proctitle)
@@ -1678,11 +1845,13 @@ class ClusterDaemon(OTPmeDaemon):
 
             if config.daemon_shutdown:
                 os._exit(0)
+            if self.node_disabled:
+                self.exit_child()
 
             try:
                 self.handle_cluster_in_journal()
             except Exception as e:
-                msg = "Failed to handle cluster in journal: %s" % e
+                msg = "Failed to handle cluster in-journal: %s" % e
                 self.logger.critical(msg)
                 #config.raise_exception()
 
@@ -1736,7 +1905,7 @@ class ClusterDaemon(OTPmeDaemon):
                     try:
                         os.remove(journal_file)
                     except Exception as e:
-                        msg = ("Failed to delete cluster in journal file: %s: %s"
+                        msg = ("Failed to delete cluster in-journal file: %s: %s"
                                 % (journal_file, e))
                         self.logger.critical(msg)
                     continue
@@ -1753,7 +1922,7 @@ class ClusterDaemon(OTPmeDaemon):
                     try:
                         os.remove(journal_file)
                     except Exception as e:
-                        msg = ("Failed to delete cluster in journal file: %s: %s"
+                        msg = ("Failed to delete cluster in-journal file: %s: %s"
                                 % (journal_file, e))
                         self.logger.critical(msg)
                     continue
@@ -1818,7 +1987,7 @@ class ClusterDaemon(OTPmeDaemon):
             try:
                 os.remove(journal_file)
             except Exception as e:
-                msg = ("Failed to delete cluster in journal file: %s: %s"
+                msg = ("Failed to delete cluster in-journal file: %s: %s"
                         % (journal_file, e))
                 self.logger.critical(msg)
 
@@ -1856,6 +2025,8 @@ class ClusterDaemon(OTPmeDaemon):
 
             if config.daemon_shutdown:
                 os._exit(0)
+            if self.node_disabled:
+                self.exit_child()
 
             self.handle_two_node_setup()
 
@@ -1889,6 +2060,8 @@ class ClusterDaemon(OTPmeDaemon):
         while True:
             if config.daemon_shutdown:
                 os._exit(0)
+            if self.node_disabled:
+                self.exit_child()
 
             time.sleep(1)
 
@@ -1989,6 +2162,8 @@ class ClusterDaemon(OTPmeDaemon):
 
             if config.daemon_shutdown:
                 os._exit(0)
+            if self.node_disabled:
+                self.exit_child()
 
             if self.node_conn is None:
                 node_conn = self.get_node_connection(node_name)
@@ -2009,7 +2184,6 @@ class ClusterDaemon(OTPmeDaemon):
                 start_over = True
                 msg = "Failed to handle cluster journal: %s" % e
                 self.logger.critical(msg)
-                #print(msg)
                 #config.raise_exception()
 
     def handle_cluster_out_journal(self, node_name):
@@ -2693,7 +2867,7 @@ class ClusterDaemon(OTPmeDaemon):
             msg = "Failed to drop privileges: %s" % e
             self.logger.critical(msg)
 
-        # Make sure cluster in journal is clean on daemon start.
+        # Make sure cluster in-journal is clean on daemon start.
         self.clean_cluster_in_journal()
 
         # Set node setup.
@@ -2732,12 +2906,17 @@ class ClusterDaemon(OTPmeDaemon):
         # Reply keepalive packet.
         self.comm_handler.send("controld", "pong")
 
-        # Start child processes.
-        self.start_childs(reload=reload)
+        if self.node_disabled:
+            msg = "Not starting cluster processes: Node disabled"
+            self.logger.warning(msg)
 
         while True:
             if config.daemon_shutdown:
                 os._exit(0)
+
+            # Handle child processes.
+            self.handle_childs(reload=reload)
+
             try:
                 # Try to read daemon message.
                 try:

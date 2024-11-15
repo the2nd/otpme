@@ -394,7 +394,7 @@ def get(daemon, **kwargs):
                 raise ConnectionError(msg)
             connect_addresses = [site_address]
     else:
-        if daemon == "mgmtd":
+        if daemon == "mgmtd" or daemon == "clusterd":
             site_fqdn = config.site_mgmt_fqdn
         else:
             site_fqdn = config.site_auth_fqdn

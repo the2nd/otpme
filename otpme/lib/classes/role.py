@@ -1107,10 +1107,8 @@ class Role(OTPmeObject):
                 pass
 
         if not object_changed:
-            msg = None
-            if verbose_level > 0:
-                msg = (_("No orphan objects found for %s: %s")
-                        % (self.type, self.name))
+            msg = (_("No orphan objects found for %s: %s")
+                    % (self.type, self.name))
             return callback.ok(msg)
 
         return self._cache(callback=callback)
