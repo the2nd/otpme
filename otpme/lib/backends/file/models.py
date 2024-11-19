@@ -16,9 +16,12 @@ class JsonEncodedData(TypeDecorator):
     cache_ok = False
     def process_bind_param(self, value, dialect):
         try:
-            import ujson as json
+            import simdjson as json
         except:
-            import json
+            try:
+                import ujson as json
+            except:
+                import json
         if value is None:
             return ''
         json_string = json.dumps(value)
@@ -26,9 +29,12 @@ class JsonEncodedData(TypeDecorator):
 
     def process_result_value(self, value, dialect):
         try:
-            import ujson as json
+            import simdjson as json
         except:
-            import json
+            try:
+                import ujson as json
+            except:
+                import json
         if value is None:
             return
         if value == '':

@@ -162,8 +162,9 @@ def get_object_type(object_id):
     """ Get object type from ID. """
     try:
         object_type = object_id.split("|")[0]
-    except:
-        raise InvalidOID()
+    except Exception as e:
+        msg = "Invalid OID: %s: %s" % (object_id, e)
+        raise InvalidOID(msg)
     return object_type
 
 def get_object_realm(object_id):

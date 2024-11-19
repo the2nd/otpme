@@ -9,6 +9,7 @@ except:
     pass
 
 from otpme.lib import oid
+from otpme.lib import trash
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.protocols import status_codes
@@ -155,8 +156,49 @@ class OTPmeClusterP1(OTPmeClient1):
             raise OTPmeException(msg)
         return reply
 
+    def trash_write(self, trash_id, object_id, object_data, deleted_by):
+        """ Send trash object to peer. """
+        command = "trash_write"
+        command_args = {}
+        command_args['trash_id'] = trash_id
+        command_args['object_id'] = object_id
+        command_args['object_data'] = object_data
+        command_args['deleted_by'] = deleted_by
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args)
+        if not status:
+            msg = "Failed to send trash object: %s: %s" % (object_id, reply)
+            raise OTPmeException(msg)
+        return reply
+
+    def trash_delete(self, trash_id):
+        """ Send trash delete request to peer. """
+        command = "trash_delete"
+        command_args = {}
+        command_args['trash_id'] = trash_id
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args)
+        if not status:
+            msg = "Failed to send trash delete request: %s: %s" % (trash_id, reply)
+            raise OTPmeException(msg)
+        return reply
+
+    def trash_empty(self):
+        """ Send trash empty request to peer. """
+        command = "trash_empty"
+        command_args = {}
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args)
+        if not status:
+            msg = "Failed to send trash empty request: %s" % reply
+            raise OTPmeException(msg)
+        return reply
+
     def sync(self):
-        """ Sync with peer. """
+        """ Sync data objects with peer. """
         object_types = config.get_cluster_object_types()
         return_attributes = ['full_oid', 'sync_checksum']
         result = backend.search(object_types=object_types,
@@ -227,6 +269,53 @@ class OTPmeClusterP1(OTPmeClient1):
             except UnknownObject:
                 pass
         msg = ("Synced %s objects from peer: %s"
+                % (len(synced_objects), self.peer.name))
+        self.logger.info(msg)
+        return reply
+
+    def sync_trash(self):
+        """ Sync trash with peer. """
+        command = "sync_trash"
+        local_objects = trash.get_trash_data()
+        command_args = {'remote_objects':local_objects}
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args, timeout=None)
+        if status_code == status_codes.NO_CLUSTER_QUORUM:
+            raise OTPmeException(reply)
+        if not status:
+            raise OTPmeException(reply)
+        synced_objects = []
+        for x_trash_id in reply:
+            if reply[x_trash_id] is None:
+                continue
+            for x_oid in reply[x_trash_id]:
+                msg = "Writing received trash object: %s (%s)" % (x_oid, x_trash_id)
+                self.logger.debug(msg)
+                x_object_data = reply[x_trash_id][x_oid]['object_data']
+                x_deleted_by = reply[x_trash_id][x_oid]['deleted_by']
+                try:
+                    trash.write_entry(trash_id=x_trash_id,
+                                    object_id=x_oid,
+                                    object_data=x_object_data,
+                                    deleted_by=x_deleted_by)
+                except Exception as e:
+                    msg = ("Failed to add trash entry: %s: %s: %s"
+                                % (x_oid, x_trash_id, e))
+                    self.logger.warning(msg)
+                    config.raise_exception()
+                else:
+                    synced_objects.append(x_oid)
+        # Remove deleted trash objects.
+        for x_trash_id in local_objects:
+            if x_trash_id in reply:
+                continue
+            try:
+                trash.delete(trash_id=x_trash_id, cluster=False)
+            except Exception as e:
+                msg = "Failed to delete trash ID: %s: %s" % (x_trash_id, e)
+                self.logger.warning(msg)
+        msg = ("Synced %s trash objects from peer: %s"
                 % (len(synced_objects), self.peer.name))
         self.logger.info(msg)
         return reply

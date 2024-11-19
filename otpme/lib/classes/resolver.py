@@ -1486,9 +1486,10 @@ class Resolver(OTPmeObject):
                     continue
 
                 # Try to remove object.
+                deleted_by = "resolver:%s" % self.name
                 x_object = backend.get_object(object_id=x_oid)
                 try:
-                    x_object.delete(force=True, verify_acls=False)
+                    x_object.delete(force=True, verify_acls=False, deleted_by=deleted_by)
                     removed_objects.append(x_oid)
                 except Exception as e:
                     sync_status = False
@@ -1686,25 +1687,29 @@ class Resolver(OTPmeObject):
                             return callback.abort()
 
         all_objects = self.get_resolver_objects(object_types=object_types,
-                                                return_type="instance")
+                                                return_type="uuid")
         delete_status = True
         for object_type in reversed(all_objects):
             object_list = all_objects[object_type]
-            for x in object_list:
+            for uuid in object_list:
                 if callback.stop_job:
                     return callback.abort()
-                msg = (_("Deleting %s: %s") % (object_type, x.oid))
+                # Get object.
+                o = backend.get_object(uuid=uuid)
+                msg = (_("Deleting %s: %s") % (object_type, o.oid))
                 logger.debug(msg)
                 callback.send(msg)
+                deleted_by = "resolver:%s" % self.name
                 try:
-                    x.delete(force=True,
+                    o.delete(force=True,
                             verify_acls=False,
+                            deleted_by=deleted_by,
                             callback=callback)
                 except Exception as e:
                     config.raise_exception()
                     delete_status = False
                     msg = (_("Failed to delete %s: %s: %s")
-                            % (object_type, x.oid, e))
+                            % (object_type, o.oid, e))
                     logger.warning(msg)
                     callback.send(msg)
 

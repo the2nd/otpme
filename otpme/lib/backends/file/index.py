@@ -193,7 +193,8 @@ def create_db_indices(drop=False, desc=False,
         asc_index_name = "%s_asc_covering_ix" % table_name
         if drop:
             msg = "Removing DB convering index (ASC) for table: %s" % table_name
-            asc_index_cmd = "DROP INDEX %s ON %s;" % (asc_index_name, table_name)
+            asc_index_cmd = "DROP INDEX %s;" % asc_index_name
+            asc_index_cmd = text(asc_index_cmd)
         else:
             msg = "Creating DB convering index (ASC) for table: %s" % table_name
             asc_index_cmd = ("CREATE INDEX %s ON %s (%s ASC);"
@@ -219,7 +220,8 @@ def create_db_indices(drop=False, desc=False,
             desc_index_name = "%s_desc_covering_ix" % table_name
             if drop:
                 msg = "Removing DB convering index (DESC) for table: %s" % table_name
-                desc_index_cmd = "DROP INDEX %s ON %s;" % (desc_index_name, table_name)
+                desc_index_cmd = "DROP INDEX %s;" % desc_index_name
+                desc_index_cmd = text(desc_index_cmd)
             else:
                 msg = "Creating DB convering index (DESC) for table: %s" % table_name
                 desc_index_cmd = ("CREATE INDEX %s ON %s (%s DESC);"
@@ -247,7 +249,8 @@ def create_db_indices(drop=False, desc=False,
             asc_index_name = "%s_%s_asc_ix" % (table_name, column_name)
             if drop:
                 msg = "Removing DB index (ASC) for table: %s" % column_name
-                asc_index_cmd = "DROP INDEX %s ON %s;" % (asc_index_name, column_name)
+                asc_index_cmd = "DROP INDEX %s;" % asc_index_name
+                asc_index_cmd = text(asc_index_cmd)
             else:
                 msg = "Creating DB index (ASC) for table: %s" % column_name
                 #asc_index_cmd = ("CREATE INDEX %s ON %s (%s);"
@@ -272,7 +275,8 @@ def create_db_indices(drop=False, desc=False,
                 desc_index_name = "%s_%s_desc_ix" % (table_name, column_name)
                 if drop:
                     msg = "Removing DB index (DESC) for table: %s" % column_name
-                    desc_index_cmd = "DROP INDEX %s ON %s;" % (desc_index_name, column_name)
+                    desc_index_cmd = "DROP INDEX %s;" % desc_index_name
+                    desc_index_cmd = text(desc_index_cmd)
                 else:
                     msg = "Creating DB index (DESC) for table: %s" % column_name
                     #desc_index_cmd = ("CREATE INDEX %s ON %s (%s);"
@@ -301,7 +305,8 @@ def create_db_indices(drop=False, desc=False,
             trgm_index_name = "%s_%s_trgm_ix" % (table_name, column_name)
             if drop:
                 msg = "Removing DB trigram index (ASC) for table: %s" % column_name
-                asc_index_cmd = "DROP INDEX %s ON %s;" % (trgm_index_name, column_name)
+                asc_index_cmd = "DROP INDEX %s ON;" % trgm_index_name
+                asc_index_cmd = text(asc_index_cmd)
             else:
                 msg = "Creating DB trigram index (ASC) for table: %s" % column_name
                 #asc_index_cmd = ("CREATE INDEX %s ON %s (%s);"

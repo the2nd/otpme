@@ -6,12 +6,19 @@ import grp
 import stat
 import copy
 import time
-import ujson
 import fcntl
 import pprint
 import shutil
 from pathlib import Path
 from functools import wraps
+
+try:
+    import simdjson as json
+except:
+    try:
+        import ujson as json
+    except:
+        import json
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -798,7 +805,7 @@ class JsonFile(object):
             self.logger.critical(msg)
             raise
         try:
-            object_config = ujson.loads(file_content)
+            object_config = json.loads(file_content)
         except Exception as e:
             msg = "Failed to load file: %s: %s" % (self.file_path, e)
             self.logger.critical(msg)
@@ -811,9 +818,9 @@ class JsonFile(object):
         if config.object_json_compression:
             compression = config.object_json_compression
         if config.prettify_object_json:
-            file_content = ujson.dumps(object_config, sort_keys=True, indent=4)
+            file_content = json.dumps(object_config, sort_keys=True, indent=4)
         else:
-            file_content = ujson.dumps(object_config)
+            file_content = json.dumps(object_config)
         try:
             create_file(path=self.file_path,
                         content=file_content,
@@ -914,7 +921,7 @@ class JsonFile(object):
             new_incr_id = None
             if incremental_updates:
                 # Generate increment ID.
-                new_incr_id = ujson.dumps(incremental_updates)
+                new_incr_id = json.dumps(incremental_updates)
                 new_incr_id = stuff.gen_md5(new_incr_id)
                 # Skip already written increment.
                 try:

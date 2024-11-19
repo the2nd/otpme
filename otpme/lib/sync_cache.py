@@ -2,8 +2,15 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import glob
-import ujson
 import shutil
+
+try:
+    import simdjson as _json
+except:
+    try:
+        import ujson as _json
+    except:
+        import json as _json
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -325,7 +332,7 @@ class SyncCache(dict):
             os.remove(cache_file)
             return
         # Load object config.
-        object_config = ujson.loads(file_content)
+        object_config = _json.loads(file_content)
         # Decrypt config.
         try:
             object_config = ObjectConfig(object_id, object_config)
@@ -344,7 +351,7 @@ class SyncCache(dict):
                                 object_config=object_config,
                                 encrypted=False)
         object_config = object_config.encrypt(config.master_key)
-        file_content = ujson.dumps(object_config)
+        file_content = _json.dumps(object_config)
         # Get cache file path.
         cache_file = self.get_cache_file(object_id)
         # Write object config to disk.

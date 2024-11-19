@@ -964,8 +964,11 @@ class OTPmeSyncP1(OTPmeClient1):
                 # Skip new object that is older than the current one.
                 if current_object is not None:
                     if config.host_data['type'] == "node":
-                        if current_object.last_modified > new_object.last_modified:
-                            continue
+                        # Allow older object if its the own node. This is required
+                        # because clusterd en-/disables the own node object.
+                        if  current_object.uuid != config.uuid:
+                            if current_object.last_modified > new_object.last_modified:
+                                continue
 
                 # Removed old object with different OID (e.g. object was
                 # moved).

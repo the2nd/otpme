@@ -15,6 +15,14 @@ except ImportError:
 #import memcache
 
 try:
+    import simdjson as json
+except:
+    try:
+        import ujson as json
+    except:
+        import json
+
+try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
         print(_("Loading module: %s") % __name__)
 except:
@@ -104,22 +112,24 @@ class MemcacheHandler(object):
             return pool
         return pool_getter
 
-    def get_list(self, name, pool=None, clear=False, locking=False):
+    def get_list(self, name, pool=None, clear=False, locking=False, pickle=True):
         if pool is None:
             pool = self.get_pool()
         _list = MemcacheList(name=name,
                             pool=pool,
                             clear=clear,
+                            pickle=pickle,
                             locking=locking,
                             lock_type=self.lock_type)
         return _list
 
-    def get_dict(self, name, pool=None, clear=False, locking=False):
+    def get_dict(self, name, pool=None, clear=False, locking=False, pickle=True):
         if pool is None:
             pool = self.get_pool()
         _dict = MemcacheDict(name=name,
                             pool=pool,
                             clear=clear,
+                            pickle=pickle,
                             locking=locking,
                             lock_type=self.lock_type)
         return _dict
@@ -139,14 +149,17 @@ class MemcacheHandler(object):
                             call=True)
 
 class MemcacheClient(object):
-    def __init__(self, pool_getter, compression=None):
+    def __init__(self, pool_getter, compression=None, pickle=True):
         self.pools = {}
+        self.pickle = pickle
+        self.pickle_handler = None
         self.compression = compression
         self.logger = config.logger
         self.pool_getter = pool_getter
         self.connection_error_logged = False
-        pickel_type = config.pickle_cache_module
-        self.pickle_handler = PickleHandler(pickel_type, encode=True)
+        if self.pickle:
+            pickel_type = config.pickle_cache_module
+            self.pickle_handler = PickleHandler(pickel_type, encode=True)
 
     @property
     def pool(self):
@@ -180,12 +193,18 @@ class MemcacheClient(object):
         if self.compression:
             value = stuff.decompress(value, self.compression)
         # Unpickle data.
-        value = self.pickle_handler.loads(value)
+        if self.pickle:
+            value = self.pickle_handler.loads(value)
+        else:
+            value = json.loads(value)
         return value
 
     def set(self, key, value, **kwargs):
         # Pickle data.
-        value = self.pickle_handler.dumps(value)
+        if self.pickle:
+            value = self.pickle_handler.dumps(value)
+        else:
+            value = json.dumps(value)
         # Compress value.
         if self.compression:
             value = stuff.compress(value, self.compression)
@@ -233,9 +252,9 @@ class MemcacheClient(object):
 class MemcacheDict(SharedDict):
     """ A simple memcached dict. """
     def __init__(self, name, pool, locking=False, lock_type="memcached",
-        clear=False, refresh_keys=False, compression=None):
+        clear=False, refresh_keys=False, compression=None, pickle=True):
         super(MemcacheDict, self).__init__(name)
-        self.client = MemcacheClient(pool, compression=compression)
+        self.client = MemcacheClient(pool, compression=compression, pickle=pickle)
         self.dict_keys_key = "%s.dict_keys" % self.name
         self.refresh_keys = refresh_keys
         self.lock_type = lock_type
@@ -407,10 +426,10 @@ class MemcacheDict(SharedDict):
 class MemcacheList(SharedList):
     """ A simple memcached list. """
     def __init__(self, name, pool, clear=False, compression=None,
-        lock_type="memcached", **kwargs):
+        lock_type="memcached", pickle=True, **kwargs):
         super(MemcacheList, self).__init__(name)
         self.lock_type = lock_type
-        self.client = MemcacheClient(pool, compression=compression)
+        self.client = MemcacheClient(pool, compression=compression, pickle=pickle)
         if clear:
             self.clear()
 

@@ -22,6 +22,7 @@ from otpme.lib import oid
 from otpme.lib import cli
 from otpme.lib import json
 from otpme.lib import stuff
+from otpme.lib import trash
 from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import locking
@@ -7059,8 +7060,8 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, force=False, run_policies=True,
-        verbose_level=0, _caller="API",
+    def delete(self, force=False, run_policies=True, add_to_trash=True,
+        deleted_by=None, verbose_level=0, _caller="API",
         callback=default_callback, **kwargs):
         """ Delete object from backend. """
         if not self._object_lock:
@@ -7069,6 +7070,14 @@ class OTPmeObject(OTPmeBaseObject):
         if self._object_lock.outdated:
             msg = "Cannot delete object with expired lock: %s" % self
             return callback.error(msg)
+
+        if add_to_trash:
+            if deleted_by is None:
+                if config.auth_token:
+                    deleted_by = "token:%s" % config.auth_token.rel_path
+                else:
+                    deleted_by = "API"
+            trash.add(self.oid, deleted_by)
 
         # Make sure all signatures are revoked before deleting the object.
         if self.auto_revoke and len(self.signatures) > 0:

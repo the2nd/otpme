@@ -4,7 +4,6 @@ import os
 import sys
 import pwd
 import grp
-import json
 import mmap
 import psutil
 import signal
@@ -14,6 +13,14 @@ import threading
 import setproctitle
 import multiprocessing
 from multiprocessing.managers import SyncManager
+
+try:
+    import simdjson as json
+except:
+    try:
+        import ujson as json
+    except:
+        import json
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -66,7 +73,7 @@ def register_module_var(v_name, v_type):
     module = sys.modules[MODULE_PATH]
     setattr(module, v_name, v_type)
 
-def register_shared_dict(name, clear=False, locking=False):
+def register_shared_dict(name, clear=False, locking=False, pickle=True):
     """ Register shared dict. """
     global shared_objects
     if name in shared_objects:
@@ -76,11 +83,12 @@ def register_shared_dict(name, clear=False, locking=False):
                             'type'      : 'dict',
                             'clear'     : clear,
                             'locking'   : locking,
+                            'pickle'    : pickle,
                         }
     fake_shared_dict = SharedDict(name)
     register_module_var(name, fake_shared_dict)
 
-def register_shared_list(name, clear=False, locking=False):
+def register_shared_list(name, clear=False, locking=False, pickle=True):
     """ Register shared list. """
     global shared_objects
     if name in shared_objects:
@@ -90,6 +98,7 @@ def register_shared_list(name, clear=False, locking=False):
                             'type'      : 'list',
                             'clear'     : clear,
                             'locking'   : locking,
+                            'pickle'    : pickle,
                         }
     fake_shared_list = SharedList(name)
     register_module_var(name, fake_shared_list)
@@ -368,6 +377,7 @@ def create_shared_objects():
         o_type = shared_objects[o_name]['type']
         o_clear = shared_objects[o_name]['clear']
         o_locking = shared_objects[o_name]['locking']
+        o_pickle = shared_objects[o_name]['pickle']
         # Get module.
         module = sys.modules[MODULE_PATH]
         current_o = getattr(module, o_name)
@@ -376,7 +386,8 @@ def create_shared_objects():
                 shared_o = _cache.get_dict(name=o_name,
                                         pool=pool,
                                         clear=o_clear,
-                                        locking=o_locking)
+                                        locking=o_locking,
+                                        pickle=o_pickle)
             except Exception as e:
                 msg = ("Failed to get shared dict: %s: %s" % (o_name, e))
                 print(msg)
@@ -389,7 +400,8 @@ def create_shared_objects():
                 shared_o = _cache.get_list(name=o_name,
                                         pool=pool,
                                         clear=o_clear,
-                                        locking=o_locking)
+                                        locking=o_locking,
+                                        pickle=o_pickle)
             except Exception as e:
                 msg = ("Failed to get shared dict: %s: %s" % (o_name, e))
                 print(msg)

@@ -6,15 +6,18 @@ import time
 import collections
 
 try:
+    import simdjson as json
+except:
+    try:
+        import ujson as json
+    except:
+        import json
+
+try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
         print(_("Loading module: %s") % __name__)
 except:
     pass
-
-try:
-    import ujson as json
-except:
-    import json
 
 from otpme.lib import re
 from otpme.lib import oid

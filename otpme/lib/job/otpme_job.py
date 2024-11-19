@@ -221,6 +221,7 @@ class OTPmeJob(object):
             job_error = ("Job error running command method: %s: %s"
                             % (self.target_method.__name__, e))
             self.logger.warning(job_error)
+            job_reply.append(job_error)
             job_log.append(job_error)
             job_status = False
             config.raise_exception()

@@ -11,7 +11,7 @@ except:
 from otpme.lib import oid
 from otpme.lib import config
 from otpme.lib import connections
-from otpme.lib.register import register_module
+#from otpme.lib.register import register_module
 
 from otpme.lib.exceptions import *
 
@@ -87,9 +87,9 @@ class OTPmeMgmtClient(object):
                                     command_args=command_args, **kwargs)
             return status, reply
 
-        # Make sure object class is registered.
-        module = "otpme.lib.classes.%s" % command
-        register_module(module)
+        ## Make sure object class is registered.
+        #module = "otpme.lib.classes.%s" % command
+        #register_module(module)
 
         # If this command includes a OTPme object (e.g. user, token etc.)
         # we need to do some special handling.

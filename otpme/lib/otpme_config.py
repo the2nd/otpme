@@ -172,8 +172,6 @@ class OTPmeConfig(object):
         self.register_config_var("realm_join", bool, False)
         # Indicates caching is enabled.
         self.register_config_var("cache_enabled", bool, False)
-        # Indicates on disk caching is enabled.
-        self.register_config_var("pickle_cache_enabled", bool, False)
         # Indicates if locking is enabled.
         self.register_config_var("locking_enabled", bool, True)
         # Indicates if transactions are enabled.

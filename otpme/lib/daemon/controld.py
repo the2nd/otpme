@@ -709,7 +709,6 @@ class ControlDaemon(UnixDaemon):
         except Exception as e:
             msg = "Failed to enable cache: %s" % e
             self.logger.critical(msg)
-        config.pickle_cache_enabled = False
 
         # Init OTPme (e.g. get config.host_data).
         try:

@@ -93,6 +93,7 @@ class CommandHandler(object):
             return
         if not os.path.exists(config.uuid_file):
             return
+        register_module('otpme.lib.trash')
         init_otpme(**kwargs)
         self.init_done = True
 
@@ -439,6 +440,9 @@ class CommandHandler(object):
         if command == "tool":
             return self.handle_tool_command(command, subcommand, command_line)
 
+        if command == "trash":
+            return self.handle_trash_command(command, subcommand, command_line)
+
         if command == "pinentry":
             self.start_pinentry()
             return ""
@@ -472,8 +476,6 @@ class CommandHandler(object):
             # Enable cache.
             cache.init()
             cache.enable()
-            # Disable on disk caching.
-            config.pickle_cache_enabled = False
             return self.send_command(daemon="mgmtd")
 
         if config.cli_object_type != "main":
@@ -765,7 +767,7 @@ class CommandHandler(object):
         return self.get_help(_("Unknown command: %s") % subcommand)
 
     def do_backup(self, backup_dir):
-        import ujson
+        from otpme.lib import backup
         from otpme.lib import backend
         from otpme.lib import filetools
         self.init()
@@ -801,59 +803,23 @@ class CommandHandler(object):
                 backup_file_name = get_backup_filename(x_oid)
                 backup_file_name = "%s.json" % backup_file_name
                 backup_file = os.path.join(backup_dir, backup_file_name)
-                x_oc = backend.read_config(x_oid, decrypt=False)
-                if not x_oc:
-                    continue
-                x_uuid = x_oc['UUID']
                 msg = "Backing up: %s" % x_oid
                 print(msg)
-                file_content = {'object_id':x_oid.full_oid, 'object_config':x_oc}
-                if x_oid.object_type == "user":
-                    result = backend.search(object_type="group",
-                                                    attribute="user",
-                                                    value=x_uuid)
-                    if result:
-                        file_content['user_group'] = result[0]
-                if x_oid.object_type == "token":
-                    # Get token roles.
-                    x_token_roles = backend.search(object_type="role",
-                                                    attribute="token",
-                                                    value=x_uuid)
-                    x_token_roles_opts = []
-                    for x in x_token_roles:
-                        x_token_role = backend.get_object(uuid=x)
-                        try:
-                            x_token_opts = x_token_role.token_options[x_uuid]
-                        except KeyError:
-                            x_token_opts = None
-                        try:
-                            x_token_login_interfaces = x_token_role.token_login_interfaces[x_uuid]
-                        except KeyError:
-                            x_token_login_interfaces = []
-                        x_token_roles_opts.append((x, x_token_opts, x_token_login_interfaces))
-                    file_content['token_roles'] = x_token_roles_opts
-                    # Get token groups.
-                    x_token_groups = backend.search(object_type="group",
-                                                    attribute="token",
-                                                    value=x_uuid)
-                    x_token_groups_opts = []
-                    for x in x_token_groups:
-                        x_token_group = backend.get_object(uuid=x)
-                        try:
-                            x_token_opts = x_token_group.token_options[x_uuid]
-                        except KeyError:
-                            x_token_opts = None
-                        try:
-                            x_token_login_interfaces = x_token_group.token_login_interfaces[x_uuid]
-                        except KeyError:
-                            x_token_login_interfaces = []
-                        x_token_groups_opts.append((x, x_token_opts, x_token_login_interfaces))
-                    file_content['token_groups'] = x_token_groups_opts
-                file_content = ujson.dumps(file_content)
-                filetools.create_file(path=backup_file, content=file_content)
+                try:
+                    backup_data = backup.backup_object(x_oid)
+                except Exception as e:
+                    msg = "Failed to backup object: %s: %s" % (x_oid, e)
+                    print(msg)
+                filetools.create_file(path=backup_file, content=backup_data)
 
     def full_restore(self, restore_dir):
-        import ujson
+        try:
+            import simdjson as json
+        except:
+            try:
+                import ujson as json
+            except:
+                import json
         from otpme.lib import filetools
         _index = config.get_index_module()
         if not _index.is_available():
@@ -866,7 +832,7 @@ class CommandHandler(object):
             for x_filename in sorted(os.listdir(x_restore_dir)):
                 x_file = os.path.join(x_restore_dir, x_filename)
                 file_content = filetools.read_file(x_file)
-                object_data = ujson.loads(file_content)
+                object_data = json.loads(file_content)
                 x_oid = object_data['object_id']
                 x_oid = oid.get(x_oid)
                 x_oc = object_data['object_config']
@@ -898,12 +864,18 @@ class CommandHandler(object):
             print(x)
 
     def restore_object(self, restore_file):
-        import ujson
+        try:
+            import simdjson as json
+        except:
+            try:
+                import ujson as json
+            except:
+                import json
         from otpme.lib import filetools
         backend.init()
         self.init()
         file_content = filetools.read_file(restore_file)
-        object_data = ujson.loads(file_content)
+        object_data = json.loads(file_content)
         command_args = {}
         command_args['object_data'] = object_data
         mgmt_client = self.get_mgmt_client()
@@ -1206,6 +1178,25 @@ class CommandHandler(object):
             return ""
 
         return self.get_help()
+
+    def handle_trash_command(self, command, subcommand, command_line):
+        """ Handle tool command. """
+        if config.use_api:
+            #register_module('otpme.lib.host')
+            #register_module('otpme.lib.cache')
+            register_module('otpme.lib.trash')
+            register_module('otpme.lib.multiprocessing')
+            # Enable cache.
+            cache.init()
+            cache.enable()
+            self.init(use_backend=True)
+
+        command_args = {}
+        # Send command.
+        reply = self.send_command(daemon="mgmtd",
+                                command=command,
+                                command_args=command_args)
+        return reply
 
     def handle_get_realm_command(self):
         """ Handle get realm command. """
@@ -1791,7 +1782,13 @@ class CommandHandler(object):
 
     def handle_import_command(self, command, subcommand):
         """ Handle import command. """
-        import ujson
+        try:
+            import simdjson as json
+        except:
+            try:
+                import ujson as json
+            except:
+                import json
         from otpme.lib import filetools
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
@@ -1826,7 +1823,7 @@ class CommandHandler(object):
             msg = (_("Error reading object config: %s") % e)
             raise OTPmeException(msg)
 
-        object_config = ujson.loads(file_content)
+        object_config = json.loads(file_content)
         object_id = object_config.pop('OID')
 
         return self.import_object(object_config,

@@ -16,48 +16,6 @@ register_done = False
 registered_modules = []
 
 modules = [
-	#'otpme.lib.classes.data_objects.failed_pass',
-	#'otpme.lib.classes.data_objects.last_assigned_id',
-	#'otpme.lib.classes.data_objects.revoked_signature',
-	#'otpme.lib.classes.data_objects.token_counter',
-	#'otpme.lib.classes.data_objects.used_hash',
-	#'otpme.lib.classes.data_objects.used_otp',
-	#'otpme.lib.classes.data_objects.used_sotp',
-	#'otpme.lib.classes.data_objects.rsa_key',
-	#'otpme.lib.classes.data_objects.cert',
-	#'otpme.lib.classes.accessgroup',
-	#'otpme.lib.classes.ca',
-	#'otpme.lib.classes.client',
-	#'otpme.lib.classes.dictionary',
-	#'otpme.lib.classes.group',
-	#'otpme.lib.classes.host',
-	#'otpme.lib.classes.node',
-	#'otpme.lib.classes.otpme_object',
-	#'otpme.lib.classes.policy',
-	#'otpme.lib.classes.realm',
-	#'otpme.lib.classes.resolver',
-	#'otpme.lib.classes.role',
-	#'otpme.lib.classes.script',
-	#'otpme.lib.classes.session',
-	#'otpme.lib.classes.site',
-	#'otpme.lib.classes.token',
-	#'otpme.lib.classes.unit',
-	#'otpme.lib.classes.user',
-	#'otpme.lib.cli.accessgroup',
-	#'otpme.lib.cli.ca',
-	#'otpme.lib.cli.client',
-	#'otpme.lib.cli.dictionary',
-	#'otpme.lib.cli.group',
-	#'otpme.lib.cli.host',
-	#'otpme.lib.cli.policy',
-	#'otpme.lib.cli.realm',
-	#'otpme.lib.cli.resolver',
-	#'otpme.lib.cli.role',
-	#'otpme.lib.cli.script',
-	#'otpme.lib.cli.site',
-	#'otpme.lib.cli.token',
-	#'otpme.lib.cli.unit',
-	#'otpme.lib.cli.user',
 	'otpme.lib.cli',
 	'otpme.lib.classes',
     'otpme.lib.index',
@@ -82,6 +40,7 @@ modules = [
 	'otpme.lib.cache',
 	'otpme.lib.host',
 	'otpme.lib.sotp',
+	'otpme.lib.trash',
 	'otpme.lib.classes.data_objects',
     ]
 
@@ -261,54 +220,3 @@ def register_modules():
     register_done = True
     # Init cache.
     cache.init()
-
-#def register_token_modules():
-#    """ Register token modules. """
-#    from otpme.lib import token as _token
-#    token_types = list_token_types()
-#    for x in sorted(token_types):
-#        x_module = _token.get_module(x)
-#        if x_module.__name__ in registered_modules:
-#            return
-#        remember_module(x_module.__name__)
-#        try:
-#            x_method = getattr(x_module, "register")
-#        except:
-#            continue
-#        msg = "Registering token module: %s" % x
-#        logger.debug(msg)
-#        x_method()
-#
-#def register_policy_modules():
-#    """ Register policy modules. """
-#    from otpme.lib import policy as _policy
-#    policy_types = list_policy_types()
-#    for x in sorted(policy_types):
-#        x_module = _policy.get_module(x)
-#        if x_module.__name__ in registered_modules:
-#            return
-#        remember_module(x_module.__name__)
-#        try:
-#            x_method = getattr(x_module, "register")
-#        except:
-#            continue
-#        msg = "Registering policy module: %s" % x
-#        logger.debug(msg)
-#        x_method()
-#
-#def register_resolver_modules():
-#    """ Register resolver modules. """
-#    from otpme.lib import resolver as _resolver
-#    resolver_types = list_resolver_types()
-#    for x in sorted(resolver_types):
-#        x_module = _resolver.get_module(x)
-#        if x_module.__name__ in registered_modules:
-#            return
-#        remember_module(x_module.__name__)
-#        try:
-#            x_method = getattr(x_module, "register")
-#        except:
-#            continue
-#        msg = "Registering resolver module: %s" % x
-#        logger.debug(msg)
-#        x_method()

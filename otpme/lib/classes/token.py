@@ -15,7 +15,6 @@ from otpme.lib import cli
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
-from otpme.lib import nsscache
 from otpme.lib import otpme_pass
 from otpme.lib.humanize import units
 from otpme.lib.cache import config_cache
@@ -3143,21 +3142,6 @@ class Token(OTPmeObject):
             if not allow_delete:
                 msg = "Default token deletion is not allowed."
                 return callback.error(msg)
-
-        # Update group members from roles.
-        update_roles = self.get_roles(return_type="instance", recursive=True)
-        for x in update_roles:
-            if x.site != config.site:
-                continue
-            nsscache.update_object(x.oid, "update")
-
-        # Update group members.
-        update_groups = self.get_groups(include_roles=False,
-                                    return_type="instance")
-        for x in update_groups:
-            if x.site != config.site:
-                continue
-            nsscache.update_object(x.oid, "update")
 
         # Get roles to remove token from.
         token_roles = self.get_roles(return_type="instance", recursive=False)

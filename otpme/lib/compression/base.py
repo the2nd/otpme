@@ -91,7 +91,9 @@ def compress(data, compression, level=None):
         compressed_data = gzip.compress(data, compresslevel=level)
 
     elif compression == "lz4":
-        compressed_data = lz4.frame.compress(data)
+        if level is None:
+            level = 0
+        compressed_data = lz4.frame.compress(data, compression_level=level)
 
     elif compression == "zlib":
         if level is None:

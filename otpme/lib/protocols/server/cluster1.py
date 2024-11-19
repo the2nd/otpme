@@ -2,12 +2,19 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
-import ujson
 import signal
 import datetime
 from prettytable import NONE
 from prettytable import FRAME
 from prettytable import PrettyTable
+
+try:
+    import simdjson as json
+except:
+    try:
+        import ujson as json
+    except:
+        import json
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -16,6 +23,7 @@ except:
     pass
 
 from otpme.lib import oid
+from otpme.lib import trash
 from otpme.lib import stuff
 #from otpme.lib import cache
 from otpme.lib import config
@@ -136,6 +144,10 @@ class OTPmeClusterP1(OTPmeServer1):
                             "write",
                             "rename",
                             "delete",
+                            "trash_write",
+                            "trash_empty",
+                            "trash_delete",
+                            "sync_trash",
                             "acquire_lock",
                             "release_lock",
                             "get_checksums",
@@ -338,6 +350,45 @@ class OTPmeClusterP1(OTPmeServer1):
                         % (sync_objects_count, self.peer.name))
                 logger.info(msg)
 
+        elif command == "sync_trash":
+            status = True
+            message = None
+            try:
+                remote_objects = command_args['remote_objects']
+            except:
+                message = "Missing remote objects."
+                status = False
+            if status:
+                local_objects = trash.get_trash_data()
+                sync_objects = {}
+                sync_objects_count = 0
+                for x_trash_id in local_objects:
+                    x_deleted_by = trash.get_deleted_by(x_trash_id)
+                    for x_oid in local_objects[x_trash_id]:
+                        if x_oid == trash.DELETED_BY_FILENAME:
+                            continue
+                        add_trash = False
+                        if x_trash_id not in remote_objects:
+                            add_trash = True
+                        else:
+                            if x_oid not in remote_objects[x_trash_id]:
+                                add_trash = True
+                        if not add_trash:
+                            continue
+                        if x_trash_id not in sync_objects:
+                            sync_objects[x_trash_id] = {}
+                        x_object_data = trash.read_entry(x_trash_id, x_oid)
+                        sync_objects[x_trash_id][x_oid] = {}
+                        sync_objects[x_trash_id][x_oid]['deleted_by'] = x_deleted_by
+                        sync_objects[x_trash_id][x_oid]['object_data'] = x_object_data
+                        sync_objects_count += 1
+                    if x_trash_id not in sync_objects:
+                        sync_objects[x_trash_id] = None
+                message = sync_objects
+                msg = ("Sending %s trash objects to peer: %s"
+                        % (sync_objects_count, self.peer.name))
+                logger.info(msg)
+
         elif command == "object_exists":
             status = True
             message = None
@@ -406,7 +457,7 @@ class OTPmeClusterP1(OTPmeServer1):
                                 'full_data_update'  : full_data_update,
                                 'full_index_update' : full_index_update,
                             }
-                file_content = ujson.dumps(object_data)
+                file_content = json.dumps(object_data)
                 try:
                     filetools.create_file(path=cluster_journal_file,
                                             content=file_content,
@@ -447,7 +498,7 @@ class OTPmeClusterP1(OTPmeServer1):
                                 'object_id'         : object_id,
                                 'new_object_id'     : new_object_id,
                             }
-                file_content = ujson.dumps(object_data)
+                file_content = json.dumps(object_data)
                 try:
                     filetools.create_file(path=cluster_journal_file,
                                             content=file_content,
@@ -482,7 +533,7 @@ class OTPmeClusterP1(OTPmeServer1):
                                 'action'        : 'delete',
                                 'object_id'     : object_id,
                             }
-                file_content = ujson.dumps(object_data)
+                file_content = json.dumps(object_data)
                 try:
                     filetools.create_file(path=cluster_journal_file,
                                             content=file_content,
@@ -494,6 +545,87 @@ class OTPmeClusterP1(OTPmeServer1):
                 else:
                     multiprocessing.cluster_in_event.set()
                     message = "done"
+
+        elif command == "trash_write":
+            status = True
+            message = None
+            try:
+                trash_id = command_args['trash_id']
+            except:
+                message = "Missing trash ID."
+                status = False
+            try:
+                object_id = command_args['object_id']
+            except:
+                message = "Missing object ID."
+                status = False
+            try:
+                deleted_by = command_args['deleted_by']
+            except:
+                message = "Missing deleted_by."
+                status = False
+            try:
+                object_data = command_args['object_data']
+            except:
+                message = "Missing object data."
+                status = False
+            try:
+                object_data = json.loads(object_data)
+            except Exception as e:
+                message = ("Failed to load trash object data: %s: %s: %s"
+                        % (trash_id, object_id, e))
+                status = False
+            if config.daemon_shutdown:
+                message = "Daemon shutdown."
+                status = False
+            if status:
+                message = "done"
+                msg = ("Writing trash object: %s (%s)" % (object_id, trash_id))
+                logger.debug(msg)
+                try:
+                    trash.write_entry(trash_id, object_id, object_data, deleted_by)
+                except Exception as e:
+                    message = ("Failed to add trash entry: %s: %s: %s"
+                                % (object_id, trash_id, e))
+                    status = False
+
+        elif command == "trash_delete":
+            status = True
+            message = None
+            try:
+                trash_id = command_args['trash_id']
+            except:
+                message = "Missing trash ID."
+                status = False
+            if config.daemon_shutdown:
+                message = "Daemon shutdown."
+                status = False
+            if status:
+                message = "done"
+                msg = ("Deleting trash object: %s" % trash_id)
+                logger.debug(msg)
+                try:
+                    trash.delete(trash_id=trash_id)
+                except Exception as e:
+                    message = ("Failed to delete trash entry: %s: %s"
+                                % (trash_id, e))
+                    status = False
+
+        elif command == "trash_empty":
+            status = True
+            message = None
+            if config.daemon_shutdown:
+                message = "Daemon shutdown."
+                status = False
+            if status:
+                message = "done"
+                msg = "Trash emptied."
+                logger.debug(msg)
+                try:
+                    trash.empty(cluster=False)
+                except Exception as e:
+                    message = ("Failed to empty trash: %s" % e)
+                    status = False
 
         elif command == "acquire_lock":
             status = True

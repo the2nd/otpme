@@ -6,6 +6,14 @@ import functools
 import collections
 from functools import wraps
 
+try:
+    import simdjson as json
+except:
+    try:
+        import ujson as json
+    except:
+        import json
+
 #from cachetools import keys
 #from cachetools.rr import RRCache
 from cachetools import LRUCache
@@ -20,7 +28,7 @@ except:
 
 from otpme.lib import stuff
 from otpme.lib import multiprocessing
-from otpme.lib.pickle import PickleHandler
+#from otpme.lib.pickle import PickleHandler
 
 from otpme.lib.exceptions import *
 
@@ -50,8 +58,10 @@ class Cache(object):
         self.ignore_classes = ignore_classes
         self.cache_name_var = cache_name_var
         self.cache_name_func = cache_name_func
-        if self.copy_cache:
-            self.pickle_handler = PickleHandler("auto", encode=False)
+        # We cannot use pickle cache as e.g. in search cache with return_type="instance"
+        # this will result in an new object (new id().
+        #if self.copy_cache:
+        #    self.pickle_handler = PickleHandler("auto", encode=False)
 
     def init_cache(self, cache_name=None):
         """ Init cache. """
@@ -207,7 +217,11 @@ class Cache(object):
                 try:
                     result = _cache[k]
                     if self.copy_cache:
-                        result = self.pickle_handler.loads(result)
+                        #result = self.pickle_handler.loads(result)
+                        try:
+                            result = json.loads(result)
+                        except TypeError:
+                            pass
                     # Logging.
                     log_hit = False
                     if config.debug_level("func_cache_hits") > 0:
@@ -279,7 +293,11 @@ class Cache(object):
             if update_cache:
                 try:
                     if self.copy_cache:
-                        _cache[k] = self.pickle_handler.dumps(result)
+                        #_cache[k] = self.pickle_handler.dumps(result)
+                        try:
+                            _cache[k] = json.dumps(result)
+                        except TypeError:
+                            _cache[k] = result
                     else:
                         _cache[k] = result
                     # Logging.

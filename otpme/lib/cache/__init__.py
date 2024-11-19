@@ -380,6 +380,10 @@ def get_instance(object_id, cache_type=None):
     logger = config.logger
     read_oid = object_id.read_oid
 
+    instance = get_modified_object(object_id)
+    if instance:
+        return instance
+
     check_process_cache = True
     check_multiprocessing_cache = True
     if cache_type and cache_type != PROCESS_CACHE:

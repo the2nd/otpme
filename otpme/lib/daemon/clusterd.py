@@ -3,11 +3,18 @@
 import os
 import time
 import glob
-import ujson
 import shutil
 import signal
 import setproctitle
 from functools import wraps
+
+try:
+    import simdjson as json
+except:
+    try:
+        import ujson as json
+    except:
+        import json
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -56,7 +63,7 @@ def register():
     multiprocessing.register_shared_list("pause_writes")
     multiprocessing.register_shared_dict("running_jobs")
     multiprocessing.register_shared_dict("cluster_quorum")
-    multiprocessing.register_shared_dict("cluster_journal")
+    multiprocessing.register_shared_dict("cluster_journal", pickle=False)
     multiprocessing.register_shared_dict("node_connections")
     multiprocessing.register_shared_list("master_sync_done")
     multiprocessing.register_shared_dict("member_candidates")
@@ -153,8 +160,9 @@ def cluster_daemon_reload():
         return
     multiprocessing.cluster_out_event.set()
 
-def cluster_sync_object(object_uuid, object_id, action, object_config=None,
-    new_object_id=None, checksum=None, index_journal=None, wait_for_write=True):
+def cluster_sync_object(action, object_id=None, object_uuid=None,
+    object_data=None, new_object_id=None, checksum=None, index_journal=None,
+    trash_id=None, deleted_by=None, wait_for_write=True):
     if not multiprocessing.cluster_out_event:
         return
     if config.one_node_setup:
@@ -162,7 +170,8 @@ def cluster_sync_object(object_uuid, object_id, action, object_config=None,
     if config.two_node_setup:
         if len(multiprocessing.online_nodes) == 0:
             if action != "delete":
-                return
+                if action != "trash_delete":
+                    return
             wait_for_write = False
     while len(multiprocessing.pause_writes) > 0:
         time.sleep(0.1)
@@ -172,9 +181,11 @@ def cluster_sync_object(object_uuid, object_id, action, object_config=None,
                                                     action=action,
                                                     object_uuid=object_uuid,
                                                     object_id=object_id,
+                                                    trash_id=trash_id,
+                                                    deleted_by=deleted_by,
                                                     checksum=checksum,
                                                     index_journal=index_journal,
-                                                    object_config=object_config,
+                                                    object_data=object_data,
                                                     new_object_id=new_object_id)
         except AlreadyExists:
             continue
@@ -398,8 +409,8 @@ class ClusterEntry(object):
 class ClusterJournalEntry(ClusterEntry):
     """ Cluster journal entry. """
     def __init__(self, timestamp, object_uuid=None, action=None,
-        object_id=None, checksum=None, object_config=None,
-        index_journal=None, new_object_id=None):
+        object_id=None, checksum=None, object_data=None, index_journal=None,
+        new_object_id=None, trash_id=None, deleted_by=None):
         journal_dir = config.cluster_out_journal_dir
         super(ClusterJournalEntry, self).__init__(journal_dir=journal_dir,
                                                     _lock_type=JOURNAL_LOCK_TYPE,
@@ -410,20 +421,26 @@ class ClusterJournalEntry(ClusterEntry):
         self.new_object_id_file = os.path.join(self.entry_dir, "new_object_id")
         self.object_checksum_file = os.path.join(self.entry_dir, "object_checksum")
         self.index_journal_file = os.path.join(self.entry_dir, "index_journal")
+        self.trash_id_file = os.path.join(self.entry_dir, "trash_id")
+        self.deleted_by_file = os.path.join(self.entry_dir, "deleted_by")
         if action is not None:
             self.action = action
         if object_id is not None:
             self.object_id = object_id
         if object_uuid is not None:
             self.object_uuid = object_uuid
-        if object_config is not None:
-            self.object_config = object_config
+        if object_data is not None:
+            self.object_data = object_data
         if index_journal is not None:
             self.index_journal = index_journal
         if checksum is not None:
             self.object_checksum = checksum
         if new_object_id is not None:
             self.new_object_id = new_object_id
+        if trash_id is not None:
+            self.trash_id = trash_id
+        if deleted_by is not None:
+            self.deleted_by = deleted_by
 
     def __str__(self):
         return self.timestamp
@@ -436,10 +453,14 @@ class ClusterJournalEntry(ClusterEntry):
         return hash(self.__str__())
 
     def __eq__(self, other):
-        return self.object_uuid == other.object_uuid
+        if self.object_uuid:
+            return self.object_uuid == other.object_uuid
+        return self.object_id == other.object_id
 
     def __ne__(self, other):
-        return self.object_uuid != other.object_uuid
+        if self.object_uuid:
+            return self.object_uuid != other.object_uuid
+        return self.object_id != other.object_id
 
     def __lt__(self, other):
         return self.__str__() < other.__str__()
@@ -559,13 +580,13 @@ class ClusterJournalEntry(ClusterEntry):
             msg = ("Failed to read index journal from cluster entry: %s: %s"
                     % (self.timestamp, e))
             self.logger.critical(msg)
-        index_journal = ujson.loads(index_journal)
+        index_journal = json.loads(index_journal)
         return index_journal
 
     @index_journal.setter
     #@entry_lock(write=True)
     def index_journal(self, index_journal):
-        index_journal = ujson.dumps(index_journal)
+        index_journal = json.dumps(index_journal)
         try:
             filetools.create_file(path=self.index_journal_file,
                                     content=index_journal)
@@ -576,17 +597,67 @@ class ClusterJournalEntry(ClusterEntry):
 
     @property
     @entry_lock(write=False)
-    def object_config(self):
+    def trash_id(self):
         try:
-            object_config = multiprocessing.cluster_journal[self.timestamp]
-        except KeyError:
-            object_config = None
-        return object_config
+            trash_id = filetools.read_file(self.trash_id_file)
+        except FileNotFoundError:
+            trash_id = None
+        except Exception as e:
+            trash_id = None
+            msg = ("Failed to read trash ID from cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
+        return trash_id
 
-    @object_config.setter
+    @trash_id.setter
     #@entry_lock(write=True)
-    def object_config(self, object_config):
-        multiprocessing.cluster_journal[self.timestamp] = object_config
+    def trash_id(self, trash_id):
+        try:
+            filetools.create_file(path=self.trash_id_file,
+                                    content=trash_id)
+        except Exception as e:
+            msg = ("Failed to add trash ID to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
+
+    @property
+    @entry_lock(write=False)
+    def deleted_by(self):
+        try:
+            deleted_by = filetools.read_file(self.deleted_by_file)
+        except FileNotFoundError:
+            deleted_by = None
+        except Exception as e:
+            deleted_by = None
+            msg = ("Failed to read trash ID from cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
+        return deleted_by
+
+    @deleted_by.setter
+    #@entry_lock(write=True)
+    def deleted_by(self, deleted_by):
+        try:
+            filetools.create_file(path=self.deleted_by_file,
+                                    content=deleted_by)
+        except Exception as e:
+            msg = ("Failed to add trash ID to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
+
+    @property
+    @entry_lock(write=False)
+    def object_data(self):
+        try:
+            object_data = multiprocessing.cluster_journal[self.timestamp]
+        except KeyError:
+            object_data = None
+        return object_data
+
+    @object_data.setter
+    #@entry_lock(write=True)
+    def object_data(self, object_data):
+        multiprocessing.cluster_journal[self.timestamp] = object_data
 
     @entry_lock(write=True)
     def delete(self):
@@ -948,18 +1019,37 @@ class ClusterDaemon(OTPmeDaemon):
                 self.logger.warning(msg)
                 time.sleep(1)
                 continue
+            sync_finished = False
+            # Sync data objects.
             msg = "Starting data sync with node: %s" % node_name
             self.logger.info(msg)
             try:
                 clusterd_conn.sync()
-                msg = "Data sync finished with node: %s" % node_name
-                self.logger.info(msg)
-                break
             except Exception as e:
                 msg = "Failed to sync with node: %s: %s" % (node_name, e)
                 self.logger.warning(msg)
                 time.sleep(1)
                 #config.raise_exception()
+            else:
+                msg = "Data sync finished with node: %s" % node_name
+                self.logger.info(msg)
+                sync_finished = True
+            # Sync trash objects.
+            msg = "Starting trash sync with node: %s" % node_name
+            self.logger.info(msg)
+            try:
+                clusterd_conn.sync_trash()
+            except Exception as e:
+                msg = "Failed to sync trash with node: %s: %s" % (node_name, e)
+                self.logger.warning(msg)
+                time.sleep(1)
+                config.raise_exception()
+            else:
+                msg = "Trash sync finished with node: %s" % node_name
+                self.logger.info(msg)
+                sync_finished = True
+            if sync_finished:
+                break
 
     def start_interprocess_comm(self):
         """ Start cluster interprocess communication. """
@@ -1860,7 +1950,7 @@ class ClusterDaemon(OTPmeDaemon):
         for journal_file in cluster_journal_files:
             object_data = filetools.read_file(path=journal_file,
                                             compression="lz4")
-            object_data = ujson.loads(object_data)
+            object_data = json.loads(object_data)
 
             action = object_data['action']
             if action == "write":
@@ -2195,7 +2285,7 @@ class ClusterDaemon(OTPmeDaemon):
             except Exception as e:
                 msg = "Error processing cluster journal: %s" % e
                 self.logger.critical(msg)
-                #config.raise_exception()
+                config.raise_exception()
                 return True
             if not self.member_candidate:
                 break
@@ -2211,7 +2301,7 @@ class ClusterDaemon(OTPmeDaemon):
                 except Exception as e:
                     msg = "Error processing cluster journal: %s" % e
                     self.logger.critical(msg)
-                    #config.raise_exception()
+                    config.raise_exception()
                     return True
                 # Update data revision on peer.
                 if config.master_node:
@@ -2314,7 +2404,8 @@ class ClusterDaemon(OTPmeDaemon):
                 raise ProcessingFailed(msg)
             try:
                 object_id = cluster_journal_entry.object_id
-                object_id = oid.get(object_id)
+                if object_id:
+                    object_id = oid.get(object_id)
                 object_uuid = cluster_journal_entry.object_uuid
                 object_checksum = cluster_journal_entry.object_checksum
                 # We need to read action last because it will throw
@@ -2323,17 +2414,18 @@ class ClusterDaemon(OTPmeDaemon):
 
                 # Mark node as out of sync (tree objects).
                 if config.master_node:
-                    if object_id.object_type in config.tree_object_types:
-                        if not unsync_status_set:
-                            unsync_status_set = True
-                            try:
-                                self.unset_node_sync(node_name)
-                            except:
-                                self.check_member_nodes(cluster_journal_entry)
-                                raise ProcessingFailed()
+                    if object_id:
+                        if object_id.object_type in config.tree_object_types:
+                            if not unsync_status_set:
+                                unsync_status_set = True
+                                try:
+                                    self.unset_node_sync(node_name)
+                                except:
+                                    self.check_member_nodes(cluster_journal_entry)
+                                    raise ProcessingFailed()
                 # Write object to peer.
                 if action == "write":
-                    object_config = cluster_journal_entry.object_config
+                    object_config = cluster_journal_entry.object_data
                     # Remove outdated cluster journal entry.
                     if not object_config:
                         cluster_journal_entry.add_node(node_name)
@@ -2440,13 +2532,15 @@ class ClusterDaemon(OTPmeDaemon):
                         del_status = node_conn.delete(object_id.full_oid)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
                         self.node_leave(node_name)
-                        msg = "Failed to delete object: %s: %s" % (object_id, e)
+                        msg = ("Failed to delete object: %s: (%s) %s"
+                                % (object_id, node_name, e))
                         self.logger.warning(msg)
                         self.check_member_nodes(cluster_journal_entry)
                         raise ProcessingFailed(msg)
                     except Exception as e:
                         self.node_leave(node_name)
-                        msg = "Failed to delete object: %s: %s" % (object_id, e)
+                        msg = ("Failed to delete object: %s: (%s) %s"
+                                % (object_id, node_name, e))
                         self.logger.warning(msg)
                         self.check_member_nodes(cluster_journal_entry)
                         raise ProcessingFailed(msg)
@@ -2459,6 +2553,92 @@ class ClusterDaemon(OTPmeDaemon):
                         full_written_objects.pop(object_id)
                     except KeyError:
                         pass
+                    cluster_journal_entry.add_node(node_name)
+                # Write trash object to peer.
+                if action == "trash_write":
+                    object_data = cluster_journal_entry.object_data
+                    # Remove outdated cluster journal entry.
+                    if not object_data:
+                        cluster_journal_entry.add_node(node_name)
+                        if self.check_member_nodes(cluster_journal_entry):
+                            self.check_online_nodes(cluster_journal_entry)
+                        continue
+                    trash_id = cluster_journal_entry.trash_id
+                    deleted_by = cluster_journal_entry.deleted_by
+                    try:
+                        trash_write_status = node_conn.trash_write(trash_id=trash_id,
+                                                                object_id=object_id.full_oid,
+                                                                object_data=object_data,
+                                                                deleted_by=deleted_by)
+                    except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                        self.node_leave(node_name)
+                        msg = ("Failed to send trash object: %s: %s: %s: %s"
+                                % (node_name, trash_id, object_id, e))
+                        self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
+                        raise ProcessingFailed(msg)
+                    except Exception as e:
+                        self.node_leave(node_name)
+                        msg = ("Error sending trash object: %s: %s: %s: %s"
+                                % (node_name, trash_id, object_id, e))
+                        self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
+                        raise ProcessingFailed(msg)
+                    if trash_write_status != "done":
+                        continue
+                    msg = ("Written trash object to node: %s: %s: %s (%s)"
+                            % (node_name, trash_id, object_id, object_checksum))
+                    self.logger.debug(msg)
+                    cluster_journal_entry.add_node(node_name)
+                    written_entries.append(object_id)
+                # Delete trash object on peer.
+                if action == "trash_delete":
+                    trash_id = cluster_journal_entry.trash_id
+                    try:
+                        trash_del_status = node_conn.trash_delete(trash_id)
+                    except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                        self.node_leave(node_name)
+                        msg = ("Failed to delete trash object: %s: %s: %s"
+                                % (node_name, trash_id, e))
+                        self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
+                        raise ProcessingFailed(msg)
+                    except Exception as e:
+                        self.node_leave(node_name)
+                        msg = ("Error deleting trash object: %s: %s: %s"
+                                % (node_name, trash_id, e))
+                        self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
+                        raise ProcessingFailed(msg)
+                    if trash_del_status != "done":
+                        continue
+                    msg = ("Deleted trash object on node: %s (%s)"
+                            % (node_name, trash_id))
+                    self.logger.debug(msg)
+                    cluster_journal_entry.add_node(node_name)
+
+                # Send trash empty request to peer.
+                if action == "trash_empty":
+                    try:
+                        trash_empty_status = node_conn.trash_empty()
+                    except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                        self.node_leave(node_name)
+                        msg = ("Failed to send trash empty request: %s: %s"
+                                % (node_name, e))
+                        self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
+                        raise ProcessingFailed(msg)
+                    except Exception as e:
+                        self.node_leave(node_name)
+                        msg = ("Error sending trash empty request: %s: %s"
+                                % (node_name, e))
+                        self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
+                        raise ProcessingFailed(msg)
+                    if trash_empty_status != "done":
+                        continue
+                    msg = ("Trash emptied on node: %s" % (node_name))
+                    self.logger.debug(msg)
                     cluster_journal_entry.add_node(node_name)
 
                 # Check if object was written to member nodes.
@@ -2523,7 +2703,8 @@ class ClusterDaemon(OTPmeDaemon):
         # Delete journal entries must be synced to all nodes
         # even offline ones.
         all_nodes_in_sync = True
-        if cluster_journal_entry.action == "delete":
+        if cluster_journal_entry.action == "delete" \
+        or cluster_journal_entry.action == "trash_delete":
             all_nodes = backend.search(object_type="node",
                                         attribute="uuid",
                                         value="*",
@@ -2553,7 +2734,7 @@ class ClusterDaemon(OTPmeDaemon):
                 written_nodes += 1
                 continue
             member_nodes_in_sync = False
-        if written_nodes >= 2:
+        if written_nodes >= 1:
             member_nodes_in_sync = True
         if not member_nodes_in_sync:
             return False

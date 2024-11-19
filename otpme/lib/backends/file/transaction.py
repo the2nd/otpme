@@ -7,9 +7,12 @@ import functools
 import threading
 #from functools import wraps
 try:
-    import ujson as json
+    import simdjson as json
 except:
-    import json
+    try:
+        import ujson as json
+    except:
+        import json
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -1061,8 +1064,6 @@ class FileTransaction(BaseTransaction):
                     object_uuid = journal_entry['object_uuid']
                     object_id = journal_entry['object_id']
                     object_id = oid.get(object_id)
-                    ## Get current object config.
-                    #object_config = read(object_id)
                     object_config = ObjectConfig(object_id, object_config)
                     # Decrypt object config.
                     object_config = object_config.decrypt(config.master_key)
@@ -1070,10 +1071,10 @@ class FileTransaction(BaseTransaction):
                     wait_for_write = True
                     if self._replay:
                         wait_for_write = False
-                    cluster_event = cluster_sync_object(object_uuid=object_uuid,
+                    cluster_event = cluster_sync_object(action="write",
+                                                    object_uuid=object_uuid,
                                                     object_id=object_id,
-                                                    object_config=object_config,
-                                                    action="write",
+                                                    object_data=object_config,
                                                     checksum=object_checksum,
                                                     index_journal=index_journal,
                                                     wait_for_write=wait_for_write)
@@ -1087,9 +1088,9 @@ class FileTransaction(BaseTransaction):
                     wait_for_write = True
                     if self._replay:
                         wait_for_write = False
-                    cluster_event = cluster_sync_object(object_uuid=object_uuid,
+                    cluster_event = cluster_sync_object(action="delete",
+                                                        object_uuid=object_uuid,
                                                         object_id=object_id,
-                                                        action="delete",
                                                         wait_for_write=wait_for_write)
                     if cluster_event:
                         cluster_events.append(cluster_event)
@@ -1103,9 +1104,9 @@ class FileTransaction(BaseTransaction):
                     wait_for_write = True
                     if self._replay:
                         wait_for_write = False
-                    cluster_event = cluster_sync_object(object_uuid=object_uuid,
+                    cluster_event = cluster_sync_object(action="rename",
+                                                        object_uuid=object_uuid,
                                                         object_id=object_id,
-                                                        action="rename",
                                                         new_object_id=new_object_id,
                                                         wait_for_write=wait_for_write)
                     if cluster_event:

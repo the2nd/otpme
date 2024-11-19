@@ -12,6 +12,7 @@ from otpme.lib import oid
 from otpme.lib import cli
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib import nsscache
 from otpme.lib import otpme_acl
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -929,7 +930,18 @@ class Group(OTPmeObject):
 
         # Delete object using parent class.
         return OTPmeObject.delete(self, verbose_level=verbose_level,
-                                    force=force, callback=callback)
+                                    force=force, callback=callback,
+                                    **kwargs)
+
+    @object_lock()
+    def add_token(self, *args, **kwargs):
+        nsscache.update_object(self.oid, "update")
+        return super(Group, self).add_token(*args, **kwargs)
+
+    @object_lock()
+    def remove_token(self, *args, **kwargs):
+        nsscache.update_object(self.oid, "update")
+        return super(Group, self).remove_token(*args, **kwargs)
 
     @check_acls(['remove:orphans'])
     @object_lock()
@@ -964,6 +976,13 @@ class Group(OTPmeObject):
             if not role_oid:
                 role_list.append(i)
 
+        default_group_users_list = []
+        user_uuids = self.default_group_users
+        for i in user_uuids:
+            user_oid = backend.get_oid(object_type="user", uuid=i)
+            if not user_oid:
+                default_group_users_list.append(i)
+
         if not force:
             msg = ""
             if acl_list:
@@ -983,6 +1002,10 @@ class Group(OTPmeObject):
             if role_list:
                 msg = (_("%s%s|%s: Found the following orphan role UUIDs: %s\n")
                         % (msg, self.type, self.name, ",".join(role_list)))
+
+            if default_group_users_list:
+                msg = (_("%s%s|%s: Found the following orphan user UUIDs: %s\n")
+                        % (msg, self.type, self.name, ",".join(default_group_users_list)))
 
             if msg:
                 answer = callback.ask(_("%sRemove?: ") % msg)
@@ -1016,6 +1039,13 @@ class Group(OTPmeObject):
                 callback.send(_("Removing orphan role UUID: %s") % i)
             object_changed = True
             self.roles.remove(i)
+
+        for i in default_group_users_list:
+            if verbose_level > 0:
+                callback.send(_("Removing orphan user UUID: %s") % i)
+            object_changed = True
+            if i in self.default_group_users:
+                self.default_group_users.remove(i)
 
         if not object_changed:
             msg = (_("No orphan objects found for %s: %s")

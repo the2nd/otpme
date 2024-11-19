@@ -17,6 +17,7 @@ from otpme.lib import re
 from otpme.lib import oid
 from otpme.lib import json
 from otpme.lib import config
+from otpme.lib import backup
 from otpme.lib import backend
 from otpme.lib import encryption
 from otpme.lib import jwt as _jwt
@@ -37,6 +38,7 @@ command_map = {}
 
 # All valid commands
 valid_commands = [
+                'trash',
                 'backend',
                 'stop_job',
                 'move_object',
@@ -923,7 +925,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             try:
                 status, \
                 response = self.start_job(name="restore_object",
-                                    target_method=backend.restore_object,
+                                    target_method=backup.restore_object,
                                     args=args, command_args=command_args,
                                     process=True,
                                     thread=False)
@@ -1054,6 +1056,178 @@ class OTPmeMgmtP1(OTPmeServer1):
                 response = "Internal server error."
                 msg = "Unhandled exception running search: %s" % e
                 logger.critical(msg)
+
+        return self.build_response(status, response)
+
+    def handle_trash_commands(self, trash_command, command_args):
+        """ Handle 'trash' commands. """
+        from otpme.lib.trash import empty
+        from otpme.lib.trash import delete
+        from otpme.lib.trash import restore
+        from otpme.lib.trash import show_trash
+        status = False
+        response = ""
+
+        valid_backend_commands = [  "show",
+                                    "restore",
+                                    "empty",
+                                    "del",
+                                ]
+
+        if len(trash_command) < 2:
+            status = False
+            message = "Missing backend sub command: %s" % trash_command
+            return self.build_response(status, message)
+
+        # Check if we got a valid command
+        if not trash_command in valid_backend_commands:
+            status = False
+            message = "Unknown command: %s" % trash_command
+            return self.build_response(status, message)
+
+        try:
+            args = command_map['trash']['exists'][trash_command]['args']
+            for i in args:
+                if i in args:
+                    continue
+                # Try to get default value from method args.
+                try:
+                    args[i] = command_map['trash']['exists'][trash_command]['args'][i]
+                except:
+                    pass
+        except:
+            args = {}
+
+        opt_args = {}
+        try:
+            _opt_args = command_map['trash']['exists'][trash_command]['oargs']
+            for i in _opt_args:
+                if i in opt_args:
+                    continue
+                opt_args[i] = None
+        except:
+            opt_args = {}
+
+        try:
+            try:
+                default_args = command_map[x_type][object_status][trash_command]['dargs']
+            except:
+                default_args = command_map[object_type][object_status][trash_command]['dargs']
+        except:
+            default_args = {}
+
+        try:
+            job_type = command_map['trash']['exists'][trash_command]['job_type']
+        except:
+            job_type = "thread"
+
+        if job_type == "thread":
+            job_thread = True
+            job_process = False
+        elif job_type == "process":
+            job_process = True
+            job_thread = False
+        elif job_type is None:
+            job_process = False
+        else:
+            msg = "Unknown job type: %s" % job_type
+            raise OTPmeException(msg)
+
+        if trash_command == "show":
+            if not self.is_admin:
+                status = False
+                message = "You need to be admin to run this command."
+                return self.build_response(status, message)
+
+            try:
+                status, \
+                response = self.start_job(name="trash_show",
+                                    target_method=show_trash,
+                                    args=args, opt_args=opt_args,
+                                    default_args=default_args,
+                                    command_args=command_args,
+                                    process=job_process,
+                                    thread=job_thread)
+            except Exception as e:
+                config.raise_exception()
+                response = ("Error running command: %s: %s"
+                                % (backend_command, e))
+
+        if trash_command == "restore":
+            if not self.is_admin:
+                status = False
+                message = "You need to be admin to run this command."
+                return self.build_response(status, message)
+
+            try:
+                trash_id = command_args.pop('object_identifier')
+                command_args['trash_id'] = trash_id
+            except:
+                message = "MGMT_INCOMPLETE_COMMAND"
+                status = False
+                return self.build_response(status, message)
+
+            try:
+                status, \
+                response = self.start_job(name="trash_restore",
+                                    target_method=restore,
+                                    args=args, opt_args=opt_args,
+                                    default_args=default_args,
+                                    command_args=command_args,
+                                    process=job_process,
+                                    thread=job_thread)
+            except Exception as e:
+                config.raise_exception()
+                response = ("Error running command: %s: %s"
+                                % (backend_command, e))
+
+        if trash_command == "del":
+            if not self.is_admin:
+                status = False
+                message = "You need to be admin to run this command."
+                return self.build_response(status, message)
+
+            try:
+                trash_id = command_args.pop('object_identifier')
+                command_args['trash_id'] = trash_id
+            except:
+                message = "MGMT_INCOMPLETE_COMMAND"
+                status = False
+                return self.build_response(status, message)
+
+            try:
+                status, \
+                response = self.start_job(name="trash_delete",
+                                    target_method=delete,
+                                    args=args, opt_args=opt_args,
+                                    default_args=default_args,
+                                    command_args=command_args,
+                                    process=job_process,
+                                    thread=job_thread)
+            except Exception as e:
+                config.raise_exception()
+                response = ("Error running command: %s: %s"
+                                % (backend_command, e))
+
+        if trash_command == "empty":
+            if not self.is_admin:
+                status = False
+                message = "You need to be admin to run this command."
+                return self.build_response(status, message)
+
+            try:
+                status, \
+                response = self.start_job(name="trash_empty",
+                                    target_method=empty,
+                                    args=args, opt_args=opt_args,
+                                    default_args=default_args,
+                                    command_args=command_args,
+                                    process=job_process,
+                                    thread=job_thread)
+            except Exception as e:
+                config.raise_exception()
+                response = ("Error running command: %s: %s"
+                                % (backend_command, e))
 
         return self.build_response(status, response)
 
@@ -1199,6 +1373,10 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Handle backend commands.
         if command == "backend":
             return self.handle_backend_commands(subcommand, command_args)
+
+        # Handle trash commands.
+        if command == "trash":
+            return self.handle_trash_commands(subcommand, command_args)
 
         if command == "check_duplicate_ids":
             if subcommand == "user":

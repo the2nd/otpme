@@ -22,6 +22,13 @@ except ImportError:
     pass
 
 try:
+    import simdjson as json
+except:
+    try:
+        import ujson as json
+    except:
+        import json
+try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
         print(_("Loading module: %s") % __name__)
 except:
@@ -484,9 +491,12 @@ class RedisHandler(object):
 class RedisDict(SharedDict):
     """ A simple redis dict. """
     def __init__(self, name, pool, locking=None, clear=False,
-        raise_exceptions=False, refresh_keys=False, compression=None):
+        raise_exceptions=False, refresh_keys=False,
+        compression=None, pickle=True):
         super(RedisDict, self).__init__(name)
         self.name = name
+        self.pickle = pickle
+        self.pickle_handler = None
         self.locking = locking
         self.compression = compression
         self.dict_data_key = "dict_data"
@@ -500,8 +510,9 @@ class RedisDict(SharedDict):
         if not config.redis_persistence:
             self.redis_db.config_set("appendonly" ,"no")
             self.redis_db.config_set("save" ,"")
-        pickel_type = config.pickle_cache_module
-        self.pickle_handler = PickleHandler(pickel_type, encode=True)
+        if self.pickle:
+            pickel_type = config.pickle_cache_module
+            self.pickle_handler = PickleHandler(pickel_type, encode=True)
         self._lock = None
         #self.redis_db.config_rewrite()
         if clear:
@@ -601,7 +612,10 @@ class RedisDict(SharedDict):
 
     def _add(self, key, value, expire=None):
         # Pickle data.
-        value = self.pickle_handler.dumps(value)
+        if self.pickle:
+            value = self.pickle_handler.dumps(value)
+        else:
+            value = json.dumps(value)
         # Compress value.
         if self.compression:
             value = stuff.compress(value, self.compression)
@@ -622,7 +636,10 @@ class RedisDict(SharedDict):
         if self.compression:
             value = stuff.decompress(value, self.compression)
         # Unpickle data.
-        value = self.pickle_handler.loads(value)
+        if self.pickle:
+            value = self.pickle_handler.loads(value)
+        else:
+            value = json.loads(value)
         return value
 
     def delete(self, key):
@@ -647,11 +664,13 @@ class RedisDict(SharedDict):
 
 class RedisList(SharedList):
     """ A simple redis list. """
-    def __init__(self, name, pool, clear=False,
+    def __init__(self, name, pool, clear=False, pickle=True,
         compression=None, raise_exceptions=False, **kwargs):
         super(RedisList, self).__init__(name)
         #self.logger = config.logger
         self.pool = pool
+        self.pickle = pickle
+        self.pickle_handler = None
         self.compression = compression
         self.redis_db = RedisHandler(connection_pool=pool,
                                     raise_exceptions=raise_exceptions,
@@ -661,8 +680,9 @@ class RedisList(SharedList):
             self.redis_db.config_set("appendonly" ,"no")
             self.redis_db.config_set("save" ,"")
         #self.redis_db.config_rewrite()
-        pickel_type = config.pickle_cache_module
-        self.pickle_handler = PickleHandler(pickel_type, encode=True)
+        if self.pickle:
+            pickel_type = config.pickle_cache_module
+            self.pickle_handler = PickleHandler(pickel_type, encode=True)
         if clear:
             self.clear()
 
@@ -674,7 +694,10 @@ class RedisList(SharedList):
             if self.compression:
                 _list = stuff.decompress(_list, self.compression)
             # Unpickle data.
-            _list = self.pickle_handler.loads(_list)
+            if self.pickle:
+                _list = self.pickle_handler.loads(_list)
+            else:
+                _list = json.loads(_list)
         except:
             _list = []
         return _list
@@ -682,7 +705,10 @@ class RedisList(SharedList):
     @list.setter
     def list(self, _list):
         # Pickle data.
-        _list = self.pickle_handler.dumps(_list)
+        if self.pickle:
+            _list = self.pickle_handler.dumps(_list)
+        else:
+            _list = json.dumps(_list)
         # Compress list.
         if self.compression:
             _list = stuff.compress(_list, self.compression)

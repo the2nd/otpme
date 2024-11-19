@@ -386,61 +386,6 @@ def outdate_object(object_id, cache_type=None):
     if config.get_ldap_settings(object_type):
         config.ldap_object_changed = True
 
-def restore_object(object_data, callback=default_callback, **kwargs):
-    """ Restore object. """
-    object_id = object_data['object_id']
-    object_id = oid.get(object_id)
-    msg = "Restoring: %s" % object_id
-    callback.send(msg)
-    object_config = object_data['object_config']
-    object_uuid = object_config['UUID']
-    x_object = get_object(uuid=object_uuid)
-    if x_object:
-        msg = "Object with UUID exists: %s" % x_object
-        return callback.error(msg)
-    try:
-        write_config(object_id=object_id,
-                    object_config=object_config,
-                    full_index_update=True,
-                    full_data_update=True,
-                    encrypt=False,
-                    cluster=True)
-    except Exception as e:
-        msg = "Failed to restore object: %s: %s" % (object_id, e)
-        return callback.error(msg)
-    if object_id.object_type == "user":
-        x_uuid = object_config['UUID']
-        x_user_group = object_data['user_group']
-        x_user_group = get_object(uuid=x_user_group)
-        x_user_group.add_default_group_user(user_uuid=x_uuid,
-                                            callback=callback,
-                                            verify_acls=False)
-    if object_id.object_type == "token":
-        x_token_groups = object_data['token_groups']
-        for x in x_token_groups:
-            x_group_uuid = x[0]
-            x_token_opts = x[1]
-            x_token_login_interfaces = x[2]
-            x_group = get_object(uuid=x_group_uuid)
-            x_group.add_token(token_path=object_id.rel_path,
-                            token_options=x_token_opts,
-                            login_interfaces=x_token_login_interfaces,
-                            callback=callback,
-                            verify_acls=False)
-        x_token_roles = object_data['token_roles']
-        for x in x_token_roles:
-            x_role_uuid = x[0]
-            x_token_opts = x[1]
-            x_token_login_interfaces = x[2]
-            x_role = get_object(uuid=x_role_uuid)
-            x_role.add_token(token_path=object_id.rel_path,
-                            token_options=x_token_opts,
-                            login_interfaces=x_token_login_interfaces,
-                            callback=callback,
-                            verify_acls=False)
-    msg = "Restored object: %s" % object_id
-    return callback.ok(msg)
-
 def import_config(object_config, object_id=None, force=False,
     aes_key=None, callback=default_callback, **kwargs):
     """ Import object config. """

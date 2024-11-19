@@ -7,9 +7,12 @@ import signal
 from contextlib import contextmanager
 
 try:
-    import ujson as json
+    import simdjson as json
 except:
-    import json
+    try:
+        import ujson as json
+    except:
+        import json
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -776,7 +779,6 @@ def deumlaut(s):
 def args_to_hash(arguments, ignore_args=[],
     ignore_classes=[], class_key_attributes={}):
     """ Create key from args. """
-    import json
     fargs = arguments['args']
     fkwargs = arguments['kwargs']
     key = []
