@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import sys
 import time
 import setproctitle
 
@@ -322,8 +321,8 @@ class OTPmeSyncP1(OTPmeServer1):
             status = status_codes.UNKNOWN_OBJECT
             response = "Unknown object: %s" % object_id
             self.logger.warning(response)
-            ## Hotfix our index.
-            #backend.index_del(object_id)
+            # Hotfix our index.
+            backend.index_del(object_id)
             return status, response
         # Get object.
         o = backend.get_object(object_type=object_type,
@@ -365,7 +364,7 @@ class OTPmeSyncP1(OTPmeServer1):
 
         object_checksum = backend.get_sync_checksum(object_id)
         response = {'checksum':object_checksum,'object_config':sync_config}
-        o_size = sys.getsizeof(response)
+        o_size = stuff.get_dict_size(sync_config)
         object_size = units.int2size(o_size)
         msg = ("Sending object (%s): %s"
             % (object_size, object_id))

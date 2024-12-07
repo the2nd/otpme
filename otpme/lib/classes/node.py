@@ -833,6 +833,13 @@ class Node(OTPmeHost):
 
     def get_node_vote(self):
         """ Get node vote. """
+        # Do not participate on node voting if disabled.
+        if not self.enabled:
+            node_vote = 0
+            revision_vote = config.get_data_revision()
+            node_vote = {'revision':revision_vote, 'vote':node_vote}
+            return node_vote
+
         try:
             node_vote = os.path.getmtime(config.node_sync_file)
         except FileNotFoundError:

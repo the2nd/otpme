@@ -112,7 +112,7 @@ class MemcacheHandler(object):
             return pool
         return pool_getter
 
-    def get_list(self, name, pool=None, clear=False, locking=False, pickle=True):
+    def get_list(self, name, pool=None, clear=False, locking=False, pickle=False):
         if pool is None:
             pool = self.get_pool()
         _list = MemcacheList(name=name,
@@ -123,7 +123,7 @@ class MemcacheHandler(object):
                             lock_type=self.lock_type)
         return _list
 
-    def get_dict(self, name, pool=None, clear=False, locking=False, pickle=True):
+    def get_dict(self, name, pool=None, clear=False, locking=False, pickle=False):
         if pool is None:
             pool = self.get_pool()
         _dict = MemcacheDict(name=name,
@@ -149,7 +149,7 @@ class MemcacheHandler(object):
                             call=True)
 
 class MemcacheClient(object):
-    def __init__(self, pool_getter, compression=None, pickle=True):
+    def __init__(self, pool_getter, compression=None, pickle=False):
         self.pools = {}
         self.pickle = pickle
         self.pickle_handler = None

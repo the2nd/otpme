@@ -445,6 +445,11 @@ class ControlDaemon(UnixDaemon):
         except Exception as e:
             msg = "Failed to remove cluster event: %s" % e
             self.logger.critical(msg)
+        try:
+            multiprocessing.mgmt_cache_update.unlink()
+        except Exception as e:
+            msg = "Failed to remove cluster event: %s" % e
+            self.logger.critical(msg)
         os._exit(0)
 
     @property
@@ -555,6 +560,9 @@ class ControlDaemon(UnixDaemon):
         config.use_backend = True
         # Handle multiprocessing stuff.
         multiprocessing.atfork()
+        # Enable file logging if run in daemon  mode.
+        if config.daemonize:
+            config.file_logging = True
         # Setup logger.
         log_banner = "%s:" % self.full_name
         self.logger = config.setup_logger(banner=log_banner,
@@ -586,6 +594,7 @@ class ControlDaemon(UnixDaemon):
         multiprocessing.cluster_in_event = multiprocessing.Event()
         multiprocessing.cluster_out_event = multiprocessing.Event()
         multiprocessing.two_node_setup_event = multiprocessing.Event()
+        multiprocessing.mgmt_cache_update = multiprocessing.Event()
         #multiprocessing.cluster_lock_event = multiprocessing.Event()
 
         daemon_startup = "otpme-daemon-startup"
@@ -720,7 +729,6 @@ class ControlDaemon(UnixDaemon):
 
         # Enable file logging if not in debug mode.
         if not config.debug_enabled:
-            config.file_logging = True
             try:
                 config.reload()
             except Exception as e:
@@ -1008,7 +1016,7 @@ class ControlDaemon(UnixDaemon):
         elif daemon_name == "clusterd":
             daemon_class = ClusterDaemon
         else:
-            msg = (_("Got unknon daemon: %s") % daemon_name)
+            msg = (_("Got unknown daemon: %s") % daemon_name)
             raise OTPmeException(msg)
 
         try:
@@ -1225,8 +1233,6 @@ class ControlDaemon(UnixDaemon):
             self.logger.critical(msg, exc_info=True)
             return False
 
-        #if reply == "quit":
-        #    return
         if reply == "ready":
             daemon_status = reply
             msg = ("Got 'ready' message from %s." % daemon.name)

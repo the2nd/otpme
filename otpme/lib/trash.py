@@ -83,14 +83,14 @@ commands = {
                     'args'              : [
                                         'trash_id',
                                         ],
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
                     },
                 },
             },
     'empty'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
                     },
                 },
             },

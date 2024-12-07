@@ -178,7 +178,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
     def _preload(self):
         return
 
-    def verify_attribute_value(self, o, a, v):
+    def verify_attribute_value(self, o, a, v, callback=default_callback):
         """ Check if the attribute value is valid for this object. """
         return
 

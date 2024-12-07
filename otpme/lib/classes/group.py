@@ -12,7 +12,6 @@ from otpme.lib import oid
 from otpme.lib import cli
 from otpme.lib import config
 from otpme.lib import backend
-from otpme.lib import nsscache
 from otpme.lib import otpme_acl
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -842,15 +841,38 @@ class Group(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
-    def add(self, verbose_level=0, callback=default_callback, **kwargs):
+    def add(self, ldif_attributes=None, default_attributes={},
+        verbose_level=0, callback=default_callback, **kwargs):
         """ Add a group. """
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(callback=callback, **kwargs)
         if result is False:
             return callback.error()
+
+        # Handle given LDIF attributes.
+        if ldif_attributes:
+            try:
+                default_extensions = config.default_extensions[self.type]
+            except:
+                default_extensions = []
+            for ext in default_extensions:
+                ext_attrs = config.get_ldif_attributes(ext, self.type)
+                for x in ldif_attributes.split(","):
+                    try:
+                        attr = x.split("=")[0]
+                        value = x.split("=")[1]
+                    except:
+                        msg = "Invalid attribute: %s" % x
+                        return callback.error(msg)
+                    if attr not in ext_attrs:
+                        continue
+                    if ext not in default_attributes:
+                        default_attributes[ext] = {}
+                    default_attributes[ext][attr] = value
+
         # Add object using parent class.
-        return OTPmeObject.add(self, verbose_level=verbose_level,
-                                callback=callback, **kwargs)
+        return OTPmeObject.add(self, default_attributes=default_attributes,
+                            verbose_level=verbose_level, callback=callback, **kwargs)
 
     @object_lock(full_lock=True)
     @backend.transaction
@@ -932,16 +954,6 @@ class Group(OTPmeObject):
         return OTPmeObject.delete(self, verbose_level=verbose_level,
                                     force=force, callback=callback,
                                     **kwargs)
-
-    @object_lock()
-    def add_token(self, *args, **kwargs):
-        nsscache.update_object(self.oid, "update")
-        return super(Group, self).add_token(*args, **kwargs)
-
-    @object_lock()
-    def remove_token(self, *args, **kwargs):
-        nsscache.update_object(self.oid, "update")
-        return super(Group, self).remove_token(*args, **kwargs)
 
     @check_acls(['remove:orphans'])
     @object_lock()

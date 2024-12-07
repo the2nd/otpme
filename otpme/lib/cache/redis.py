@@ -492,7 +492,7 @@ class RedisDict(SharedDict):
     """ A simple redis dict. """
     def __init__(self, name, pool, locking=None, clear=False,
         raise_exceptions=False, refresh_keys=False,
-        compression=None, pickle=True):
+        compression=None, pickle=False):
         super(RedisDict, self).__init__(name)
         self.name = name
         self.pickle = pickle
@@ -664,7 +664,7 @@ class RedisDict(SharedDict):
 
 class RedisList(SharedList):
     """ A simple redis list. """
-    def __init__(self, name, pool, clear=False, pickle=True,
+    def __init__(self, name, pool, clear=False, pickle=False,
         compression=None, raise_exceptions=False, **kwargs):
         super(RedisList, self).__init__(name)
         #self.logger = config.logger

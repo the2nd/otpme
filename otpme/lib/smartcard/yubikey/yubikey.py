@@ -167,10 +167,12 @@ class Yubikey(object):
         slot = int(slot)
         # Gen token key.
         if not key:
-            key = stuff.gen_secret(len=40)
+            key = stuff.gen_secret(len=20)
+        if isinstance(key, str):
+            key = key.encode()
         try:
             yk_cfg = self.yubikey.init_config()
-            yk_cfg.mode_oath_hotp('h:%s' % key)
+            yk_cfg.mode_oath_hotp(b'h:%s' % key)
             yk_cfg.extended_flag('SERIAL_API_VISIBLE', True)
             yk_cfg.ticket_flag('APPEND_CR', True)
         except yubico.yubico_exception.YubicoError as inst:

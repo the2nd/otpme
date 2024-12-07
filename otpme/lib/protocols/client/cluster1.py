@@ -75,11 +75,12 @@ class OTPmeClusterP1(OTPmeClient1):
             raise OTPmeException(msg)
         return reply
 
-    def delete(self, object_id):
+    def delete(self, object_id, object_uuid):
         """ Delete object on peer. """
         command = "delete"
         command_args = {}
         command_args['object_id'] = object_id
+        command_args['object_uuid'] = object_uuid
         status, \
         status_code, \
         reply = self.connection.send(command, command_args)
@@ -197,7 +198,7 @@ class OTPmeClusterP1(OTPmeClient1):
             raise OTPmeException(msg)
         return reply
 
-    def sync(self):
+    def sync(self, skip_deletions=True):
         """ Sync data objects with peer. """
         object_types = config.get_cluster_object_types()
         return_attributes = ['full_oid', 'sync_checksum']
@@ -259,6 +260,8 @@ class OTPmeClusterP1(OTPmeClient1):
                     self.logger.warning(msg)
             backend.write_config(x_oid, object_config=x_config, cluster=False)
             synced_objects.append(x_oid)
+        if skip_deletions:
+            return reply
         # Remove deleted objects.
         for x_oid in local_objects:
             if x_oid in reply:

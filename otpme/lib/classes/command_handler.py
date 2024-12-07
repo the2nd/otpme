@@ -365,6 +365,94 @@ class CommandHandler(object):
         else:
             self.user_password = None
 
+        # Init backend in API mode.
+        if config.use_api:
+            _index = config.get_index_module()
+            if _index.need_start:
+                if not _index.status():
+                    msg = "Index not started."
+                    raise OTPmeException(msg)
+            _cache = config.get_cache_module()
+            if not _cache.status():
+                msg = "Cache not started."
+                raise OTPmeException(msg)
+
+            #from otpme.lib.register import register_modules
+            ## Register modules.
+            #register_modules()
+            register_module('otpme.lib.host')
+            register_module('otpme.lib.cache')
+            register_module('otpme.lib.multiprocessing')
+            register_module('otpme.lib.daemon.clusterd')
+            # Enable cache.
+            cache.init()
+            cache.enable()
+
+            if not (command == "realm" and subcommand == "init"):
+                self.init(use_backend=True)
+
+            if command == "token":
+                register_module('otpme.lib.classes.token')
+                #register_module('otpme.lib.classes.role')
+                register_module('otpme.lib.token')
+                register_module('otpme.lib.cli.token')
+            if command == "realm":
+                register_module("otpme.lib.classes.realm")
+                register_module("otpme.lib.cli.realm")
+            if command == "site":
+                register_module("otpme.lib.classes.site")
+                register_module("otpme.lib.cli.site")
+            if command == "unit":
+                register_module("otpme.lib.classes.unit")
+                register_module("otpme.lib.cli.unit")
+            if command == "ca":
+                register_module("otpme.lib.classes.ca")
+                register_module("otpme.lib.cli.ca")
+            if command == "node":
+                register_module("otpme.lib.classes.node")
+                register_module("otpme.lib.cli.host")
+            if command == "host":
+                register_module("otpme.lib.classes.host")
+                register_module("otpme.lib.cli.host")
+            if command == "user":
+                register_module("otpme.lib.classes.user")
+                register_module("otpme.lib.cli.user")
+            if command == "group":
+                register_module("otpme.lib.classes.group")
+                register_module("otpme.lib.cli.group")
+            if command == "client":
+                register_module("otpme.lib.classes.client")
+                register_module("otpme.lib.cli.client")
+            if command == "role":
+                register_module("otpme.lib.classes.role")
+                register_module("otpme.lib.cli.role")
+            if command == "policy":
+                register_module("otpme.lib.classes.policy")
+                register_module("otpme.lib.cli.policy")
+            if command == "accessgroup":
+                register_module("otpme.lib.classes.accessgroup")
+                register_module("otpme.lib.cli.accessgroup")
+            if command == "resolver":
+                register_module("otpme.lib.classes.resolver")
+                register_module("otpme.lib.cli.resolver")
+            if command == "dictionary":
+                register_module("otpme.lib.classes.dictionary")
+                register_module("otpme.lib.cli.dictionary")
+
+            if subcommand == "show":
+                register_module("otpme.lib.cli")
+
+            # Handle post object registration stuff.
+            config.handle_post_object_registration()
+            # Handle post base object registration stuff.
+            config.handle_post_base_object_registration()
+
+            # Re-init backend after module registration.
+            init_file_dir_perms = True
+            if config.realm_init:
+                init_file_dir_perms = True
+            backend.init(init_file_dir_perms=init_file_dir_perms)
+
         if self.command == "auth":
             return self.handle_auth_command(command, subcommand, command_line)
 
@@ -549,94 +637,6 @@ class CommandHandler(object):
         # this in mgmtd would make things much more complicated.
         if command == "token" and (subcommand == "add" or subcommand == "del"):
             self.handle_token_add_del_command(command, subcommand)
-
-        # Init backend in API mode.
-        if config.use_api:
-            _index = config.get_index_module()
-            if _index.need_start:
-                if not _index.status():
-                    msg = "Index not started."
-                    raise OTPmeException(msg)
-            _cache = config.get_cache_module()
-            if not _cache.status():
-                msg = "Cache not started."
-                raise OTPmeException(msg)
-
-            #from otpme.lib.register import register_modules
-            ## Register modules.
-            #register_modules()
-            register_module('otpme.lib.host')
-            register_module('otpme.lib.cache')
-            register_module('otpme.lib.multiprocessing')
-            register_module('otpme.lib.daemon.clusterd')
-            # Enable cache.
-            cache.init()
-            cache.enable()
-
-            if not (command == "realm" and subcommand == "init"):
-                self.init(use_backend=True)
-
-            if command == "token":
-                register_module('otpme.lib.classes.token')
-                #register_module('otpme.lib.classes.role')
-                register_module('otpme.lib.token')
-                register_module('otpme.lib.cli.token')
-            if command == "realm":
-                register_module("otpme.lib.classes.realm")
-                register_module("otpme.lib.cli.realm")
-            if command == "site":
-                register_module("otpme.lib.classes.site")
-                register_module("otpme.lib.cli.site")
-            if command == "unit":
-                register_module("otpme.lib.classes.unit")
-                register_module("otpme.lib.cli.unit")
-            if command == "ca":
-                register_module("otpme.lib.classes.ca")
-                register_module("otpme.lib.cli.ca")
-            if command == "node":
-                register_module("otpme.lib.classes.node")
-                register_module("otpme.lib.cli.host")
-            if command == "host":
-                register_module("otpme.lib.classes.host")
-                register_module("otpme.lib.cli.host")
-            if command == "user":
-                register_module("otpme.lib.classes.user")
-                register_module("otpme.lib.cli.user")
-            if command == "group":
-                register_module("otpme.lib.classes.group")
-                register_module("otpme.lib.cli.group")
-            if command == "client":
-                register_module("otpme.lib.classes.client")
-                register_module("otpme.lib.cli.client")
-            if command == "role":
-                register_module("otpme.lib.classes.role")
-                register_module("otpme.lib.cli.role")
-            if command == "policy":
-                register_module("otpme.lib.classes.policy")
-                register_module("otpme.lib.cli.policy")
-            if command == "accessgroup":
-                register_module("otpme.lib.classes.accessgroup")
-                register_module("otpme.lib.cli.accessgroup")
-            if command == "resolver":
-                register_module("otpme.lib.classes.resolver")
-                register_module("otpme.lib.cli.resolver")
-            if command == "dictionary":
-                register_module("otpme.lib.classes.dictionary")
-                register_module("otpme.lib.cli.dictionary")
-
-            if subcommand == "show":
-                register_module("otpme.lib.cli")
-
-            # Handle post object registration stuff.
-            config.handle_post_object_registration()
-            # Handle post base object registration stuff.
-            config.handle_post_base_object_registration()
-
-            # Re-init backend after module registration.
-            init_file_dir_perms = True
-            if config.realm_init:
-                init_file_dir_perms = True
-            backend.init(init_file_dir_perms=init_file_dir_perms)
 
         # Send command.
         try:
@@ -5002,6 +5002,7 @@ class CommandHandler(object):
     def handle_cluster_status(self, command, subcommand):
         """ Handle auth command. """
         from termcolor import colored
+        from otpme.lib import multiprocessing
         from otpme.lib.daemon.controld import ControlDaemon
         register_module("otpme.lib.classes.realm")
         if config.system_user() != "root":
@@ -5043,36 +5044,17 @@ class CommandHandler(object):
         except KeyError:
             diff_data = False
 
-        try:
-            hostd_conn = connections.get("hostd")
-        except Exception as e:
-            msg = "Failed to get hostd connection: %s" % e
-            self.logger.warning(msg)
-            return
-
-        result = backend.search(object_type="node",
-                                attribute="uuid",
-                                value="*",
-                                realm=config.realm,
-                                site=config.site,
-                                return_type="instance")
-        node_status = {}
-        master_node = None
-        node_checksums = {}
-        cluster_status = False
-        for node in result:
-            if not node.enabled:
-                continue
+        def get_node_data(node, data_dict):
             msg = "Reading cluster data from node: %s" % node.name
             print(msg)
+            master_node = None
+            node_status = data_dict['node_status']
+            node_checksums = data_dict['node_checksums']
+            socket_uri = stuff.get_daemon_socket("clusterd", node.name)
             try:
-                socket_uri = hostd_conn.get_daemon_socket("clusterd", node.name)
-            except Exception as e:
-                msg = "Failed to get daemon socket from hostd: %s" % e
-                self.logger.warning(msg)
-                return msg
-            try:
-                clusterd_conn = connections.get("clusterd", socket_uri=socket_uri)
+                clusterd_conn = connections.get(daemon="clusterd",
+                                                socket_uri=socket_uri,
+                                                interactive=False)
             except Exception as e:
                 msg = ("Failed to get cluster connection: %s: %s"
                         % (node.name, e))
@@ -5081,7 +5063,7 @@ class CommandHandler(object):
                     node_status[node.name]['status'] = "Offline"
                 except:
                     node_status[node.name] = {'status':"Offline"}
-                continue
+                return
             try:
                 # Get master node.
                 x_master_node = clusterd_conn.get_master_node()
@@ -5094,7 +5076,8 @@ class CommandHandler(object):
             if not master_node:
                 master_node = x_master_node
             if node.name == master_node:
-                cluster_status = clusterd_conn.get_cluster_status()
+                data_dict['master_node'] = master_node
+                data_dict['cluster_status'] = clusterd_conn.get_cluster_status()
             try:
                 # Get cluster quorum.
                 quorum = clusterd_conn.get_cluster_quorum()
@@ -5121,6 +5104,37 @@ class CommandHandler(object):
                     node_status[node.name] = {'status':"Offline"}
             finally:
                 clusterd_conn.close()
+
+        result = backend.search(object_type="node",
+                                attribute="uuid",
+                                value="*",
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="instance")
+        data_dict = {
+                    'node_status'   : {},
+                    'node_checksums': {},
+                    'master_node'   : None,
+                    'cluster_status': False,
+                    }
+        node_threads = {}
+        for node in result:
+            if not node.enabled:
+                continue
+            node_data_thread = multiprocessing.start_thread(name=node.name,
+                                                        target=get_node_data,
+                                                        target_args=(node, data_dict),
+                                                        daemon=True)
+            node_threads[node.name] = node_data_thread
+
+        for node_name in node_threads:
+            node_thread = node_threads[node_name]
+            node_thread.join()
+
+        node_status = data_dict['node_status']
+        node_checksums = data_dict['node_checksums']
+        master_node = data_dict['master_node']
+        cluster_status = data_dict['cluster_status']
 
         do_diff_data = False
         do_diff_objects = False

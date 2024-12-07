@@ -64,7 +64,7 @@ def handle_sync_child():
                 config.raise_exception()
             finally:
                 self._send_local_daemon_msg("sync_done")
-                multiprocessing.cleanup()
+                multiprocessing.cleanup(keep_queues=True)
             if result is True:
                 #os._exit(0)
                 sys.exit(0)
@@ -396,6 +396,8 @@ class HostDaemon(OTPmeDaemon):
     @handle_sync_child()
     def sync_sites(self, **kwargs):
         """ Make sure our sites list is in sync with the master site. """
+        if config.realm_master_node:
+            return
         # Acquire sync lock.
         sync_lock = self.acquire_sync_lock("objects")
         try:
@@ -420,16 +422,7 @@ class HostDaemon(OTPmeDaemon):
         #        self.logger.warning(msg)
         #        return
 
-        # Remember master node status (e.g. master node switch while running sites sync).
-        is_master_node = config.realm_master_node
-
-        if is_master_node:
-            # Realm master nodes must connect to each site.
-            connect_sites = backend.search(object_type="site",
-                                            attribute="uuid",
-                                            value="*",
-                                            return_type="instance")
-        elif config.master_node:
+        if config.master_node:
             # Master nodes of non-master sites must connect to master site.
             master_site = backend.get_object(object_type="site",
                                     uuid=config.realm_master_uuid)
@@ -472,6 +465,7 @@ class HostDaemon(OTPmeDaemon):
 
         sync_sites = {}
         reached_sites = []
+        removed_objects = 0
         for site in connect_sites:
             # Connect to site master node.
             try:
@@ -505,14 +499,11 @@ class HostDaemon(OTPmeDaemon):
             # Get sites and their objects from reply.
             for x in reply:
                 site_oid = oid.get(object_id=x)
-                # The realm master node must receive the right site object from
-                # the site it is connected to.
-                if is_master_node:
-                    if site_oid != site.oid:
-                        msg = ("Uuuh received wrong site object from site %s: %s"
-                                    % (site.oid, site_oid))
-                        self.logger.critical(msg)
-                        continue
+                if site_oid != site.oid:
+                    msg = ("Uuuh received wrong site object from site %s: %s"
+                                % (site.oid, site_oid))
+                    self.logger.critical(msg)
+                    continue
                 # Will hold all valid site objects.
                 site_objects = []
                 # Get object configs from reply.
@@ -573,7 +564,8 @@ class HostDaemon(OTPmeDaemon):
                     # Get object type.
                     object_type = o.type
                     # No need to update object if checksum matches.
-                    if x_object.checksum == o.checksum:
+                    sync_checksum = backend.get_sync_checksum(x_oid)
+                    if sync_checksum == o.sync_checksum:
                         continue
                     # Realm/site objects need some special handling (e.g.
                     # preserve auth/sync settings.
@@ -587,6 +579,8 @@ class HostDaemon(OTPmeDaemon):
                         o.update_object_config()
                         # Get object config of updated object.
                         object_config = o.object_config.copy()
+                    # Update sync checksum of object.
+                    object_config['SYNC_CHECKSUM'] = o.sync_checksum
                     updated_objects += 1
                     self.logger.info("Updating object: %s" % x_oid)
                 else:
@@ -604,58 +598,59 @@ class HostDaemon(OTPmeDaemon):
                     self.logger.critical(msg)
                     config.raise_exception()
 
-        # Realm master nodes must not delete realms/sites.
-        if is_master_node:
+        # Nodes must not delete realms/sites as they are deleted by clusterd.
+        if self.host_type == "node":
             if sync_status:
                 self.update_realm_data()
             return True
 
         # Remove remote missing sites.
-        local_sites = backend.search(object_type="site",
-                                    attribute="uuid",
-                                    value="*",
-                                    return_type="instance")
-        removed_objects = 0
-        for site in local_sites:
-            # If the site is in the list of sites we received from master node
-            # there is no need to remove it.
-            if site.oid in sync_sites:
-                continue
-
-            # We will not delete our own site. :)
-            if site.uuid == config.site_uuid:
-                continue
-
-            # The realm master site also must always exist.
-            if site.uuid == config.realm_master_uuid:
-                msg = ("Uuuhh peer node tells us our master "
-                        "site does not exist anymore.")
-                self.logger.warning(msg)
-                continue
-
-            msg = ("Removing orphan site: %s" % site.oid)
-            self.logger.info(msg)
-
-            site.delete(force=True, verify_acls=False)
-            removed_objects += 1
-
-        # Remove orphan realms.
-        local_realms = backend.search(object_type="realm",
-                                    attribute="uuid",
-                                    value="*",
-                                    return_type="instance")
-        for realm in local_realms:
-            realm_sites = backend.search(realm=realm.name,
-                                        object_type="site",
+        if self.host_type == "host":
+            local_sites = backend.search(object_type="site",
                                         attribute="uuid",
                                         value="*",
-                                        return_type="full_oid")
-            # If the realm does not have a site anymore we can delete it.
-            if len(realm_sites) == 0:
-                msg = ("Removing orphan realm: %s" % realm.oid)
+                                        return_type="instance")
+            for site in local_sites:
+                # If the site is in the list of sites we received from master node
+                # there is no need to remove it.
+                if site.oid in sync_sites:
+                    continue
+
+                # We will not delete our own site. :)
+                if site.uuid == config.site_uuid:
+                    continue
+
+                # The realm master site also must always exist.
+                if site.uuid == config.realm_master_uuid:
+                    msg = ("Uuuhh peer node tells us our master "
+                            "site does not exist anymore.")
+                    self.logger.warning(msg)
+                    continue
+
+                msg = ("Removing orphan site: %s" % site.oid)
                 self.logger.info(msg)
-                realm.delete(force=True, verify_acls=False)
+
+                site.delete(force=True, verify_acls=False)
                 removed_objects += 1
+
+        # Remove orphan realms.
+        if self.host_type == "host":
+            local_realms = backend.search(object_type="realm",
+                                        attribute="uuid",
+                                        value="*",
+                                        return_type="instance")
+            for realm in local_realms:
+                realm_sites = backend.search(realm=realm.name,
+                                            object_type="site",
+                                            attribute="uuid",
+                                            value="*",
+                                            return_type="full_oid")
+                # If the realm does not have a site anymore we can delete it.
+                if len(realm_sites) == 0:
+                    msg = ("Removing orphan realm: %s" % realm.oid)
+                    self.logger.info(msg)
+                    realm.delete(force=True, verify_acls=False)
+                    removed_objects += 1
 
         if added_objects > 0 or updated_objects > 0 or removed_objects >0:
             log_method = self.logger.info
@@ -1056,6 +1051,18 @@ class HostDaemon(OTPmeDaemon):
                 nsscache_child = None
             if not nsscache_child:
                 start_nsscache_sync = True
+
+        # Skip nsscache sync if last object creation was within the last 30 seconds.
+        if start_nsscache_sync:
+            min_seconds = 10
+            now = time.time()
+            data_revision = config.get_data_revision()
+            age = now - data_revision
+            if age < min_seconds:
+                msg = ("Not starting nsscache sync because last object was "
+                        "written within the last %s seconds." % min_seconds)
+                self.logger.info(msg)
+                start_nsscache_sync = False
 
         if start_nsscache_sync:
             # Acquire sync lock.
@@ -1498,22 +1505,6 @@ class HostDaemon(OTPmeDaemon):
 
         self.logger.info("%s started" % self.full_name)
 
-        ## Wait for first keepalive packet that indicates all
-        ## daemons (e.g. syncd) are ready.
-        #try:
-        #    sender, command, data = self.comm_handler.recv(sender="controld")
-        #except ExitOnSignal:
-        #    return
-        #except Exception as e:
-        #    msg = "Failed to receive daemon message: %s" % e
-        #    self.logger.critical(msg)
-        #    return
-        #if command != "ping":
-        #    msg = "Received wrong command: %s" % command
-        #    raise OTPmeException(msg)
-        ## Reply keepalive packet.
-        #self.comm_handler.send("controld", "pong")
-
         # Run in loop until we get signal.
         recv_timeout = None
         init_sync_started = False
@@ -1633,13 +1624,13 @@ class HostDaemon(OTPmeDaemon):
                             self.sync_by_command_opts['resync_objects'] = data
 
                     if daemon_command == "sync_nsscache":
-                        if not "nsscache" in self.sync_by_command:
+                        if "nsscache" not in self.sync_by_command:
                             self.sync_by_command.append('nsscache')
                     if daemon_command == "resync_nsscache":
-                        if not "resync_nsscache" in self.sync_by_command:
+                        if "resync_nsscache" not in self.sync_by_command:
                             self.sync_by_command.append('resync_nsscache')
                     if daemon_command == "sync_ssh_authorized_keys":
-                        if not "sync_ssh_authorized_keys" in self.sync_by_command:
+                        if "sync_ssh_authorized_keys" not in self.sync_by_command:
                             self.sync_by_command.append('ssh_authorized_keys')
 
                 child_list = list(self.sync_childs)

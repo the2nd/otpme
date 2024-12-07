@@ -24,10 +24,25 @@ import setproctitle
 # python3.
 from importlib import reload
 
+# Get tool name.
+tool_name = str(os.path.basename(sys.argv[0]))
+
+# Set proctitle.
+current_proctitle = setproctitle.getproctitle()
+if tool_name == "otpme-auth":
+    new_proctitle = tool_name
+else:
+    new_proctitle = current_proctitle.split()
+    new_proctitle = "%s %s" % (tool_name, " ".join(new_proctitle[2:]))
+setproctitle.setproctitle(new_proctitle)
+
 # Workaround for "ValueError: unsupported hash type md4" error on hashlib.new('md4')
 import ctypes
-ctypes.CDLL("libssl.so").OSSL_PROVIDER_load(None, b"legacy")
-ctypes.CDLL("libssl.so").OSSL_PROVIDER_load(None, b"default")
+try:
+    ctypes.CDLL("libssl.so").OSSL_PROVIDER_load(None, b"legacy")
+    ctypes.CDLL("libssl.so").OSSL_PROVIDER_load(None, b"default")
+except AttributeError:
+    pass
 
 # Workaround for https://github.com/pyca/cryptography/issues/7236
 from cryptography.hazmat.backends.openssl import backend
@@ -85,6 +100,10 @@ def otpme_commands(no_debug=False):
                     message("NT_KEY: "+nt_key)
             else:
                 message("ERR")
+        if not no_debug:
+            if config.print_timing_results:
+                from otpme.lib import debug
+                debug.print_timing_result(print_status=True)
         # Using auth command with freeradius requires exit code 0
         # even on failed requests.
         return 0
@@ -125,8 +144,6 @@ if os.path.exists(PYTHONPATH_FILE):
     finally:
         fd.close()
 
-# Get tool name.
-tool_name = str(os.path.basename(sys.argv[0]))
 # Get command from system command (e.g. otpme-user -> user).
 command = "-".join(tool_name.split("-")[1:])
 
@@ -149,16 +166,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "--version":
     message(__version__)
     sys.exit(0)
 
-# Set proctitle.
-current_proctitle = setproctitle.getproctitle()
-if tool_name == "otpme-auth":
-    new_proctitle = tool_name
-else:
-    new_proctitle = current_proctitle.split()
-    new_proctitle = "%s %s" % (tool_name, " ".join(new_proctitle[2:]))
-setproctitle.setproctitle(new_proctitle)
-
-#setproctitle.setproctitle(tool_name)
+# Remove command from argv.
 sys.argv.pop(0)
 
 help_needed = False

@@ -3616,6 +3616,7 @@ class OTPmeClient1(OTPmeClientBase):
                                 realm=self.realm,
                                 site=self.site,
                                 rsp=self.rsp,
+                                slp=slp,
                                 login_time=login_time,
                                 session_uuid=session_uuid,
                                 session_timeout=session_timeout,
@@ -3802,8 +3803,13 @@ class OTPmeClient1(OTPmeClientBase):
             verify_token = login_token
 
         sftoken = None
-        if verify_token.second_factor_token:
-            sftoken = offline_tokens[verify_token.second_factor_token]
+        if verify_token.second_factor_token_enabled:
+            try:
+                sftoken = offline_tokens[verify_token.second_factor_token]
+            except KeyError:
+                msg = ("Failed to load second factor token: %s: %s"
+                    % (verify_token.rel_path, verify_token.second_factor_token))
+                raise OTPmeException(msg)
 
         found_smartcard = False
         if verify_token.pass_type == "smartcard":

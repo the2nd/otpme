@@ -6,6 +6,14 @@ from datetime import datetime
 from datetime import timedelta
 
 try:
+    import simdjson as json
+except:
+    try:
+        import ujson as json
+    except:
+        import json
+
+try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
         print(_("Loading module: %s" % __name__))
 except:
@@ -14,7 +22,6 @@ except:
 from otpme.lib import cli
 from otpme.lib import srp
 from otpme.lib import oid
-from otpme.lib import json
 from otpme.lib import sotp
 from otpme.lib import stuff
 from otpme.lib import config
@@ -75,6 +82,14 @@ commands = {
                 'exists'    : {
                     'method'            : 'show',
                     'job_type'          : 'thread',
+                    },
+                },
+            },
+    'export'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'export_config',
+                    'job_type'          : 'process',
                     },
                 },
             },
@@ -418,8 +433,8 @@ class Session(OTPmeLockObject):
         if not self.exists():
             msg = (_("Object '%s' does not exist.") % self.oid)
             return callback.error(msg)
-        # FIXME: read object config from backend on export and optionally encrypt config!! (see OTPmeObject().export_config())
-        object_config = json.dumps(self.object_config, indent=4, sort_keys=True)
+        object_config = self.object_config.copy()
+        object_config = json.dumps(object_config, indent=4, sort_keys=True)
         return callback.ok(object_config)
 
     def outdate(self):

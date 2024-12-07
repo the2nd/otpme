@@ -540,7 +540,13 @@ def write(object_id, object_config, index_journal=None,
 
         # Update nsscache.
         if object_type in NSSCACHE_OBJECT_TYPES:
-            write_transaction.update_nsscache(object_id, "update")
+            # Get object template status.
+            try:
+                template = object_config['TEMPLATE']
+            except:
+                template = False
+            if not template:
+                write_transaction.update_nsscache(object_id, "update")
 
     ## Cannot add objects without UUID to index.
     #if not uuid:
@@ -770,8 +776,14 @@ def rename(object_id, new_object_id, no_lock=False,
                                 use_index=True)
     # Update nsscache.
     if object_type in NSSCACHE_OBJECT_TYPES:
-        rename_transaction.update_nsscache(object_id, "remove")
-        rename_transaction.update_nsscache(new_object_id, "update")
+        # Get object template status.
+        try:
+            template = object_config['TEMPLATE']
+        except:
+            template = False
+        if not template:
+            rename_transaction.update_nsscache(object_id, "remove")
+            rename_transaction.update_nsscache(new_object_id, "update")
 
     if cluster:
         rename_transaction.cluster_rename(object_uuid,
@@ -886,7 +898,13 @@ def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
 
     # Update nsscache.
     if object_type in NSSCACHE_OBJECT_TYPES:
-        del_transaction.update_nsscache(object_id, "remove")
+        # Get object template status.
+        try:
+            template = object_config['TEMPLATE']
+        except:
+            template = False
+        if not template:
+            del_transaction.update_nsscache(object_id, "remove")
 
     if cluster:
         if object_uuid:
@@ -1351,19 +1369,24 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                     attribute_table_joined = True
                 q = q.filter(IndexObjectAttribute.value.in_(values))
             elif value is not None:
+                like_query = False
                 sql_like = str(value)
                 if "*" in sql_like:
+                    like_query = True
                     sql_like = sql_like.replace("*", "%")
-                if "_" in sql_like:
-                    sql_like = sql_like.replace("_", "!_")
-                if case_sensitive:
-                    like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
-                    like_filter = IndexObject.attributes.any(like_filter, name=attr)
-                    q = q.filter(like_filter)
+                    if "_" in sql_like:
+                        sql_like = sql_like.replace("_", "!_")
+                if like_query:
+                    if case_sensitive:
+                        like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+                        like_filter = IndexObject.attributes.any(like_filter, name=attr)
+                        q = q.filter(like_filter)
+                    else:
+                        like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+                        like_filter = IndexObject.attributes.any(like_filter, name=attr)
+                        q = q.filter(like_filter)
                 else:
-                    like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
-                    like_filter = IndexObject.attributes.any(like_filter, name=attr)
-                    q = q.filter(like_filter)
+                    q = q.filter(IndexObject.attributes.any(name=attr, value=value))
             if less_than is not None:
                 int_filter = cast(IndexObjectAttribute.value, Integer)
                 int_filter = IndexObject.attributes.any(int_filter < less_than, name=attr)

@@ -63,7 +63,7 @@ def register():
     multiprocessing.register_shared_list("pause_writes")
     multiprocessing.register_shared_dict("running_jobs")
     multiprocessing.register_shared_dict("cluster_quorum")
-    multiprocessing.register_shared_dict("cluster_journal", pickle=False)
+    multiprocessing.register_shared_dict("cluster_journal")
     multiprocessing.register_shared_dict("node_connections")
     multiprocessing.register_shared_list("master_sync_done")
     multiprocessing.register_shared_dict("member_candidates")
@@ -1023,8 +1023,11 @@ class ClusterDaemon(OTPmeDaemon):
             # Sync data objects.
             msg = "Starting data sync with node: %s" % node_name
             self.logger.info(msg)
+            skip_deletions = True
+            if os.path.exists(config.node_joined_file):
+                skip_deletions = False
             try:
-                clusterd_conn.sync()
+                clusterd_conn.sync(skip_deletions=skip_deletions)
             except Exception as e:
                 msg = "Failed to sync with node: %s: %s" % (node_name, e)
                 self.logger.warning(msg)
@@ -1574,6 +1577,7 @@ class ClusterDaemon(OTPmeDaemon):
     def do_node_check(self, node_name):
         node_conn = self.get_node_connection(node_name)
         if not node_conn:
+            self.node_leave(node_name)
             return False
 
         if self.host_name not in multiprocessing.master_sync_done:
@@ -2050,29 +2054,32 @@ class ClusterDaemon(OTPmeDaemon):
             if action == "delete":
                 object_id = object_data['object_id']
                 object_id = oid.get(object_id)
-                if object_id.object_type == "user":
-                    try:
-                        public_key = sign_key_cache.get_cache(object_id)
-                    except Exception as e:
-                        msg = "Unable to read signer cache: %s: %s" % (object_id, e)
-                        self.logger.critical(msg)
-                        public_key = None
-                    if public_key:
+                object_uuid = object_data['object_uuid']
+                x_uuid = backend.get_uuid(object_id)
+                if object_uuid == x_uuid:
+                    if object_id.object_type == "user":
                         try:
-                            sign_key_cache.del_cache(object_id)
+                            public_key = sign_key_cache.get_cache(object_id)
                         except Exception as e:
-                            msg = "Unable to add signer cache: %s: %s" % (object_id, e)
+                            msg = "Unable to read signer cache: %s: %s" % (object_id, e)
                             self.logger.critical(msg)
-                try:
-                    backend.delete_object(object_id=object_id)
-                except UnknownObject:
-                    pass
-                except Exception as e:
-                    msg = "Failed to delete object: %s: %s" % (object_id, e)
-                    self.logger.warning(msg)
-                else:
-                    msg = "Removed object: %s" % object_id
-                    self.logger.debug(msg)
+                            public_key = None
+                        if public_key:
+                            try:
+                                sign_key_cache.del_cache(object_id)
+                            except Exception as e:
+                                msg = "Unable to add signer cache: %s: %s" % (object_id, e)
+                                self.logger.critical(msg)
+                    try:
+                        backend.delete_object(object_id=object_id)
+                    except UnknownObject:
+                        pass
+                    except Exception as e:
+                        msg = "Failed to delete object: %s: %s" % (object_id, e)
+                        self.logger.warning(msg)
+                    else:
+                        msg = "Removed object: %s" % object_id
+                        self.logger.debug(msg)
 
             try:
                 os.remove(journal_file)
@@ -2200,7 +2207,7 @@ class ClusterDaemon(OTPmeDaemon):
         except Exception as e:
             msg = "Error in node write connection: %s" % e
             self.logger.critical(msg)
-            #config.raise_exception()
+            config.raise_exception()
 
     def _start_node_write_connection(self, node_name):
         """ Start cluster write communication with node. """
@@ -2274,7 +2281,7 @@ class ClusterDaemon(OTPmeDaemon):
                 start_over = True
                 msg = "Failed to handle cluster journal: %s" % e
                 self.logger.critical(msg)
-                #config.raise_exception()
+                config.raise_exception()
 
     def handle_cluster_out_journal(self, node_name):
         while True:
@@ -2435,6 +2442,7 @@ class ClusterDaemon(OTPmeDaemon):
                     full_data_update = False
                     full_index_update = False
                     full_object_update = False
+                    strip_object_config = True
                     if self.member_candidate:
                         oc = None
                         if object_id in full_written_objects:
@@ -2453,6 +2461,7 @@ class ClusterDaemon(OTPmeDaemon):
                             full_data_update = True
                             full_index_update = True
                             full_object_update = True
+                            strip_object_config = False
                             object_config = oc.copy()
                     index_journal = []
                     if not full_index_update:
@@ -2466,24 +2475,46 @@ class ClusterDaemon(OTPmeDaemon):
                         msg = "Failed to get last used time: %s" % object_id
                         self.logger.warning(msg)
                         continue
+                    if strip_object_config:
+                        try:
+                            object_exists = node_conn.object_exists(object_id.full_oid)
+                        except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                            #self.node_leave(node_name)
+                            self.node_disconnect(node_name)
+                            msg = ("Failed to send object exists request: %s: %s: %s"
+                                    % (node_name, object_id, e))
+                            self.logger.warning(msg)
+                            self.check_member_nodes(cluster_journal_entry)
+                            raise ProcessingFailed(msg)
+                        except Exception as e:
+                            #self.node_leave(node_name)
+                            self.node_disconnect(node_name)
+                            msg = ("Error sending object exists requrest: %s: %s: %s"
+                                    % (node_name, object_id, e))
+                            self.logger.warning(msg)
+                            self.check_member_nodes(cluster_journal_entry)
+                            raise ProcessingFailed(msg)
+                        if object_exists:
+                            object_config = ObjectConfig(object_id, object_config, encrypted=False)
+                            object_config = object_config.reduce()
                     try:
                         write_status = node_conn.write(object_id.full_oid,
                                                         object_config,
                                                         last_used,
                                                         index_journal=index_journal,
-                                                        #full_data_update=True,
                                                         full_data_update=full_data_update,
-                                                        #full_index_update=True)
                                                         full_index_update=full_index_update)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_leave(node_name)
+                        #self.node_leave(node_name)
+                        self.node_disconnect(node_name)
                         msg = ("Failed to send object: %s: %s: %s"
                                 % (node_name, object_id, e))
                         self.logger.warning(msg)
                         self.check_member_nodes(cluster_journal_entry)
                         raise ProcessingFailed(msg)
                     except Exception as e:
-                        self.node_leave(node_name)
+                        #self.node_leave(node_name)
+                        self.node_disconnect(node_name)
                         msg = ("Error sending object: %s: %s: %s"
                                 % (node_name, object_id, e))
                         self.logger.warning(msg)
@@ -2507,14 +2538,16 @@ class ClusterDaemon(OTPmeDaemon):
                         rename_status = node_conn.rename(object_id=object_id.full_oid,
                                                         new_object_id=new_object_id.full_oid)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_leave(node_name)
+                        #self.node_leave(node_name)
+                        self.node_disconnect(node_name)
                         msg = ("Failed to rename object: %s: %s: %s"
                                 % (node_name, object_id, e))
                         self.logger.warning(msg)
                         self.check_member_nodes(cluster_journal_entry)
                         raise ProcessingFailed(msg)
                     except Exception as e:
-                        self.node_leave(node_name)
+                        #self.node_leave(node_name)
+                        self.node_disconnect(node_name)
                         msg = ("Failed to rename object: %s: %s: %s"
                                 % (node_name, object_id, e))
                         self.logger.warning(msg)
@@ -2528,31 +2561,35 @@ class ClusterDaemon(OTPmeDaemon):
                     cluster_journal_entry.add_node(node_name)
                 # Delete object on peer.
                 if action == "delete":
-                    try:
-                        del_status = node_conn.delete(object_id.full_oid)
-                    except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_leave(node_name)
-                        msg = ("Failed to delete object: %s: (%s) %s"
-                                % (object_id, node_name, e))
-                        self.logger.warning(msg)
-                        self.check_member_nodes(cluster_journal_entry)
-                        raise ProcessingFailed(msg)
-                    except Exception as e:
-                        self.node_leave(node_name)
-                        msg = ("Failed to delete object: %s: (%s) %s"
-                                % (object_id, node_name, e))
-                        self.logger.warning(msg)
-                        self.check_member_nodes(cluster_journal_entry)
-                        raise ProcessingFailed(msg)
-                    if del_status != "done":
-                        continue
-                    msg = ("Deleted object on node: %s: %s"
-                            % (node_name, object_id))
-                    self.logger.debug(msg)
-                    try:
-                        full_written_objects.pop(object_id)
-                    except KeyError:
-                        pass
+                    object_exists = backend.object_exists(object_id)
+                    if not object_exists:
+                        try:
+                            del_status = node_conn.delete(object_id.full_oid, object_uuid)
+                        except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                            #self.node_leave(node_name)
+                            self.node_disconnect(node_name)
+                            msg = ("Failed to delete object: %s: (%s) %s"
+                                    % (object_id, node_name, e))
+                            self.logger.warning(msg)
+                            self.check_member_nodes(cluster_journal_entry)
+                            raise ProcessingFailed(msg)
+                        except Exception as e:
+                            #self.node_leave(node_name)
+                            self.node_disconnect(node_name)
+                            msg = ("Error deleting object: %s: (%s) %s"
+                                    % (object_id, node_name, e))
+                            self.logger.warning(msg)
+                            self.check_member_nodes(cluster_journal_entry)
+                            raise ProcessingFailed(msg)
+                        if del_status != "done":
+                            continue
+                        msg = ("Deleted object on node: %s: %s"
+                                % (node_name, object_id))
+                        self.logger.debug(msg)
+                        try:
+                            full_written_objects.pop(object_id)
+                        except KeyError:
+                            pass
                     cluster_journal_entry.add_node(node_name)
                 # Write trash object to peer.
                 if action == "trash_write":
@@ -2571,14 +2608,16 @@ class ClusterDaemon(OTPmeDaemon):
                                                                 object_data=object_data,
                                                                 deleted_by=deleted_by)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_leave(node_name)
+                        #self.node_leave(node_name)
+                        self.node_disconnect(node_name)
                         msg = ("Failed to send trash object: %s: %s: %s: %s"
                                 % (node_name, trash_id, object_id, e))
                         self.logger.warning(msg)
                         self.check_member_nodes(cluster_journal_entry)
                         raise ProcessingFailed(msg)
                     except Exception as e:
-                        self.node_leave(node_name)
+                        #self.node_leave(node_name)
+                        self.node_disconnect(node_name)
                         msg = ("Error sending trash object: %s: %s: %s: %s"
                                 % (node_name, trash_id, object_id, e))
                         self.logger.warning(msg)
@@ -2586,8 +2625,8 @@ class ClusterDaemon(OTPmeDaemon):
                         raise ProcessingFailed(msg)
                     if trash_write_status != "done":
                         continue
-                    msg = ("Written trash object to node: %s: %s: %s (%s)"
-                            % (node_name, trash_id, object_id, object_checksum))
+                    msg = ("Written trash object to node: %s: %s: %s"
+                            % (node_name, trash_id, object_id))
                     self.logger.debug(msg)
                     cluster_journal_entry.add_node(node_name)
                     written_entries.append(object_id)
@@ -2597,14 +2636,16 @@ class ClusterDaemon(OTPmeDaemon):
                     try:
                         trash_del_status = node_conn.trash_delete(trash_id)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_leave(node_name)
+                        #self.node_leave(node_name)
+                        self.node_disconnect(node_name)
                         msg = ("Failed to delete trash object: %s: %s: %s"
                                 % (node_name, trash_id, e))
                         self.logger.warning(msg)
                         self.check_member_nodes(cluster_journal_entry)
                         raise ProcessingFailed(msg)
                     except Exception as e:
-                        self.node_leave(node_name)
+                        #self.node_leave(node_name)
+                        self.node_disconnect(node_name)
                         msg = ("Error deleting trash object: %s: %s: %s"
                                 % (node_name, trash_id, e))
                         self.logger.warning(msg)
@@ -2622,14 +2663,16 @@ class ClusterDaemon(OTPmeDaemon):
                     try:
                         trash_empty_status = node_conn.trash_empty()
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_leave(node_name)
+                        #self.node_leave(node_name)
+                        self.node_disconnect(node_name)
                         msg = ("Failed to send trash empty request: %s: %s"
                                 % (node_name, e))
                         self.logger.warning(msg)
                         self.check_member_nodes(cluster_journal_entry)
                         raise ProcessingFailed(msg)
                     except Exception as e:
-                        self.node_leave(node_name)
+                        #self.node_leave(node_name)
+                        self.node_disconnect(node_name)
                         msg = ("Error sending trash empty request: %s: %s"
                                 % (node_name, e))
                         self.logger.warning(msg)
@@ -2679,13 +2722,13 @@ class ClusterDaemon(OTPmeDaemon):
         try:
             self.node_conn.unset_node_sync()
         except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-            self.node_leave(node_name)
+            self.node_disconnect(node_name)
             msg = ("Failed to unset cluster sync state: %s: %s"
                     % (node_name, e))
             self.logger.warning(msg)
             raise
         except Exception as e:
-            self.node_leave(node_name)
+            self.node_disconnect(node_name)
             msg = ("Error unsetting cluster sync state: %s: %s"
                     % (node_name, e))
             self.logger.warning(msg)
@@ -2734,7 +2777,7 @@ class ClusterDaemon(OTPmeDaemon):
                 written_nodes += 1
                 continue
             member_nodes_in_sync = False
-        if written_nodes >= 1:
+        if written_nodes >= 2:
             member_nodes_in_sync = True
         if not member_nodes_in_sync:
             return False

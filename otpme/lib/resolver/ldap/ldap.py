@@ -207,6 +207,7 @@ templates = {
                                                 'uuid'          : 'entryUUID',
                                                 'uidNumber'     : 'uidNumber',
                                                 'gidNumber'     : 'gidNumber',
+                                                'loginShell'    : 'loginShell',
                                                 'givenName'     : 'givenName',
                                                 'sn'            : 'sn',
                                                 'cn'            : 'cn',

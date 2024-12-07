@@ -347,6 +347,7 @@ class HotpToken(OathToken):
         self.pass_type = "otp"
         self.otp_type = "counter"
         self.otp_format = None
+        self.deploy_token_secret_len = None
 
         self.need_password = True
         self.auth_script_enabled = False
@@ -426,6 +427,18 @@ class HotpToken(OathToken):
                                             'type'          : int,
                                             'required'      : False,
                                         },
+
+            'DEPLOY_TOKEN_SECRET_LEN'   : {
+                                            'var_name'      : 'deploy_token_secret_len',
+                                            'type'          : int,
+                                            'required'      : False,
+                                        },
+
+            'SECRET_ENCODING'           : {
+                                            'var_name'      : 'secret_encoding',
+                                            'type'          : str,
+                                            'required'      : False,
+                                        },
             }
 
         # Use parent class method to merge token configs.
@@ -446,7 +459,9 @@ class HotpToken(OathToken):
     @property
     def secret_len(self):
         """ Get token secret length. """
-        secret_len = self.get_config_parameter("hotp_secret_len")
+        secret_len = self.deploy_token_secret_len
+        if secret_len is None:
+            secret_len = self.get_config_parameter("hotp_secret_len")
         return secret_len
 
     def update_otp_cache(self, otp, counter):
@@ -594,14 +609,16 @@ class HotpToken(OathToken):
         hotp_count = hotp.verify_hotp(counter_start=token_counter_start,
                                     counter_end=token_counter_end,
                                     secret=secret, otp=_otp,
-                                    format=self.otp_format)
+                                    format=self.otp_format,
+                                    secret_encoding=self.secret_encoding)
         if hotp_status:
             self.update_otp_cache(otp, hotp_count)
             if otp_includes_pin:
                 self.update_otp_cache(_otp, hotp_count)
             # Make sure the OTP was not already used (counter must be higher
             # than the one from the last used OTP).
-            if hotp_count > self.get_token_counter():
+            token_counter = self.get_token_counter()
+            if hotp_count > token_counter:
                 # Verify PIN.
                 if verify_pin:
                     # FIXME: A wrong PIN is not definitively a failed login
@@ -820,7 +837,8 @@ class HotpToken(OathToken):
                                         counter_end=token_counter_end,
                                         secret=token_secret,
                                         otp=otp,
-                                        format=self.otp_format)
+                                        format=self.otp_format,
+                                        secret_encoding=self.secret_encoding)
         if not hotp_status:
             return callback.error("Unable to synchronize token.")
 
@@ -934,8 +952,8 @@ class HotpToken(OathToken):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def deploy(self, server_secret, pin, _caller="API",
-        verbose_level=0, callback=default_callback):
+    def deploy(self, server_secret, secret_len, pin, secret_encoding,
+        _caller="API", verbose_level=0, callback=default_callback):
         """ Deploy HOTP token """
         if not self.check_pin(pin=pin, callback=callback):
             return callback.error("Invalid PIN.")
@@ -946,6 +964,8 @@ class HotpToken(OathToken):
         self.mode = "mode2"
         self.secret = None
         self.server_secret = str(server_secret)
+        self.deploy_token_secret_len = secret_len
+        self.secret_encoding = secret_encoding
 
         if verbose_level > 0:
             token_secret = self.get_secret(pin=pin)

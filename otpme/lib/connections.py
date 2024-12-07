@@ -185,7 +185,14 @@ def get(daemon, **kwargs):
                 'kwargs'    : _conn_kwargs,
                 }
     try:
-        conn_key = stuff.args_to_hash(arguments)
+        conn_key = stuff.args_to_hash(arguments,
+                                    ignore_args=[
+                                                'ssh_agent_method',
+                                                'password_method',
+                                                'cleanup_method',
+                                                'message_method',
+                                                'error_message_method'
+                                                ])
     except Exception as e:
         config.raise_exception()
         msg = ("Failed to parse function args.")
@@ -417,6 +424,8 @@ def get(daemon, **kwargs):
         # Set socket URI.
         socket_uri = "tcp://%s:%s" % (connect_address, daemon_port)
         conn_kwargs['socket_uri'] = socket_uri
+        msg = "Trying connection to: %s" % socket_uri
+        logger.info(msg)
         # Get daemon connection.
         try:
             daemon_conn = get_connection(**conn_kwargs)

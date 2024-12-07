@@ -3888,6 +3888,14 @@ class User(OTPmeObject):
             msg = "User already exists: %s" % user_oid
             return callback.error(msg)
 
+        # Get template name set by policy.
+        if template_name is None:
+            template_name = self.template_name
+
+        if self.template_object and template_name:
+            msg = "Cannot create template from template."
+            return callback.error(msg)
+
         # Get default token settings.
         if add_default_token is None:
             # No need to add default token for base users.
@@ -3984,14 +3992,6 @@ class User(OTPmeObject):
                     msg = "Unknown token: %s" % default_token_path
                     return callback.error(msg)
                 _default_token = result[0]
-
-        if self.template_object and template_name:
-            msg = "Cannot create template from template."
-            return callback.error(msg)
-
-        # Get template name set by policy.
-        if template_name is None:
-            template_name = self.template_name
 
         # Get template.
         template = None
@@ -4581,6 +4581,8 @@ class User(OTPmeObject):
         lines.append("User info:\n")
         oid_string = "\tOID:\t\t\t%s\n" % self.oid.full_oid
         lines.append(oid_string)
+        uuid_string = "\tUUID:\t\t\t%s\n" % self.uuid
+        lines.append(uuid_string)
         if not self.enabled:
             lines.append("\tstatus:\t\t\tDisabled\n")
         else:
@@ -4716,6 +4718,12 @@ class User(OTPmeObject):
         if not origin:
             origin = self.origin_cache
         lines.append("\torigin:\t\t\t%s\n" % origin)
+        creator = None
+        if self.creator:
+            creator = backend.get_object(uuid=self.creator)
+        if not creator:
+            creator = self.creator_cache
+        lines.append("\tcreator:\t\t%s\n" % creator)
 
         lines.append("\n")
         lines.append("User tokens:\n")

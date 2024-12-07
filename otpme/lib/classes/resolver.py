@@ -921,6 +921,10 @@ class Resolver(OTPmeObject):
                 gid_number_attribute = self.attribute_mappings[object_type]['gidNumber']
             except:
                 gid_number_attribute = None
+            try:
+                login_shell_attribute = self.attribute_mappings[object_type]['loginShell']
+            except:
+                login_shell_attribute = None
 
             attr_map_rev = {}
             for dst_attr in self.attribute_mappings[object_type]:
@@ -1022,21 +1026,55 @@ class Resolver(OTPmeObject):
 
                 # Get uidNumber value.
                 x_uid_number = None
-                if uid_number_attribute:
-                    x_uid_number = x_attributes.pop(uid_number_attribute)
-                    if isinstance(x_uid_number, list):
-                        if len(x_uid_number) > 1:
-                            msg = (_("Got multiple values for uidNumber: %s: %s")
-                                    % (x_name, ",".join(x_uid_number)))
-                            logger.warning(msg)
-                            if interactive:
-                                callback.error(msg)
-                            failed_objects.append(x_name)
-                            sync_status = False
-                            object_failed = True
-                            continue
-                        x_uid_number = x_uid_number[0]
-                    x_uid_number = int(x_uid_number)
+                x_login_shell = None
+                if object_type == "user":
+                    if uid_number_attribute:
+                        x_uid_number = x_attributes.pop(uid_number_attribute)
+                        if isinstance(x_uid_number, list):
+                            if len(x_uid_number) > 1:
+                                msg = (_("Got multiple values for uidNumber: %s: %s")
+                                        % (x_name, ",".join(x_uid_number)))
+                                logger.warning(msg)
+                                if interactive:
+                                    callback.error(msg)
+                                failed_objects.append(x_name)
+                                sync_status = False
+                                object_failed = True
+                                continue
+                            x_uid_number = x_uid_number[0]
+                        x_uid_number = int(x_uid_number)
+                    if login_shell_attribute:
+                        x_login_shell = x_attributes[login_shell_attribute]
+                        if isinstance(x_login_shell, list):
+                            if len(x_login_shell) > 1:
+                                msg = (_("Got multiple values for loginShell: %s: %s")
+                                        % (x_name, ",".join(x_login_shell)))
+                                logger.warning(msg)
+                                if interactive:
+                                    callback.error(msg)
+                                failed_objects.append(x_name)
+                                sync_status = False
+                                object_failed = True
+                                continue
+                            x_login_shell = x_login_shell[0]
+                # Get gidNumber value.
+                if object_type == "group":
+                    x_gid_number = None
+                    if gid_number_attribute:
+                        x_gid_number = x_attributes.pop(gid_number_attribute)
+                        if isinstance(x_gid_number, list):
+                            if len(x_gid_number) > 1:
+                                msg = (_("Got multiple values for gidNumber: %s: %s")
+                                        % (x_name, ",".join(x_gid_number)))
+                                logger.warning(msg)
+                                if interactive:
+                                    callback.error(msg)
+                                failed_objects.append(x_name)
+                                sync_status = False
+                                object_failed = True
+                                continue
+                            x_gid_number = x_gid_number[0]
+                        x_gid_number = int(x_gid_number)
 
                 # Check if the object already exists.
                 x_result = backend.search(attribute="resolver_key",
@@ -1183,8 +1221,14 @@ class Resolver(OTPmeObject):
                             # Add default attributes.
                             base_attributes = {}
                             posix_attributes = {}
-                            if x_uid_number:
-                                posix_attributes['uidNumber'] = x_uid_number
+                            if object_type == "user":
+                                if x_uid_number:
+                                    posix_attributes['uidNumber'] = x_uid_number
+                                if x_login_shell:
+                                    posix_attributes['loginShell'] = x_login_shell
+                            if object_type == "group":
+                                if x_gid_number:
+                                    posix_attributes['gidNumber'] = x_gid_number
                             default_attributes = {
                                                 'base' : base_attributes,
                                                 'posix': posix_attributes,

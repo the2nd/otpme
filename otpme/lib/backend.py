@@ -139,22 +139,6 @@ def register_object_type(object_type, class_getter=None,
                             index_rebuild_func=index_rebuild_func,
                             dir_name_extension=dir_name_extension)
 
-def get_object_config_template(uuid=None):
-    """ Get object config skeleton. """
-    if uuid is None:
-        uuid = stuff.gen_uuid()
-
-    if not stuff.is_uuid(uuid):
-        raise Exception("Invalid UUID: %s" % uuid)
-
-    object_config = {}
-    object_config['UUID'] = uuid
-    object_config['TEMPLATE'] = False
-    object_config['CREATE_TIME'] = int(time.time())
-    object_config['LAST_MODIFIED'] = int(time.time())
-
-    return object_config
-
 def get_class_getter(object_type):
     """ Get object class getter by type. """
     try:
@@ -187,17 +171,6 @@ def read_config(object_id, read_from_cache=True,
             msg = ("Missing AES master key. Unable to decrypt config data.")
             logger.warning(msg)
         return
-
-    ## If object config is requested from cache try to read from shared config
-    ## dictionary.
-    #if read_from_cache and object_type in config.cache_objects:
-    #    if not checksum_only:
-    #        try:
-    #            object_config = cache.get_object_config(object_id)
-    #        except:
-    #            pass
-    #        if object_config:
-    #            return object_config
 
     # If we got no object_config from cache try to read from backend.
     if config.debug_level("backend_reads") > 0:
@@ -292,10 +265,6 @@ def write_config(object_id, instance=None, object_config=None, cluster=False,
         if _transaction is None:
             # Make sure object is outdated in caches.
             outdate_object(object_id)
-            # Update instance cache.
-            if instance:
-                # Update instance in cache.
-                cache.add_instance(instance)
 
     return write_status
 

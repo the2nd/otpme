@@ -52,4 +52,12 @@ cmd_help = {
                                     '-f'                    : 'force deletion',
                                 },
                 },
+
+    'export'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-session export {session_id}',
+                    'cmd'   :   '<|objects|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Export session',
+                                },
+                },
     }

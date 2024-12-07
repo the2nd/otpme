@@ -113,8 +113,10 @@ class SSHAgent(object):
             raise Exception(msg)
 
         # Make sure script output is string.
-        agent_stdout = agent_stdout.decode()
-        agent_stderr = agent_stderr.decode()
+        if isinstance(agent_stdout, bytes):
+            agent_stdout = agent_stdout.decode()
+        if isinstance(agent_stderr, bytes):
+            agent_stderr = agent_stderr.decode()
 
         # Try to get agent variables from agent script.
         ssh_agent_name, \

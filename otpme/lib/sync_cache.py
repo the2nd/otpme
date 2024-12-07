@@ -19,6 +19,7 @@ except:
     pass
 
 from otpme.lib import re
+from otpme.lib import oid
 from otpme.lib import json
 from otpme.lib import config
 from otpme.lib import filetools
@@ -110,7 +111,7 @@ class SyncCache(dict):
 
     def get_cache_file(self, object_id):
         """ Get cache file path. """
-        cache_file = "%s/%s.sqlite" % (self.cache_dir, object_id.replace("/", ":"))
+        cache_file = "%s/%s.json" % (self.cache_dir, object_id.replace("/", ":"))
         return cache_file
 
     @property
@@ -309,14 +310,14 @@ class SyncCache(dict):
         if not os.path.exists(self.cache_dir):
             return
         # Get cache file list.
-        cache_files = glob.glob("%s/*.sqlite" % self.cache_dir)
+        cache_files = glob.glob("%s/*.json" % self.cache_dir)
         if not cache_files:
             return
         self.logger.info("Reading sync cache from directory: %s" % self.cache_dir)
         for cache_file in cache_files:
             cache_file_name = os.path.basename(cache_file)
             object_id = cache_file_name.replace(":", "/")
-            object_id = re.sub('.sqlite$', '', object_id)
+            object_id = re.sub('.json$', '', object_id)
             self.object_ids[object_id] = cache_file
 
     def read_object(self, object_id):
@@ -346,6 +347,7 @@ class SyncCache(dict):
 
     def write_object(self, object_id, object_config):
         """ Write sync cache to disk. """
+        object_id = oid.get(object_id)
         # Encrypt object config.
         object_config = ObjectConfig(object_id=object_id,
                                 object_config=object_config,

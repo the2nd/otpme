@@ -4,7 +4,6 @@ import os
 import pwd
 import grp
 import stat
-import copy
 import time
 import fcntl
 import pprint
@@ -25,6 +24,8 @@ try:
         print(_("Loading module: %s") % __name__)
 except:
     pass
+
+from otpme.lib.incremental_objects import incremental_update
 
 from otpme.lib.exceptions import *
 
@@ -690,6 +691,19 @@ def write_data_file(filename, *args, **kwargs):
     _file = JsonFile(filename)
     return _file.write(*args, **kwargs)
 
+#def read_data_file(object_id, object_uuid, *args, **kwargs):
+#    _file = SQLiteFile(object_id, object_uuid)
+#    return _file.read(*args, **kwargs)
+#
+#def write_data_file(object_id, object_uuid, *args, **kwargs):
+#    _file = SQLiteFile(object_id, object_uuid)
+#    return _file.write(*args, **kwargs)
+#
+#def delete_data_file(object_uuid):
+#    from otpme.lib.db_dict import SQLiteDict
+#    _dict = SQLiteDict(uuid=object_uuid)
+#    _dict.drop()
+
 def write_lock(write=True):
     """ Decorator to handle write lock. """
     def wrapper(f):
@@ -719,83 +733,6 @@ class JsonFile(object):
         file_real_path = os.path.realpath(file_path)
         self.file_path = file_real_path
         self.logger = config.logger
-
-    def incremental_update(self, update_dict, action, key, dict_path, value_type, value):
-        if len(dict_path) > 1:
-            root_key = dict_path[0]
-            try:
-                current_dict = update_dict[root_key]
-            except KeyError:
-                current_dict = {}
-            new_dict = copy.deepcopy(current_dict)
-            _dict_dict = new_dict
-            counter = 0
-            for x_key in dict_path[1:]:
-                counter += 1
-                if counter == len(dict_path) - 1:
-                    if value_type == "dict":
-                        try:
-                            dict_val = _dict_dict[x_key]
-                        except KeyError:
-                            dict_val = {}
-                    if value_type == "list":
-                        try:
-                            dict_val = _dict_dict[x_key]
-                        except KeyError:
-                            dict_val = []
-                    _dict_dict[x_key] = dict_val
-                else:
-                    if x_key not in _dict_dict:
-                        _dict_dict[x_key] = {}
-                _dict_dict = _dict_dict[x_key]
-            if value_type == "list":
-                if action == "add":
-                    dict_val.append(value)
-                if action == "del":
-                    try:
-                        dict_val.remove(value)
-                    except  ValueError:
-                        pass
-            if value_type == "dict":
-                if action == "add":
-                    dict_val[key] = value
-                if action == "del":
-                    try:
-                        dict_val.pop(key)
-                    except KeyError:
-                        pass
-            value = new_dict
-        else:
-            if value_type == "dict":
-                root_key = dict_path[0]
-                try:
-                    current_dict = update_dict[root_key]
-                except KeyError:
-                    current_dict = {}
-                new_dict = copy.deepcopy(current_dict)
-                if action == "add":
-                    new_dict[key] = value
-                if action == "del":
-                    try:
-                        new_dict.pop(key)
-                    except KeyError:
-                        pass
-                value = new_dict
-            if value_type == "list":
-                root_key = dict_path[0]
-                try:
-                    current_list = update_dict[root_key]
-                except KeyError:
-                    current_list = []
-                if action == "add":
-                    current_list.append(value)
-                if action == "del":
-                    try:
-                        current_list.remove(value)
-                    except ValueError:
-                        pass
-                value = sorted(current_list)
-        return value
 
     def read_file(self):
         try:
@@ -949,7 +886,8 @@ class JsonFile(object):
                     try:
                         current_list = current_oc[attr]
                     except KeyError:
-                        current_list = []
+                        current_oc[attr] = []
+                        current_list = current_oc[attr]
                     if action == "add":
                         current_list.append(value)
                     elif action == "del":
@@ -974,14 +912,15 @@ class JsonFile(object):
                     try:
                         current_dict = current_oc[attr]
                     except KeyError:
-                        current_dict = {}
+                        current_oc[attr] = {}
+                        current_dict = current_oc[attr]
                     if dict_path:
-                        value = self.incremental_update(current_dict,
-                                                        action,
-                                                        key,
-                                                        dict_path,
-                                                        value_type,
-                                                        value)
+                        value = incremental_update(current_dict,
+                                                    action,
+                                                    key,
+                                                    dict_path,
+                                                    value_type,
+                                                    value)
                         action = "add"
                         key = dict_path[0]
                     if action == "add":
@@ -1007,10 +946,6 @@ class JsonFile(object):
                         msg = "Missing modified attribute: %s" % attr
                         raise OTPmeException(msg)
                     current_oc[attr] = value
-            else:
-                for attr in object_config:
-                    value = object_config[attr]
-                    current_oc[attr] = value
             for attr in deleted_attributes:
                 current_oc.pop(attr)
         else:
@@ -1034,3 +969,206 @@ class JsonFile(object):
             current_oc['INCREMENT_IDS'] = increment_ids
         # Make sure data is written.
         self.write_file(current_oc)
+
+class SQLiteFile(object):
+    def __init__(self, object_id, object_uuid):
+        from otpme.lib import config
+        self.object_id = object_id
+        self.object_uuid = object_uuid
+        self.logger = config.logger
+
+    def read(self, parameters=None):
+        """ Import bash style config file into dictionary. """
+        from otpme.lib.db_dict import SQLiteDict
+        object_config = SQLiteDict(uuid=self.object_uuid)
+        object_config = object_config.copy()
+        if parameters:
+            for attr in dict(object_config):
+                if attr in parameters:
+                    continue
+                object_config.pop(attr)
+        return object_config
+
+    def write(self, object_config, full_data_update=None,
+        user=None, group=True, mode=0o660, user_acls=[], group_acls=[]):
+        """ Write dictionary to JSON config file. """
+        from otpme.lib import stuff
+        from otpme.lib import config
+        from otpme.lib.db_dict import SQLiteDict
+
+        if user is None:
+            user = config.user
+
+        try:
+            if os.environ['OTPME_DEBUG_FILE_WRITE'] == "True":
+                print("WRITE: %s" % self.file_path)
+        except:
+            pass
+
+        if not isinstance(object_config, dict):
+            msg = "<object_config> must be dict not %s" % type(object_config)
+            raise OTPmeException(msg)
+
+        object_config = stuff.copy_object(object_config)
+
+        # Get (and remove) modified attributes information from object config.
+        try:
+            modified_attributes = object_config.pop('MODIFIED_ATTRIBUTES')
+        except KeyError:
+            modified_attributes = []
+        try:
+            deleted_attributes = object_config.pop('DELETED_ATTRIBUTES')
+        except KeyError:
+            deleted_attributes = []
+        try:
+            list_attributes = object_config['LIST_ATTRIBUTES']
+        except KeyError:
+            list_attributes = []
+        try:
+            dict_attributes = object_config['DICT_ATTRIBUTES']
+        except KeyError:
+            dict_attributes = []
+        try:
+            incremental_updates = object_config.pop('INCREMENTAL_UPDATES')
+        except KeyError:
+            incremental_updates = []
+        try:
+            modified_attributes.remove("INCREMENTAL_UPDATES")
+        except ValueError:
+            pass
+        try:
+            object_config.pop('INDEX_JOURNAL')
+        except KeyError:
+            pass
+        try:
+            modified_attributes.remove("INDEX_JOURNAL")
+        except ValueError:
+            pass
+
+        new_db = False
+        current_oc = SQLiteDict(uuid=self.object_uuid)
+        try:
+            current_oc['UUID']
+        except KeyError:
+            new_db = True
+
+        if not new_db:
+            new_incr_id = None
+            if incremental_updates:
+                # Generate increment ID.
+                new_incr_id = json.dumps(incremental_updates)
+                new_incr_id = stuff.gen_md5(new_incr_id)
+                # Skip already written increment.
+                try:
+                    increment_ids = current_oc["INCREMENT_IDS"]
+                except KeyError:
+                    current_oc["INCREMENT_IDS"] = []
+                    increment_ids = current_oc["INCREMENT_IDS"]
+                # fuck
+                #increment_ids = sorted(increment_ids)
+                for x in increment_ids:
+                    incr_id = x[1]
+                    if new_incr_id == incr_id:
+                        return
+
+            if full_data_update is True:
+                current_oc.clear()
+                current_oc.bulk_insert(object_config)
+                return
+
+            _modified_attributes = modified_attributes.copy()
+            for x in incremental_updates:
+                attr = x[1]
+                action = x[2]
+                value_type = x[3]
+                dict_path = x[4]
+                if attr in list_attributes:
+                    value = x[5]
+                    try:
+                        current_list = current_oc[attr]
+                    except KeyError:
+                        current_oc[attr] = []
+                        current_list = current_oc[attr]
+                    if action == "add":
+                        #print("AAA", attr, value)
+                        current_list.append(value)
+                    elif action == "del":
+                        try:
+                            current_list.remove(value)
+                        except ValueError:
+                            pass
+                    else:
+                        msg = "Unknown action: %s" % action
+                        raise OTPmeException(msg)
+                if attr in dict_attributes:
+                    if value_type == "list":
+                        value = x[5]
+                        key = dict_path[-1]
+                    if value_type == "dict":
+                        key = x[5]
+                        value = x[6]
+                    try:
+                        current_dict = current_oc[attr]
+                    except KeyError:
+                        current_oc[attr] = {}
+                        current_dict = current_oc[attr]
+                    if dict_path:
+                        value = incremental_update(current_dict,
+                                                    action,
+                                                    key,
+                                                    dict_path,
+                                                    value_type,
+                                                    value)
+                        action = "add"
+                        key = dict_path[0]
+                    if action == "add":
+                        current_dict[key] = value
+                    elif action == "del":
+                        try:
+                            current_dict.pop(key)
+                        except KeyError:
+                            pass
+                    else:
+                        msg = "Unknown action: %s" % action
+                        raise OTPmeException(msg)
+                    current_oc[attr] = current_dict
+                try:
+                    _modified_attributes.remove(attr)
+                except ValueError:
+                    pass
+            if modified_attributes:
+                for attr in _modified_attributes:
+                    try:
+                        value = object_config[attr]
+                    except:
+                        msg = "Missing modified attribute: %s" % attr
+                        raise OTPmeException(msg)
+                    current_oc[attr] = value
+            for attr in deleted_attributes:
+                current_oc.pop(attr)
+        else:
+            new_incr_id = None
+            # Set new increment ID.
+            current_oc.bulk_insert(object_config)
+            try:
+                increment_ids = current_oc["INCREMENT_IDS"]
+            except KeyError:
+                current_oc["INCREMENT_IDS"] = []
+                increment_ids = current_oc["INCREMENT_IDS"]
+
+        # Save increment ID.
+        if new_incr_id:
+            #try:
+            #    _increment_ids = current_oc['INCREMENT_IDS']
+            #except KeyError:
+            #    current_oc['INCREMENT_IDS'] = []
+            #    _increment_ids = current_oc['INCREMENT_IDS']
+            #for x in _increment_ids:
+            #    if x in increment_ids:
+            #        continue
+            #    increment_ids.append(x)
+            increment_ids.append([time.time(), new_incr_id])
+            #increment_ids = sorted(increment_ids)[-5:]
+            #current_oc['INCREMENT_IDS'] = increment_ids
+        current_oc.commit()
+        current_oc.close()

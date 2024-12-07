@@ -242,3 +242,82 @@ class IncrementalList(list, IncrementaObject):
 
     def set(self, _list):
         super(IncrementalList, self).__init__(_list)
+
+def incremental_update(update_dict, action, key, dict_path, value_type, value):
+    if len(dict_path) > 1:
+        root_key = dict_path[0]
+        try:
+            current_dict = update_dict[root_key]
+        except KeyError:
+            update_dict[root_key] = {}
+            current_dict = update_dict[root_key]
+        _dict_dict = current_dict
+        counter = 0
+        for x_key in dict_path[1:]:
+            counter += 1
+            if counter == len(dict_path) - 1:
+                if value_type == "dict":
+                    try:
+                        dict_val = _dict_dict[x_key]
+                    except KeyError:
+                        _dict_dict[x_key] = {}
+                        dict_val = _dict_dict[x_key]
+                if value_type == "list":
+                    try:
+                        dict_val = _dict_dict[x_key]
+                    except KeyError:
+                        _dict_dict[x_key] = []
+                        dict_val = _dict_dict[x_key]
+            else:
+                if x_key not in _dict_dict:
+                    _dict_dict[x_key] = {}
+            _dict_dict = _dict_dict[x_key]
+        if value_type == "list":
+            if action == "add":
+                dict_val.append(value)
+            if action == "del":
+                try:
+                    dict_val.remove(value)
+                except  ValueError:
+                    pass
+        if value_type == "dict":
+            if action == "add":
+                dict_val[key] = value
+            if action == "del":
+                try:
+                    dict_val.pop(key)
+                except KeyError:
+                    pass
+        value = current_dict
+    else:
+        if value_type == "dict":
+            root_key = dict_path[0]
+            try:
+                current_dict = update_dict[root_key]
+            except KeyError:
+                update_dict[root_key] = {}
+                current_dict = update_dict[root_key]
+            if action == "add":
+                current_dict[key] = value
+            if action == "del":
+                try:
+                    current_dict.pop(key)
+                except KeyError:
+                    pass
+            value = current_dict
+        if value_type == "list":
+            root_key = dict_path[0]
+            try:
+                current_list = update_dict[root_key]
+            except KeyError:
+                update_dict[root_key] = []
+                current_list = update_dict[root_key]
+            if action == "add":
+                current_list.append(value)
+            if action == "del":
+                try:
+                    current_list.remove(value)
+                except ValueError:
+                    pass
+            value = current_list
+    return value

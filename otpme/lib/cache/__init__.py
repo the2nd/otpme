@@ -50,7 +50,7 @@ def register():
     locking.register_lock_type(LIST_CACHE_LOCK_TYPE, module=__file__)
     # Register shared objects.
     multiprocessing.register_shared_dict("acl_cache")
-    multiprocessing.register_shared_dict("instance_cache")
+    multiprocessing.register_shared_dict("instance_cache", pickle=True)
     multiprocessing.register_shared_list("acl_cache_clear_queue")
     multiprocessing.register_shared_dict("function_cache_clear_trigger")
     # Register cache modules.
@@ -282,7 +282,8 @@ def get_cache_clear_time():
     clear_time = os.path.getmtime(config.cache_clear_file)
     return clear_time
 
-def add_instance(instance, skip_shared_cache=False):
+# Shared cache uses pickle and pickle is to slow!!!!!    
+def add_instance(instance, skip_shared_cache=True):
     """ Update instance caches. """
     from otpme.lib import config
     if not config.cache_enabled:
@@ -345,30 +346,29 @@ def add_instance(instance, skip_shared_cache=False):
         return
 
     # Update multiprocessing cache.
-    if not skip_shared_cache:
-        # Check current instance object checksum.
-        try:
-            old_checksum = multiprocessing.instance_cache[read_oid]['CHECKSUM']
-        except:
-            old_checksum = None
+    try:
+        old_checksum = multiprocessing.instance_cache[read_oid]['CHECKSUM']
+    except:
+        old_checksum = None
 
-        if object_checksum != old_checksum:
-            # Add object to cache.
-            new_cache_entry = {
-                                'OID'                   : full_oid,
-                                'INSTANCE'              : instance,
-                                'CHECKSUM'              : object_checksum,
-                            }
-            try:
-                expire_time = instance.cache_expire_time
-            except AttributeError:
-                expire_time = None
-            if expire_time is None:
-                multiprocessing.instance_cache[read_oid] = new_cache_entry
-            else:
-                multiprocessing.instance_cache.add(key=read_oid,
-                                                value=new_cache_entry,
-                                                expire=expire_time)
+    # Check current instance object checksum.
+    if object_checksum != old_checksum:
+        # Add object to cache.
+        new_cache_entry = {
+                            'OID'                   : full_oid,
+                            'INSTANCE'              : instance,
+                            'CHECKSUM'              : object_checksum,
+                        }
+        try:
+            expire_time = instance.cache_expire_time
+        except AttributeError:
+            expire_time = None
+        if expire_time is None:
+            multiprocessing.instance_cache[read_oid] = new_cache_entry
+        else:
+            multiprocessing.instance_cache.add(key=read_oid,
+                                            value=new_cache_entry,
+                                            expire=expire_time)
 
 def get_instance(object_id, cache_type=None):
     """ Get instance from object cache. """

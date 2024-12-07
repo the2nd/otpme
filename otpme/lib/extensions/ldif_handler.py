@@ -34,9 +34,15 @@ def register_backend():
 
 class OTPmeLDIFHandler(object):
     """ Handle LDAP attributes for OTPme objects etc. """
+    def __init__(self):
+        self.objects_default_attributes = {}
+
     def init(self, o, default_attributes={}, verbose_level=0,
         callback=default_callback, **kwargs):
         """ Add needed attributes to object. """
+        # Add object default attributes to be added by gen_attribute_value().
+        self.objects_default_attributes[o.oid.full_oid] = default_attributes
+
         # Add DN attribute if missing.
         try:
             dn_attribute = config.dn_attributes[o.type]
@@ -516,7 +522,7 @@ class OTPmeLDIFHandler(object):
         """ Add attribute value to object config. """
         # Make sure we only add allowed attribute values.
         if verify:
-            self.verify_attribute_value(o, attribute, value)
+            self.verify_attribute_value(o, attribute, value, callback=callback)
         # Get current attribute values from object.
         current_attr_values = o.get_attribute(attribute)
         current_attr_ext_values = o.get_extension_attribute(extension=self.name,
@@ -652,12 +658,6 @@ class OTPmeLDIFHandler(object):
             msg = (_("Unable to add attribute: %s: %s") % (a, e))
             return callback.error(msg)
 
-        # Reload extension.
-        if verify:
-            return self.load(o=o,
-                            verify=verify,
-                            verbose_level=verbose_level,
-                            callback=callback)
         return callback.ok()
 
     def add_attribute(self, o, a, v=None, ignore_ro=False, verify=True,
@@ -765,12 +765,6 @@ class OTPmeLDIFHandler(object):
                     % (a, ", ".join(config.ldap_attribute_deps[a])))
             return callback.error(msg)
 
-        # Reload extension.
-        if verify:
-            return self.load(o=o,
-                            verify=verify,
-                            verbose_level=verbose_level,
-                            callback=callback)
         return callback.ok()
 
     def del_attribute(self, o, a, v=None, ignore_deps=False, ignore_ro=False,
@@ -948,7 +942,7 @@ class OTPmeLDIFHandler(object):
                             a=at,
                             auto_value=True,
                             ignore_ro=True,
-                            verify=False,
+                            verify=True,
                             verbose_level=0,
                             callback=callback)
         # Reload extension.

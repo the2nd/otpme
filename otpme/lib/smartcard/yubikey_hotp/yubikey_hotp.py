@@ -32,6 +32,7 @@ class YubikeyHotpClientHandler(object):
         message_method=print, error_message_method=print):
         # The token type used on server side.
         self.token_type = "hotp"
+        self.secret_len = 40
         self.smartcard_type = sc_type
         self.token_rel_path = token_rel_path
         self.message_method = message_method
@@ -95,22 +96,21 @@ class YubikeyHotpClientHandler(object):
                 pin = pin1
                 break
 
-        # Get default token secret length.
-        secret_len = pre_deploy_result['secret_len']
-
         # Generate token server secret.
-        server_secret = stuff.gen_secret(secret_len)
+        server_secret = stuff.gen_secret(self.secret_len)
 
         # Derive token secret form server secret and PIN.
         sha512 = hashlib.sha512()
         secret = "%s%s" % (pin, server_secret)
         secret = secret.encode()
         sha512.update(secret)
-        token_secret = str(sha512.hexdigest())[0:secret_len]
+        token_secret = str(sha512.hexdigest())[0:self.secret_len]
 
         # Add token config to deployment args sent to server.
         deploy_args = {}
         deploy_args['server_secret'] = server_secret
+        deploy_args['secret_len'] = self.secret_len
+        deploy_args['secret_encoding'] = "hex"
         deploy_args['pin'] = pin
 
         if no_token_write:

@@ -10,7 +10,6 @@ try:
 except:
     pass
 
-from otpme.lib import slp
 from otpme.lib import oid
 from otpme.lib import json
 from otpme.lib import stuff
@@ -18,7 +17,6 @@ from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import filetools
 from otpme.lib import encryption
-from otpme.lib import otpme_pass
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
@@ -223,10 +221,11 @@ class OfflineToken(object):
         # Write login token file.
         try:
             filetools.write_data_file(self.login_token_uuid_file,
-                                        login_config,
-                                        user=self.username,
-                                        mode=0o600,
-                                        user_acls=self.file_acls)
+                                    login_config,
+                                    full_data_update=True,
+                                    user=self.username,
+                                    mode=0o600,
+                                    user_acls=self.file_acls)
         except Exception as e:
             config.raise_exception()
             msg = (_("Error writing login file: %s") % e)
@@ -715,7 +714,7 @@ class OfflineToken(object):
             msg = ("Cached token '%s' for offline logins." % instance.rel_path)
             self.logger.info(msg)
 
-    def save_rsp(self, session_id, realm, site, rsp, session_key=None,
+    def save_rsp(self, session_id, realm, site, rsp, slp, session_key=None,
         login_time=None, session_timeout=None, session_unused_timeout=None,
         session_uuid=None, offline_session=None,
         offline_tokens=None, update=False):
@@ -790,13 +789,10 @@ class OfflineToken(object):
         else:
             self.logger.debug("Saving RSP to session file...")
 
-        # Gen SLP.
-        rsp_hash = otpme_pass.gen_one_iter_hash(self.username, _rsp)
-        _slp = slp.gen(rsp_hash)
         # Update session data.
         session_config['UPDATE'] = time.time()
         session_config['RSP'] = encrypted_rsp
-        session_config['SLP'] = _slp
+        session_config['SLP'] = slp
         session_config['REALM'] = realm
         session_config['SITE'] = site
         if login_time != None:
@@ -817,6 +813,7 @@ class OfflineToken(object):
         try:
             filetools.write_data_file(session_file,
                                     session_config,
+                                    full_data_update=True,
                                     user=self.username,
                                     mode=0o600,
                                     user_acls=self.file_acls)
@@ -874,6 +871,7 @@ class OfflineToken(object):
             session_file = "%s/%s" % (session_dir, x)
             session_config = filetools.read_data_file(session_file)
             # Get session data.
+            slp = session_config['SLP']
             realm = session_config['REALM']
             site = session_config['SITE']
             login_time = session_config['LOGIN']
@@ -896,6 +894,7 @@ class OfflineToken(object):
                 server_sessions[realm][site] = {}
             # Add session.
             server_sessions[realm][site]['rsp'] = rsp
+            server_sessions[realm][site]['slp'] = slp
             server_sessions[realm][site]['rsp_signature'] = rsp_signature
             server_sessions[realm][site]['session_key'] = session_key
             server_sessions[realm][site]['login_time'] = login_time
@@ -1103,6 +1102,7 @@ class OfflineToken(object):
         try:
             filetools.write_data_file(script_file,
                                     object_config,
+                                    full_data_update=True,
                                     user=self.username,
                                     mode=0o600,
                                     user_acls=self.file_acls)
@@ -1358,6 +1358,7 @@ class OfflineToken(object):
         try:
             filetools.write_data_file(config_file,
                                     object_config,
+                                    full_data_update=True,
                                     user=self.username,
                                     mode=0o600,
                                     user_acls=self.file_acls)

@@ -431,9 +431,9 @@ class OTPmeServer1(object):
         #    self.logger.warning(msg)
         #    message = "Bye bye..."
         #    raise ClientQuit(message)
-        if config.host_data['type'] == "node":
-            if self.new_connection:
-                if not config.use_api:
+        if not config.use_api:
+            if config.host_data['type'] == "node":
+                if self.new_connection:
                     if self.require_master_node:
                         try:
                             current_master_node = multiprocessing.master_node['master']
@@ -775,10 +775,11 @@ class OTPmeServer1(object):
             enc_key = decode(enc_key, "hex")
             enc_key = self.site_key.decrypt(enc_key)
         except Exception as e:
-            msg = "Failed to decrypt preauth key: %s" % e
+            msg = "Failed to decrypt preauth key: %s: %s" % (self.peer, e)
             self.logger.critical(msg)
             status = False
-            message = (_("Failed to decrypt preauth key."))
+            message = (_("Failed to decrypt preauth key: %s" % self.peer))
+            config.raise_exception()
             return self.build_response(status, message, encrypt=False)
 
         # Decode/decrypt preauth request.
@@ -1043,7 +1044,7 @@ class OTPmeServer1(object):
                     'site'                  : config.site,
                     'time'                  : time.time(),
                     'status'                : self.preauth_status,
-                    'status_message'        : "Unknown user",
+                    'status_message'        : "Login failed",
                     'preauth_response'      : preauth_response,
                     'ecdh_server_pub'       : ecdh_server_pub_pem,
                     }
@@ -1625,7 +1626,7 @@ class OTPmeServer1(object):
 
         # Check if user exists.
         if not self.user:
-            msg = ("Login failed: Unknown user: %s" % username)
+            msg = "Login failed."
             self.logger.warning(msg)
             raise OTPmeException("AUTH_FAILED")
 

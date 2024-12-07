@@ -1042,6 +1042,7 @@ class PamHandler(object):
                     try:
                         agent_conn.add_rsp(realm=realm, site=site,
                                             rsp=session['rsp'],
+                                            slp=session['slp'],
                                             rsp_signature=session['rsp_signature'],
                                             session_key=session['session_key'],
                                             login_time=session['login_time'],
@@ -1533,7 +1534,7 @@ class PamHandler(object):
                     if not self.ssh_agent_status():
                         self.start_ssh_agent()
                 except Exception as e:
-                    self.logger.warning("Cannot start SSH agent: %s" % e)
+                    self.logger.warning("Cannot start SSH agent: %s" % e, exc_info=True)
 
             # Run login script
             if self.login_status is False:

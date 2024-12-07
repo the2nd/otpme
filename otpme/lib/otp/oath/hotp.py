@@ -14,10 +14,11 @@ from otpme.lib.encoding.base import decode
 
 from otpme.lib.exceptions import *
 
-def generate_hotp(counter, secret, format):
+def generate_hotp(counter, secret, format, secret_encoding="base32"):
     """ Generate an HOTP from the given secret and token counter. """
-    secret = decode(secret, "base32")
-    secret = encode(secret, "hex")
+    if secret_encoding == "base32":
+        secret = decode(secret, "base32")
+        secret = encode(secret, "hex")
     try:
         otp = hotp.hotp(key=secret, counter=counter, format=format)
     except Exception as e:
@@ -25,10 +26,12 @@ def generate_hotp(counter, secret, format):
     return otp
 
 
-def verify_hotp(counter_start, counter_end, secret, otp, format):
+def verify_hotp(counter_start, counter_end, secret, otp, format, secret_encoding="base32"):
     """ Verify HOTP for an given counter range. """
-    secret = decode(secret, "base32")
-    secret = encode(secret, "hex")
+    if secret_encoding == "base32":
+        secret = decode(secret, "base32")
+        secret = encode(secret, "hex")
+    # OTP verified with a counter
     for i in range(counter_start, counter_end):
         hotp_status = False
         try:
@@ -41,7 +44,7 @@ def verify_hotp(counter_start, counter_end, secret, otp, format):
                                         backward_drift=0)
         except Exception as e:
             raise OTPmeException("Error verifying HOTP: %s" % e)
-        if hotp_status == True:
+        if hotp_status is True:
             # Because we store the last used token counter instead of the next
             # valid token counter we decrease by 1.
             last_used_count = hotp_count - 1

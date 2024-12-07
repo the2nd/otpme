@@ -12,7 +12,6 @@ from otpme.lib import oid
 from otpme.lib import cli
 from otpme.lib import config
 from otpme.lib import backend
-from otpme.lib import nsscache
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.register import register_module
@@ -1030,16 +1029,6 @@ class Role(OTPmeObject):
         # Delete object using parent class.
         return OTPmeObject.delete(self, verbose_level=verbose_level,
                                     force=force, callback=callback)
-
-    @object_lock()
-    def add_token(self, *args, **kwargs):
-        nsscache.update_object(self.oid, "update")
-        return super(Role, self).add_token(*args, **kwargs)
-
-    @object_lock()
-    def remove_token(self, *args, **kwargs):
-        nsscache.update_object(self.oid, "update")
-        return super(Role, self).remove_token(*args, **kwargs)
 
     @check_acls(['remove:orphans'])
     @object_lock()

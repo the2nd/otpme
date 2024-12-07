@@ -560,13 +560,8 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.realm = None
         self.realm_uuid = None
         self.cert = None
-        self._cert_oid = None
-        self._cert_public_key_oid = None
         self.key = None
-        self._key_oid = None
-        self._private_key_oid = None
         self.public_key = None
-        self._public_key_oid = None
         self.pickable = True
         self.cache_expire = 30
         self.sub_type = None
@@ -954,11 +949,7 @@ class OTPmeBaseObject(OTPmeLockObject):
 
     @property
     def _cert(self):
-        cert = None
-        if self._cert_oid:
-            cert = cache.get_instance(self._cert_oid)
-        if not cert:
-            cert = self._load_cert()
+        cert = self._load_cert()
         return cert
 
     def get_realm(self):
@@ -989,17 +980,11 @@ class OTPmeBaseObject(OTPmeLockObject):
         realm = self.get_realm()
         site = self.get_site()
         cert = OTPmeCert(realm=realm, site=site, cert=self.cert, key=self.key)
-        cache.add_instance(cert)
-        self._cert_oid = cert.oid
         return cert
 
     @property
     def _cert_public_key(self):
-        cert_public_key = None
-        if self._cert_public_key_oid:
-            cert_public_key = cache.get_instance(self._cert_public_key_oid)
-        if not cert_public_key:
-            cert_public_key = self._load_cert_public_key()
+        cert_public_key = self._load_cert_public_key()
         return cert_public_key
 
     def _load_cert_public_key(self):
@@ -1014,17 +999,11 @@ class OTPmeBaseObject(OTPmeLockObject):
         cert_public_key = OTPmeRSAKey(realm=realm,
                                     site=site,
                                     key=self._cert.public_key())
-        cache.add_instance(cert_public_key)
-        self._cert_public_key_oid = cert_public_key.oid
         return cert_public_key
 
     @property
     def _key(self):
-        key = None
-        if self._key_oid:
-            key = cache.get_instance(self._key_oid)
-        if not key:
-            key = self._load_key()
+        key = self._load_key()
         return key
 
     def _load_key(self):
@@ -1039,17 +1018,11 @@ class OTPmeBaseObject(OTPmeLockObject):
         cert_private_key = OTPmeRSAKey(realm=realm,
                                         site=site,
                                         key=self.key)
-        cache.add_instance(cert_private_key)
-        self._key_oid = cert_private_key.oid
         return cert_private_key
 
     @property
     def _private_key(self):
-        key = None
-        if self._private_key_oid:
-            key = cache.get_instance(self._private_key_oid)
-        if not key:
-            key = self._load_private_key()
+        key = self._load_private_key()
         return key
 
     def _load_private_key(self):
@@ -1064,17 +1037,11 @@ class OTPmeBaseObject(OTPmeLockObject):
         private_key = OTPmeRSAKey(realm=realm,
                                 site=site,
                                 key=self.private_key)
-        cache.add_instance(private_key)
-        self._private_key_oid = private_key.oid
         return private_key
 
     @property
     def _public_key(self):
-        key = None
-        if self._public_key_oid:
-            key = cache.get_instance(self._public_key_oid)
-        if not key:
-            key = self._load_public_key()
+        key = self._load_public_key()
         return key
 
     def _load_public_key(self):
@@ -1087,8 +1054,6 @@ class OTPmeBaseObject(OTPmeLockObject):
         public_key = OTPmeRSAKey(realm=self.realm,
                                 site=self.site,
                                 key=self.public_key)
-        cache.add_instance(public_key)
-        self._public_key_oid = public_key.oid
         return public_key
 
     def _load_object(self):
@@ -1513,7 +1478,10 @@ class OTPmeBaseObject(OTPmeLockObject):
         if self.index_journal:
             index_journal = copy.deepcopy(self.index_journal)
         self.index_journal = []
-        self.index_journal_archive += index_journal
+        # Add index journal in loop to prevent more incremental updates than needed.
+        for x in index_journal:
+            self.index_journal_archive.append(x)
+        # Remove old index journal archive entries.
         try:
             last_journal_entry = index_journal[-1]
         except IndexError:
@@ -1524,7 +1492,11 @@ class OTPmeBaseObject(OTPmeLockObject):
             journal_archive_del_pos = len(self.index_journal_archive) - max_journal_archive_entries
             if journal_id_pos <= journal_archive_del_pos:
                 max_journal_archive_entries = len(self.index_journal_archive) - journal_id_pos
-        self.index_journal_archive = self.index_journal_archive[-max_journal_archive_entries:]
+        new_index_journal_archive = list(self.index_journal_archive[-max_journal_archive_entries:])
+        for x in self.index_journal_archive:
+            if x in new_index_journal_archive:
+                continue
+            self.index_journal_archive.remove(x)
 
         # Update object config from variables.
         self.update_object_config()
@@ -4272,9 +4244,10 @@ class OTPmeObject(OTPmeBaseObject):
         try:
             extension.add_attribute(self, attribute, value,
                                 ignore_ro=ignore_ro,
-                                verbose_level=verbose_level)
+                                verbose_level=verbose_level,
+                                callback=callback)
         except Exception as e:
-            config.raise_exception()
+            #config.raise_exception()
             msg = (_("Unable to add attribute: %s: %s") % (attribute, e))
             return callback.error(msg)
 
@@ -4536,9 +4509,9 @@ class OTPmeObject(OTPmeBaseObject):
             if v is None:
                 msg = "Cannot add empty attribute: %s" % a
                 raise Exception(msg)
-            if not a in self.ldif:
+            if a not in self.ldif:
                 self.ldif[a] = []
-            if not v in self.ldif[a]:
+            if v not in self.ldif[a]:
                 self.ldif[a].append(v)
                 # Update index.
                 ldif_attr = "ldif:%s" % a

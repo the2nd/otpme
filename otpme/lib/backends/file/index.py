@@ -212,7 +212,6 @@ def create_db_indices(drop=False, desc=False,
             msg = "Index command failed: %s" % e
             print(msg)
             session.rollback()
-            print(index_names)
             raise OTPmeException(msg)
         finally:
             session.commit()

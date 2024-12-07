@@ -46,6 +46,7 @@ class OathToken(Token):
         self.pin_mandatory = True
         self.secret = None
         self.server_secret = None
+        self.secret_encoding = "base32"
         self.supports_qrcode = True
         super(OathToken, self).__init__(*args, **kwargs)
         # Default token mode should be mode2 which is more secure for offline
@@ -124,10 +125,11 @@ class OathToken(Token):
             sha512 = hashlib.sha512()
             sha512.update(hash_string)
             secret = sha512.hexdigest()
-            secret = secret.encode()
             secret = secret[0:self.secret_len]
-            secret = base64.b32encode(secret)
-            secret = secret.decode()
+            if self.secret_encoding == "base32":
+                secret = secret.encode()
+                secret = base64.b32encode(secret)
+                secret = secret.decode()
         if _caller == "API":
             return secret
         return callback.ok(secret)

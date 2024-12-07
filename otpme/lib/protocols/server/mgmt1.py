@@ -62,6 +62,7 @@ PROTOCOL_VERSION = "OTPme-mgmt-1.0"
 
 def register():
     config.register_otpme_protocol("mgmtd", PROTOCOL_VERSION, server=True)
+    multiprocessing.register_shared_dict("mgmt_cache_updates")
 
 class OTPmeMgmtP1(OTPmeServer1):
     """ Class that implements OTPme-mgmt-1.0 """
@@ -111,6 +112,24 @@ class OTPmeMgmtP1(OTPmeServer1):
         multiprocessing.start_thread(name=self.name,
                                     target=self.handle_jobs,
                                     daemon=True)
+        # Start thread to handle cache updates.
+        multiprocessing.start_thread(name=self.name,
+                                    target=self.handle_cache,
+                                    daemon=True)
+
+    def handle_cache(self):
+        while True:
+            multiprocessing.mgmt_cache_update.wait()
+            if config.daemon_shutdown:
+                break
+            for x_timestamp in multiprocessing.mgmt_cache_updates:
+                if config.daemon_shutdown:
+                    break
+                for x_oid in multiprocessing.mgmt_cache_updates[x_timestamp]:
+                    x_oid = oid.get(x_oid)
+                    if x_oid.object_type == "group" or x_oid.object_type == "role":
+                        backend.get_object(x_oid)
+                multiprocessing.mgmt_cache_updates.pop(x_timestamp)
 
     def signal_handler(self, _signal, frame):
         """ Exit on signal. """
@@ -121,6 +140,8 @@ class OTPmeMgmtP1(OTPmeServer1):
             return
         msg = ("Received SIGTERM.")
         self.logger.info(msg)
+
+        multiprocessing.mgmt_cache_update.set()
 
         for job_uuid in dict(self.jobs):
             job = self.jobs[job_uuid]

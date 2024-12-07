@@ -517,6 +517,11 @@ class OTPmeClusterP1(OTPmeServer1):
             try:
                 object_id = command_args['object_id']
             except:
+                message = "Missing object ID."
+                status = False
+            try:
+                object_uuid = command_args['object_uuid']
+            except:
                 message = "Missing object UUID."
                 status = False
             if config.daemon_shutdown:
@@ -532,6 +537,7 @@ class OTPmeClusterP1(OTPmeServer1):
                 object_data = {
                                 'action'        : 'delete',
                                 'object_id'     : object_id,
+                                'object_uuid'   : object_uuid,
                             }
                 file_content = json.dumps(object_data)
                 try:

@@ -153,12 +153,12 @@ class OTPmeExtension(OTPmeLDIFHandler):
                                             callback=callback)
         return new_id
 
-    def check_free_id(self, object_type, attribute, value):
+    def check_free_id(self, object_type, attribute, value, callback=default_callback):
         """ Check if the given ID is already used. """
         ldif_attribute = "ldif:%s" % attribute
         result = backend.search(attribute=ldif_attribute,
                                 value=value,
-                                realm=config.realm,
+                                #realm=config.realm,
                                 object_type=object_type,
                                 return_type="read_oid")
         if not result:
@@ -168,11 +168,11 @@ class OTPmeExtension(OTPmeLDIFHandler):
         msg = ("%s %s already used by: %s" % (attribute, value, object_id))
         raise OTPmeException(msg)
 
-    def verify_attribute_value(self, o, a, v):
+    def verify_attribute_value(self, o, a, v, callback=default_callback):
         """ Check if the attribute value is valid for this object. """
         if o.type == "user":
             if a == "uidNumber":
-                self.check_free_id(o.type, a, v)
+                self.check_free_id(o.type, a, v, callback=callback)
 
         if o.type == "group":
             if a == "gidNumber":
@@ -180,7 +180,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
                 if o.name == config.admin_group:
                     if str(v) == str(config.admin_group_gid):
                         return
-                self.check_free_id(o.type, a, v)
+                self.check_free_id(o.type, a, v, callback=callback)
 
     def gen_attribute_value(self, o, a, callback=default_callback):
         """ Generate new attribute value depending on object type. """
@@ -189,7 +189,12 @@ class OTPmeExtension(OTPmeLDIFHandler):
                 if o.name == config.admin_user_name:
                     return config.admin_user_uid
                 else:
-                    new_id = self.get_free_id(o, attribute=a, callback=callback)
+                    try:
+                        new_id = self.objects_default_attributes[o.oid.full_oid].pop(a)
+                        msg = "Using uidNumber: %s" % new_id
+                        callback.send(msg)
+                    except KeyError:
+                        new_id = self.get_free_id(o, attribute=a, callback=callback)
                     return new_id
 
             if a == "gidNumber":
@@ -217,7 +222,12 @@ class OTPmeExtension(OTPmeLDIFHandler):
                 if o.name == config.admin_group:
                     return config.admin_group_gid
                 else:
-                    new_id = self.get_free_id(o, attribute=a, callback=callback)
+                    try:
+                        new_id = self.objects_default_attributes[o.oid.full_oid].pop(a)
+                        msg = "Using gidNumber: %s" % new_id
+                        callback.send(msg)
+                    except KeyError:
+                        new_id = self.get_free_id(o, attribute=a, callback=callback)
                     return new_id
 
     def change_group(self, o, callback=default_callback, **kwargs):
@@ -250,51 +260,57 @@ class OTPmeExtension(OTPmeLDIFHandler):
             token_owner = x.split("/")[0]
             group_members.append(token_owner)
         # Get users with this group as primary group.
-        group_members += backend.search(object_type="user",
-                                attribute="uuid",
-                                value="*",
-                                join_object_type="group",
-                                join_search_attr="uuid",
-                                join_search_val=o.uuid,
-                                join_attribute="user",
-                                return_type="name",
-                                realm=config.realm,
-                                site=config.site)
+        if o.type == "group":
+            search_attrs = {
+                            'uuid'      : {
+                                        'value'     : '*',
+                                        },
+                            'template'  : {
+                                        'value'     : False,
+                                        },
+                            }
+            group_members += backend.search(object_type="user",
+                                    attributes=search_attrs,
+                                    join_object_type="group",
+                                    join_search_attr="uuid",
+                                    join_search_val=o.uuid,
+                                    join_attribute="user",
+                                    return_type="name",
+                                    realm=config.realm,
+                                    site=config.site)
         # Remove duplicates.
-        object_modified = False
         group_members = list(set(group_members))
+        # Remove internal users.
+        internal_users = config.get_internal_objects(object_type="user")
+        group_members = list(set(group_members) - set(internal_users))
         # Remove members not assigend anymore.
         current_members = backend.search(object_type=o.type,
                                         attribute="uuid",
                                         value=o.uuid,
                                         return_attributes=['ldif:memberUid'])
-        #current_members = self.get_attribute_values(o=o, attribute="memberUid")
-        o.acquire_lock(lock_caller="update_members",
-                        write=True, callback=callback)
-        try:
-            del_users = list(set(current_members) - set(group_members))
-            new_users = list(set(group_members) - set(current_members))
-            for token_owner in del_users:
-                object_modified = True
-                self.del_attribute_value(o=o,
-                                    attribute='memberUid',
-                                    value=token_owner,
-                                    callback=callback)
-            # Add new members.
-            for token_owner in new_users:
-                object_modified = True
-                self.add_attribute_value(o=o,
-                                    attribute="memberUid",
-                                    value=token_owner,
-                                    verify=True,
-                                    auto_value=True,
-                                    callback=callback)
-            if object_modified:
-                msg = "Updated group members: %s" % o.oid
-                logger.info(msg)
-                o._cache(callback=callback)
-        finally:
-            o.release_lock(lock_caller="update_members", callback=callback)
+        object_modified = False
+        del_users = list(set(current_members) - set(group_members))
+        new_users = list(set(group_members) - set(current_members))
+        for token_owner in del_users:
+            object_modified = True
+            self.del_attribute_value(o=o,
+                                attribute='memberUid',
+                                value=token_owner,
+                                callback=callback)
+        # Add new members.
+        for token_owner in new_users:
+            object_modified = True
+            self.add_attribute_value(o=o,
+                                attribute="memberUid",
+                                value=token_owner,
+                                verify=True,
+                                auto_value=True,
+                                callback=callback)
+        if object_modified:
+            msg = "Updated group members: %s" % o.oid
+            logger.info(msg)
+            o._cache(callback=callback)
+
         # Make sure nsscache gets updated.
         nsscache.update_object(o.oid, "update")
         return True

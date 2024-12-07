@@ -214,6 +214,8 @@ def end_transaction():
         logger.warning(msg)
         return
 
+    cache_update_time = time.time()
+    cache_updates = []
     try:
         # Make sure cached objects are written to this transaction.
         modified_objects = _transaction.write_cached_objects()
@@ -244,9 +246,13 @@ def end_transaction():
         for o in modified_objects:
             o.reset_modified()
             cache.add_instance(o)
+            cache_updates.append(o.oid.full_oid)
         # Release object locks.
         for o in _transaction.locked_objects:
             o.release_lock(lock_caller=_transaction.lock_caller)
+        if multiprocessing.mgmt_cache_update:
+            multiprocessing.mgmt_cache_updates[cache_update_time] = cache_updates
+            multiprocessing.mgmt_cache_update.set()
     finally:
         _transaction.release_lock()
 
@@ -549,7 +555,7 @@ class BaseTransaction(object):
                                     group=config.group,
                                     mode=0o770)
         except Exception as e:
-            msg = ("Error writing config file: %s" % e)
+            msg = ("Error writing config file: %s: %s" % (config_file, e))
             logger.critical(msg)
             config.raise_exception()
 

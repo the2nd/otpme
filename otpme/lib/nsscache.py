@@ -356,11 +356,18 @@ def update(resync=False, cache_resync=False, lock=None):
             else:
                 site = config.site
 
+            search_attrs = {
+                            'uuid'      : {
+                                        'value'     : '*',
+                                        },
+                            'template'  : {
+                                        'value'     : False,
+                                        },
+                            }
             result = backend.search(realm=config.realm,
                                     site=site,
                                     object_type=object_type,
-                                    attribute="name",
-                                    value="*",
+                                    attributes=search_attrs,
                                     return_type="read_oid")
             if result:
                 try:
@@ -458,7 +465,7 @@ def update(resync=False, cache_resync=False, lock=None):
                 extensions = []
             if "posix" not in extensions:
                 continue
-            # Get OID and type..
+            # Get OID and type.
             read_oid = object_attrs[uuid]['read_oid']
             object_id = oid.get(read_oid)
             object_type = object_id.object_type

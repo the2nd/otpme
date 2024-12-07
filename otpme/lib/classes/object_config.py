@@ -3,7 +3,7 @@
 import os
 # NOTE: Its important to use the same JSON module on each host
 #       when generating the checksums, so we do not use otpme.lib.json.
-import ujson
+import simdjson as json
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -305,7 +305,7 @@ class ObjectConfig(object):
         temp_oc['SALT'] = self.salt
 
         # Gen new checksum.
-        object_checksum = ujson.dumps(temp_oc, sort_keys=True)
+        object_checksum = json.dumps(temp_oc, sort_keys=True)
         object_checksum = stuff.gen_sha512(object_checksum)
         # Add checksum.
         self.checksum = object_checksum
@@ -681,44 +681,61 @@ class ObjectConfig(object):
         self.decrypted_config = decompressed_oc
         return self.decrypted_config
 
-    #def reduce(self):
-    #    reduced_config = stuff.copy_object(self.decrypted_config)
-    #    for x in dict(reduced_config):
-    #        if x in self.modified_attributes:
-    #            continue
-    #        if x == "UUID":
-    #            continue
-    #        if x == "LDIF":
-    #            continue
-    #        if x == "TEMPLATE":
-    #            continue
-    #        if x == "CHECKSUM":
-    #            continue
-    #        if x == "SYNC_CHECKSUM":
-    #            continue
-    #        if x == "INDEX_JOURNAL":
-    #            continue
-    #        if x == "INCREMENT_ID":
-    #            continue
-    #        if x == "INCREMENT_IDS":
-    #            continue
-    #        if x == "DICT_ATTRIBUTES":
-    #            continue
-    #        if x == "LIST_ATTRIBUTES":
-    #            continue
-    #        if x == "INCREMENTAL_UPDATES":
-    #            continue
-    #        if x == "INDEX_JOURNAL_ARCHIVE":
-    #            continue
-    #        reduced_config.pop(x)
-    #    try:
-    #        incremental_updates = self.decrypted_config['INCREMENTAL_UPDATES']
-    #    except KeyError:
-    #        incremental_updates = []
-    #    for x in incremental_updates:
-    #        attr = x[1]
-    #        try:
-    #            reduced_config.pop(attr)
-    #        except KeyError:
-    #            pass
-    #    return reduced_config
+    def reduce(self):
+        try:
+            modified_attributes = self.decrypted_config['MODIFIED_ATTRIBUTES']
+        except KeyError:
+            try:
+                modified_attributes = self.encrypted_config['MODIFIED_ATTRIBUTES']
+            except KeyError:
+                modified_attributes = []
+        reduced_config = stuff.copy_object(self.decrypted_config)
+        for x in dict(reduced_config):
+            if x in self.modified_attributes:
+                continue
+            if x in modified_attributes:
+                continue
+            if x == "SALT":
+                continue
+            if x == "UUID":
+                continue
+            if x == "LDIF":
+                continue
+            if x == "TEMPLATE":
+                continue
+            if x == "CHECKSUM":
+                continue
+            if x == "SYNC_CHECKSUM":
+                continue
+            if x == "INDEX_JOURNAL":
+                continue
+            if x == "LAST_MODIFIED":
+                continue
+            if x == "INCREMENT_ID":
+                continue
+            if x == "INCREMENT_IDS":
+                continue
+            if x == "DICT_ATTRIBUTES":
+                continue
+            if x == "LIST_ATTRIBUTES":
+                continue
+            if x == "MODIFIED_ATTRIBUTES":
+                continue
+            if x == "DELETED_ATTRIBUTES":
+                continue
+            if x == "INCREMENTAL_UPDATES":
+                continue
+            if x == "INDEX_JOURNAL_ARCHIVE":
+                continue
+            reduced_config.pop(x)
+        try:
+            incremental_updates = self.decrypted_config['INCREMENTAL_UPDATES']
+        except KeyError:
+            incremental_updates = []
+        for x in incremental_updates:
+            attr = x[1]
+            try:
+                reduced_config.pop(attr)
+            except KeyError:
+                pass
+        return reduced_config

@@ -50,6 +50,22 @@ def start_with_timeout(function, timeout=3):
     with _timeout(timeout):
         return function()
 
+def get_dict_size(obj, seen=None):
+    """ Get recursive dict size. """
+    if seen is None:
+        seen = set()
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+    seen.add(obj_id)
+    size = sys.getsizeof(obj)
+    if isinstance(obj, dict):
+        size += sum(get_dict_size(v, seen) for v in obj.values())
+        size += sum(get_dict_size(k, seen) for k in obj.keys())
+    elif isinstance(obj, (list, tuple, set)):
+        size += sum(get_dict_size(i, seen) for i in obj)
+    return size
+
 def get_newest_object():
     from otpme.lib import config
     from otpme.lib import backend

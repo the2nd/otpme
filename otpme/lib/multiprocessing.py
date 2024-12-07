@@ -51,6 +51,8 @@ message_queues = []
 posix_semaphores = {}
 # Python multiprocessing manager to use. This is only used within otpme-agent.
 manager = None
+# Will hold mgmtd cache update event.
+mgmt_cache_update = None
 
 # Clusterd events.
 cluster_in_event = None
@@ -73,7 +75,7 @@ def register_module_var(v_name, v_type):
     module = sys.modules[MODULE_PATH]
     setattr(module, v_name, v_type)
 
-def register_shared_dict(name, clear=False, locking=False, pickle=True):
+def register_shared_dict(name, clear=False, locking=False, pickle=False):
     """ Register shared dict. """
     global shared_objects
     if name in shared_objects:
@@ -88,7 +90,7 @@ def register_shared_dict(name, clear=False, locking=False, pickle=True):
     fake_shared_dict = SharedDict(name)
     register_module_var(name, fake_shared_dict)
 
-def register_shared_list(name, clear=False, locking=False, pickle=True):
+def register_shared_list(name, clear=False, locking=False, pickle=False):
     """ Register shared list. """
     global shared_objects
     if name in shared_objects:
@@ -196,7 +198,7 @@ def atfork(keep_locks=False, quiet=True,
     # Clear semaphores from parent process.
     posix_semaphores.clear()
 
-def cleanup():
+def cleanup(keep_queues=False):
     """ Do a clean process exit. """
     from otpme.lib import config
     from otpme.lib import backend
@@ -212,27 +214,16 @@ def cleanup():
     logger = config.logger
     # Get ID.
     pid = os.getpid()
-    #msg = "Starting multiprocessing cleanup: %s" % pid
-    #logger.debug(msg)
-    # Close connections.
-    #msg = "Starting connection cleanup: %s" % pid
-    #logger.debug(msg)
     try:
         connections.cleanup()
     except Exception as e:
         msg = "Connection cleanup failed: %s: %s" % (pid, e)
         logger.critical(msg)
-    # Clean locks.
-    #msg = "Starting lock cleanup: %s" % pid
-    #logger.debug(msg)
     try:
         locking.cleanup()
     except Exception as e:
         msg = "Lock cleanup failed: %s: %s" % (pid, e)
         logger.critical(msg)
-    # Clean DB connections etc.
-    #msg = "Starting backend cleanup: %s" % pid
-    #logger.debug(msg)
     try:
         backend.cleanup()
     except Exception as e:
@@ -245,20 +236,21 @@ def cleanup():
     for x in cluster_write_locks:
         x_lock = cluster_write_locks[x]
         x_lock.release_lock(force=True)
-    for x in list(message_queues):
-        try:
-            x.close()
-        except posix_ipc.PermissionsError:
-            pass
-        except posix_ipc.ExistentialError:
-            pass
-        try:
-            x.unlink()
-        except posix_ipc.ExistentialError:
-            pass
-        except posix_ipc.PermissionsError:
-            pass
-        message_queues.remove(x)
+    if not keep_queues:
+        for x in list(message_queues):
+            try:
+                x.close()
+            except posix_ipc.PermissionsError:
+                pass
+            except posix_ipc.ExistentialError:
+                pass
+            try:
+                x.unlink()
+            except posix_ipc.ExistentialError:
+                pass
+            except posix_ipc.PermissionsError:
+                pass
+            message_queues.remove(x)
     for sem_name in dict(posix_semaphores):
         sem = posix_semaphores[sem_name]
         try:
