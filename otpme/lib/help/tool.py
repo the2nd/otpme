@@ -501,4 +501,11 @@ cmd_help = {
                                     'cmd'                   : 'Write backup to backup directory.',
                                 },
                 },
+    'detect_smartcard'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-tool detect_smartcard -t [fido2,yubikey_hmac,...]',
+                    'cmd'   :   '-t :[smartcard_types]:',
+                    '_help' :   {
+                                    'cmd'                   : 'Detect connected smartcards.',
+                                },
+                },
     }

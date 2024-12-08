@@ -159,9 +159,9 @@ def get_logger(log_name, level, logger=None, pid=None, banner=None,
         logger.addHandler(syslog_handler)
 
     elif systemd:
-        from systemd.journal import JournalHandler
+        from systemd import journal
         # Get journald handler.
-        journald_handler = JournalHandler()
+        journald_handler = journal.JournaldLogHandler()
 
         # Set log journald format for handler:
         log_format = log_formatter('%(levelname)s: %(message)s')

@@ -359,7 +359,7 @@ class SshToken(Token):
         self.cross_site_links = True
         self.need_password = True
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
-        self.supported_hardware_tokens = [ 'yubikey-gpg', 'openssh' ]
+        self.supported_hardware_tokens = [ 'yubikey_gpg', 'openssh' ]
 
         self._sub_sync_fields = {
                     'host'  : {

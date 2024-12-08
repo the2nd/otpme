@@ -78,7 +78,7 @@ class YubikeyHmacClientHandler(object):
 
         try:
             slot = local_command_args['slot']
-        except:
+        except KeyError:
             # Set default slot=2 if we got no slot from user
             slot = 2
             local_command_args['slot'] = slot
@@ -121,7 +121,7 @@ class YubikeyHmacClientHandler(object):
             raise OTPmeException(msg)
 
         # Generate challenge used to generate token secret on client site.
-        hmac_challenge = stuff.gen_secret(len=32)
+        hmac_challenge = stuff.gen_secret(len=16)
 
         # Generate HMAC ID to identify token.
         id_challenge = stuff.gen_md5("HMAC_ID:%s" % token_pass)
@@ -295,4 +295,3 @@ class Yubikeyhmac(Yubikey):
     """ Class for yubikey HMAC tokens. """
     # Set supported auth types
     otpme_auth_types = [ "yubikey_hmac" ]
-

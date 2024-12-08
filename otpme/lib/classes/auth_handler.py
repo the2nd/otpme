@@ -2764,7 +2764,7 @@ class AuthHandler(object):
         # If we reached this point auth has failed and we can count failed login
         # if enabled and we got an accessgroup and a password hash.
         if self.count_fails:
-            if self.access_group:
+            if self.auth_group:
                 if self.auth_group.max_fail == 0:
                     self.logger.warning("Will not count failed logins because of"
                                         "max_fail=0.")

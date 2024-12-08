@@ -734,8 +734,8 @@ class PamHandler(object):
                                                                         password=self.password,
                                                                         enc_challenge=enc_challenge)
             smartcard_data = smartcard_client_handler.get_smartcard_data(smartcard=self.smartcard,
-                                                                            token=found_smartcard,
-                                                                            password=self.password)
+                                                                        token=found_smartcard,
+                                                                        password=self.password)
 
         # Handle SSH tokens.
         if verify_token.pass_type == "ssh_key":
@@ -796,7 +796,7 @@ class PamHandler(object):
                 self.logger.debug("Adding SSH key passphrase to otpme-agent...")
                 try:
                     agent_conn.add_ssh_key_pass(ssh_agent_pid=ssh_agent_pid,
-                                                        ssh_key_pass=ssh_key_pass)
+                                                ssh_key_pass=ssh_key_pass)
                 except Exception as e:
                     msg = (_("Unable to add SSH key passphrase to otpme-agent."))
                     raise OTPmeException(msg)
@@ -1030,7 +1030,7 @@ class PamHandler(object):
             # Set login token to otpme-agent.
             try:
                 agent_conn.set_login_token(self.offline_login_token.rel_path,
-                                                self.offline_login_token.pass_type)
+                                            self.offline_login_token.pass_type)
             except Exception as e:
                 self.logger.warning("Unable to set login token to otpme-agent: "
                                     "%s" % e)
@@ -1268,7 +1268,7 @@ class PamHandler(object):
         # Try to get users UUID from environment.
         try:
             self.user_uuid = os.environ['OTPME_USER_UUID']
-        except:
+        except KeyError:
             pass
         # Fallback to get UUID from hostd.
         if not self.user_uuid:
@@ -1373,7 +1373,7 @@ class PamHandler(object):
 
         # If we are already logged in (e.g. this is a screen unlock request) we
         # just have to verify the given credentials.
-        if self.login_status != False:
+        if self.login_status is not False:
             msg = ("User is already logged in. This is most "
                     "likely a screen unlock request.")
             self.logger.info(msg)
@@ -1592,7 +1592,7 @@ class PamHandler(object):
         # and thus could lead to a race). In any other case we have to
         # make sure it is deactivated here. Same goes for triggering
         # "sync_token_data" hostd command.
-        if self.login_status != False \
+        if self.login_status is not False \
         or not self.realm_login \
         or not self.cache_login_tokens \
         or self.offline:

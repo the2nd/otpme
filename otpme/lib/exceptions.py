@@ -262,3 +262,6 @@ class MasterNodeElectionFailed(OTPmeException):
 
 class LoginInterfaceException(PolicyException):
     pass
+
+class NoSmartcardFound(OTPmeException):
+    pass

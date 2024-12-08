@@ -8,7 +8,9 @@ try:
 except:
     pass
 
-def detect_smartcard(sc_types=None):
+from otpme.lib.exceptions import *
+
+def detect_smartcard(sc_types=None, detect_only=False, print_devices=False):
     """ Try to find a connected smartcard """
     from otpme.lib import config
     from otpme.lib.smartcard import get_class
@@ -17,7 +19,6 @@ def detect_smartcard(sc_types=None):
     smartcard = None
     supported_smartcards = config.get_supported_smartcards()
     for s in supported_smartcards:
-        logger.debug("Searching for smartcard: %s" % s)
         try:
             smartcard_class = get_class(s)
         except ImportError as e:
@@ -38,11 +39,16 @@ def detect_smartcard(sc_types=None):
         if not search_smartcard:
             smartcard = None
             continue
+        msg = "Searching for smartcard: %s" % s
+        logger.debug(msg)
+        if print_devices:
+            print(msg)
         try:
-            smartcard.detect()
+            smartcard.detect(print_devices=print_devices)
             logger.debug("Detected smartcard: %s" % smartcard.type)
             # currently we only support one smartcard at a time
-            break
-        except:
+            if not detect_only:
+                break
+        except NoSmartcardFound:
             smartcard = None
     return smartcard

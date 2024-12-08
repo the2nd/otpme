@@ -19,6 +19,20 @@
 
 import os
 import sys
+
+# Add PYTHONPATH.
+PYTHONPATH_FILE = "/etc/otpme/PYTHONPATH"
+if os.path.exists(PYTHONPATH_FILE):
+    fd = open(PYTHONPATH_FILE, "r")
+    try:
+        for x in fd.readlines():
+            x = x.replace("\n", "")
+            if x in sys.path:
+                continue
+            sys.path.insert(0, x)
+    finally:
+        fd.close()
+
 import getpass
 import setproctitle
 # python3.
@@ -130,19 +144,6 @@ if __name__ == "__main__":
     my_path = os.path.dirname(my_path)
     my_path = os.path.dirname(my_path)
     sys.path.append(my_path)
-
-# Add PYTHONPATH.
-PYTHONPATH_FILE = "/etc/otpme/PYTHONPATH"
-if os.path.exists(PYTHONPATH_FILE):
-    fd = open(PYTHONPATH_FILE, "r")
-    try:
-        for x in fd.readlines():
-            x = x.replace("\n", "")
-            if x in sys.path:
-                continue
-            sys.path.append(x)
-    finally:
-        fd.close()
 
 # Get command from system command (e.g. otpme-user -> user).
 command = "-".join(tool_name.split("-")[1:])

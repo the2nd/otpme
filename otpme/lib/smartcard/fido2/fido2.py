@@ -214,7 +214,7 @@ class Fido2(object):
         if autodetect:
             self.detect()
 
-    def detect(self, debug=False):
+    def detect(self, debug=False, print_devices=False):
         """ Try to find fido2 token """
         from fido2.ctap1 import Ctap1
         from fido2.pcsc import CtapPcscDevice
@@ -225,14 +225,19 @@ class Fido2(object):
         else:
             try:
                 dev = next(CtapPcscDevice.list_devices(), None)
-                logger.debug("Fido2 smartcard: Use NFC channel.")
             except Exception as e:
+                dev = None
                 msg = "Fido2 smartcard: NFC channel search error: %s" % e
                 logger.warning(msg)
+            if dev:
+                logger.debug("Fido2 smartcard: Use NFC channel.")
         if not dev:
-            raise Exception("No FIDO device found")
+            raise NoSmartcardFound("No FIDO device found")
         self.dev = Ctap1(dev)
-
+        if print_devices:
+            for x in dev.list_devices():
+                msg = "Detected fido2 smartcard: %s" % x
+                print(msg)
     def register(self, client_param, app_param):
         msg = "Please press the token you want to register..."
         print(msg)

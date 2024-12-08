@@ -18,6 +18,8 @@ from otpme.lib import stuff
 from otpme.lib import system_command
 from otpme.lib.encoding.base import encode
 
+from otpme.lib.exceptions import *
+
 logger = config.logger
 
 yubikey_gpg_reset_string = b"""
@@ -36,17 +38,24 @@ scd apdu 00 44 00 00
 /echo Card has been successfully reset.
 """
 
-def get(debug=False):
+def get(debug=False, print_devices=False):
     """ Try to find yubikey and return instance """
     try:
         YK = yubico.find_yubikey(debug=debug)
-    except yubico.yubico_exception.YubicoError as inst:
-        YK = False
-        raise Exception(_("Error: %s") % inst.reason)
+    except yubico.yubico_exception.YubicoError as e:
+        if e.reason == "No YubiKey found":
+            raise NoSmartcardFound(e.reason)
+        raise Exception(_("Error: %s") % e.reason)
 
     if config.debug_enabled:
-        logger.debug("Found Yubikey:")
+        logger.debug("Found Yubikey: %s" % YK.model)
         logger.debug("Version: %s" % YK.version())
+
+    if print_devices:
+        msg = "Found Yubikey: %s" % YK.model
+        print(msg)
+        msg = "Version: %s" % YK.version()
+        print(msg)
 
     return YK
 
@@ -64,10 +73,10 @@ class Yubikey(object):
         else:
             self.yubikey = None
 
-    def detect(self, debug=False):
+    def detect(self, debug=False, print_devices=False):
         """ Try to find yubikey """
         # Get yubikey instance
-        self.yubikey = get(debug=debug)
+        self.yubikey = get(debug=debug, print_devices=print_devices)
 
     def get_id(self):
         """ Get smartcard ID. Used to get settings (e.g. slot) from authd on login """
@@ -121,49 +130,50 @@ class Yubikey(object):
         try:
             yk_cfg = self.yubikey.init_config()
             yk_cfg.extended_flag('SERIAL_API_VISIBLE', visible)
-        except yubico.yubico_exception.YubicoError as inst:
-            raise Exception(_("ERROR: %s") % inst.reason)
+        except yubico.yubico_exception.YubicoError as e:
+            raise Exception(_("ERROR: %s") % e.reason)
 
         try:
             self.yubikey.write_config(yk_cfg, slot=slot)
             return True
-        except yubico.yubico_exception.YubicoError as inst:
-            raise Exception(_("Error writing config: %s") % inst.reason)
+        except yubico.yubico_exception.YubicoError as e:
+            raise Exception(_("Error writing config: %s") % e.reason)
         except Exception as e:
             raise Exception(_("Error writing config: %s") % e)
 
     def add_hmac_sha1(self, slot=None, key=None, **kwargs):
         """ Add HMAC-SHA1 config to given yubikey slot """
-        if slot == None:
+        if slot is None:
             slot = self.get_slot()
-        # Make sure slot is int()
+        # Make sure slot is int().
         slot = int(slot)
-        #key = b'h:303132333435363738393a3b3c3d3e3f40414243'
         # Gen token key.
         if not key:
-            key = stuff.gen_secret(len=40)
+            key = stuff.gen_secret(len=20)
+        if isinstance(key, str):
+            key = key.encode()
         try:
             yk_cfg = self.yubikey.init_config()
-            yk_cfg.mode_challenge_response('h:%s' % key, type='HMAC', variable=True)
+            yk_cfg.mode_challenge_response(b'h:%s' % key, type='HMAC', variable=True)
             yk_cfg.extended_flag('SERIAL_API_VISIBLE', True)
-        except yubico.yubico_exception.YubicoError as inst:
-            raise Exception(_("ERROR: %s") % inst.reason)
+        except yubico.yubico_exception.YubicoError as e:
+            raise Exception(_("ERROR: %s") % e.reason)
 
         try:
             self.yubikey.write_config(yk_cfg, slot=slot)
-        except yubico.yubico_exception.YubicoError as inst:
-            raise Exception(_("Error writing config: %s") % inst.reason)
+        except yubico.yubico_exception.YubicoError as e:
+            raise Exception(_("Error writing config: %s") % e.reason)
         except Exception as e:
             raise Exception(_("Error writing config: %s") % e)
 
-        # return HMAC secret on success
+        # Return HMAC secret on success.
         return key
 
     def add_oath_hotp(self, slot=None, key=None, **kwargs):
         """ Add OATH HOTP config to given yubikey slot """
         if slot == None:
             slot = self.get_slot()
-        # Make sure slot is int()
+        # Make sure slot is int().
         slot = int(slot)
         # Gen token key.
         if not key:
@@ -175,13 +185,13 @@ class Yubikey(object):
             yk_cfg.mode_oath_hotp(b'h:%s' % key)
             yk_cfg.extended_flag('SERIAL_API_VISIBLE', True)
             yk_cfg.ticket_flag('APPEND_CR', True)
-        except yubico.yubico_exception.YubicoError as inst:
-            raise Exception(_("ERROR: %s") % inst.reason)
+        except yubico.yubico_exception.YubicoError as e:
+            raise Exception(_("ERROR: %s") % e.reason)
 
         try:
             self.yubikey.write_config(yk_cfg, slot=slot)
-        except yubico.yubico_exception.YubicoError as inst:
-            raise Exception(_("Error writing config: %s") % inst.reason)
+        except yubico.yubico_exception.YubicoError as e:
+            raise Exception(_("Error writing config: %s") % e.reason)
         except Exception as e:
             raise Exception(_("Error writing config: %s") % e)
 
@@ -192,12 +202,11 @@ class Yubikey(object):
         """ send challenge to yubikey and return response """
         if slot == None:
             slot = self.get_slot()
-        # make sure slot is int()
+        # Make sure slot is int().
         slot = int(slot)
         if isinstance(challenge, str):
             challenge = challenge.encode()
         response = self.yubikey.challenge_response(challenge, slot=slot)
-        # return response
         return encode(response, "hex")
 
     def reset_gpg(self):

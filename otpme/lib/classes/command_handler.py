@@ -1089,6 +1089,9 @@ class CommandHandler(object):
         if subcommand == "search":
             return self.handle_search_command(command_line)
 
+        if subcommand == "detect_smartcard":
+            return self.handle_smartcard_detection(command, subcommand)
+
         if subcommand == "backup":
             from otpme.lib.register import register_modules
             register_modules()
@@ -4747,6 +4750,34 @@ class CommandHandler(object):
 
         return ""
 
+    def handle_smartcard_detection(self, command, subcommand):
+        from otpme.lib.smartcard.utils import detect_smartcard
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except:
+            return self.get_help(_("Unknown command: %s") % subcommand)
+
+        # Parse command line.
+        local_command_args = {}
+        command_line = list(self.command_line)
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            local_command_args = cli.get_opts(command_syntax=command_syntax,
+                                            command_line=command_line,
+                                            command_args=local_command_args)
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            elif str(e) != "":
+                return self.get_help(str(e))
+        try:
+            sc_types = local_command_args['smartcard_types']
+        except KeyError:
+            sc_types = []
+        detect_smartcard(sc_types, detect_only=True, print_devices=True)
+
     def handle_token_deploy_command(self):
         """ Handle token deploy command. """
         from otpme.lib.help import command_map
@@ -4837,10 +4868,6 @@ class CommandHandler(object):
         # Init otpme.
         self.init()
 
-        #deploy_args = {}
-        # Encode token deploy data (e.g. token keys)
-        #deploy_data = json.encode(deploy_args, encoding="hex")
-        #self.command_args['deploy_data'] = deploy_data
         self.command_args['pre_deploy'] = True
         # Build command line for "user deploy_token" command
         user_name = object_identifier.split("/")[0]

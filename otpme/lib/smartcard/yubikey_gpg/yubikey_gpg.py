@@ -23,7 +23,7 @@ REGISTER_BEFORE = []
 REGISTER_AFTER = []
 
 def register():
-    config.register_smartcard_type("yubikey-gpg", YubikeygpgClientHandler, YubikeygpgServerHandler)
+    config.register_smartcard_type("yubikey_gpg", YubikeygpgClientHandler, YubikeygpgServerHandler)
 
 class YubikeygpgClientHandler(object):
     deploy_commmand_map = {
@@ -159,5 +159,5 @@ class YubikeygpgServerHandler(object):
 class Yubikeygpg(Yubikey):
     """ Class for yubikey HMAC tokens. """
     # Set supported auth types
-    otpme_auth_types = [ "yubikey-gpg" ]
+    otpme_auth_types = [ "yubikey_gpg" ]
 
