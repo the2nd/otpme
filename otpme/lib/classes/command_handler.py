@@ -519,6 +519,9 @@ class CommandHandler(object):
                 return self.get_help()
             return self.get_authorized_keys(username)
 
+        if command == "tool" and subcommand == "detect_smartcard":
+            return self.handle_smartcard_detection(command, subcommand)
+
         # Get login user needed for some commnads.
         if not config.login_user:
             config.login_user = self.get_login_user()
@@ -1088,9 +1091,6 @@ class CommandHandler(object):
 
         if subcommand == "search":
             return self.handle_search_command(command_line)
-
-        if subcommand == "detect_smartcard":
-            return self.handle_smartcard_detection(command, subcommand)
 
         if subcommand == "backup":
             from otpme.lib.register import register_modules
@@ -4776,6 +4776,12 @@ class CommandHandler(object):
             sc_types = local_command_args['smartcard_types']
         except KeyError:
             sc_types = []
+        supported_smartcards = config.get_supported_smartcards()
+        for sc_type in sc_types:
+            if sc_type in supported_smartcards:
+                continue
+            msg = "Unsupported smartcard type: %s" % sc_type
+            raise OTPmeException(msg)
         detect_smartcard(sc_types, detect_only=True, print_devices=True)
 
     def handle_token_deploy_command(self):

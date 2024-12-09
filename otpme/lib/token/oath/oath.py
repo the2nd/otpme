@@ -97,7 +97,7 @@ class OathToken(Token):
         if second_factor_usage:
             need_encryption = True
         else:
-            # Wnen not used as second factor token remove PIN len from config to
+            # When not used as second factor token remove PIN len from config to
             # make brute force attacks harder.
             offline_config['PIN_LEN'] = ''
 

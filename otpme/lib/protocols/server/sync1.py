@@ -649,7 +649,7 @@ class OTPmeSyncP1(OTPmeServer1):
             # OTPs removed.
             token.is_used_otp(otp="xxx")
         if sync_counter:
-            # Call get_token_counter() with to get old counters
+            # Call get_token_counter() to get old counters
             # removed.
             token.get_token_counter()
 

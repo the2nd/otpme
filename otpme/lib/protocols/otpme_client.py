@@ -1046,7 +1046,7 @@ class OTPmeClient(OTPmeClientBase):
                     "found."))
             raise OTPmeException(msg)
 
-        if not smartcard_type in self.smartcard.otpme_auth_types:
+        if smartcard_type not in self.smartcard.otpme_auth_types:
             msg = (_("Authentication type '%s' not supported by "
                     "smartcard.") % smartcard_type)
             raise OTPmeException(msg)

@@ -126,7 +126,15 @@ cmd_help = {
                     '_cmd_usage_help' : 'Usage: otpme-token mode {token} {mode}',
                     'cmd'   :   '<|object|> <new_mode>',
                     '_help' :   {
-                                    'cmd'                   : 'change token operation mode',
+                                    'cmd'                   : 'Change token operation mode.',
+                                },
+                },
+
+    'get_token_counter'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-token get_token_counter {token}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Get token counter.',
                                 },
                 },
 

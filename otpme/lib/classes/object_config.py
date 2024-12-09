@@ -407,6 +407,26 @@ class ObjectConfig(object):
         val = "%s[%s]" % (encryption.upper(), value)
         return val
 
+    def remove_headers(self):
+        """ Decrypt object config. """
+        object_config = dict(self.decrypted_config)
+        for p in dict(object_config):
+            value = object_config[p]
+            # Remove encryption header.
+            status, \
+            encryption, \
+            value = self.get_encryption_type(value)
+            # Remove encoding header.
+            status, \
+            encoding, \
+            value = self.get_encoding_type(value)
+            # Remove compression header.
+            status, \
+            compression, \
+            value = self.get_compression_type(value)
+            object_config[p] = value
+        return object_config
+
     def compress_object_config(self, object_config):
         """ Compress object config. """
         compressed_config = dict(object_config)
@@ -662,7 +682,7 @@ class ObjectConfig(object):
         # Decrypt config.
         try:
             decrypted_oc = self.decrypt_object_config(object_config=encrypted_oc,
-                                                            enc_key=key)
+                                                        enc_key=key)
         except Exception as e:
             msg = ("Failed to decrypt object config: %s" % e)
             raise OTPmeException(msg)

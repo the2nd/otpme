@@ -910,7 +910,7 @@ class OTPmeServer1(object):
             logout = preauth_args['logout']
         except:
             logout = False
-        # Check if this is a logout request.
+        # Check if this request needs a token.
         try:
             need_token = preauth_args['need_token']
         except:
@@ -1143,7 +1143,7 @@ class OTPmeServer1(object):
         self.logger.debug(msg)
 
         # Get all valid tokens for the given access group.
-        valid_user_tokens = self.get_valid_tokens(user=self.user)
+        valid_user_tokens = self.get_valid_tokens(user=self.user, login=login)
 
         # Build dict with possible tokens to authenticate.
         verify_tokens = {}
@@ -1423,7 +1423,7 @@ class OTPmeServer1(object):
 
         return None
 
-    def get_valid_tokens(self, user, token_type=None,
+    def get_valid_tokens(self, user, token_type=None, login=False,
         pass_type=None, check_sf_tokens=False):
         """
         Get tokens that could be used to authenticate the user for the given
@@ -1445,6 +1445,19 @@ class OTPmeServer1(object):
                                         host=self.peer,
                                         return_type="instance",
                                         quiet=True)
+        if not login:
+            return valid_tokens
+
+        # Get tokens valid for login host/node.
+        valid_peer_tokens = self.peer.get_tokens(user_uuid=user.uuid,
+                                                include_roles=True,
+                                                return_type="instance")
+        # Remove invalid tokens from list.
+        for token in list(valid_tokens):
+            if token in valid_peer_tokens:
+                continue
+            valid_tokens.remove(token)
+
         return valid_tokens
 
     #def get_valid_ssh_token(self, user, public_keys):

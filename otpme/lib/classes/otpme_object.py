@@ -1588,10 +1588,11 @@ class OTPmeBaseObject(OTPmeLockObject):
         if uuid is not None:
             self.uuid = uuid
         # Origin node this object was created on.
-        self.origin = config.uuid
-        origin = backend.get_object(uuid=config.uuid)
-        if origin:
-            self.origin_cache = origin.oid.full_oid
+        if not self.offline:
+            self.origin = config.uuid
+            origin = backend.get_object(uuid=config.uuid)
+            if origin:
+                self.origin_cache = origin.oid.full_oid
         # Set create time.
         self.create_time = int(time.time())
         # Update index.
@@ -4022,7 +4023,7 @@ class OTPmeObject(OTPmeBaseObject):
             # Search attributes.
             search_attr = {}
             if user_uuid:
-                search_attr['user'] =  {'value':user_uuid}
+                search_attr['owner_uuid'] =  {'value':user_uuid}
             if token_types:
                 search_attr['token_type'] =  {'values':token_types}
             if skip_disabled:

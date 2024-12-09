@@ -34,6 +34,9 @@ cp -a /etc/otpme/otpme.conf.dist /etc/otpme/otpme.conf
 ### Edit /etc/otpme/otpme.conf
 POSTGRES_PG_CTL_BIN="/usr/lib/postgresql/15/bin/pg_ctl"
 
+### Create PYTHONPATH file with path to venv (e.g. /opt/otpme/lib/python3.11/site-packages/)
+/etc/otpme/PYTHONPATH
+
 ## Init your otpme realm
 otpme-realm --api -ddee --color-logs -f init --ca-key-len 2048 --site-key-len 2048 --node-key-len 2048 --dicts english,en-top10000,common-passwords,us-female,us-male,us-surnames,abbreviations-it --id-ranges "uidNumber:s:100000-200000,gidNumber:s:100000-200000" yourrealm.tld yoursite localhost 127.0.0.1  
 

@@ -90,7 +90,7 @@ class OfflineToken(object):
 
     def get_session_dir(self, session_id):
         """ Get login session dir. """
-        session_dir = "%s/%s" % (self.session_dir, session_id)
+        session_dir = os.path.join(self.session_dir, session_id)
         return session_dir
 
     def get_session_file(self, realm=None, site=None, session_id=None):
@@ -100,9 +100,10 @@ class OfflineToken(object):
                 msg = (_("Need 'site' and 'realm'."))
                 raise OTPmeException(msg)
             session_dir = self.get_session_dir(session_id)
-            session_file = "%s/%s:%s" % (session_dir, realm, site)
+            session_file_name = "%s:%s" % (realm, site)
+            session_file = os.path.join(session_dir, session_file_name)
         else:
-            session_file = "%s/%s" % (self.session_dir, self.offline_link_name)
+            session_file = os.path.join(self.session_dir, self.offline_link_name)
         return session_file
 
     def get_script_file_path(self, script_id):
@@ -401,10 +402,10 @@ class OfflineToken(object):
         session_file = os.path.realpath(session_link)
         if not os.path.exists(session_file):
             return None, None, None
-        realm = os.path.basename(session_file).split(":")[0]
-        site = os.path.basename(session_file).split(":")[1]
-        session_dir = os.path.dirname(session_file)
-        session_id = os.path.basename(session_dir)
+        realm = os.path.basename(session_file).split(":")[-2]
+        site = os.path.basename(session_file).split(":")[-1]
+        session_id = os.path.dirname(session_file)
+        session_id = os.path.basename(session_id)
         return realm, site, session_id
 
     def get_session_uuid(self, realm, site, session_id):
@@ -532,8 +533,7 @@ class OfflineToken(object):
             instance.offline = True
             if instance._load():
                 return instance
-            else:
-                return None
+            return None
         else:
             login_token = None
             cached_tokens = { }
@@ -868,7 +868,7 @@ class OfflineToken(object):
         server_sessions = {}
         for x in os.listdir(session_dir):
             # Get session config.
-            session_file = "%s/%s" % (session_dir, x)
+            session_file = os.path.join(session_dir, x)
             session_config = filetools.read_data_file(session_file)
             # Get session data.
             slp = session_config['SLP']
@@ -1248,14 +1248,14 @@ class OfflineToken(object):
                 msg = "Failed to decrypt offline token."
                 raise OTPmeException(msg)
         else:
-            msg = ("Loading offline %s without decrypting: %s: Missing key"
+            msg = ("Loading offline %s without decrypting: %s"
                     % (object_type, object_id))
             self.logger.debug(msg)
             try:
-                # Load object config.
+                # Load object config and run decrypt without key to remove fake
+                # encryption headers..
                 object_config = ObjectConfig(object_id, object_config, encrypted=False)
-                #object_config = ObjectConfig(object_id, object_config)
-                #object_config = object_config.decrypt()
+                object_config = object_config.remove_headers()
             except Exception as e:
                 msg = "Failed to load offline token: %s" % e
                 raise OTPmeException(msg)

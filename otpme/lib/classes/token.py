@@ -1729,7 +1729,11 @@ class Token(OTPmeObject):
             except:
                 msg = "Unable to get offline add token counter method."
                 raise OTPmeException(msg)
-            add_method(_token_counter)
+            try:
+                add_method(_token_counter)
+            except Exception as e:
+                msg = "Failed to add offline token counter: %s" % e
+                raise OTPmeException(msg)
         else:
             try:
                 _token_counter.add()

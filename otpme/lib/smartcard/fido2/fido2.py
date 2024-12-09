@@ -227,10 +227,10 @@ class Fido2(object):
                 dev = next(CtapPcscDevice.list_devices(), None)
             except Exception as e:
                 dev = None
-                msg = "Fido2 smartcard: NFC channel search error: %s" % e
+                msg = "Fido2 smartcard: pcscd search error: %s" % e
                 logger.warning(msg)
             if dev:
-                logger.debug("Fido2 smartcard: Use NFC channel.")
+                logger.debug("Fido2 smartcard: Use pcscd channel.")
         if not dev:
             raise NoSmartcardFound("No FIDO device found")
         self.dev = Ctap1(dev)

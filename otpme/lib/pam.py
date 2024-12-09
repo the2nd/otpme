@@ -75,7 +75,7 @@ class PamHandler(object):
         self.failed_message = "Login failed"
         self.auth_message = ""
         self.login_message = None
-        self.message_timeout = 3
+        self.message_timeout = 2
         self.env_dir = None
         self.pinentry_autoconfirm_file = None
         self.pinentry_message_file = None
@@ -848,18 +848,23 @@ class PamHandler(object):
             self.logger.critical(msg)
             raise OTPmeException(msg)
 
+        reload_offline_token = False
+        if verify_token.keep_session:
+            reload_offline_token = True
+            self.offline_token.keep_session = True
+
         # Add decryption passphrase to offline tokens.
         if need_encryption:
+            reload_offline_token = True
             self.logger.debug("Setting offline token encryption passphrase...")
-            if verify_token.keep_session:
-                self.offline_token.keep_session = True
             self.offline_token.set_enc_passphrase(passphrase=enc_pass,
                                 key_function=self.offline_key_func,
                                 key_function_opts=self.offline_key_func_opts,
                                 iterations_by_score=self.iterations_by_score,
                                 check_pass_strength=self.check_offline_pass_strength)
             del enc_pass
-            # Reload offline tokens after setting encryption passphrase.
+
+        if reload_offline_token:
             self.load_offline_tokens(reload_token=True)
             # Re-set verify token.
             verify_token = self.offline_verify_token
@@ -1036,23 +1041,24 @@ class PamHandler(object):
                                     "%s" % e)
 
             # Add RSP from offline session to otpme-agent.
-            for realm in self.offline_sessions:
-                for site in self.offline_sessions[realm]:
-                    session = self.offline_sessions[realm][site]
-                    try:
-                        agent_conn.add_rsp(realm=realm, site=site,
-                                            rsp=session['rsp'],
-                                            slp=session['slp'],
-                                            rsp_signature=session['rsp_signature'],
-                                            session_key=session['session_key'],
-                                            login_time=session['login_time'],
-                                            timeout=session['session_timeout'],
-                                            unused_timeout=session['session_unused_timeout'],
-                                            offline=session['offline_allowed'])
-                    except Exception as e:
-                        self.logger.warning("Unable to add RSP to otpme-agent: "
-                                            "%s" % e)
-            if not self.offline_sessions:
+            if self.offline_sessions:
+                for realm in self.offline_sessions:
+                    for site in self.offline_sessions[realm]:
+                        session = self.offline_sessions[realm][site]
+                        try:
+                            agent_conn.add_rsp(realm=realm, site=site,
+                                                rsp=session['rsp'],
+                                                slp=session['slp'],
+                                                rsp_signature=session['rsp_signature'],
+                                                session_key=session['session_key'],
+                                                login_time=session['login_time'],
+                                                timeout=session['session_timeout'],
+                                                unused_timeout=session['session_unused_timeout'],
+                                                offline=session['offline_allowed'])
+                        except Exception as e:
+                            self.logger.warning("Unable to add RSP to otpme-agent: "
+                                                "%s" % e)
+            else:
                 self.logger.debug("No offline session found. Relogin required "
                                 "when servers are available again...")
 

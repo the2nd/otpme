@@ -63,6 +63,7 @@ read_value_acls = {
                             "offline_expiry",
                             "offline_unused_expiry",
                             "session_keep",
+                            "token_counter",
                             ],
         }
 
@@ -217,6 +218,14 @@ commands = {
                     'method'            : 'change_counter_check_range',
                     'oargs'             : ['counter_check_range'],
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'get_token_counter'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_token_counter',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -474,6 +483,11 @@ class HotpToken(OathToken):
         end = start + self.counter_check_range
         return start, end
 
+    @check_acls(['view:token_counter'])
+    def show_token_counter(self, callback=default_callback, _caller="API", **kwargs):
+        token_counter = self.get_token_counter()
+        return callback.ok(token_counter)
+
     @check_acls(['generate:otp'])
     def gen_otp(self, secret=None, otp_count=1, prefix_pin=False,
         callback=default_callback, _caller="API", **kwargs):
@@ -499,7 +513,9 @@ class HotpToken(OathToken):
             otps = []
             for i in range(0, otp_count):
                 token_counter = token_counter_start + i
-                otp = hotp.generate_hotp(token_counter, secret, self.otp_format)
+                otp = hotp.generate_hotp(token_counter,
+                                        secret, self.otp_format,
+                                        secret_encoding=self.secret_encoding)
                 if prefix_pin:
                     otp = "%s%s" % (prefix_pin, otp)
                 self.update_otp_cache(otp, token_counter)
@@ -508,7 +524,9 @@ class HotpToken(OathToken):
                 return callback.ok(otps)
             return otps
         token_counter = token_counter_start + 1
-        otp = hotp.generate_hotp(token_counter, secret, self.otp_format)
+        otp = hotp.generate_hotp(token_counter,
+                                secret, self.otp_format,
+                                secret_encoding=self.secret_encoding)
         if prefix_pin:
             otp = "%s%s" % (prefix_pin, otp)
         self.update_otp_cache(otp, token_counter)
@@ -872,13 +890,17 @@ class HotpToken(OathToken):
             msg = ("WARNING: Unable to find counter for the given OTP.")
             raise OTPmeException(msg)
 
-        # Add used token counter using parent class method.
-        self._add_token_counter(token_counter=token_counter,
-                                session_uuid=session_uuid)
-
         # Update counter in token config on resync.
         if resync:
             self.object_config['COUNTER'] = token_counter
+            # Remove old token counter objects on resync.
+            counter_list = self._get_token_counter()
+            for x in counter_list:
+                x.delete()
+
+        # Add used token counter using parent class method.
+        self._add_token_counter(token_counter=token_counter,
+                                session_uuid=session_uuid)
 
         # FIXME: how long to cache already used HOTPs?
         expiry = time.time() + 86400
@@ -927,7 +949,7 @@ class HotpToken(OathToken):
             except Exception:
                 return callback.error()
 
-        if counter_check_range == None:
+        if counter_check_range is None:
             while True:
                 answer = callback.ask("Counter check range: ")
                 try:
