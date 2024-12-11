@@ -349,7 +349,9 @@ class ListenSocket(object):
                                             suppress_ragged_eofs=True,
                                             server_hostname=None)
             # Start listening on socket.
-            self._socket.listen(1)
+            # Set backlog to 128 to prevent:
+            #   "TCP: request_sock_TCP: Possible SYN flooding on port xxxx. Sending cookies.  Check SNMP counters."
+            self._socket.listen(128)
 
             # Using SSLContext.wrap_socket() with newer python versions it's
             # possible to remove cert/key files after socket initialization.

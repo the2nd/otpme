@@ -36,4 +36,13 @@ cmd_help = {
                                     'cmd'                   : 'Get cluster status.',
                                 },
                 },
+
+    'required_votes'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-cluster required_votes <quorum>',
+                    'cmd'   :   '[required_votes]',
+                    '_help' :   {
+                                    'cmd'                   : 'Set cluster required node votes to get quorum.',
+                                },
+                },
+
     }

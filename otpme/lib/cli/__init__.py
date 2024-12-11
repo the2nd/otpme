@@ -1726,11 +1726,11 @@ def list_objects(object_type, show_all=False, reverse=False,
     if search_regex is None:
         search_regex = "*"
 
-    if search_regex.startswith("/"):
+    if str(search_regex).startswith("/"):
         sort_by = "path"
         return_type = "path"
         search_attribute="path"
-    elif "/" in search_regex:
+    elif "/" in str(search_regex):
         sort_by = "rel_path"
         return_type = "rel_path"
         search_attribute="rel_path"
@@ -1744,7 +1744,8 @@ def list_objects(object_type, show_all=False, reverse=False,
             return_type = "rel_path"
             search_attribute="rel_path"
         if attribute:
-            return_type = attribute
+            search_attribute = attribute
+            return_type = "rel_path"
             sort_by = attribute
 
     if object_type == "token":
@@ -1756,18 +1757,20 @@ def list_objects(object_type, show_all=False, reverse=False,
                         'template'          : {'value':show_templates},
                         }
     # Get objects based on search regex and ACLs assiged.
-    object_list = backend.search(realm=config.realm,
-                            site=config.site,
-                            #attribute=search_attribute,
-                            #value=search_regex,
-                            attributes=search_attributes,
-                            object_type=object_type,
-                            order_by=sort_by,
-                            reverse_order=reverse,
-                            return_type=return_type,
-                            verify_acls=verify_acls)
+    try:
+        object_list = backend.search(realm=config.realm,
+                                site=config.site,
+                                attributes=search_attributes,
+                                object_type=object_type,
+                                order_by=sort_by,
+                                reverse_order=reverse,
+                                return_type=return_type,
+                                verify_acls=verify_acls)
+    except Exception as e:
+        response = "Failed to list %s: %s" % (object_type, e)
+        return response
 
-    object_list = sorted([str(x) for x in object_list])
+    object_list = sorted(set([str(x) for x in object_list]))
     response = "\n".join(object_list)
 
     return response

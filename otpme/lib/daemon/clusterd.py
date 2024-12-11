@@ -885,6 +885,7 @@ class ClusterDaemon(OTPmeDaemon):
     def exit_child(self):
         # Wakeup main process to handle childs.
         self.comm_handler.send("clusterd", command="handle_childs")
+        multiprocessing.cleanup()
         os._exit(0)
 
     def start_node_disabled_check(self):
@@ -908,6 +909,10 @@ class ClusterDaemon(OTPmeDaemon):
             else:
                 msg = "Node is enabled again."
                 self.logger.info(msg)
+                # If the node is enabled again we have to handle sync
+                # like a newly joined node (e.g. delete objects on sync).
+                filetools.touch(config.node_joined_file)
+                # Enable node object.
                 self.enable_node()
                 # Wakeup main process to start childs.
                 self.comm_handler.send("clusterd", command="handle_childs")
@@ -999,6 +1004,10 @@ class ClusterDaemon(OTPmeDaemon):
         except KeyError:
             pass
         self.node_conn = None
+        # Wakeup cluster out event handler to re-process cluster journal entries.
+        if not multiprocessing.cluster_out_event:
+            return
+        multiprocessing.cluster_out_event.set()
 
     def get_conn_event_name(self, node_name):
         conn_even_name = "/cjournal-event-%s" % node_name
@@ -1235,8 +1244,13 @@ class ClusterDaemon(OTPmeDaemon):
         """ Calculate cluster quorum. """
         # Get enabled nodes.
         enabled_nodes = self.get_enabled_nodes()
-        # We need at least half of the enabled nodes to gain quorum.
-        required_votes = len(enabled_nodes) / 2
+        # Check for configured required quorum.
+        own_site = backend.get_object(uuid=config.site_uuid)
+        if own_site.required_votes:
+            required_votes = own_site.required_votes
+        else:
+            # We need at least half of the enabled nodes to gain quorum.
+            required_votes = len(enabled_nodes) / 2
 
         quorum = False
         try:
@@ -1301,6 +1315,14 @@ class ClusterDaemon(OTPmeDaemon):
 
     def set_node_setup(self):
         """ Set node setup parameters. """
+        # If admin set required votes to 1 and we have no member
+        # nodes we have to enable two node setup.
+        own_site = backend.get_object(uuid=config.site_uuid)
+        if own_site.required_votes == 1:
+            if len(multiprocessing.member_nodes) == 0:
+                config.two_node_setup = True
+                return
+
         search_attrs = {
                         'uuid'      : {'value':"*"},
                         'enabled'   : {'value':True},
@@ -1523,8 +1545,7 @@ class ClusterDaemon(OTPmeDaemon):
                 break
             time.sleep(1)
 
-    def get_clusterd_connection(self, node_name, timeout=None,
-        quiet=True, exit_on_node_disabled=True):
+    def get_clusterd_connection(self, node_name, timeout=None, quiet=True):
         socket_uri = stuff.get_daemon_socket("clusterd", node_name)
         try:
             clusterd_conn = connections.get("clusterd",
@@ -1535,9 +1556,17 @@ class ClusterDaemon(OTPmeDaemon):
         except HostDisabled as e:
             msg = "Failed to get cluster connection: %s" % e
             self.logger.warning(msg)
-            self.disable_node()
-            if exit_on_node_disabled:
-                self.exit_child()
+            # Check if node is disabled on master node.
+            try:
+                master_node_conn = connections.get("clusterd",
+                                                timeout=3,
+                                                quiet_autoconnect=True,
+                                                compress_request=False)
+            except HostDisabled as e:
+                self.disable_node()
+            else:
+                master_node_conn.close()
+            raise
         return clusterd_conn
 
     def get_node_connection(self, node_name, quiet=False):
@@ -1649,7 +1678,7 @@ class ClusterDaemon(OTPmeDaemon):
                     return sync_status
                 time.sleep(1)
                 continue
-            filetools.delete(config.node_joined_file)
+            #filetools.delete(config.node_joined_file)
             msg = "Initial sync with master node finished."
             self.logger.info(msg)
             break
@@ -1700,9 +1729,11 @@ class ClusterDaemon(OTPmeDaemon):
         config.cluster_status = False
         config.cluster_vote_participation = True
 
+        wait_for_second_node = False
+        if config.two_node_setup:
+            wait_for_second_node = True
         quorum_check_interval = 3
         quorum_message_sent = False
-        wait_for_second_node = True
         second_node_wait_timeout = 0
         while True:
             if config.daemon_shutdown:
@@ -1764,6 +1795,8 @@ class ClusterDaemon(OTPmeDaemon):
                         multiprocessing.master_sync_done.append(self.host_name)
                     # Start initial data sync.
                     self.start_initial_sync(master_node)
+                    # Remove new joined node file.
+                    filetools.delete(config.node_joined_file)
 
             # Get quorum.
             current_votes, required_votes, quorum = self.calc_quorum()
@@ -2489,7 +2522,7 @@ class ClusterDaemon(OTPmeDaemon):
                         except Exception as e:
                             #self.node_leave(node_name)
                             self.node_disconnect(node_name)
-                            msg = ("Error sending object exists requrest: %s: %s: %s"
+                            msg = ("Error sending object exists request: %s: %s: %s"
                                     % (node_name, object_id, e))
                             self.logger.warning(msg)
                             self.check_member_nodes(cluster_journal_entry)
@@ -2743,18 +2776,13 @@ class ClusterDaemon(OTPmeDaemon):
             online_nodes_in_sync = False
         if not online_nodes_in_sync:
             return
-        # Delete journal entries must be synced to all nodes
+        # Delete journal entries must be synced to all enabled nodes
         # even offline ones.
         all_nodes_in_sync = True
         if cluster_journal_entry.action == "delete" \
         or cluster_journal_entry.action == "trash_delete":
-            all_nodes = backend.search(object_type="node",
-                                        attribute="uuid",
-                                        value="*",
-                                        realm=config.realm,
-                                        site=config.site,
-                                        return_type="name")
-            for node_name in all_nodes:
+            enabled_nodes = list(self.get_enabled_nodes())
+            for node_name in enabled_nodes:
                 if node_name == self.host_name:
                     continue
                 if node_name in entry_nodes:
@@ -2771,13 +2799,16 @@ class ClusterDaemon(OTPmeDaemon):
         entry_nodes = sorted(cluster_journal_entry.get_nodes())
         member_nodes = sorted(multiprocessing.member_nodes)
         written_nodes = 0
+        min_written_nodes = 2
         member_nodes_in_sync = True
         for node_name in member_nodes:
             if node_name in entry_nodes:
                 written_nodes += 1
                 continue
             member_nodes_in_sync = False
-        if written_nodes >= 2:
+        if config.two_node_setup:
+            min_written_nodes = 1
+        if written_nodes >= min_written_nodes:
             member_nodes_in_sync = True
         if not member_nodes_in_sync:
             return False

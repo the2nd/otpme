@@ -445,11 +445,6 @@ class ControlDaemon(UnixDaemon):
         except Exception as e:
             msg = "Failed to remove cluster event: %s" % e
             self.logger.critical(msg)
-        try:
-            multiprocessing.mgmt_cache_update.unlink()
-        except Exception as e:
-            msg = "Failed to remove cluster event: %s" % e
-            self.logger.critical(msg)
         os._exit(0)
 
     @property
@@ -594,7 +589,6 @@ class ControlDaemon(UnixDaemon):
         multiprocessing.cluster_in_event = multiprocessing.Event()
         multiprocessing.cluster_out_event = multiprocessing.Event()
         multiprocessing.two_node_setup_event = multiprocessing.Event()
-        multiprocessing.mgmt_cache_update = multiprocessing.Event()
         #multiprocessing.cluster_lock_event = multiprocessing.Event()
 
         daemon_startup = "otpme-daemon-startup"

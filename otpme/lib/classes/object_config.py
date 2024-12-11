@@ -701,15 +701,19 @@ class ObjectConfig(object):
         self.decrypted_config = decompressed_oc
         return self.decrypted_config
 
-    def reduce(self):
-        try:
-            modified_attributes = self.decrypted_config['MODIFIED_ATTRIBUTES']
-        except KeyError:
+    def reduce(self, encrypted=False):
+        if encrypted:
             try:
                 modified_attributes = self.encrypted_config['MODIFIED_ATTRIBUTES']
             except KeyError:
                 modified_attributes = []
-        reduced_config = stuff.copy_object(self.decrypted_config)
+            reduced_config = self.encrypted_config
+        else:
+            try:
+                modified_attributes = self.decrypted_config['MODIFIED_ATTRIBUTES']
+            except KeyError:
+                modified_attributes = []
+            reduced_config = self.decrypted_config
         for x in dict(reduced_config):
             if x in self.modified_attributes:
                 continue

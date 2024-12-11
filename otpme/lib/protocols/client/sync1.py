@@ -62,11 +62,6 @@ def validate_received_object(src_site, o):
             msg = ("Uuuh, received site from wrong realm from site: %s: %s"
                     % (src_site, object_id))
             raise OTPmeException(msg)
-        # Make sure the received site matches the source site.
-        if object_name != src_site.name:
-            msg = ("Uuuh, received wrong site from site: %s: %s"
-                    % (src_site, object_id))
-            raise OTPmeException(msg)
         # Site-master nodes should never receive their own site object.
         if config.master_node:
             if object_realm == config.realm \
@@ -791,9 +786,10 @@ class OTPmeSyncP1(OTPmeClient1):
         """ Merge sync cache. """
         add_list = {}
         add_order = list(config.object_add_order)
-        # Realm/sites are synced by HostDaemon().sync_sites().
-        add_order.remove("realm")
-        add_order.remove("site")
+        # On hosts realm/sites are synced by HostDaemon().sync_sites().
+        if config.host_data['type'] == "host":
+            add_order.remove("realm")
+            add_order.remove("site")
 
         # Get sync lists from cache.
         local_sync_list = self.sync_cache.local_sync_list
@@ -841,13 +837,14 @@ class OTPmeSyncP1(OTPmeClient1):
             object_id = oid.get(object_id=x)
             object_type = object_id.object_type
 
-            # We should never get a realm or site object here. They are
+            # On hosts we should never get a realm or site object here. They are
             # synced by HostDaemon().sync_sites().
-            if object_type == "realm" or object_type == "site":
-                msg = ("Peer sent us forbidden %s object: %s"
-                        % (object_type, object_id))
-                self.logger.critical(msg)
-                continue
+            if config.host_data['type'] == "host":
+                if object_type == "realm" or object_type == "site":
+                    msg = ("Peer sent us forbidden %s object: %s"
+                            % (object_type, object_id))
+                    self.logger.critical(msg)
+                    continue
 
             # Add object to add list.
             add_list[object_type].append(object_id)
@@ -875,7 +872,15 @@ class OTPmeSyncP1(OTPmeClient1):
                                     site=site,
                                     sync_type="objects",
                                     object_count=len(object_list))
-            for object_id in object_list:
+            x_add_order = {}
+            for x_oid in object_list:
+                x_path_len = len(x_oid.path.split("/"))
+                x_add_order[x_oid] = {}
+                x_add_order[x_oid]['path_len'] = x_path_len
+
+            x_sort = lambda x: x_add_order[x]['path_len']
+            x_add_order_sorted = sorted(x_add_order, key=x_sort)
+            for object_id in x_add_order_sorted:
                 # Count.
                 object_counter += 1
                 # Increase progress.
@@ -1118,7 +1123,15 @@ class OTPmeSyncP1(OTPmeClient1):
                                     sync_type="objects",
                                     object_count=len(object_list))
 
-            for object_id in object_list:
+            x_del_order = {}
+            for x_oid in object_list:
+                x_path_len = len(x_oid.path.split("/"))
+                x_del_order[x_oid] = {}
+                x_del_order[x_oid]['path_len'] = x_path_len
+
+            x_sort = lambda x: x_del_order[x]['path_len']
+            x_del_order_sorted = sorted(x_del_order, key=x_sort, reverse=True)
+            for object_id in x_del_order_sorted:
                 del_counter += 1
                 # Increase progress.
                 self.update_sync_progress(realm=realm,

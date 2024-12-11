@@ -348,6 +348,7 @@ class ConnectSocket(object):
     def close(self):
         """ Close socket. """
         if not self.connected:
+            self._close()
             return
         self.connected = False
         if config.debug_level() > 3:

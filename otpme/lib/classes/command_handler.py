@@ -460,6 +460,23 @@ class CommandHandler(object):
             if subcommand == "status":
                 return self.handle_cluster_status(command, subcommand)
 
+            if subcommand == "required_votes":
+                try:
+                    command_syntax = self.get_command_syntax(command, subcommand)
+                except:
+                    return self.get_help(_("Unknown command: %s") % subcommand)
+                object_cmd, \
+                object_required, \
+                object_identifier, \
+                command_args = cli.get_opts(command_syntax=command_syntax,
+                                            command_line=command_line,
+                                            command_args=self.command_args)
+                try:
+                    required_votes = command_args['required_votes']
+                except KeyError:
+                    return self.get_help(_("Missing required votes: %s") % subcommand)
+                return self.handle_required_votes(required_votes)
+
             if subcommand == "master_failover":
                 try:
                     command_syntax = self.get_command_syntax(command, subcommand)
@@ -1835,7 +1852,10 @@ class CommandHandler(object):
 
     def handle_sync_status_command(self, sync_type=None):
         """ Handle get sync status command. """
+        register_module('otpme.lib.host')
+        self.init()
         reply = []
+        host_type = config.host_data['type']
         sync_status = self.get_sync_status()
         for realm in sorted(sync_status):
             for site in sorted(sync_status[realm]):
@@ -1843,6 +1863,11 @@ class CommandHandler(object):
                     if sync_type is not None:
                         if _sync_type != sync_type:
                             continue
+                    if host_type == "node":
+                        if realm == config.realm:
+                            if site == config.site:
+                                if _sync_type == "objects":
+                                    continue
                     try:
                         status = sync_status[realm][site][_sync_type]['status']
                     except:
@@ -5218,6 +5243,14 @@ class CommandHandler(object):
         else:
             cstring = "Cluster status: Offline"
             cstring = colored(cstring, "red")
+
+        own_site = backend.get_object(uuid=config.site_uuid)
+        if own_site.required_votes:
+            wstring = ("(Warning: required votes set to %s)"
+                        % own_site.required_votes)
+            wstring = colored(wstring, "yellow")
+            cstring = "%s %s" % (cstring, wstring)
+
         cluster_status_str = [cstring]
 
         diff_objects = []
@@ -5569,9 +5602,69 @@ class CommandHandler(object):
         finally:
             clusterd_conn.close()
 
+    def handle_required_votes(self, required_votes):
+        """ Handle required quorum command. """
+        register_module("otpme.lib.classes.realm")
+        register_module("otpme.lib.daemon.clusterd")
+        if config.system_user() != "root":
+            msg = ("You must be root for this command.")
+            raise OTPmeException(msg)
+        # Init otpme.
+        self.init()
+        # Get our node.
+        this_node_name = config.host_data['name']
+        result = backend.search(object_type="node",
+                                attribute="name",
+                                value=this_node_name,
+                                return_type="instance")
+        if not result:
+            msg = "Unknown node: %s" % this_node_name
+            msg = colored(msg, 'red')
+            raise OTPmeException(msg)
+
+        this_node = result[0]
+        if not this_node.enabled:
+            msg = "Node disabled."
+            msg = colored(msg, 'red')
+            raise OTPmeException(msg)
+
+        # Get socket uri.
+        try:
+            hostd_conn = connections.get("hostd")
+        except Exception as e:
+            msg = "Failed to get hostd connection: %s" % e
+            self.logger.warning(msg)
+            return
+        try:
+            socket_uri = hostd_conn.get_daemon_socket("clusterd", this_node.name)
+        except Exception as e:
+            msg = "Failed to get daemon socket from hostd: %s" % e
+            self.logger.warning(msg)
+            return msg
+        # Get connection to node.
+        try:
+            clusterd_conn = connections.get("clusterd",
+                                            timeout=None,
+                                            socket_uri=socket_uri)
+        except Exception as e:
+            msg = ("Failed to get cluster connection: %s: %s"
+                    % (this_node.name, e))
+            self.logger.warning(msg)
+            return msg
+        # Set required votes.
+        try:
+            result = clusterd_conn.set_required_votes(required_votes)
+        except Exception as e:
+            msg = str(e)
+            self.logger.warning(msg)
+            config.raise_exception()
+            return msg
+
+        return result
+
     def handle_master_failover(self, new_master=None,
         random_node=False, wait=False):
-        """ Handle auth command. """
+        """ Handle master failover command. """
         import random
         from termcolor import colored
         register_module("otpme.lib.classes.realm")

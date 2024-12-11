@@ -750,7 +750,7 @@ def register():
     register_hooks()
     register_config()
     register_backend()
-    #register_sync_settings()
+    register_sync_settings()
     register_templates_unit()
     register_commands("site", commands)
     register_module("otpme.lib.classes.data_objects.rsa_key")
@@ -890,6 +890,7 @@ class Site(OTPmeObject):
         self.sso_key = None
         self.sso_secret = None
         self.sso_csrf_secret = None
+        self.required_votes = 0
 
         self._acls = get_acls()
         self._value_acls = get_value_acls()
@@ -916,6 +917,8 @@ class Site(OTPmeObject):
                             "ADMIN_TOKEN",
                             "ADMIN_ROLE",
                             "USER_ROLE",
+                            "AUTH_FQDN",
+                            "MGMT_FQDN",
                             "ou",
                             ]
                         },
@@ -940,6 +943,8 @@ class Site(OTPmeObject):
                             "ADMIN_TOKEN",
                             "ADMIN_ROLE",
                             "USER_ROLE",
+                            "AUTH_FQDN",
+                            "MGMT_FQDN",
                             "RADIUS_CERT",
                             "RADIUS_KEY",
                             "ou",
@@ -1058,20 +1063,25 @@ class Site(OTPmeObject):
                                             'var_name'  : 'sso_key',
                                             'type'      : str,
                                             'required'  : False,
-                                            'encryption'    : config.disk_encryption,
+                                            'encryption': config.disk_encryption,
                                         },
 
             'SSO_SECRET'                : {
                                             'var_name'  : 'sso_secret',
                                             'type'      : str,
                                             'required'  : False,
-                                            'encryption'    : config.disk_encryption,
+                                            'encryption': config.disk_encryption,
                                         },
             'SSO_CSRF_SECRET'           : {
                                             'var_name'  : 'sso_csrf_secret',
                                             'type'      : str,
                                             'required'  : False,
-                                            'encryption'    : config.disk_encryption,
+                                            'encryption': config.disk_encryption,
+                                        },
+            'REQUIRED_VOTES'            : {
+                                            'var_name'  : 'required_votes',
+                                            'type'      : int,
+                                            'required'  : False,
                                         },
             }
 

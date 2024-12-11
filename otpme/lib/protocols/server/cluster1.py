@@ -165,6 +165,7 @@ class OTPmeClusterP1(OTPmeServer1):
                             "do_master_failover",
                             "get_cluster_quorum",
                             "get_cluster_status",
+                            "set_required_votes",
                             "set_master_failover",
                             "get_node_sync_status",
                             "start_master_failover",
@@ -229,6 +230,28 @@ class OTPmeClusterP1(OTPmeServer1):
                     message = multiprocessing.cluster_quorum['quorum']
                 except KeyError:
                     message = cluster_quorum
+
+        elif command == "set_required_votes":
+            status = True
+            try:
+                required_votes = command_args['required_votes']
+            except KeyError:
+                message = "Missing requied votes."
+                status = False
+            try:
+                required_votes = int(required_votes)
+            except ValueError:
+                message = "Need <required_votes> as int."
+                status = False
+            if status:
+                own_site = backend.get_object(uuid=config.site_uuid)
+                if own_site.required_votes != required_votes:
+                    message = "Required votes set."
+                    own_site.required_votes = required_votes
+                    own_site._write(cluster=True, wait_for_cluster_writes=False)
+                else:
+                    message = "Required votes already set to %s." % required_votes
+                    status = False
 
         elif command == "get_master_sync_status":
             if config.host_data['name'] in multiprocessing.master_sync_done:

@@ -640,9 +640,17 @@ class OTPmeClient(OTPmeClientBase):
         self.set_proto_handler()
 
         if auto_auth:
-            self.authenticate()
+            try:
+                self.authenticate()
+            except:
+                self.connection.close()
+                raise
         elif auto_preauth:
-            self.preauth_check()
+            try:
+                self.preauth_check()
+            except:
+                self.connection.close()
+                raise
 
         # Set status.
         self.connected = True
@@ -2323,6 +2331,9 @@ class OTPmeClient1(OTPmeClientBase):
         if status_code == status_codes.HOST_DISABLED:
             raise HostDisabled(response)
 
+        if status_code == status_codes.NO_CLUSTER_SERVICE:
+            raise NoClusterService(response)
+
         if status_code == status_codes.CLUSTER_NOT_READY:
             raise ConnectionError(response)
 
@@ -2778,8 +2789,8 @@ class OTPmeClient1(OTPmeClientBase):
             try:
                 self.preauth_check()
             except Exception as e:
-                msg = (_("Error sending preauth request: %s") % e)
-                raise
+                self.connection.close()
+                raise e
             self.do_preauth = False
 
         # For direct daemon connections we may handle auth stuff.
@@ -2817,6 +2828,8 @@ class OTPmeClient1(OTPmeClientBase):
             exception = AuthFailed
         if status_code == status_codes.HOST_DISABLED:
             exception = HostDisabled
+        if status_code == status_codes.HOST_DISABLED:
+            exception = NoClusterService
 
         if exception:
             if response.startswith("JSON{"):

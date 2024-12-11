@@ -430,8 +430,8 @@ def read(object_id, parameters=None, no_lock=False, use_index=True):
 def write(object_id, object_config, index_journal=None,
     full_index_update=False, index_auto_update=False, no_lock=False,
     commit_files=None, full_data_update=None, cluster=False,
-    no_index_writes=False, parent_dir_check=True,
-    no_transaction=False, transaction_replay=False):
+    wait_for_cluster_writes=True, no_index_writes=False,
+    parent_dir_check=True, no_transaction=False, transaction_replay=False):
     """ Write object config and update config cache. """
     from otpme.lib.backend import outdate_object
     if object_id.full_oid is None:
@@ -511,8 +511,10 @@ def write(object_id, object_config, index_journal=None,
             new_config_file = get_config_file_move(new_oid=object_id, uuid=uuid)
             move_dirs = False
             if old_config_file and old_config_file != new_config_file:
-                # We need to do a full index update if OID changed.
+                # We need to do a full index update if OID changed...
                 full_index_update = True
+                # ...and not index auto update.
+                index_auto_update = False
                 # Remove old OID from index.
                 index_handler.index_del(object_id=old_oid,
                                     no_transaction=no_transaction)
@@ -611,7 +613,11 @@ def write(object_id, object_config, index_journal=None,
                                 cluster=cluster)
 
     if cluster:
-        write_transaction.cluster_write(uuid, object_id, index_journal, object_config)
+        write_transaction.cluster_write(object_uuid=uuid,
+                                    object_id=object_id,
+                                    index_journal=index_journal,
+                                    object_config=object_config,
+                                    wait_for_write=wait_for_cluster_writes)
 
     # Commit and remove write transaction.
     if transaction_replay:

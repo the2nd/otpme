@@ -403,9 +403,6 @@ class OTPmeConfig(object):
         self.register_config_var("log_dir", str, "/var/log/otpme",
                                 config_file_parameter="LOG_DIR")
 
-        # Radius auth wrapper.
-        self.register_config_var("radius_auth_wrapper_script", str, None,
-                                config_file_parameter="RADIUS_AUTH_WRAPPER_SCRIPT")
         # Set some default filenames.
         self.register_config_var("config_file_name", str, None)
         self.config_file_name = "%s.conf" % self.my_name.lower()

@@ -260,8 +260,11 @@ class OTPmeJobException(OTPmeException):
 class MasterNodeElectionFailed(OTPmeException):
     pass
 
-class LoginInterfaceException(PolicyException):
+class NoClusterService(OTPmeException):
     pass
 
 class NoSmartcardFound(OTPmeException):
+    pass
+
+class LoginInterfaceException(PolicyException):
     pass

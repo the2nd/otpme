@@ -75,14 +75,26 @@ def add_connection(proc_id, daemon, key, connection):
 
 def get_connection(**kwargs):
     from otpme.lib.protocols.otpme_client import OTPmeClient
-    daemon_conn = OTPmeClient(**kwargs)
-    status, \
-    status_code, \
-    reply = daemon_conn.send("ping", timeout=3)
+    try:
+        daemon_conn = OTPmeClient(**kwargs)
+        status, \
+        status_code, \
+        reply = daemon_conn.send("ping", timeout=3)
+        exception = None
+    except Exception as e:
+        daemon_conn = None
+        status = False
+        exception = e
+        reply = e
     if not status:
-        msg = ("Daemon connection failed: %s: %s"
-            % (daemon_conn.socket_uri, reply))
-        daemon_conn.close()
+        if daemon_conn:
+            msg = ("Daemon connection failed: %s: %s"
+                % (daemon_conn.socket_uri, reply))
+            daemon_conn.close()
+        else:
+            msg = ("Daemon connection failed: %s" % reply)
+        if exception:
+            raise exception
         raise ConnectionError(msg)
     return daemon_conn
 
@@ -425,7 +437,7 @@ def get(daemon, **kwargs):
         socket_uri = "tcp://%s:%s" % (connect_address, daemon_port)
         conn_kwargs['socket_uri'] = socket_uri
         msg = "Trying connection to: %s" % socket_uri
-        logger.info(msg)
+        logger.debug(msg)
         # Get daemon connection.
         try:
             daemon_conn = get_connection(**conn_kwargs)

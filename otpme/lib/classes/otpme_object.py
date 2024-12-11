@@ -1455,8 +1455,8 @@ class OTPmeBaseObject(OTPmeLockObject):
         return self._write(callback=callback)
 
     @object_lock()
-    def _write(self, cluster=True, update_last_modified=True,
-        callback=default_callback):
+    def _write(self, cluster=True, wait_for_cluster_writes=True,
+        update_last_modified=True, callback=default_callback):
         """ Write object config to backend. """
         if self.oid is None:
             msg = ("Object misses OID: %s" % self)
@@ -1533,6 +1533,7 @@ class OTPmeBaseObject(OTPmeLockObject):
             write_method(object_id=self.oid,
                         instance=self,
                         cluster=cluster,
+                        wait_for_cluster_writes=wait_for_cluster_writes,
                         no_transaction=self.no_transaction,
                         index_journal=index_journal)
         except Exception as e:

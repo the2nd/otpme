@@ -1011,6 +1011,8 @@ class Host(OTPmeHost):
                 # Get tokens
                 token_uuids += x_group.get_tokens(include_roles=True,
                                                 return_type="uuid")
+                # Get default group users.
+                user_uuids += x_group.default_group_users
 
         # Check for admin user/token to sync.
         admin_user = None

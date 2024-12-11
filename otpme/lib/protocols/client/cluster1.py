@@ -467,6 +467,18 @@ class OTPmeClusterP1(OTPmeClient1):
             raise UnknownMasterNode(msg)
         return reply
 
+    def set_required_votes(self, required_votes):
+        """ Set cluster required node votes. """
+        command = "set_required_votes"
+        command_args = {'required_votes':required_votes}
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args, timeout=None)
+        if not status:
+            msg = "Failed to set required cluster votes: %s" % reply
+            raise OTPmeException(msg)
+        return reply
+
     def set_master_failover(self):
         """ Set master failover status. """
         command = "set_master_failover"

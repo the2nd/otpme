@@ -207,8 +207,6 @@ def create_freeradius_conf():
         shutil.copyfile(freeradius_custom_conf, freeradius_conf)
     else:
         otpme_auth_path = os.path.join(config.bin_dir, "otpme-auth")
-        if config.radius_auth_wrapper_script:
-            otpme_auth_path = config.radius_auth_wrapper_script
         x = freeradius_conf_template.replace("otpme-auth", otpme_auth_path)
         filetools.create_file(freeradius_conf,
                             content=x,

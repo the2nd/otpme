@@ -76,6 +76,13 @@ class LoginHandler(object):
         else:
             otpme_agent_user = None
 
+        # Check login status.
+        agent_conn = self.get_agent_connection()
+        agent_user = agent_conn.get_user()
+        if agent_conn.get_status():
+            msg = (_("Already logged in as user: %s") % agent_user)
+            raise AlreadyLoggedIn(msg)
+
         # Get login point via DNS. This is required e.g. if a notebook from one
         # site wants to login on another site. This may happen for trusted sites.
         if login_use_dns:

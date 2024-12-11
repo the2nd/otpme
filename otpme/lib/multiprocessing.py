@@ -51,8 +51,6 @@ message_queues = []
 posix_semaphores = {}
 # Python multiprocessing manager to use. This is only used within otpme-agent.
 manager = None
-# Will hold mgmtd cache update event.
-mgmt_cache_update = None
 
 # Clusterd events.
 cluster_in_event = None

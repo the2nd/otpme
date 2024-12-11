@@ -217,8 +217,8 @@ def read_config(object_id, read_from_cache=True,
 @handle_daemon_shutdown()
 #@oid_lock(args_oid_pos=[0], write=True)
 def write_config(object_id, instance=None, object_config=None, cluster=False,
-    full_index_update=False, full_data_update=None, index_journal=[],
-    index_auto_update=False, no_transaction=False, encrypt=True):
+    wait_for_cluster_writes=False, full_index_update=False, full_data_update=None,
+    index_journal=[], index_auto_update=False, no_transaction=False, encrypt=True):
     """ Write object config to backend and update config cache. """
     # Get logger.
     logger = config.logger
@@ -256,6 +256,7 @@ def write_config(object_id, instance=None, object_config=None, cluster=False,
                     full_data_update=full_data_update,
                     index_auto_update=index_auto_update,
                     no_transaction=no_transaction,
+                    wait_for_cluster_writes=wait_for_cluster_writes,
                     cluster=cluster)
     # Update config cache.
     if write_status:
