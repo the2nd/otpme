@@ -14,6 +14,7 @@ from otpme.lib import cli
 from otpme.lib import net
 from otpme.lib import stuff
 from otpme.lib import cache
+from otpme.lib import trash
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.classes.node import Node
@@ -871,6 +872,7 @@ class Site(OTPmeObject):
         self.admin_role_uuid = None
         self.user_role_uuid = None
         self.sso_user_role_uuid = None
+        self.realm_users_group_uuid = None
 
         self.auth_fqdn = None
         self.mgmt_fqdn = None
@@ -996,6 +998,12 @@ class Site(OTPmeObject):
                                             'required'  : False,
                                         },
 
+            'REALM_USERS_GROUP'         : {
+                                            'var_name'  : 'realm_users_group_uuid',
+                                            'type'      : 'uuid',
+                                            'required'  : False,
+                                        },
+
             'SSO_USER_ROLE'             : {
                                             'var_name'  : 'sso_user_role_uuid',
                                             'type'      : 'uuid',
@@ -1111,6 +1119,11 @@ class Site(OTPmeObject):
         if reload_radius == True:
             cluster_radius_reload()
         return result
+
+    def get_master_site(self):
+        own_realm = backend.get_object(uuid=config.realm_uuid)
+        master_site = backend.get_object(uuid=own_realm.master)
+        return master_site
 
     @object_lock()
     def _handle_acl(self, action, acl, recursive_acls=False,
@@ -2072,6 +2085,19 @@ class Site(OTPmeObject):
         self.sso_secret = stuff.gen_secret(len=64, encoding="hex")
         self.sso_csrf_secret = stuff.gen_secret(len=64, encoding="hex")
 
+        # Set REALM_USERS_GROUP UUID.
+        self.user_role_uuid = stuff.gen_uuid()
+        # Add site REALM_USER role to REALM_USERS_GROUP.
+        if not config.realm_init:
+            master_site = self.get_master_site()
+            if self.uuid != master_site.uuid:
+                realm_users_group = backend.get_object(uuid=master_site.realm_users_group_uuid)
+                realm_users_group.add_role(role_uuid=self.user_role_uuid,
+                                            callback=callback)
+                # Write role object.
+                callback.write_modified_objects()
+                cache.flush()
+
         # Set config site.
         config.set_site(name=self.name,
                         uuid=self.uuid,
@@ -2460,11 +2486,14 @@ class Site(OTPmeObject):
             role_path = "/%s/%s/%s/%s" % (self.realm,
                                         self.name,
                                         roles_unit, r)
-            role = Role(path=role_path, template=template)
-            if role.exists():
-                role.add_default_policies()
-                continue
+            # Select role UUID set by _add(). This is required because we
+            # add REALM_USER role to REALM_USERS_GROUP on master site.
+            role_uuid = None
+            if r == config.realm_user_role:
+                role_uuid = self.user_role_uuid
 
+            # Add role.
+            role = Role(path=role_path, template=template, uuid=role_uuid)
             if not role.add(verify_acls=False, callback=callback):
                 msg = (_("Problem adding base role '%s'.") % role.path)
                 return callback.error(msg)
@@ -2493,12 +2522,18 @@ class Site(OTPmeObject):
             # Set realm users role.
             if role.name == config.realm_user_role:
                 realm_user_role = role
-                self.user_role_uuid = role.uuid
             # Set SSO users role.
             if role.name == config.sso_user_role:
                 sso_user_role = role
                 self.sso_user_role_uuid = role.uuid
 
+        # Add site REALM_USER role to REALM_USERS_GROUP.
+        master_site = self.get_master_site()
+        if self.uuid == master_site.uuid:
+            realm_users_group = backend.get_object(uuid=master_site.realm_users_group_uuid)
+            realm_users_group.add_role(realm_user_role.name,
+                                        verify_acls=False,
+                                        callback=callback)
         # Add REALM_USER role to site users group.
         users_group.add_role(realm_user_role.name,
                             verify_acls=False,
@@ -2679,8 +2714,13 @@ class Site(OTPmeObject):
     @object_lock(full_lock=True)
     def add_base_groups(self, callback=default_callback):
         """ Create base groups. """
+        master_site = self.get_master_site()
         base_groups = config.get_base_objects("group")
         for g in base_groups:
+            # Realm users group is only needed on master site.
+            if g == config.realm_users_group:
+                if self.uuid != master_site.uuid:
+                    continue
             template = base_groups[g]['template']
             group = Group(name=g,
                         realm=self.realm,
@@ -2693,6 +2733,13 @@ class Site(OTPmeObject):
             if not group.add(verify_acls=False, callback=callback):
                 msg = (_("Problem adding base group '%s'.") % group.path)
                 return callback.error(msg)
+
+            # Set realm users group UUID.
+            if group.name == config.realm_users_group:
+                if self.uuid == master_site.uuid:
+                    self.realm_users_group_uuid = group.uuid
+                else:
+                    self.realm_users_group_uuid = master_site.realm_users_group_uuid
 
     @object_lock(full_lock=True)
     def add_admin_user(self, callback=default_callback):
@@ -2824,6 +2871,11 @@ class Site(OTPmeObject):
             for object_id in objects[object_type]:
                 msg = "Deleting: %s" % object_id
                 callback.send(msg)
+                if config.auth_token:
+                    deleted_by = "token:%s" % config.auth_token.rel_path
+                else:
+                    deleted_by = "API"
+                trash.add(object_id, deleted_by)
                 backend.delete_object(object_id, cluster=True)
 
         # Delete object using parent class.

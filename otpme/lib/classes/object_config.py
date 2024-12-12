@@ -416,6 +416,16 @@ class ObjectConfig(object):
             status, \
             encryption, \
             value = self.get_encryption_type(value)
+            if encryption == "NEED_ENC":
+                # Get original encryption header.
+                status, \
+                encryption, \
+                value = self.get_encryption_type(value)
+                # Decode "fake" (hex) encrypted value.
+                try:
+                    value = stuff.decode(value, "hex")
+                except:
+                    pass
             # Remove encoding header.
             status, \
             encoding, \

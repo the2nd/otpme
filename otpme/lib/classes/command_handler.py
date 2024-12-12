@@ -365,6 +365,37 @@ class CommandHandler(object):
         else:
             self.user_password = None
 
+        # Init realm.
+        if command == "realm" and subcommand == "init":
+            from otpme.lib import multiprocessing
+            from otpme.lib.register import register_modules
+            # Register modules.
+            register_modules()
+            # We need to do a realm init in API mode.
+            config.use_api = True
+            # Mark ongoing realm init.
+            config.realm_init = True
+            # Disable locking on realm init.
+            config.locking_enabled = False
+            # Disable transactions.
+            config.transactions_enabled = False
+            # Make sure index is ready.
+            _index = config.get_index_module()
+            _index.command("init")
+            if not _index.status():
+                _index.start()
+            # Make sure cache is started.
+            _cache = config.get_cache_module()
+            if not _cache.status():
+                _cache.start()
+            init_otpme()
+            # Create shared dicts/lists.
+            multiprocessing.create_shared_objects()
+            # Enable cache.
+            cache.init()
+            cache.enable()
+            return self.send_command(daemon="mgmtd")
+
         # Init backend in API mode.
         if config.use_api:
             _index = config.get_index_module()
@@ -554,37 +585,6 @@ class CommandHandler(object):
         if command == "pinentry":
             self.start_pinentry()
             return ""
-
-        # Init realm.
-        if command == "realm" and subcommand == "init":
-            from otpme.lib import multiprocessing
-            from otpme.lib.register import register_modules
-            # Register modules.
-            register_modules()
-            # We need to do a realm init in API mode.
-            config.use_api = True
-            # Mark ongoing realm init.
-            config.realm_init = True
-            # Disable locking on realm init.
-            config.locking_enabled = False
-            # Disable transactions.
-            config.transactions_enabled = False
-            # Make sure index is ready.
-            _index = config.get_index_module()
-            _index.command("init")
-            if not _index.status():
-                _index.start()
-            # Make sure cache is started.
-            _cache = config.get_cache_module()
-            if not _cache.status():
-                _cache.start()
-            init_otpme()
-            # Create shared dicts/lists.
-            multiprocessing.create_shared_objects()
-            # Enable cache.
-            cache.init()
-            cache.enable()
-            return self.send_command(daemon="mgmtd")
 
         if config.cli_object_type != "main":
             object_type = "%s_type" % command
@@ -5063,6 +5063,13 @@ class CommandHandler(object):
         from otpme.lib import multiprocessing
         from otpme.lib.daemon.controld import ControlDaemon
         register_module("otpme.lib.classes.realm")
+
+        # Init otpme.
+        self.init()
+
+        if config.host_data['type'] == "host":
+            msg = "This is not a cluster node."
+            raise OTPmeException(msg)
         if config.system_user() != "root":
             msg = ("You must be root for this command.")
             raise OTPmeException(msg)
@@ -5071,10 +5078,6 @@ class CommandHandler(object):
         if not control_daemon.status(quiet=True)[0]:
             msg = "OTPme daemon not running."
             raise OTPmeException(msg)
-
-        # Init otpme.
-        #init_otpme()
-        self.init()
 
         # Get command syntax.
         try:

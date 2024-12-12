@@ -213,7 +213,7 @@ class OTPmeJoinP1(OTPmeServer1):
         # Add realm.
         sync_objects.append(("realm", config.realm_uuid))
 
-        # Add all sites to sync list.
+        # Add all sites.
         result = backend.search(object_type="site",
                                 attribute="name",
                                 value="*",
@@ -242,10 +242,19 @@ class OTPmeJoinP1(OTPmeServer1):
                                 attribute="name",
                                 value="*",
                                 return_type="uuid")
-                                #realm=config.realm,
-                                #site=config.site)
         for x in result:
             sync_objects.append(("ca", x))
+
+        # We also need realmusers group because ssl cert/key files must be
+        # owned by this group.
+        result = backend.search(object_type="group",
+                                attribute="name",
+                                value=config.realm_users_group,
+                                return_type="uuid",
+                                realm=config.realm,
+                                site=config.site)
+        for x in result:
+            sync_objects.append(("group", x))
 
         # If this is a master node join we have to add all objects of the site.
         if host.site_uuid != config.site_uuid:
@@ -285,11 +294,8 @@ class OTPmeJoinP1(OTPmeServer1):
                 for x in result:
                     sync_objects.append(("accessgroup", x))
 
-            # Add groups. We need users group at this stage because of
-            # SSL files ownership on new host/node.
-            groups_to_add = [config.users_group]
             # Add base groups.
-            groups_to_add += list(config.get_base_objects("group"))
+            groups_to_add = list(config.get_base_objects("group"))
             for x in groups_to_add:
                 result = backend.search(object_type="group",
                                         attribute="name",

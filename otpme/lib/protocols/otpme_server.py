@@ -498,12 +498,13 @@ class OTPmeServer1(object):
             msg = "Bye bye..."
             raise ClientQuit(msg)
 
-        own_host = backend.get_object(uuid=config.uuid)
-        if own_host.type == "node":
-            if not own_host.enabled:
-                status = status_codes.NO_CLUSTER_SERVICE
-                message = "No cluster serivce on this node."
-                return self.build_response(status, message, encrypt=False)
+        if not config.use_api:
+            own_host = backend.get_object(uuid=config.uuid)
+            if own_host.type == "node":
+                if not own_host.enabled:
+                    status = status_codes.NO_CLUSTER_SERVICE
+                    message = "No cluster serivce on this node."
+                    return self.build_response(status, message, encrypt=False)
 
         # Make sure peer is not disabled.
         if self.peer and not self.peer.enabled:

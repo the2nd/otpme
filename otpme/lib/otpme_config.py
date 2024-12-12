@@ -329,6 +329,8 @@ class OTPmeConfig(object):
         self.register_config_var("admin_token_uuid", str, None)
         # OTPme site admin role UUID.
         self.register_config_var("admin_role_uuid", str, None)
+        # OTPme realm users group UUID.
+        self.register_config_var("realm_users_group_uuid", str, None)
         # Run root scripts as this user.
         self.register_config_var("root_script_user", str, "nobody",
                             config_file_parameter="ROOT_SCRIPT_USER")

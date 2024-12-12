@@ -3060,8 +3060,9 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock()
     @cli.check_rapi_opts()
-    def add_role(self, role_name, verify_acls=True, run_policies=True,
-        verbose_level=0, _caller="API", callback=default_callback, **kwargs):
+    def add_role(self, role_name=None, role_uuid=None, verify_acls=True,
+        run_policies=True, verbose_level=0, _caller="API",
+        callback=default_callback, **kwargs):
         """ Adds a role to objects member roles list. """
         if self.roles is None:
             msg = (_("Object does not support roles."))
@@ -3072,27 +3073,32 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = ("Permission denied: %s" % self)
                 return callback.error(msg, exception=PermissionDenied)
 
-        if "/" in role_name:
-            search_attribute = "name"
-            search_site = role_name.split("/")[0]
-            role_name = role_name.split("/")[1]
-        else:
-            search_attribute = "name"
-            search_site = self.site
+        if role_name:
+            if "/" in role_name:
+                search_attribute = "name"
+                search_site = role_name.split("/")[0]
+                role_name = role_name.split("/")[1]
+            else:
+                search_attribute = "name"
+                search_site = self.site
 
-        result = backend.search(object_type="role",
-                                attribute=search_attribute,
-                                value=role_name,
-                                return_type="instance",
-                                realm=self.realm,
-                                site=search_site)
-        if not result:
-            msg = (_("Unknown role: %s/%s") % (search_site, role_name))
-            return callback.error(msg)
+            result = backend.search(object_type="role",
+                                    attribute=search_attribute,
+                                    value=role_name,
+                                    return_type="uuid",
+                                    realm=self.realm,
+                                    site=search_site)
+            if not result:
+                msg = (_("Unknown role: %s/%s") % (search_site, role_name))
+                return callback.error(msg)
 
-        role = result[0]
+            role_uuid = result[0]
 
-        if role.uuid in self.roles:
+        elif not role_uuid:
+            msg = "Need <role_name> or <role_uuid>."
+            raise OTPmeException(msg)
+
+        if role_uuid in self.roles:
             msg = (_("Role is already a member of %s '%s'.")
                     % (self.type, self.name))
             return callback.error(msg)
@@ -3129,15 +3135,15 @@ class OTPmeObject(OTPmeBaseObject):
             msg = "Loop detected."
             #if role.uuid in parent_roles:
             #    return callback.error(msg)
-            if role.uuid in child_roles:
+            if role_uuid in child_roles:
                 return callback.error(msg)
             # Trigger ACL cache clearing.
             cache.clear_acl_cache()
 
         # Add role to object.
-        self.roles.append(role.uuid)
+        self.roles.append(role_uuid)
         # Update index.
-        self.add_index('role', role.uuid)
+        self.add_index('role', role_uuid)
 
         # Clear cache.
         assigned_role_cache.invalidate()

@@ -238,6 +238,7 @@ class Fido2(object):
             for x in dev.list_devices():
                 msg = "Detected fido2 smartcard: %s" % x
                 print(msg)
+
     def register(self, client_param, app_param):
         msg = "Please press the token you want to register..."
         print(msg)

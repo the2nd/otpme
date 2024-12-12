@@ -531,6 +531,7 @@ SITE_CA = "SITE_CA"
 TOKENSTORE_USER = "TOKENSTORE"
 SITE_ADMIN_ROLE = "SITE_ADMIN"
 REALM_USER_ROLE = "REALM_USER"
+REALM_USERS_GROUP = "realmusers"
 
 REALM_ACCESSGROUP = "REALM"
 MGMT_ACCESSGROUP = "MGMT"
@@ -608,8 +609,11 @@ def register_config():
     # renamed.
     config.register_config_var("site_admin_role", str, SITE_ADMIN_ROLE)
     config.register_config_var("realm_user_role", str, REALM_USER_ROLE)
+    config.register_config_var("realm_users_group", str, REALM_USERS_GROUP)
     config.register_base_object("role", SITE_ADMIN_ROLE)
     config.register_base_object("role", REALM_USER_ROLE)
+    config.register_base_object("group", REALM_USERS_GROUP)
+    config.register_internal_object("group", REALM_USERS_GROUP)
     # Host auth key length.
     config.register_config_var("default_host_auth_key_len", int, 2048)
     # Register token store user as internal user.
@@ -1419,9 +1423,11 @@ class Realm(OTPmeObject):
                                     uuid=master_site.user_role_uuid)
         site_admin_role = backend.get_object(object_type="role",
                                     uuid=master_site.admin_role_uuid)
-        view_roles = [ realm_user_role, site_admin_role ]
-        for r in view_roles:
-            acl = "role:%s:view_public" % r.uuid
+        realm_users_group = backend.get_object(object_type="group",
+                                    uuid=master_site.realm_users_group_uuid)
+        view_objects = [ realm_user_role, site_admin_role, realm_users_group ]
+        for o in view_objects:
+            acl = "role:%s:view_public" % o.uuid
             self.add_acl(acl=acl,
                         recursive_acls=False,
                         apply_default_acls=False,

@@ -79,6 +79,7 @@ def set_realm_site():
 
         config.admin_token_uuid = _site.admin_token_uuid
         config.admin_role_uuid = _site.admin_role_uuid
+        config.realm_users_group_uuid = _site.realm_users_group_uuid
         config.set_site(name=_site.name,
                         uuid=_site.uuid,
                         address=_site.address,

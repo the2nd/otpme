@@ -54,10 +54,10 @@ def get_file_owner_group():
             }
     # File owner.
     file_owner = config.user
-    # Users group may not exist (e.g. on realm init)
+    # Realm users group may not exist (e.g. on realm init)
     try:
-        stuff.group_exists(config.users_group)
-        file_group = config.users_group
+        stuff.group_exists(config.realm_users_group)
+        file_group = config.realm_users_group
     except:
         file_group = config.group
     return files, file_owner, file_group, file_mode

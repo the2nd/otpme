@@ -457,7 +457,7 @@ def get(daemon, **kwargs):
     if connect_exception:
         if len(connect_addresses) > 1:
             msg = "All round-robin addresses failed."
-            logger.critical(msg)
+            logger.warning(msg)
         raise connect_exception
 
     # Cache connection.
