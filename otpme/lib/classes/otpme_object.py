@@ -1682,6 +1682,10 @@ class OTPmeObject(OTPmeBaseObject):
         # The checksum of the object parameters received from the resolver.
         self.resolver_checksum = None
 
+        self.roles = None
+        self.tokens = None
+        self.dynamic_groups = None
+
         # Make sure we have at least empty ACL variables.
         self._acls = []
         self._value_acls = {}
@@ -3577,6 +3581,68 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
+    @object_lock()
+    @check_acls(['add:dynamic_groups'])
+    def add_dynamic_group(self, group_name, force=False, run_policies=True,
+        _caller="API", verbose_level=0, callback=default_callback, **kwargs):
+        """ Adds dynamic group to object. """
+        if self.dynamic_groups is None:
+            msg = (_("Object does not support dynamic groups."))
+            raise OTPmeException(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                force=force,
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_dynamic_group",
+                                force=force,
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        if group_name in self.dynamic_groups:
+            msg = (_("Dynamic group is already assigned to %s '%s'.")
+                    % (self.type, self.name))
+            return callback.error(msg)
+
+        self.dynamic_groups.append(group_name)
+
+        return self._cache(callback=callback)
+
+    @object_lock()
+    @check_acls(['remove:dynamic_groups'])
+    def remove_dynamic_group(self, group_name, force=False, run_policies=True,
+        verbose_level=0, callback=default_callback, _caller="API", **kwargs):
+        """ Removes dynamic group from object. """
+        if self.dynamic_groups is None:
+            msg = (_("Object does not support dynamic groups."))
+            raise OTPmeException(msg)
+
+        if group_name not in self.dynamic_groups:
+            msg = (_("Dynamic group is not assigned to %s '%s'.")
+                    % (self.type, self.name))
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("remove_dynamic_group",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        # Remove dynamic group from object.
+        self.dynamic_groups.remove(group_name)
+
+        return self._cache(callback=callback)
 
     @check_acls(acls=['add:policy'])
     @object_lock()
@@ -4173,6 +4239,33 @@ class OTPmeObject(OTPmeBaseObject):
             if role.is_assigned_role(role_uuid):
                 return True
         return False
+
+    @cli.check_rapi_opts()
+    def get_dynamic_groups(self, include_roles=True,
+        _caller="API", callback=default_callback, **kwargs):
+        """ Return list with all dynamic groups assigned to this object. """
+        if self.dynamic_groups is None:
+            msg = "This object supports no dynamic groups."
+            raise OTPmeException(msg)
+
+        result = []
+        if self.dynamic_groups:
+            result += self.dynamic_groups
+
+        if include_roles:
+            roles = self.get_roles(recursive=True, return_type="instance")
+            for role in roles:
+                if not role.dynamic_groups:
+                    continue
+                result += role.dynamic_groups
+
+        result = list(set(sorted(result)))
+
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+        return callback.ok(result)
 
     def get_attribute(self, attribute, verbose_level=0,
         verify_acls=False, callback=default_callback, **kwargs):
@@ -7391,6 +7484,12 @@ class OTPmeObject(OTPmeBaseObject):
             if self.resolver_checksum:
                 resolver_checksum = self.resolver_checksum
         lines.append('RESOLVER_CHECKSUM="%s"' % resolver_checksum)
+
+        dynamic_groups = "-"
+        if self.dynamic_groups:
+            if self.verify_acl("view:dynamic_groups"):
+                dynamic_groups = ",".join(self.dynamic_groups)
+            lines.append('DYNAMIC_GROUPS="%s"' % dynamic_groups)
 
         config_params = ""
         if self.verify_acl("view:config") \

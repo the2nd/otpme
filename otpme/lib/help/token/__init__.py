@@ -107,6 +107,22 @@ cmd_help = {
                                 },
                 },
 
+    'add_dynamic_group'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-token add_dynamic_group {token} {group_name}',
+                    'cmd'   :   '<|object|> <group_name>',
+                    '_help' :   {
+                                    'cmd'                   : 'Add dynamic group to token.',
+                                },
+                },
+
+    'remove_dynamic_group'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-token remove_dynamic_group {token} {group_name}',
+                    'cmd'   :   '<|object|> <group_name>',
+                    '_help' :   {
+                                    'cmd'                   : 'Remove dynamic group from token.',
+                                },
+                },
+
      'config'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token config {token} {param} [value]',
                     'cmd'   :   '<|object|> <parameter> [value]',

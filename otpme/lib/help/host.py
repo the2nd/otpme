@@ -462,6 +462,22 @@ cmd_help = {
                                 },
                 },
 
+    'add_dynamic_group'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-host add_dynamic_group {host} {group_name}',
+                    'cmd'   :   '<|object|> <group_name>',
+                    '_help' :   {
+                                    'cmd'                   : 'Add dynamic group to host.',
+                                },
+                },
+
+    'remove_dynamic_group'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-host remove_dynamic_group {host} {group_name}',
+                    'cmd'   :   '<|object|> <group_name>',
+                    '_help' :   {
+                                    'cmd'                   : 'Remove dynamic group from host.',
+                                },
+                },
+
     'add_sync_user'   : {
                     '_cmd_usage_help' : 'Usage: otpme-host add_sync_user {host} {user}',
                     'cmd'   :   '<|object|> <user_name>',

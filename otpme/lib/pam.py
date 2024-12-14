@@ -3,6 +3,7 @@
 import os
 import sys
 import pwd
+import grp
 import time
 import shutil
 
@@ -390,6 +391,33 @@ class PamHandler(object):
                                     user=self.username,
                                     mode=0o600)
 
+        return self.pamh.PAM_SUCCESS
+
+    def pam_sm_setcred(self):
+        """ Set users groups. """
+        # Get connection to hostd.
+        try:
+            hostd_conn = connections.get("hostd")
+        except Exception as e:
+            self.cleanup()
+            self.logger.critical("Unable to get connection to hostd: %s" % e)
+            return self.pamh.PAM_SYSTEM_ERR
+        # Get dynamics groups of host.
+        dynamic_groups = hostd_conn.get_host_dynamic_groups()
+        # Get dynamics groups of token/roles.
+        dynamic_groups += hostd_conn.get_token_dynamic_groups(self.login_token)
+        # Get current user groups.
+        current_groups = os.getgroups()
+        for group in dynamic_groups:
+            try:
+                group_id = grp.getgrnam(group)[2]
+            except KeyError:
+                continue
+            msg = "Adding users dynamic group membership: %s" % group
+            self.logger.info(msg)
+            current_groups.append(group_id)
+        current_groups = list(set(current_groups))
+        os.setgroups(current_groups)
         return self.pamh.PAM_SUCCESS
 
     def get_ssh_agent_ctrl(self, session_id=None):

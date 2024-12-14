@@ -40,12 +40,30 @@ read_acls = []
 write_acls = []
 
 read_value_acls = {
-                    "view"      : [ "user", "token", "accessgroup", "group", "policy", "role" ],
+                    "view"      : [
+                                    "user",
+                                    "token",
+                                    "accessgroup",
+                                    "group",
+                                    "policy",
+                                    "role",
+                                    "dynamic_groups",
+                                ],
             }
 
 write_value_acls = {
-                    "add"       : [ "user", "token", "role" ],
-                    "remove"    : [ "user", "token", "role" ],
+                    "add"       : [
+                                    "user",
+                                    "token",
+                                    "role",
+                                    "dynamic_group",
+                                ],
+                    "remove"    : [
+                                    "user",
+                                    "token",
+                                    "role",
+                                    "dynamic_group",
+                                ],
             }
 
 default_acls = []
@@ -235,6 +253,24 @@ commands = {
                     'method'            : 'remove_role',
                     'args'              : ['role_name'],
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_dynamic_group'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_dynamic_group',
+                    'args'              : ['group_name'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'remove_dynamic_group'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_dynamic_group',
+                    'args'              : ['group_name'],
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -559,6 +595,8 @@ def register_hooks():
     config.register_auth_on_action_hook("role", "remove_role")
     config.register_auth_on_action_hook("role", "add_token")
     config.register_auth_on_action_hook("role", "remove_token")
+    config.register_auth_on_action_hook("role", "add_dynamic_group")
+    config.register_auth_on_action_hook("role", "remove_dynamic_group")
 
 def register_object_unit():
     """ Register default unit for this object type. """
@@ -749,6 +787,7 @@ class Role(OTPmeObject):
 
         # Roles should not inherit ACLs by default.
         self.acl_inheritance_enabled = False
+        self.dynamic_groups = []
 
         self._sync_fields = {
                     'host'  : {
@@ -758,6 +797,7 @@ class Role(OTPmeObject):
                             "TOKENS",
                             "ROLES",
                             "SYNC_USERS",
+                            "DYNAMIC_GROUPS",
                             ]
                         },
 
@@ -768,6 +808,7 @@ class Role(OTPmeObject):
                             "TOKENS",
                             "ROLES",
                             "SYNC_USERS",
+                            "DYNAMIC_GROUPS",
                             ]
                         },
                     }
@@ -798,9 +839,16 @@ class Role(OTPmeObject):
                                                         'type'      : dict,
                                                         'required'  : False,
                                                     },
+
                         'TOKEN_LOGIN_INTERFACES'    : {
                                                         'var_name'  : 'token_login_interfaces',
                                                         'type'      : dict,
+                                                        'required'  : False,
+                                                    },
+
+                        'DYNAMIC_GROUPS'            : {
+                                                        'var_name'  : 'dynamic_groups',
+                                                        'type'      : list,
                                                         'required'  : False,
                                                     },
             }

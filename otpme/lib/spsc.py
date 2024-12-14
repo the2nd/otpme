@@ -51,12 +51,12 @@ def calc_crack_times(combinations, pass_per_sec):
         }
     return result
 
-def calc_score(combinations, pass_per_sec, max_score=365):
+def calc_score(combinations, pass_per_sec, max_score=10):
     """ Calculate password score based on possible combinations and pass/sec. """
     result = calc_crack_times(combinations, pass_per_sec)
-    crack_day = result['crack_day']
-    if crack_day <= max_score:
-        score = crack_day
+    crack_year = result['crack_year']
+    if crack_year <= max_score:
+        score = crack_year
     else:
         score = max_score
     result['score'] = score
@@ -119,7 +119,7 @@ def get_reverse_dict(org_dict):
     for key in org_dict:
         char_list = org_dict[key]
         for char in char_list:
-            if not char in new_dict:
+            if char not in new_dict:
                 new_dict[char] = []
             new_dict[char].append(key)
     return new_dict
@@ -176,7 +176,7 @@ def split_password(password, slice_len=3):
             if len(pass_slice) >= 4:
                 for alt_spell in decode_alt_chars(pass_slice):
                     if alt_spell != pass_slice:
-                        if not alt_spell in slices[slice_id]['alt_spells']:
+                        if alt_spell not in slices[slice_id]['alt_spells']:
                             slices[slice_id]['alt_spells'].append(alt_spell)
             start_pos += 1
             end_pos += 1
@@ -192,9 +192,32 @@ def split_password(password, slice_len=3):
                         }
     for alt_spell in decode_alt_chars(password):
         if alt_spell != password:
-            if not alt_spell in slices[slice_id]['alt_spells']:
+            if alt_spell not in slices[slice_id]['alt_spells']:
                 slices[slice_id]['alt_spells'].append(alt_spell)
     return slices
+
+def check_uppercase(word):
+    """ Detect repeated chars. """
+    if word.upper() != word:
+        return False
+    return True
+
+def check_lowercase(word):
+    """ Detect repeated chars. """
+    if word.lower() != word:
+        return False
+    return True
+
+def check_number(word):
+    """ Detect repeated chars. """
+    for x in word:
+        try:
+            int(x)
+        except:
+            continue
+        else:
+            return True
+    return False
 
 def check_common_spellings(word):
     """ Check for common spellings of words in passwords. """
@@ -260,7 +283,6 @@ def check_repeats(word):
         'dict_type'         : 'list',
         'dict_name'         : 'repeat',
         'dict_size'         : dict_size,
-        'score_multiplier'  : 0.3,
         }
     return result
 
@@ -327,7 +349,6 @@ def check_sequences(word):
         'dict_type'         : 'list',
         'dict_name'         : 'sequence',
         'dict_size'         : dict_size,
-        'score_multiplier'  : 0.3,
         }
     return result
 
@@ -621,8 +642,22 @@ class SPSC(object):
             return result
         return
 
-    def get_score(self, password, debug=False):
+    def get_score(self, password, max_score=10, debug=False):
         """ Calculate password strength score. """
+        result = {}
+        if not check_number(password):
+            score = 2
+            result['score'] = score
+            return result
+        if check_lowercase(password):
+            score = 2
+            result['score'] = score
+            return result
+        if check_uppercase(password):
+            score = 2
+            result['score'] = score
+            return result
+
         # For performance reasons we just check the first 32 chars of the
         # given password.
         password = password[0:32]
@@ -632,11 +667,10 @@ class SPSC(object):
         pass_comb = count_combinations(password)
         if debug:
             print("PASS_COMBINATIONS:", pass_comb)
-        ## Return score if the password is crackable without dictionary within one
-        ## year.
-        ##crack_year = calc_crack_times(pass_comb, 1000000)['crack_year']
         # Calculate password score.
-        pass_result = calc_score(pass_comb, self.pass_per_sec, max_score=365)
+        pass_result = calc_score(pass_comb,
+                                self.pass_per_sec,
+                                max_score=max_score)
         pass_check_duration = time.time() - start_time
         pass_result['duration'] = pass_check_duration
 
@@ -678,17 +712,7 @@ class SPSC(object):
                 continue
 
         # Calculate password strength score.
-        result = calc_score(dict_comb, self.pass_per_sec, max_score=365)
-        score = result['score']
-        match_count = fastest_comb['match_count']
-        x_slices = fastest_comb['slices']
-        for x_sclice in x_slices:
-            score_multiplier = x_slices[x_sclice]['score_multiplier']
-            x_score = score / match_count
-            score = x_score * score_multiplier
-            score = int(score + (x_score * (match_count - 1)))
-        # Update score.
-        result['score'] = score
+        result = calc_score(dict_comb, self.pass_per_sec, max_score=10)
         # Add matches to result.
         result['match_result'] = fastest_comb
 
@@ -739,9 +763,6 @@ class SPSC(object):
                     found_middle = [ 'dummy' ]
 
             if len(found_middle) >= 1:
-                score_multiplier = 0.2
-                if len(found_middle) >= 3:
-                    score_multiplier = 0.1
                 if start.lower() in dictionary:
                     found_start = True
                 if end.lower() in dictionary:
@@ -764,7 +785,6 @@ class SPSC(object):
                 'dict_type'         : dict_type,
                 'dict_name'         : dict_name,
                 'dict_size'         : dict_size,
-                'score_multiplier'  : score_multiplier,
                 }
             #print("JOOOOOOOOOOO", word)
             #pprint.pprint(result)
@@ -785,11 +805,9 @@ class SPSC(object):
         if number is not False:
             # Check recent years.
             if number in self.recent_years:
-                score_multiplier = 0.1
                 dict_name = "recent_years"
                 dict_size = self.recent_years[number]
             else:
-                score_multiplier = 1.3
                 dict_name = "numbers"
                 x_number = ""
                 for x in range(0, len(word)):
@@ -800,7 +818,6 @@ class SPSC(object):
                 'dict_type'         : 'list',
                 'dict_name'         : dict_name,
                 'dict_size'         : dict_size,
-                'score_multiplier'  : score_multiplier,
                 }
             return result
 
@@ -824,7 +841,6 @@ class SPSC(object):
                     'dict_type'         : dict_type,
                     'dict_name'         : dict_name,
                     'dict_size'         : dict_size,
-                    'score_multiplier'  : 0.1,
                     }
                 return result
 
@@ -841,7 +857,7 @@ class SPSC(object):
         for slice_id in all_slices:
             pass_slice = all_slices[slice_id]['slice']
             slice_len = len(pass_slice)
-            if not slice_len in sort_dict:
+            if slice_len not in sort_dict:
                 sort_dict[slice_len] = []
             sort_dict[slice_len].append([slice_id, pass_slice])
 
@@ -924,7 +940,6 @@ class SPSC(object):
                         'dict_type'         : result['dict_type'],
                         'dict_size'         : result['dict_size'],
                         'alt_spell'         : alt_spell,
-                        'score_multiplier'  : result['score_multiplier'],
                         }
                 word_matches[pass_slice] = word_entry
 
@@ -953,8 +968,6 @@ class SPSC(object):
                     dict_name = word_matches[match_string]['dict_name']
                     dict_type = word_matches[match_string]['dict_type']
                     alt_spell = word_matches[match_string]['alt_spell']
-                    score_multiplier = word_matches[match_string]['score_multiplier']
-                    #print(match_string, word, alt_spell)
 
                 comb[slice_id] = {
                                 'word'              : word,
@@ -963,7 +976,6 @@ class SPSC(object):
                                 'dict_type'         : dict_type,
                                 'dict_size'         : dict_size,
                                 'alt_spell'         : alt_spell,
-                                'score_multiplier'  : score_multiplier,
                                 }
 
             # Get all characters that are covered by a match.
@@ -976,7 +988,7 @@ class SPSC(object):
             pass_test_string = ""
             char_count = 0
             for x in password:
-                if not str(char_count) in match_chars:
+                if str(char_count) not in match_chars:
                     pass_test_string += x
                 char_count += 1
 
@@ -1003,7 +1015,7 @@ class SPSC(object):
                     split_size += 1
 
             # Calculate possible combinations.
-            combined_combinations = (dict_entries + non_match_combinations)**split_size
+            combined_combinations = dict_entries**split_size + non_match_combinations
 
             # Check if the current combination is faster/smaller than the previous
             # selected fastest/smallest.

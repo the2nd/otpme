@@ -255,17 +255,15 @@ class OfflineToken(object):
             msg = (_("Error connecting to hostd: %s") % e)
             raise OTPmeException(msg)
 
-        command = "get_pass_strength %s" % password
-        if policy_name:
-            command = "%s %s" % (command, policy_name)
-
-        status, \
-        status_code, \
-        reply = hostd_conn.send(command)
-        hostd_conn.close()
-        if not status:
-            return False
-        score = reply
+        try:
+            score = hostd_conn.get_pass_strength(password=password,
+                                            policy_name=policy_name)
+        except Exception as e:
+            msg = "Failed to get password score from hostd: %s" % e
+            self.logger.warning(msg)
+            score = 0
+        finally:
+            hostd_conn.close()
 
         return score
 

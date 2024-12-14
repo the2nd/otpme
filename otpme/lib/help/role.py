@@ -333,6 +333,22 @@ cmd_help = {
                                 },
                 },
 
+    'add_dynamic_group'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-role add_dynamic_group {role} {group_name}',
+                    'cmd'   :   '<|object|> <group_name>',
+                    '_help' :   {
+                                    'cmd'                   : 'Add dynamic group to role.',
+                                },
+                },
+
+    'remove_dynamic_group'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-role remove_dynamic_group {role} {group_name}',
+                    'cmd'   :   '<|object|> <group_name>',
+                    '_help' :   {
+                                    'cmd'                   : 'Remove dynamic group from role.',
+                                },
+                },
+
     'add_sync_user'   : {
                     '_cmd_usage_help' : 'Usage: otpme-role add_sync_user {role} {user}',
                     'cmd'   :   '<|object|> <user_name>',

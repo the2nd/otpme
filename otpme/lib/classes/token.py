@@ -62,10 +62,17 @@ read_value_acls = {
                         "used_otp_salt",
                         "auto_disable",
                         "auth_script",
+                        "dynamic_groups",
                         ],
             }
 
 write_value_acls = {
+                    "add"  : [
+                                "dynamic_group",
+                            ],
+                    "remove"  : [
+                                "dynamic_group",
+                            ],
                     "edit"  : [
                                 "auto_disable",
                             ],
@@ -553,6 +560,24 @@ commands = {
                     },
                 },
             },
+    'add_dynamic_group'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_dynamic_group',
+                    'args'              : ['group_name'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'remove_dynamic_group'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_dynamic_group',
+                    'args'              : ['group_name'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     }
 
 def get_acls(**kwargs):
@@ -610,6 +635,8 @@ def register_hooks():
     config.register_auth_on_action_hook("token", "change_auth_script")
     config.register_auth_on_action_hook("token", "change_password")
     config.register_auth_on_action_hook("token", "change_otp_format")
+    config.register_auth_on_action_hook("token", "add_dynamic_group")
+    config.register_auth_on_action_hook("token", "remove_dynamic_group")
 
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'user', 'name' ]
@@ -887,6 +914,7 @@ class Token(OTPmeObject):
         self.user_acls = []
         self.token_acls = []
         self.creator_acls = []
+        self.dynamic_groups = []
 
         self._sync_fields = {
                     'host'  : {
@@ -899,6 +927,7 @@ class Token(OTPmeObject):
                             "OBJECT_CLASSES",
                             "CROSS_SITE_LINKS",
                             "DESTINATION_TOKEN",
+                            "DYNAMIC_GROUPS",
                             ]
                         },
 
@@ -913,6 +942,7 @@ class Token(OTPmeObject):
                             "OBJECT_CLASSES",
                             "CROSS_SITE_LINKS",
                             "DESTINATION_TOKEN",
+                            "DYNAMIC_GROUPS",
                             ]
                         },
                     }
@@ -1049,6 +1079,12 @@ class Token(OTPmeObject):
                                                         'var_name'      : 'temp_password_expire',
                                                         'type'          : float,
                                                         'force_type'    : True,
+                                                        'required'      : False,
+                                                    },
+
+                        'DYNAMIC_GROUPS'            : {
+                                                        'var_name'      : 'dynamic_groups',
+                                                        'type'          : list,
                                                         'required'      : False,
                                                     },
                         }

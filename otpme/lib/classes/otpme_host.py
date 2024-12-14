@@ -134,6 +134,7 @@ class OTPmeHost(OTPmeClientObject):
         self.join_token = None
         self.join_token_cache  = None
         self.private_key = None
+        self.dynamic_groups = []
 
     def _get_object_config(self, object_config=None):
         """ Get object config dict """
@@ -166,6 +167,12 @@ class OTPmeHost(OTPmeClientObject):
                         'TOKEN_LOGIN_INTERFACES'    : {
                                                         'var_name'  : 'token_login_interfaces',
                                                         'type'      : dict,
+                                                        'required'  : False,
+                                                    },
+
+                        'DYNAMIC_GROUPS'            : {
+                                                        'var_name'  : 'dynamic_groups',
+                                                        'type'      : list,
                                                         'required'  : False,
                                                     },
 

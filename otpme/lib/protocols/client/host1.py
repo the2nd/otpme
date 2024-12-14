@@ -127,6 +127,45 @@ class OTPmeHostP1(OTPmeClient1):
         socket_uri = reply
         return socket_uri
 
+    def get_token_dynamic_groups(self, token):
+        """ Send command to hostd. """
+        command = "get_token_dynamic_groups"
+        command_args = {}
+        command_args['token'] = token
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args)
+        if not status:
+            raise OTPmeException(reply)
+        socket_uri = reply
+        return socket_uri
+
+    def get_host_dynamic_groups(self):
+        """ Send command to hostd. """
+        command = "get_host_dynamic_groups"
+        command_args = {}
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args)
+        if not status:
+            raise OTPmeException(reply)
+        socket_uri = reply
+        return socket_uri
+
+    def get_pass_strength(self, password, policy_name=None):
+        """ Send command to hostd. """
+        command = "get_pass_strength"
+        command_args = {}
+        command_args['password'] = password
+        command_args['policy_name'] = policy_name
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args)
+        if not status:
+            raise OTPmeException(reply)
+        socket_uri = reply
+        return socket_uri
+
     def trigger_token_data_sync(self):
         """ Send sync commands to hostd. """
         self.logger.debug("Calling hostd to trigger resync of token data...")

@@ -43,24 +43,27 @@ write_acls =  [
 read_value_acls = {
                 "view"      : [
                                 "sync_groups",
-                                ],
+                                "dynamic_groups",
+                            ],
             }
 
 write_value_acls = {
                 "add"       : [
                                 "sync_group",
-                                ],
+                                "dynamic_group",
+                            ],
                 "remove"    : [
                                 "sync_group",
-                                ],
+                                "dynamic_group",
+                            ],
                 "enable"    : [
                                 "sync_groups",
                                 "sync_by_login_token",
-                                ],
+                            ],
                 "disable"   : [
                                 "sync_groups",
                                 "sync_by_login_token",
-                                 ],
+                             ],
             }
 
 default_acls = []
@@ -281,6 +284,24 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_role',
                     'args'              : ['role_name'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'add_dynamic_group'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_dynamic_group',
+                    'args'              : ['group_name'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'remove_dynamic_group'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_dynamic_group',
+                    'args'              : ['group_name'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -803,6 +824,8 @@ def register_hooks():
     config.register_auth_on_action_hook("host", "change_public_key")
     config.register_auth_on_action_hook("host", "enable_jotp_rejoin")
     config.register_auth_on_action_hook("host", "disable_jotp_rejoin")
+    config.register_auth_on_action_hook("host", "add_dynamic_group")
+    config.register_auth_on_action_hook("host", "remove_dynamic_group")
 
 def register_backend():
     """ Register object for the file backend. """
@@ -884,6 +907,7 @@ class Host(OTPmeHost):
                             "JOIN_NODE_CACHE",
                             "JOIN_TOKEN",
                             "JOIN_TOKEN_CACHE",
+                            "DYNAMIC_GROUPS",
                             ]
                         },
 
@@ -898,6 +922,7 @@ class Host(OTPmeHost):
                             "JOIN_NODE_CACHE",
                             "JOIN_TOKEN",
                             "JOIN_TOKEN_CACHE",
+                            "DYNAMIC_GROUPS",
                             ]
                         },
                     }

@@ -240,7 +240,7 @@ def register_policy_object():
                     ]
     config.register_config_parameter(name="password_allowed_chars",
                                     ctype=str,
-                                    default_value="0-9A-Za-z+#$/@:_.,-",
+                                    default_value="0-9A-Za-z!@#$%^&*()_+-={}[]|\:;<>.?/",
                                     object_types=object_types)
 
 class PasswordPolicy(Policy):
@@ -281,6 +281,8 @@ class PasswordPolicy(Policy):
         self._sub_sync_fields = {
                     'host'  : {
                         'trusted'  : [
+                            "PIN_MIN_LEN",
+                            "PASSWORD_MIN_LEN",
                             "STRENGTH_CHECKER",
                             "STRENGTH_CHECKER_OPTS",
                             "STRENGTH_CHECKER_ENABLED",
@@ -431,8 +433,7 @@ class PasswordPolicy(Policy):
             # Update dict order.
             strength_checker_opts['dict_order'] = dict_order
             # Get min score.
-            min_score = strength_checker_opts['min_score']
-            strength_checker_opts.pop('min_score')
+            min_score = strength_checker_opts.pop('min_score')
             # Check password strength.
             try:
                 spsc = SPSC(dictionaries=dictionaries,

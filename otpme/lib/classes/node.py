@@ -45,19 +45,26 @@ write_acls =  [
 read_value_acls = {
                 "view"      : [
                                 "vote_script",
-                                ],
+                                "dynamic_groups",
+                            ],
             }
 
 write_value_acls = {
-                "enable"      : [
+                "add"       : [
+                                "dynamic_group",
+                            ],
+                "remove"       : [
+                                "dynamic_group",
+                            ],
+                "enable"    : [
                                 "vote_script",
-                                ],
-                "disable"      : [
+                            ],
+                "disable"   : [
                                 "vote_script",
-                                ],
+                            ],
                 "edit"      : [
                                 "vote_script",
-                                ],
+                            ],
             }
 
 default_acls = []
@@ -294,6 +301,24 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_role',
                     'args'              : ['role_name'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'add_dynamic_group'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_dynamic_group',
+                    'args'              : ['group_name'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'remove_dynamic_group'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_dynamic_group',
+                    'args'              : ['group_name'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -720,6 +745,8 @@ def register_hooks():
     config.register_auth_on_action_hook("node", "change_public_key")
     config.register_auth_on_action_hook("node", "enable_jotp_rejoin")
     config.register_auth_on_action_hook("node", "disable_jotp_rejoin")
+    config.register_auth_on_action_hook("node", "add_dynamic_group")
+    config.register_auth_on_action_hook("node", "remove_dynamic_group")
 
 def register_backend():
     """ Register object for the file backend. """
@@ -793,6 +820,7 @@ class Node(OTPmeHost):
                             "EXTENSIONS",
                             "OBJECT_CLASSES",
                             "PUBLIC_KEY",
+                            "DYNAMIC_GROUPS",
                             ]
                         },
 
@@ -804,6 +832,7 @@ class Node(OTPmeHost):
                             "OBJECT_CLASSES",
                             "PUBLIC_KEY",
                             "CLUSTER_VOTES",
+                            "DYNAMIC_GROUPS",
                             ]
                         },
                     }

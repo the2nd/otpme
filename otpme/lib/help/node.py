@@ -452,8 +452,24 @@ cmd_help = {
                     '_cmd_usage_help' : 'Usage: otpme-node remove_token --keep-sign {node} {token}',
                     'cmd'   :   '--keep-sign :keep_sign=True: <|object|> <token_path>',
                     '_help' :   {
-                                    'cmd'                   : 'remove host from host',
+                                    'cmd'                   : 'remove token from node',
                                     '--keep-sign'           : 'Do not remove any signature.',
+                                },
+                },
+
+    'add_dynamic_group'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-node add_dynamic_group {node} {group_name}',
+                    'cmd'   :   '<|object|> <group_name>',
+                    '_help' :   {
+                                    'cmd'                   : 'Add dynamic group to node.',
+                                },
+                },
+
+    'remove_dynamic_group'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-node remove_dynamic_group {node} {group_name}',
+                    'cmd'   :   '<|object|> <group_name>',
+                    '_help' :   {
+                                    'cmd'                   : 'Remove dynamic group from node.',
                                 },
                 },
 

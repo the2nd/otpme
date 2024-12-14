@@ -8,6 +8,7 @@ try:
 except:
     pass
 
+from otpme.lib import oid
 from otpme.lib import json
 from otpme.lib import cache
 from otpme.lib import stuff
@@ -142,6 +143,8 @@ class OTPmeHostP1(OTPmeServer1):
                             "get_realm_master_uuid",
                             "get_realm_master_name",
                             "get_realm_master_address",
+                            "get_token_dynamic_groups",
+                            "get_host_dynamic_groups",
                             "get_site_cert",
                             "get_site_trust_status",
                             "get_user_uuid",
@@ -244,6 +247,31 @@ class OTPmeHostP1(OTPmeServer1):
             if status:
                 message = site_address
 
+        elif command == "get_token_dynamic_groups":
+            status = True
+            try:
+                token = command_args['token']
+            except KeyError:
+                message = "Missing token."
+                status = False
+            if status:
+                token_oid = "token|%s/%s" % (config.realm, token)
+                token_oid = oid.get(token_oid)
+                token = backend.get_object(token_oid)
+                if not token:
+                    status = False
+                    message = "Unknown token: %s" % token_oid
+                if status:
+                    message = token.get_dynamic_groups()
+
+        elif command == "get_host_dynamic_groups":
+            status = True
+            host = backend.get_object(uuid=config.uuid)
+            if not host:
+                status = False
+                message = "Missing host object."
+            if status:
+                message = host.get_dynamic_groups()
 
         elif command == "get_site_auth_fqdn":
             status = True
@@ -454,28 +482,30 @@ class OTPmeHostP1(OTPmeServer1):
                     logger.critical(msg)
 
         elif command == "get_pass_strength":
+            status = True
             # Get password to check.
             try:
                 password = command_args['password']
             except:
                 password = None
-                message = "INCOMPLETE_COMMAND"
+                message = "Need <password>."
                 status = False
 
-           # Try to get policy name.
-            try:
-                policy_name = command_args['policy']
-            except:
-                policy_name = None
+            if status:
+               # Try to get policy name.
+                try:
+                    policy_name = command_args['policy']
+                except:
+                    policy_name = None
 
-            try:
-                message = self.get_password_score(password=password,
-                                            policy_name=policy_name)
-                status = True
-            except Exception as e:
-                message = str(e)
-                status = False
-                logger.warning(message)
+                try:
+                    message = self.get_password_score(password=password,
+                                                policy_name=policy_name)
+                    status = True
+                except Exception as e:
+                    message = str(e)
+                    status = False
+                    logger.warning(message)
 
         elif command == "dump_instance_cache":
             try:

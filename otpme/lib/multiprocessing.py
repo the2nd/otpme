@@ -15,12 +15,9 @@ import multiprocessing
 from multiprocessing.managers import SyncManager
 
 try:
-    import simdjson as json
+    import ujson as json
 except:
-    try:
-        import ujson as json
-    except:
-        import json
+    import json
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
