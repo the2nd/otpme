@@ -252,6 +252,11 @@ class OTPmeClient(OTPmeClientBase):
         self.peer_cert = None
         # Will hold peer cert CN.
         self.peer_cn = None
+        # Will hold peer data.
+        self.peer_fqdn = None
+        self.peer_name = None
+        self.peer_site = None
+        self.peer_realm = None
         # Indicates that we should verify server certificate.
         self.verify_server = verify_server
         # Indicates that we should autoconnect to our peer.
@@ -454,6 +459,26 @@ class OTPmeClient(OTPmeClientBase):
             login_status = False
         return login_status
 
+    def get_peer_data_from_cert(self):
+        """ Decode peer infos from cert. """
+        if not self.peer_cn:
+            msg = ("Uuuuuh, we got no peer name (SSL certificate). "
+                    "This should never happen. :(")
+            self.logger.critical(msg)
+            raise CertVerifyFailed("AUTH_SERVER_CERT_MISSING")
+
+        # Try to get peer name etc.
+        try:
+            self.peer_fqdn = self.peer_cn
+            self.peer_name = self.peer_fqdn.split(".")[0]
+            self.peer_site = self.peer_fqdn.split(".")[1]
+            self.peer_realm = ".".join(self.peer_fqdn.split(".")[2:])
+        except:
+            msg = ("Got invalid client cert CN from client: %s"
+                    % self.peer_cert)
+            self.logger.warning(msg)
+            raise CertVerifyFailed("AUTH_INVALID_CERT_CN")
+
     def connect(self, connect_timeout=None, timeout=None,
         auto_auth=None, auto_preauth=None, quiet=False):
         """ Connect to daemon and do protocol negotiation. """
@@ -497,6 +522,7 @@ class OTPmeClient(OTPmeClientBase):
         # Get cert info of peer.
         if self.use_ssl:
             self.peer_cert = self.connection.peer_cert
+            # Try to get peer we are connected to.
 
         # Get get peer cert CN.
         if self.peer_cert:
@@ -504,6 +530,10 @@ class OTPmeClient(OTPmeClientBase):
                 if i[0][0] == 'commonName':
                     self.peer_cn = i[0][1]
                     break
+
+        # Try to get peer data from cert.
+        if self.peer_cn:
+            self.get_peer_data_from_cert()
 
         # Start protocol negotiation.
         helo_command = "helo"
@@ -1754,8 +1784,6 @@ class OTPmeClient1(OTPmeClientBase):
         self.peer_site = None
         # Indicates if we should verify site signature via preauth_response.
         self.verify_preauth = verify_preauth
-        # Will hold peer we are connected to.
-        self.peer = None
         # Indicates if we are the connection endpoint (e.g. we are not the
         # endpoint when called from otpme-agent that proxies commands).
         self.endpoint = endpoint
@@ -1872,41 +1900,6 @@ class OTPmeClient1(OTPmeClientBase):
             self.verify_preauth = False
             self.request_jwt = False
 
-    def get_peer_from_cert(self):
-        """ Try to find OTPme object from peer infos. """
-        if not self.connection.peer_cn:
-            msg = ("Uuuuuh, we got no peer name (SSL certificate). "
-                    "This should never happen. :(")
-            self.logger.critical(msg)
-            raise CertVerifyFailed("AUTH_SERVER_CERT_MISSING")
-
-        # Try to get peer name etc.
-        try:
-            peer_fqdn = self.connection.peer_cn
-            peer_name = peer_fqdn.split(".")[0]
-            peer_site = peer_fqdn.split(".")[1]
-            peer_realm = ".".join(peer_fqdn.split(".")[2:])
-        except:
-            msg = ("Got invalid client cert CN from client: %s"
-                    % self.connection.peer_cert)
-            self.logger.warning(msg)
-            raise CertVerifyFailed("AUTH_INVALID_CERT_CN")
-
-        # Try to find OTPme object of peer.
-        for x in ['node', 'host']:
-            result = backend.search(realm=peer_realm,
-                                    site=peer_site,
-                                    attribute="name",
-                                    value=peer_name,
-                                    object_type=x,
-                                    return_type="instance")
-            if result:
-                peer = result[0]
-                if peer.fqdn == self.connection.peer_cn:
-                    return peer
-
-        return None
-
     def cleanup(self):
         """ Prepare a clean exit. """
         # FIXME: leave SSH key pass in agent if its configured? (for the token?)
@@ -2007,6 +2000,27 @@ class OTPmeClient1(OTPmeClientBase):
         # If we found a valid smartcard set it.
         self.smartcard = smartcard
         return True
+
+    def get_peer_from_cert(self):
+        """ Get peer from cert. """
+        if not self.connection.peer_cn:
+            msg = ("Uuuuuh, we got no peer name (SSL certificate). "
+                    "This should never happen. :(")
+            self.logger.critical(msg)
+            raise CertVerifyFailed("AUTH_SERVER_CERT_MISSING")
+
+        # Try to find OTPme object of peer.
+        for x in ['node', 'host']:
+            result = backend.search(realm=self.connection.peer_realm,
+                                    site=self.connection.peer_site,
+                                    attribute="name",
+                                    value=self.connection.peer_name,
+                                    object_type=x,
+                                    return_type="instance")
+            if result:
+                peer = result[0]
+                if peer.fqdn == self.connection.peer_cn:
+                    return peer
 
     def _verify_jwt(self, auth_reply):
         """ Verify JWT from auth reply. """
@@ -2155,9 +2169,12 @@ class OTPmeClient1(OTPmeClientBase):
         # Set requesting client.
         preauth_args['client'] = self.client
 
-        # Set cluster key.
+        # Add cluster key.
         if config.cluster_key:
-            preauth_args['cluster_key'] = config.cluster_key
+            if self.daemon == "clusterd":
+                if self.connection.peer_realm == config.realm:
+                    if self.connection.peer_site == config.site:
+                        preauth_args['cluster_key'] = config.cluster_key
 
         # By default we will verify the preauth response.
         if self.verify_preauth is None:
@@ -3438,9 +3455,6 @@ class OTPmeClient1(OTPmeClientBase):
             self.cleanup()
             raise OTPmeException(msg)
 
-        # Try to get peer we are connected to.
-        self.peer = self.get_peer_from_cert()
-
         # Load our host.
         host_type = config.host_data['type']
         my_host = backend.get_object(object_type=host_type,
@@ -3484,6 +3498,9 @@ class OTPmeClient1(OTPmeClientBase):
             self.cleanup()
             raise AuthFailed(msg)
 
+        # Try to get peer from cert.
+        self.peer = self.get_peer_from_cert()
+
         # Verify server response.
         try:
             status = self.peer.verify_challenge(server_challenge,
@@ -3523,7 +3540,8 @@ class OTPmeClient1(OTPmeClientBase):
             self.cleanup()
             raise AuthFailed(msg)
 
-        peer_type = self.peer.type[0].upper() + self.peer.type[1:].lower()
+        peer_type = (self.peer.type[0].upper() 
+                    + self.peer.type[1:].lower())
         response = (_("%s response verification successful: %s")
                                 % (peer_type, self.peer.fqdn))
         if config.debug_level(DEBUG_SLOT) > 3:

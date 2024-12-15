@@ -168,6 +168,7 @@ class OTPmeClusterP1(OTPmeServer1):
                             "object_exists",
                             "get_node_vote",
                             "set_node_sync",
+                            "last_used_write",
                             "unset_node_sync",
                             "set_node_online",
                             "get_master_node",
@@ -374,13 +375,8 @@ class OTPmeClusterP1(OTPmeServer1):
                     x_object_config = x_object_config.copy()
                     x_sync_checksum = backend.get_sync_checksum(x_oid)
                     x_object_config['SYNC_CHECKSUM'] = x_sync_checksum
-                    x_last_used = backend.get_last_used(x_oid.realm,
-                                                        x_oid.site,
-                                                        x_oid.object_type,
-                                                        x_uuid)
                     sync_objects_count += 1
                     sync_objects[x_oid.full_oid] = {}
-                    sync_objects[x_oid.full_oid]['last_used'] = x_last_used
                     sync_objects[x_oid.full_oid]['object_config'] = x_object_config
                 message = sync_objects
                 msg = ("Sending %s objects to peer: %s"
@@ -457,10 +453,6 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = "Missing index journal."
                 status = False
             try:
-                last_used = command_args['last_used']
-            except:
-                last_used = None
-            try:
                 full_data_update = command_args['full_data_update']
             except:
                 full_data_update = False
@@ -488,7 +480,6 @@ class OTPmeClusterP1(OTPmeServer1):
                 object_data = {
                                 'action'            : 'write',
                                 'object_id'         : object_id,
-                                'last_used'         : last_used,
                                 'object_config'     : object_config,
                                 'index_journal'     : index_journal,
                                 'full_data_update'  : full_data_update,
@@ -668,6 +659,38 @@ class OTPmeClusterP1(OTPmeServer1):
                     trash.empty(cluster=False)
                 except Exception as e:
                     message = ("Failed to empty trash: %s" % e)
+                    status = False
+
+        elif command == "last_used_write":
+            status = True
+            message = None
+            try:
+                object_uuid = command_args['object_uuid']
+            except:
+                message = "Missing object UUID."
+                status = False
+            try:
+                object_id = command_args['object_id']
+            except:
+                message = "Missing object ID."
+                status = False
+            try:
+                last_used = command_args['last_used']
+            except:
+                message = "Missing last_used."
+                status = False
+            if config.daemon_shutdown:
+                message = "Daemon shutdown."
+                status = False
+            if status:
+                message = "done"
+                msg = "Setting last used timestamp: %s" % object_id
+                logger.debug(msg)
+                try:
+                    backend.set_last_used(object_uuid, last_used, cluster=False)
+                except Exception as e:
+                    message = ("Failed to set last used: %s: %s"
+                                % (object_id, e))
                     status = False
 
         elif command == "acquire_lock":

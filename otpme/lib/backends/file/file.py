@@ -438,6 +438,9 @@ def write(object_id, object_config, index_journal=None,
         msg = ("Object ID is missing full OID: %s" % object_id)
         raise OTPmeException(msg)
 
+    if config.host_type != "node":
+        cluster = False
+
     # Get object type.
     object_type = object_id.object_type
 
@@ -675,6 +678,9 @@ def rename(object_id, new_object_id, no_lock=False,
         except KeyError:
             object_uuid = None
 
+    if config.host_type != "node":
+        cluster = False
+
     # Name of the file transaction.
     transaction_name = "rename:%s:%s" % (object_id, new_object_id)
     # Check for active transaction.
@@ -828,6 +834,9 @@ def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
                 del_transaction.remove()
                 del_transaction.release_lock()
                 return False
+
+    if config.host_type != "node":
+        cluster = False
 
     # Get object type.
     object_type = object_id.object_type
@@ -1227,8 +1236,8 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         order_by = IndexObject.uuid
     elif order_by == "object_type":
         order_by = IndexObject.object_type
-    elif order_by == "created":
-        order_by = IndexObject.created_at
+    elif order_by == "last_used":
+        order_by = IndexObject.last_used
     else:
         order_by_attribute = order_by
 
@@ -1434,6 +1443,8 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             entities.append(IndexObject.checksum)
         elif x == "sync_checksum":
             entities.append(IndexObject.sync_checksum)
+        elif x == "last_used":
+            entities.append(IndexObject.last_used)
         elif x == "template":
             entities.append(IndexObject.template)
         elif x == "ldif":
@@ -1588,6 +1599,8 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         elif return_type == "sync_checksum":
             return_value = r[2]
         elif return_type == "object_type":
+            return_value = r[2]
+        elif return_type == "last_used":
             return_value = r[2]
         elif return_type == "template":
             return_value = r[2]
@@ -1798,9 +1811,8 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
     full_index_update=False, object_acls=[], autocommit=True,
     no_lock=False, session=None, **kwargs):
     """ Add object to search index. """
-    from sqlalchemy.sql import select
+    #from sqlalchemy.sql import select
     from sqlalchemy.sql import delete
-    from sqlalchemy.orm.exc import ObjectDeletedError
     if object_id.full_oid is None:
         msg = ("Object ID is missing full OID: %s" % object_id)
         raise OTPmeException(msg)
@@ -2214,9 +2226,12 @@ def index_get_object(object_id=None, object_type=None,
     if not object_id and not uuid:
         raise Exception("Need <object_id> or <uuid>.")
 
-    if not object_type and not object_id:
+    if not uuid and not object_type and not object_id:
         msg = "Need <object_id> or <object_type>."
         raise OTPmeException(msg)
+
+    if uuid and not object_id:
+        object_id = get_oid(uuid, instance=True)
 
     if object_id:
         object_type = object_id.object_type
@@ -2403,3 +2418,53 @@ def get_sites(realm, search_regex=None):
     # Sort site list.
     site_list.sort()
     return site_list
+
+def get_last_used(uuid, session=None, **kwargs):
+    index_object = index_get_object(uuid=uuid)
+    if not index_object:
+        return
+    last_used = index_object.last_used
+    if last_used is None:
+        last_used = 0
+    return last_used
+
+@handle_transaction
+def set_last_used(uuid, timestamp, session=None, cluster=True, **kwargs):
+    from otpme.lib.daemon.clusterd import cluster_sync_object
+    index_object = index_get_object(uuid=uuid)
+    if not index_object:
+        return
+    index_object.last_used = timestamp
+    index_object = session.merge(index_object)
+    session.add(index_object)
+    session.commit()
+    if not cluster:
+        return
+    if config.host_type != "node":
+        return
+    object_id = get_oid(uuid, instance=True)
+    cluster_sync_object(action="last_used_write",
+                        object_uuid=uuid,
+                        object_id=object_id,
+                        object_data=timestamp,
+                        wait_for_write=False)
+
+def get_last_used_times(object_types):
+    last_used_data = {}
+    for object_type in object_types:
+        result = index_search(realm=config.realm,
+                            site=config.site,
+                            attribute="uuid",
+                            value="*",
+                            object_type=object_type,
+                            return_attributes=["uuid", "last_used"])
+        if not result:
+            continue
+        if object_type not in last_used_data:
+            last_used_data[object_type] = {}
+        for x_uuid in result:
+            x_last_used = result[x_uuid]['last_used']
+            if x_last_used is None:
+                continue
+            last_used_data[object_type][x_uuid] = x_last_used
+    return last_used_data

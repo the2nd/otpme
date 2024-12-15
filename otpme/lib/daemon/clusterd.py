@@ -1634,7 +1634,7 @@ class ClusterDaemon(OTPmeDaemon):
 
         return True
 
-    def do_master_node_sync(self, master_node):
+    def do_master_node_sync(self, master_node, sync_last_used=False):
         """ Start initial sync with master node. """
         from otpme.lib.classes.command_handler import CommandHandler
         try:
@@ -1663,6 +1663,7 @@ class ClusterDaemon(OTPmeDaemon):
                                                     realm=config.realm,
                                                     site=config.site,
                                                     max_tries=10,
+                                                    sync_last_used=sync_last_used,
                                                     #ignore_changed_objects=True,
                                                     skip_object_deletion=skip_deletions,
                                                     socket_uri=socket_uri)
@@ -1786,7 +1787,8 @@ class ClusterDaemon(OTPmeDaemon):
                                 continue
                             break
                         self.do_master_node_sync(master_node)
-                        sync_status = self.do_master_node_sync(master_node)
+                        sync_status = self.do_master_node_sync(master_node,
+                                                            sync_last_used=True)
                         if sync_status is False:
                             continue
                         if self.host_name not in multiprocessing.master_sync_done:
@@ -1980,7 +1982,7 @@ class ClusterDaemon(OTPmeDaemon):
             except Exception as e:
                 msg = "Failed to handle cluster in-journal: %s" % e
                 self.logger.critical(msg)
-                #config.raise_exception()
+                config.raise_exception()
 
     def handle_cluster_in_journal(self):
         cluster_journal_files = self.get_cluster_in_journal()
@@ -1993,7 +1995,6 @@ class ClusterDaemon(OTPmeDaemon):
             if action == "write":
                 object_id = object_data['object_id']
                 object_id = oid.get(object_id)
-                last_used = object_data['last_used']
                 full_data_update = object_data['full_data_update']
                 full_index_update = object_data['full_index_update']
                 index_journal = object_data['index_journal']
@@ -2006,11 +2007,6 @@ class ClusterDaemon(OTPmeDaemon):
                 if x_object:
                     x_object.acquire_lock(lock_caller="cluster")
                 try:
-                    if last_used is not None:
-                        backend.set_last_used(object_id.realm,
-                                            object_id.site,
-                                            object_id.object_type,
-                                            object_uuid, last_used)
                     try:
                         backend.write_config(object_id=object_id,
                                             cluster=False,
@@ -2360,21 +2356,9 @@ class ClusterDaemon(OTPmeDaemon):
                             object_id = result[0]
                             object_config = backend.read_config(object_id)
                             object_config = object_config.copy()
-                            object_uuid = object_config['UUID']
-                            try:
-                                last_used = backend.get_last_used(object_id.realm,
-                                                                object_id.site,
-                                                                object_id.object_type,
-                                                                object_uuid)
-                            except Exception as e:
-                                msg = ("Failed to get last used time: %s: %s"
-                                        % (object_id, e))
-                                self.logger.warning(msg)
-                                raise OTPmeException(msg)
                             try:
                                 self.node_conn.write(object_id.full_oid,
                                                     object_config,
-                                                    last_used,
                                                     full_data_update=True,
                                                     full_index_update=True)
                             except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
@@ -2499,15 +2483,6 @@ class ClusterDaemon(OTPmeDaemon):
                     index_journal = []
                     if not full_index_update:
                         index_journal = cluster_journal_entry.index_journal
-                    try:
-                        last_used = backend.get_last_used(object_id.realm,
-                                                        object_id.site,
-                                                        object_id.object_type,
-                                                        object_uuid)
-                    except Exception as e:
-                        msg = "Failed to get last used time: %s" % object_id
-                        self.logger.warning(msg)
-                        continue
                     if strip_object_config:
                         try:
                             object_exists = node_conn.object_exists(object_id.full_oid)
@@ -2533,7 +2508,6 @@ class ClusterDaemon(OTPmeDaemon):
                     try:
                         write_status = node_conn.write(object_id.full_oid,
                                                         object_config,
-                                                        last_used,
                                                         index_journal=index_journal,
                                                         full_data_update=full_data_update,
                                                         full_index_update=full_index_update)
@@ -2714,6 +2688,42 @@ class ClusterDaemon(OTPmeDaemon):
                     if trash_empty_status != "done":
                         continue
                     msg = ("Trash emptied on node: %s" % (node_name))
+                    self.logger.debug(msg)
+                    cluster_journal_entry.add_node(node_name)
+                # Write last used timestamp to peer.
+                if action == "last_used_write":
+                    last_used = cluster_journal_entry.object_data
+                    # Remove outdated cluster journal entry.
+                    if not last_used:
+                        cluster_journal_entry.add_node(node_name)
+                        if self.check_member_nodes(cluster_journal_entry):
+                            self.check_online_nodes(cluster_journal_entry)
+                        continue
+                    object_id = cluster_journal_entry.object_id
+                    object_uuid = cluster_journal_entry.object_uuid
+                    try:
+                        last_used_write_status = node_conn.last_used_write(object_uuid,
+                                                                            object_id,
+                                                                            last_used)
+                    except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                        self.node_disconnect(node_name)
+                        msg = ("Failed to send last used timestamp: %s: %s: %s"
+                                % (node_name, object_id, e))
+                        self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
+                        raise ProcessingFailed(msg)
+                    except Exception as e:
+                        #self.node_leave(node_name)
+                        self.node_disconnect(node_name)
+                        msg = ("Error sending last used timestamp: %s: %s: %s"
+                                % (node_name, object_id, e))
+                        self.logger.warning(msg)
+                        self.check_member_nodes(cluster_journal_entry)
+                        raise ProcessingFailed(msg)
+                    if last_used_write_status != "done":
+                        continue
+                    msg = ("Sent last used timestamp to node: %s: %s:"
+                            % (node_name, object_id))
                     self.logger.debug(msg)
                     cluster_journal_entry.add_node(node_name)
 

@@ -1238,10 +1238,7 @@ def user_is_blocked(user_uuid, access_group, realm, site):
         # Get last used timestamps.
         last_used_list = []
         for uuid in result:
-            last_used = backend.get_last_used(realm=realm,
-                                            site=site,
-                                            object_type="failed_pass",
-                                            uuid=uuid)
+            last_used = backend.get_last_used(uuid=uuid)
             last_used_list.append(last_used)
         # Check if reset time is reached.
         if last_used_list:

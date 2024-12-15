@@ -42,16 +42,14 @@ class OTPmeClusterP1(OTPmeClient1):
         reply = self.connection.send(command, command_args)
         return reply
 
-    def write(self, object_id, object_config, last_used=None,
-        index_journal=None, full_data_update=False,
-        full_index_update=False):
+    def write(self, object_id, object_config, index_journal=None,
+        full_data_update=False, full_index_update=False):
         """ Send object to peer. """
         command = "write"
         command_args = {}
         command_args['object_id'] = object_id
         command_args['object_config'] = object_config
         command_args['index_journal'] = index_journal
-        command_args['last_used'] = last_used
         command_args['full_data_update'] = full_data_update
         command_args['full_index_update'] = full_index_update
         status, \
@@ -198,6 +196,21 @@ class OTPmeClusterP1(OTPmeClient1):
             raise OTPmeException(msg)
         return reply
 
+    def last_used_write(self, object_uuid, object_id, last_used):
+        """ Send last used timestamp to peer. """
+        command = "last_used_write"
+        command_args = {}
+        command_args['object_uuid'] = object_uuid
+        command_args['object_id'] = object_id
+        command_args['last_used'] = last_used
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args)
+        if not status:
+            msg = "Failed to send last used timestamp: %s: %s" % (object_id, reply)
+            raise OTPmeException(msg)
+        return reply
+
     def sync(self, skip_deletions=True):
         """ Sync data objects with peer. """
         object_types = config.get_cluster_object_types()
@@ -243,21 +256,11 @@ class OTPmeClusterP1(OTPmeClient1):
                 if x_oid.accessgroup_uuid:
                     if not backend.get_oid(x_oid.accessgroup_uuid):
                         continue
-            x_last_used = x_data['last_used']
             x_config = x_data['object_config']
             x_checksum = x_config['SYNC_CHECKSUM']
             msg = "Writing received object: %s (%s)" % (x_oid, x_checksum)
             self.logger.debug(msg)
             x_uuid = x_config['UUID']
-            if x_last_used is not None:
-                try:
-                    backend.set_last_used(x_oid.realm,
-                                        x_oid.site,
-                                        x_oid.object_type,
-                                        x_uuid, x_last_used)
-                except Exception as e:
-                    msg = "Failed to set last used: %s: %s" % (x_oid.read_oid, e)
-                    self.logger.warning(msg)
             backend.write_config(x_oid, object_config=x_config, cluster=False)
             synced_objects.append(x_oid)
         if skip_deletions:

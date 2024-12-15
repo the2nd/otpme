@@ -290,14 +290,11 @@ class OTPmeSyncP1(OTPmeServer1):
             self.logger.debug(response)
         return response
 
-    def get_last_used(self, realm, site, object_types, uuids):
+    def get_last_used_times(self, object_types):
         """ Handle get last used command. """
         # Get sync list.
         try:
-            reply = backend.get_last_used_times(realm=realm,
-                                                site=site,
-                                                object_types=object_types,
-                                                uuids=uuids)
+            reply = backend.get_last_used_times(object_types=object_types)
             status = True
         except Exception as e:
             msg = "Failed to get last used data from backend: %s" % e
@@ -1019,17 +1016,7 @@ class OTPmeSyncP1(OTPmeServer1):
                 status = False
                 self.logger.warning(response)
                 return self.build_response(status, response)
-            try:
-                remote_uuids = command_args['uuids']
-            except:
-                response = "SYNC_INCOMPLETE_COMMAND: Missing remote UUIDs."
-                status = False
-                self.logger.warning(response)
-                return self.build_response(status, response)
-            status, response = self.get_last_used(sync_realm,
-                                        sync_site,
-                                        sync_object_types,
-                                        remote_uuids)
+            status, response = self.get_last_used_times(sync_object_types)
             return self.build_response(status, response)
 
         if command == "sync_offline_token_data":

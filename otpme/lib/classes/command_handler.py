@@ -1445,7 +1445,6 @@ class CommandHandler(object):
         if config.uuid:
             if not _index.status():
                 _index.start()
-            #init_otpme()
             self.init()
             my_host = backend.get_object(uuid=config.uuid)
             if my_host:
@@ -2840,9 +2839,9 @@ class CommandHandler(object):
         return output
 
     def do_sync(self, sync_type="objects", resync=False, offline=False,
-        ignore_changed_objects=False, skip_object_deletion=False,
-        max_tries=config.hostd_sync_retry_count, realm=None,
-        site=None, sync_cache_on_failure=True, socket_uri=None):
+        ignore_changed_objects=False, sync_last_used=False,
+        skip_object_deletion=False, max_tries=config.hostd_sync_retry_count,
+        realm=None, site=None, sync_cache_on_failure=True, socket_uri=None):
         """ Do a manual hostd sync. """
         from otpme.lib import nsscache
         from otpme.lib import protocols
@@ -2901,6 +2900,7 @@ class CommandHandler(object):
                                     resync=resync,
                                     offline=offline,
                                     max_tries=max_tries,
+                                    sync_last_used=sync_last_used,
                                     skip_object_deletion=skip_object_deletion,
                                     ignore_changed_objects=ignore_changed_objects)
         if sync_conn:

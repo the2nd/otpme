@@ -196,15 +196,11 @@ class OTPmeSyncP1(OTPmeClient1):
             self.logger.error(msg)
             time.sleep(1)
 
-    def get_last_used_timestamps(self, realm, site, uuids, sync_params):
+    def get_last_used_timestamps(self, sync_params):
         """ Try to get last used timestamps from remote. """
         try_count = 0
         max_tries = 3
-        command_args = {
-                    'uuids'         : uuids,
-                    'realm'         : realm,
-                    'site'          : site,
-                    }
+        command_args = {}
         command_args.update(sync_params)
         self.logger.debug("Requesting last used timestamps from peer.")
         while True:
@@ -212,11 +208,10 @@ class OTPmeSyncP1(OTPmeClient1):
             status_code, \
             reply = self.connection.send("get_last_used", command_args)
             if status_code == status_codes.PERMISSION_DENIED:
-                msg = ("Permission denied: %s/%s" % (realm, site))
+                msg = "Permission denied."
                 raise PermissionDenied(msg)
             if status_code == status_codes.SYNC_DISABLED:
-                msg = ("Peer site disabled synchronization with us: %s/%s"
-                        % (realm, site))
+                msg = "Peer site disabled synchronization with us."
                 raise SyncDisabled(msg)
             if status:
                 return reply
@@ -254,22 +249,18 @@ class OTPmeSyncP1(OTPmeClient1):
         this_host = backend.get_object(uuid=config.uuid)
         sync_params = this_host.get_sync_parameters(realm, site, self.connection.peer.uuid)
         sync_object_types = sync_params['object_types']
-        # Get all local UUIDs.
-        all_uuids = backend.search(attribute="uuid", value="*",
-                                object_types=sync_object_types)
+        # Get timestamps from peer.
+        remote_last_used = self.get_last_used_timestamps(sync_params=sync_params)
+        # Count objects.
+        object_count = 0
+        for x_type in remote_last_used:
+            object_count += len(remote_last_used[x_type])
         # Update progress.
         self.update_sync_progress(realm=realm,
                                 site=site,
                                 sync_type="last_used",
-                                object_count=len(all_uuids))
-        # Get timestamps from peer.
-        remote_last_used = self.get_last_used_timestamps(realm=realm,
-                                            site=site,
-                                            uuids=all_uuids,
-                                            sync_params=sync_params)
-        local_last_used = backend.get_last_used_times(realm, site,
-                                                    sync_object_types,
-                                                    all_uuids)
+                                object_count=object_count)
+        local_last_used = backend.get_last_used_times(sync_object_types)
         # Process last used timestamps from peer.
         for x_type in remote_last_used:
             if x_type not in sync_object_types:
@@ -277,10 +268,6 @@ class OTPmeSyncP1(OTPmeClient1):
                 self.logger.warning(msg)
                 continue
             for x_uuid in remote_last_used[x_type]:
-                if x_uuid not in all_uuids:
-                    msg = "Got not requested UUID from peer: %s" % x_uuid
-                    self.logger.warning(msg)
-                    continue
                 try:
                     timestamp = remote_last_used[x_type][x_uuid]
                 except:
@@ -320,11 +307,12 @@ class OTPmeSyncP1(OTPmeClient1):
                     self.logger.warning(msg)
                     continue
                 # Finally set last used time.
-                backend.set_last_used(realm, site, x_type, x_uuid, timestamp)
+                backend.set_last_used(x_uuid, timestamp)
         return True
 
-    def sync_objects(self, realm, site, skip_object_deletion=True,
-        resync=False, max_tries=5, ignore_changed_objects=False):
+    def sync_objects(self, realm, site, resync=False, max_tries=5,
+        skip_object_deletion=True, sync_last_used=False,
+        ignore_changed_objects=False):
         # Acquire sync lock.
         lock_id = "sync_objects:%s/%s" % (realm, site)
         sync_lock = locking.acquire_lock(lock_type=LOCK_TYPE, lock_id=lock_id)
@@ -341,9 +329,9 @@ class OTPmeSyncP1(OTPmeClient1):
                                 status=result,
                                 sync_type="objects")
         # Sync object last used timestamps.
-        if self.host_type == "node":
+        if sync_last_used:
             if result is not False:
-                if self.peer:
+                if self.connection.peer:
                     self.sync_last_used(realm, site)
         return result
 
@@ -1551,9 +1539,10 @@ class OTPmeSyncP1(OTPmeClient1):
 
         return exit_status
 
-    def do_sync(self, sync_type="objects", max_tries=3, resync=False,
+    def do_sync(self, sync_type="objects", sync_last_used=False,
         ignore_changed_objects=False, skip_object_deletion=False,
-        offline=False, realm=config.realm, site=config.site):
+        max_tries=3, resync=False, offline=False,
+        realm=config.realm, site=config.site):
         """ Sync objects with realm/site. """
         sync_status = False
 
@@ -1562,6 +1551,7 @@ class OTPmeSyncP1(OTPmeClient1):
                                 site=site,
                                 resync=resync,
                                 max_tries=max_tries,
+                                sync_last_used=sync_last_used,
                                 skip_object_deletion=skip_object_deletion,
                                 ignore_changed_objects=ignore_changed_objects)
 

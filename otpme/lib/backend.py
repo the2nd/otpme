@@ -18,7 +18,6 @@ from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import otpme_acl
-from otpme.lib import filetools
 from otpme.lib import multiprocessing
 from otpme.lib.cache import ldif_cache
 #from otpme.lib.locking import oid_lock
@@ -54,6 +53,9 @@ from otpme.lib.backends.file.file import get_uuid
 from otpme.lib.backends.file.file import index_dump
 from otpme.lib.backends.file.file import index_search
 from otpme.lib.backends.file.file import object_exists
+from otpme.lib.backends.file.file import get_last_used
+from otpme.lib.backends.file.file import set_last_used
+from otpme.lib.backends.file.file import get_last_used_times
 from otpme.lib.backends.file.file import clear_index_caches
 from otpme.lib.backends.file.file import register_object_type as _register_object_type
 
@@ -289,8 +291,6 @@ def rename_object(object_id, new_object_id,
 #@oid_lock(args_oid_pos=[0], write=True)
 def delete_object(object_id, no_transaction=False, cluster=False):
     """ Delete object. """
-    # Get logger.
-    logger = config.logger
     # Replay any leftover transaction.
     replay_transactions()
     # Get objects UUID before deleting from backend.
@@ -305,19 +305,6 @@ def delete_object(object_id, no_transaction=False, cluster=False):
             raise UnknownObject(msg)
     # Remove object from backend.
     delete(object_id, no_transaction=no_transaction, cluster=cluster)
-    # Remove last used file.
-    if object_uuid is not None \
-    and object_id.site is not None:
-        last_used_file = get_last_used_file(object_id.realm,
-                                            object_id.site,
-                                            object_id.object_type,
-                                            object_uuid)
-        if os.path.exists(last_used_file):
-            try:
-                filetools.delete(last_used_file)
-            except Exception as e:
-                msg = "Failed to remove last used file: %s" % last_used_file
-                logger.critical(msg)
     # Outdate object.
     outdate_object(object_id, cache_type="all")
     return True
@@ -454,47 +441,6 @@ def get_sync_checksum(object_id):
             sync_checksum = object_config['SYNC_CHECKSUM']
 
     return sync_checksum
-
-def get_last_used_dir(realm, site, object_type):
-    _dir = os.path.join(config.last_used_dir, realm, site, object_type)
-    if not os.path.exists(_dir):
-        filetools.create_dir(_dir)
-    return _dir
-
-def get_last_used_file(realm, site, object_type, uuid):
-    _dir = get_last_used_dir(realm, site, object_type)
-    _file = os.path.join(_dir, uuid)
-    return _file
-
-def get_last_used(realm, site, object_type, uuid):
-    if object_type == "realm":
-        return
-    last_used_file = get_last_used_file(realm, site, object_type, uuid)
-    try:
-        last_used_timestamp = os.stat(last_used_file)
-        last_used_timestamp = last_used_timestamp.st_mtime
-    except OSError:
-        last_used_timestamp = 0.0
-    return last_used_timestamp
-
-def set_last_used(realm, site, object_type, uuid, timestamp):
-    last_used_file = get_last_used_file(realm, site, object_type, uuid)
-    if not os.path.exists(last_used_file):
-        filetools.touch(last_used_file)
-    os.utime(last_used_file, (timestamp, timestamp))
-
-def get_last_used_times(realm, site, object_types, uuids):
-    last_used_data = {}
-    for object_type in object_types:
-        last_used_dir = get_last_used_dir(realm, site, object_type)
-        last_used_files = filetools.list_dir(last_used_dir)
-        last_used_data[object_type] = {}
-        for uuid in last_used_files:
-            if uuid not in uuids:
-                continue
-            last_used_timestamp = get_last_used(realm, site, object_type, uuid)
-            last_used_data[object_type][uuid] = last_used_timestamp
-    return last_used_data
 
 def dump_sync_map():
     """ Dump sync map. """

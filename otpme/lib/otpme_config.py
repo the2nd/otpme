@@ -62,6 +62,8 @@ class OTPmeConfig(object):
         self.register_config_var("user_signers_dir", str, None)
         # Our pid.
         self.register_config_var("my_pid", int, None)
+        # Our host type.
+        self.register_config_var("host_type", str, None)
         # Add objects in this order (e.g. on sync).
         self.register_config_var("_object_add_order", dict, {})
         # Receive objects in this order (e.g. on sync).
@@ -590,6 +592,7 @@ class OTPmeConfig(object):
                                 'template',
                                 'ldif',
                                 'object_type',
+                                'last_used',
                                 #'acl',
                                 #'enabled',
                                 #'resolver',

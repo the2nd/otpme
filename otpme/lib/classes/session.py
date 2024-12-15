@@ -336,19 +336,13 @@ class Session(OTPmeLockObject):
     @property
     def last_used(self):
         """ Get last used timestamp. """
-        last_used_timestamp = backend.get_last_used(self.realm,
-                                                    self.site,
-                                                    self.type,
-                                                    self.uuid)
+        last_used_timestamp = backend.get_last_used(self.uuid)
         return last_used_timestamp
 
     @last_used.setter
     def last_used(self, timestamp):
         """ Set last used timestamp. """
-        backend.set_last_used(self.realm,
-                            self.site,
-                            self.type,
-                            self.uuid, timestamp)
+        backend.set_last_used(self.uuid, timestamp)
 
     @property
     def cache_expire_time(self):
@@ -1194,9 +1188,6 @@ class Session(OTPmeLockObject):
         # Set session creation time.
         self.creation_time = time.time()
         self.add_index('creation_time', self.creation_time)
-        # Set session last used time.
-        self.last_used = time.time()
-
         self.offline_data_key = offline_data_key
 
         # Check which timeout values we must use for this session.
@@ -1220,7 +1211,11 @@ class Session(OTPmeLockObject):
             self.timeout = group.session_timeout
             self.unused_timeout = group.unused_session_timeout
 
-        return self.write_config()
+        # Write session.
+        result = self.write_config()
+        # Set session last used time.
+        self.last_used = time.time()
+        return result
 
     @object_lock()
     def delete(self, force=False, recursive=False, verify_acls=True,

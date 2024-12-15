@@ -57,7 +57,6 @@ class IndexObject(object):
     from sqlalchemy import Integer
     from sqlalchemy import String
     from sqlalchemy import Boolean
-    from sqlalchemy import DateTime
     from sqlalchemy.dialects.mysql import LONGTEXT
     #from sqlalchemy.dialects.postgresql import TEXT
     #from sqlalchemy.orm import relationship
@@ -88,8 +87,8 @@ class IndexObject(object):
     sync_checksum = Column(String(128), unique=False, nullable=False, index=False)
     # Last index ID of index object.
     last_index_id = Column(String(128), unique=False, nullable=True, index=False)
-    # Create timestamp of index object.
-    created_at = Column(DateTime, default=datetime.utcnow, index=False)
+    # Last used timestamp of index object.
+    last_used = Column(Integer, index=False)
     # Indicates this is a template object.
     template = Column(Boolean, default=False, index=False)
     # Objects LDIF.

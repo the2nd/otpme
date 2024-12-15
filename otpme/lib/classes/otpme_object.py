@@ -51,7 +51,6 @@ from otpme.lib.incremental_objects import IncrementalList
 from otpme.lib.exceptions import *
 
 OBJECT_LOCK_TYPE = "object"
-LAST_USED_LOCK_TYPE = "last_used"
 
 logger = config.logger
 default_callback = config.get_callback()
@@ -289,8 +288,6 @@ def oid_getter(path):
                             user=object_owner)
     return object_id
 
-LAST_USED_NAME = "last_used"
-LAST_USED_DIR = os.path.join(config.data_dir, "data", LAST_USED_NAME)
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = [
@@ -309,10 +306,8 @@ REGISTER_AFTER = [
 def register():
     """ Register object stuff. """
     register_backend()
-    register_last_used_dir()
     register_config_parameters()
     locking.register_lock_type(OBJECT_LOCK_TYPE, module=__file__)
-    locking.register_lock_type(LAST_USED_LOCK_TYPE, module=__file__)
 
 def register_backend():
     # Register index attributes.
@@ -331,14 +326,6 @@ def register_backend():
     config.register_index_attribute('resolver_key')
     config.register_index_attribute('resolver_checksum')
     config.register_index_attribute('origin')
-
-def register_last_used_dir():
-    """ Directory to store last used timestamp of objects as file mtime. """
-    config.register_config_var("last_used_dir", str, LAST_USED_DIR)
-    backend.register_data_dir(name=LAST_USED_NAME,
-                            path=LAST_USED_DIR,
-                            drop=True,
-                            perms=0o770)
 
 def register_config_parameters():
     """ Register config parameters. """
@@ -813,10 +800,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         """ Get last used timestamp. """
         if not self.track_last_used:
             return
-        last_used_timestamp = backend.get_last_used(self.realm,
-                                                    self.site,
-                                                    self.type,
-                                                    self.uuid)
+        last_used_timestamp = backend.get_last_used(self.uuid)
         return last_used_timestamp
 
     @last_used.setter
@@ -824,11 +808,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         """ Set last used timestamp. """
         if not self.track_last_used:
             return
-        backend.set_last_used(self.realm,
-                            self.site,
-                            self.type,
-                            self.uuid,
-                            timestamp)
+        backend.set_last_used(self.uuid, timestamp)
 
     @property
     def cache_expire_time(self):

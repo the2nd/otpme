@@ -463,6 +463,8 @@ def update_data(host_cert=None, host_key=None,
     host_realm = myhost.realm
     host_site = myhost.site
 
+    config.host_type = host_type
+
     # Update host data in config.
     multiprocessing.host_data['name'] = host_name
     multiprocessing.host_data['fqdn'] = host_fqdn
