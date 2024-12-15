@@ -340,6 +340,10 @@ class OTPmeServer1(object):
         """ Override in protocol handler. """
         pass
 
+    def _preauth_check(self, preauth_args):
+        """ Override in protocol handler. """
+        pass
+
     def _end_preauth(self, command, command_args, preauth_result):
         """ Override in protocol handler. """
         pass
@@ -812,6 +816,15 @@ class OTPmeServer1(object):
         except:
             config.raise_exception()
             message = (_("Invalid preauth request: Missing preauth args."))
+            status = False
+            self.logger.warning(message)
+            return self.build_response(status, message, encrypt=False)
+
+        # Do preauth check of protocol handler.
+        try:
+            self._preauth_check(preauth_args)
+        except Exception as e:
+            message = "Preauth check failed: %s" % e
             status = False
             self.logger.warning(message)
             return self.build_response(status, message, encrypt=False)

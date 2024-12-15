@@ -77,6 +77,7 @@ def set_realm_site():
             msg = (_("Unknown site: %s") % config.site)
             raise OTPmeException(msg)
 
+        config.cluster_key = _site.cluster_key
         config.admin_token_uuid = _site.admin_token_uuid
         config.admin_role_uuid = _site.admin_role_uuid
         config.realm_users_group_uuid = _site.realm_users_group_uuid

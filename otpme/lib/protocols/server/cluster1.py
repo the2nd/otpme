@@ -86,6 +86,20 @@ class OTPmeClusterP1(OTPmeServer1):
         signal.signal(signal.SIGTERM, self.signal_handler)
         signal.signal(signal.SIGINT, self.signal_handler)
 
+    def _preauth_check(self, preauth_args):
+        """ Do preauth check. """
+        # Try to cluster key.
+        try:
+            cluster_key = preauth_args['cluster_key']
+        except:
+            msg = "Missing cluster key."
+            raise OTPmeException(msg)
+        own_site = backend.get_object(uuid=config.site_uuid)
+        if own_site.cluster_key == cluster_key:
+            return
+        msg = "Received invalid cluster key."
+        raise OTPmeException(msg)
+
     def get_running_jobs(self):
         running_jobs = dict(multiprocessing.running_jobs)
         if len(running_jobs) == 0:
@@ -137,7 +151,7 @@ class OTPmeClusterP1(OTPmeServer1):
 
     def _process(self, command, command_args):
         """ Handle commands received from host_handler. """
-        # all valid commands
+        # All valid commands.
         valid_commands = [
                             "ping",
                             "sync",

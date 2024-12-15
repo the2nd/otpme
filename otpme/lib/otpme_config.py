@@ -309,6 +309,8 @@ class OTPmeConfig(object):
         self.register_config_var("master_key", str, None)
         # Salt used when hashing passwords.
         self.register_config_var("password_hash_salt", str, None)
+        # Cluster key used to secure cluster communication.
+        self.register_config_var("cluster_key", str, None)
 
         # Realm/site we connect to (-r/-s)
         self.register_config_var("connect_realm", str, None)
@@ -472,16 +474,22 @@ class OTPmeConfig(object):
         self.register_config_var("nsscache_spool_dir", str, None)
         self.register_config_var("transaction_dir", str, None)
 
-        self.register_config_var("ssl_dir", str, None)
-        self.register_config_var("ssl_key_file", str, None,
+        ssl_dir = os.path.join(self.config_dir, "ssl")
+        self.register_config_var("ssl_dir", str, ssl_dir)
+        ssl_key_file = os.path.join(self.ssl_dir, "key.pem")
+        self.register_config_var("ssl_key_file", str, ssl_key_file,
                                 config_file_parameter="SSL_KEY_FILE")
-        self.register_config_var("ssl_cert_file", str, None,
+        ssl_cert_file = os.path.join(self.ssl_dir, "cert.pem")
+        self.register_config_var("ssl_cert_file", str, ssl_cert_file,
                                 config_file_parameter="SSL_CERT_FILE")
-        self.register_config_var("ssl_ca_file", str, None,
+        ssl_ca_file = os.path.join(self.ssl_dir, "ca.pem")
+        self.register_config_var("ssl_ca_file", str, ssl_ca_file,
                                 config_file_parameter="SSL_CA_FILE")
-        self.register_config_var("ssl_site_cert_file", str, None,
+        ssl_site_cert_file = os.path.join(self.ssl_dir, "site_cert.pem")
+        self.register_config_var("ssl_site_cert_file", str, ssl_site_cert_file,
                                 config_file_parameter="SSL_SITE_CERT_FILE")
-        self.register_config_var("host_key_file", str, None,
+        host_key_file = os.path.join(self.ssl_dir, "hostkey.pem")
+        self.register_config_var("host_key_file", str, host_key_file,
                                 config_file_parameter="HOST_KEY_FILE")
 
         self.register_config_var("controld_pidfile", str, None)
@@ -604,13 +612,6 @@ class OTPmeConfig(object):
         self.register_config_var("host_jotp_len", int, 8)
         self.register_config_var("join_jotp_hash_type", str, "PBKDF2")
         self.register_config_var("join_lotp_hash_type", str, "PBKDF2")
-
-        # FIXME: Where to use and how to configure (config file or config paraemter)????
-        self.register_config_var("refresh_pass_len", int, 6,
-                            config_file_parameter="REFRESH_PASS_LEN")
-        self.register_config_var("node_member_pass_len", int, 32)
-        self.register_config_var("node_member_pass_algo", str, "sha512")
-        self.register_config_var("group_secret_len", int, 16)
 
         self.register_config_var("object_config_file_name", str, "object.json")
 
@@ -915,15 +916,6 @@ class OTPmeConfig(object):
         # Default key file.
         key_file = os.path.join(self.config_dir, "otpme.key")
         self.key_command = "file:/%s" % key_file
-
-        # SSL cert/key files.
-        self.ssl_dir = os.path.join(self.config_dir, "ssl")
-        self.ssl_site_cert_file = os.path.join(self.ssl_dir, "site_cert.pem")
-        self.ssl_cert_file = os.path.join(self.ssl_dir, "cert.pem")
-        self.ssl_key_file = os.path.join(self.ssl_dir, "key.pem")
-        self.ssl_ca_file = os.path.join(self.ssl_dir, "ca.pem")
-        # Host/Node RSA key file.
-        self.host_key_file = os.path.join(self.ssl_dir, "hostkey.pem")
 
         # Load disk encryption module.
         try:
@@ -2252,11 +2244,6 @@ class OTPmeConfig(object):
         # check if pwgen is executable
         if not os.access(self.pwgen_bin, os.X_OK):
             msg = ("Cannot execute pwgen. Please check your config.")
-            raise OTPmeException(msg)
-
-        if not isinstance(self.refresh_pass_len, int) or self.refresh_pass_len < 1:
-            msg = ("REFRESH_PASS_LEN must be greater than 0. Please "
-                    "check your config.")
             raise OTPmeException(msg)
 
         if not isinstance(self.logout_pass_len, int) or self.logout_pass_len < 1:

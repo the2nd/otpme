@@ -893,6 +893,7 @@ class Site(OTPmeObject):
         self.sso_secret = None
         self.sso_csrf_secret = None
         self.required_votes = 0
+        self.cluster_key = None
 
         self._acls = get_acls()
         self._value_acls = get_value_acls()
@@ -1090,6 +1091,12 @@ class Site(OTPmeObject):
                                             'var_name'  : 'required_votes',
                                             'type'      : int,
                                             'required'  : False,
+                                        },
+            'CLUSTER_KEY'               : {
+                                            'var_name'  : 'cluster_key',
+                                            'type'      : str,
+                                            'required'  : False,
+                                            'encryption': config.disk_encryption,
                                         },
             }
 
@@ -2981,6 +2988,10 @@ class Site(OTPmeObject):
                 if ca:
                     site_ca = ca.rel_path
 
+        cluster_key = ""
+        if config.auth_token and config.auth_token.is_admin():
+            cluster_key = self.cluster_key
+
         lines = []
 
         auth_enabled = "-"
@@ -3037,10 +3048,11 @@ class Site(OTPmeObject):
             lines.append('SSO_CSRF_SECRET=""')
 
         lines.append('CA="%s"' % site_ca)
-
         lines.append('ADMIN_ROLE="%s"' % admin_role)
         lines.append('USER_ROLE="%s"' % user_role)
         lines.append('ADMIN_TOKEN="%s"' % admin_token)
+
+        lines.append('CLUSTER_KEY="%s"' % cluster_key)
 
         return OTPmeObject.show_config(self,
                                     config_lines=lines,

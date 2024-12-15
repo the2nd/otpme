@@ -2155,6 +2155,10 @@ class OTPmeClient1(OTPmeClientBase):
         # Set requesting client.
         preauth_args['client'] = self.client
 
+        # Set cluster key.
+        if config.cluster_key:
+            preauth_args['cluster_key'] = config.cluster_key
+
         # By default we will verify the preauth response.
         if self.verify_preauth is None:
             self.verify_preauth = True

@@ -644,19 +644,18 @@ class SPSC(object):
 
     def get_score(self, password, max_score=10, debug=False):
         """ Calculate password strength score. """
-        result = {}
+        # Check for lower-/uppercase and numbers.
+        pass_len = len(password)
+        score_override = False
         if not check_number(password):
-            score = 2
-            result['score'] = score
-            return result
+            if pass_len < 10:
+                score_override = True
         if check_lowercase(password):
-            score = 2
-            result['score'] = score
-            return result
+            if pass_len < 10:
+                score_override = True
         if check_uppercase(password):
-            score = 2
-            result['score'] = score
-            return result
+            if pass_len < 10:
+                score_override = True
 
         # For performance reasons we just check the first 32 chars of the
         # given password.
@@ -672,7 +671,12 @@ class SPSC(object):
                                 self.pass_per_sec,
                                 max_score=max_score)
         pass_check_duration = time.time() - start_time
+        pass_result['combinations'] = pass_comb
         pass_result['duration'] = pass_check_duration
+
+        if score_override:
+            if pass_result['score'] > 2:
+                pass_result['score'] = 2
 
         # Check password against common dictionaries, word guessing etc.
         all_matches, non_guessing_matches = self.get_matches(password)
@@ -715,6 +719,10 @@ class SPSC(object):
         result = calc_score(dict_comb, self.pass_per_sec, max_score=10)
         # Add matches to result.
         result['match_result'] = fastest_comb
+
+        if score_override:
+            if result['score'] > 2:
+                result['score'] = 2
 
         # If cracking using dictionaries is slower return normal crack time.
         if pass_comb < dict_comb:
