@@ -12,6 +12,7 @@ except:
 
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib import filetools
 from otpme.lib.backends.file.index import INDEX_DIR
 from otpme.lib.backends.file.index import create_db_indices
 from otpme.lib.third_party.dogpile_caching.caching_query import query_callable
@@ -356,9 +357,10 @@ def create_db(dbname):
 
 def set_default_config():
     default_config = get_default_config()
-    fd = open(CONF_FILE, "w")
-    fd.write(default_config)
-    fd.close()
+    filetools.create_file(CONF_FILE, default_config)
+    #fd = open(CONF_FILE, "w")
+    #fd.write(default_config)
+    #fd.close()
 
 def init_db():
     from otpme.lib import system_command
@@ -565,6 +567,7 @@ def get_db_engine():
                             #pool_size=20,
                             #max_overflow=10,
                             #poolclass=QueuePool,
+                            pool_pre_ping=False,
                             echo=False)
 
         # https://docs.sqlalchemy.org/en/20/core/pooling.html#switching-pool-implementations

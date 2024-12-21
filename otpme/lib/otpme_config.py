@@ -760,6 +760,7 @@ class OTPmeConfig(object):
 
     def load(self, quiet=False):
         """ Load config. """
+        from otpme.lib import filetools
         from otpme.lib.register import register_module
         # Set own PID.
         self.my_pid = os.getpid()
@@ -882,7 +883,6 @@ class OTPmeConfig(object):
         self.locks_dir = os.path.join(self.run_dir, "locks")
         if self.daemon_mode and self.daemon_name == "agent":
             self.locks_dir = self.get_user_locks_dir(self.system_user())
-        from otpme.lib import filetools
         filetools.create_dir(self.locks_dir)
 
         self.sync_dir = os.path.join(self.spool_dir, "sync")

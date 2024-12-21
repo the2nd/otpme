@@ -548,7 +548,7 @@ class TokenaclsPolicy(Policy):
     @backend.transaction
     def del_token_acl(self, acl, **kwargs):
         """ Del token ACL. """
-        return self.del_token_acl(acl, acl_type="token", **kwargs)
+        return self._del_token_acl(acl, acl_type="token", **kwargs)
 
     @check_acls(['add:creator_acl'])
     @object_lock()
@@ -562,7 +562,7 @@ class TokenaclsPolicy(Policy):
     @backend.transaction
     def del_creator_acl(self, acl, **kwargs):
         """ Del token creator ACL. """
-        return self.del_token_acl(acl, acl_type="creator", **kwargs)
+        return self._del_token_acl(acl, acl_type="creator", **kwargs)
 
     @object_lock()
     def _add_token_acl(self, acl, acl_type, run_policies=True,

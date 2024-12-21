@@ -31,45 +31,51 @@ def backup_object(object_id, decrypt=False):
     if not x_oc:
         msg = "Unknown object: %s" % object_id
         raise OTPmeException(msg)
-    x_uuid = x_oc['UUID']
-    file_content = {'object_id':object_id.full_oid, 'object_config':x_oc}
+    object_uuid = x_oc['UUID']
+    last_used = backend.get_last_used(object_uuid)
+    file_content = {
+                    'object_id'     : object_id.full_oid,
+                    'object_uuid'   : object_uuid,
+                    'object_config' : x_oc,
+                    'last_used'     : last_used,
+                }
     if object_id.object_type == "user":
         result = backend.search(object_type="group",
-                                        attribute="user",
-                                        value=x_uuid)
+                                attribute="user",
+                                value=object_uuid)
         if result:
             file_content['user_group'] = result[0]
     if object_id.object_type == "token":
         # Get token roles.
-        x_token_roles = backend.search(object_type="role",
-                                        attribute="token",
-                                        value=x_uuid)
+        token_roles = backend.search(object_type="role",
+                                    attribute="token",
+                                    value=object_uuid)
         x_token_roles_opts = []
-        for x in x_token_roles:
+        for x in token_roles:
             x_token_role = backend.get_object(uuid=x)
             try:
-                x_token_opts = x_token_role.token_options[x_uuid]
+                x_token_opts = x_token_role.token_options[object_uuid]
             except KeyError:
                 x_token_opts = None
             try:
-                x_token_login_interfaces = x_token_role.token_login_interfaces[x_uuid]
+                x_token_login_interfaces = x_token_role.token_login_interfaces[object_uuid]
             except KeyError:
                 x_token_login_interfaces = []
             x_token_roles_opts.append((x, x_token_opts, x_token_login_interfaces))
         file_content['token_roles'] = x_token_roles_opts
         # Get token groups.
-        x_token_groups = backend.search(object_type="group",
+        token_groups = backend.search(object_type="group",
                                         attribute="token",
-                                        value=x_uuid)
+                                        value=object_uuid)
         x_token_groups_opts = []
-        for x in x_token_groups:
+        for x in token_groups:
             x_token_group = backend.get_object(uuid=x)
             try:
-                x_token_opts = x_token_group.token_options[x_uuid]
+                x_token_opts = x_token_group.token_options[object_uuid]
             except KeyError:
                 x_token_opts = None
             try:
-                x_token_login_interfaces = x_token_group.token_login_interfaces[x_uuid]
+                x_token_login_interfaces = x_token_group.token_login_interfaces[object_uuid]
             except KeyError:
                 x_token_login_interfaces = []
             x_token_groups_opts.append((x, x_token_opts, x_token_login_interfaces))
@@ -84,7 +90,7 @@ def restore_object(object_data, callback=default_callback, **kwargs):
     msg = "Restoring: %s" % object_id
     callback.send(msg)
     object_config = object_data['object_config']
-    object_uuid = object_config['UUID']
+    object_uuid = object_data['object_uuid']
 
     x_object = backend.get_object(uuid=object_uuid)
     if x_object:
@@ -108,18 +114,17 @@ def restore_object(object_data, callback=default_callback, **kwargs):
         msg = "Failed to restore object: %s: %s" % (object_id, e)
         return callback.error(msg)
     if object_id.object_type == "user":
-        x_uuid = object_config['UUID']
-        x_user_group_uuid = object_data['user_group']
-        x_user_group = backend.get_object(uuid=x_user_group_uuid)
-        if not x_user_group:
-            msg = "Unknown group: %s" % x_user_group_uuid
+        user_group_uuid = object_data['user_group']
+        user_group = backend.get_object(uuid=user_group_uuid)
+        if not user_group:
+            msg = "Unknown group: %s" % user_group_uuid
             return callback.error(msg)
-        x_user_group.add_default_group_user(user_uuid=x_uuid,
+        user_group.add_default_group_user(user_uuid=object_uuid,
                                             callback=callback,
                                             verify_acls=False)
     if object_id.object_type == "token":
-        x_token_groups = object_data['token_groups']
-        for x in x_token_groups:
+        token_groups = object_data['token_groups']
+        for x in token_groups:
             x_group_uuid = x[0]
             x_token_opts = x[1]
             x_token_login_interfaces = x[2]
@@ -146,4 +151,8 @@ def restore_object(object_data, callback=default_callback, **kwargs):
                             login_interfaces=x_token_login_interfaces,
                             callback=callback,
                             verify_acls=False)
+    # Set last used time.
+    last_used = object_data['last_used']
+    if last_used is not None:
+        backend.set_last_used(object_uuid, last_used)
     return callback.ok()

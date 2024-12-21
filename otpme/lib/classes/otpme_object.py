@@ -1053,11 +1053,36 @@ class OTPmeBaseObject(OTPmeLockObject):
             msg = "Error to loading child class variables: %s: %s" % (self, e)
             logger.critical(msg, exc_info=True)
             return False
-        self._load_key()
-        self._load_cert()
-        self._load_cert_public_key()
-        self._load_private_key()
-        self._load_public_key()
+        try:
+            self._load_key()
+        except Exception as e:
+            msg = "Failed to load key: %s: %s" % (self.oid, e)
+            logger.critical(msg)
+            return False
+        try:
+            self._load_cert()
+        except Exception as e:
+            msg = "Failed to load cert: %s: %s" % (self.oid, e)
+            logger.critical(msg)
+            return False
+        try:
+            self._load_cert_public_key()
+        except Exception as e:
+            msg = "Failed to load cert public key: %s: %s" % (self.oid, e)
+            logger.critical(msg)
+            return False
+        try:
+            self._load_private_key()
+        except Exception as e:
+            msg = "Failed to load private key: %s: %s" % (self.oid, e)
+            logger.critical(msg)
+            return False
+        try:
+            self._load_public_key()
+        except Exception as e:
+            msg = "Failed to load public key: %s: %s" % (self.oid, e)
+            logger.critical(msg)
+            return False
 
     @load_object()
     def _load(self, read_from_cache=True, no_update=False):
@@ -7525,7 +7550,10 @@ class OTPmeObject(OTPmeBaseObject):
         if self.track_last_used:
             last_used = ""
             if self.verify_acl("view:last_used"):
-                last_used = self.get_last_used_time(return_type="date")
+                if self.last_used == 0:
+                    last_used = "Never"
+                else:
+                    last_used = self.get_last_used_time(return_type="date")
             lines.append('LAST_USED="%s"' % last_used)
 
         output = ""

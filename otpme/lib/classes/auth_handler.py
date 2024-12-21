@@ -1910,11 +1910,14 @@ class AuthHandler(object):
             self.session_start_group = self.access_group
 
         if not self.auth_failed:
-            # Make sure we have a valid password hash.
-            if not self.realm_login:
-                self.gen_pass_hash()
-            # Create parent session instance.
-            session_logout_pass = slp.gen(self.one_iter_hash)
+            if self.verify_token.pass_type == "static":
+                session_logout_pass = slp.gen(self.new_session_uuid)
+            else:
+                # Make sure we have a valid password hash.
+                if not self.realm_login:
+                    self.gen_pass_hash()
+                # Create parent session instance.
+                session_logout_pass = slp.gen(self.one_iter_hash)
             session = Session(self.auth_type, self.user.name,
                                 pass_hash=self.password_hash,
                                 pass_hash_params=self.pass_hash_params,

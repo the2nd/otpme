@@ -24,6 +24,7 @@ table_headers = [
                 "roles",
                 "tokens",
                 "sync_users",
+                "sync_groups",
                 "logins",
                 "policies",
                 "inherit",
@@ -62,8 +63,8 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, host_order, host_data, acls, object_type=None,
-    max_roles=5, max_tokens=5, max_sync_users=5, max_policies=5,
-    output_fields=[], acl_checker=None, **kwargs):
+    max_roles=5, max_tokens=5, max_sync_users=5, max_sync_groups=5,
+    max_policies=5, output_fields=[], acl_checker=None, **kwargs):
     """ Build table rows for hosts. """
     _result = []
     for host_uuid in host_order:
@@ -216,7 +217,7 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
 
             if host_tokens_count > max_tokens:
                 x = ("(%s of %s tokens total)"
-                    % (len(processed_tokens), tokens_count))
+                    % (len(processed_tokens), host_tokens_count))
                 host_tokens.append(x)
 
             row.append("\n".join(host_tokens))
@@ -225,12 +226,12 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
                 row.append("")
             else:
                 row.append("-")
-        # Users.
+        # Sync users.
         get_sync_users = False
         user_access = False
         processed_users = []
         if "sync_users" in output_fields:
-            if check_acl("view:sync_user"):
+            if check_acl("view:sync_users"):
                 user_access = True
                 get_sync_users = True
         if get_sync_users:
@@ -267,6 +268,51 @@ def row_getter(realm, site, host_order, host_data, acls, object_type=None,
             row.append("\n".join(host_users))
         else:
             if user_access:
+                row.append("")
+            else:
+                row.append("-")
+        # Sync users.
+        get_sync_groups = False
+        group_access = False
+        processed_groups = []
+        if "sync_users" in output_fields:
+            if check_acl("view:sync_groups"):
+                group_access = True
+                get_sync_groups = True
+        if get_sync_groups:
+            host_groups = []
+            return_attrs = ['name', 'enabled']
+            host_groups_count, \
+            host_groups_result = backend.search(object_type="group",
+                                                attribute="uuid",
+                                                value="*",
+                                                join_object_type=object_type,
+                                                join_search_attr="uuid",
+                                                join_search_val=host_uuid,
+                                                join_attribute="sync_group",
+                                                order_by="rel_path",
+                                                max_results=max_sync_groups,
+                                                return_query_count=True,
+                                                return_attributes=return_attrs)
+            for group_uuid in host_groups_result:
+                if len(processed_groups) >= max_sync_groups:
+                    break
+                group_name = host_groups_result[group_uuid]['name']
+                group_enabled = host_groups_result[group_uuid]['enabled'][0]
+                group_string = group_name
+                if not group_enabled:
+                    group_string += " (D)"
+                host_groups.append(group_string)
+                processed_groups.append(group_uuid)
+
+            if host_groups_count > max_sync_groups:
+                x = ("(%s of %s groups total)"
+                    % (len(processed_groups), users_count))
+                host_groups.append(x)
+
+            row.append("\n".join(host_groups))
+        else:
+            if group_access:
                 row.append("")
             else:
                 row.append("-")

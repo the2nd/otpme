@@ -16,6 +16,7 @@ from otpme.lib import srp
 from otpme.lib import json
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib import locking
 from otpme.lib import otpme_pass
 from otpme.lib import multiprocessing
 #from otpme.lib.encoding.base import encode
@@ -33,7 +34,10 @@ REGISTER_BEFORE = []
 REGISTER_AFTER = []
 PROTOCOL_VERSION = "OTPme-agent-1.0"
 
+SESSION_LOCK_TYPE = "agent.session"
+
 def register():
+    locking.register_lock_type(SESSION_LOCK_TYPE, module=__file__)
     config.register_otpme_protocol("agent", PROTOCOL_VERSION, server=True)
 
 class OTPmeAgentP1(object):
@@ -50,6 +54,7 @@ class OTPmeAgentP1(object):
 
         # Will hold session of the requesting client (PID).
         self.session = {}
+        self.login_sessions = {}
 
         # Get communication handler to talk to agent main process.
         socket_comm_handler = handler_args['comm_handler']
@@ -62,9 +67,6 @@ class OTPmeAgentP1(object):
         # as a variable called "$OTPME_LOGIN_SESSION". This session ID is NOT
         # the same session ID used on the server side!
         self.session_ids = handler_args['session_ids']
-
-        # Shared list to handle session locks (e.g. on add_rsp).
-        self.session_locks = handler_args['session_locks']
 
         # Shared dict for sessions we hold.
         self.login_sessions = handler_args['login_sessions']
@@ -117,6 +119,11 @@ class OTPmeAgentP1(object):
         multiprocessing.cleanup()
         os._exit(0)
 
+    def acquire_session_lock(self, login_pid):
+        session_lock = locking.acquire_lock(lock_type=SESSION_LOCK_TYPE,
+                                            lock_id=login_pid)
+        return session_lock
+
     def send_command(self, command, request):
         """ Send request to agent parent process. """
         # Send request to parent process.
@@ -152,7 +159,7 @@ class OTPmeAgentP1(object):
                 except:
                    proc = proc.parent
                 # Stop loop if we reached process tree's top.
-                if proc == None:
+                if proc is None:
                     break
         except:
             pass
@@ -287,7 +294,7 @@ class OTPmeAgentP1(object):
             # Try to get session for login PID.
             try:
                 session = self.login_sessions[self.login_pid]
-            except:
+            except KeyError:
                 session = None
             # If we found a session check if user is authorized to access it.
             if session:
@@ -295,21 +302,11 @@ class OTPmeAgentP1(object):
                                                     command=command,
                                                     username=self.client_user,
                                                     pid=self.client_pid)
-                if self.authorized:
-                    # Try to get session ID (e.g. ssh_key_pass session has not ID)
-                    try:
-                        self.session_id = session['session_id']
-                    except:
-                        pass
-                    if self.session_id:
-                        # Wait for session lock.
-                        while self.session_id in self.session_locks:
-                            time.sleep(0.01)
-                        # Lock session.
-                        self.session_locks.append(self.session_id)
-                    # We have to re-read the session because it may have changed
-                    # while it was locked.
-                    self.session = self.login_sessions[self.login_pid]
+        # Set session.
+        try:
+            self.session = self.login_sessions[self.login_pid]
+        except KeyError:
+            pass
 
         # If client is authorized try to get session data.
         if self.authorized and self.session:
@@ -401,21 +398,23 @@ class OTPmeAgentP1(object):
                         self.session_id = "%s:%s" % (self.login_pid,
                                                 stuff.gen_secret())
                     # Lock the session.
-                    self.session_locks.append(self.session_id)
-                    self.session_ids[self.session_id] = self.login_pid
-                    self.session = {}
-                    self.session['session_type'] = "realm_login"
-                    self.session['system_user'] = self.client_user
-                    self.session['login_user'] = self.login_user
-                    self.session['session_id'] = self.session_id
-                    self.login_sessions[self.login_pid] = self.session
+                    session_lock = self.acquire_session_lock(self.session_id)
+                    try:
+                        self.session_ids[self.session_id] = self.login_pid
+                        self.session = {}
+                        self.session['session_type'] = "realm_login"
+                        self.session['system_user'] = self.client_user
+                        self.session['login_user'] = self.login_user
+                        self.session['session_id'] = self.session_id
+                        self.login_sessions[self.login_pid] = self.session
+                    finally:
+                        session_lock.release_lock()
                     # Send command to agent parent process.
                     add_request = {
                                 'login_pid' : self.login_pid,
                                 'realm'     : self.realm,
                                 'site'      : self.site,
                                 'daemon'    : 'agent',
-                                #'command'   : 'add_session',
                                 }
                     try:
                         self.send_command(command="add_session",
@@ -581,9 +580,13 @@ class OTPmeAgentP1(object):
                 msg = ("Setting login token for user '%s' (PID: %s)."
                         % (self.login_user, self.login_pid))
                 logger.info(msg)
-                self.session['login_token'] = self.login_token
-                self.session['login_pass_type'] = self.login_pass_type
-                self.login_sessions[self.login_pid] = self.session
+                session_lock = self.acquire_session_lock(self.session_id)
+                try:
+                    self.session['login_token'] = self.login_token
+                    self.session['login_pass_type'] = self.login_pass_type
+                    self.login_sessions[self.login_pid] = self.session
+                finally:
+                    session_lock.release_lock()
                 message = "login token successfully set"
                 status = True
 
@@ -612,15 +615,19 @@ class OTPmeAgentP1(object):
                             "(PID: %s)." % (self.login_user, self.ssh_agent_pid))
                         logger.info(msg)
                         # Add new session for the given ssh-agent PID.
-                        agent_session = {}
-                        agent_session['session_type'] = "ssh_key_pass"
-                        agent_session['system_user'] = ssh_agent_proc.username()
-                        agent_session['login_user'] = self.login_user
-                        agent_session['ssh_key_pass'] = self.ssh_key_pass
-                        self.login_sessions[self.ssh_agent_pid] = agent_session
-                        # Add ssh_agent_pid to this session.
-                        self.session['ssh_agent_pid'] = self.ssh_agent_pid
-                        self.login_sessions[self.login_pid] = self.session
+                        session_lock = self.acquire_session_lock(self.session_id)
+                        try:
+                            agent_session = {}
+                            agent_session['session_type'] = "ssh_key_pass"
+                            agent_session['system_user'] = ssh_agent_proc.username()
+                            agent_session['login_user'] = self.login_user
+                            agent_session['ssh_key_pass'] = self.ssh_key_pass
+                            self.login_sessions[self.ssh_agent_pid] = agent_session
+                            # Add ssh_agent_pid to this session.
+                            self.session['ssh_agent_pid'] = self.ssh_agent_pid
+                            self.login_sessions[self.login_pid] = self.session
+                        finally:
+                            session_lock.release_lock()
                         message = "Added SSH key passphrase"
                         status = True
                     else:
@@ -660,12 +667,15 @@ class OTPmeAgentP1(object):
                 agent_session = self.login_pid
 
             if agent_session:
+                session_lock = self.acquire_session_lock(self.session_id)
                 try:
                     self.login_sessions.pop(agent_session)
                     message = "SSH key passphrase removed"
                     status = True
                 except:
                     pass
+                finally:
+                    session_lock.release_lock()
 
         elif command == "add_rsp":
             status = True
@@ -786,7 +796,13 @@ class OTPmeAgentP1(object):
                 self.session['realm'] = realm
                 self.session['site'] = site
                 # Update login session.
-                self.login_sessions[self.login_pid] = self.session
+                session_lock = self.acquire_session_lock(self.session_id)
+                try:
+                    self.login_sessions[self.login_pid] = self.session
+                except:
+                    pass
+                finally:
+                    session_lock.release_lock()
                 # Send command to agent parent process.
                 add_request = {
                             'login_pid' : self.login_pid,
@@ -831,7 +847,13 @@ class OTPmeAgentP1(object):
                                 % (self.login_user, self.login_pid))
                     user_acls.append(acl)
                     self.session['acls'][username] = user_acls
-                    self.login_sessions[self.login_pid] = self.session
+                    session_lock = self.acquire_session_lock(self.session_id)
+                    try:
+                        self.login_sessions[self.login_pid] = self.session
+                    except:
+                        pass
+                    finally:
+                        session_lock.release_lock()
                     message = "Added ACL"
                     status = True
             else:
@@ -869,7 +891,13 @@ class OTPmeAgentP1(object):
                     except:
                         pass
                     self.session['acls'][username] = user_acls
-                    self.login_sessions[self.login_pid] = self.session
+                    session_lock = self.acquire_session_lock(self.session_id)
+                    try:
+                        self.login_sessions[self.login_pid] = self.session
+                    except:
+                        pass
+                    finally:
+                        session_lock.release_lock()
                     message = "Deleted ACL"
                     status = True
                 else:
@@ -905,10 +933,13 @@ class OTPmeAgentP1(object):
                     self.session_ids.pop(self.session_id)
                 except:
                     pass
+                session_lock = self.acquire_session_lock(self.session_id)
                 try:
                     self.login_sessions.pop(self.login_pid)
                 except:
                     pass
+                finally:
+                    session_lock.release_lock()
                 message = "Empty session removed."
                 status = True
 
@@ -1038,22 +1069,11 @@ class OTPmeAgentP1(object):
         """ Build response. """
         # Build response.
         response = build_response(status, message)
-        # Unlock session.
-        try:
-            self.session_locks.remove(self.session_id)
-        except:
-            pass
         return response
 
     def cleanup(self):
         """ Is called on client disconnect. """
-        # Unlock session.
-        try:
-            self.session_locks.remove(self.session_id)
-        except:
-            pass
         # Close and remove IPC queue.
-        #self.comm_handler.close()
         self.comm_handler.unlink()
 
     def close(self):

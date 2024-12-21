@@ -284,42 +284,6 @@ cmd_help = {
                                 },
                 },
 
-    'list_clients'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-group list_clients {group}',
-                    'cmd'   :   '--return-type :return_type: [|object|]',
-                    'ovals' :   {
-                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
-                                },
-                    '_help' :   {
-                                    'cmd'                   : 'List assigned clients.',
-                                    '--return-type'         : 'Attribute to return.',
-                                },
-                },
-
-    'list_hosts'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-group list_hosts {group}',
-                    'cmd'   :   '--return-type :return_type: [|object|]',
-                    'ovals' :   {
-                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
-                                },
-                    '_help' :   {
-                                    'cmd'                   : 'List assigned hosts.',
-                                    '--return-type'         : 'Attribute to return.',
-                                },
-                },
-
-    'list_nodes'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-group list_nodes {group}',
-                    'cmd'   :   '--return-type :return_type: [|object|]',
-                    'ovals' :   {
-                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
-                                },
-                    '_help' :   {
-                                    'cmd'                   : 'List assigned nodes.',
-                                    '--return-type'         : 'Attribute to return.',
-                                },
-                },
-
     '_list_valid_object_classes'    : {
                     'cmd'   :   '<|object|>',
                 },

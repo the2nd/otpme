@@ -1239,6 +1239,8 @@ def user_is_blocked(user_uuid, access_group, realm, site):
         last_used_list = []
         for uuid in result:
             last_used = backend.get_last_used(uuid=uuid)
+            if last_used == 0:
+                continue
             last_used_list.append(last_used)
         # Check if reset time is reached.
         if last_used_list:
@@ -1780,11 +1782,11 @@ class User(OTPmeObject):
                 return self.cross_site_move(*args, path=new_unit,
                                             callback=callback,
                                             **kwargs)
-        super(User, self).move(*args, callback=callback, **kwargs)
+        move_result = super(User, self).move(*args, callback=callback, **kwargs)
         token_list = self.get_tokens(return_type="instance")
         for token in token_list:
             token._write(callback=callback)
-        return callback.ok()
+        return move_result
 
     @check_acls(['add:photo'])
     @object_lock()
@@ -1973,10 +1975,11 @@ class User(OTPmeObject):
                     return callback.abort()
 
         if private_key == "":
-            self.private_key = None
+            self.private_key = {}
         else:
             # Set private key.
-            self.private_key = private_key
+            self.private_key = {}
+            self.private_key['key_blob'] = private_key
 
         return self._cache(callback=callback)
 
@@ -2098,6 +2101,7 @@ class User(OTPmeObject):
             except Exception as e:
                 msg = str(e)
                 return callback.error(msg)
+            return callback.ok(private_key)
         elif not private and self.public_key:
             # If decrypt (-n) is set we return the public key in its original
             # form (e.g. not as a one line base64 string).
@@ -2273,7 +2277,7 @@ class User(OTPmeObject):
             if str(ask).lower() != "y":
                 return callback.abort()
 
-        self.private_key = None
+        self.private_key = {}
         self.public_key = None
 
         return self._cache(callback=callback)
@@ -4705,8 +4709,11 @@ class User(OTPmeObject):
         last_modified = last_modified.strftime('%d.%m.%Y %H:%M:%S')
         lines.append("\tmodified:\t\t%s\n" % last_modified)
 
-        last_used = self.get_last_used_time(return_type="date")
-        last_used = last_used.strftime('%d.%m.%Y %H:%M:%S')
+        if self.last_used == 0:
+            last_used = "Never"
+        else:
+            last_used = self.get_last_used_time(return_type="date")
+            last_used = last_used.strftime('%d.%m.%Y %H:%M:%S')
         lines.append("\tlast_used:\t\t%s\n" % last_used)
 
         lines.append("\tchecksum:\t\t%s\n" % self.checksum)

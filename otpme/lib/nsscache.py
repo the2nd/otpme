@@ -398,6 +398,11 @@ def update(resync=False, cache_resync=False, lock=None):
             object_type = object_id.object_type
 
             if object_type == "role":
+                try:
+                    filetools.delete(file_path)
+                except Exception as e:
+                    msg = "Failed to remove nsscache file: %s: %s" % (file_path, e)
+                    logger.warning(msg)
                 continue
 
             if action == "update":

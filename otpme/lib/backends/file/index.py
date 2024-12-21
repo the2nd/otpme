@@ -28,6 +28,7 @@ def init(init_file_dir_perms=False):
     from otpme.lib import filetools
     from sqlalchemy.ext.declarative import declarative_base
     global Base
+    global classes
     if config.system_user() != config.user and config.system_user() != "root":
         return True
 
@@ -54,6 +55,7 @@ def init(init_file_dir_perms=False):
     Base = declarative_base()
 
     # Create per object type classes.
+    classes.clear()
     for x in config.object_types:
         create_classes(x)
 

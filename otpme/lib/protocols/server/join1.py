@@ -1285,10 +1285,8 @@ class OTPmeJoinP1(OTPmeServer1):
                     self.logger.warning(msg)
             if clusterd_conn:
                 try:
-                    clusterd_conn.write(node.oid.full_oid,
-                                        node.object_config.copy(),
-                                        node.last_modified,
-                                        node.last_used)
+                    clusterd_conn.write(object_id=node.oid.full_oid,
+                                    object_configs=node.object_config.copy())
                 except Exception as e:
                     msg = ("Failed to update node object: %s: %s"
                             % (node.object_id, e))

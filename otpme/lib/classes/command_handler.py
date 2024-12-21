@@ -419,6 +419,12 @@ class CommandHandler(object):
             cache.init()
             cache.enable()
 
+            # Get login user needed for some commnads.
+            if not config.login_user:
+                config.login_user = self.get_login_user()
+                ## Make sure user config file is loaded.
+                #config.reload()
+
             if not (command == "realm" and subcommand == "init"):
                 self.init(use_backend=True)
 
@@ -441,7 +447,7 @@ class CommandHandler(object):
                 register_module("otpme.lib.cli.ca")
             if command == "node":
                 register_module("otpme.lib.classes.node")
-                register_module("otpme.lib.cli.host")
+                register_module("otpme.lib.cli.node")
             if command == "host":
                 register_module("otpme.lib.classes.host")
                 register_module("otpme.lib.cli.host")
@@ -569,12 +575,6 @@ class CommandHandler(object):
 
         if command == "tool" and subcommand == "detect_smartcard":
             return self.handle_smartcard_detection(command, subcommand)
-
-        # Get login user needed for some commnads.
-        if not config.login_user:
-            config.login_user = self.get_login_user()
-            ## Make sure user config file is loaded.
-            #config.reload()
 
         if command == "tool":
             return self.handle_tool_command(command, subcommand, command_line)
@@ -856,10 +856,14 @@ class CommandHandler(object):
                 x_oid = object_data['object_id']
                 x_oid = oid.get(x_oid)
                 x_oc = object_data['object_config']
+                x_uuid = object_data['object_uuid']
+                x_last_used = object_data['last_used']
                 x_path_len = len(x_oid.path.split("/"))
                 x_restore_order[x_oid] = {}
-                x_restore_order[x_oid]['path_len'] = x_path_len
+                x_restore_order[x_oid]['object_uuid'] = x_uuid
                 x_restore_order[x_oid]['object_config'] = x_oc
+                x_restore_order[x_oid]['path_len'] = x_path_len
+                x_restore_order[x_oid]['last_used'] = x_last_used
 
             x_sort = lambda x: x_restore_order[x]['path_len']
             x_restore_order_sorted = sorted(x_restore_order, key=x_sort)
@@ -867,6 +871,8 @@ class CommandHandler(object):
                 msg = "Restoring: %s" % x_oid
                 print(msg)
                 x_oc = x_restore_order[x_oid]['object_config']
+                x_uuid = x_restore_order[x_oid]['object_uuid']
+                x_last_used = x_restore_order[x_oid]['last_used']
                 try:
                     backend.write_config(object_id=x_oid,
                                         object_config=x_oc,
@@ -877,6 +883,8 @@ class CommandHandler(object):
                     msg = "Failed to restore object: %s: %s" % (x_oid, e)
                     print(msg)
                     failed_restores.append(msg)
+                else:
+                    backend.set_last_used(x_uuid, x_last_used)
         msg = "Creating DB indexes..."
         print(msg)
         _index.command("create_db_indices")
@@ -4745,8 +4753,10 @@ class CommandHandler(object):
                                             script_options=script_options)
 
             # Make sure script output is string.
-            script_stdout = script_stdout.decode()
-            script_stderr = script_stderr.decode()
+            if isinstance(script_stdout, bytes):
+                script_stdout = script_stdout.decode()
+            if isinstance(script_stderr, bytes):
+                script_stderr = script_stderr.decode()
 
             if script_status != 0:
                 self.newline = False
@@ -5292,10 +5302,13 @@ class CommandHandler(object):
                 if x_node_master == "Unknown":
                     x_status_line = colored(x_status_line, 'red')
                 else:
-                    if x_node in nodes_in_sync:
-                        x_status_line = colored(x_status_line, 'green')
+                    if x_node_quorum:
+                        if x_node in nodes_in_sync:
+                            x_status_line = colored(x_status_line, 'green')
+                        else:
+                            x_status_line = colored(x_status_line, 'yellow')
                     else:
-                        x_status_line = colored(x_status_line, 'yellow')
+                            x_status_line = colored(x_status_line, 'yellow')
             cluster_status_str.append(x_status_line)
 
             if cluster_in_sync:

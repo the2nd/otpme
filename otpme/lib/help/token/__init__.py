@@ -384,6 +384,14 @@ cmd_help = {
                                 },
                 },
 
+    'list_dynamic_groups'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-token list_dynamic_groups {token}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'List dynamic groups of token.',
+                                },
+                },
+
     'enable_auth_script'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token enable_auth_script {token}',
                     'cmd'   :   '<|object|>',

@@ -409,4 +409,11 @@ cmd_help = {
                                     '--policy-types <type1,type2>'  : 'Policy types to list.',
                                 },
                 },
+    'list_dynamic_groups'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-role list_dynamic_groups {role}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'List dynamic groups of role.',
+                                },
+                },
     }

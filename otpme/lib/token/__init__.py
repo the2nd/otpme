@@ -17,7 +17,6 @@ modules = [
         'otpme.lib.token.hotp.hotp',
         'otpme.lib.token.link.link',
         'otpme.lib.token.motp.motp',
-        'otpme.lib.token.otpme.otpme',
         'otpme.lib.token.otp_push.otp_push',
         'otpme.lib.token.password.password',
         'otpme.lib.token.script_otp.script_otp',

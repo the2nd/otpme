@@ -427,6 +427,25 @@ commands = {
                     },
                 },
             },
+    'list_tokens'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_tokens',
+                    'oargs'             : ['return_type', 'token_types'],
+                    'dargs'             : {'return_type':'rel_path', 'skip_disabled':False},
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'list_roles'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_roles',
+                    'oargs'             : ['recursive'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'add_extension'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {

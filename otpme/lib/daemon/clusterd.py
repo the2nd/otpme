@@ -62,6 +62,7 @@ def register():
     multiprocessing.register_shared_dict("member_nodes")
     multiprocessing.register_shared_list("pause_writes")
     multiprocessing.register_shared_dict("running_jobs")
+    multiprocessing.register_shared_dict("nsscache_sync")
     multiprocessing.register_shared_dict("cluster_quorum")
     multiprocessing.register_shared_dict("cluster_journal")
     multiprocessing.register_shared_dict("node_connections")
@@ -163,6 +164,8 @@ def cluster_daemon_reload():
 def cluster_sync_object(action, object_id=None, object_uuid=None,
     object_data=None, new_object_id=None, checksum=None, index_journal=None,
     trash_id=None, deleted_by=None, wait_for_write=True):
+    if config.host_type != "node":
+        return
     if not multiprocessing.cluster_out_event:
         return
     if config.one_node_setup:
@@ -1696,6 +1699,7 @@ class ClusterDaemon(OTPmeDaemon):
 
     def _start_cluster_communication(self, reload=False):
         """ Start cluster communication. """
+        from otpme.lib.classes.command_handler import CommandHandler
         # Set proctitle.
         new_proctitle = "%s (Cluster communication)" % self.full_name
         setproctitle.setproctitle(new_proctitle)
@@ -1743,6 +1747,18 @@ class ClusterDaemon(OTPmeDaemon):
                 self.exit_child()
             # Handle node connections.
             self.handle_node_connections()
+            # Handle nsscache sync.
+            if self.nsscache_sync.value:
+                try:
+                    last_sync_revision = multiprocessing.nsscache_sync['revision']
+                except KeyError:
+                    last_sync_revision = 0
+                data_revision = config.get_data_revision()
+                if data_revision != last_sync_revision:
+                    self.nsscache_sync.value = False
+                    multiprocessing.nsscache_sync['revision'] = data_revision
+                    command_handler = CommandHandler()
+                    command_handler.start_sync(sync_type="nsscache")
 
             if self.host_name not in multiprocessing.master_sync_done:
                 try:
@@ -2274,6 +2290,7 @@ class ClusterDaemon(OTPmeDaemon):
                                         pid=self.pid,
                                         existing_logger=config.logger)
         start_over= True
+        last_data_revision  = None
         while True:
             # Wait for cluster event.
             event_timeout = 3
@@ -2311,6 +2328,25 @@ class ClusterDaemon(OTPmeDaemon):
                 msg = "Failed to handle cluster journal: %s" % e
                 self.logger.critical(msg)
                 config.raise_exception()
+
+            if start_over:
+                continue
+
+            if not config.master_node:
+                continue
+
+            data_revision = config.get_data_revision()
+            if last_data_revision == data_revision:
+                continue
+
+            min_seconds = 15
+            now = time.time()
+            age = now - data_revision
+            if age < min_seconds:
+                continue
+
+            last_data_revision = data_revision
+            self.nsscache_sync.value = True
 
     def handle_cluster_out_journal(self, node_name):
         while True:
@@ -3086,6 +3122,16 @@ class ClusterDaemon(OTPmeDaemon):
         # Set signal handler.
         signal.signal(signal.SIGTERM, self.signal_handler)
         signal.signal(signal.SIGINT, self.signal_handler)
+        # Set logger.
+        self.logger = config.logger
+
+        try:
+            self.nsscache_sync = multiprocessing.get_bool("otpme-nsscache-sync",
+                                                        random_name=False)
+        except Exception as e:
+            msg = "Failed to get shared bool: %s" % e
+            self.logger.critical(msg)
+
         # Initially we dont have quorum.
         config.cluster_quorum = False
         multiprocessing.cluster_quorum.clear()
@@ -3223,3 +3269,10 @@ class ClusterDaemon(OTPmeDaemon):
                 msg = ("Unhandled error in clusterd: %s" % e)
                 self.logger.critical(msg, exc_info=True)
                 #config.raise_exception()
+                self.daemon_startup.value = False
+
+        try:
+            self.nsscache_sync.close()
+        except Exception as e:
+            msg = "Failed to close shared bool."
+            self.logger.critical(msg)

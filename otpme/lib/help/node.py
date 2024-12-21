@@ -321,6 +321,13 @@ cmd_help = {
                                     'cmd'                   : 'List assigned roles.',
                                 },
                 },
+    'list_dynamic_groups'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-node list_dynamic_groups {node}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'List dynamic groups of node.',
+                                },
+                },
     'dump_cert'   : {
                     '_cmd_usage_help' : 'Usage: otpme-node dump_cert {node}',
                     'cmd'   :   '<|object|>',

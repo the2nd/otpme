@@ -689,12 +689,42 @@ class HostDaemon(OTPmeDaemon):
             return
 
         # Load sync job.
-        site = sync_job['site']
-        realm = sync_job['realm']
-        resync = sync_job['resync']
-        offline = sync_job['offline']
-        sync_type = sync_job['sync_type']
-        nsscache_resync = sync_job['nsscache_resync']
+        try:
+            site = sync_job['site']
+        except KeyError:
+            msg = "Got invalid sync job: Missing site"
+            self.logger.warning(msg)
+            return
+        try:
+            realm = sync_job['realm']
+        except KeyError:
+            msg = "Got invalid sync job: Missing realm"
+            self.logger.warning(msg)
+            return
+        try:
+            resync = sync_job['resync']
+        except KeyError:
+            msg = "Got invalid sync job: Missing resync"
+            self.logger.warning(msg)
+            return
+        try:
+            offline = sync_job['offline']
+        except KeyError:
+            msg = "Got invalid sync job: Missing offline"
+            self.logger.warning(msg)
+            return
+        try:
+            sync_type = sync_job['sync_type']
+        except KeyError:
+            msg = "Got invalid sync job: Missing sync type"
+            self.logger.warning(msg)
+            return
+        try:
+            nsscache_resync = sync_job['nsscache_resync']
+        except KeyError:
+            msg = "Got invalid sync job: Missing nsscache_resync"
+            self.logger.warning(msg)
+            return
 
         msg = "Starting sync job from queue: %s" % sync_type
         self.logger.debug(msg)
@@ -721,6 +751,7 @@ class HostDaemon(OTPmeDaemon):
                             "site"              : site,
                             "realm"             : realm,
                             "resync"            : resync,
+                            "offline"           : False,
                             "sync_type"         : sync_type,
                             "nsscache_resync"   : nsscache_resync,
                             }

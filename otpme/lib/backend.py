@@ -340,8 +340,9 @@ def outdate_object(object_id, cache_type=None):
         cache.outdate_acl_cache(object_uuid=object_uuid)
 
     # Make sure we notify ldapd about changed objects (e.g. clear ldap search cache).
-    if config.get_ldap_settings(object_type):
-        config.ldap_object_changed = True
+    if config.daemon_mode:
+        if config.get_ldap_settings(object_type):
+            config.ldap_object_changed = True
 
 def import_config(object_config, object_id=None, force=False,
     aes_key=None, callback=default_callback, **kwargs):

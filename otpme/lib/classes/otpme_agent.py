@@ -79,8 +79,6 @@ class OTPmeAgent(UnixDaemon):
         self.config_reload = False
         # Create shared object dict to hold login session ID to PID mapping.
         self.session_ids = {}
-        # Create shared object list to hold session locks.
-        self.session_locks = []
         # Create shared object dict to hold login session data.
         self.login_sessions = {}
         # Create dict to hold daemon connections for all login sessions.
@@ -573,6 +571,7 @@ class OTPmeAgent(UnixDaemon):
         login_user = self.login_sessions[login_pid]['login_user']
         login_time = session['login_time']
         rsp = session['rsp']
+        slp = session['slp']
         session_age = time.time() - login_time
         session_timeout = session['session_timeout']
         session_unused_timeout = session['session_unused_timeout']
@@ -640,6 +639,7 @@ class OTPmeAgent(UnixDaemon):
                                             realm=realm,
                                             site=site,
                                             rsp=rsp,
+                                            slp=slp,
                                             update=new_rsp) is None:
                         self.logger.debug("No offline session to update found.")
                 except Exception as e:
@@ -1478,8 +1478,6 @@ class OTPmeAgent(UnixDaemon):
         multiprocessing.manager = get_sync_manager("otpme-agent", user=self.user)
         # Create shared object dict to hold login session ID to PID mapping.
         self.session_ids = multiprocessing.get_dict()
-        # Create shared object list to hold session locks.
-        self.session_locks = multiprocessing.get_list()
         # Create shared object dict to hold login session data.
         self.login_sessions = multiprocessing.get_dict()
         # Create list to hold all PID we a currently watching.
@@ -1503,7 +1501,6 @@ class OTPmeAgent(UnixDaemon):
         # Pass on shared dicts to agent handler.
         handler_args = {}
         handler_args['session_ids'] = self.session_ids
-        handler_args['session_locks'] = self.session_locks
         handler_args['login_sessions'] = self.login_sessions
         handler_args['comm_handler'] = conn_comm_handler
 

@@ -1501,7 +1501,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                         response = backend.index_dump(object_id=object_id)
                         status = True
                     except Exception as e:
-                        config.raise_exception()
                         status = False
                         response = str(e)
             else:
@@ -1547,6 +1546,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                             pass
 
                     # Resolv object path (e.g. user/token)
+                    object_rel_path = None
                     if "/" in object_identifier:
                         x = oid.resolve_path(object_identifier,
                                             object_type=object_type)
@@ -1555,8 +1555,11 @@ class OTPmeMgmtP1(OTPmeServer1):
 
                         if object_identifier.startswith("/"):
                             object_path = object_identifier
+                        else:
+                            object_rel_path = object_identifier
                     else:
                         object_name = object_identifier
+                        object_rel_path = object_identifier
 
                     if subcommand == "add" and not object_unit:
                         try:
@@ -1590,16 +1593,20 @@ class OTPmeMgmtP1(OTPmeServer1):
                     if oid.check_name(object_type, object_name):
                         result = None
                         attribute = "name"
+                        search_value = object_name
 
                         # We need to search for existing tokens by rel_path.
                         if object_type == "token":
                             attribute = "rel_path"
+                            search_value = object_rel_path
                         # We need to search for existing scripts by rel_path.
                         if object_type == "script":
                             attribute = "rel_path"
+                            search_value = object_rel_path
                         # We need to search for existing units by rel_path.
                         if object_type == "unit":
                             attribute = "rel_path"
+                            search_value = object_rel_path
 
                         # Check if we can find the object on our site.
                         if object_type != "realm" and object_type != "site":
@@ -1607,7 +1614,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                             try:
                                 result = backend.search(object_type=object_type,
                                                         attribute=attribute,
-                                                        value=object_name,
+                                                        value=search_value,
                                                         return_type="instance",
                                                         realm=config.realm,
                                                         site=config.site)

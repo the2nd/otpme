@@ -256,6 +256,7 @@ class OtppushToken(Token):
         self.allow_offline = None
         self.password_hash = None
         #self.valid_modes = [ 'mode1', 'mode2']
+        self.mschap_enabled = False
 
     def _get_object_config(self):
         """ Merge token config with config from parent class. """
@@ -269,7 +270,7 @@ class OtppushToken(Token):
 
             'PASSWORD_HASH_PARAMS'      : {
                                             'var_name'      : 'password_hash_params',
-                                            'type'          : dict,
+                                            'type'          : list,
                                         },
 
             'PUSH_SCRIPT'               : {
@@ -293,6 +294,12 @@ class OtppushToken(Token):
             'PHONE_NUMBER'              : {
                                             'var_name'      : 'phone_number',
                                             'type'          : str,
+                                            'required'      : False,
+                                        },
+
+            'MSCHAP_ENABLED'            : {
+                                            'var_name'      : 'mschap_enabled',
+                                            'type'          : bool,
                                             'required'      : False,
                                         },
             }

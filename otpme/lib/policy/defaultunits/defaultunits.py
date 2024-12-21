@@ -83,29 +83,12 @@ commands = {
                     },
                 },
             },
-    'add_unit'   : {
+    'set_unit'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'add_unit',
-                    'args'              : ['object_type', 'unit_path'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'remove_unit'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'remove_unit',
-                    'args'              : ['object_type', 'unit_path'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'change_unit'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'change_unit',
-                    'args'              : ['object_type', 'unit_path'],
+                    'method'            : 'set_default_unit',
+                    'args'              : ['object_type'],
+                    'oargs'             : ['unit_path'],
                     'job_type'          : 'process',
                     },
                 },
@@ -167,9 +150,7 @@ def register():
     register_subtype_del_acl(policy_acl)
 
 def register_hooks():
-    config.register_auth_on_action_hook("policy", "add_default_unit")
-    config.register_auth_on_action_hook("policy", "remove_default_unit")
-    config.register_auth_on_action_hook("policy", "change_default_unit")
+    config.register_auth_on_action_hook("policy", "set_default_unit")
 
 def register_policy_type():
     """ Register policy type. """
@@ -187,10 +168,10 @@ def register_policy_object():
         except AttributeError:
             continue
         method_kwargs = {
-                    'add_unit' : {
-                                'object_type'   : object_type,
-                                'unit_path'     : default_unit,
-                                }
+                    'set_default_unit' : {
+                                        'object_type'   : object_type,
+                                        'unit_path'     : default_unit,
+                                        }
                     }
         post_methods.append((method_kwargs,))
     config.register_base_object(object_type="policy",
@@ -279,114 +260,43 @@ class DefaultunitsPolicy(Policy):
     @check_acls(['add:default_unit'])
     @object_lock()
     @backend.transaction
-    def add_unit(self, object_type, unit_path, run_policies=True,
+    def set_default_unit(self, object_type, unit_path=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
-        """ Add default unit. """
-        # Get unit by name.
-        result = backend.search(attribute="rel_path",
-                                value=unit_path,
-                                object_type="unit",
-                                return_type="uuid",
-                                realm=config.realm,
-                                site=config.site)
-        if not result:
-            return callback.error(_("Unknown unit: %s") % unit_path)
+        """ Set default unit. """
+        if unit_path is None:
+            self.default_units.pop(object_type)
+        else:
+            # Get unit by name.
+            result = backend.search(attribute="rel_path",
+                                    value=unit_path,
+                                    object_type="unit",
+                                    return_type="uuid",
+                                    realm=config.realm,
+                                    site=config.site)
+            if not result:
+                return callback.error(_("Unknown unit: %s") % unit_path)
 
-        unit_uuid = result[0]
+            unit_uuid = result[0]
 
-        try:
-            default_unit = self.default_units[object_type]
-        except KeyError:
-            default_unit = None
-        if unit_uuid == default_unit:
-            msg = "Unit already added to this policy."
-            return callback.error(msg)
+            try:
+                default_unit = self.default_units[object_type]
+            except KeyError:
+                default_unit = None
+            if unit_uuid == default_unit:
+                msg = "Unit already set for this policy."
+                return callback.error(msg)
+            self.default_units[object_type] = unit_uuid
 
         if run_policies:
             try:
                 self.run_policies("modify",
                                 callback=callback,
                                 _caller=_caller)
-                self.run_policies("add_default_unit",
+                self.run_policies("set_default_unit",
                                 callback=callback,
                                 _caller=_caller)
             except Exception:
                 return callback.error()
-
-        self.default_units[object_type] = unit_uuid
-
-        return self._cache(callback=callback)
-
-    @check_acls(['remove:default_unit'])
-    @object_lock()
-    @backend.transaction
-    def remove_unit(self, object_type, unit_path, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
-        """ Remove default unit. """
-        # Get unit by name.
-        result = backend.search(attribute="rel_path",
-                                value=unit_path,
-                                object_type="unit",
-                                return_type="uuid",
-                                realm=config.realm,
-                                site=config.site)
-        if not result:
-            return callback.error(_("Unknown unit: %s") % unit_path)
-
-        unit_uuid = result[0]
-
-        try:
-            default_unit = self.default_units[object_type]
-        except KeyError:
-            default_unit = []
-        if unit_uuid != default_unit:
-            return callback.error("Unit not added for this policy.")
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("remove_default_unit",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception:
-                return callback.error()
-
-        self.default_units[object_type] = default_unit
-
-        return self._cache(callback=callback)
-
-    @check_acls(['edit:default_unit'])
-    @object_lock()
-    @backend.transaction
-    def change_unit(self, object_type, unit_path, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
-        """ Add default unit. """
-        # Get unit by name.
-        result = backend.search(attribute="rel_path",
-                                value=unit_path,
-                                object_type="unit",
-                                return_type="uuid",
-                                realm=config.realm,
-                                site=config.site)
-        if not result:
-            return callback.error(_("Unknown unit: %s") % unit_path)
-
-        unit_uuid = result[0]
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("change_default_unit",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception:
-                return callback.error()
-
-        self.default_units[object_type] = unit_uuid
 
         return self._cache(callback=callback)
 

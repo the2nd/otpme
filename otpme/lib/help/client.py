@@ -292,6 +292,22 @@ cmd_help = {
                                 },
                 },
 
+    'list_tokens'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-client list_tokens {client}',
+                    'cmd'   :   '--return-type :return_type: --token-types :[token_types]: [|object|]',
+                    '_help' :   {
+                                    'cmd'                       : 'List assigned tokens.',
+                                    '--return-type'             : 'Attribute to return.',
+                                    '--token-types <hotp,totp>' : 'Token types to list.',
+                                },
+                },
+    'list_roles'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-client list_roles {client}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'List assigned roles.',
+                                },
+                },
     'list_policies'   : {
                     '_cmd_usage_help' : 'Usage: otpme-client list_policies {client}',
                     'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',

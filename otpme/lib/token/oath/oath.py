@@ -283,8 +283,9 @@ class OathToken(Token):
                     return callback.ok()
                 else:
                     return callback.error()
-            msg = "Please re-sync token after changing the secret!"
-            callback.send(msg)
+            if not pre:
+                msg = "Please re-sync token after changing the secret!"
+                callback.send(msg)
             self.server_secret = None
         return callback.ok()
 

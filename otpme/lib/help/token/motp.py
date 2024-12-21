@@ -57,38 +57,6 @@ cmd_help = {
                                 },
                 },
 
-    'enable_pin'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token enable_pin {token}',
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : 'enable token PIN',
-                                },
-                },
-
-    'disable_pin'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token disable_pin {token}',
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : 'disable token PIN',
-                                },
-                },
-
-    'enable_mschap'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token enable_mschap {token}',
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : 'enable MSCHAP authentication',
-                                },
-                },
-
-    'disable_mschap'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token disable_mschap {token}',
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : 'disable MSCHAP authentication',
-                                },
-                },
-
     'gen'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token gen {token}',
                     'cmd'   :   '<|object|>',
@@ -113,14 +81,6 @@ cmd_help = {
     #                            },
     #            },
 
-    'otp_format'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token otp_format {token} [otp_format]',
-                    'cmd'   :   '<|object|> [otp_format]',
-                    '_help' :   {
-                                    'cmd'                   : 'change token OTP format',
-                                },
-                },
-
     'validity_time'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token validity_time {token} [int]',
                     'cmd'   :   '<|object|> [validity_time]',
@@ -135,18 +95,6 @@ cmd_help = {
                     '_help' :   {
                                     'cmd'                   : 'change OTP timedrift tolerance',
                                 },
-                },
-
-    'mode'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token mode {token} {mode}',
-                    'cmd'   :   '<|object|> <new_mode>',
-                    '_help' :   {
-                                    'cmd'                   : 'change token operation mode',
-                                },
-                },
-
-    '_list_modes'    : {
-                    'cmd'   :   '<|object|>',
                 },
 
     '_list_card_types'    : {

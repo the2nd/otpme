@@ -108,18 +108,20 @@ commands = {
                     },
                 },
             },
-    'enable_pin'   : {
+    'validity_time'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'enable_pin',
+                    'method'            : 'change_validity_time',
+                    'oargs'             : ['validity_time'],
                     'job_type'          : 'process',
                     },
                 },
             },
-    'disable_pin'   : {
+    'timedrift_tolerance'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'disable_pin',
+                    'method'            : 'change_timedrift_tolerance',
+                    'oargs'             : ['timedrift_tolerance'],
                     'job_type'          : 'process',
                     },
                 },
@@ -415,7 +417,7 @@ class MotpToken(Token):
                 except:
                     pass
 
-        if not isinstance(int, validity_time):
+        if not isinstance(validity_time, int):
             msg = "Need integer for <validity_time>."
             return callback.error(msg)
 
@@ -434,7 +436,7 @@ class MotpToken(Token):
                 self.run_policies("modify",
                                 callback=callback,
                                 _caller=_caller)
-                self.run_policies("change_validity_time",
+                self.run_policies("change_timedrift_tolerance",
                                 callback=callback,
                                 _caller=_caller)
             except Exception:
@@ -449,7 +451,7 @@ class MotpToken(Token):
                 except:
                     pass
 
-        if not isinstance(int, timedrift_tolerance):
+        if not isinstance(timedrift_tolerance, int):
             msg = "Need integer for <timedrift_tolerance>."
             return callback.error(msg)
 
@@ -488,13 +490,13 @@ class MotpToken(Token):
             otps = otpme.generate(secret=self.secret,
                                 otp_count=otp_count,
                                 otp_len=self.otp_len,
-                                pin=self.pin)
+                                pin=str(self.pin))
             return otps
         else:
             otp = otpme.generate(secret=self.secret,
                                 otp_count=otp_count,
                                 otp_len=self.otp_len,
-                                pin=self.pin)
+                                pin=str(self.pin))
             if _caller != "API":
                 return callback.ok(otp)
             return [otp]
@@ -724,6 +726,16 @@ class MotpToken(Token):
             lines.append('OFFSET="%s"' % self.offset)
         else:
             lines.append('OFFSET=""')
+
+        if self.verify_acl("view:timedrift_tolerance"):
+            lines.append('TIMEDRIFT_TOLERANCE="%s"' % self.timedrift_tolerance)
+        else:
+            lines.append('TIMEDRIFT_TOLERANCE=""')
+
+        if self.verify_acl("view:validity_time"):
+            lines.append('VALIDITY_TIME="%s"' % self.validity_time)
+        else:
+            lines.append('VALIDITY_TIME=""')
 
         return Token.show_config(self,
                                 config_lines=lines,

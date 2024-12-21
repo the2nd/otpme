@@ -578,6 +578,14 @@ commands = {
                     },
                 },
             },
+    'list_dynamic_groups'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_dynamic_groups',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     }
 
 def get_acls(**kwargs):
@@ -896,7 +904,6 @@ class Token(OTPmeObject):
         self.password_hash = False
         self.nt_hash = None
         self.mschap_enabled = None
-        self.valid_otp_formats = []
         self.supported_hardware_tokens = []
         self.smartcard_id = None
         self.client_options = []
@@ -2802,7 +2809,7 @@ class Token(OTPmeObject):
         callback=default_callback, _caller="API", **kwargs):
         """ Change token OTP format. """
         try:
-            if not otp_format in self.valid_otp_formats:
+            if otp_format not in self.valid_otp_formats:
                 return callback.error(_("Unknown format: %s") % otp_format)
         except:
             return callback.error("Token does not support different OTP formats.")

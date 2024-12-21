@@ -446,6 +446,7 @@ class Policy(OTPmeObject):
         self.allow_multiple = False
         # Default OTPme policy exception.
         self.policy_exception = PolicyException
+        self.acl_inheritance_enabled = False
 
         self._sync_fields = {
                     'host'  : {

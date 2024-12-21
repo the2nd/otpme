@@ -42,6 +42,7 @@ write_acls =  [
 
 read_value_acls = {
                 "view"      : [
+                                "sync_users",
                                 "sync_groups",
                                 "dynamic_groups",
                             ],
@@ -222,15 +223,6 @@ commands = {
                 'exists'    : {
                     'method'            : 'disable_acl_inheritance',
                     'job_type'          : 'process',
-                    },
-                },
-            },
-    'address'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'address',
-                    'args'              : ['address'],
-                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -521,6 +513,14 @@ commands = {
                     'job_type'          : 'thread',
                     'oargs'             : ['return_type', 'policy_types'],
                     'dargs'             : {'return_type':'name', 'ignore_hooks':True},
+                    },
+                },
+            },
+    'list_dynamic_groups'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_dynamic_groups',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -1160,6 +1160,8 @@ class Host(OTPmeHost):
             except Exception as e:
                 return callback.error()
         self.sync_groups.append(group_uuid)
+        # Update index.
+        self.add_index('sync_group', group_uuid)
         return self._cache(callback=callback)
 
     @check_acls(['remove:sync_group'])
@@ -1193,6 +1195,8 @@ class Host(OTPmeHost):
             except Exception as e:
                 return callback.error()
         self.sync_groups.remove(group_uuid)
+        # Update index.
+        self.del_index('sync_group', group_uuid)
         return self._cache(callback=callback)
 
     @check_acls(['enable:sync_groups'])

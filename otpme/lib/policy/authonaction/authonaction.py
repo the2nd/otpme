@@ -112,7 +112,7 @@ commands = {
     'reauth_timeout'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'reauth_timeout',
+                    'method'            : 'change_reauth_timeout',
                     'args'              : ['reauth_timeout'],
                     'job_type'          : 'process',
                     },

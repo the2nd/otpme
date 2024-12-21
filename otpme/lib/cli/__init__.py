@@ -1606,9 +1606,13 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
             except:
                 pass
             # Get expire time.
-            expire = datetime.fromtimestamp(s.expire_time())
+            expire = s.expire_time()
+            if expire:
+                expire = datetime.fromtimestamp(expire)
             # Get unsued expire time.
-            unused_expire = datetime.fromtimestamp(s.unused_expire_time())
+            unused_expire = s.unused_expire_time()
+            if unused_expire:
+                unused_expire = datetime.fromtimestamp(unused_expire)
 
             # Add tailing "*" for parent session IDs
             if count == 0:
@@ -1644,10 +1648,16 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
 
             x_row.append(last_login_string)
 
-            expire_string = expire.strftime('%H:%M:%S %d.%m.')
+            if expire:
+                expire_string = expire.strftime('%H:%M:%S %d.%m.')
+            else:
+                expire_string = ""
             x_row.append(expire_string)
 
-            unused_expire_string = unused_expire.strftime('%H:%M:%S %d.%m.')
+            if unused_expire:
+                unused_expire_string = unused_expire.strftime('%H:%M:%S %d.%m.')
+            else:
+                unused_expire_string = ""
             x_row.append(unused_expire_string)
 
             count += 1

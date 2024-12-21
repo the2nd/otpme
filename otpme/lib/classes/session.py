@@ -447,12 +447,13 @@ class Session(OTPmeLockObject):
             return False
         # If session is expired remove it and all childs that exist.
         unused_expire_time = self.unused_expire_time()
-        if now > unused_expire_time:
-            msg = ("Session '%s' is expired by unused session timeout. "
-                    "Removing..." % self.name)
-            logger.debug(msg)
-            self.delete(force=True, recursive=True, verify_acls=False)
-            return False
+        if unused_expire_time:
+            if now > unused_expire_time:
+                msg = ("Session '%s' is expired by unused session timeout. "
+                        "Removing..." % self.name)
+                logger.debug(msg)
+                self.delete(force=True, recursive=True, verify_acls=False)
+                return False
         return True
 
     def _load_object(self):
@@ -708,6 +709,8 @@ class Session(OTPmeLockObject):
 
     def unused_expire_time(self):
         """ Return expiration timestamp when session is unused. """
+        if self.last_used == 0:
+            return
         session_expire = self.expire_time()
         # Calculate unused session expiration timestamp.
         last_used = datetime.fromtimestamp(float(self.last_used))

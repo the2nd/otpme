@@ -142,8 +142,7 @@ class OTPmeServer1(object):
         self._sign_key = None
 
         # Reconfigure logger to add new PID.
-        log_banner = "%s:" % config.log_name
-        self.logger = config.setup_logger(banner=log_banner, pid=True,
+        self.logger = config.setup_logger(banner=config.log_name, pid=True,
                                         existing_logger=config.logger)
         if config.use_api:
             # No preauth in API mode.

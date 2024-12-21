@@ -348,6 +348,8 @@ class SshToken(Token):
                                 'principals',
                                 'tunnel',
                                 ]
+        # Valid token pass types that could be used as a second factor.
+        self.valid_2f_pass_types = [ 'otp' ]
         # Hardware card/token type.
         self.card_type = None
         self.allow_offline = False
@@ -876,6 +878,9 @@ class SshToken(Token):
     def change_key_password(self, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change private key encryption password. """
+        if not self.ssh_private_key:
+            msg = "No private key set for this token."
+            return callback.error(msg)
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -896,7 +901,7 @@ class SshToken(Token):
         current_pass = callback.askpass("Current password: ")
         try:
             private_key = self.get_private_key(password=current_pass,
-                                                    instance=True)
+                                                instance=True)
         except:
             return callback.error("Wrong password.")
 

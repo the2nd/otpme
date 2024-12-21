@@ -360,9 +360,9 @@ class OTPmeHost(OTPmeClientObject):
         user_uuid = None
         if user:
             result = backend.search(object_type="user",
-                                            attribute="name",
-                                            value=user,
-                                            return_type="uuid")
+                                    attribute="name",
+                                    value=user,
+                                    return_type="uuid")
             if not result:
                 msg = "Unknown user: %s" % user
                 return callback.error(msg)
@@ -654,6 +654,11 @@ class OTPmeHost(OTPmeClientObject):
             public_key = callback.ask("Please enter/paste public key: ")
         if public_key:
             self.public_key = public_key
+            try:
+                self._load_public_key()
+            except Exception as e:
+                msg = "Failed to load public key: %s" % e
+                return callback.error(msg)
         else:
             self.public_key = None
 

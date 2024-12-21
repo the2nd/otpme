@@ -395,6 +395,8 @@ class PamHandler(object):
 
     def pam_sm_setcred(self):
         """ Set users groups. """
+        if config.system_user() != "root":
+            return
         # Get connection to hostd.
         try:
             hostd_conn = connections.get("hostd")

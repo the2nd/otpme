@@ -1905,36 +1905,31 @@ class OTPmeClient1(OTPmeClientBase):
         # FIXME: leave SSH key pass in agent if its configured? (for the token?)
         # Remove ssh key pass from agent if needed.
         if self.use_ssh_agent \
-        and self.agent_conn \
-        and self.agent_conn.check_ssh_key_pass():
+        and self.connection.agent_conn \
+        and self.connection.agent_conn.check_ssh_key_pass():
             if config.debug_level(DEBUG_SLOT) > 0:
                 msg = ("Removing SSH key passphrase from agent...")
                 self.logger.debug(msg)
             try:
-                self.agent_conn.del_ssh_key_pass()
+                self.connection.agent_conn.del_ssh_key_pass()
             except Exception as e:
                 msg = ("Error removing SSH key passphrase from agent.")
                 self.logger.warning(msg)
 
         # Close ssh-agent  connection
-        if self.ssh_agent_conn:
+        if self.connection.ssh_agent_conn:
             try:
-                self.ssh_agent_conn.close()
+                self.connection.ssh_agent_conn.close()
             except:
                 pass
             # Remove agent connection
-            self.ssh_agent_conn = None
+            self.connection.ssh_agent_conn = None
 
-        # Remove session on logout and close otpme-agent connection
-        if self.agent_conn:
-            if self.logout:
-                try:
-                    # Remove login session from agent on logout
-                    self.agent_conn.del_session()
-                except:
-                    pass
+        # Close otpme-agent connection
+        if self.connection.agent_conn:
+            self.connection.agent_conn.close()
             # Remove agent connection
-            self.agent_conn = None
+            self.connection.agent_conn = None
 
         ## FIXME: do we need this?
         ## Workaround for http://bugs.python.org/issue24596
@@ -2936,7 +2931,7 @@ class OTPmeClient1(OTPmeClientBase):
                                                                 token_options=self.smartcard_options[rel_path],
                                                                 message_method=self.message_method,
                                                                 error_message_method=self.error_message_method)
-                self.use_smartcard = "auto"
+                self.use_smartcard = True
                 sc_types.append(sc_type)
                 break
             if not self.use_smartcard:
@@ -3040,9 +3035,8 @@ class OTPmeClient1(OTPmeClientBase):
 
             # Get SLPs of old offline sessions we will try to logout.
             try:
-                x = self._offline_token.get_old_offline_sessions(self.realm,
-                                                                self.site)
-                self.old_sessions = x
+                self.old_sessions = self._offline_token.get_old_offline_sessions(self.realm,
+                                                                                self.site)
             except Exception as e:
                 msg = str(e)
                 self.logger.critical(msg)
@@ -3456,9 +3450,8 @@ class OTPmeClient1(OTPmeClientBase):
             raise OTPmeException(msg)
 
         # Load our host.
-        host_type = config.host_data['type']
-        my_host = backend.get_object(object_type=host_type,
-                                        uuid=config.uuid)
+        my_host = backend.get_object(uuid=config.uuid)
+
         # Generate server challenge.
         server_challenge = my_host.gen_challenge()
 

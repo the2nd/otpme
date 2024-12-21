@@ -1128,7 +1128,7 @@ class Unit(OTPmeObject):
             return callback.error("Unit does not exist exists.")
 
         base_units = config.get_base_objects("unit")
-        if not self.unit and self.name in base_units:
+        if not self.unit and self.rel_path in base_units:
             return callback.error("Cannot delete base unit.")
 
         if run_policies:

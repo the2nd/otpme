@@ -110,7 +110,6 @@ cmd_help = {
                                 },
                 },
 
-
      'enable_acl_inheritance'    : {
                     '_cmd_usage_help' : 'Usage: otpme-policy enable_acl_inheritance {policy}',
                     'cmd'   :   '<|object|>',
@@ -128,12 +127,12 @@ cmd_help = {
                                 },
                 },
 
-
-    'unit'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy unit {policy} {unit}',
-                    'cmd'   :   '<|object|> <new_unit>',
+    'move'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-policy move [--keep-acls] {group} {unit}',
+                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <new_unit>',
                     '_help' :   {
-                                    'cmd'                   : 'change policys unit',
+                                    'cmd'                   : 'Change policies unit.',
+                                    '--keep-acls'           : 'Keep object ACLs.'
                                 },
                 },
 

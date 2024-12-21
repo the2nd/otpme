@@ -341,6 +341,14 @@ commands = {
                     },
                 },
             },
+    'list_dynamic_groups'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_dynamic_groups',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'add_extension'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {

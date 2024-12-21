@@ -322,6 +322,13 @@ cmd_help = {
                                     'cmd'                   : 'List assigned roles.',
                                 },
                 },
+    'list_dynamic_groups'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-host list_dynamic_groups {host}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'List dynamic groups of host.',
+                                },
+                },
     'list_sync_users'   : {
                     '_cmd_usage_help' : 'Usage: otpme-host list_sync_users {host}',
                     'cmd'   :   '--return-type :return_type: [|object|]',
@@ -366,15 +373,6 @@ cmd_help = {
                     'cmd'   :   '<|object|> [public_key]',
                     '_help' :   {
                                     'cmd'                   : 'change hosts public key.',
-                                },
-                },
-
-
-    'address'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-host address {host} [ip_address]',
-                    'cmd'   :   '<|object|> [address]',
-                    '_help' :   {
-                                    'cmd'                   : 'change hosts IP address',
                                 },
                 },
 
