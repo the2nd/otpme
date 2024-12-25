@@ -50,8 +50,8 @@ You need to input pin+otp.
 otpme-tool login
 
 ## Add optional U2F/fido2 attestation certificates from https://developers.yubico.com/FIDO/yubico-fido-ca-certs.txt.
-wget https://developers.yubico.com/FIDO/yubico-fido-ca-1.pem
-wget https://developers.yubico.com/FIDO/yubico-fido-ca-2.pem
-otpme-site add_fido2_ca_cert yoursite yubico-fido-ca-1.pem
-otpme-site add_fido2_ca_cert yoursite yubico-fido-ca-2.pem
-otpme-realm config yourrealm.tld check_fido2_attestation_cert True
+wget https://developers.yubico.com/FIDO/yubico-fido-ca-1.pem  
+wget https://developers.yubico.com/FIDO/yubico-fido-ca-2.pem  
+otpme-site add_fido2_ca_cert yoursite yubico-fido-ca-1.pem  
+otpme-site add_fido2_ca_cert yoursite yubico-fido-ca-2.pem  
+otpme-realm config yourrealm.tld check_fido2_attestation_cert True  
