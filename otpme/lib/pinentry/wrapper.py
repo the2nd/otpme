@@ -42,6 +42,7 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
     if debug_file:
         log = open(debug_file, "w")
         log.write("Autoconfirmation enabled: %s\n" % autoconfirm)
+        log.flush()
 
     if pinentry_bin is None:
         pinentry_bin = "/usr/bin/pinentry"
@@ -71,16 +72,18 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
             break
 
         if not line or line == "\n":
-            continue
+            break
 
         if debug_file:
             log.write("Received command: %s" % line)
+            log.flush()
 
         if line.lower() == "confirm\n":
             if autoconfirm:
                 if debug_file:
                     log.write("Auto confirming question (autoconfirm=True): %s"
                             % line)
+                    log.flush()
                 sys.stdout.write("OK\n")
                 sys.stdout.flush()
                 continue
@@ -92,17 +95,21 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
                 if pin_function:
                     if debug_file:
                         log.write("Starting PIN function...\n")
+                        log.flush()
                     try:
                         pin = pin_function()
                     except Exception as e:
                         if debug_file:
-                            log.write("Exception in PIN function: %s\n"
-                                    % e)
+                            log.write("Exception in PIN function: %s\n" % e)
+                            log.flush()
                         break
                     if not pin:
                         if debug_file:
                             log.write("No PIN received from PIN function.\n")
+                            log.flush()
             if pin:
+                if isinstance(pin, bytes):
+                    pin = pin.decode()
                 sys.stdout.write("D %s\n" % pin)
                 sys.stdout.flush()
                 sys.stdout.write("OK\n")
@@ -111,6 +118,7 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
             elif not fallback:
                 if debug_file:
                     log.write("Cancelling GETPIN action (fallback=False)\n")
+                    log.flush()
                 sys.stdout.write("ERR 83886179 canceled\n")
                 continue
             else:
@@ -120,20 +128,26 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
             if debug_file:
                 log.write("Trying fallback to original pinentry program: %s\n"
                             % " ".join(command))
+                log.flush()
 
+            #os.environ["GPG_TTY"] = os.popen("tty").read().strip()
+            env = os.environ.copy()
             # Start original pinentry.
             proc = Popen(command,
                         stdin=PIPE,
                         stdout=PIPE,
-                        #stderr=PIPE,
-                        shell=False)
+                        stderr=PIPE,
+                        text=True,
+                        shell=False,
+                        env=env)
 
             # Read first line.
             line = proc.stdout.readline()
 
             while True:
                 if len(command_history) > 0:
-                    line = "%s\n" % command_history.pop(0)
+                    #line = "%s\n" % command_history.pop(0)
+                    line = command_history.pop(0)
                 else:
                     try:
                         line = sys.stdin.readline()
@@ -144,22 +158,26 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
                     continue
 
                 if debug_file:
-                    log.write("Sending command to original pinentry: %s"
-                                % line)
+                    log.write("Sending command to original pinentry: %s" % line)
+                    log.flush()
 
                 # Send line to pinentry.
-                line = line.encode()
+                if isinstance(line, bytes):
+                    line = line.decode()
                 try:
                     proc.stdin.write(line)
+                    proc.stdin.flush()
                 except Exception as e:
                     if debug_file:
                         log.write("Error sending command to original "
                                 "pinentry: %s\n" % e)
+                        log.flush()
                     raise
 
                 # Handle reply.
                 if debug_file:
                     log.write("Reading reply from original pinentry...\n")
+                    log.flush()
 
                 try:
                     r = proc.stdout.readline()
@@ -167,24 +185,28 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
                     if debug_file:
                         log.write("Error reading reply from original "
                                 "pinentry: %s\n" % e)
+                        log.flush()
                     raise
 
                 reply = r
-                while not r.lower().startswith(b"ok") \
-                and not r.lower().startswith(b"err"):
+                while not r.lower().startswith("ok") \
+                and not r.lower().startswith("err"):
                     if debug_file:
                         log.write("Reading reply from original pinentry...\n")
+                        log.flush()
                     try:
                         r = proc.stdout.readline()
                     except Exception as e:
                         if debug_file:
                             log.write("Error reading reply from original "
                                     "pinentry: %s\n" % e)
+                            log.flush()
                         raise
-                    if r == b"":
+                    if r == "":
                         if debug_file:
                             log.write("Error running original pinentry: %s"
                                     % proc.stderr.read())
+                            log.flush()
                         sys.exit(1)
                         break
                     reply += r
@@ -196,8 +218,8 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
                     except Exception as e:
                         if line.lower() != "bye\n":
                             if debug_file:
-                                log.write("Error writing reply to stdout: %s\n"
-                                        % line)
+                                log.write("Error writing reply to stdout: %s\n" % line)
+                                log.flush()
                             raise
 
                 if line.lower().startswith("bye ") or line.lower() == "bye\n":
@@ -216,6 +238,7 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
             except Exception as e:
                 if debug_file:
                     log.write("Error writing 'OK' command to stdout: %s\n" % e)
+                    log.flush()
                 raise
 
         if session_end:
@@ -231,5 +254,5 @@ if __name__ == '__main__':
     pinentry_wrapper(pin=None,
                 pin_function=None,
                 fallback=True,
-                debug_file="/tmp/hallo",
+                debug_file="/tmp/pinentry.log",
                 pinentry_bin=None)

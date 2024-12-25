@@ -26,7 +26,7 @@ from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.protocols import status_codes
 #from otpme.lib.protocols.utils import scauth
-#from otpme.lib.protocols.utils import sshauth
+from otpme.lib.protocols.utils import sshauth
 from otpme.lib.protocols.utils import passauth
 from otpme.lib.protocols.request import decode_request
 from otpme.lib.protocols.response import build_response
@@ -137,6 +137,7 @@ class OTPmeServer1(object):
         self.peer_cert = peer_cert
         self.client_cn = None
         self.token = None
+        self.token_challenges = {}
         self.redirect_challenge = None
         self.preauth_status = None
         self._sign_key = None
@@ -1194,7 +1195,7 @@ class OTPmeServer1(object):
                             % (verify_token.rel_path, e))
                     self.logger.critical(msg)
 
-        # Get valid auth types from selected tokens.
+        # Get smartcard options.
         token_options = {}
         verify_token = None
         for uuid in verify_tokens:
@@ -1220,12 +1221,24 @@ class OTPmeServer1(object):
                 if fftoken.pass_type == "otp" \
                 or fftoken.pass_type == "static":
                     pass_required = True
+            try:
+                self.token_challenges[verify_token.rel_path] = token_opts['challenge']
+            except KeyError:
+                pass
             token_opts['pass_required'] = pass_required
             token_opts['is_2f_token'] = is_2f_token
             token_options[verify_token.rel_path] = token_opts
             self.smartcard_handlers[verify_token.rel_path] = smartcard_server_handler
             self.logger.debug("Got valid smartcard type '%s' from token: %s"
                             % (verify_token.token_type, verify_token.rel_path))
+
+        # Get ssh public keys from valid tokens.
+        ssh_public_keys = []
+        for uuid in verify_tokens:
+            verify_token = verify_tokens[uuid]['token']
+            if verify_token.pass_type != "ssh_key":
+                continue
+            ssh_public_keys.append(verify_token.ssh_public_key)
 
         # Get users agent script.
         if self.user.agent_script:
@@ -1254,6 +1267,7 @@ class OTPmeServer1(object):
                     'preauth_response'      : preauth_response,
                     'ecdh_server_pub'       : ecdh_server_pub_pem,
                     'token_options'         : token_options,
+                    'ssh_public_keys'       : ssh_public_keys,
                     'agent_script'          : agent_script,
                     'agent_script_uuid'     : agent_script_uuid,
                     'agent_script_path'     : agent_script_path,
@@ -1483,33 +1497,26 @@ class OTPmeServer1(object):
 
         return valid_tokens
 
-    #def get_valid_ssh_token(self, user, public_keys):
-    #    """ Check if we can find a valid SSH login token of the given user. """
-    #    token = None
-    #    verify_token = None
-    #    valid_user_tokens_ssh = self.get_valid_tokens(user=user,
-    #                                            pass_type="ssh_key")
-    #    for _token in valid_user_tokens_ssh:
-    #        # Make sure we use linked token if needed.
-    #        if _token.destination_token:
-    #            _verify_token = _token.get_destination_token()
-    #        else:
-    #            _verify_token = _token
-    #        # Workaround to detect if hardware gpg card/token is present. If
-    #        # the card is plugged in the public key of the card is listed two
-    #        # times.
-    #        if _verify_token.card_type == "gpg":
-    #            if not public_keys.count(_verify_token.ssh_public_key) > 1:
-    #                continue
-    #        else:
-    #            if not public_keys.count(_verify_token.ssh_public_key) > 0:
-    #                continue
-    #        # Set found token and stop searching.
-    #        verify_token = _verify_token
-    #        token = _token
-    #        break
+    def get_valid_ssh_token(self, user, ssh_auth_key):
+        """ Check if we can find a valid SSH login token of the given user. """
+        token = None
+        verify_token = None
+        valid_user_tokens_ssh = self.get_valid_tokens(user=user,
+                                                pass_type="ssh_key")
+        for _token in valid_user_tokens_ssh:
+            # Make sure we use linked token if needed.
+            if _token.destination_token:
+                _verify_token = _token.get_destination_token()
+            else:
+                _verify_token = _token
+            if _verify_token.ssh_public_key != ssh_auth_key:
+                    continue
+            # Set found token and stop searching.
+            verify_token = _verify_token
+            token = _token
+            break
 
-    #    return token, verify_token
+        return token, verify_token
 
     def authenticate_host(self, command, command_args):
         """ Authenticate host/node. """
@@ -1689,13 +1696,17 @@ class OTPmeServer1(object):
         except:
             pass
 
-        # Try to get challenge and response from command args.
+        # Try to get challenge from command args.
         try:
             challenge = command_args.pop('challenge')
+        except:
+            challenge = None
+
+        # Try to get response from command args.
+        try:
             response = command_args.pop('response')
         except:
             response = None
-            challenge = None
 
         try:
             login_interface = command_args.pop('login_interface')
@@ -1741,6 +1752,12 @@ class OTPmeServer1(object):
             jwt_challenge = command_args.pop('jwt_challenge')
         except KeyError:
             jwt_challenge = None
+
+        # Try to get SSH auth key.
+        try:
+            ssh_auth_key = command_args.pop('ssh_auth_key')
+        except KeyError:
+            ssh_auth_key = None
 
         # Set auth_mode.
         auth_mode = "auto"
@@ -1789,9 +1806,42 @@ class OTPmeServer1(object):
             if not password:
                 return passauth(query_id="password", prompt="Password/OTP:")
 
+        elif auth_type == "ssh":
+            self.logger.debug("Selecting SSH token for user: %s"
+                            % self.user.name)
+            # Try to get valid SSH token of the user.
+            token, \
+            verify_token = self.get_valid_ssh_token(user=self.user,
+                                                    ssh_auth_key=ssh_auth_key)
+            if not token:
+                msg = "Unable to find SSH token for given public key."
+                raise OTPmeException(msg)
+            try:
+                token_challenge = self.token_challenges[verify_token.rel_path]
+            except KeyError:
+                token_challenge = None
+            if not token_challenge:
+                self.logger.debug("Doing %s authentication." % auth_type)
+                # Set challenge and token for this request.
+                token_challenge = verify_token.gen_challenge()
+                self.token_challenges[verify_token.rel_path] = token_challenge
+            if not self.token:
+                self.token = token
+            # If we have no response yet request it.
+            if not response:
+                return sshauth(query_id="response", challenge=token_challenge)
+
         if command_args:
-            msg = "Got unknown command args: %s" % command_args.keys()
+            msg = "Got unknown command args: %s" % list(command_args.keys())
             self.logger.warning(msg)
+
+        if challenge:
+            for token_rel_path in self.token_challenges:
+                x_challenge = self.token_challenges[token_rel_path]
+                if x_challenge == challenge:
+                    break
+                msg = "Got invalid challenge"
+                raise OTPmeException(msg)
 
         # If we got a password try to auth user.
         if auth_type == "clear-text" or auth_type == "jwt":

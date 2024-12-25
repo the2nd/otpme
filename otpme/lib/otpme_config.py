@@ -110,7 +110,7 @@ class OTPmeConfig(object):
                                 config_file_parameter="OBJECT_EXPORT_HASH_TYPE",
                                 user_config_file_parameter="OBJECT_EXPORT_HASH_TYPE")
         # Default pinentry.
-        self.register_config_var("pinentry", str, "otpme-pinentry",
+        self.register_config_var("pinentry", str, "/usr/bin/pinentry",
                                 config_file_parameter="PINENTRY",
                                 user_config_file_parameter="PINENTRY")
         # LDAP verify ACLs.

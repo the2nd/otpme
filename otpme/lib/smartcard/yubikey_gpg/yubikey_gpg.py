@@ -10,11 +10,11 @@ except:
 
 from otpme.lib import cli
 from otpme.lib import config
+from otpme.lib.help import command_map
 from otpme.lib.gpg import utils as gpg
 #from otpme.lib.messages import error_message
 from otpme.lib.smartcard.yubikey import deploy
 from otpme.lib.smartcard.yubikey.yubikey import Yubikey
-
 from otpme.lib. exceptions import *
 
 logger = config.logger
@@ -26,23 +26,9 @@ def register():
     config.register_smartcard_type("yubikey_gpg", YubikeygpgClientHandler, YubikeygpgServerHandler)
 
 class YubikeygpgClientHandler(object):
-    deploy_commmand_map = {
-            'yubikey-gpg' : {
-                            '_cmd_usage_help' : 'Usage: otpme-token deploy -t {token_type} [-d -b <backup_file> -r <restore_file>] [token]',
-                            'cmd'   :   '-t ::token_type:: -n :no_token_write=True: -b :gpg_backup_file: -r :gpg_restore_file: -d :debug=True: [|object|]',
-                            '_help' :   {
-                                            'cmd'                   : 'initialize yubikey GPG applet',
-                                            '-b <file>'             : 'write GPG backup to file (default /dev/shm/User_Name.gpg)',
-                                            '-r <file>'             : 'restore GPG configuration from backup file',
-                                            '-n'                    : 'do NOT reconfigure yubikey, just add token data to OTPme token',
-                                            '-d'                    : 'enable token related debug output',
-                                        },
-                            },
-
-        }
-
     def __init__(self, sc_type, token_rel_path, token_options=None,
         message_method=print, error_message_method=print):
+        self.token_type = "ssh"
         self.smartcard_type = sc_type
         self.token_rel_path = token_rel_path
         self.token_options = token_options
@@ -57,13 +43,10 @@ class YubikeygpgClientHandler(object):
     def handle_deploy(self, command_handler, no_token_write=False, **kwargs):
         # Get command syntax.
         try:
-            command_syntax = self.deploy_commmand_map[self.smartcard_type]['cmd']
+            command_syntax = command_map['token']['yubikey_gpg']['deploy']['cmd']
         except:
             msg = (_("Unknown token type: %s") % self.smartcard_type)
             raise OTPmeException(msg)
-
-        # Set token command help.
-        token_command_map = {'token' : self.deploy_commmand_map}
 
         # Parse command line.
         local_command_args = {}
@@ -76,18 +59,24 @@ class YubikeygpgClientHandler(object):
                                             command_args=local_command_args)
         except Exception as e:
             if str(e) == "help":
-                exception = command_handler.get_help(command_map=token_command_map)
+                exception = command_handler.get_help()
                 raise ShowHelp(exception)
             elif str(e) != "":
                 msg = str(e)
-                exception = command_handler.get_help(message=msg,
-                                            command_map=token_command_map)
+                exception = command_handler.get_help(message=msg)
                 raise ShowHelp(exception)
+
+        # Try to find yubikey
+        try:
+            Yubikey()
+        except Exception as e:
+            raise OTPmeException(_("Error detecting yubikey: %s") % e)
 
         # Handle deployment of yubikey GPG applet (token type ssh in OTPme)
         ssh_public_key = None
         if no_token_write:
             # Try to get SSH public key of already initialized yubikey.
+            gpg.start_agent()
             ssh_public_key = gpg.get_ssh_public_key()
         else:
             try:
@@ -109,7 +98,7 @@ class YubikeygpgClientHandler(object):
             if gpg_restore_file and gpg_backup_file:
                 return self.get_help(command="deploy",
                                     subcommand=token_type,
-                                    command_map=token_command_map)
+                                    command_map=command_map)
 
             # Start yubikey deploy.
             ssh_public_key = deploy.gpg_applet(gpg_backup_file,
@@ -120,6 +109,8 @@ class YubikeygpgClientHandler(object):
             msg = (_("Cannot continue without SSH public key."))
             raise OTPmeException(msg)
         # Add SSH public key to deployment args.
+        deploy_args = {}
+        deploy_args['card_type'] = "gpg"
         deploy_args['public_key'] = ssh_public_key
 
         return deploy_args
@@ -143,14 +134,7 @@ class YubikeygpgClientHandler(object):
 
 class YubikeygpgServerHandler(object):
     def handle_preauth(self, token):
-        token_options = {
-                    'token_type'        : token.token_type,
-                    'smartcard_id'      : token.smartcard_id,
-                    'challenge'         : token.hmac_challenge,
-                    'otp_len'           : token.otp_len,
-                    'slot'              : token.slot,
-                    'pass_required'     : True,
-                    }
+        token_options = {}
         return token_options
 
     def prepare_authentication(self, smartcard_data):
@@ -160,4 +144,3 @@ class Yubikeygpg(Yubikey):
     """ Class for yubikey HMAC tokens. """
     # Set supported auth types
     otpme_auth_types = [ "yubikey_gpg" ]
-

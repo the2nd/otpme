@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
+from cryptography import x509
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -66,6 +67,7 @@ read_value_acls = {
                                 "admin_token",
                                 "sso_secret",
                                 "sso_csrf_secret",
+                                "fido2_ca_cert",
                                 ],
         }
 
@@ -73,10 +75,12 @@ write_value_acls = {
                     "add"       : [
                                 "unit",
                                 "trust",
+                                "fido2_ca_cert",
                                 ],
                     "delete"    : [
                                 "unit",
                                 "trust",
+                                "fido2_ca_cert",
                                 ],
                     "enable"    : [
                                 "auth",
@@ -570,12 +574,38 @@ commands = {
                     },
                 },
             },
+    'add_fido2_ca_cert'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_fido2_ca_cert',
+                    'args'              : ['ca_cert'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'del_fido2_ca_cert'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_fido2_ca_cert',
+                    'args'              : ['subject'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'add_trust'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'add_trust',
                     'args'              : ['site_name'],
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'list_fido2_ca_certs'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_fido2_ca_certs',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -894,6 +924,7 @@ class Site(OTPmeObject):
         self.sso_csrf_secret = None
         self.required_votes = 0
         self.cluster_key = None
+        self.fido2_ca_certs = {}
 
         self._acls = get_acls()
         self._value_acls = get_value_acls()
@@ -950,6 +981,7 @@ class Site(OTPmeObject):
                             "MGMT_FQDN",
                             "RADIUS_CERT",
                             "RADIUS_KEY",
+                            "FIDO2_CA_CERTS",
                             "ou",
                             ]
                         },
@@ -1097,6 +1129,11 @@ class Site(OTPmeObject):
                                             'type'      : str,
                                             'required'  : False,
                                             'encryption': config.disk_encryption,
+                                        },
+            'FIDO2_CA_CERTS'            : {
+                                            'var_name'  : 'fido2_ca_certs',
+                                            'type'      : dict,
+                                            'required'  : False,
                                         },
             }
 
@@ -2818,6 +2855,41 @@ class Site(OTPmeObject):
         cache.flush()
 
         return self._write(callback=callback)
+
+    @check_acls(['add:fido2_ca_cert'])
+    @object_lock()
+    def add_fido2_ca_cert(self, ca_cert, force=False,
+        callback=default_callback, **kwargs):
+        if isinstance(ca_cert, str):
+            ca_cert = ca_cert.encode()
+        try:
+            x_cert = x509.load_pem_x509_certificate(ca_cert)
+        except Exception as e:
+            msg = "Failed to load PEM cert: %s" % e
+            return callback.error(msg)
+        if x_cert.subject.rfc4514_string() in self.fido2_ca_certs:
+            msg = "Cert already added."
+            return callback.error(msg)
+        self.fido2_ca_certs[x_cert.subject.rfc4514_string()] = ca_cert.decode()
+        return self._cache(callback=callback)
+
+    @check_acls(['delete:fido2_ca_cert'])
+    @object_lock()
+    def del_fido2_ca_cert(self, subject, force=False,
+        callback=default_callback, **kwargs):
+        try:
+            self.fido2_ca_certs.pop(subject)
+        except KeyError:
+            msg = "Unknown CA cert: %s" % subject
+            return callback.error(msg)
+        return self._cache(callback=callback)
+
+    @check_acls(['view:fido2_ca_cert'])
+    @object_lock()
+    def get_fido2_ca_certs(self, callback=default_callback, **kwargs):
+        subjects = list(self.fido2_ca_certs.keys())
+        subjects = "\n".join(subjects)
+        return callback.ok(subjects)
 
     # FIXME: make sure we remove all references before deleting a site
     @check_acls(['delete:object'])

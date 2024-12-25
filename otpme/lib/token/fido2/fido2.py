@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from datetime import datetime
 from fido2.utils import sha256
 from fido2.ctap1 import SignatureData
 from fido2.ctap1 import RegistrationData
+
+from cryptography import x509
+from cryptography.hazmat.primitives.asymmetric import padding
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -139,6 +143,7 @@ def register():
                     commands,
                     sub_type="fido2",
                     sub_type_attribute="token_type")
+    register_config_parameters()
 
 def register_hooks():
     config.register_auth_on_action_hook("token", "deploy")
@@ -146,6 +151,22 @@ def register_hooks():
 def register_token_type():
     """ Register token type. """
     config.register_sub_object_type("token", "fido2")
+
+def register_config_parameters():
+    """ Registger config parameters. """
+    # Object types our config parameters are valid for.
+    object_types = [
+                        'realm',
+                        'site',
+                        'unit',
+                        'user',
+                        'token',
+                    ]
+    # Allow to rename default token?
+    config.register_config_parameter(name="check_fido2_attestation_cert",
+                                    ctype=bool,
+                                    default_value=False,
+                                    object_types=object_types)
 
 class Fido2Token(Token):
     """ Class for fido2 tokens. """
@@ -273,6 +294,56 @@ class Fido2Token(Token):
         except Exception as e:
             msg = "Failed to verify registration parameters: %s" % e
             return callback.error(msg)
+        check_attestation_cert = self.get_config_parameter("check_fido2_attestation_cert")
+        if check_attestation_cert:
+            try:
+                attestation_cert = x509.load_der_x509_certificate(registration_data.certificate)
+            except Exception as e:
+                msg = "Failed to load attestation certificate: %s" % e
+                return callback.error(msg)
+            subject = attestation_cert.subject.rfc4514_string()
+            msg = "Got attestation certificate: %s" % subject
+            callback.send(msg)
+            issuer = attestation_cert.issuer.rfc4514_string()
+            msg = "Got attestation certificate issuer: %s" %  issuer
+            callback.send(msg)
+            own_site = backend.get_object(uuid=config.site_uuid)
+            if not own_site:
+                msg = "Failed to load site: %s" % config.site_uuid
+                return callback.error(msg)
+            try:
+                ca_cert = own_site.fido2_ca_certs[issuer]
+            except KeyError:
+                msg = ("We dont have a fido2 CA cert to verify attestation "
+                        "certificate: %s: %s" % (subject, issuer))
+                return callback.error(msg)
+            # Load fido2 CA cert.
+            ca_cert = ca_cert.encode()
+            try:
+                ca_cert = x509.load_pem_x509_certificate(ca_cert)
+            except Exception as e:
+                msg = "Failed to load fido2 CA cert: %s" % subject
+                return callback.error(msg)
+            # Verify signature.
+            ca_cert_public_key = ca_cert.public_key()
+            try:
+                ca_cert_public_key.verify(attestation_cert.signature,
+                                    attestation_cert.tbs_certificate_bytes,
+                                    padding.PKCS1v15(),
+                                    attestation_cert.signature_hash_algorithm)
+            except Exception as e:
+                msg = "Failed to verify signature: %s" % e
+                return callback.error(msg)
+            # Check attestation certificate validity.
+            now = datetime.now(attestation_cert.not_valid_before_utc.tzinfo)
+            if attestation_cert.not_valid_before_utc > now:
+                msg = "Attestation certificate not yet valid: %s" % attestation_cert.not_valid_before_utc
+                return callback.error(msg)
+            now = datetime.now(attestation_cert.not_valid_before_utc.tzinfo)
+            if attestation_cert.not_valid_after_utc < now:
+                msg = "Attestation certificate not valid anymore: %s" % attestation_cert.not_valid_before_utc
+                return callback.error(msg)
+
         # Set key handle.
         self.key_handle = encode(registration_data.key_handle, "hex")
         # Set public key.

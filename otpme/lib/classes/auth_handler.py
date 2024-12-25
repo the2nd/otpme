@@ -2676,7 +2676,7 @@ class AuthHandler(object):
                     login_script_uuid = x.uuid
                     login_script_path = x.rel_path
                     login_script_opts = self.user.login_script_options
-                    login_script_signs = x.signatures
+                    login_script_signs = x.signatures.copy()
 
             auth_reply['login_script'] = login_script
             auth_reply['login_script_uuid'] = login_script_uuid

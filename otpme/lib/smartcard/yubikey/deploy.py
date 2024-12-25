@@ -36,14 +36,13 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
             message(_("Error loading yubikey class: %s") % e)
             return False
 
-        message(_("Setting yubikey mode to %s") % mode)
-        try:
-            yk.set_mode(mode=mode)
-        except Exception as e:
-            error_message(_("Error setting yubikey mode: %s") % e)
-            return False
-
-        cli.user_input("Please re-plug yubikey and press RETURN.")
+        #message(_("Setting yubikey mode to %s") % mode)
+        #try:
+        #    yk.set_mode(mode=mode)
+        #except Exception as e:
+        #    error_message(_("Error setting yubikey mode: %s") % e)
+        #    status = False
+        #cli.user_input("Please re-plug yubikey and press RETURN.")
 
         try:
             gpg.start_agent()
@@ -102,7 +101,7 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
         sys.exit(1)
 
     # Create temporary .gnupg directory and link it to users home
-    filetools.create_dir(gpg_tmp_home_dir, mode=0o700)
+    filetools.create_dir(gpg_tmp_home_dir, user=config.system_user(), group=True, mode=0o700)
     os.symlink(gpg_tmp_home_dir, gpg_dir)
 
     def cleanup():
@@ -123,7 +122,7 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
         if _signal == 15:
             print("\nExiting on 'SIGTERM'.")
         cleanup()
-        sys.exit(1)
+        os._exit(0)
 
     # handle signals
     signal.signal(signal.SIGINT, signal_handler)
@@ -142,10 +141,10 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
         cleanup()
         sys.exit(1)
 
-    user_real_name = "Peter Pan"
-    user_email = "peter@pan.local"
-    new_password = "12345678"
-    gpg_passphrase = new_password
+    #user_real_name = "Peter Pan"
+    #user_email = "peter@pan.local"
+    #new_password = "12345678"
+    #gpg_passphrase = new_password
 
     user_real_name = None
     user_email = None
@@ -184,19 +183,29 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
 
         # Try to init GPG.
         try:
+            master_key_id, \
             key_id = gpg.init_gpg(user_real_name=user_real_name,
-                                user_email=user_email,
-                                passphrase=gpg_passphrase)
+                                    user_email=user_email,
+                                    passphrase=gpg_passphrase)
         except Exception as e:
             config.raise_exception()
             error_message(_("Error initializating GPG: %s") % e)
             cleanup()
             sys.exit(1)
 
+        message("Starting gpg-agent...")
+        try:
+            ssh_agent_pid, \
+            ssh_auth_sock, \
+            gpg_agent_info = gpg.start_agent()
+        except Exception as e:
+            error_message(str(e))
+            cleanup()
+            sys.exit(1)
+
         # Try to backup new created GPG keys.
         try:
-            gpg.create_backup(key_id=key_id,
-                            backup_file=gpg_backup_file,
+            gpg.create_backup(backup_file=gpg_backup_file,
                             passphrase=gpg_passphrase)
         except Exception as e:
             config.raise_exception()
@@ -204,10 +213,22 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
             cleanup()
             sys.exit(1)
 
+        gpg.stop_agent()
+
         # Clear gpg directory for restore.
         if os.path.exists(gpg_tmp_home_dir):
             shutil.rmtree(gpg_tmp_home_dir)
-            filetools.create_dir(gpg_tmp_home_dir, mode=0o700)
+            filetools.create_dir(gpg_tmp_home_dir, user=config.system_user(), group=True, mode=0o700)
+
+        message("Starting gpg-agent...")
+        try:
+            ssh_agent_pid, \
+            ssh_auth_sock, \
+            gpg_agent_info = gpg.start_agent()
+        except Exception as e:
+            error_message(str(e))
+            cleanup()
+            sys.exit(1)
 
     # Restore GPG backup.
     try:
@@ -244,25 +265,12 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
         if not new_password:
             new_password = cli.get_password(prompt='New token password: ', min_len=pin_min_len)
 
-    message("Starting gpg-agent...")
-    try:
-        ssh_agent_pid, \
-        ssh_auth_sock, \
-        gpg_agent_info = gpg.start_agent()
-    except Exception as e:
-        error_message(str(e))
-        cleanup()
-        sys.exit(1)
-
-    os.environ['SSH_AUTH_SOCK'] = ssh_auth_sock
-
     message("Setting token PIN...")
     try:
         gpg.change_sc_pin(old_pin=yubikey_default_pin,
-                                new_pin=new_password,
-                                admin_pin=False,
-                                agent_pid=ssh_agent_pid,
-                                debug=debug)
+                            new_pin=new_password,
+                            admin_pin=False,
+                            debug=debug)
     except Exception as e:
         error_message(_("Error changing token PIN: %s") % e)
         cleanup()
@@ -271,10 +279,9 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
     message("Setting token admin PIN...")
     try:
         gpg.change_sc_pin(old_pin=yubikey_default_admin_pin,
-                                new_pin=new_password,
-                                admin_pin=True,
-                                agent_pid=ssh_agent_pid,
-                                debug=debug)
+                            new_pin=new_password,
+                            admin_pin=True,
+                            debug=debug)
     except Exception as e:
         error_message(_("Error changing token admin PIN: %s") % e)
         cleanup()
@@ -292,9 +299,10 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
     message("Writing key to yubikey...")
     try:
         gpg.key_to_card(key_id, sc_admin_pin=new_password,
-                            gpg_passphrase=gpg_passphrase,
-                            agent_pid=ssh_agent_pid, debug=debug)
+                        gpg_passphrase=gpg_passphrase,
+                        debug=debug)
     except Exception as e:
+        raise
         error_message(_("Failed to write GPG key to yubikey: %s") % e)
         cleanup()
         sys.exit(1)
@@ -308,19 +316,32 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
         cleanup()
         sys.exit(1)
 
-    # Remove main key from .gnupg directory
-    try:
-        gpg.remove_main_key(key_id, debug=debug)
-    except Exception as e:
-        error_message(_("Failed to remove main GPG key from ~/.gnupg: %s") % e)
-        cleanup()
-        sys.exit(1)
+    ## Remove main key from .gnupg directory
+    #try:
+    #    gpg.remove_main_key(key_id, debug=debug)
+    #except Exception as e:
+    #    error_message(_("Failed to remove main GPG key from ~/.gnupg: %s") % e)
+    #    cleanup()
+    #    sys.exit(1)
 
     # Stop gpg-agent.
     gpg.stop_agent()
 
+    message("Starting gpg-agent...")
+    try:
+        ssh_agent_pid, \
+        ssh_auth_sock, \
+        gpg_agent_info = gpg.start_agent()
+    except Exception as e:
+        error_message(str(e))
+        cleanup()
+        sys.exit(1)
+
     # Try to get ssh public key of sub key on token
     ssh_public_key = gpg.get_ssh_public_key()
+
+    # Stop gpg-agent.
+    gpg.stop_agent()
 
     # Move clean .gnupg directory (without any private key)
     # to users home directory.
@@ -340,7 +361,7 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
     message("")
     message("Your yubikey is ready now")
     message("--------------------------")
-    message("Master key ID:\t%s" % key_id)
+    message("Master key ID:\t%s" % master_key_id)
     message("Sub key ID:\t%s" % sub_key_id)
     message("Sub Keygrip:\t%s" % sub_keygrip)
     message("SSH public key:\t%s" % ssh_public_key.replace("\n", ""))

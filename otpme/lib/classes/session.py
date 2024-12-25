@@ -257,7 +257,7 @@ class Session(OTPmeLockObject):
         # Indicates if this is a cache session to speedup static password
         # requests.
         self.cache = cache
-        # Set access group for this session.
+        # Set accessgroup for this session.
         self.access_group = access_group
 
         # Set session ID.
@@ -670,17 +670,17 @@ class Session(OTPmeLockObject):
                 continue
             # FIXME: Do we need this? disabled groups would be still denied
             #        in User().authenticate(). does this check have a big performance impact?
-            # Create group instance for this session to check if it is enabled.
-            session_group = backend.get_object(object_type="accessgroup",
+            # Create accessgroup instance for this session to check if it is enabled.
+            session_ag = backend.get_object(object_type="accessgroup",
                                                 name=session.access_group,
                                                 realm=self.realm,
                                                 site=self.site)
-            if not session_group:
+            if not session_ag:
                 logger.critical("Accessgroup of session '%s' does not exist "
                                 "anymore: %s" % (session.name,
                                 session.access_group))
                 continue
-            if not session_group.enabled:
+            if not session_ag.enabled:
                 logger.debug("Not updating timestamp for disabled child "
                                 "session '%s'." % session.name)
                 continue
@@ -1056,13 +1056,13 @@ class Session(OTPmeLockObject):
         return self.write_config()
 
     # FIXME: create_child_sessions() creates all child sessions regardless if
-    #        the token used for the request is allowed for the child session/group.
-    #        Verification if the user/token is allowed for a session is done in
-    #        session verification section. Maybe this behavior is a good idea
-    #        because you can add permissions to access a child group/session
-    #        after the user has logged in. (e.g. no re-login needed). A ugly
-    #        side effect is the added amount of not used sessions to verify for
-    #        each request.
+    #        the token used for the request is allowed for the child
+    #        session/accessgroup. Verification if the user/token is allowed for
+    #        a session is done in session verification section. Maybe this
+    #        behavior is a good idea because you can add permissions to access
+    #        a child accessgroup/session after the user has logged in. (e.g. no
+    #        re-login needed). A ugly side effect is the added amount of not used
+    #        sessions to verify for each request.
     @object_lock()
     def create_child_sessions(self, groups_processed=None,
         offline_data_key=None, start_group=None, access_group=None):
@@ -1072,7 +1072,7 @@ class Session(OTPmeLockObject):
         """
         # If groups_processed is not set we where not called from ourselves
         # (see below in this method) so we create ourselves if needed and add
-        # our access group to groups_processed.
+        # our accessgroup to groups_processed.
         if not groups_processed:
             # Add ourselves.
             if not self.exists():
@@ -1083,44 +1083,44 @@ class Session(OTPmeLockObject):
             groups_processed = [ self.access_group ]
             access_group = self.access_group
 
-        # Create group instance.
-        group = backend.get_object(object_type="accessgroup",
+        # Create accessgroup instance.
+        ag = backend.get_object(object_type="accessgroup",
                                     name=access_group,
                                     realm=self.realm,
                                     site=self.site)
-        if not group:
+        if not ag:
             return False
 
-        # Start group used to pass on timeout values.
+        # Start accessgroup used to pass on timeout values.
         if not start_group:
-            start_group = group
+            start_group = ag
 
         # We only create sessions for enabled groups.
-        if not group.enabled:
+        if not ag.enabled:
             logger.debug("Group '%s' is disabled, will not create sessions."
-                            % group.name)
+                            % ag.name)
             return False
 
-        # Walk through all child sessions of the current group.
-        for c in group.childs(sessions=True):
+        # Walk through all child sessions of the current accessgroup.
+        for c in ag.childs(sessions=True):
             # FIXME: Should child sessions inherit client and client_ip from parent session?
             #        Currently they dont as for child sessions there was no direct client request
             client = None
             client_ip = None
 
-            # Create child group instance.
-            child_group = backend.get_object(object_type="accessgroup",
+            # Create child accessgroup instance.
+            child_ag = backend.get_object(object_type="accessgroup",
                                             realm=self.realm,
                                             site=self.site,
                                             name=c)
             # Skip orphan groups.
-            if not child_group:
+            if not child_ag:
                 continue
             # Only process enabled child groups.
-            if not child_group.enabled:
+            if not child_ag.enabled:
                 continue
 
-            # Create child session instance for each child group.
+            # Create child session instance for each child accessgroup.
             child_session = Session(self.session_type,
                                     self.username,
                                     pass_hash=self.pass_hash,
@@ -1134,7 +1134,7 @@ class Session(OTPmeLockObject):
                 logger.debug("Adding child session '%s'." % child_session.name)
                 child_session.add()
 
-                # Check if child sessions should inherit timeouts from parent group.
+                # Check if child sessions should inherit timeouts from parent accessgroup.
                 if start_group.timeout_pass_on:
                     child_session.timeout = start_group.session_timeout
                     child_session.unused_timeout = start_group.unused_session_timeout
@@ -1146,11 +1146,11 @@ class Session(OTPmeLockObject):
             # Write config.
             self.write_config()
 
-            # Skip already processed groups.
+            # Skip already processed accessgroups.
             if c in groups_processed:
                 continue
 
-            # Add child group to list of already processed groups.
+            # Add child accessgroup to list of already processed groups.
             groups_processed.append(c)
 
             # Create child sessions for this child session.
@@ -1199,20 +1199,20 @@ class Session(OTPmeLockObject):
             self.timeout = config.static_pass_timeout
             self.unused_timeout = config.static_pass_unused_timeout
         else:
-            # Create group instance to get timeout values from.
-            group = backend.get_object(object_type="accessgroup",
+            # Create accessgroup instance to get timeout values from.
+            ag = backend.get_object(object_type="accessgroup",
                                 name=self.access_group,
                                 realm=self.realm,
                                 site=self.site)
-            # FIXME: search group via backend.search!?
-            #        what to do if group does not exist?
-            # Get time values from group.
-            if not group:
-                msg = "Unknown group: %s" % self.access_group
+            # FIXME: search accessgroup via backend.search!?
+            #        what to do if accessgroup does not exist?
+            # Get time values from accessgroup.
+            if not ag:
+                msg = "Unknown accessgroup: %s" % self.access_group
                 raise OTPmeException(msg)
             # Set timeouts from accessgroup
-            self.timeout = group.session_timeout
-            self.unused_timeout = group.unused_session_timeout
+            self.timeout = ag.session_timeout
+            self.unused_timeout = ag.unused_session_timeout
 
         # Write session.
         result = self.write_config()

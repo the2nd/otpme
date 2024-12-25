@@ -398,6 +398,30 @@ cmd_help = {
                                 },
                 },
 
+    'add_fido2_ca_cert'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-site add_fido2_ca_cert {site} {ca_cert}',
+                    'cmd'   :   '<|object|> <file:ca_cert>',
+                    '_help' :   {
+                                    'cmd'                   : 'Add fido2 CA cert..',
+                                },
+                },
+
+    'del_fido2_ca_cert'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-site del_fido2_ca_cert {site} {ca_subject}',
+                    'cmd'   :   '<|object|> <subject>',
+                    '_help' :   {
+                                    'cmd'                   : 'Delete fido2 CA cert.',
+                                },
+                },
+
+    'list_fido2_ca_certs'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-site list_fido2_ca_certs {site}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'List fido2 CA certs.',
+                                },
+                },
+
     'dump_ca_chain'   : {
                     '_cmd_usage_help' : 'Usage: otpme-site dump_ca_chain {site}',
                     'cmd'   :   '<|object|>',

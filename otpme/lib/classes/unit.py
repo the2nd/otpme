@@ -878,7 +878,7 @@ class Unit(OTPmeObject):
         """ Change unit's unit (move). """
         if not keep_old_unit:
             base_units = config.get_base_objects("unit")
-            if not self.unit and self.name in base_units:
+            if not self.unit and self.rel_path in base_units:
                 return callback.error("Cannot move base unit.")
 
         # Remove tailing slash.
@@ -1025,7 +1025,7 @@ class Unit(OTPmeObject):
         if keep_old_unit:
             return callback.ok()
 
-        return self.delete(force=True, callback=callback)
+        return self.delete(add_to_trash=False, force=True, callback=callback)
 
     @object_lock(full_lock=True)
     @run_pre_post_add_policies()
@@ -1198,7 +1198,9 @@ class Unit(OTPmeObject):
         # Delete object using parent class.
         del_result = OTPmeObject.delete(self,
                         verbose_level=verbose_level,
-                        force=force, callback=callback)
+                        force=force,
+                        callback=callback,
+                        **kwargs)
 
         # Invalidate cache.
         members_cache.invalidate()

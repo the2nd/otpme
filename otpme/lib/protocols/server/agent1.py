@@ -55,6 +55,7 @@ class OTPmeAgentP1(object):
         # Will hold session of the requesting client (PID).
         self.session = {}
         self.login_sessions = {}
+        self.ssh_agent_pid = None
 
         # Get communication handler to talk to agent main process.
         socket_comm_handler = handler_args['comm_handler']
@@ -140,6 +141,29 @@ class OTPmeAgentP1(object):
         if status_code == status_codes.ERR:
             status = False
         return status, message
+
+    def check_ssh_agent_pid(self, pid, ssh_agent_pid):
+        """ Check if PID is a child of agent PID. """
+        try:
+            proc = psutil.Process(int(pid))
+            # Walk through all parent processes of PID and check
+            # if one has a session.
+            while True:
+                # Stop if we found a session for the connecting PID.
+                if str(proc.pid) == str(ssh_agent_pid):
+                    return str(proc.pid)
+                # Get next parent.
+                # WORKAROUND: proc.parent changed from str to method
+                #             between psutil versions.
+                try:
+                   proc = proc.parent()
+                except:
+                   proc = proc.parent
+                # Stop loop if we reached process tree's top.
+                if proc is None:
+                    break
+        except:
+            pass
 
     def get_login_pid(self, pid):
         """ Check if a session exists for the given PID and return login PID. """
@@ -302,6 +326,20 @@ class OTPmeAgentP1(object):
                                                     command=command,
                                                     username=self.client_user,
                                                     pid=self.client_pid)
+        # Try to authorize by agent PID.
+        if not self.authorized:
+            for login_pid in self.login_sessions.keys():
+                session = self.login_sessions[login_pid]
+                try:
+                    ssh_agent_pid = session['ssh_agent_pid']
+                except:
+                    continue
+                if not self.check_ssh_agent_pid(self.client_pid, ssh_agent_pid):
+                    continue
+                self.authorized = True
+                self.login_pid = ssh_agent_pid
+                break
+
         # Set session.
         try:
             self.session = self.login_sessions[self.login_pid]
@@ -332,10 +370,6 @@ class OTPmeAgentP1(object):
                 pass
             try:
                 self.ssh_key_pass = self.session['ssh_key_pass']
-            except:
-                pass
-            try:
-                self.ssh_agent_pid = self.session['ssh_agent_pid']
             except:
                 pass
             try:

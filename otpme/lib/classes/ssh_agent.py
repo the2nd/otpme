@@ -68,22 +68,9 @@ class SSHAgent(object):
             msg = ("Got no SSH script signatures to verify")
             raise OTPmeException(msg)
 
-        otpme_login_sesssion_dir = "%s/%s" % (self.env_dir,
-                                            self.login_session_id)
-        otpme_agent_vars_file = "%s/%s" % (otpme_login_sesssion_dir,
-                                            config.agent_vars_filename)
-        otpme_ssh_auth_sock_dir = "%s/.ssh-agent" % otpme_login_sesssion_dir
-        otpme_ssh_auth_sock = "%s/socket" % otpme_ssh_auth_sock_dir
-        otpme_gpg_agent_sock_dir = "%s/.gpg-agent" % otpme_login_sesssion_dir
-        otpme_gpg_agent_sock = "%s/socket" % otpme_gpg_agent_sock_dir
-
         # Add socket paths etc. to script environment.
         script_env = os.environ.copy()
         script_env['OTPME_LOGIN_SESSION'] = self.login_session_id
-        script_env['OTPME_LOGIN_SESSION_DIR'] = otpme_login_sesssion_dir
-        script_env['OTPME_SSH_AGENT_SOCKET'] = otpme_ssh_auth_sock
-        script_env['OTPME_GPG_AGENT_SOCKET'] = otpme_gpg_agent_sock
-        script_env['OTPME_SSH_AGENT_VARS_FILE'] = otpme_agent_vars_file
 
         # Add command to script options.
         script_options = []

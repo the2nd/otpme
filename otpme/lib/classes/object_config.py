@@ -408,8 +408,9 @@ class ObjectConfig(object):
         return val
 
     def remove_headers(self):
-        """ Decrypt object config. """
+        """ Decode object config and remove headers. """
         object_config = dict(self.decrypted_config)
+        object_config = self.decode_object_config(object_config)
         for p in dict(object_config):
             value = object_config[p]
             # Remove encryption header.

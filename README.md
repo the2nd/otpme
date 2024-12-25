@@ -1,7 +1,7 @@
 # Installation instructions
 
 ## Install debian dependencies
-apt-get install python3.11-venv gobjc++ python3-pybind11 python3-dev build-essential cmake gcc dbus-x11 freeradius libacl1-dev libnss-cache liboath0 liboath-dev libpcsclite1 libpq-dev libre2-9 libre2-dev libsystemd-dev pkg-config postgresql postgresql-server-dev-all pwgen pyflakes3 redis redis-server redis-tools libpcsclite-dev
+apt-get install python3.11-venv gobjc++ python3-pybind11 python3-dev build-essential cmake gcc dbus-x11 freeradius libacl1-dev libnss-cache liboath0 liboath-dev libpcsclite1 libpq-dev libre2-9 libre2-dev libsystemd-dev pkg-config postgresql postgresql-server-dev-all pwgen pyflakes3 redis redis-server redis-tools libpcsclite-dev ykcs11
 
 ### Disable installed services
 systemctl stop redis  
@@ -48,3 +48,10 @@ otpme-controld start
 ## Login with admin token
 You need to input pin+otp.  
 otpme-tool login
+
+## Add optional U2F/fido2 attestation certificates from https://developers.yubico.com/FIDO/yubico-fido-ca-certs.txt.
+wget https://developers.yubico.com/FIDO/yubico-fido-ca-1.pem
+wget https://developers.yubico.com/FIDO/yubico-fido-ca-2.pem
+otpme-site add_fido2_ca_cert yoursite yubico-fido-ca-1.pem
+otpme-site add_fido2_ca_cert yoursite yubico-fido-ca-2.pem
+otpme-realm config yourrealm.tld check_fido2_attestation_cert True

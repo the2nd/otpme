@@ -426,7 +426,7 @@ class PamHandler(object):
         """ Get SSH agent script control class """
         from otpme.lib.classes.ssh_agent import SSHAgent
         if not self.ssh_agent_script:
-            msg = (_("Got no SSH agent script."))
+            msg = (_("Got no SSH agent script"))
             raise OTPmeException(msg)
 
         if self.ssh_agent:
@@ -481,6 +481,8 @@ class PamHandler(object):
             # Make sure no SSH agent is running before starting a new one.
             self.stop_ssh_agent(verify_signs=verify_signs)
 
+            self.logger.debug("Staring ssh-agent...")
+
             # Start SSH agent.
             ssh_auth_sock, \
             ssh_agent_pid, \
@@ -495,6 +497,8 @@ class PamHandler(object):
         if ssh_auth_sock:
             self.pamh.env['SSH_AUTH_SOCK'] = ssh_auth_sock
             #os.environ['SSH_AUTH_SOCK'] = ssh_auth_sock
+            msg = "SSH agent listening on: %s" % ssh_auth_sock
+            self.logger.info(msg)
 
         if ssh_agent_pid:
             self.pamh.env['SSH_AGENT_PID'] = ssh_agent_pid
@@ -593,8 +597,10 @@ class PamHandler(object):
             raise OTPmeException(msg)
 
         # Make sure script output is string.
-        script_stdout = script_stdout.decode()
-        script_stderr = script_stderr.decode()
+        if isinstance(script_stdout, bytes):
+            script_stdout = script_stdout.decode()
+        if isinstance(script_stderr, bytes):
+            script_stderr = script_stderr.decode()
 
         if script_returncode != 0:
             msg = (_("Login script return failure: %s") % script_stderr)
@@ -799,17 +805,6 @@ class PamHandler(object):
                     agent_keys[public_key] = key
                 self.logger.debug("Got %s keys from SSH agent."
                                 % len(agent_keys))
-                # Workaround to detect if hardware GPG card/token is present.
-                # If the card is plugged in the public key of the card is
-                # listed two times.
-                if verify_token.card_type == "gpg":
-                    if not public_keys.count(verify_token.ssh_public_key) > 1:
-                        agent_keys = {}
-                        public_keys = []
-                else:
-                    if not public_keys.count(verify_token.ssh_public_key) > 0:
-                        agent_keys = {}
-                        public_keys = []
                 # Get SSH agent key instance.
                 ssh_login_key = None
                 if verify_token.ssh_public_key in agent_keys:
@@ -824,11 +819,12 @@ class PamHandler(object):
                 # When using a hardware token like the yubikey the encryption
                 # passphrase is derived via ssh-agent signing.
                 self.logger.debug("Adding SSH key passphrase to otpme-agent...")
+                agent_conn = self.get_agent_connection()
                 try:
                     agent_conn.add_ssh_key_pass(ssh_agent_pid=ssh_agent_pid,
                                                 ssh_key_pass=ssh_key_pass)
                 except Exception as e:
-                    msg = (_("Unable to add SSH key passphrase to otpme-agent."))
+                    msg = (_("Unable to add SSH key passphrase to otpme-agent"))
                     raise OTPmeException(msg)
 
                 # Try to derive passphrase for offline token decryption via ssh-agent.
@@ -1147,6 +1143,7 @@ class PamHandler(object):
                                 password=self.password,
                                 password_method=self.get_password,
                                 use_ssh_agent=self.use_ssh_agent,
+                                start_ssh_agent=self.ensure_ssh_agent,
                                 ssh_agent_method=self.start_ssh_agent,
                                 use_smartcard=self.use_smartcard,
                                 endpoint=True, change_user=True,

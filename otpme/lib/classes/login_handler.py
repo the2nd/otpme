@@ -40,17 +40,18 @@ class LoginHandler(object):
         return agent_conn
 
     def login(self, realm=None, site=None, username=None, password=None,
-        login_interface="tty", use_smartcard=False, use_ssh_agent=False,
-        password_method=None, ssh_agent_method=None, need_ssh_key_pass=False,
-        change_user=False, endpoint=True, unlock=False, interactive=False,
-        add_agent_session=None, add_login_session=True, check_login_status=True,
-        cache_login_tokens=False, sync_token_data=False, auth_only=False,
-        start_otpme_agent=True, jwt_auth=False, jwt_method=None, message_method=None,
-        error_message_method=None, connect_timeout=3, timeout=10,
-        node=None, offline_key_derivation_func=None, offline_key_func_opts={},
-        check_offline_pass_strength=False, offline_iterations_by_score={},
-        offline_session_key=None, login_session_id=None, add_agent_acl=False,
-        cleanup_method=None, socket_uri=None, login_use_dns=False, use_dns=False):
+        login_interface="tty", use_smartcard=False, start_ssh_agent=False,
+        use_ssh_agent=False, password_method=None, ssh_agent_method=None,
+        need_ssh_key_pass=False, change_user=False, endpoint=True, unlock=False,
+        interactive=False, add_agent_session=None, add_login_session=True,
+        check_login_status=True, cache_login_tokens=False, sync_token_data=False,
+        auth_only=False, start_otpme_agent=True, jwt_auth=False, jwt_method=None,
+        message_method=None, error_message_method=None, connect_timeout=3,
+        timeout=10, node=None, offline_key_derivation_func=None,
+        offline_key_func_opts={}, check_offline_pass_strength=False,
+        offline_iterations_by_score={}, offline_session_key=None,
+        login_session_id=None, add_agent_acl=False, cleanup_method=None,
+        socket_uri=None, login_use_dns=False, use_dns=False):
         """ Send realm login request. """
         login = True
         exception = None
@@ -100,6 +101,7 @@ class LoginHandler(object):
                                     use_dns=use_dns,
                                     use_agent=False,
                                     use_ssh_agent=use_ssh_agent,
+                                    start_ssh_agent=start_ssh_agent,
                                     ssh_agent_method=ssh_agent_method,
                                     start_otpme_agent=start_otpme_agent,
                                     need_ssh_key_pass=need_ssh_key_pass,

@@ -568,7 +568,7 @@ class SshToken(Token):
                 return callback.error()
 
         # Check if we got SSH public key as argument.
-        if ssh_public_key == None:
+        if ssh_public_key is None:
             ssh_public_key = callback.ask("Please enter/paste SSH public key: ")
         if ssh_public_key:
             self.ssh_public_key = ssh_public_key
@@ -612,8 +612,7 @@ class SshToken(Token):
             if sftoken.pin_enabled:
                 otp_len = otp_len + sftoken.pin_len
             return ssh.gen_challenge(self.ssh_public_key, otp_len=otp_len)
-        else:
-            return ssh.gen_challenge(self.ssh_public_key, otp_len=0)
+        return ssh.gen_challenge(self.ssh_public_key, otp_len=0)
 
     def test(self, password=None, callback=default_callback, **kwargs):
         """ Test if SSH authentication with this token can be verified. """
@@ -707,8 +706,10 @@ class SshToken(Token):
                 return None
 
         elif challenge and response:
-            if not ssh.verify_sign(public_key=decode(self.ssh_public_key, "base64"),
-                                    data=decode(response, "base64"),
+            response = decode(response, "base64")
+            ssh_public_key = decode(self.ssh_public_key, "base64")
+            if not ssh.verify_sign(public_key=ssh_public_key,
+                                    data=response,
                                     plaintext=challenge):
                 logger.warning("Verifying SSH response failed.")
                 return False
@@ -842,8 +843,8 @@ class SshToken(Token):
     @object_lock(full_lock=True)
     @backend.transaction
     def deploy(self, public_key=None, private_key=None, password=None,
-        pass_hash_type="PBKDF2", _caller="API", verbose_level=0,
-        callback=default_callback):
+        pass_hash_type="PBKDF2", card_type=None, _caller="API",
+        verbose_level=0, callback=default_callback):
         """ Deploy SSH token. """
         if not public_key and not private_key:
             return callback.error("Need at least public or private key.")
@@ -868,7 +869,10 @@ class SshToken(Token):
         msg = (_("Setting SSH public key to token: %s") % self.rel_path)
         callback.send(msg)
 
+        self.card_type = card_type
         self.ssh_public_key = public_key
+        self.change_ssh_public_key(ssh_public_key=public_key,
+                                    run_policies=False)
 
         return self._cache(callback=callback)
 

@@ -479,6 +479,9 @@ class CommandHandler(object):
             if subcommand == "show":
                 register_module("otpme.lib.cli")
 
+            if subcommand == "config":
+                register_module('otpme.lib.token.fido2.fido2')
+
             # Handle post object registration stuff.
             config.handle_post_object_registration()
             # Handle post base object registration stuff.
@@ -4037,7 +4040,7 @@ class CommandHandler(object):
 
         return ssh_key_pass
 
-    def start_pinentry(self, title="pinentry-otpe", wrap_pinentry=None,
+    def start_pinentry(self, title="pinentry-otpme", wrap_pinentry=None,
         pinentry_bin=None, pinentry_opts=None):
         """ Start GPG pinentry wrapper. """
         #from otpme.lib.pinentry import pinentry
@@ -4046,7 +4049,7 @@ class CommandHandler(object):
         # Check if we have to wrap an existing pinentry.
         if pinentry_bin is None:
             pinentry_bin = config.pinentry
-            if pinentry_bin== "otpme-pinentry":
+            if pinentry_bin == "otpme-pinentry":
                 if wrap_pinentry is None:
                     wrap_pinentry = False
             else:
@@ -4057,7 +4060,7 @@ class CommandHandler(object):
         try:
             login_session_id = os.environ['OTPME_LOGIN_SESSION']
         except:
-            raise OTPmeException("Unable to get OTPME_LOGIN_SESSION.")
+            login_session_id = None
 
         # Make sure we do not auth to agent with users login session.
         try:
@@ -4074,15 +4077,16 @@ class CommandHandler(object):
         autoconfirm_file = config.get_pinentry_autoconfirm_file()
 
         # Try to get users DISPLAY from file
-        env_dir = config.get_user_env_dir()
-        session_dir = "%s/%s" % (env_dir, login_session_id)
-        display_file = "%s/.display" % session_dir
-        if os.path.exists(display_file):
-            fd = open(display_file, "r")
-            display = fd.readline()
-            fd.close()
-            if display.startswith(":"):
-                os.environ['DISPLAY'] = display
+        if login_session_id:
+            env_dir = config.get_user_env_dir()
+            session_dir = "%s/%s" % (env_dir, login_session_id)
+            display_file = "%s/.display" % session_dir
+            if os.path.exists(display_file):
+                fd = open(display_file, "r")
+                display = fd.readline()
+                fd.close()
+                if display.startswith(":"):
+                    os.environ['DISPLAY'] = display
 
         # Set path to users Xauthority file
         user_home = os.path.expanduser("~")
@@ -4105,7 +4109,7 @@ class CommandHandler(object):
                      pin_function=self.get_ssh_key_pass,
                      autoconfirm_file=autoconfirm_file,
                      fallback=True,
-                     debug_file=None,
+                     #debug_file="/tmp/pinentry.log",
                      pinentry_bin=pinentry_bin)
 
     def get_authorized_keys(self, username):

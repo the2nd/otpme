@@ -1250,8 +1250,6 @@ class OfflineToken(object):
                     % (object_type, object_id))
             self.logger.debug(msg)
             try:
-                # Load object config and run decrypt without key to remove fake
-                # encryption headers..
                 object_config = ObjectConfig(object_id, object_config, encrypted=False)
                 object_config = object_config.remove_headers()
             except Exception as e:

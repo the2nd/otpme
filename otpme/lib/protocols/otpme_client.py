@@ -19,6 +19,7 @@ import select
 import signal
 import hashlib
 import inspect
+from paramiko.agent import Agent
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -1000,12 +1001,21 @@ class OTPmeClient(OTPmeClientBase):
         challenge = command_dict['challenge']
         otp_len = int(challenge.split(":")[1])
 
-        if not self.use_ssh_agent:
-            raise OTPmeException(_("SSH authentication requested but ssh-agent "
-                                "usage disabled."))
+        #if not self.use_ssh_agent:
+        #    raise OTPmeException(_("SSH authentication requested but ssh-agent "
+        #                        "usage disabled."))
+
+        try:
+            self.ssh_agent_pid = os.environ['SSH_AGENT_PID']
+        except:
+            system_user = config.system_user()
+            try:
+                self.ssh_agent_pid = stuff.get_pid(name='gpg-agent', user=system_user)[0]
+            except:
+                pass
 
         # Try to get password from user.
-        if not self.password and self.need_ssh_key_pass:
+        if self.need_ssh_key_pass and not self.password:
             try:
                 self.password = self.get_password("Password: ")
             except Exception as e:
@@ -1020,8 +1030,11 @@ class OTPmeClient(OTPmeClientBase):
             else:
                 ssh_key_pass = self.password
 
-            if config.debug_level(DEBUG_SLOT) > 3:
-                self.logger.debug("Adding SSH key passphrase to agent...")
+            if not self.agent_conn:
+                self.agent_conn = connections.get("agent",
+                                user=self.otpme_agent_user)
+
+            self.logger.debug("Adding SSH key passphrase to agent...")
             # Add SSH key pass to agent.
             try:
                 self.agent_conn.add_ssh_key_pass(ssh_agent_pid=self.ssh_agent_pid,
@@ -1036,6 +1049,7 @@ class OTPmeClient(OTPmeClientBase):
         try:
             response = ssh.sign_challenge(challenge=challenge)
         except Exception as e:
+            config.raise_exception()
             raise AuthFailed(_("Error signing SSH challenge: %s") % e)
 
         return response, challenge
@@ -1624,7 +1638,7 @@ class OTPmeClient(OTPmeClientBase):
 class OTPmeClient1(OTPmeClientBase):
     """ Class that implements OTPme client. """
     def __init__(self, daemon, connection, use_smartcard=False, use_ssh_agent=False,
-        ssh_agent_method=None, endpoint=True, otpme_agent_user=None,
+        start_ssh_agent=False, ssh_agent_method=None, endpoint=True, otpme_agent_user=None,
         start_otpme_agent=None, handle_user_auth=True, handle_host_auth=True,
         need_ssh_key_pass=False, aes_pass=None, client=None, username=None,
         jwt_method=None, rsp=None, srp=None, slp=None, login=False, unlock=False,
@@ -1815,7 +1829,7 @@ class OTPmeClient1(OTPmeClientBase):
         # Users SSH agent script signatures.
         self.ssh_agent_script_signs = None
         # Indicates that we should start the ssh-agent.
-        self.start_ssh_agent = False
+        self.start_ssh_agent = start_ssh_agent
         # Method to start ssh-agent
         self.ssh_agent_method = ssh_agent_method
         # Indicates that we should ask for the SSH key pass if none was given.
@@ -1833,6 +1847,9 @@ class OTPmeClient1(OTPmeClientBase):
         # Smartcard options we received from peer (e.g. yubikey slot number)
         self.smartcard_options = {}
         self.smartcard_client_handler = None
+        # Will hold SSH public keys received from server.
+        self.ssh_public_keys = {}
+        self.ssh_auth_key = None
         # Indicates that we should check the login status of the user.
         self.check_login_status = check_login_status
         # Indicates if we should cache login tokens received from authd.
@@ -2672,8 +2689,79 @@ class OTPmeClient1(OTPmeClientBase):
             # Get smartcard options from preauth reply.
             try:
                 self.smartcard_options = self.preauth_reply['token_options']
-            except:
+            except KeyError:
                 pass
+            # Get smartcard options from preauth reply.
+            try:
+                self.ssh_public_keys = self.preauth_reply['ssh_public_keys']
+            except KeyError:
+                pass
+
+        if self.start_ssh_agent:
+            # Delay start if needed.
+            if self.ssh_agent_start_delay:
+                if config.debug_level(DEBUG_SLOT) > 0:
+                    msg = ("Delaying start of ssh-agent by '%s' seconds."
+                            % self.ssh_agent_start_delay)
+                    self.logger.debug(msg)
+                time.sleep(self.ssh_agent_start_delay)
+            # Try to start ssh-agent via given method.
+            try:
+                self.ssh_agent_method(session_id=self.login_session_id,
+                                script=self.ssh_agent_script,
+                                script_uuid=self.ssh_agent_script_uuid,
+                                script_path=self.ssh_agent_script_path,
+                                script_options=self.ssh_agent_script_opts,
+                                script_signatures=self.ssh_agent_script_signs)
+            except Exception as e:
+                self.cleanup()
+                raise AuthFailed(str(e))
+
+        # Check if we can do SSH authentication.
+        agent_keys = []
+        if self.use_ssh_agent:
+            self.logger.debug("Trying to get keys from ssh-agent...")
+            try:
+                self.ssh_agent_conn = Agent()
+            except Exception as e:
+                if self.use_ssh_agent is True:
+                    self.cleanup()
+                    raise AuthFailed(_("Unable to connect to ssh-agent: %s") % e)
+                else:
+                    self.use_ssh_agent = False
+            try:
+                agent_keys = self.ssh_agent_conn.get_keys()
+            except Exception as e:
+                if self.use_ssh_agent is True:
+                    self.cleanup()
+                    raise AuthFailed(_("Failed to get ssh keys from ssh-agent: %s") % e)
+                else:
+                    self.use_ssh_agent = False
+            finally:
+                self.ssh_agent_conn.close()
+
+            ssh_key_count = len(agent_keys)
+            self.logger.debug("Got '%s' keys from ssh-agent." % ssh_key_count)
+
+            if ssh_key_count == 0:
+                if self.use_ssh_agent is True:
+                    self.cleanup()
+                    raise AuthFailed("Unable to get keys from ssh-agent.")
+                else:
+                    self.use_ssh_agent = False
+            else:
+                self.use_ssh_agent = True
+
+        # If we got SSH keys from agent try SSH authentication.
+        if self.use_ssh_agent and agent_keys and self.ssh_public_keys:
+            for key in agent_keys:
+                public_key = key.get_base64()
+                if public_key not in self.ssh_public_keys:
+                    continue
+                if self.auth_type is None:
+                    self.auth_type = "ssh"
+                self.ssh_auth_key = public_key
+                break
 
     def authenticate(self, command=None):
         """ Handle authentication with daemon. """
@@ -2888,7 +2976,6 @@ class OTPmeClient1(OTPmeClientBase):
 
     def authenticate_user(self):
         """ Authenticate user with daemon. """
-        from paramiko.agent import Agent
         auth_message = None
         command_args = {}
         if not self.username:
@@ -2922,6 +3009,8 @@ class OTPmeClient1(OTPmeClientBase):
             for rel_path in self.smartcard_options:
                 sc_type = self.smartcard_options[rel_path]['token_type']
                 pass_required = self.smartcard_options[rel_path]['pass_required']
+                msg = "Got smartcard token from server: %s (%s)" % (rel_path, sc_type)
+                self.logger.debug(msg)
                 try:
                     smartcard_client_handler = config.get_smartcard_handler(sc_type)[0]
                 except NotRegistered:
@@ -2974,26 +3063,6 @@ class OTPmeClient1(OTPmeClientBase):
                 if not self.handle_response:
                     msg = "Login request without password needs handle_response=True"
                     raise OTPmeException(msg)
-
-        if self.start_ssh_agent:
-            # Delay start if needed.
-            if self.ssh_agent_start_delay:
-                if config.debug_level(DEBUG_SLOT) > 0:
-                    msg = ("Delaying start of ssh-agent by '%s' seconds."
-                            % self.ssh_agent_start_delay)
-                    self.logger.debug(msg)
-                time.sleep(self.ssh_agent_start_delay)
-            # Try to start ssh-agent via given method.
-            try:
-                self.ssh_agent_method(session_id=self.login_session_id,
-                                script=self.ssh_agent_script,
-                                script_uuid=self.ssh_agent_script_uuid,
-                                script_path=self.ssh_agent_script_path,
-                                script_options=self.ssh_agent_script_opts,
-                                script_signatures=self.ssh_agent_script_signs)
-            except Exception as e:
-                self.cleanup()
-                raise AuthFailed(str(e))
 
         # SSH agent PID that will be added to otpme-agent to check if a process
         # is authorized to access the ssh_key_pass.
@@ -3090,38 +3159,6 @@ class OTPmeClient1(OTPmeClientBase):
         else:
             password = None
 
-        # Check if we can do SSH authentication.
-        if self.use_ssh_agent:
-            agent_keys = []
-            public_keys = []
-
-            if config.debug_level(DEBUG_SLOT) > 0:
-                self.logger.debug("Trying to get keys from ssh-agent...")
-            try:
-                self.ssh_agent_conn = Agent()
-                agent_keys = self.ssh_agent_conn.get_keys()
-                self.ssh_agent_conn.close()
-            except Exception as e:
-                if self.use_ssh_agent is True:
-                    self.cleanup()
-                    raise AuthFailed(_("Unable to connect to ssh-agent: %s")
-                                        % e)
-                else:
-                    self.use_ssh_agent = False
-
-            ssh_key_count = len(agent_keys)
-            if config.debug_level(DEBUG_SLOT) > 0:
-                self.logger.debug("Got '%s' keys from ssh-agent." % ssh_key_count)
-
-            if ssh_key_count == 0:
-                if self.use_ssh_agent is True:
-                    self.cleanup()
-                    raise AuthFailed("Unable to get keys from ssh-agent.")
-                else:
-                    self.use_ssh_agent = False
-            else:
-                self.use_ssh_agent = True
-
         if self.auth_type is None:
             if self.use_smartcard:
                 self.auth_type = "smartcard"
@@ -3130,18 +3167,12 @@ class OTPmeClient1(OTPmeClientBase):
                 self.auth_type = "jwt"
         if self.auth_type is None:
             self.auth_type = "clear-text"
-        # If we got SSH keys from agent try SSH authentication.
-        if self.use_ssh_agent:
-            for key in agent_keys:
-                public_key = key.get_base64()
-                public_keys.append(public_key)
-            if self.auth_type is None:
-                self.auth_type = "ssh"
-            # Set command args.
-            command_args['public_keys'] = public_keys
+
+        if self.auth_type == "ssh":
+            command_args['ssh_auth_key'] = self.ssh_auth_key
 
         # Add JWT to do redirected authentication.
-        elif self.jwt:
+        if self.jwt:
             command_args['redirect_response'] = self.jwt
 
         # Last but not least we can try OTP/password authentication.
@@ -3342,7 +3373,6 @@ class OTPmeClient1(OTPmeClientBase):
                 if offline_tokens:
                     # Get offline session key (e.g. to be forwarded on login redirect).
                     self._offline_token.gen_session_key()
-                    #self.offline_session_key = self._offline_token.session_key_public
                     self.offline_session_key = self._offline_token.session_key_private
 
                 # Get SLP for this session.
@@ -3806,7 +3836,6 @@ class OTPmeClient1(OTPmeClientBase):
 
     def handle_offline_token(self, offline_tokens, session_uuid):
         """ Remove old offline tokens and add new ones if needed. """
-        from paramiko.agent import Agent
         enc_pass = None
         enc_challenge = None
 

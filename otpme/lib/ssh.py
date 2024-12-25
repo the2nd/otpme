@@ -160,23 +160,12 @@ def gen_challenge(ssh_public_key, otp_len=0):
 
 def sign_challenge(challenge):
     """ Sign OTPme SSH challenge. """
-    import paramiko
     from paramiko.agent import Agent
 
     rsa_message = None
     public_key = challenge.split(":")[3]
 
-    # paramiko sign_ssh_data() changed in version 1.13.
-    paramiko_major_ver = int(paramiko.__version__.split(".")[0])
-    paramiko_minor_ver = int(paramiko.__version__.split(".")[1])
-    if paramiko_major_ver >= 1 and paramiko_minor_ver >= 12:
-        # https://paramiko-docs.readthedocs.io/en/1.13/api/keys.html#paramiko.pkey.PKey.sign_ssh_data
-        sign_data_kwargs = {b'data' : challenge}
-    else:
-        # https://paramiko-docs.readthedocs.io/en/1.12/api/keys.html#paramiko.pkey.PKey.sign_ssh_data
-        sign_data_kwargs = {b'rng'   : None,
-                            b'data' : challenge,
-                        }
+    sign_data_kwargs = {'data' : challenge}
     agent = Agent()
     agent_keys = agent.get_keys()
 
@@ -189,6 +178,7 @@ def sign_challenge(challenge):
             try:
                 x = key.sign_ssh_data(**sign_data_kwargs)
             except Exception as e:
+                config.raise_exception()
                 raise Exception(_("Error signing SSH challenge: %s") % e)
             finally:
                 agent.close()
@@ -203,9 +193,12 @@ def verify_sign(public_key, data, plaintext):
     from paramiko.rsakey import RSAKey
     rsa_key = RSAKey(data=public_key)
     rsa_message = Message(data)
+    if isinstance(plaintext, str):
+        plaintext = plaintext.encode()
     try:
         return_value = rsa_key.verify_ssh_sig(plaintext, rsa_message)
     except Exception as e:
+        config.raise_exception()
         raise Exception(_("Unable to verify SSH signature: %s") % e)
     return return_value
 
