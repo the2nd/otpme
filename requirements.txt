@@ -75,6 +75,7 @@ Flask-WTF>=1.2.1
 gevent>=24.2.1
 binaryornot>=0.4.4
 cymysql>=1.0.1
+yubikey-manager>=5.5.1
 #py-radius>=2.0.2.post1
 # apt-get install libffi-dev libssl-dev
 # For use with U2F token (client site only).
