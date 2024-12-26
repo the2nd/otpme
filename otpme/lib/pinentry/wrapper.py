@@ -13,6 +13,9 @@ try:
 except:
     pass
 
+from otpme.lib import config
+from otpme.lib.pinentry.pinentry import get_autoconfirm
+
 # Add OTPme dir to path.
 module_path = os.path.realpath(__file__)
 otpme_dir = os.path.dirname(os.path.dirname(os.path.dirname(module_path)))
@@ -25,22 +28,34 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
     """
     command_history = []
 
-    autoconfirm = False
-    if autoconfirm_file and os.path.exists(autoconfirm_file):
-        try:
-            fd = open(autoconfirm_file, "r")
-            autoconfirm_expiry = float(fd.read())
-            fd.close()
-        except:
-            autoconfirm_expiry = 0
-        # Check if autoconfirm has expired
-        if time.time() > autoconfirm_expiry:
-            os.remove(autoconfirm_file)
-        else:
-            autoconfirm = True
-
     if debug_file:
         log = open(debug_file, "w")
+
+    display = None
+    home_exp = "~%s" % config.system_user()
+    home_dir = os.path.expanduser(home_exp)
+    display_file = "%s/.display" % home_dir
+    if os.path.exists(display_file):
+        fd = open(display_file, "r")
+        try:
+            display = fd.read()
+        except Exception as e:
+            if debug_file:
+                log.write("Failed to read display file: %s: %s" % (display_file, e))
+                log.flush()
+        finally:
+            fd.close()
+        if display:
+            os.environ['DISPLAY'] = display
+    if debug_file:
+        log.write("Using DISPLAY: %s\n" % display)
+        log.flush()
+
+    autoconfirm, \
+    fallback, \
+    message_file = get_autoconfirm(autoconfirm_file)
+
+    if debug_file:
         log.write("Autoconfirmation enabled: %s\n" % autoconfirm)
         log.flush()
 
@@ -232,14 +247,16 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
         else:
             if line.lower().startswith("bye ") or line.lower() == "bye\n":
                 session_end = True
-            try:
-                sys.stdout.write("OK\n")
-                sys.stdout.flush()
-            except Exception as e:
-                if debug_file:
-                    log.write("Error writing 'OK' command to stdout: %s\n" % e)
-                    log.flush()
-                raise
+
+            if not session_end:
+                try:
+                    sys.stdout.write("OK\n")
+                    sys.stdout.flush()
+                except Exception as e:
+                    if debug_file:
+                        log.write("Error writing 'OK' command to stdout: %s\n" % e)
+                        log.flush()
+                    raise
 
         if session_end:
             break

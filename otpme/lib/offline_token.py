@@ -941,14 +941,16 @@ class OfflineToken(object):
         if force:
             remove_session = True
 
-        if remove_session:
-            self.logger.debug("Removing login session: %s" % session_id)
-            try:
-                shutil.rmtree(session_dir)
-            except Exception as e:
-                msg = (_("Error removing offline session: %s") % e)
-                self.logger.critical(msg)
-                raise OTPmeException(msg)
+        if not remove_session:
+            return
+
+        self.logger.debug("Removing login session: %s" % session_id)
+        try:
+            shutil.rmtree(session_dir)
+        except Exception as e:
+            msg = (_("Error removing offline session: %s") % e)
+            self.logger.critical(msg)
+            raise OTPmeException(msg)
 
     def remove_outdated_session_dirs(self):
         """ Remove outdated session directories. """
@@ -1495,20 +1497,12 @@ class OfflineToken(object):
 
     def clear(self):
         """ Remove cached offline tokens and login session file. """
-        # Remove cached offline tokens.
+        if not os.path.exists(self.offline_dir):
+            return
+        # Remove offline tokens dir.
         try:
-            if os.path.exists(self.token_cache_dir):
-                shutil.rmtree(self.token_cache_dir)
+            shutil.rmtree(self.offline_dir)
         except Exception as e:
             msg = (_("Error removing offline token directory: %s") % e)
-            self.logger.critical(msg)
-            raise OTPmeException(msg)
-
-        # Remove token data.
-        try:
-            if os.path.exists(self.used_dir):
-                shutil.rmtree(self.used_dir)
-        except Exception as e:
-            msg = (_("Error removing offline used OTPs directory: %s") % e)
             self.logger.critical(msg)
             raise OTPmeException(msg)

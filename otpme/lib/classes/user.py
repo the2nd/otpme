@@ -3252,8 +3252,8 @@ class User(OTPmeObject):
     @backend.transaction
     def add_token(self, token_name=None, token_type=None, token_uuid=None,
         new_token=None, destination_token=None, replace=False, gen_qrcode=True,
-        no_token_infos=False, token_store_move=False, force=False, enable_mschap=False,
-        run_policies=True, verify_acls=True, verbose_level=0, callback=default_callback,
+        no_token_infos=False, force=False, enable_mschap=False, run_policies=True,
+        verify_acls=True, verbose_level=0, callback=default_callback,
         _caller="API", **kwargs):
         """ Adds token to user. """
         if self.template_object:
@@ -3262,21 +3262,20 @@ class User(OTPmeObject):
 
         destination_token_uuid = None
         send_new_token_message = False
-        if not token_store_move:
-            if self.name == config.token_store_user:
-                if token_name is None:
-                    # Find free token name.
-                    while True:
-                        # Generate token name (lowercase letters and numbers).
-                        token_name = stuff.gen_password(len=8, capital=False)
-                        token_path = "%s/%s" % (self.name, token_name)
-                        result = backend.search(object_type="token",
-                                                attribute="rel_path",
-                                                value=token_path,
-                                                return_type="uuid")
-                        if not result:
-                            break
-                    send_new_token_message = True
+        if self.name == config.token_store_user:
+            if token_name is None:
+                # Find free token name.
+                while True:
+                    # Generate token name (lowercase letters and numbers).
+                    token_name = stuff.gen_password(len=8, capital=False)
+                    token_path = "%s/%s" % (self.name, token_name)
+                    result = backend.search(object_type="token",
+                                            attribute="rel_path",
+                                            value=token_path,
+                                            return_type="uuid")
+                    if not result:
+                        break
+                send_new_token_message = True
 
         if token_name is None:
             msg = "Need <token_name>."

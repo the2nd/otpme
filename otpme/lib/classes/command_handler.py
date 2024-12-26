@@ -4074,7 +4074,8 @@ class CommandHandler(object):
         # Check if we have to autoconfirm key usage. This file is created by
         # pam_otpme while the user is logging in and thus otpme-pinentry cannot
         # ask for confirmation of key usage.
-        autoconfirm_file = config.get_pinentry_autoconfirm_file()
+        username = config.system_user()
+        autoconfirm_file = config.get_pinentry_autoconfirm_file(username)
 
         # Try to get users DISPLAY from file
         if login_session_id:

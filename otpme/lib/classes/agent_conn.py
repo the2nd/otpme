@@ -342,8 +342,10 @@ class AgentConn(object):
                         }
             status, status_code, msg = self.send("auth", **command_args)
             if status_code != status_codes.OK:
-                if status_code == status_codes.ERR and msg == "Unknown session.":
-                    raise UnknownLoginSession(str(msg))
+                if status_code == status_codes.UNKNOWN_LOGIN_SESSION:
+                    # Retry agent auth without session ID.
+                    status, status_code, msg = self.send("auth")
+                    #raise UnknownLoginSession(str(msg))
                 else:
                     msg = (_("Authentication with otpme-agent failed: %s") % msg)
                     raise OTPmeException(msg)

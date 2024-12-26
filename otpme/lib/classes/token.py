@@ -3029,30 +3029,36 @@ class Token(OTPmeObject):
                     send_moved_message = True
                 except:
                     pass
-        else:
-            new_token_name = self.name
 
         if new_token_name is None:
             msg = "Need token name."
             return callback.error(msg)
 
+        old_token_uuid = False
+        is_default_token = False
         x_token = backend.get_object(object_type="token",
                                     realm=self.realm,
                                     site=self.site,
                                     name=new_token_name,
                                     user=new_owner_name)
         if x_token:
+            if new_owner.default_token == x_token.uuid:
+                is_default_token = True
             if not replace:
                 if not force:
-                    msg = (_("Override existing token: %s: ")
-                            % x_token.rel_path)
+                    if is_default_token:
+                        msg = (_("Override default token: %s: ")
+                                % x_token.rel_path)
+                    else:
+                        msg = (_("Override existing token: %s: ")
+                                % x_token.rel_path)
                     answer = str(callback.ask(msg))
                     if answer.lower() != "y":
                         return callback.abort()
-            del_status = new_owner.del_token(token_name=x_token.name,
-                                            force=True,
-                                            _caller=_caller,
-                                            callback=callback)
+            old_token_uuid = x_token.uuid
+            # Delete object from backend instead of calling del_token()
+            # to preserve token roles etc.
+            del_status = backend.delete_object(x_token.oid)
             if not del_status:
                 return del_status
 
@@ -3076,10 +3082,10 @@ class Token(OTPmeObject):
         #        when we support cross site moves.
         # Build new OID.
         new_oid = oid.get(object_type=self.type,
-                            realm=self.realm,
-                            site=self.site,
-                            user=new_owner.name,
-                            name=new_token_name)
+                        realm=self.realm,
+                        site=self.site,
+                        user=new_owner.name,
+                        name=new_token_name)
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -3118,6 +3124,10 @@ class Token(OTPmeObject):
                         % (self.type, new_oid.name, e))
                 return callback.error(msg)
 
+        # Set token UUID of replaced token.
+        if old_token_uuid:
+            self.uuid = old_token_uuid
+
         # Write token before adding it to new owner.
         self._write(callback=callback)
 
@@ -3126,7 +3136,6 @@ class Token(OTPmeObject):
             new_owner.add_token(token_name=new_token_name,
                             new_token=self,
                             replace=replace,
-                            token_store_move=True,
                             force=True,
                             _caller=_caller,
                             callback=callback)

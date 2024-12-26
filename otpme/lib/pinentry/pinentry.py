@@ -155,7 +155,7 @@ def set_autoconfirm(autoconfirm_file, confirm_key, expiry,
     # Load autoconfirm file.
     expiry_data = read_autoconfirm_file(autoconfirm_file)
     # Set expiry in seconds.
-    if not confirm_key in expiry_data:
+    if confirm_key not in expiry_data:
         expiry_data[confirm_key] = {}
     expiry_data[confirm_key]['expiry'] = expiry
     expiry_data[confirm_key]['fallback'] = fallback
@@ -164,7 +164,7 @@ def set_autoconfirm(autoconfirm_file, confirm_key, expiry,
     write_autoconfirm_file(autoconfirm_file, expiry_data)
 
 
-def get_autoconfirm(autoconfirm_file, confirm_key):
+def get_autoconfirm(autoconfirm_file, confirm_key=None):
     """ Check if autoconfirmation is enabled for the given key. """
     fallback = True
     message_file = None

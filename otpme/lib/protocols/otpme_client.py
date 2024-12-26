@@ -602,9 +602,20 @@ class OTPmeClient(OTPmeClientBase):
                                 timeout=timeout)
 
                 if auth_status_code != status_codes.OK:
-                    self.cleanup()
-                    msg = (_("Authentication with otpme-agent failed: %s" % auth_response))
-                    raise OTPmeException(msg)
+                    if auth_status_code != status_codes.UNKNOWN_LOGIN_SESSION:
+                        self.cleanup()
+                        msg = (_("Authentication with otpme-agent failed: %s" % auth_response))
+                        raise OTPmeException(msg)
+                    # Retry agent auth without session ID.
+                    auth_status, \
+                    auth_status_code, \
+                    auth_response = self.send(command="auth",
+                                    encrypt_request=False,
+                                    encode_request=True,
+                                    handle_response=False,
+                                    handle_auth=False,
+                                    use_agent=False,
+                                    timeout=timeout)
 
         # Get server protocol via agent from peer.
         if self.use_agent:
@@ -1637,7 +1648,7 @@ class OTPmeClient(OTPmeClientBase):
 
 class OTPmeClient1(OTPmeClientBase):
     """ Class that implements OTPme client. """
-    def __init__(self, daemon, connection, use_smartcard=False, use_ssh_agent=False,
+    def __init__(self, daemon, connection, use_smartcard=False, use_ssh_agent="auto",
         start_ssh_agent=False, ssh_agent_method=None, endpoint=True, otpme_agent_user=None,
         start_otpme_agent=None, handle_user_auth=True, handle_host_auth=True,
         need_ssh_key_pass=False, aes_pass=None, client=None, username=None,
@@ -3586,6 +3597,13 @@ class OTPmeClient1(OTPmeClientBase):
             msg = ("Error setting login token to otpme-agent: %s" % e)
             self.logger.critical(msg)
 
+        # Clear old offline tokens.
+        try:
+            self._offline_token.clear()
+        except Exception as e:
+            msg = ("Error clearing cached offline tokens: %s" % e)
+            self.logger.critical(msg)
+
         # Get auth reply values.
         login_time = self.auth_reply['login_time']
         session_uuid = self.auth_reply['session']
@@ -3610,16 +3628,7 @@ class OTPmeClient1(OTPmeClientBase):
                 # Acquire offline token lock.
                 self._offline_token.lock()
 
-        # Clear old offline tokens.
         if cache_offline_tokens:
-            try:
-                self._offline_token.clear()
-            except Exception as e:
-                msg = ("Error clearing cached offline tokens: %s" % e)
-                self.logger.critical(msg)
-                cache_offline_tokens = False
-                keep_offline_session = False
-
             # Set login token before adding/decoding offline tokens. This is
             # required to get second factor tokens loaded.
             self._offline_token.set_login_token(login_token_uuid, session_uuid)

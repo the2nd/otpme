@@ -1258,7 +1258,7 @@ def get_agent_vars(string):
     return ssh_agent_name, ssh_agent_pid, ssh_auth_sock, gpg_agent_info
 
 def start_otpme_agent(user=None, group=True,
-    get_proc_data=True, wait_for_socket=True, quiet=True):
+    wait_for_socket=True, quiet=True):
     """ Start OTPme agent. """
     # Create otpme-agent instance.
     from otpme.lib import config
@@ -1293,6 +1293,17 @@ def start_otpme_agent(user=None, group=True,
     if not wait_for_socket:
         return
     wait_for_agent_socket(agent_socket=agent_socket)
+
+def stop_otpme_agent(user=None, quiet=True):
+    """ Start OTPme agent. """
+    # Stop otpme-agent instance.
+    from otpme.lib.classes.otpme_agent import OTPmeAgent
+    # Check if agent is already running.
+    otpme_agent = OTPmeAgent(user=user)
+    agent_status, pid = otpme_agent.status(quiet=quiet)
+    if not agent_status:
+        return
+    otpme_agent.stop()
 
 def wait_for_agent_socket(user=None, agent_socket=None, quiet=True):
     """ Wait for otpme-agent socket to appear. """

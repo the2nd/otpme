@@ -305,8 +305,8 @@ class OTPmeAgentP1(object):
                 try:
                     self.login_pid = self.session_ids[session_id]
                 except:
-                    message = "Unknown session."
-                    status = False
+                    message = "Unknown session"
+                    status = status_codes.UNKNOWN_LOGIN_SESSION
                     return self.build_response(status, message)
             else:
                 # Without session ID from auth command we have to check if there
@@ -951,7 +951,6 @@ class OTPmeAgentP1(object):
                             'realm'     : self.realm,
                             'site'      : self.site,
                             'daemon'    : 'agent',
-                            #'command'   : 'del_session',
                             }
                 # Send command to agent parent process.
                 try:

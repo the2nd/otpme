@@ -32,11 +32,11 @@ class LoginHandler(object):
         # Try to get agent connection.
         try:
             agent_conn = connections.get("agent")
-        except Exception as e:
-            raise OTPmeException(_("Unable to get agent connection: %s") % e)
         except UnknownLoginSession as e:
             msg = (_("Unknown session: %s") % agent_conn.login_session_id)
             raise UnknownLoginSession(msg)
+        except Exception as e:
+            raise OTPmeException(_("Unable to get agent connection: %s") % e)
         return agent_conn
 
     def login(self, realm=None, site=None, username=None, password=None,

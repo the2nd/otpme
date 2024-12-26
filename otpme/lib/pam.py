@@ -4,6 +4,7 @@ import os
 import sys
 import pwd
 import grp
+import json
 import time
 import shutil
 
@@ -50,6 +51,7 @@ class PamHandler(object):
         self.offline_verify_token = None
         self.offline_tokens = {}
         self.offline_sessions = {}
+        self.offline_token = None
         self.offline = False
         self.realm_login = False
         self.login_status = False
@@ -170,7 +172,7 @@ class PamHandler(object):
                     self.logger.debug("Got option: %s=%s" % (arg, val))
                 except:
                     msg = ("Ignoring malformed PAM parameter: %s" % x)
-                    self.logger.critical(msg)
+                    self.logger.warning(msg)
                     continue
             else:
                 arg = x
@@ -197,7 +199,7 @@ class PamHandler(object):
                     self.use_smartcard = "auto"
                 else:
                     msg = ("Ignoring unknown value for use_smartcard: %s" % val)
-                    self.logger.critical(msg)
+                    self.logger.warning(msg)
             if arg == "use_ssh_agent":
                 if val.lower() == "true":
                     self.use_ssh_agent = True
@@ -208,7 +210,7 @@ class PamHandler(object):
                     self.use_ssh_agent = "auto"
                 else:
                     msg = ("Ignoring unknown value for use_ssh_agent: %s" % val)
-                    self.logger.critical(msg)
+                    self.logger.warning(msg)
             if arg == "start_ssh_agent":
                 self.ensure_ssh_agent = True
             if arg == "cache_login_tokens":
@@ -243,7 +245,7 @@ class PamHandler(object):
                         except Exception as e:
                             msg = ("Malformed options for PAM parameter: "
                                     "check_offline_pass_strength")
-                            self.logger.critical(msg)
+                            self.logger.warning(msg)
                 else:
                     self.check_offline_pass_strength = "auto"
             if arg == "offline_key_func":
@@ -253,7 +255,7 @@ class PamHandler(object):
                 except:
                     offline_key_func = None
                     msg = ("Ignoring malformed PAM parameter: offline_key_func")
-                    self.logger.critical(msg)
+                    self.logger.warning(msg)
 
                 if offline_key_func:
                     try:
@@ -277,7 +279,7 @@ class PamHandler(object):
                     except Exception as e:
                         msg = ("Malformed options for PAM parameter: "
                                 "offline_key_func")
-                        self.logger.critical(msg)
+                        self.logger.warning(msg)
 
         # Try to get username.
         try:
@@ -294,6 +296,15 @@ class PamHandler(object):
                 self.pinentry_message_file = config.get_pinentry_message_file()
         except self.pamh.exception:
             pass
+
+    def get_user_uuid(self):
+        # Try to get users UUID from environment.
+        try:
+            user_uuid = os.environ['OTPME_USER_UUID']
+        except KeyError:
+            # Fallback to get UUID from hostd.
+            user_uuid = self.hostd_conn.get_user_uuid(self.username)
+        return user_uuid
 
     def send_pam_message(self, msg):
         """ Send PAM message. """
@@ -337,7 +348,7 @@ class PamHandler(object):
                 agent_conn.del_ssh_key_pass()
             except Exception as e:
                 msg = ("Error removing SSH key passphrase from agent.")
-                self.logger.critical(msg)
+                self.logger.warning(msg)
         if self.ssh_agent_conn:
             self.ssh_agent_conn.close()
         # FIXME: do we need this?
@@ -371,6 +382,11 @@ class PamHandler(object):
         remove_autoconfirm(self.pinentry_autoconfirm_file,
                             confirm_key="LOGIN")
 
+    def get_home_dir(self, username):
+        home_exp = "~%s" % username
+        home_dir = os.path.expanduser(home_exp)
+        return home_dir
+
     def open_session(self):
         """ Get users DISPLAY etc. """
         # Make sure we got a username from PAM.
@@ -384,13 +400,39 @@ class PamHandler(object):
                 display = self.pamh.tty
         if display and self.login_session_dir:
             self.logger.debug("Got DISPLAY from PAM session: %s" % display)
-            if os.path.exists(self.login_session_dir):
-                display_file = "%s/.display" % self.login_session_dir
+            home_dir = self.get_home_dir(self.username)
+            if os.path.exists(home_dir):
+                display_file = "%s/.display" % home_dir
                 filetools.create_file(display_file,
                                     content=display,
                                     user=self.username,
                                     mode=0o600)
 
+        return self.pamh.PAM_SUCCESS
+
+    def close_session(self):
+        """ Stop users agents etc. """
+        # Make sure we got a username from PAM.
+        if not self.username:
+            return self.pamh.PAM_USER_UNKNOWN
+        # Get SSH agent script.
+        ssh_agent_script_file = os.path.join(self.login_session_dir, "ssh-agent-script.json")
+        if os.path.exists(ssh_agent_script_file):
+            agent_script_data = filetools.read_file(ssh_agent_script_file)
+            agent_script_data = json.loads(agent_script_data)
+            self.ssh_agent_script = agent_script_data['ssh_agent_script']
+            self.ssh_agent_script_uuid = agent_script_data['ssh_agent_script_uuid']
+            self.ssh_agent_script_path = agent_script_data['ssh_agent_script_path']
+            self.ssh_agent_script_opts = agent_script_data['ssh_agent_script_opts']
+            self.ssh_agent_script_signs = agent_script_data['ssh_agent_script_signs']
+            # Stop SSH agent.
+            if self.ssh_agent_status():
+                try:
+                    self.stop_ssh_agent()
+                except Exception as e:
+                    self.logger.warning("Unable to run SSH agent script: %s" % e)
+        # Stop otpme-agent which does the user logout if required.
+        stuff.stop_otpme_agent(user=self.username)
         return self.pamh.PAM_SUCCESS
 
     def pam_sm_setcred(self):
@@ -402,7 +444,7 @@ class PamHandler(object):
             hostd_conn = connections.get("hostd")
         except Exception as e:
             self.cleanup()
-            self.logger.critical("Unable to get connection to hostd: %s" % e)
+            self.logger.warning("Unable to get connection to hostd: %s" % e)
             return self.pamh.PAM_SYSTEM_ERR
         # Get dynamics groups of host.
         dynamic_groups = hostd_conn.get_host_dynamic_groups()
@@ -871,7 +913,7 @@ class PamHandler(object):
         else:
             msg = (_("Unsupported offline token found: %s token_type: %s")
                     % (verify_token.rel_path, verify_token.token_type))
-            self.logger.critical(msg)
+            self.logger.warning(msg)
             raise OTPmeException(msg)
 
         reload_offline_token = False
@@ -1211,8 +1253,7 @@ class PamHandler(object):
         """
         # Make sure we create a home dir if configured.
         if self.create_home_directory:
-            home_exp = "~%s" % self.username
-            home_dir = os.path.expanduser(home_exp)
+            home_dir = self.get_home_dir(self.username)
             if not os.path.exists(home_dir):
                 if self.home_skeleton:
                     # Use skeleton for new home dir.
@@ -1274,7 +1315,7 @@ class PamHandler(object):
                 self.display = self.pamh.tty
         if self.display:
             self.logger.debug("Got DISPLAY from PAM: %s" % self.display)
-            #os.environ['DISPLAY'] = self.display
+            os.environ['DISPLAY'] = self.display
             self.pamh.env['DISPLAY'] = self.display
             self.login_interface = "gui"
 
@@ -1288,7 +1329,7 @@ class PamHandler(object):
             self.hostd_conn = connections.get("hostd")
         except Exception as e:
             self.cleanup()
-            self.logger.critical("Unable to get connection to hostd: %s" % e)
+            self.logger.warning("Unable to get connection to hostd: %s" % e)
             return self.pamh.PAM_SYSTEM_ERR
 
         # Check host status.
@@ -1298,14 +1339,8 @@ class PamHandler(object):
             self.cleanup()
             return self.pamh.PAM_AUTH_ERR
 
-        # Try to get users UUID from environment.
-        try:
-            self.user_uuid = os.environ['OTPME_USER_UUID']
-        except KeyError:
-            pass
-        # Fallback to get UUID from hostd.
-        if not self.user_uuid:
-            self.user_uuid = self.hostd_conn.get_user_uuid(self.username)
+        # Get user UUID.
+        self.user_uuid = self.get_user_uuid()
 
         if not self.user_uuid:
             self.logger.warning("Unknown user: %s" % self.username)
@@ -1322,9 +1357,9 @@ class PamHandler(object):
             return self.pamh.PAM_AUTH_ERR
 
         # Add user infos to environment.
-        #os.environ['OTPME_USER'] = self.username
+        os.environ['OTPME_USER'] = self.username
         self.pamh.env['OTPME_USER'] = self.username
-        #os.environ['OTPME_USER_UUID'] = self.user_uuid
+        os.environ['OTPME_USER_UUID'] = self.user_uuid
         self.pamh.env['OTPME_USER_UUID'] = self.user_uuid
 
         # Try to get password/OTP from a previous stacked module.
@@ -1363,7 +1398,7 @@ class PamHandler(object):
             self.offline_token.remove_outdated_session_dirs()
         except Exception as e:
             msg = "Error removing outdated session directories: %s" % e
-            self.logger.critical(msg)
+            self.logger.warning(msg)
         finally:
             self.offline_token.unlock()
 
@@ -1377,7 +1412,7 @@ class PamHandler(object):
         try:
             stuff.start_otpme_agent(user=self.username, wait_for_socket=False)
         except Exception as e:
-            self.logger.critical("Unable to start otpme-agent: %s" % e)
+            self.logger.warning("Unable to start otpme-agent: %s" % e)
             self.cleanup()
             return self.pamh.PAM_SYSTEM_ERR
 
@@ -1576,6 +1611,21 @@ class PamHandler(object):
                 except Exception as e:
                     msg = ("Error running login script: %s" % e)
                     self.logger.warning(msg)
+            # Save SSH agent script.
+            ssh_agent_script_file = os.path.join(self.login_session_dir, "ssh-agent-script.json")
+            msg = "Saving ssh-agent script: %s" % ssh_agent_script_file
+            agent_script_data = {
+                                'ssh_agent_script'          : self.ssh_agent_script,
+                                'ssh_agent_script_uuid'     : self.ssh_agent_script_uuid,
+                                'ssh_agent_script_path'     : self.ssh_agent_script_path,
+                                'ssh_agent_script_opts'     : self.ssh_agent_script_opts,
+                                'ssh_agent_script_signs'    : self.ssh_agent_script_signs,
+                                }
+            agent_script_data = json.dumps(agent_script_data)
+            filetools.create_file(ssh_agent_script_file,
+                                content=agent_script_data,
+                                user=self.username,
+                                mode=0o600)
         else:
             # Read pinentry message file.
             if os.path.exists(self.pinentry_message_file):
