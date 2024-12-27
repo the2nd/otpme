@@ -1064,7 +1064,6 @@ class SQLiteFile(object):
                 except KeyError:
                     current_oc["INCREMENT_IDS"] = []
                     increment_ids = current_oc["INCREMENT_IDS"]
-                # fuck
                 #increment_ids = sorted(increment_ids)
                 for x in increment_ids:
                     incr_id = x[1]

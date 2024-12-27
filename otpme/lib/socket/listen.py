@@ -578,8 +578,9 @@ class ListenSocket(object):
         except:
             pass
 
-        # Cleanup locks etc.
-        multiprocessing.cleanup()
+        # FIXME: do we stil need this here? It closes mqueues which results in malfunction of e.g. otpme-agent.
+        ## Cleanup locks etc.
+        ##multiprocessing.cleanup()
 
         return True
 

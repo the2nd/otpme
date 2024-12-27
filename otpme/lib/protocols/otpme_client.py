@@ -1054,8 +1054,7 @@ class OTPmeClient(OTPmeClientBase):
                 msg = (_("Error adding SSH key passphrase to agent: %s") % e)
                 raise OTPmeException(msg)
 
-        if config.debug_level(DEBUG_SLOT) > 3:
-            self.logger.debug("Signing SSH challenge...")
+        self.logger.debug("Signing SSH challenge...")
         # Try to sign challenge with via running SSH agent.
         try:
             response = ssh.sign_challenge(challenge=challenge)
@@ -1648,7 +1647,7 @@ class OTPmeClient(OTPmeClientBase):
 
 class OTPmeClient1(OTPmeClientBase):
     """ Class that implements OTPme client. """
-    def __init__(self, daemon, connection, use_smartcard=False, use_ssh_agent="auto",
+    def __init__(self, daemon, connection, use_smartcard=False, use_ssh_agent=None,
         start_ssh_agent=False, ssh_agent_method=None, endpoint=True, otpme_agent_user=None,
         start_otpme_agent=None, handle_user_auth=True, handle_host_auth=True,
         need_ssh_key_pass=False, aes_pass=None, client=None, username=None,
@@ -2707,6 +2706,9 @@ class OTPmeClient1(OTPmeClientBase):
                 self.ssh_public_keys = self.preauth_reply['ssh_public_keys']
             except KeyError:
                 pass
+            if self.ssh_public_keys:
+                if self.use_ssh_agent is None:
+                    self.use_ssh_agent = True
 
         if self.start_ssh_agent:
             # Delay start if needed.
@@ -2740,6 +2742,7 @@ class OTPmeClient1(OTPmeClientBase):
                     raise AuthFailed(_("Unable to connect to ssh-agent: %s") % e)
                 else:
                     self.use_ssh_agent = False
+        if self.use_ssh_agent:
             try:
                 agent_keys = self.ssh_agent_conn.get_keys()
             except Exception as e:

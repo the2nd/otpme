@@ -120,7 +120,7 @@ def get(daemon, **kwargs):
     try:
         use_ssh_agent = kwargs['use_ssh_agent']
     except:
-        use_ssh_agent = "auto"
+        use_ssh_agent = False
         kwargs['use_ssh_agent'] = use_ssh_agent
     try:
         use_smartcard = kwargs['use_smartcard']

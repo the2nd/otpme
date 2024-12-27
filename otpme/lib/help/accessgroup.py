@@ -278,7 +278,7 @@ cmd_help = {
                     '_help' :   {
                                     'cmd'                   : 'add policy to accessgroup',
                                 },
-                },
+                    },
 
     'remove_policy'    : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup remove_policy {accessgroup} {policy}',
@@ -286,7 +286,7 @@ cmd_help = {
                     '_help' :   {
                                     'cmd'                   : 'remove policy from accessgroup',
                                 },
-                },
+                    },
 
     'list_tokens'   : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup list_tokens {accessgroup}',
@@ -296,14 +296,14 @@ cmd_help = {
                                     '--return-type'             : 'Attribute to return.',
                                     '--token-types <hotp,totp>' : 'Token types to list.',
                                 },
-                },
+                    },
     'list_roles'   : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup list_roles {accessgroup}',
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : 'List assigned roles.',
                                 },
-                },
+                    },
     'list_policies'   : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup list_policies {accessgroup}',
                     'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
@@ -315,7 +315,7 @@ cmd_help = {
                                     '--return-type'                 : 'Attribute to return.',
                                     '--policy-types <type1,type2>'  : 'Policy types to list.',
                                 },
-                },
+                    },
     'add_role'   : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup add_role {accessgroup} {role}',
                     'cmd'   :   '<|object|> <role_name>',
@@ -360,7 +360,6 @@ cmd_help = {
                                 },
                 },
 
-
     'disable_sessions'    : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup disable_sessions {accessgroup}',
                     'cmd'   :   '<|object|>',
@@ -368,7 +367,6 @@ cmd_help = {
                                     'cmd'                   : 'disable sessions for accessgroup',
                                 },
                 },
-
 
     'enable_session_master'    : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup enable_session_master {accessgroup}',
@@ -378,7 +376,6 @@ cmd_help = {
                                 },
                 },
 
-
     'disable_session_master'    : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup disable_session_master {accessgroup}',
                     'cmd'   :   '<|object|>',
@@ -386,7 +383,6 @@ cmd_help = {
                                     'cmd'                   : 'disable session master for accessgroup',
                                 },
                 },
-
 
     'enable_timeout_pass_on'    : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup enable_timeout_pass_on {accessgroup}',
@@ -396,7 +392,6 @@ cmd_help = {
                                 },
                 },
 
-
     'disable_timeout_pass_on'    : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup disable_timeout_pass_on {accessgroup}',
                     'cmd'   :   '<|object|>',
@@ -404,7 +399,6 @@ cmd_help = {
                                     'cmd'                   : 'disable pass on of timeout values to child sessions',
                                 },
                 },
-
 
     'add_child_group'   : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup add_child_group {accessgroup} {accessgroup}',
@@ -422,7 +416,6 @@ cmd_help = {
                                 },
                 },
 
-
     'add_child_session'   : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup add_child_session {accessgroup} {accessgroup}',
                     'cmd'   :   '<|object|> <group_name>',
@@ -439,7 +432,6 @@ cmd_help = {
                                 },
                 },
 
-
      'max_sessions'    : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup max_sessions {accessgroup} [max_sessions]',
                     'cmd'   :   '<|object|> [max_sessions]',
@@ -448,21 +440,11 @@ cmd_help = {
                                 },
                 },
 
-
      'relogin_timeout'    : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup relogin_timeout {accessgroup} [relogin_timeout]',
                     'cmd'   :   '<|object|> [relogin_timeout]',
                     '_help' :   {
                                     'cmd'                   : 'set relogin timeout for this accessgroup.',
-                                },
-                },
-
-
-     'max_use'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-accessgroup max_use {accessgroup} [max_use]',
-                    'cmd'   :   '<|object|> [max_use]',
-                    '_help' :   {
-                                    'cmd'                   : 'set max authentication requests possible with one otp',
                                 },
                 },
 
@@ -489,7 +471,6 @@ cmd_help = {
                                     'cmd'                   : 'set session timeout',
                                 },
                 },
-
 
      'unused_timeout'    : {
                     '_cmd_usage_help' : 'Usage: otpme-accessgroup unused_timeout {accessgroup} [unused_timeout]',

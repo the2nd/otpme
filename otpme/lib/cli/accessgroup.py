@@ -28,7 +28,6 @@ table_headers = [
                 "relogin",
                 "Childs",
                 "master" ,
-                "maxuse",
                 "to_pass_on",
                 "timeout",
                 "utimeout)",
@@ -44,7 +43,6 @@ def register():
     return_attributes = [
                         'name',
                         'enabled',
-                        'max_use',
                         'max_fail',
                         'description',
                         'max_sessions',
@@ -85,7 +83,6 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
         table.align["reset"] = "c"
         table.align["max"] = "c"
         table.align["relogin"] = "c"
-        table.align["maxuse"] = "c"
         table.align["timeout"] = "c"
         table.align["utimeout)"] = "c"
     # Workaround for "()" in header names.
@@ -100,7 +97,6 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
     for ag_uuid in group_order:
         row = []
         ag_name = group_data[ag_uuid]['name']
-        max_use = group_data[ag_uuid]['max_use'][0]
         max_fail = group_data[ag_uuid]['max_fail'][0]
         max_sessions = group_data[ag_uuid]['max_sessions'][0]
         max_fail_reset = group_data[ag_uuid]['max_fail_reset'][0]
@@ -243,13 +239,6 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
             or check_acl("enable:session_master") \
             or check_acl("disable:session_master"):
                 row.append(session_master)
-            else:
-                row.append("-")
-        # Max use.
-        if "maxuse" in output_fields:
-            if check_acl("view:max_use") \
-            or check_acl("edit:max_use"):
-                row.append(max_use)
             else:
                 row.append("-")
         # Timeout pass-on.

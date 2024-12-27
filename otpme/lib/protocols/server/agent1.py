@@ -125,14 +125,15 @@ class OTPmeAgentP1(object):
                                             lock_id=login_pid)
         return session_lock
 
-    def send_command(self, command, request):
+    def send_command(self, command, request, timeout=3):
         """ Send request to agent parent process. """
         # Send request to parent process.
         self.comm_handler.send(recipient="conn_proxy",
                                 command=command,
-                                data=request)
+                                data=request,
+                                timeout=timeout)
         # Receive reply.
-        sender, command, reply = self.comm_handler.recv()
+        sender, command, reply = self.comm_handler.recv(timeout=timeout)
         message = reply['message']
         status_code = reply['status_code']
         status = None
@@ -691,7 +692,7 @@ class OTPmeAgentP1(object):
 
 
         elif command == "del_ssh_key_pass":
-            agent_session = False
+            agent_session = None
             message = "no SSH key passphrase set"
             status = False
 
@@ -701,6 +702,9 @@ class OTPmeAgentP1(object):
                 agent_session = self.login_pid
 
             if agent_session:
+                msg = ("Removing SSH key passphrase for user '%s' "
+                    "(PID: %s)." % (self.login_user, agent_session))
+                logger.info(msg)
                 session_lock = self.acquire_session_lock(self.session_id)
                 try:
                     self.login_sessions.pop(agent_session)
@@ -790,12 +794,12 @@ class OTPmeAgentP1(object):
                             % (self.login_user, realm, site, self.login_pid))
 
                 # Make sure server session exists in dict.
-                if not 'server_sessions' in self.session:
+                if 'server_sessions' not in self.session:
                     self.session['server_sessions'] = {}
                 server_sessions = self.session['server_sessions']
-                if not realm in server_sessions:
+                if realm not in server_sessions:
                     server_sessions[realm] = {}
-                if not site in server_sessions[realm]:
+                if site not in server_sessions[realm]:
                     server_sessions[realm][site] = {}
 
                 # Get server session.
@@ -851,6 +855,8 @@ class OTPmeAgentP1(object):
                 except Exception as e:
                     message = str(e)
                     status = False
+                    msg = "Failed to add RSP: %s" % e
+                    logger.warning(msg)
 
         elif command == "add_acl":
             try:

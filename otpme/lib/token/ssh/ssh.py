@@ -366,12 +366,14 @@ class SshToken(Token):
         self._sub_sync_fields = {
                     'host'  : {
                         'trusted'  : [
+                            "KEY_TYPE",
                             "SSH_PUBLIC_KEY",
                             ]
                         },
 
                     'node'  : {
                         'untrusted'  : [
+                            "KEY_TYPE",
                             "SSH_PUBLIC_KEY",
                             ]
                         },

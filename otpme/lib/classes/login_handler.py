@@ -41,7 +41,7 @@ class LoginHandler(object):
 
     def login(self, realm=None, site=None, username=None, password=None,
         login_interface="tty", use_smartcard=False, start_ssh_agent=False,
-        use_ssh_agent=False, password_method=None, ssh_agent_method=None,
+        use_ssh_agent="auto", password_method=None, ssh_agent_method=None,
         need_ssh_key_pass=False, change_user=False, endpoint=True, unlock=False,
         interactive=False, add_agent_session=None, add_login_session=True,
         check_login_status=True, cache_login_tokens=False, sync_token_data=False,

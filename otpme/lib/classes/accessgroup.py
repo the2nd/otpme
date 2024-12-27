@@ -53,7 +53,6 @@ read_value_acls = {
                             "max_fail_reset",
                             "max_sessions",
                             "relogin_timeout",
-                            "max_use",
                             "session_timeout",
                             "unused_session_timeout",
                             ],
@@ -86,7 +85,6 @@ write_value_acls = {
                             "max_fail_reset",
                             "max_sessions",
                             "relogin_timeout",
-                            "max_use",
                             "session_timeout",
                             "unused_session_timeout",
                             ],
@@ -295,15 +293,6 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable_timeout_pass_on',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'max_use'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'change_max_use',
-                    'args'              : ['max_use'],
                     'job_type'          : 'process',
                     },
                 },
@@ -708,7 +697,6 @@ def register():
     # Register index attributes.
     config.register_index_attribute("child_group")
     config.register_index_attribute("child_session")
-    config.register_index_attribute("max_use")
     config.register_index_attribute("max_fail")
     config.register_index_attribute("max_fail_reset")
     config.register_index_attribute("max_sessions")
@@ -753,7 +741,6 @@ def register_hooks():
     config.register_auth_on_action_hook("accessgroup", "change_relogin_timeout")
     config.register_auth_on_action_hook("accessgroup", "change_session_timeout")
     config.register_auth_on_action_hook("accessgroup", "change_unused_session_timeout")
-    config.register_auth_on_action_hook("accessgroup", "change_max_use")
     config.register_auth_on_action_hook("accessgroup", "change_max_fail")
     config.register_auth_on_action_hook("accessgroup", "change_max_fail_reset")
     config.register_auth_on_action_hook("accessgroup", "enable_sessions")
@@ -823,8 +810,6 @@ class AccessGroup(OTPmeObject):
         self._default_acls = get_default_acls()
         self._recursive_default_acls = get_recursive_default_acls()
 
-        # Set max use to 0 (infinite).
-        self.max_use = 0
         # Set max_sessions to 0 (infinite) if none was read from config.
         self.max_sessions = 0
         # Set default relogin_timeout to 0 (immediately).
@@ -884,12 +869,6 @@ class AccessGroup(OTPmeObject):
                         'PASS_ON_TIMEOUTS'          : {
                                                         'var_name'  : 'timeout_pass_on',
                                                         'type'      : bool,
-                                                        'required'  : False,
-                                                    },
-
-                        'MAX_USE'                   : {
-                                                        'var_name'  : 'max_use',
-                                                        'type'      : int,
                                                         'required'  : False,
                                                     },
 
@@ -1437,29 +1416,6 @@ class AccessGroup(OTPmeObject):
         self.update_index("relogin_timeout", self.relogin_timeout)
         return self._cache(callback=callback)
 
-    @check_acls(['edit:max_use'])
-    @object_lock()
-    def change_max_use(self, max_use=0, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
-        """ Change max use for this group/session. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("change_max_use",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-        try:
-            self.max_use = int(max_use)
-        except:
-            return callback.error("Max use must be an integer.")
-        # Update index.
-        self.update_index("max_use", self.max_use)
-        return self._cache(callback=callback)
-
     @check_acls(['edit:max_fail'])
     @object_lock()
     def change_max_fail(self, max_fail, run_policies=True,
@@ -1755,7 +1711,6 @@ class AccessGroup(OTPmeObject):
         if result is False:
             return callback.error()
         # Update index.
-        self.add_index("max_use", self.max_use)
         self.add_index("max_fail", self.max_fail)
         self.add_index("max_fail_reset", self.max_fail_reset)
         self.add_index("max_sessions", self.max_sessions)
@@ -2089,12 +2044,6 @@ class AccessGroup(OTPmeObject):
         or self.verify_acl("edit:unused_session_timeout"):
             unused_session_timeout = str(self.unused_session_timeout)
         lines.append('UNUSED_SESSION_TIMEOUT="%s"' % unused_session_timeout)
-
-        max_use = ""
-        if self.verify_acl("view:max_use") \
-        or self.verify_acl("edit:max_use"):
-            max_use = str(self.max_use)
-        lines.append('MAX_USE="%s"' % max_use)
 
         max_fail = ""
         if self.verify_acl("view:max_fail") \

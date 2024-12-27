@@ -1180,17 +1180,17 @@ class OTPmeHost(OTPmeClientObject):
             msg = ""
             if acl_list:
                 msg = (_("%s|%s: Found the following orphan ACLs: %s\n")
-                    % (msg, self.type, self.name, ",".join(acl_list)))
+                    % (msg, self.name, ",".join(acl_list)))
 
             if policy_list:
                 msg = ""
                 if policy_list:
                     msg = (_("%s|%s: Found the following orphan policies: %s\n")
-                        % (msg, self.type, self.name, ",".join(policy_list)))
+                        % (msg, self.name, ",".join(policy_list)))
 
             if token_list:
                 msg = (_("%s|%s: Found the following orphan token UUIDs: %s\n")
-                    % (msg, self.type, self.name, ",".join(token_list)))
+                    % (msg, self.name, ",".join(token_list)))
 
         object_changed = False
         if acl_list:

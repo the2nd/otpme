@@ -1294,7 +1294,7 @@ def start_otpme_agent(user=None, group=True,
         return
     wait_for_agent_socket(agent_socket=agent_socket)
 
-def stop_otpme_agent(user=None, quiet=True):
+def stop_otpme_agent(user=None, wait=True, quiet=True):
     """ Start OTPme agent. """
     # Stop otpme-agent instance.
     from otpme.lib.classes.otpme_agent import OTPmeAgent
@@ -1303,7 +1303,7 @@ def stop_otpme_agent(user=None, quiet=True):
     agent_status, pid = otpme_agent.status(quiet=quiet)
     if not agent_status:
         return
-    otpme_agent.stop()
+    otpme_agent.stop(wait=wait)
 
 def wait_for_agent_socket(user=None, agent_socket=None, quiet=True):
     """ Wait for otpme-agent socket to appear. """

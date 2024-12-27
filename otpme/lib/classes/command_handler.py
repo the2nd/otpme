@@ -5132,6 +5132,7 @@ class CommandHandler(object):
                                                 socket_uri=socket_uri,
                                                 interactive=False)
             except Exception as e:
+                config.raise_exception()
                 msg = ("Failed to get cluster connection: %s: %s"
                         % (node.name, e))
                 self.logger.warning(msg)
@@ -5668,6 +5669,7 @@ class CommandHandler(object):
                                             timeout=None,
                                             socket_uri=socket_uri)
         except Exception as e:
+            config.raise_exception()
             msg = ("Failed to get cluster connection: %s: %s"
                     % (this_node.name, e))
             self.logger.warning(msg)
@@ -5757,6 +5759,7 @@ class CommandHandler(object):
                                             timeout=None,
                                             socket_uri=socket_uri)
         except Exception as e:
+            config.raise_exception()
             msg = ("Failed to get cluster connection: %s: %s"
                     % (this_node.name, e))
             self.logger.warning(msg)
@@ -5853,6 +5856,7 @@ class CommandHandler(object):
                                                 timeout=None,
                                                 socket_uri=socket_uri)
             except Exception as e:
+                config.raise_exception()
                 msg = ("Failed to get cluster connection: %s: %s"
                         % (new_master_node, e))
                 self.logger.warning(msg)
@@ -5916,6 +5920,7 @@ class CommandHandler(object):
                                             timeout=None,
                                             socket_uri=socket_uri)
         except Exception as e:
+            config.raise_exception()
             msg = ("Failed to get cluster connection: %s: %s"
                     % (new_master_node, e))
             self.logger.warning(msg)

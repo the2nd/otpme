@@ -262,20 +262,24 @@ def cleanup(keep_queues=False):
             pass
         posix_semaphores.pop(sem_name)
 
-def get_bool(name, default=False, random_name=True):
+def get_bool(name, default=False, random_name=True, init=True):
     class SharedBool(object):
-        def __init__(self, name, default=False, random_name=True):
-            size = 1
+        def __init__(self, name, default=False, random_name=True, init=True):
+            self.size = 1
             if random_name:
                 random_string = stuff.gen_secret(32)
                 name = "%s-%s" % (name, random_string)
             self.name = name
+            self.default_value = default
+            if init:
+                self.init()
+        def init(self):
             shmem_name = "/%s" % self.name
             self.shmem = posix_ipc.SharedMemory(shmem_name,
                                             posix_ipc.O_CREAT,
-                                            size=size)
-            self._value = mmap.mmap(self.shmem.fd, size)
-            self.value = default
+                                            size=self.size)
+            self._value = mmap.mmap(self.shmem.fd, self.size)
+            self.value = self.default_value
         @property
         def value(self):
             if self._value[0] == 0:
@@ -294,7 +298,10 @@ def get_bool(name, default=False, random_name=True):
                 self.shmem.unlink()
             except posix_ipc.ExistentialError:
                 pass
-    shared_bool = SharedBool(name, default=default, random_name=random_name)
+    shared_bool = SharedBool(name=name,
+                        default=default,
+                        random_name=random_name,
+                        init=init)
     return shared_bool
 
 def get_shm_string(name, size=1024, value=None):
@@ -682,7 +689,7 @@ class MessageQueue(object):
         # Handle timeout.
         if data is None:
             if timeout is not None:
-                msg = "Queue timeout reached."
+                msg = "Queue timeout reached: %s" % self.queue
                 raise TimeoutReached(msg)
         # Try to get data length from peer.
         try:

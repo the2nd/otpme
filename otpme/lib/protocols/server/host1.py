@@ -255,6 +255,10 @@ class OTPmeHostP1(OTPmeServer1):
                 message = "Missing token."
                 status = False
             if status:
+                if not token:
+                    message = "Missing token."
+                    status = False
+            if status:
                 token_oid = "token|%s/%s" % (config.realm, token)
                 token_oid = oid.get(token_oid)
                 token = backend.get_object(token_oid)

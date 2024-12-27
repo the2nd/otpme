@@ -376,21 +376,6 @@ class AuthHandler(object):
         if self.auth_failed:
             return
 
-        # If this is not a logout or refresh request make sure max_use is not
-        # reached.
-        if not self.session_refresh and not self.session_logout:
-            # FIXME: do we need this check??
-            # Verify if max_use for the found session is reached.
-            if self.auth_group.max_use > 0:
-                if self.auth_session.login_count >= self.auth_group.max_use:
-                    msg = ("Session verification failed because max "
-                                "use count (%s) is reached."
-                                % self.auth_group.max_use)
-                    self.logger.warning(msg)
-                    self.auth_failed = True
-                    self.auth_message = "AUTH_SESSION_MAX_USE_REACHED"
-                    return
-
     def update_session(self, session):
         """ Update session. """
         # If this is a refresh-request...
@@ -452,12 +437,11 @@ class AuthHandler(object):
             # If we found a SOTP we should not count up the login counter.
             if self.found_sotp:
                 self.auth_message = "AUTH_OK_SOTP"
-                # Update session last used timestamp.
-                self.auth_session.update_last_used_time(update_child_sessions=False)
             else:
                 self.auth_message = "AUTH_OK_SESSION"
-                # Update session login count which also updates the last used time.
-                self.auth_session.count_login()
+            # Update session last used timestamp.
+            self.auth_session.update_last_used_time(update_child_sessions=False)
+            return
 
     def verify_user_sessions(self):
         """ Verify user sessions. """
@@ -1868,8 +1852,6 @@ class AuthHandler(object):
                 # FIXME: do we need to call exists()????
                 # Call exists() to fill in all session variables.
                 session.exists()
-                # Count up login count for the new created session.
-                session.count_login()
                 # Set log_session_id to new created session_id with
                 # info tag that its new.
                 self.log_session_id = "new_cache:%s" % session.session_id
@@ -1934,8 +1916,6 @@ class AuthHandler(object):
             if add_status:
                 # Call exists() to fill in all session variables.
                 session.exists()
-                # Count up login count for the new created session.
-                session.count_login()
                 # Set log_session_id to new created session_id with info tag
                 # that its new.
                 self.log_session_id = "new:%s" % session.session_id

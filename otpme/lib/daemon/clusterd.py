@@ -689,6 +689,9 @@ class ClusterDaemon(OTPmeDaemon):
         self.all_nodes = []
         self.member_nodes = []
         self.online_nodes = []
+        self.nsscache_sync = multiprocessing.get_bool("otpme-nsscache-sync",
+                                                    random_name=False,
+                                                    init=False)
         super(ClusterDaemon, self).__init__(*args, **kwargs)
 
     def signal_handler(self, _signal, frame):
@@ -704,6 +707,17 @@ class ClusterDaemon(OTPmeDaemon):
         if config.start_freeradius:
             self.stop_freeradius()
         self.close_childs()
+        multiprocessing.cleanup()
+        try:
+            self.nsscache_sync.close()
+        except Exception as e:
+            msg = "Failed to close shared bool: %s" % e
+            self.logger.warning(msg)
+        try:
+            self.nsscache_sync.unlink()
+        except Exception as e:
+            msg = "Failed to unlink shared bool: %s" % e
+            self.logger.warning(msg)
         return super(ClusterDaemon, self).signal_handler(_signal, frame)
 
     def clear_processed_journal_entries(self):
@@ -3124,14 +3138,6 @@ class ClusterDaemon(OTPmeDaemon):
         signal.signal(signal.SIGINT, self.signal_handler)
         # Set logger.
         self.logger = config.logger
-
-        try:
-            self.nsscache_sync = multiprocessing.get_bool("otpme-nsscache-sync",
-                                                        random_name=False)
-        except Exception as e:
-            msg = "Failed to get shared bool: %s" % e
-            self.logger.critical(msg)
-
         # Initially we dont have quorum.
         config.cluster_quorum = False
         multiprocessing.cluster_quorum.clear()
@@ -3221,6 +3227,8 @@ class ClusterDaemon(OTPmeDaemon):
             msg = "Not starting cluster processes: Node disabled"
             self.logger.warning(msg)
 
+        self.nsscache_sync.init()
+
         while True:
             if config.daemon_shutdown:
                 os._exit(0)
@@ -3270,9 +3278,3 @@ class ClusterDaemon(OTPmeDaemon):
                 self.logger.critical(msg, exc_info=True)
                 #config.raise_exception()
                 self.daemon_startup.value = False
-
-        try:
-            self.nsscache_sync.close()
-        except Exception as e:
-            msg = "Failed to close shared bool."
-            self.logger.critical(msg)

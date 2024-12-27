@@ -398,7 +398,7 @@ class PamHandler(object):
         else:
             if self.pamh.tty and self.pamh.tty.startswith(":"):
                 display = self.pamh.tty
-        if display and self.login_session_dir:
+        if display:
             self.logger.debug("Got DISPLAY from PAM session: %s" % display)
             home_dir = self.get_home_dir(self.username)
             if os.path.exists(home_dir):
@@ -415,6 +415,8 @@ class PamHandler(object):
         # Make sure we got a username from PAM.
         if not self.username:
             return self.pamh.PAM_USER_UNKNOWN
+        if not self.login_session_dir:
+            return self.pamh.PAM_SUCCESS
         # Get SSH agent script.
         ssh_agent_script_file = os.path.join(self.login_session_dir, "ssh-agent-script.json")
         if os.path.exists(ssh_agent_script_file):
@@ -432,13 +434,19 @@ class PamHandler(object):
                 except Exception as e:
                     self.logger.warning("Unable to run SSH agent script: %s" % e)
         # Stop otpme-agent which does the user logout if required.
-        stuff.stop_otpme_agent(user=self.username)
+        msg = "Stopping otpme-agent..."
+        self.logger.debug(msg)
+        stuff.stop_otpme_agent(user=self.username, wait=False)
         return self.pamh.PAM_SUCCESS
 
     def pam_sm_setcred(self):
         """ Set users groups. """
         if config.system_user() != "root":
             return
+        if not self.login_token:
+            return
+        msg = "Getting dynamic groups from hostd."
+        self.logger.debug(msg)
         # Get connection to hostd.
         try:
             hostd_conn = connections.get("hostd")
@@ -1000,6 +1008,9 @@ class PamHandler(object):
                 msg = ("Unable to get login script from offline token: %s" % e)
                 self.logger.debug(msg)
 
+            if self.login_script_path:
+                self.logger.debug("Got login script from offline tokens.")
+
         # Update timestamp of login token cache file (used to calculate
         # expiry of offline tokens).
         if os.path.exists(self.offline_token.login_token_uuid_file):
@@ -1085,16 +1096,17 @@ class PamHandler(object):
         # On success set login token to agent and update offline session.
         if login:
             # Update offline session file.
+            self.offline_token.lock()
             try:
-                self.offline_token.lock()
                 self.offline_token.update_offline_session(self.login_session_id)
-                self.offline_token.unlock()
             except NoOfflineSessionFound as e:
                 msg = "Found no offline session to update."
                 self.logger.debug(msg)
             except Exception as e:
                 msg = "Unable to update offline session: %s" % e
                 self.logger.warning(msg)
+            finally:
+                self.offline_token.unlock()
 
             # Set offline login token.
             self.login_token = self.offline_login_token.rel_path

@@ -80,7 +80,7 @@ class UnixDaemon(object):
         # Run daemon.
         self.run()
 
-    def stop(self, timeout=60, kill=False, quiet=False):
+    def stop(self, timeout=60, kill=False, wait=True, quiet=False):
         """ Stop the daemon. """
         status, pid = self.status(quiet=True)
         if not status:
@@ -100,6 +100,9 @@ class UnixDaemon(object):
             else:
                 sys.stderr.write(str(err))
                 return False
+
+        if not wait:
+            return
 
         wait_timeout = timeout
         if kill:
