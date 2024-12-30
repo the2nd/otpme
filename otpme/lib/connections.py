@@ -130,7 +130,10 @@ def get(daemon, **kwargs):
     try:
         user = kwargs['user']
     except:
-        user = None
+        try:
+            user = os.environ['OTPME_USER']
+        except KeyError:
+            user = None
         kwargs['user'] = user
     try:
         username = kwargs['username']
@@ -236,11 +239,6 @@ def get(daemon, **kwargs):
 
     # Handle agent connections.
     if daemon == "agent":
-        try:
-            user = kwargs['user']
-        except:
-            user = None
-            kwargs['user'] = user
         logger.debug("Trying to get agent connection...")
         # Try to get agent connection
         try:
@@ -303,7 +301,6 @@ def get(daemon, **kwargs):
     if need_user:
         if not username:
             if not config.use_api and (use_agent or use_agent == "auto"):
-                use_agent = False
                 # Try to get username from running otpme-agent.
                 try:
                     agent_user = stuff.get_agent_user()
@@ -314,6 +311,7 @@ def get(daemon, **kwargs):
                         raise Exception(msg)
                     else:
                         logger.debug(str(e))
+                        use_agent = False
 
         # Check which name to use as OTPme user
         if not username and not config.use_api:

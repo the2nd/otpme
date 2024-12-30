@@ -3,6 +3,7 @@
 import os
 import pwd
 import grp
+import signal
 from subprocess import PIPE
 from subprocess import Popen
 #from subprocess import DEVNULL
@@ -36,7 +37,8 @@ def get_user_groups(user):
     return result
 
 def run(command, user=None, group=True, groups=True, return_proc=False,
-    call=False, shell=False, return_proc_data=True, **kwargs):
+    call=False, shell=False, return_proc_data=True,
+    disable_ctrl_c=False, **kwargs):
     """ Run system command. """
     if shell is True:
         msg = ("Running system command with shell=True is dangerous!!!")
@@ -73,7 +75,10 @@ def run(command, user=None, group=True, groups=True, return_proc=False,
                                 shell=shell,
                                 stdout=stdout,
                                 stderr=stderr,
-                                preexec_fn=demote(user, group, groups=groups),
+                                preexec_fn=demote(user=user,
+                                                group=group,
+                                                groups=groups,
+                                                disable_ctrl_c=disable_ctrl_c),
                                 **kwargs)
         except OSError as e:
             msg = "Failed to start command: %s: %s" % (command, e)
@@ -102,7 +107,10 @@ def run(command, user=None, group=True, groups=True, return_proc=False,
                 stdout=stdout,
                 stderr=stderr,
                 shell=shell,
-                preexec_fn=demote(user, group, groups=groups),
+                preexec_fn=demote(user=user,
+                                group=group,
+                                groups=groups,
+                                disable_ctrl_c=disable_ctrl_c),
                 **kwargs)
     # Return proc if requested.
     if return_proc:
@@ -119,8 +127,12 @@ def run(command, user=None, group=True, groups=True, return_proc=False,
     command_pid = proc.pid
     return command_returncode, command_stdout, command_stderr, command_pid
 
-def demote(user, group, groups=[]):
+def demote(user, group, groups=[], disable_ctrl_c=False):
     """ Drop privileges. """
+    # Disable CTRL+C while script is running.
+    if disable_ctrl_c:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
     uid = None
     gid = None
     group_ids = []

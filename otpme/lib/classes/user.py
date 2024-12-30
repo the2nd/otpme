@@ -2240,6 +2240,25 @@ class User(OTPmeObject):
         # Set public key.
         self.public_key = encode(key.public_key_base64, "base64")
 
+        # Add ACLs to allow default token to do encrypt stuff.
+        if self.default_token:
+            acls = []
+            acl = "token:%s:encrypt" % self.default_token
+            acls.append(acl)
+            acl = "token:%s:decrypt" % self.default_token
+            acls.append(acl)
+            acl = "token:%s:sign" % self.default_token
+            acls.append(acl)
+            acl = "token:%s:verify" % self.default_token
+            acls.append(acl)
+            if acl in acls:
+                self.add_acl(acl=acl,
+                            recursive_acls=False,
+                            apply_default_acls=False,
+                            verify_acls=False,
+                            verbose_level=1,
+                            callback=callback)
+
         return self._cache(callback=callback)
 
     @check_acls(['del_keys'])
@@ -2538,11 +2557,15 @@ class User(OTPmeObject):
             msg = (_("Error loading private key: %s") % e)
             return callback.error(msg)
         # Try to decrypt data.
+        data = decode(data, "base64")
         try:
-            decrypted_data = key.decrypt(data=decode(data, "base64"))
+            decrypted_data = key.decrypt(ciphertext=data)
         except Exception as e:
+            config.raise_exception()
             msg = (_("Error decrypting data: %s") % e)
             return callback.error(msg)
+        if isinstance(decrypted_data, bytes):
+            decrypted_data = decrypted_data.decode()
         return callback.ok(decrypted_data)
 
     @object_lock()

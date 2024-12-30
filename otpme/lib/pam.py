@@ -71,7 +71,7 @@ class PamHandler(object):
         self.ssh_agent_script_opts = None
         self.ssh_agent_script_signs = None
         self.ssh_agent_started = False
-        self.ensure_ssh_agent = False
+        self.ensure_ssh_agent = "auto"
         self.use_ssh_agent = "auto"
         self.use_smartcard = "auto"
         self.smartcard = None
@@ -212,7 +212,12 @@ class PamHandler(object):
                     msg = ("Ignoring unknown value for use_ssh_agent: %s" % val)
                     self.logger.warning(msg)
             if arg == "start_ssh_agent":
-                self.ensure_ssh_agent = True
+                if val.lower() == "auto":
+                    self.ensure_ssh_agent = "auto"
+                elif val.lower() == "true":
+                    self.ensure_ssh_agent = True
+                elif val.lower() == "false":
+                    self.ensure_ssh_agent = False
             if arg == "cache_login_tokens":
                 self.cache_login_tokens = True
             if arg == "show_errors":
@@ -428,9 +433,9 @@ class PamHandler(object):
             self.ssh_agent_script_opts = agent_script_data['ssh_agent_script_opts']
             self.ssh_agent_script_signs = agent_script_data['ssh_agent_script_signs']
             # Stop SSH agent.
-            if self.ssh_agent_status():
+            if self.ssh_agent_status(verify_signs=False):
                 try:
-                    self.stop_ssh_agent()
+                    self.stop_ssh_agent(verify_signs=False)
                 except Exception as e:
                     self.logger.warning("Unable to run SSH agent script: %s" % e)
         # Stop otpme-agent which does the user logout if required.
@@ -523,10 +528,14 @@ class PamHandler(object):
         if self.login_status:
             # Send "unlock" command to SSH agent script (e.g. restart scdaemon
             # make sure yubikey PIN is re-asked) if this is a screen unlock.
-            ssh_auth_sock, \
-            ssh_agent_pid, \
-            ssh_agent_name, \
-            gpg_agent_info = self.ssh_agent.unlock(verify_signs=verify_signs)
+            if self.ensure_ssh_agent:
+                try:
+                    ssh_agent_pid = os.environ['SSH_AGENT_PID']
+                except:
+                    ssh_agent_pid = None
+                if ssh_agent_pid:
+                    if stuff.check_pid(ssh_agent_pid):
+                        self.ssh_agent.unlock(verify_signs=verify_signs)
         else:
             # Make sure no SSH agent is running before starting a new one.
             self.stop_ssh_agent(verify_signs=verify_signs)
@@ -1191,13 +1200,19 @@ class PamHandler(object):
             unlock = False
             add_agent_acl = True
 
+        start_ssh_agent = False
+        if self.ensure_ssh_agent == "auto":
+            start_ssh_agent = None
+        if self.ensure_ssh_agent is True:
+            start_ssh_agent = True
+
         # Send auth/login request.
         try:
             login_handler.login(username=self.username,
                                 password=self.password,
                                 password_method=self.get_password,
                                 use_ssh_agent=self.use_ssh_agent,
-                                start_ssh_agent=self.ensure_ssh_agent,
+                                start_ssh_agent=start_ssh_agent,
                                 ssh_agent_method=self.start_ssh_agent,
                                 use_smartcard=self.use_smartcard,
                                 endpoint=True, change_user=True,
@@ -1598,7 +1613,7 @@ class PamHandler(object):
                 self.logger.warning(msg)
 
             # Make sure SSH/GPG agent is running.
-            if self.ensure_ssh_agent:
+            if self.ensure_ssh_agent is True:
                 try:
                     # FIXME: do we still need this??
                     ## Make sure there is no SSH agent running for the user if

@@ -368,6 +368,7 @@ class SshToken(Token):
                         'trusted'  : [
                             "KEY_TYPE",
                             "SSH_PUBLIC_KEY",
+                            "SIGNATURES",
                             ]
                         },
 
@@ -375,6 +376,7 @@ class SshToken(Token):
                         'untrusted'  : [
                             "KEY_TYPE",
                             "SSH_PUBLIC_KEY",
+                            "SIGNATURES",
                             ]
                         },
                     }

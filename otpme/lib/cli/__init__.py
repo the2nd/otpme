@@ -1547,7 +1547,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
             elif sort_by == "unused_expiration_time":
                 sort_key = str(child_session.unused_expire_time())
             elif sort_by == "last_login":
-                sort_key = str(child_session.last_login)
+                sort_key = str(child_session.last_used)
             else:
                 sort_key = str(child_session.expire_time())
 
@@ -1568,7 +1568,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
         elif sort_by == "unused_expiration_time":
             sort_key = str(parent_session.unused_expire_time())
         elif sort_by == "last_login":
-            sort_key = str(parent_session.last_login)
+            sort_key = str(parent_session.last_used)
         else:
             sort_key = str(child_session.expire_time())
 
@@ -1602,7 +1602,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
             #  pass
             # Get last_login time.
             try:
-                last_login = datetime.fromtimestamp(float(s.last_login))
+                last_login = datetime.fromtimestamp(float(s.last_used))
             except:
                 pass
             # Get expire time.
@@ -1641,7 +1641,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
             x_row.append(s.client)
             x_row.append(s.client_ip)
 
-            if s.last_login:
+            if s.last_used:
                 last_login_string = last_login.strftime('%H:%M:%S %d.%m.')
             else:
                 last_login_string = " " * 15

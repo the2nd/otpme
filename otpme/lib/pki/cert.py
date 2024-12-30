@@ -43,9 +43,11 @@ class SSLCert(object):
                 key_method = serialization.load_der_private_key
             if isinstance(key, str):
                 key = key.encode()
+            # Workaround for https://github.com/pyca/cryptography/issues/7236
             self._key = key_method(data=key,
                                 password=None,
-                                backend=default_backend())
+                                backend=default_backend(),
+                                unsafe_skip_rsa_key_validation=True)
 
     def __hash__(self):
         return hash(self.__dict__)

@@ -814,10 +814,9 @@ class OTPmeMgmtP1(OTPmeServer1):
         valid_backend_commands = [  "search",
                                     "import",
                                     "restore",
-                                    "get_oid",
                                     "get_uuid",
-                                    "object_exists",
                                 ]
+
         if len(backend_command) < 2:
             status = False
             message = "Missing backend sub command: %s" % backend_command
@@ -829,8 +828,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             message = "Unknown command: %s" % backend_command
             return self.build_response(status, message)
 
-        if backend_command == "object_exists":
-            status = True
+        if backend_command == "get_uuid":
             try:
                 object_id = command_args['object_id']
             except:
@@ -840,10 +838,10 @@ class OTPmeMgmtP1(OTPmeServer1):
 
             object_id = oid.get(object_id=object_id)
             try:
-                response = backend.object_exists(object_id)
+                response = backend.get_uuid(object_id)
+                status = True
             except Exception as e:
-                response = ("Error checking if object exists: %s: %s"
-                            % (object_id, e))
+                response = "Error getting UUID: %s: %s" % (object_id, e)
                 status = False
                 config.raise_exception()
 
@@ -934,44 +932,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                 response = ("Error running command: %s: %s"
                                 % (backend_command, e))
                 status = False
-
-        if backend_command == "get_uuid":
-            try:
-                object_id = command_args['object_id']
-            except:
-                message = "MGMT_INCOMPLETE_COMMAND"
-                status = False
-                return self.build_response(status, message)
-
-            object_id = oid.get(object_id=object_id)
-            try:
-                response = backend.get_uuid(object_id)
-                status = True
-            except Exception as e:
-                response = "Error getting UUID: %s: %s" % (object_id, e)
-                status = False
-                config.raise_exception()
-
-        if backend_command == "get_oid":
-            try:
-                object_uuid = command_args['object_uuid']
-            except:
-                message = "MGMT_INCOMPLETE_COMMAND"
-                status = False
-                return self.build_response(status, message)
-
-            try:
-                object_type = command_args['object_type']
-            except:
-                object_type = None
-
-            try:
-                response = backend.get_oid(object_uuid, object_type=object_type)
-                status = True
-            except Exception as e:
-                response = "Error getting OID: %s: %s" % (object_uuid, e)
-                status = False
-                config.raise_exception()
 
         if backend_command == "search":
             try:

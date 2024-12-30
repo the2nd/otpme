@@ -125,7 +125,7 @@ class OTPmeAgentP1(object):
                                             lock_id=login_pid)
         return session_lock
 
-    def send_command(self, command, request, timeout=3):
+    def send_command(self, command, request, timeout=None):
         """ Send request to agent parent process. """
         # Send request to parent process.
         self.comm_handler.send(recipient="conn_proxy",
@@ -327,8 +327,9 @@ class OTPmeAgentP1(object):
                                                     command=command,
                                                     username=self.client_user,
                                                     pid=self.client_pid)
-        # Try to authorize by agent PID.
-        if not self.authorized:
+
+        # If access to SSH key pass is requested try to authorize by agent PID.
+        if command == "get_ssh_key_pass" or command == "check_ssh_key_pass":
             for login_pid in self.login_sessions.keys():
                 session = self.login_sessions[login_pid]
                 try:
@@ -339,6 +340,8 @@ class OTPmeAgentP1(object):
                     continue
                 self.authorized = True
                 self.login_pid = ssh_agent_pid
+                logger.debug("Granted access to SSH key passphrase by PID: %s"
+                            % self.client_pid)
                 break
 
         # Set session.
@@ -652,9 +655,10 @@ class OTPmeAgentP1(object):
                         # Add new session for the given ssh-agent PID.
                         session_lock = self.acquire_session_lock(self.session_id)
                         try:
+                            system_user = ssh_agent_proc.username()
                             agent_session = {}
                             agent_session['session_type'] = "ssh_key_pass"
-                            agent_session['system_user'] = ssh_agent_proc.username()
+                            agent_session['system_user'] = system_user
                             agent_session['login_user'] = self.login_user
                             agent_session['ssh_key_pass'] = self.ssh_key_pass
                             self.login_sessions[self.ssh_agent_pid] = agent_session
@@ -675,25 +679,24 @@ class OTPmeAgentP1(object):
                 message = "SSH key passphrase is set"
                 status = True
             else:
-                message = "no SSH key passphrase set"
+                message = "No SSH key passphrase set"
                 status = False
 
 
         elif command == "get_ssh_key_pass":
             if self.ssh_key_pass:
-                logger.debug("Granted access to SSH key passphrase by PID: %s"
-                            % self.client_pid)
                 message = ("username: %s ssh_key_pass: %s"
                         % (self.login_user, self.ssh_key_pass))
                 status = True
             else:
-                message = "no SSH key passphrase set"
+                message = "No SSH key passphrase set"
                 status = False
+                logger.debug(message)
 
 
         elif command == "del_ssh_key_pass":
             agent_session = None
-            message = "no SSH key passphrase set"
+            message = "No SSH key passphrase set"
             status = False
 
             if self.session_type == "realm_login":

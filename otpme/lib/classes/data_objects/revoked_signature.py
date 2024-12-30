@@ -132,18 +132,19 @@ class RevokedSignature(OTPmeDataObject):
     def __init__(self, signer=None, signer_uuid=None, sign_tags=None,
         sign_ref=None, signature_hash=None, revoked_object=None,
         revocation_time=None, object_id=None, **kwargs):
+        self.type = "revoked_signature"
         # Set our type (used in parent class).
         self.signer = signer
         self.sign_ref = sign_ref
-        self.sign_tags = sign_tags
         self.signer_uuid = signer_uuid
         self.signature_hash = signature_hash
         self.revoked_object = revoked_object
         self.revocation_time = revocation_time
-        self.type = "revoked_signature"
-
         # Call parent class init.
         super(RevokedSignature, self).__init__(object_id=object_id, **kwargs)
+        # List and dict attributes must be set after calling super because
+        # self.incremental_update is only available after calling super.
+        self.sign_tags = sign_tags
 
         self._sync_fields = {
                     'host'  : {
@@ -155,6 +156,8 @@ class RevokedSignature(OTPmeDataObject):
                             "SIGNATURE_HASH",
                             "REVOKED_OBJECT",
                             "REVOCATION_TIME",
+                            "CHECKSUM",
+                            "SYNC_CHECKSUM",
                             ]
                         },
 
@@ -167,6 +170,8 @@ class RevokedSignature(OTPmeDataObject):
                             "SIGNATURE_HASH",
                             "REVOKED_OBJECT",
                             "REVOCATION_TIME",
+                            "CHECKSUM",
+                            "SYNC_CHECKSUM",
                             ]
                         },
                     }

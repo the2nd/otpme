@@ -715,12 +715,11 @@ class Script(OTPmeObject):
         self.script_md5sum = script_md5sum
 
         auto_sign = False
-        #force_sign = False
         if self.auto_sign:
             auto_sign = True
-        #if self.force_sign:
-        #    auto_sign = True
-        #    force_sign = True
+        if config.auth_user:
+            if config.auth_user.autosign_enabled:
+                auto_sign = True
 
         if auto_sign:
             if not config.auth_user:
@@ -743,12 +742,6 @@ class Script(OTPmeObject):
                 callback.raise_exception = False
 
             if not sign_status:
-                ## FIXME: We need transactions to implement force_sign.
-                #if force_sign:
-                #    msg = "Object signing failed and force_sign=True."
-                #    cache.flush(commit=False)
-                #    backend.rollback_transaction()
-                #    return callback.error(msg)
                 msg = "Auto-signing failed."
                 callback.send(msg)
         else:

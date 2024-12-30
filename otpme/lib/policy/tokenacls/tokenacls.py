@@ -213,7 +213,9 @@ def register_policy_object():
     """ Registger policy type. """
     # Register base policy.
     call_methods = [
-                    ({'add_user_acl': {'acl': 'view'}},),
+                    ({'add_user_acl': {'acl': 'view_all'}},),
+                    ({'add_user_acl': {'acl': 'encrypt'}},),
+                    ({'add_user_acl': {'acl': 'decrypt'}},),
                     ({'add_token_acl': {'acl': 'view'}},),
                     ({'add_token_acl': {'acl': 'edit'}},),
                     ({'add_token_acl': {'acl': 'delete'}},),

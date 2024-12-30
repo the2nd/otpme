@@ -780,18 +780,18 @@ class OTPmeAgent(UnixDaemon):
         # Try to get session.
         try:
             session = self.login_sessions[login_pid]
-        except:
+        except KeyError:
             return
         # Try to get username from session.
         try:
             login_user = session['login_user']
-        except:
+        except KeyError:
             return
         # Try to get session ID.
         try:
             session_id = session['session_id']
-        except:
-            return
+        except KeyError:
+            session_id = None
 
         self.logger.info("Removing session for user '%s." % login_user)
 

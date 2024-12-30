@@ -317,15 +317,14 @@ class OTPmeHost(OTPmeClientObject):
                     skip_internal_users = True
         if self.type == "host":
             # Check if peer is host from our site
-            if peer.type == "host":
-                if peer.site_uuid == self.site_uuid:
-                    skip_admin = False
-                    include_templates = False
-                    skip_per_site_users = False
-                    skip_internal_users = True
-                else:
-                    msg = "Host is from wrong site."
-                    raise OTPmeException(msg)
+            if peer.site_uuid == self.site_uuid:
+                skip_admin = False
+                include_templates = False
+                skip_per_site_users = False
+                skip_internal_users = True
+            else:
+                msg = "Host is from wrong site."
+                raise OTPmeException(msg)
         skip_users = []
         if skip_per_site_users:
             skip_users += list(config.get_per_site_objects("user"))

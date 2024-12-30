@@ -46,7 +46,7 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-script add {name} {script}',
+                    '_cmd_usage_help' : 'Usage: otpme-script add [-r] {name} {script}',
                     'cmd'   :   '-r :replace=True: <|object|> <script>',
                     '_help' :   {
                                     'cmd'                   : 'add new script',

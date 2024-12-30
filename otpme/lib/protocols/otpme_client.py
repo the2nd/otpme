@@ -15,7 +15,6 @@ import os
 import sys
 import time
 import pprint
-import select
 import signal
 import hashlib
 import inspect
@@ -39,7 +38,6 @@ from otpme.lib import filetools
 from otpme.lib import otpme_pass
 from otpme.lib import connections
 from otpme.lib import jwt as _jwt
-from otpme.lib import multiprocessing
 from otpme.lib.pki.cert import SSLCert
 from otpme.lib.messages import message
 from otpme.lib.encryption.ec import ECKey
@@ -1144,15 +1142,7 @@ class OTPmeClient(OTPmeClientBase):
         password = None
         if stdin_pass:
             # Get password from stdin.
-            timeout = 1
-            rlist = select.select([sys.stdin], [], [], timeout)[0]
-            if not rlist:
-                msg = (_("Timeout reading password from stdin."))
-                raise OTPmeException(msg)
-            password = sys.stdin.readline().replace("\n", "")
-            if not password:
-                msg = (_("Got empty password."))
-                raise OTPmeException(msg)
+            password = stuff.read_pass_from_stdin()
 
         command_handler = CommandHandler()
         try:
@@ -1182,11 +1172,17 @@ class OTPmeClient(OTPmeClientBase):
         """ Handle signing via users key script. """
         # Get sign request.
         sign_request = command_dict['data']
+        stdin_pass = sign_request['stdin_pass']
 
         # When not in interactive mode we cannot call key script.
         if not self.interactive:
             msg = (_("Cannot call key script in non-interactive mode."))
             raise OTPmeException(msg)
+
+        password = None
+        if stdin_pass:
+            # Get password from stdin.
+            password = stuff.read_pass_from_stdin()
 
         # Load sign data.
         try:
@@ -1228,8 +1224,9 @@ class OTPmeClient(OTPmeClientBase):
         script_status, \
         script_stdout, \
         script_stderr, \
-        script_pid = stuff.run_key_script(username=self.username, call=False,
-                                        key_pass=config.stdin_pass,
+        script_pid = stuff.run_key_script(username=self.username,
+                                        call=False,
+                                        key_pass=password,
                                         script_command=script_command,
                                         script_options=script_options)
         # Make sure script output is string.
@@ -1648,7 +1645,7 @@ class OTPmeClient(OTPmeClientBase):
 class OTPmeClient1(OTPmeClientBase):
     """ Class that implements OTPme client. """
     def __init__(self, daemon, connection, use_smartcard=False, use_ssh_agent=None,
-        start_ssh_agent=False, ssh_agent_method=None, endpoint=True, otpme_agent_user=None,
+        start_ssh_agent=None, ssh_agent_method=None, endpoint=True, otpme_agent_user=None,
         start_otpme_agent=None, handle_user_auth=True, handle_host_auth=True,
         need_ssh_key_pass=False, aes_pass=None, client=None, username=None,
         jwt_method=None, rsp=None, srp=None, slp=None, login=False, unlock=False,
@@ -2304,7 +2301,9 @@ class OTPmeClient1(OTPmeClientBase):
             if config.debug_level(DEBUG_SLOT) > 3:
                 self.logger.debug("Encrypting preauth key...")
             try:
-                _enc_key = site_key.encrypt(enc_key)
+                _enc_key = site_key.encrypt(cleartext=enc_key,
+                                            algorithm="SHA256",
+                                            cipher='PKCS1_OAEP')
             except Exception as e:
                 msg = (_("Failed to encrypt preauth key: %s") % e)
                 raise OTPmeException(msg)
@@ -2428,7 +2427,9 @@ class OTPmeClient1(OTPmeClientBase):
                 # Decrypt reply key.
                 try:
                     _reply_key = decode(reply_key, "hex")
-                    _reply_key = host_key.decrypt(_reply_key)
+                    _reply_key = host_key.decrypt(ciphertext=_reply_key,
+                                                algorithm="SHA256",
+                                                cipher='PKCS1_OAEP')
                 except Exception as e:
                     msg = (_("Failed to decrypt preauth reply key: %s" % e))
                     self.logger.warning(msg)
@@ -2709,6 +2710,8 @@ class OTPmeClient1(OTPmeClientBase):
             if self.ssh_public_keys:
                 if self.use_ssh_agent is None:
                     self.use_ssh_agent = True
+                if self.start_ssh_agent is None:
+                    self.start_ssh_agent = True
 
         if self.start_ssh_agent:
             # Delay start if needed.
@@ -3790,8 +3793,6 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Stop agent connections etc.
         self.cleanup()
-        # Handle multiprocessing stuff.
-        multiprocessing.cleanup()
 
     def decode_offline_token(self, login_token_uuid, offline_tokens):
         """ Decode offline token from auth reply. """
@@ -3942,22 +3943,25 @@ class OTPmeClient1(OTPmeClientBase):
 
                         agent_keys = self.ssh_agent_conn.get_keys()
                         for key in agent_keys:
-                            if login_key == key.get_base64():
-                                # Derive AES passphrase from challenge+static_pass_part
-                                # using ssh-agent signing.
-                                # https://github.com/paramiko/paramiko/issues/507
-                                try:
-                                    ssh_challenge = "%s%s" % (enc_challenge,
-                                                            static_pass_part)
-                                    ssh_response = key.sign_ssh_data(ssh_challenge)
-                                    sha256 = hashlib.sha512(ssh_response)
-                                    enc_pass = sha256.hexdigest()
-                                except Exception as e:
-                                    msg = (_("Error signing challenge for "
-                                            "offline token caching via "
-                                            "ssh-agent: %s") % e)
-                                    raise OTPmeException(msg)
-                                break
+                            if login_key != key.get_base64():
+                                continue
+                            msg = "Derive offline token encryption key..."
+                            self.logger.info(msg)
+                            # Derive AES passphrase from challenge+static_pass_part
+                            # using ssh-agent signing.
+                            # https://github.com/paramiko/paramiko/issues/507
+                            try:
+                                ssh_challenge = "%s%s" % (enc_challenge,
+                                                        static_pass_part)
+                                ssh_response = key.sign_ssh_data(ssh_challenge)
+                                sha256 = hashlib.sha512(ssh_response)
+                                enc_pass = sha256.hexdigest()
+                            except Exception as e:
+                                msg = (_("Error signing challenge for "
+                                        "offline token caching via "
+                                        "ssh-agent: %s") % e)
+                                raise OTPmeException(msg)
+                            break
                         # Close ssh-agent connection
                         self.ssh_agent_conn.close()
 
@@ -3979,6 +3983,8 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Save offline tokens to disk. We do this after we have set the
         # encryption passphrase above.
+        msg = "Saving offline tokens..."
+        self.logger.info(msg)
         self._offline_token.save()
 
         # Trigger OTP/counter sync (e.g. push current HOTP counter to server)

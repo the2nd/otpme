@@ -8,7 +8,6 @@ try:
 except:
     pass
 
-from otpme.lib import oid
 from otpme.lib import config
 from otpme.lib.encoding.base import encode
 from otpme.lib.protocols.otpme_client import OTPmeClient1
@@ -101,35 +100,6 @@ class OTPmeMgmtP1(OTPmeClient1):
                         'return_type=name'
                         ]
         return self.search(search_command)
-
-    def object_exists(self, object_id):
-        """ Check if object exists. """
-        # Build daemon command.
-        command_args = {
-                        'subcommand'    : 'object_exists',
-                        'object_id'     : object_id,
-                        }
-        daemon_command = "backend"
-        # Send command
-        status, reply = self.send_command(daemon_command, command_args)
-        return reply
-
-    def get_oid_by_uuid(self, uuid, object_type=None, object_types=None):
-        """ Resolve UUID to OID. """
-        # Build daemon command.
-        command_args = {
-                        'subcommand'        : 'get_oid',
-                        'object_uuid'       : uuid,
-                        'object_type'       : object_type,
-                        'object_types'      : object_types,
-                        }
-        daemon_command = "backend"
-        # Send command
-        status, x_oid = self.send_command(daemon_command, command_args)
-        if x_oid is None:
-            return
-        object_id = oid.get(object_id=x_oid)
-        return object_id
 
     def get_uuid_by_oid(self, object_id):
         """ Resolve OID to UUID. """

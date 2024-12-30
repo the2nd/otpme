@@ -59,11 +59,11 @@ cmd_help = {
                 },
 
     'add_signer'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-tool add_signer [--private] [--no-pin] [--tag <tag1> --tag <tag2> ...] --type {signer_type} {object_id}',
-                    'cmd'   :   '--private :private=True: --no-pin :pin=false: --tag :+tags+: --type ::signer_type:: <object_oid>',
+                    '_cmd_usage_help' : 'Usage: otpme-tool add_signer [--private] [--no-pin] [--tag <tag1> --tag <tag2> ...] --signer-type {signer_type} {object_id}',
+                    'cmd'   :   '--private :private=True: --no-pin :pin=false: --tag :+tags+: --signer-type ::signer_type:: <object_oid>',
                     '_help' :   {
                                     'cmd'                   : 'Add signer.',
-                                    '--type <type>'         : 'Add signer of type <type>.',
+                                    '--signer-type <type>'  : 'Add signer of type <type>.',
                                     '--no-pin'              : 'Do not pin signature keys.',
                                     '--private'             : 'Add signer for the logged in user.',
                                 },
@@ -180,7 +180,7 @@ cmd_help = {
 
 
     'encrypt'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-tool encrypt {file} {outfile}',
+                    '_cmd_usage_help' : 'Usage: otpme-tool encrypt [--rsa] [--no-rsa] [-u <username>] [--pass <password>] [--stdin-pass] {file} {outfile}',
                     'cmd'   :   '--rsa :use_rsa=True: --no-rsa :no_rsa=True: -u :username: --pass :password: --stdin-pass :stdin_pass=True: --force-pass :force_pass=True: <file1> <file2>',
                     '_help' :   {
                                     'cmd'                   : 'Encrypt file using users RSA key (AES encryption).',
@@ -195,7 +195,7 @@ cmd_help = {
 
 
     'decrypt'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-tool decrypt {file} {outfile}',
+                    '_cmd_usage_help' : 'Usage: otpme-tool decrypt --pass <password> --stdin-pass {file} {outfile}',
                     'cmd'   :   '--pass :password: --stdin-pass :stdin_pass=True: <file1> <file2>',
                     '_help' :   {
                                     'cmd'                   : 'Decrypt file using users RSA key (AES encryption).',

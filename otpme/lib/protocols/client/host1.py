@@ -30,6 +30,50 @@ class OTPmeHostP1(OTPmeClient1):
         self.logger = config.logger
         super(OTPmeHostP1, self).__init__(self.daemon, **kwargs)
 
+    def get_oid(self, object_uuid, object_type=None, object_types=None):
+        """ Send 'get_oid' command to hostd. """
+        object_id = None
+        command = "get_oid"
+        command_args = {
+                        'object_uuid'   : object_uuid,
+                        'object_type'   : object_type,
+                        'object_types'  : object_types,
+                        }
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args)
+        if status:
+            object_id = reply
+        return object_id
+
+    def get_uuid(self, object_id):
+        """ Resolve OID to UUID. """
+        object_uuid = None
+        command = "get_uuid"
+        command_args = {
+                        "object_id"     : object_id,
+                        }
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args)
+        if status:
+            object_uuid = reply
+        return object_uuid
+
+    def object_exists(self, object_id):
+        """ Check if object exists. """
+        object_exists = False
+        command = "object_exists"
+        command_args = {
+                        'object_id'     : object_id,
+                        }
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args)
+        if status:
+            object_exists = reply
+        return object_exists
+
     def get_user_uuid(self, username):
         """ Send 'get_user_uuid' command to hostd. """
         user_uuid = None

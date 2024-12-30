@@ -66,6 +66,18 @@ def get_dict_size(obj, seen=None):
         size += sum(get_dict_size(i, seen) for i in obj)
     return size
 
+def read_pass_from_stdin(timeout=1):
+    import select
+    rlist = select.select([sys.stdin], [], [], timeout)[0]
+    if not rlist:
+        msg = (_("Timeout reading password from stdin."))
+        raise OTPmeException(msg)
+    password = sys.stdin.readline().replace("\n", "")
+    if not password:
+        msg = (_("Got empty password."))
+        raise OTPmeException(msg)
+    return  password
+
 def get_newest_object():
     from otpme.lib import config
     from otpme.lib import backend
@@ -1192,20 +1204,26 @@ def seed_rng(fork=True, quiet=False):
 
 def resolve_uuid(object_uuid, object_type=None, object_types=None):
     """ Resolve UUID to OID. """
+    from otpme.lib import oid
     from otpme.lib import config
     from otpme.lib import backend
+    from otpme.lib import connections
     if config.use_backend:
         object_id = backend.get_oid(uuid=object_uuid,
                                     object_type=object_type,
                                     object_types=object_types,
                                     instance=True)
     else:
-        from otpme.lib.classes.command_handler import CommandHandler
-        command_handler = CommandHandler(interactive=False)
-        # FIXME: how to make sure we connect to correct site???
-        object_id = command_handler.get_oid_by_uuid(uuid=object_uuid,
-                                            object_type=object_type,
-                                            object_types=object_types)
+        try:
+            hostd_conn = connections.get("hostd")
+        except Exception as e:
+            msg = (_("Error connecting to hostd: %s") % e)
+            raise OTPmeException(msg)
+        object_id = hostd_conn.get_oid(object_uuid=object_uuid,
+                                    object_type=object_type,
+                                    object_types=object_types)
+        if object_id:
+            object_id = oid.get(object_id)
     if not object_id:
         msg = "Unable to resolve UUID: %s" % object_uuid
         raise UnknownUUID(msg)
@@ -1215,17 +1233,38 @@ def resolve_oid(object_id):
     """ Resolve UUID to OID. """
     from otpme.lib import config
     from otpme.lib import backend
+    from otpme.lib import connections
     if config.use_backend:
         object_uuid = backend.get_uuid(object_id)
     else:
-        from otpme.lib.classes.command_handler import CommandHandler
-        command_handler = CommandHandler(interactive=False)
-        # FIXME: how to make sure we connect to correct site???
-        object_uuid = command_handler.get_uuid_by_oid(object_id=object_id)
+        try:
+            hostd_conn = connections.get("hostd")
+        except Exception as e:
+            msg = (_("Error connecting to hostd: %s") % e)
+            raise OTPmeException(msg)
+        object_uuid = hostd_conn.get_uuid(str(object_id))
     if not object_uuid:
         msg = "Unable to resolve OID: %s" % object_id
         raise UnknownOID(msg)
     return object_uuid
+
+def object_exists(object_id):
+    """ Check if object exists by OID. """
+    from otpme.lib import config
+    from otpme.lib import backend
+    from otpme.lib import connections
+    if config.use_backend:
+        if backend.object_exists(object_id):
+            return True
+        return False
+    try:
+        hostd_conn = connections.get("hostd")
+    except Exception as e:
+        msg = (_("Error connecting to hostd: %s") % e)
+        raise OTPmeException(msg)
+    if hostd_conn.object_exists(str(object_id)):
+        return True
+    return False
 
 def search(**kwargs):
     """ Do search. """
@@ -1604,6 +1643,7 @@ def run_key_script(username, script_command, script_options=None,
                         script_env=script_env,
                         verify_signatures=True,
                         signatures=key_script_signs,
+                        disable_ctrl_c=True,
                         user=user,
                         group=group,
                         call=call)

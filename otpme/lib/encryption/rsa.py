@@ -37,7 +37,7 @@ class RSAKey(AsymmetricKeyHandler):
         return private_key
 
     def encrypt(self, cleartext, cipher='PKCS1_OAEP',
-        algorithm="SHA1", encoding=None):
+        algorithm="SHA256", encoding=None):
         """ Encrypt cleartext with our public key. """
         try:
             hash_algo_method = getattr(hashes, algorithm)
@@ -63,7 +63,7 @@ class RSAKey(AsymmetricKeyHandler):
         return ciphertext
 
     def decrypt(self, ciphertext, cipher='PKCS1_OAEP',
-        algorithm="SHA1", encoding=None):
+        algorithm="SHA256", encoding=None):
         """ Decrypt ciphertext with our private key. """
         if encoding is not None:
             ciphertext = decode(ciphertext, encoding)

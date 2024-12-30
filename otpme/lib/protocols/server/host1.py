@@ -133,6 +133,8 @@ class OTPmeHostP1(OTPmeServer1):
         """ Handle commands received from host_handler. """
         # all valid commands
         valid_commands = [
+                            "get_oid",
+                            "get_uuid",
                             "get_realm",
                             "get_realm_uuid",
                             "get_site",
@@ -164,6 +166,7 @@ class OTPmeHostP1(OTPmeServer1):
                             "resync_objects",
                             "resync_nsscache",
                             "sync_ssh_authorized_keys",
+                            "object_exists",
                             "get_sync_status",
                             "get_daemon_socket",
                             "acquire_lock",
@@ -444,6 +447,67 @@ class OTPmeHostP1(OTPmeServer1):
                     status = True
                 else:
                     message = "Unknown user."
+                    status = False
+
+        elif command == "object_exists":
+            try:
+                object_id = command_args['object_id']
+                status = True
+            except:
+                message = "INCOMPLETE_COMMAND"
+                status = False
+
+            if status:
+                object_id = oid.get(object_id=object_id)
+                try:
+                    message = backend.object_exists(object_id)
+                except Exception as e:
+                    status = False
+                    message = "Error checking if object exists: %s" % object_id
+                    msg = ("%s: %s" % (message, e))
+                    self.logger.warning(msg)
+
+        elif command == "get_oid":
+            try:
+                object_uuid = command_args['object_uuid']
+                status = True
+            except:
+                message = "INCOMPLETE_COMMAND"
+                status = False
+
+            if status:
+                try:
+                    object_type = command_args['object_type']
+                except:
+                    object_type = None
+                try:
+                    object_types = command_args['object_types']
+                except:
+                    object_types = None
+                try:
+                    message = backend.get_oid(object_uuid,
+                                        object_type=object_type,
+                                        object_types=object_types)
+                    status = True
+                except Exception as e:
+                    status = False
+                    message = "Error getting OID"
+                    msg = "%s: %s: %s" % (message, object_uuid, e)
+                    logger.warning(msg)
+
+        elif command == "get_uuid":
+            try:
+                object_id = command_args['object_id']
+                status = True
+            except:
+                message = "INCOMPLETE_COMMAND"
+                status = False
+            if status:
+                object_id = oid.get(object_id=object_id)
+                try:
+                    message = backend.get_uuid(object_id)
+                except Exception as e:
+                    message = "Error getting UUID: %s: %s" % (object_id, e)
                     status = False
 
         elif command == "get_host_status":

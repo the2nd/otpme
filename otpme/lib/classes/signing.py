@@ -450,6 +450,9 @@ class OTPmeSigner(object):
         try:
             c_signer.load()
         except UnknownObject as e:
+            msg = "Unable to load object: %s" % e
+            self.logger.warning(msg)
+            config.raise_exception()
             return unknown_val
 
         # FIXME: check if siger role/user does not exist anymore!!!!
@@ -510,8 +513,8 @@ class OTPmeSigner(object):
             command_handler = CommandHandler(interactive=False)
             # FIXME: how to make sure to get role users from correct site???
             for x in command_handler.get_role_users(role_name=role_name,
-                                                return_type="uuid"):
-                user_oid = command_handler.get_oid_by_uuid(uuid=x)
+                                                    return_type="uuid"):
+                user_oid = stuff.resolve_uuid(x)
                 if not user_oid:
                     continue
                 role_members[x] = user_oid
@@ -523,13 +526,13 @@ class OTPmeSigner(object):
         """ Verify signature. """
         if signature.signer_uuid not in self.signers:
             msg = "Signature not singed by this signer."
-            raise OTPmeException(msg)
+            raise VerificationFailed(msg)
 
         # Verify signature data (hash).
         sign_data_hash = hash_sign_data(sign_data)
         if signature.sign_data != sign_data_hash:
             msg = ("Sinature data mismatch: %s" % signature.signer_oid)
-            raise OTPmeException(msg)
+            raise VerificationFailed(msg)
 
         # Get signer key etc.
         entry = self.signers[signature.signer_uuid]
@@ -779,16 +782,9 @@ class OTPmeSignature(object):
 
     def check_revoked(self):
         """ Check if signature was revoked. """
-        from otpme.lib.classes.command_handler import CommandHandler
-        # FIXME: how to check revoked signature without backend access?
         sign_oid = self.build_revocation_oid()
-        if config.use_backend:
-            if not backend.object_exists(sign_oid):
-                return
-        else:
-            command_handler = CommandHandler(interactive=False)
-            if not command_handler.object_exists(sign_oid.full_oid):
-                return
+        if not stuff.object_exists(sign_oid):
+            return
         msg = "Signature revoked."
         raise OTPmeException(msg)
 
@@ -886,7 +882,7 @@ class OTPmeSignature(object):
         sign_data_hash = hash_sign_data(sign_data)
         if self.sign_data != sign_data_hash:
             msg = ("Sinature data mismatch: %s" % self.signer_oid)
-            raise OTPmeException(msg)
+            raise VerificationFailed(msg)
 
         if tags:
             self.check_tags(tags, login_interface=login_interface)

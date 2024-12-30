@@ -340,8 +340,11 @@ class CommandHandler(object):
 
         try:
             need_command = self.command_map[command][config.cli_object_type]['_need_command']
-        except:
-            need_command = False
+        except KeyError:
+            try:
+                need_command = self.command_map[command]['main']['_need_command']
+            except KeyError:
+                need_command = False
 
         subcommand = None
         if need_command:
@@ -364,6 +367,12 @@ class CommandHandler(object):
             self.user_password = config.stdin_pass
         else:
             self.user_password = None
+
+        # Get login user needed for some commnads.
+        if not config.login_user:
+            config.login_user = self.get_login_user()
+            ## Make sure user config file is loaded.
+            #config.reload()
 
         # Init realm.
         if command == "realm" and subcommand == "init":
@@ -418,12 +427,6 @@ class CommandHandler(object):
             # Enable cache.
             cache.init()
             cache.enable()
-
-            # Get login user needed for some commnads.
-            if not config.login_user:
-                config.login_user = self.get_login_user()
-                ## Make sure user config file is loaded.
-                #config.reload()
 
             if not (command == "realm" and subcommand == "init"):
                 self.init(use_backend=True)
@@ -559,8 +562,7 @@ class CommandHandler(object):
             or subcommand == "verify":
                 from otpme.lib.register import register_modules
                 register_modules()
-                #init_otpme(use_backend=True)
-                self.init(use_backend=True)
+                #self.init(use_backend=True)
 
         if command == "controld":
             register_module('otpme.lib.daemon.controld')
@@ -628,9 +630,24 @@ class CommandHandler(object):
                 try:
                     # When a user is configured for sign_mode=server the private
                     # key might be encrypted with a passphrase (AES).
-                    self.user_aes_pass = sys.stdin.read().replace("\n", "")
+                    self.user_aes_pass = stuff.read_pass_from_stdin()
                 except:
                     pass
+
+        # When signing data and the signing key is on server we may have to read
+        # the key password from stdin.
+        if command == "user" and subcommand == "sign_data" \
+        and "--stdin-pass" in self.command_line:
+            if config.read_stdin_pass:
+                msg = (_("--stdin-pass option conflicts with global option."))
+                raise OTPmeException(msg)
+            # Get password from stdin if given.
+            try:
+                # When a user is configured for sign_mode=server the private
+                # key might be encrypted with a passphrase (AES).
+                self.user_aes_pass = stuff.read_pass_from_stdin()
+            except:
+                pass
 
         # Generating users certificate needs some local action (e.g.
         # calling key script) which is done below.
@@ -641,13 +658,24 @@ class CommandHandler(object):
         if command == "script" and subcommand == "add":
             return self.handle_script_add_command(command, subcommand)
 
-        # When signing a file with a server side RSA key we may need to read the
+        # When signing data with a server side RSA key we may need to read the
         # key password from stdin.
         if command == "user" \
         and subcommand == "sign" \
         or subcommand == "encrypt" \
         or subcommand == "decrypt":
-            self.handle_user_key_command()
+            #self.handle_user_key_command()
+            if config.read_stdin_pass:
+                msg = (_("--stdin-pass option conflicts with global option."))
+                raise OTPmeException(msg)
+            if "--stdin-pass" in self.command_line:
+                # Get password from stdin if given.
+                try:
+                    # When a user is configured for sign_mode=server the private
+                    # key might be encrypted with a passphrase (AES).
+                    self.user_aes_pass = stuff.read_pass_from_stdin()
+                except:
+                    pass
 
         if command == "dictionary" and subcommand == "word_import":
             self.handle_dictionary_word_import_command(command, subcommand)
@@ -2115,6 +2143,7 @@ class CommandHandler(object):
                                             script_command=script_command,
                                             script_options=script_options)
         except Exception as e:
+            config.raise_exception()
             msg = "Failed to run key script: %s" % e
             raise OTPmeException(msg)
 
@@ -2441,7 +2470,7 @@ class CommandHandler(object):
                         name=script_name)
         # Get script UUID.
         try:
-            script_uuid = self.get_uuid_by_oid(object_id=x_oid.full_oid)
+            script_uuid = self.get_uuid_by_oid(x_oid.full_oid)
         except Exception as e:
             config.raise_exception()
             msg = (_("Error getting key script UUID: %s") % e)
@@ -3595,7 +3624,7 @@ class CommandHandler(object):
         except InvalidOID:
             msg = "Invaild signer OID: %s" % object_oid
             raise OTPmeException(msg)
-        object_uuid = self.get_uuid_by_oid(object_id=object_oid.read_oid)
+        object_uuid = stuff.resolve_oid(object_oid)
 
         # Create signer object.
         signer = OTPmeSigner(object_uuid=object_uuid,
@@ -3837,7 +3866,7 @@ class CommandHandler(object):
 
             # Get user/signer OID.
             signer_oid = x_signer.object_uuid
-            signer_oid = self.get_oid_by_uuid(uuid=signer_oid)
+            signer_oid = stuff.resolve_uuid(signer_oid)
             if not signer_oid:
                 current_row.append("Unknown")
                 current_row.append("N/A")
@@ -4028,13 +4057,13 @@ class CommandHandler(object):
         # Check if otpme-agent is running
         agent_status, pid = otpme_agent.status(quiet=True)
         if not agent_status:
-            return False
+            return
 
         # Try to get agent connection
         try:
             agent_conn = connections.get("agent", user=system_user)
         except Exception as e:
-            return False
+            return
 
         ssh_key_pass = agent_conn.get_ssh_key_pass()[1]
 
@@ -4489,7 +4518,7 @@ class CommandHandler(object):
             try:
                 # When a user is configured for sign_mode=server the private
                 # key might be encrypted with a passphrase (AES).
-                self.user_aes_pass = sys.stdin.read().replace("\n", "")
+                self.user_aes_pass = stuff.read_pass_from_stdin()
             except:
                 pass
 
@@ -4611,30 +4640,30 @@ class CommandHandler(object):
         self.newline = False
         return script_stdout
 
-    def handle_user_key_command(self):
-        """ Handle script add command. """
-        # Show help if needed.
-        if len(self.command_line) < 2:
-            return self.get_help()
+    #def handle_user_key_command(self):
+    #    """ Handle script add command. """
+    #    # Show help if needed.
+    #    if len(self.command_line) < 2:
+    #        return self.get_help()
 
-        # Get path to script.
-        script_path = self.command_line[-1]
+    #    # Get path to script.
+    #    script_path = self.command_line[-1]
 
-        if not os.path.exists(script_path):
-            msg = (_("No such file or directory: %s") % script_path)
-            raise OTPmeException(msg)
+    #    if not os.path.exists(script_path):
+    #        msg = (_("No such file or directory: %s") % script_path)
+    #        raise OTPmeException(msg)
 
-        # Try to read script as base64 encoded string.
-        try:
-            fd = open(script_path, "r")
-            script_base64 = encode(fd.read(), "base64")
-            fd.close()
-        except Exception as e:
-            fd.close()
-            self.logger.warning("Error reading script file: " % e)
+    #    # Try to read script as base64 encoded string.
+    #    try:
+    #        fd = open(script_path, "r")
+    #        script_base64 = encode(fd.read(), "base64")
+    #        fd.close()
+    #    except Exception as e:
+    #        fd.close()
+    #        self.logger.warning("Error reading script file: " % e)
 
-        # Add base64 encoded script to command line.
-        self.command_line = self.command_line[:-1] + [script_base64]
+    #    # Add base64 encoded script to command line.
+    #    self.command_line = self.command_line[:-1] + [script_base64]
 
     def handle_script_edit_command(self):
         """ Handle script edit command. """
@@ -5167,6 +5196,7 @@ class CommandHandler(object):
                     node_status[node.name]['status'] = "Offline"
                 except:
                     node_status[node.name] = {'status':"Offline"}
+                return
             try:
                 # Get cluster checksums.
                 node_checksums[node.name] = clusterd_conn.get_checksums()
@@ -5181,6 +5211,10 @@ class CommandHandler(object):
                     node_status[node.name] = {'status':"Offline"}
             finally:
                 clusterd_conn.close()
+            try:
+                node_status[node.name]['status'] = "Online"
+            except:
+                node_status[node.name] = {'status':"Online"}
 
         result = backend.search(object_type="node",
                                 attribute="uuid",
@@ -5197,6 +5231,8 @@ class CommandHandler(object):
         node_threads = {}
         for node in result:
             if not node.enabled:
+                data_dict['node_status'][node.name] = {}
+                data_dict['node_status'][node.name]['status'] = False
                 continue
             node_data_thread = multiprocessing.start_thread(name=node.name,
                                                         target=get_node_data,
@@ -5279,6 +5315,11 @@ class CommandHandler(object):
                 x_node_status = node_status[x_node]['status']
             except KeyError:
                 x_node_status = "Unknown"
+            if not x_node_status:
+                x_status_line = "%s Disabled" % x_node
+                x_status_line = colored(x_status_line, 'light_grey')
+                cluster_status_str.append(x_status_line)
+                continue
             try:
                 x_node_master = node_status[x_node]['master']
             except KeyError:

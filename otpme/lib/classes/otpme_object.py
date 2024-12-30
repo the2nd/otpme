@@ -540,6 +540,7 @@ class OTPmeBaseObject(OTPmeLockObject):
     """ Generic OTPme object. """
     def __init__(self, object_config=None,
     uuid=None, no_transaction=False, **kwargs):
+        self.incremental_updates = []
         self.oid = None
         self.uuid = uuid
         self.site = None
@@ -552,7 +553,6 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.pickable = True
         self.cache_expire = 30
         self.sub_type = None
-        self.incremental_updates = []
         self.list_attributes = []
         self.dict_attributes = []
         self.template_name = None
@@ -572,9 +572,9 @@ class OTPmeBaseObject(OTPmeLockObject):
         self._modified = False
         self._cached = False
         self._last_modified_written = False
+        self._base_sync_fields = {}
         self._sync_fields = {}
         self._sub_sync_fields = {}
-        self._base_sync_fields = {}
         self.object_config = {}
         self.index_journal = []
         self.index_journal_archive = []
@@ -899,31 +899,32 @@ class OTPmeBaseObject(OTPmeLockObject):
         # Get base sync fields (e.g. UUID, REALM, SITE...)
         try:
             allowed_fields += list(self._base_sync_fields[peer.type][relationship])
-        except:
+        except KeyError:
             pass
 
         if own_site:
             try:
                 allowed_fields += list(self._base_sync_fields[peer.type]['own_site'])
-            except:
+            except KeyError:
                 pass
 
         # Get object specific sync fields (e.g. GROUP, TOKENS...)
         try:
             allowed_fields += list(self.sync_fields[peer.type][relationship])
-        except:
+        except KeyError:
             pass
 
         if own_site:
             try:
                 allowed_fields += list(self.sync_fields[peer.type]['own_site'])
-            except:
+            except KeyError:
                 pass
 
         if allowed_fields:
             for f in dict(sync_config):
-                if not f in allowed_fields:
-                    sync_config.pop(f)
+                if f in allowed_fields:
+                    continue
+                sync_config.pop(f)
 
         return sync_config
 
@@ -1785,6 +1786,8 @@ class OTPmeObject(OTPmeBaseObject):
                             ],
                         },
                     }
+
+
 
         # Type checking is only needed on nodes the object is managed by.
         self.check_attribute_types = True
@@ -4702,11 +4705,12 @@ class OTPmeObject(OTPmeBaseObject):
     def enable(self, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Enable the object. """
+        if self._enabled:
+            object_type = "%s%s" % (self.type[0].upper(), self.type[1:])
+            msg = (_("%s already enabled.") % object_type)
+            return callback.error(msg)
+
         if not force:
-            if self._enabled:
-                object_type = "%s%s" % (self.type[0].upper(), self.type[1:])
-                msg = (_("%s already enabled.") % object_type)
-                return callback.error(msg)
             if self.confirmation_policy == "paranoid":
                 msg = (_("Enable %(object_type)s '%(object_name)s'?: ")
                         % { "object_type":self.type, "object_name":self.name})
@@ -4758,12 +4762,11 @@ class OTPmeObject(OTPmeBaseObject):
             if self.name == config.admin_user_name:
                 return callback.error("Cannot disable admin user.")
 
-        if not force:
-            if not self._enabled:
-                object_type = "%s%s" % (self.type[0].upper(), self.type[1:])
-                msg = (_("%(object_type)s '%(object_name)s' already disabled.")
-                        % {"object_type":object_type, "object_name":self.name})
-                return callback.error(msg)
+        if not self._enabled:
+            object_type = "%s%s" % (self.type[0].upper(), self.type[1:])
+            msg = (_("%(object_type)s '%(object_name)s' already disabled.")
+                    % {"object_type":object_type, "object_name":self.name})
+            return callback.error(msg)
 
         base_access_groups = config.get_base_objects("accessgroup")
         if self.name in base_access_groups:
@@ -6132,8 +6135,8 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok()
 
     @object_lock(full_lock=True)
-    def sign(self, tags=None, sign_ref=None, force=False, run_policies=False,
-        callback=default_callback, _caller="API", **kwargs):
+    def sign(self, tags=None, sign_ref=None, force=False, stdin_pass=False,
+        run_policies=False, callback=default_callback, _caller="API", **kwargs):
         """ Sign the given object. """
         from otpme.lib.classes.signing import OTPmeSignature
         if tags and not isinstance(tags, list):
@@ -6182,6 +6185,7 @@ class OTPmeObject(OTPmeBaseObject):
         sign_info = sig.get_sign_info()
         # Build sign request.
         sign_request = {
+                            'stdin_pass': stdin_pass,
                             'sign_mode' : signer.sign_mode,
                             'sign_info' : sign_info,
                             'sign_data' : sign_template,
@@ -6511,10 +6515,10 @@ class OTPmeObject(OTPmeBaseObject):
                                 sign_data=sign_data,
                                 tags=check_tags)
                     verify_status = True
-                except VerificationFailed:
-                    msg = ("%s: signature verification failed (%s)"
-                            % (user.name, sign_info))
-                    callback.send(msg)
+                except VerificationFailed as e:
+                    msg = ("%s: signature verification failed: %s: %s"
+                            % (user.name, sign_info, e))
+                    callback.error(msg)
                     verify_status = False
                     continue
                 except InvalidPublicKey:
@@ -7812,7 +7816,7 @@ class OTPmeDataObject(OTPmeBaseObject):
 
         self._base_sync_fields = {
                     'node'  : {
-                        'trusted'  : [
+                        'untrusted'  : [
                             "UUID",
                             "REALM",
                             "SITE",

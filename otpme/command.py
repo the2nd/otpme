@@ -58,9 +58,9 @@ try:
 except AttributeError:
     pass
 
-# Workaround for https://github.com/pyca/cryptography/issues/7236
-from cryptography.hazmat.backends.openssl import backend
-backend._rsa_skip_check_key = True
+## Workaround for https://github.com/pyca/cryptography/issues/7236
+#from cryptography.hazmat.backends.openssl import backend
+#backend._rsa_skip_check_key = True
 
 def otpme_commands(no_debug=False):
     """ Handles OTPme command line tools. """

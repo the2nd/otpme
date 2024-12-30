@@ -189,9 +189,11 @@ def create_csr(cn, key_len=2048, sign_algo="sha256",
 
     # Load given key.
     if key:
+        # Workaround for https://github.com/pyca/cryptography/issues/7236
         _key = serialization.load_pem_private_key(data=key,
                                             password=None,
-                                            backend=default_backend())
+                                            backend=default_backend(),
+                                            unsafe_skip_rsa_key_validation=True)
     else:
         _key = rsa.generate_private_key(public_exponent=65537,
                                         key_size=key_len,
@@ -286,9 +288,11 @@ def create_certificate(cn, sn, cert_req=None, self_signed=False,
 
     if not self_signed and (ca_cert and ca_key):
         CA_cert = x509.load_pem_x509_certificate(ca_cert, default_backend())
+        # Workaround for https://github.com/pyca/cryptography/issues/7236
         CA_key = serialization.load_pem_private_key(data=ca_key,
                                                 password=None,
-                                                backend=default_backend())
+                                                backend=default_backend(),
+                                                unsafe_skip_rsa_key_validation=True)
     cn_attrs = []
     if cert_req:
         # Load CSR
@@ -322,9 +326,11 @@ def create_certificate(cn, sn, cert_req=None, self_signed=False,
 
         if key:
             # Load given key.
+            # Workaround for https://github.com/pyca/cryptography/issues/7236
             _key = serialization.load_pem_private_key(data=key,
                                                 password=None,
-                                                backend=default_backend())
+                                                backend=default_backend(),
+                                                unsafe_skip_rsa_key_validation=True)
         else:
             # Generate key pair.
             _key = rsa.generate_private_key(public_exponent=65537,
@@ -377,9 +383,11 @@ def create_certificate(cn, sn, cert_req=None, self_signed=False,
     # Check if we should generate a self-sign cert.
     if self_signed:
         if sign_key:
+            # Workaround for https://github.com/pyca/cryptography/issues/7236
             _sign_key = serialization.load_pem_private_key(data=sign_key,
                                                 password=None,
-                                                backend=default_backend())
+                                                backend=default_backend(),
+                                                unsafe_skip_rsa_key_validation=True)
         else:
             # For self-signed certs we have to use the client cert key for signing.
             _sign_key = _key
@@ -546,9 +554,11 @@ def revoke_certificate(ca_cert, ca_key, cert=None, sn=None,
     # Load CA cert and key.
     CA_cert = x509.load_pem_x509_certificate(data=ca_cert,
                                         backend=default_backend())
+    # Workaround for https://github.com/pyca/cryptography/issues/7236
     CA_key = serialization.load_pem_private_key(data=ca_key,
                                         password=None,
-                                        backend=default_backend())
+                                        backend=default_backend(),
+                                        unsafe_skip_rsa_key_validation=True)
 
     # If we got an cert get serial number.
     if cert:

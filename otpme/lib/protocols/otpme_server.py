@@ -773,7 +773,9 @@ class OTPmeServer1(object):
                     raise OTPmeException(msg)
                 # Encrypt reply key with host key.
                 try:
-                    pa_reply_key = host_key.encrypt(pa_enc_key)
+                    pa_reply_key = host_key.encrypt(cleartext=pa_enc_key,
+                                                    algorithm="SHA256",
+                                                    cipher='PKCS1_OAEP')
                     pa_reply_key = encode(pa_reply_key, "hex")
                 except Exception as e:
                     config.raise_exception()
@@ -785,7 +787,9 @@ class OTPmeServer1(object):
             self.logger.debug(msg)
         try:
             enc_key = decode(enc_key, "hex")
-            enc_key = self.site_key.decrypt(enc_key)
+            enc_key = self.site_key.decrypt(ciphertext=enc_key,
+                                            algorithm="SHA256",
+                                            cipher='PKCS1_OAEP')
         except Exception as e:
             msg = "Failed to decrypt preauth key: %s: %s" % (self.peer, e)
             self.logger.critical(msg)

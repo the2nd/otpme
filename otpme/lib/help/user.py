@@ -135,7 +135,7 @@ cmd_help = {
 
 
     'dump_key'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user dump_key {user}',
+                    '_cmd_usage_help' : 'Usage: otpme-user dump_key [-p] [-n] [--stdin-pass] {user}',
                     'cmd'   :   '-p :private=True: -n :decrypt=True: --stdin-pass :stdin_pass=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : 'Dump users RSA key to stdout',

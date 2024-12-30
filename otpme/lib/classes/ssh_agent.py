@@ -89,6 +89,7 @@ class SSHAgent(object):
                                     script_uuid=self.ssh_agent_script_uuid,
                                     script=self.ssh_agent_script,
                                     options=script_options,
+                                    verify_signatures=verify_signs,
                                     signatures=self.ssh_agent_script_signs,
                                     signers=signers,
                                     script_env=script_env,

@@ -214,8 +214,6 @@ class Session(OTPmeLockObject):
         self.last_reneg = False
         self.reneg_hash = None
         # Some default values.
-        self.last_login = None
-        self.login_count = 0
         self.child_sessions = []
         self.offline_data_key = None
         self._modified = False
@@ -545,8 +543,6 @@ class Session(OTPmeLockObject):
         self.object_config['CLIENT'] = self.client
         self.object_config['CLIENT_IP'] = self.client_ip
         self.object_config['AUTH_TOKEN'] = self.auth_token
-        self.object_config['LAST_LOGIN'] = self.last_login
-        self.object_config['LOGIN_COUNT'] = self.login_count
         self.object_config['SESSION_TIMEOUT'] = self.timeout
         self.object_config['UNUSED_SESSION_TIMEOUT'] = self.unused_timeout
         self.object_config['SESSION_ID'] = self.session_id
@@ -601,8 +597,6 @@ class Session(OTPmeLockObject):
         self.client = self.get_config_parameter('CLIENT')
         self.client_ip = self.get_config_parameter('CLIENT_IP')
         self.auth_token = self.get_config_parameter('AUTH_TOKEN')
-        self.last_login = self.get_config_parameter('LAST_LOGIN')
-        self.login_count = self.get_config_parameter('LOGIN_COUNT')
         self.timeout = self.get_config_parameter('SESSION_TIMEOUT')
         self.unused_timeout = self.get_config_parameter('UNUSED_SESSION_TIMEOUT')
         self.origin = self.get_config_parameter('ORIGIN')
@@ -686,17 +680,9 @@ class Session(OTPmeLockObject):
                 continue
             session.update_last_used_time(update_child_sessions=True,
                                              force=force)
-    @object_lock()
-    def count_login(self,):
-        """ Counts a login for this session. """
-        # Count up login counter.
-        self.login_count += 1
-        # Set last login time.
-        self.last_login = time.time()
         # Call method to update last used timestamp. This method also
         # writes the session config via write_config()
         self.update_last_used_time(update_child_sessions=True, force=True)
-        return self.write_config()
 
     def expire_time(self):
         """ Return session expiration timestamp. """
