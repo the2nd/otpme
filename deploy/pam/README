@@ -24,7 +24,10 @@ use_ssh_agent			- enable support for authentication via SSH key (e.g. yubikey wi
 					- auto: try to use SSH key from agent (default)
 					- true: force use of SSH key from agent (login without valid SSH key not possible)
 					- false: do not use (and not start) SSH agent
-start_ssh_agent			- start SSH agent on login. This is independent of use_ssh_agent
+start_ssh_agent			- start SSH agent at login.
+					- auto: decide to start SSH agent based on public keys received from server
+					- true: definitly start SSH agent.
+					- false: dont start SSH agent.
 show_errors 			- show OTPme login errors via PAM message
 connect_timeout			- timeout when connecting to OTPme servers
 connection_timeout		- connection timeout when waiting for answer from server

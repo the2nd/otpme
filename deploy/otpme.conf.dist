@@ -1,4 +1,7 @@
 # OTPme config file
+
+# Path to otpme commands.
+BIN_DIR="/opt/otpme/bin/"
 # Timezone to use (e.g. certificates).
 TIMEZONE="Europe/Berlin"
 
@@ -13,8 +16,8 @@ TWO_NODE_TIMEOUT="3"
 # Index DB type. If you have a lot of users an experience
 # bad performance consider switching to mysql or postgres.
 # NOTE: Please make sure you run "otpme-tool index stop" BEFORE changing this parameter!
-INDEX="sqlite3"
-#INDEX="postgres"
+#INDEX="sqlite3"
+INDEX="postgres"
 # Autostart index DB on daemon start.
 AUTOSTART_INDEX="True"
 
@@ -86,7 +89,7 @@ POSTGRES_PG_CTL_BIN="/usr/lib/postgresql/13/bin/pg_ctl"
 # Pickle module used for caching. Currently
 # Run root scripts as this user.
 ROOT_SCRIPT_USER="nobody"
-ROOT_SCRIPT_GROUP="nobody"
+ROOT_SCRIPT_GROUP="nogroup"
 
 # supported are "pickle" and "larch"
 PICKLE_CACHE_MODULE="pickle"
@@ -154,6 +157,11 @@ FLUSH_CACHE_ON_START="True"
 # Please note. If you uncomment MEMCACHEDB_OPTS any other memcachedb option is ignored.
 #MEMCACHEDB_OPTS="-d -m 128 -t 32 -A 4096 -H /var/cache/otpme/memcachedb -U off -s /var/run/otpme/sockets/memcachedb/memcachedb.sock -a 700 -v"
 
+# Compress object JSON files.
+#OBJECT_JSON_COMPRESSSION="lz4"
+# Prettify object JSON files.
+#PRETTIFY_OBJECT_JSON="True"
+
 # Posix message queues max message size. On linux you can get/set it via
 # /proc/sys/fs/mqueue/msgsize_max. If you set it to "auto" it will be read
 # from /proc/sys/fs/mqueue/msgsize_max.
@@ -196,7 +204,10 @@ GROUP="otpme"
 HANDLE_FILES_DIRS="True"
 
 # Configure which pinentry to use. The default is otpme-pinentry.
-PINENTRY="otpme-pinentry"
+PINENTRY="/usr/bin/pinentry"
+
+# LDAP verify ACLs.
+LDAP_VERIFY_ACLS="False"
 
 # Hash type used to derive encryption key for offline tokens from passsword.
 OFFLINE_TOKEN_HASH_TYPE="Argon2_i"
@@ -272,9 +283,6 @@ FORCE_AGENT_SCRIPT_SIGNERS="True"
 # Length for logout passwords (SLP).
 LOGOUT_PASS_LEN="6"
 
-# Length for refresh passwords (SRP).
-REFRESH_PASS_LEN="6"
-
 # FIXME: not implemented yet
 ## ldap server to get user mobile numbers from
 #LDAP_URI="ldaps://ldap.domain.intern"
@@ -284,11 +292,6 @@ REFRESH_PASS_LEN="6"
 
 # Set path to pwgen binary used for password generation.
 PWGEN="/usr/bin/pwgen"
-
-# Set "authentication ok" and "authentication failed" strings that will be send
-# to stdout when using OTPme as a replacement for ntlm_auth (otpme-auth verify).
-AUTH_OK_STRING="Accept"
-AUTH_FAILED_STRING="Reject"
 
 # Print python tracebacks.
 TRACEBACKS="False"

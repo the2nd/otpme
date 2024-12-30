@@ -18,7 +18,7 @@ if os.path.exists(PYTHONPATH_FILE):
             x = x.replace("\n", "")
             if x in sys.path:
                 continue
-            sys.path.append(x)
+            sys.path.insert(0, x)
     finally:
         fd.close()
 
@@ -54,7 +54,22 @@ def pam_sm_authenticate(pamh, flags, argv):
     return retval
 
 def pam_sm_setcred(pamh, flags, argv):
-    return pamh.PAM_SUCCESS
+    logger = config.logger
+    logger.debug("Starting pam_sm_setcred()...")
+    try:
+        pam_handler = pam.PamHandler(pamh, argv)
+    except Exception as e:
+        msg = "Error loading pam handler: %s" % e
+        logger.critical(msg)
+        config.raise_exception()
+        return pamh.PAM_SYSTEM_ERR
+    try:
+        retval = pam_handler.pam_sm_setcred()
+    except Exception as e:
+        msg = ("pam_sm_setcred: Error in pam_otpme.py: %s" % e)
+        logger.critical(msg, exc_info=True)
+        return pamh.PAM_SYSTEM_ERR
+    return retval
 
 def pam_sm_acct_mgmt(pamh, flags, argv):
     return pamh.PAM_SUCCESS
@@ -78,7 +93,22 @@ def pam_sm_open_session(pamh, flags, argv):
     return retval
 
 def pam_sm_close_session(pamh, flags, argv):
-    return pamh.PAM_SUCCESS
+    logger = config.logger
+    logger.debug("Running close_session()...")
+    try:
+        pam_handler = pam.PamHandler(pamh, argv)
+    except Exception as e:
+        msg = "Error loading pam handler: %s" % e
+        logger.critical(msg)
+        config.raise_exception()
+        return pamh.PAM_SYSTEM_ERR
+    try:
+        retval = pam_handler.close_session()
+    except Exception as e:
+        msg = ("pam_sm_close_session: Error in pam_otpme.py: %s" % e)
+        logger.critical(msg, exc_info=True)
+        return pamh.PAM_SYSTEM_ERR
+    return retval
 
 def pam_sm_chauthtok(pamh, flags, argv):
     return pamh.PAM_SUCCESS
