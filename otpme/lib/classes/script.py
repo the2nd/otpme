@@ -448,9 +448,10 @@ def register_oid():
                                 getter=rel_path_getter)
 
 def register_hooks():
+    config.register_auth_on_action_hook("script", "dump")
+    config.register_auth_on_action_hook("script", "sign")
     config.register_auth_on_action_hook("script", "add_sign")
     config.register_auth_on_action_hook("script", "del_sign")
-    config.register_auth_on_action_hook("script", "dump")
 
 def register_backend():
     """ Register object for the file backend. """

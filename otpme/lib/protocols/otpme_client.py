@@ -2711,7 +2711,8 @@ class OTPmeClient1(OTPmeClientBase):
                 if self.use_ssh_agent is None:
                     self.use_ssh_agent = True
                 if self.start_ssh_agent is None:
-                    self.start_ssh_agent = True
+                    if self.ssh_agent_method:
+                        self.start_ssh_agent = True
 
         if self.start_ssh_agent:
             # Delay start if needed.

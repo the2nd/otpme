@@ -144,7 +144,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                     except KeyError:
                         pass
                     job.close()
-                    job.join()
                     continue
                 jobs_stopped = False
                 time.sleep(0.01)
@@ -220,7 +219,6 @@ class OTPmeMgmtP1(OTPmeServer1):
         self.job_exit_status[job_uuid]['objects_written'] = job.objects_written.value
         # Close job.
         job.close()
-        job.join()
         if self.new_query_event:
             self.new_query_event.set()
         if not config.use_api:
@@ -512,6 +510,9 @@ class OTPmeMgmtP1(OTPmeServer1):
 
             if objects_written:
                 config.update_data_revision()
+
+            # Close job queues etc.
+            job.close()
 
             # Remove job from list if its no longer alive.
             try:

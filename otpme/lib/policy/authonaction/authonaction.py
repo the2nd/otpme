@@ -519,7 +519,7 @@ class AuthonactionPolicy(Policy):
             try:
                 callback.auth_jwt(reason="authonaction",
                                 challenge=challenge)
-            except OTPmeException as e:
+            except Exception as e:
                 if config.auth_token.uuid in config.first_reauth:
                     config.first_reauth.pop(config.auth_token.uuid)
                 if config.auth_token.uuid in config.last_reauth:

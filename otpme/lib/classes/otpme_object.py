@@ -6136,7 +6136,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock(full_lock=True)
     def sign(self, tags=None, sign_ref=None, force=False, stdin_pass=False,
-        run_policies=False, callback=default_callback, _caller="API", **kwargs):
+        run_policies=True, callback=default_callback, _caller="API", **kwargs):
         """ Sign the given object. """
         from otpme.lib.classes.signing import OTPmeSignature
         if tags and not isinstance(tags, list):
@@ -6147,6 +6147,19 @@ class OTPmeObject(OTPmeBaseObject):
         if not signer:
             msg = "Not logged in."
             raise NotLoggedIn(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("sign",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                #config.raise_exception()
+                msg = str(e)
+                return callback.error(msg)
 
         # Reload auth user (e.g. new keys).
         signer._load()
@@ -6221,6 +6234,7 @@ class OTPmeObject(OTPmeBaseObject):
         status = self.add_sign(sig,
                             tags=sign_tags,
                             force=force,
+                            run_policies=run_policies,
                             callback=callback,
                             _caller=_caller)
         return status
@@ -6258,7 +6272,7 @@ class OTPmeObject(OTPmeBaseObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                config.raise_exception()
+                #config.raise_exception()
                 msg = str(e)
                 return callback.error(msg)
 

@@ -159,6 +159,7 @@ class OTPmeJob(object):
                 if _signal == 2:
                     self.callback.stop_job = True
                 if _signal == 15:
+                    self.close()
                     os._exit(0)
 
             multiprocessing.atfork(quiet=True,

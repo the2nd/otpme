@@ -680,9 +680,6 @@ class Session(OTPmeLockObject):
                 continue
             session.update_last_used_time(update_child_sessions=True,
                                              force=force)
-        # Call method to update last used timestamp. This method also
-        # writes the session config via write_config()
-        self.update_last_used_time(update_child_sessions=True, force=True)
 
     def expire_time(self):
         """ Return session expiration timestamp. """
