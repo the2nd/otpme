@@ -133,8 +133,10 @@ class SSHAgent(object):
             os.environ['SSH_AGENT_NAME'] = ssh_agent_name
             self.ssh_agent_name = ssh_agent_name
 
-        return agent_stdout
+        if agent_returncode == 0:
+            return True
 
+        return False
 
     def start(self, verify_signs=None):
         """ Make sure SSH/GPG agent is running and needed variables are set """

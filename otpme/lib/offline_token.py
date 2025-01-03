@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
+import glob
 import shutil
 
 try:
@@ -119,14 +120,10 @@ class OfflineToken(object):
         if not os.path.exists(self.token_cache_dir):
             return []
         try:
-            token_files = os.listdir(self.token_cache_dir)
+            token_files = glob.glob(os.path.join(self.token_cache_dir, '*'))
         except Exception as e:
             msg = (_("Unable to access token cache dir: %s") % e)
             raise OTPmeException(msg)
-        try:
-            token_files.remove(".login_token")
-        except:
-            pass
         return token_files
 
     def init(self):
@@ -201,6 +198,8 @@ class OfflineToken(object):
         self.token_cache_dir = "%s/token" % self.offline_dir
         # Login token UUID file.
         self.login_token_uuid_file = "%s/.login_token" % self.token_cache_dir
+        # Indicates that offline tokens are pinned.
+        self.offline_token_pinned_file = "%s/.pin" % self.token_cache_dir
 
     def set_login_token(self, uuid, session_uuid):
         """ Write login token UUID to cache file. """
@@ -231,6 +230,37 @@ class OfflineToken(object):
             config.raise_exception()
             msg = (_("Error writing login file: %s") % e)
             raise OTPmeException(msg)
+
+    @property
+    def pinned(self):
+        if os.path.exists(self.offline_token_pinned_file):
+            return True
+        return False
+
+    def pin(self):
+        """ Pin offline tokens. """
+        offline_token_pinned_dir = os.path.dirname(self.offline_token_pinned_file)
+        if not os.path.exists(offline_token_pinned_dir):
+            filetools.create_dir(path=offline_token_pinned_dir,
+                                user=self.username, mode=0o700,
+                                user_acls=self.dir_acls)
+        # Write offline token pinned file.
+        try:
+            filetools.touch(self.offline_token_pinned_file,
+                                    user=self.username,
+                                    mode=0o600,
+                                    user_acls=self.file_acls)
+        except Exception as e:
+            config.raise_exception()
+            msg = (_("Error writing pinned file: %s") % e)
+            raise OTPmeException(msg)
+
+    def unpin(self):
+        """ Unpin offline tokens. """
+        if not self.pinned:
+            msg = "Offline tokens not pinned."
+            raise OTPmeException(msg)
+        os.remove(self.offline_token_pinned_file)
 
     def set_enc_passphrase(self, passphrase, key_function, key_function_opts=None,
         iterations_by_score={}, check_pass_strength=False, challenge=None):
@@ -589,7 +619,8 @@ class OfflineToken(object):
             raise OTPmeException(msg)
 
         for t in token_files:
-            token_oid = t.replace(":", "/")
+            token_oid = os.path.basename(t)
+            token_oid = token_oid.replace(":", "/")
             token_oid = oid.get(object_id=token_oid)
             try:
                 object_config = self.read_config(token_oid)
@@ -714,8 +745,7 @@ class OfflineToken(object):
 
     def save_rsp(self, session_id, realm, site, rsp, slp, session_key=None,
         login_time=None, session_timeout=None, session_unused_timeout=None,
-        session_uuid=None, offline_session=None,
-        offline_tokens=None, update=False):
+        session_uuid=None, offline_session=None, update=False):
         """ Save RSP to file encrypted with session public key. """
         session_config = {}
         session_file = self.get_session_file(realm, site, session_id)
@@ -819,12 +849,11 @@ class OfflineToken(object):
                 self.logger.debug("Updated RSP in file: %s" % session_file)
             else:
                 self.logger.debug("Saved RSP to file: %s" % session_file)
-            # If this session has offline tokens create the "offline session" link.
-            if offline_tokens:
-                offline_session_link = self.get_session_file()
-                if os.path.islink(offline_session_link):
-                    filetools.delete(offline_session_link)
-                os.symlink(session_file, offline_session_link)
+            # Create the "offline session" link.
+            offline_session_link = self.get_session_file()
+            if os.path.islink(offline_session_link):
+                filetools.delete(offline_session_link)
+            os.symlink(session_file, offline_session_link)
         except Exception as e:
             msg = (_("Error writing session file: %s") % e)
             raise OTPmeException(msg)

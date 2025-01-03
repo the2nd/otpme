@@ -205,6 +205,7 @@ def get(daemon, **kwargs):
                                                 'password_method',
                                                 'cleanup_method',
                                                 'message_method',
+                                                'offline_token',
                                                 'error_message_method'
                                                 ])
     except Exception as e:

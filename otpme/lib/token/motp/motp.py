@@ -13,7 +13,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib import mschap_util
-from otpme.lib.otp.otpme import otpme
+from otpme.lib.otp.motp import motp
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -487,13 +487,13 @@ class MotpToken(Token):
             return callback.error("Token secret missing.")
 
         if otp_count > 1:
-            otps = otpme.generate(secret=self.secret,
+            otps = motp.generate(secret=self.secret,
                                 otp_count=otp_count,
                                 otp_len=self.otp_len,
                                 pin=str(self.pin))
             return otps
         else:
-            otp = otpme.generate(secret=self.secret,
+            otp = motp.generate(secret=self.secret,
                                 otp_count=otp_count,
                                 otp_len=self.otp_len,
                                 pin=str(self.pin))
@@ -527,7 +527,6 @@ class MotpToken(Token):
     def verify_otp(self, otp, handle_used_otps=True,
         session_uuid=None, **kwargs):
         """ Verify OTP for this token. """
-        from otpme.lib.otp.otpme import otpme
 
         if handle_used_otps:
             if self.is_used_otp(otp):
@@ -539,7 +538,7 @@ class MotpToken(Token):
         timedrift_tolerance = self.timedrift_tolerance * 6
 
         # Calculate times to verify OTP.
-        validity_times = otpme.get_validity_times(validity_time=validity_time,
+        validity_times = motp.get_validity_times(validity_time=validity_time,
                                         timedrift_tolerance=timedrift_tolerance,
                                         offset=self.offset)
         otp_epoch_time = validity_times[0]
@@ -551,7 +550,7 @@ class MotpToken(Token):
         logger.debug("Verifiying OTP within timerange: start='%s' end='%s'."
                     % (otp_validity_start_time, otp_validity_end_time))
         # Verify OTP.
-        if otpme.verify(epoch_time=otp_epoch_time,
+        if motp.verify(epoch_time=otp_epoch_time,
                         validity_range=otp_validity_range,
                         secret=self.secret, otp=otp,
                         otp_len=self.otp_len,
@@ -594,7 +593,7 @@ class MotpToken(Token):
         timedrift_tolerance = self.timedrift_tolerance * 6
 
         # Calculate times to verify OTP.
-        validity_times = otpme.get_validity_times(validity_time=validity_time,
+        validity_times = motp.get_validity_times(validity_time=validity_time,
                                         timedrift_tolerance=timedrift_tolerance,
                                         offset=self.offset)
         otp_epoch_time = validity_times[0]
@@ -603,7 +602,7 @@ class MotpToken(Token):
         otp_validity_end_time = validity_times[5]
 
         # Get all OTPs of this token for the given time range.
-        otps = otpme.generate(epoch_time=otp_epoch_time,
+        otps = motp.generate(epoch_time=otp_epoch_time,
                             secret=self.secret,
                             pin=self.pin,
                             otp_count=otp_validity_range,
@@ -664,7 +663,7 @@ class MotpToken(Token):
         timedrift_tolerance = self.timedrift_tolerance * 6
 
         # Calculate OTP validity times.
-        validity_times = otpme.get_validity_times(validity_time=validity_time,
+        validity_times = motp.get_validity_times(validity_time=validity_time,
                                             timedrift_tolerance=timedrift_tolerance,
                                             offset=self.offset)
         otp_epoch_time = validity_times[0]

@@ -976,6 +976,11 @@ class SshToken(Token):
 
         return callback.ok(return_message)
 
+    def get_offline_data(self):
+        """ Get token offline data. """
+        offline_data = {'ssh_public_key':self.ssh_public_key}
+        return offline_data
+
     def show_config(self, callback=default_callback, **kwargs):
         """ Show token config. """
         if not self.verify_acl("view_public:object"):

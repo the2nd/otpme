@@ -1792,6 +1792,17 @@ class OTPmeServer1(object):
                 self.logger.warning(msg)
                 config.raise_exception()
                 raise OTPmeException("SMARTCARD_HANLDER_EXCEPTION")
+            try:
+                smartcard_challenge = smartcard_data['challenge']
+            except KeyError:
+                smartcard_challenge = None
+            if smartcard_challenge:
+                for token_rel_path in self.token_challenges:
+                    x_challenge = self.token_challenges[token_rel_path]
+                    if x_challenge == smartcard_challenge:
+                        break
+                    msg = "Got invalid challenge"
+                    raise OTPmeException(msg)
             if is_2f_token:
                 if not password:
                     return passauth(query_id="password", prompt="Password/OTP:")
@@ -1926,12 +1937,7 @@ class OTPmeServer1(object):
 
         if auth_status:
             # Get auth token from reply.
-            auth_token = auth_reply['token']
-            # We will not send auth token instance to peer.
-            try:
-                auth_reply.pop('token')
-            except KeyError:
-                pass
+            auth_token = auth_reply.pop('token')
             # Make sure we use destination token for linked tokens.
             if auth_token.destination_token:
                 verify_token = auth_token.get_destination_token()

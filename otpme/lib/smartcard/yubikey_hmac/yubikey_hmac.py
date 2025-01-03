@@ -12,7 +12,7 @@ except:
 from otpme.lib import cli
 from otpme.lib import stuff
 from otpme.lib import config
-from otpme.lib.otp.otpme import otpme
+from otpme.lib.otp.motp import motp
 from otpme.lib.messages import message
 from otpme.lib.help import command_map
 #from otpme.lib.messages import error_message
@@ -168,9 +168,9 @@ class YubikeyHmacClientHandler(object):
         # OTP as response.
         epoch_time = time.time()
         otp_epoch_time = int(str(int(epoch_time))[:-1])
-        otp = otpme.generate(epoch_time=otp_epoch_time,
-                                secret=secret, otp_count=1,
-                                otp_len=otp_len)
+        otp = motp.generate(epoch_time=otp_epoch_time,
+                            secret=secret, otp_count=1,
+                            otp_len=otp_len)
         smartcard_data = self.token_options.copy()
         smartcard_data['otp'] = otp
         smartcard_data['token_rel_path'] = self.token_rel_path
@@ -198,7 +198,7 @@ class YubikeyHmacClientHandler(object):
         # OTP as response.
         epoch_time = time.time() - peer_time_diff
         otp_epoch_time = int(str(int(epoch_time))[:-1])
-        response = otpme.generate(epoch_time=otp_epoch_time,
+        response = motp.generate(epoch_time=otp_epoch_time,
                                 secret=secret, otp_count=1,
                                 otp_len=otp_len)
         return response
@@ -267,7 +267,7 @@ class YubikeyHmacClientHandler(object):
 
         # If we got the token secret we can generate a OTPme OTP to verify
         # the offline token.
-        otp = otpme.generate(secret=secret,
+        otp = motp.generate(secret=secret,
                             otp_count=1,
                             otp_len=token.otp_len)
         smartcard_data = {

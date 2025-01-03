@@ -99,7 +99,6 @@ cmd_help = {
                                 },
                 },
 
-
     'update_signer'    : {
                     '_cmd_usage_help' : 'Usage: otpme-tool update_signer [--private] [--no-pin] [--tags tag1,tag2...] [signer_uuid]',
                     'cmd'   :   '--private :private=True: --no-pin :pin=false: [signer_uuid]',
@@ -110,7 +109,6 @@ cmd_help = {
                                 },
                 },
 
-
     'show_signer'    : {
                     '_cmd_usage_help' : 'Usage: otpme-tool show_signer [--private] {signer_uuid}',
                     'cmd'   :   '--private :private=True: [signer_uuid]',
@@ -120,6 +118,29 @@ cmd_help = {
                                 },
                 },
 
+    'show_offline_token'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-tool show_offline_token [token_id]',
+                    'cmd'   :   '[|object|]',
+                    '_help' :   {
+                                    'cmd'                   : 'Show cached offline token(s).',
+                                },
+                },
+
+    'pin_offline_token'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-tool pin_offline_token',
+                    'cmd'   :   '',
+                    '_help' :   {
+                                    'cmd'                   : 'Pin cached offline token(s).',
+                                },
+                },
+
+    'unpin_offline_token'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-tool unpin_offline_token',
+                    'cmd'   :   '',
+                    '_help' :   {
+                                    'cmd'                   : 'Unpin cached offline token(s).',
+                                },
+                },
 
     'dump_index'    : {
                     '_cmd_usage_help' : 'Usage: otpme-tool dump_index {object_id}',

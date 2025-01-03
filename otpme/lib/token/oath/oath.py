@@ -92,7 +92,7 @@ class OathToken(Token):
         # FIXME: how to decided if encryption is needed in second factor usage??
         # When used as second factor token (e.g. with ssh or password token) it
         # is probably saver to encrypt our config. If the first factor token is
-        # a weak password this may not be true but we currently have not way to
+        # a weak password this may not be true but we currently have no way to
         # get this info at this stage.
         if second_factor_usage:
             need_encryption = True

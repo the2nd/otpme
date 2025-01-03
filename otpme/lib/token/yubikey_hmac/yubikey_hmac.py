@@ -12,7 +12,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
-from otpme.lib.otp.otpme import otpme
+from otpme.lib.otp.motp import motp
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -362,6 +362,17 @@ class YubikeyhmacToken(Token):
         #offline_config.pop('HMAC_CHALLENGE')
         return offline_config
 
+    def get_offline_data(self):
+        offline_data = {
+                        'slot'              : self.slot,
+                        'hmac_id'           : self.hmac_id,
+                        'hmac_challenge'    : self.hmac_challenge,
+                        'otp_len'           : self.otp_len,
+                        'secret'            : self.secret,
+                        'smartcard_id'      : self.smartcard_id,
+                    }
+        return offline_data
+
     @check_acls(['edit:validity_time'])
     @object_lock()
     @backend.transaction
@@ -433,14 +444,13 @@ class YubikeyhmacToken(Token):
     @check_acls(['generate:otp'])
     def gen_otp(self, otp_count=1, callback=default_callback, **kwargs):
         """ Generate one or more OTPs for this token. """
-        from otpme.lib.otp.otpme import otpme
         if otp_count > 1:
-            otps = otpme.generate(secret=self.secret,
+            otps = motp.generate(secret=self.secret,
                                     otp_count=otp_count,
                                     otp_len=self.otp_len)
             return otps
         else:
-            otp = otpme.generate(secret=self.secret,
+            otp = motp.generate(secret=self.secret,
                                 otp_count=1,
                                 otp_len=self.otp_len)
             return [otp]
@@ -490,7 +500,7 @@ class YubikeyhmacToken(Token):
         timedrift_tolerance = self.timedrift_tolerance * 6
 
         # Calculate times to verify OTP.
-        validity_times = otpme.get_validity_times(validity_time=validity_time,
+        validity_times = motp.get_validity_times(validity_time=validity_time,
                                         timedrift_tolerance=timedrift_tolerance,
                                         offset=self.offset)
         otp_epoch_time = validity_times[0]
@@ -503,7 +513,7 @@ class YubikeyhmacToken(Token):
                 % (otp_validity_start_time, otp_validity_end_time))
         logger.debug(msg)
         # Verify OTP.
-        if otpme.verify(epoch_time=otp_epoch_time,
+        if motp.verify(epoch_time=otp_epoch_time,
                         validity_range=otp_validity_range,
                         secret=self.secret,
                         otp=otp,
@@ -541,7 +551,7 @@ class YubikeyhmacToken(Token):
         timedrift_tolerance = self.timedrift_tolerance * 6
 
         # Calculate times to verify OTP.
-        validity_times = otpme.get_validity_times(validity_time=validity_time,
+        validity_times = motp.get_validity_times(validity_time=validity_time,
                                         timedrift_tolerance=timedrift_tolerance,
                                         offset=self.offset)
         otp_epoch_time = validity_times[0]

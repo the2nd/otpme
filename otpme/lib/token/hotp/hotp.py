@@ -488,6 +488,14 @@ class HotpToken(OathToken):
         token_counter = self.get_token_counter()
         return callback.ok(token_counter)
 
+    def get_offline_data(self):
+        offline_data = {}
+        if self.mode == "mode1":
+            offline_data['secret'] = self.secret
+        if self.mode == "mode2":
+            offline_data['server_secret'] = self.server_secret
+        return offline_data
+
     @check_acls(['generate:otp'])
     def gen_otp(self, secret=None, otp_count=1, prefix_pin=False,
         callback=default_callback, _caller="API", **kwargs):

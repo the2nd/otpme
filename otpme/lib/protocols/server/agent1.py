@@ -82,7 +82,6 @@ class OTPmeAgentP1(object):
         self.login_token = None
         self.login_pass_type = None
         self.offline_allowed = False
-        self.ssh_key_pass = None
         self.realm = None
         self.site = None
         self.rsp = None
@@ -119,6 +118,20 @@ class OTPmeAgentP1(object):
             return
         multiprocessing.cleanup()
         os._exit(0)
+
+    @property
+    def ssh_key_pass(self):
+        if not self.ssh_agent_pid:
+            return
+        try:
+            agent_session = self.login_sessions[self.ssh_agent_pid]
+        except KeyError:
+            return
+        try:
+            ssh_key_pass = agent_session['ssh_key_pass']
+        except KeyError:
+            return
+        return ssh_key_pass
 
     def acquire_session_lock(self, login_pid):
         session_lock = locking.acquire_lock(lock_type=SESSION_LOCK_TYPE,
@@ -329,7 +342,7 @@ class OTPmeAgentP1(object):
                                                     pid=self.client_pid)
 
         # If access to SSH key pass is requested try to authorize by agent PID.
-        if command == "get_ssh_key_pass" or command == "check_ssh_key_pass":
+        if command == "get_ssh_key_pass":
             for login_pid in self.login_sessions.keys():
                 session = self.login_sessions[login_pid]
                 try:
@@ -339,7 +352,7 @@ class OTPmeAgentP1(object):
                 if not self.check_ssh_agent_pid(self.client_pid, ssh_agent_pid):
                     continue
                 self.authorized = True
-                self.login_pid = ssh_agent_pid
+                self.login_pid = login_pid
                 logger.debug("Granted access to SSH key passphrase by PID: %s"
                             % self.client_pid)
                 break
@@ -373,7 +386,7 @@ class OTPmeAgentP1(object):
             except:
                 pass
             try:
-                self.ssh_key_pass = self.session['ssh_key_pass']
+                self.ssh_agent_pid = self.session['ssh_agent_pid']
             except:
                 pass
             try:
@@ -500,6 +513,14 @@ class OTPmeAgentP1(object):
         elif command == "ping":
             message = "pong"
             status = True
+
+        elif command == "check_ssh_key_pass":
+            if self.ssh_key_pass:
+                message = "SSH key passphrase is set"
+                status = True
+            else:
+                message = "No SSH key passphrase set"
+                status = False
 
         elif command == "status":
             if self.rsp:
@@ -636,13 +657,12 @@ class OTPmeAgentP1(object):
             else:
                 try:
                     self.ssh_agent_pid = command_args['ssh_agent_pid']
-                    self.ssh_key_pass = command_args['ssh_key_pass']
+                    ssh_key_pass = command_args['ssh_key_pass']
                 except:
                     message = "AGENT_INCOMPLETE_COMMAND"
                     status = False
 
-                if self.ssh_agent_pid and self.ssh_key_pass:
-                    # FIXME: encrypt ssh_key_pass!!?
+                if self.ssh_agent_pid and ssh_key_pass:
                     try:
                         ssh_agent_proc = psutil.Process(int(self.ssh_agent_pid))
                     except:
@@ -660,7 +680,7 @@ class OTPmeAgentP1(object):
                             agent_session['session_type'] = "ssh_key_pass"
                             agent_session['system_user'] = system_user
                             agent_session['login_user'] = self.login_user
-                            agent_session['ssh_key_pass'] = self.ssh_key_pass
+                            agent_session['ssh_key_pass'] = ssh_key_pass
                             self.login_sessions[self.ssh_agent_pid] = agent_session
                             # Add ssh_agent_pid to this session.
                             self.session['ssh_agent_pid'] = self.ssh_agent_pid
@@ -672,15 +692,6 @@ class OTPmeAgentP1(object):
                     else:
                         message = "PID %s not running" % self.ssh_agent_pid
                         status = False
-
-
-        elif command == "check_ssh_key_pass":
-            if self.ssh_key_pass:
-                message = "SSH key passphrase is set"
-                status = True
-            else:
-                message = "No SSH key passphrase set"
-                status = False
 
 
         elif command == "get_ssh_key_pass":
@@ -695,22 +706,15 @@ class OTPmeAgentP1(object):
 
 
         elif command == "del_ssh_key_pass":
-            agent_session = None
             message = "No SSH key passphrase set"
             status = False
-
-            if self.session_type == "realm_login":
-                agent_session = self.ssh_agent_pid
-            else:
-                agent_session = self.login_pid
-
-            if agent_session:
+            if self.ssh_agent_pid:
                 msg = ("Removing SSH key passphrase for user '%s' "
-                    "(PID: %s)." % (self.login_user, agent_session))
+                    "(PID: %s)." % (self.login_user, self.ssh_agent_pid))
                 logger.info(msg)
                 session_lock = self.acquire_session_lock(self.session_id)
                 try:
-                    self.login_sessions.pop(agent_session)
+                    self.login_sessions.pop(self.ssh_agent_pid)
                     message = "SSH key passphrase removed"
                     status = True
                 except:
@@ -993,7 +997,6 @@ class OTPmeAgentP1(object):
             self.login_token = None
             self.login_pass_type = None
             self.offline_allowed = False
-            self.ssh_key_pass = None
             self.realm = None
             self.site = None
             self.rsp = None

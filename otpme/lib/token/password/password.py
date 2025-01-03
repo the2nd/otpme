@@ -343,6 +343,12 @@ class PasswordToken(Token):
         # read from config.
         Token.set_variables(self)
 
+    def get_offline_data(self):
+        offline_data = {
+                        'password_hash' : self.password_hash,
+                    }
+        return offline_data
+
     def get_offline_config(self, second_factor_usage=False):
         """ Get offline config of token. (e.g. without PIN). """
         offline_config = self.object_config.copy()

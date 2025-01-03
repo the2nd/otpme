@@ -1176,6 +1176,33 @@ class CommandHandler(object):
                 return self.get_help()
             return self.do_backup(backup_dir)
 
+        if subcommand == "unpin_offline_token":
+            return self.unpin_offline_token()
+
+        if subcommand == "pin_offline_token":
+            return self.pin_offline_token()
+
+        if subcommand == "show_offline_token":
+            try:
+                command_syntax = self.get_command_syntax(command, subcommand)
+            except:
+                return self.get_help(_("Unknown command: %s") % subcommand)
+
+            # Parse command line.
+            try:
+                object_cmd, \
+                object_required, \
+                object_identifier, \
+                command_args = cli.get_opts(command_syntax=command_syntax,
+                                            command_line=command_line,
+                                            command_args=self.command_args)
+            except Exception as e:
+                if str(e) == "help":
+                    return self.get_help()
+                elif str(e) != "":
+                    return self.get_help(str(e))
+            return self.show_offline_token(token_id=object_identifier)
+
         if subcommand == "restore":
             from otpme.lib.register import register_modules
             register_modules()
@@ -2452,6 +2479,70 @@ class CommandHandler(object):
             msg = ("There where errors while creating users.")
             raise OTPmeException(msg)
 
+    def show_offline_token(self, token_id=None):
+        from otpme.lib.offline_token import OfflineToken
+        username = config.system_user()
+        offline_token = OfflineToken()
+        try:
+            offline_token.set_user(user=username)
+        except Exception as e:
+            msg = (_("Error initializing offline tokens: %s") % e)
+            raise OTPmeException(msg)
+        if not offline_token.status():
+            msg = "No offline tokens saved."
+            raise OTPmeException(msg)
+        offline_token.load()
+        offline_data = {'offline_tokens_pinned':offline_token.pinned}
+        offline_tokens = offline_token.get()
+        for key in offline_tokens:
+            token = offline_tokens[key]
+            if token_id:
+                if key != token_id:
+                    continue
+                offline_data = token.get_offline_data()
+                break
+            offline_data[key] = token.rel_path
+        offline_data = pprint.pformat(offline_data)
+        return offline_data
+
+    def pin_offline_token(self):
+        from otpme.lib.offline_token import OfflineToken
+        username = config.system_user()
+        offline_token = OfflineToken()
+        try:
+            offline_token.set_user(user=username)
+        except Exception as e:
+            msg = (_("Error initializing offline tokens: %s") % e)
+            raise OTPmeException(msg)
+        if not offline_token.status():
+            msg = "No offline tokens saved."
+            raise OTPmeException(msg)
+        if offline_token.pinned:
+            msg = "Offline tokens already pinned."
+            raise OTPmeException(msg)
+        offline_token.pin()
+        msg = "Offline tokens successfully pinned."
+        return msg
+
+    def unpin_offline_token(self):
+        from otpme.lib.offline_token import OfflineToken
+        username = config.system_user()
+        offline_token = OfflineToken()
+        try:
+            offline_token.set_user(user=username)
+        except Exception as e:
+            msg = (_("Error initializing offline tokens: %s") % e)
+            raise OTPmeException(msg)
+        if not offline_token.status():
+            msg = "No offline tokens saved."
+            raise OTPmeException(msg)
+        if not offline_token.pinned:
+            msg = "Offline tokens not pinned."
+            raise OTPmeException(msg)
+        offline_token.unpin()
+        msg = "Offline tokens successfully unpinned."
+        return msg
+
     def get_script_uuid(self, script_path, realm=None, site=None):
         """ Get OTPme script UUID. """
         #from otpme.lib.register import register_modules
@@ -3327,8 +3418,8 @@ class CommandHandler(object):
 
     def gen_motp(self, **kwargs):
         """ Generate MOTP. """
-        from otpme.lib.otp.otpme import otpme
-        otps = otpme.generate(**kwargs)
+        from otpme.lib.otp.motp import motp
+        otps = motp.generate(**kwargs)
         return otps
 
     def gen_refresh(self, username, password):

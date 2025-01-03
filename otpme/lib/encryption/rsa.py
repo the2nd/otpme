@@ -164,11 +164,9 @@ def derive_key_pair_from_pass(password, salt, hash_type="Argon2_d",
         my_rand.counter += 1
         my_salt = "my_salt:%d" % my_rand.counter
         x = encryption.hash_password(master_key,
-                                hash_type=hash_type,
+                                hash_type="PBKDF2",
                                 salt=my_salt,
-                                threads=threads,
-                                memory=memory,
-                                key_len=n,
+                                key_len=hash_len,
                                 iterations=1)['hash']
         x = x.encode()
         return x

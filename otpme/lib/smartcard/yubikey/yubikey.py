@@ -228,4 +228,3 @@ class Yubikey(object):
             if line.endswith('Card has been successfully reset.'):
                 return True
         raise Exception(_("Resetting GPG applet failed: %s") % command_stderr)
-

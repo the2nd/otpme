@@ -1043,14 +1043,15 @@ class OTPmeClient(OTPmeClientBase):
                 self.agent_conn = connections.get("agent",
                                 user=self.otpme_agent_user)
 
-            self.logger.debug("Adding SSH key passphrase to agent...")
-            # Add SSH key pass to agent.
-            try:
-                self.agent_conn.add_ssh_key_pass(ssh_agent_pid=self.ssh_agent_pid,
-                                                ssh_key_pass=ssh_key_pass)
-            except Exception as e:
-                msg = (_("Error adding SSH key passphrase to agent: %s") % e)
-                raise OTPmeException(msg)
+            if not self.agent_conn.check_ssh_key_pass():
+                self.logger.debug("Adding SSH key passphrase to agent...")
+                # Add SSH key pass to agent.
+                try:
+                    self.agent_conn.add_ssh_key_pass(ssh_agent_pid=self.ssh_agent_pid,
+                                                    ssh_key_pass=ssh_key_pass)
+                except Exception as e:
+                    msg = (_("Error adding SSH key passphrase to agent: %s") % e)
+                    raise OTPmeException(msg)
 
         self.logger.debug("Signing SSH challenge...")
         # Try to sign challenge with via running SSH agent.
@@ -1651,13 +1652,13 @@ class OTPmeClient1(OTPmeClientBase):
         jwt_method=None, rsp=None, srp=None, slp=None, login=False, unlock=False,
         login_interface="tty", logout=False, reneg=False, add_agent_acl=False,
         agent_acls=None, add_agent_session=None, add_login_session=None,
-        login_session_id=None, cache_login_tokens=False, password_method=None,
-        password=None, cleanup_method=None, check_offline_pass_strength=False,
-        offline_iterations_by_score={}, offline_key_derivation_func=None,
-        offline_key_func_opts=None, sync_token_data=False, request_jwt=None,
-        verify_jwt=None, jwt_challenge=None, jwt_key=None, jwt_auth=False,
-        check_login_status=True, allow_untrusted=False, do_preauth=True,
-        check_connected_site=True, offline_session_key=None,
+        offline_token=None, login_session_id=None, cache_login_tokens=False,
+        send_password=True, password_method=None, password=None, cleanup_method=None,
+        check_offline_pass_strength=False, offline_iterations_by_score={},
+        offline_key_derivation_func=None, offline_key_func_opts=None,
+        sync_token_data=False, request_jwt=None, verify_jwt=None, jwt_challenge=None,
+        jwt_key=None, jwt_auth=False, check_login_status=True, allow_untrusted=False,
+        do_preauth=True, check_connected_site=True, offline_session_key=None,
         verify_preauth=None, login_redirect=False, **kwargs):
         # Init parent class.
         super(OTPmeClient1, self).__init__(daemon, **kwargs)
@@ -1673,6 +1674,7 @@ class OTPmeClient1(OTPmeClientBase):
         self.logger = config.logger
 
         self.password = password
+        self.send_password = send_password
         self.password_method = password_method
 
         # Set connection.
@@ -1862,7 +1864,7 @@ class OTPmeClient1(OTPmeClientBase):
         # Indicates if we should cache login tokens received from authd.
         self.cache_login_tokens = cache_login_tokens
         # Will hold class to handle offline tokens.
-        self._offline_token = None
+        self._offline_token = offline_token
         # Will hold key to save offline sessions.
         self.offline_session_key = offline_session_key
         # Offline token key derivation function to use.
@@ -1926,18 +1928,16 @@ class OTPmeClient1(OTPmeClientBase):
 
     def cleanup(self):
         """ Prepare a clean exit. """
-        # FIXME: leave SSH key pass in agent if its configured? (for the token?)
         # Remove ssh key pass from agent if needed.
         if self.use_ssh_agent \
         and self.connection.agent_conn \
         and self.connection.agent_conn.check_ssh_key_pass():
-            if config.debug_level(DEBUG_SLOT) > 0:
-                msg = ("Removing SSH key passphrase from agent...")
-                self.logger.debug(msg)
+            msg = ("Removing SSH key passphrase from agent...")
+            self.logger.debug(msg)
             try:
                 self.connection.agent_conn.del_ssh_key_pass()
             except Exception as e:
-                msg = ("Error removing SSH key passphrase from agent.")
+                msg = ("Error removing SSH key passphrase from agent: %s" % e)
                 self.logger.warning(msg)
 
         # Close ssh-agent  connection
@@ -1955,13 +1955,10 @@ class OTPmeClient1(OTPmeClientBase):
             # Remove agent connection
             self.connection.agent_conn = None
 
-        ## FIXME: do we need this?
-        ## Workaround for http://bugs.python.org/issue24596
-        #try:
-        #    del self.smartcard
-        #    self.smartcard = None
-        #except:
-        #    pass
+        # Workaround for "[Errno 16] Resource busy" with yubikey.
+        if self.smartcard:
+            del self.smartcard
+            self.smartcard = None
 
         # Release offline token lock.
         if self._offline_token:
@@ -2108,6 +2105,7 @@ class OTPmeClient1(OTPmeClientBase):
                             client=self.client,
                             username=self.username,
                             password=self.password,
+                            send_password=self.send_password,
                             password_method=self.password_method,
                             login_interface=self.login_interface,
                             rsp=self.rsp,
@@ -3100,25 +3098,26 @@ class OTPmeClient1(OTPmeClientBase):
                 raise AuthFailed(_("Unknown user: %s") % self.username)
 
             # Load module to handle offline tokens and login session file.
-            try:
-                from otpme.lib.offline_token import OfflineToken
-                # Get offline token handler.
-                self._offline_token = OfflineToken()
-            except Exception as e:
-                msg = (_("Error loading offline token module: %s") % e)
-                self.logger.critical(msg)
-                self.cleanup()
-                raise AuthFailed(msg)
+            if not self._offline_token:
+                try:
+                    from otpme.lib.offline_token import OfflineToken
+                    # Get offline token handler.
+                    self._offline_token = OfflineToken()
+                except Exception as e:
+                    msg = (_("Error loading offline token module: %s") % e)
+                    self.logger.critical(msg)
+                    self.cleanup()
+                    raise AuthFailed(msg)
 
-            # Set login user to get path to cache directory etc.
-            try:
-                self._offline_token.set_user(user=self.username,
-                                            uuid=self.user_uuid)
-            except Exception as e:
-                msg = (_("Error initializing offline tokens: %s") % e)
-                self.logger.critical(msg)
-                self.cleanup()
-                raise AuthFailed(msg)
+                # Set login user to get path to cache directory etc.
+                try:
+                    self._offline_token.set_user(user=self.username,
+                                                uuid=self.user_uuid)
+                except Exception as e:
+                    msg = (_("Error initializing offline tokens: %s") % e)
+                    self.logger.critical(msg)
+                    self.cleanup()
+                    raise AuthFailed(msg)
 
             # Get SLPs of old offline sessions we will try to logout.
             try:
@@ -3151,8 +3150,13 @@ class OTPmeClient1(OTPmeClientBase):
             command_args['rsp_ecdh_client_pub'] = self.rsp_ecdh_key.export_public_key()
 
         # Set password to use for authentication.
+        password = None
         if self.password:
-            password = self.password
+            if self.password:
+                if not self.send_password:
+                    msg = "Not sending password <send_password=False>"
+                    raise OTPmeException(msg)
+                password = self.password
         elif self.reneg:
             rsp_hash = otpme_pass.gen_one_iter_hash(self.username,
                                             self.rsp,
@@ -3390,7 +3394,8 @@ class OTPmeClient1(OTPmeClientBase):
                 offline_tokens = self.auth_reply['offline_tokens']
                 if offline_tokens:
                     # Get offline session key (e.g. to be forwarded on login redirect).
-                    self._offline_token.gen_session_key()
+                    if not self._offline_token.session_key_private:
+                        self._offline_token.gen_session_key()
                     self.offline_session_key = self._offline_token.session_key_private
 
                 # Get SLP for this session.
@@ -3605,11 +3610,12 @@ class OTPmeClient1(OTPmeClientBase):
             self.logger.critical(msg)
 
         # Clear old offline tokens.
-        try:
-            self._offline_token.clear()
-        except Exception as e:
-            msg = ("Error clearing cached offline tokens: %s" % e)
-            self.logger.critical(msg)
+        if not self._offline_token.pinned:
+            try:
+                self._offline_token.clear()
+            except Exception as e:
+                msg = ("Error clearing cached offline tokens: %s" % e)
+                self.logger.critical(msg)
 
         # Get auth reply values.
         login_time = self.auth_reply['login_time']
@@ -3627,13 +3633,17 @@ class OTPmeClient1(OTPmeClientBase):
             offline_tokens = self.auth_reply['offline_tokens']
             login_token_uuid = self.auth_reply['login_token_uuid']
             if offline_tokens:
-                self.logger.info("Caching of login tokens enabled and offline "
-                                "tokens received.")
-                cache_offline_tokens = True
-                # Initialize offline token.
-                self._offline_token.init()
-                # Acquire offline token lock.
-                self._offline_token.lock()
+                if self._offline_token.pinned:
+                    self.logger.info("Ignoring received offline tokens, keeping "
+                                    "pinned tokens.")
+                else:
+                    self.logger.info("Caching of login tokens enabled and offline "
+                                    "tokens received.")
+                    cache_offline_tokens = True
+                    # Initialize offline token.
+                    self._offline_token.init()
+                    # Acquire offline token lock.
+                    self._offline_token.lock()
 
         if cache_offline_tokens:
             # Set login token before adding/decoding offline tokens. This is
@@ -3696,7 +3706,6 @@ class OTPmeClient1(OTPmeClientBase):
                                 session_timeout=session_timeout,
                                 session_unused_timeout=session_unused_timeout,
                                 offline_session=keep_offline_session,
-                                offline_tokens=cache_offline_tokens,
                                 session_key=self.offline_session_key)
             except Exception as e:
                 msg = ("Error saving RSP: %s" % e)
@@ -3780,11 +3789,12 @@ class OTPmeClient1(OTPmeClientBase):
                     self.logger.warning(msg)
 
             # Cache offline tokens.
-            try:
-                self.handle_offline_token(token_instances, session_uuid)
-            except Exception as e:
-                msg = ("Error caching offline tokens: %s" % e)
-                self.logger.critical(msg, exc_info=True)
+            if cache_offline_tokens:
+                try:
+                    self.handle_offline_token(token_instances, session_uuid)
+                except Exception as e:
+                    msg = ("Error caching offline tokens: %s" % e)
+                    self.logger.critical(msg, exc_info=True)
 
         # Release offline token lock
         self._offline_token.unlock()
