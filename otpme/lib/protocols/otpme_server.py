@@ -1797,6 +1797,9 @@ class OTPmeServer1(object):
             except KeyError:
                 smartcard_challenge = None
             if smartcard_challenge:
+                if not self.token_challenges:
+                    msg = "Got invalid challenge"
+                    raise OTPmeException(msg)
                 for token_rel_path in self.token_challenges:
                     x_challenge = self.token_challenges[token_rel_path]
                     if x_challenge == smartcard_challenge:
@@ -1851,6 +1854,9 @@ class OTPmeServer1(object):
             self.logger.warning(msg)
 
         if challenge:
+            if not self.token_challenges:
+                msg = "Got invalid challenge"
+                raise OTPmeException(msg)
             for token_rel_path in self.token_challenges:
                 x_challenge = self.token_challenges[token_rel_path]
                 if x_challenge == challenge:

@@ -362,6 +362,14 @@ class CommandHandler(object):
         self.subcommand = subcommand
         self.command_line = command_line
 
+        # Start get-auth-keys before doing other stuff (e.g. get login user).
+        if command == "get-authorized-keys":
+            try:
+                username = command_line[0]
+            except:
+                return self.get_help()
+            return self.get_authorized_keys(username)
+
         # Get password from stdin if --stdin-pass was given.
         if config.read_stdin_pass:
             self.user_password = config.stdin_pass
@@ -570,13 +578,6 @@ class CommandHandler(object):
 
         if command == "agent":
             return self.handle_agent_command(subcommand)
-
-        if command == "get-authorized-keys":
-            try:
-                username = command_line[0]
-            except:
-                return self.get_help()
-            return self.get_authorized_keys(username)
 
         if command == "tool" and subcommand == "detect_smartcard":
             return self.handle_smartcard_detection(command, subcommand)
