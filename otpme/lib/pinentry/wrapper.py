@@ -51,9 +51,11 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
         log.write("Using DISPLAY: %s\n" % display)
         log.flush()
 
-    autoconfirm, \
-    fallback, \
-    message_file = get_autoconfirm(autoconfirm_file)
+    autoconfirm = False
+    if autoconfirm_file:
+        autoconfirm, \
+        fallback, \
+        message_file = get_autoconfirm(autoconfirm_file)
 
     if debug_file:
         log.write("Autoconfirmation enabled: %s\n" % autoconfirm)

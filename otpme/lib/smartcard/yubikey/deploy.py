@@ -193,6 +193,8 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
             cleanup()
             sys.exit(1)
 
+        gpg.stop_agent()
+
         message("Starting gpg-agent...")
         try:
             ssh_agent_pid, \
