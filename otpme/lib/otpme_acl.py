@@ -21,6 +21,10 @@ logger = config.logger
 
 default_callback = config.get_callback()
 
+class OTPmeACL(object):
+    def __init__(self):
+        pass
+
 def check_acls(acls):
     """ Decorator to check ACLs in class methods. """
     def wrapper(f):
@@ -201,10 +205,6 @@ def decode(acl):
     acl_id = ":".join(acl.split(":")[0:])
     # Build raw ACL.
     raw_acl = "%s:%s:%s" % (acl_owner_type, acl_owner_uuid, acl_id)
-
-    class OTPmeACL(object):
-        def __init__(self):
-            pass
 
     _acl = OTPmeACL()
 

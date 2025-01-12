@@ -2,6 +2,9 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import importlib
+from typing import List
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -17,9 +20,10 @@ from otpme.lib import otpme_acl
 from otpme.lib import multiprocessing
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
+from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.cache import unit_members_cache as members_cache
-from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 
 from otpme.lib.classes.otpme_object import \
@@ -55,6 +59,9 @@ write_value_acls = {
                                 "script",
                                 "policy",
                                 "resolver",
+                                ],
+                    "edit"      : [
+                                "config",
                                 ],
                     "delete"    : [
                                 "unit",
@@ -326,6 +333,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls', 'object_types'],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -335,6 +343,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls', 'object_types',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -618,11 +627,20 @@ def register_ldap_object():
     """ Register LDAP object settings. """
     config.register_ldap_object(object_type="unit", scopes=['one', 'base', 'sub'])
 
+@match_class_typing
 class Unit(OTPmeObject):
     """ Creates unit object. """
     commands = commands
-    def __init__(self, object_id=None, path=None, name=None,
-        unit=None, site=None, realm=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        path: Union[str,None]=None,
+        name: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        site: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class).
         self.type = "unit"
 
@@ -681,15 +699,24 @@ class Unit(OTPmeObject):
         # Set OID.
         self.set_oid()
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
-        # Make sure name is a string and lowercase.
-        self.name = str(name).lower()
+        # Make sure name is lowercase.
+        self.name = name.lower()
 
     @object_lock()
-    def _handle_acl(self, action, acl, recursive_acls=False,
-        apply_default_acls=False, object_types=[], verify_acls=True,
-        verbose_level=0, callback=default_callback, **kwargs):
+    def _handle_acl(
+        self,
+        action: str,
+        acl: object,
+        recursive_acls: bool=False,
+        apply_default_acls: bool=False,
+        object_types: Union[List,None]=[],
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Method to call inherit_default_acl() for all member objects. """
         exception = None
 
@@ -771,8 +798,13 @@ class Unit(OTPmeObject):
             return callback.ok()
 
     @members_cache.cache_method()
-    def get_members(self, object_types=None, return_type="full_oid",
-        recursive=False, **kwargs):
+    def get_members(
+        self,
+        object_types: Union[List,None]=None,
+        return_type: str="full_oid",
+        recursive: bool=False,
+        **kwargs,
+        ):
         """ Get all unit member objects. """
         _members = {}
         if not object_types:
@@ -863,7 +895,12 @@ class Unit(OTPmeObject):
 
         return recursive_members
 
-    def rename(self, callback=default_callback, _caller="API", **kwargs):
+    def rename(
+        self,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Rename unit. """
         msg = "Please use move to rename a unit."
         return callback.error(msg)
@@ -872,9 +909,20 @@ class Unit(OTPmeObject):
     # Besides we dont need a transaction for object moves it keeps object
     # locks longer than needed and slows down other jobs while moving.
     #@backend.transaction
-    def move(self, new_unit, object_types=None, merge=False, run_policies=True,
-        keep_old_unit=False, force=False, keep_acls=None, verbose_level=0,
-        _caller="API", callback=default_callback, **kwargs):
+    def move(
+        self,
+        new_unit: str,
+        object_types: Union[List,None]=None,
+        merge: bool=False,
+        run_policies: bool=True,
+        keep_old_unit: bool=False,
+        force: bool=False,
+        keep_acls: Union[bool,None]=None,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change unit's unit (move). """
         if not keep_old_unit:
             base_units = config.get_base_objects("unit")
@@ -1102,9 +1150,15 @@ class Unit(OTPmeObject):
                                 callback=callback, **kwargs)
 
     @object_lock(full_lock=True)
-    def delete(self, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete unit. """
         if self.unit_uuid:
             parent_object = backend.get_object(object_type="unit",
@@ -1208,9 +1262,16 @@ class Unit(OTPmeObject):
 
     @check_acls(['remove:orphans'])
     @object_lock()
-    def remove_orphans(self, recursive=False, run_policies=True,
-        force=False, verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def remove_orphans(
+        self,
+        recursive: bool=False,
+        run_policies: bool=True,
+        force: bool=False,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Remove orphan UUIDs. """
         if run_policies:
             try:
@@ -1270,7 +1331,7 @@ class Unit(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show unit config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")
@@ -1283,7 +1344,7 @@ class Unit(OTPmeObject):
                                     **kwargs)
 
 
-    def show(self, callback=default_callback, **kwargs):
+    def show(self, callback: JobCallback=default_callback, **kwargs):
         """ Show unit members. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

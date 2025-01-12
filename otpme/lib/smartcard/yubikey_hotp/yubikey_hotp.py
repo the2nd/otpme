@@ -111,7 +111,7 @@ class YubikeyHotpClientHandler(object):
         deploy_args['server_secret'] = server_secret
         deploy_args['secret_len'] = self.secret_len
         deploy_args['secret_encoding'] = "hex"
-        deploy_args['pin'] = pin
+        deploy_args['pin'] = int(pin)
 
         if no_token_write:
             return deploy_args

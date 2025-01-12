@@ -239,6 +239,18 @@ class OfflineToken(object):
 
     def pin(self):
         """ Pin offline tokens. """
+        if os.path.exists(self.offline_token_pinned_file):
+            msg = "Offline tokens already pinned."
+            raise OTPmeException(msg)
+        # Load offline tokens.
+        self.load()
+        user_tokens = self.get()
+        for x in user_tokens:
+            token = user_tokens[x]
+            if token.offline_pinnable:
+                continue
+            msg = "Token not pinnable: %s" % token.oid
+            raise OTPmeException(msg)
         offline_token_pinned_dir = os.path.dirname(self.offline_token_pinned_file)
         if not os.path.exists(offline_token_pinned_dir):
             filetools.create_dir(path=offline_token_pinned_dir,
@@ -1491,23 +1503,24 @@ class OfflineToken(object):
             counter_dir = self.get_config_paths(object_id)['token_counter_dir']
         except:
             return counter_list
-        if os.path.exists(counter_dir):
-            for counter_hash in os.listdir(counter_dir):
-                counter_file = os.path.join(counter_dir, counter_hash, "object.json")
-                if not os.path.exists(counter_file):
-                    continue
-                try:
-                    object_config = filetools.read_data_file(counter_file)
-                except Exception as e:
-                    msg = (_("Error reading token counter file: %s") % e)
-                    raise OTPmeException(msg)
-                token_uuid = object_config['TOKEN_UUID']
-                counter_oid = oid.get(object_type="token_counter",
-                                        realm=object_id.realm,
-                                        site=object_id.site,
-                                        token_uuid=token_uuid,
-                                        object_hash=counter_hash)
-                counter_list.append((counter_oid, object_config))
+        if not os.path.exists(counter_dir):
+            return counter_list
+        for counter_hash in os.listdir(counter_dir):
+            counter_file = os.path.join(counter_dir, counter_hash, "object.json")
+            if not os.path.exists(counter_file):
+                continue
+            try:
+                object_config = filetools.read_data_file(counter_file)
+            except Exception as e:
+                msg = (_("Error reading token counter file: %s") % e)
+                raise OTPmeException(msg)
+            token_uuid = object_config['TOKEN_UUID']
+            counter_oid = oid.get(object_type="token_counter",
+                                    realm=object_id.realm,
+                                    site=object_id.site,
+                                    token_uuid=token_uuid,
+                                    object_hash=counter_hash)
+            counter_list.append((counter_oid, object_config))
         return counter_list
 
     def get_token_counter(self, object_id):

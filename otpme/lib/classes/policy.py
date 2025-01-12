@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import List
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -13,6 +16,7 @@ from otpme.lib import cli
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.locking import object_lock
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
@@ -41,7 +45,11 @@ read_value_acls = {
                         ],
         }
 
-write_value_acls = {}
+write_value_acls = {
+                "edit"  : [
+                        "config",
+                        ],
+                }
 
 default_acls = [
                 'add:policy',
@@ -205,6 +213,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls', 'object_types'],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -214,6 +223,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls', 'object_types',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -423,11 +433,20 @@ def register_sync_settings():
     config.register_object_sync(host_type="node", object_type="policy")
     config.register_object_sync(host_type="host", object_type="policy")
 
+@match_class_typing
 class Policy(OTPmeObject):
     """ Generic OTPme policy object. """
     commands = commands
-    def __init__(self, object_id=None, name=None, path=None,
-        realm=None, site=None, unit=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        name: Union[str,None]=None,
+        path: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class).
         self.type = "policy"
         # Call parent class init.
@@ -462,12 +481,12 @@ class Policy(OTPmeObject):
                         },
                     }
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
         # Make sure name is a string and lowercase.
-        self.name = str(name).lower()
+        self.name = name.lower()
 
-    def _get_object_config(self, policy_config=None):
+    def _get_object_config(self, policy_config: Union[dict,None]=None):
         """ Get object config dict """
         policy_base_config = {
                         'POLICY_TYPE'                : {
@@ -504,8 +523,13 @@ class Policy(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
-    def add(self, verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def add(
+        self,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a policy. """
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(callback=callback, **kwargs)
@@ -527,7 +551,13 @@ class Policy(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
+    def rename(
+        self,
+        new_name: str,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Rename a token. """
         # Build new OID.
         new_oid = oid.get(object_type="policy",
@@ -539,8 +569,16 @@ class Policy(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, force=False, run_policies=True, verify_acls=True,
-        verbose_level=0, callback=default_callback, _caller="API", **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete policy. """
         if not self.exists():
             return callback.error("Policy does not exist.")
@@ -612,7 +650,12 @@ class Policy(OTPmeObject):
         return OTPmeObject.delete(self, verbose_level=verbose_level,
                                     force=force, callback=callback)
 
-    def show_config(self, config_lines="", callback=default_callback, **kwargs):
+    def show_config(
+        self,
+        config_lines: List=[],
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Show policy config. """
         lines = []
 

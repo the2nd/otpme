@@ -4,7 +4,10 @@ import os
 import time
 import json
 import pprint
+from typing import List
+from typing import Union
 from functools import wraps
+from strongtyping.strong_typing import match_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -23,6 +26,7 @@ from otpme.lib.cache import ldif_cache
 #from otpme.lib.locking import oid_lock
 from otpme.lib.cache import search_cache
 from otpme.lib.cache import ldap_search_cache
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.classes.object_config import ObjectConfig
 
 from otpme.lib.exceptions import *
@@ -107,9 +111,17 @@ def handle_daemon_shutdown():
         return wrapped
     return wrapper
 
-def register_object_type(object_type, class_getter=None,
-    class_getter_args=None, tree_object=True, path_getter=None,
-    oid_getter=None, index_rebuild_func=None, dir_name_extension=None):
+@match_typing
+def register_object_type(
+    object_type: str,
+    class_getter: object=None,
+    class_getter_args: dict=None,
+    tree_object: bool=True,
+    path_getter: object=None,
+    oid_getter: object=None,
+    index_rebuild_func: object=None,
+    dir_name_extension: str=None
+    ):
     """ Register object type to be created by get_object(). """
     global object_type_map
 
@@ -141,7 +153,8 @@ def register_object_type(object_type, class_getter=None,
                             index_rebuild_func=index_rebuild_func,
                             dir_name_extension=dir_name_extension)
 
-def get_class_getter(object_type):
+@match_typing
+def get_class_getter(object_type: str):
     """ Get object class getter by type. """
     try:
         getter_args = object_type_map[object_type]['getter_args']
@@ -156,8 +169,13 @@ def get_class_getter(object_type):
 # xxxxxxxxxxxxxxxxxxxx
 # FIXME: add parameter "cache_object=False" to prevent object from beeing cached!?
 #@oid_lock(args_oid_pos=[0])
-def read_config(object_id, read_from_cache=True,
-    parameters=[], checksum_only=False, decrypt=True):
+@match_typing
+def read_config(
+    object_id: oid.OTPmeOid,
+    parameters: list=[],
+    checksum_only: bool=False,
+    decrypt: bool=True
+    ):
     """ Read object config from backend. """
     # Get logger.
     logger = config.logger
@@ -216,11 +234,22 @@ def read_config(object_id, read_from_cache=True,
 
     return object_config
 
+@match_typing
 @handle_daemon_shutdown()
 #@oid_lock(args_oid_pos=[0], write=True)
-def write_config(object_id, instance=None, object_config=None, cluster=False,
-    wait_for_cluster_writes=False, full_index_update=False, full_data_update=None,
-    index_journal=[], index_auto_update=False, no_transaction=False, encrypt=True):
+def write_config(
+    object_id: oid.OTPmeOid,
+    instance: object=None,
+    object_config: dict=None,
+    cluster: bool=False,
+    wait_for_cluster_writes: bool=False,
+    full_index_update: bool=False,
+    full_data_update: bool=None,
+    index_journal: Union[List,None]=[],
+    index_auto_update: bool=False,
+    no_transaction: bool=False,
+    encrypt: bool=True
+    ):
     """ Write object config to backend and update config cache. """
     # Get logger.
     logger = config.logger
@@ -271,10 +300,15 @@ def write_config(object_id, instance=None, object_config=None, cluster=False,
 
     return write_status
 
+@match_typing
 @handle_daemon_shutdown()
 #@oid_lock(args_oid_pos=[0, 1], write=True)
-def rename_object(object_id, new_object_id,
-    no_transaction=False, cluster=False):
+def rename_object(
+    object_id: oid.OTPmeOid,
+    new_object_id: oid.OTPmeOid,
+    no_transaction: bool=False,
+    cluster: bool=False
+    ):
     """ Rename object. """
     # Replay any leftover transaction.
     replay_transactions()
@@ -287,9 +321,14 @@ def rename_object(object_id, new_object_id,
     outdate_object(object_id, cache_type="all")
     return True
 
+@match_typing
 @handle_daemon_shutdown()
 #@oid_lock(args_oid_pos=[0], write=True)
-def delete_object(object_id, no_transaction=False, cluster=False):
+def delete_object(
+    object_id: oid.OTPmeOid,
+    no_transaction: bool=False,
+    cluster: bool=False
+    ):
     """ Delete object. """
     # Replay any leftover transaction.
     replay_transactions()
@@ -309,7 +348,8 @@ def delete_object(object_id, no_transaction=False, cluster=False):
     outdate_object(object_id, cache_type="all")
     return True
 
-def outdate_object(object_id, cache_type=None):
+@match_typing
+def outdate_object(object_id: oid.OTPmeOid, cache_type: Union[str,None]=None):
     """ Outdate object in caches, sync list etc. """
     object_site = object_id.site
     object_realm = object_id.realm
@@ -344,8 +384,15 @@ def outdate_object(object_id, cache_type=None):
         if config.get_ldap_settings(object_type):
             config.ldap_object_changed = True
 
-def import_config(object_config, object_id=None, force=False,
-    aes_key=None, callback=default_callback, **kwargs):
+@match_typing
+def import_config(
+    object_config: dict,
+    object_id: oid.OTPmeOid=None,
+    force: bool=False,
+    aes_key: str=None,
+    callback: JobCallback=default_callback,
+    **kwargs
+    ):
     """ Import object config. """
     if not object_id:
         # Try to get object ID.
@@ -401,7 +448,8 @@ def import_config(object_config, object_id=None, force=False,
 
     return callback.ok()
 
-def get_checksum(object_id):
+@match_typing
+def get_checksum(object_id: oid.OTPmeOid):
     """ Get object checksum. """
     checksum = None
     read_oid = object_id.read_oid
@@ -422,7 +470,8 @@ def get_checksum(object_id):
 
     return checksum
 
-def get_sync_checksum(object_id):
+@match_typing
+def get_sync_checksum(object_id: oid.OTPmeOid):
     """ Get object sync checksum. """
     sync_checksum = None
     read_oid = object_id.read_oid
@@ -449,7 +498,8 @@ def dump_sync_map():
     dump_data = pprint.pformat(data)
     return dump_data
 
-def get_sync_map_lock(sync_map_id, timeout=None):
+@match_typing
+def get_sync_map_lock(sync_map_id: str, timeout: Union[int,None]=None):
     """ Acquire sync map lock. """
     lock_id = "sync_map:%s" % sync_map_id
     lock = locking.acquire_lock(lock_type=SYNC_MAP_LOCK_TYPE,
@@ -457,7 +507,15 @@ def get_sync_map_lock(sync_map_id, timeout=None):
                                 timeout=timeout)
     return lock
 
-def add_sync_map(realm, site, peer_realm, peer_site, checksum, object_types):
+@match_typing
+def add_sync_map(
+    realm: str,
+    site: str,
+    peer_realm: str,
+    peer_site: str,
+    checksum: str,
+    object_types: List
+    ):
     """ Add sync list checksum to sync map. """
     sync_map_id = ("site:%s/%s" % (peer_realm, peer_site))
     # Acquire sync map lock.
@@ -484,7 +542,14 @@ def add_sync_map(realm, site, peer_realm, peer_site, checksum, object_types):
     # Release sync lock.
     sync_map_lock.release_lock()
 
-def get_sync_map(realm, site, peer_realm, peer_site, timeout=None):
+@match_typing
+def get_sync_map(
+    realm: str,
+    site: str,
+    peer_realm: str,
+    peer_site: str,
+    timeout: Union[int,None]=None
+    ):
     """ Get sync list checksum from sync map. """
     sync_map_id = ("site:%s/%s" % (peer_realm, peer_site))
     # Acquire sync lock.
@@ -509,7 +574,12 @@ def get_sync_map(realm, site, peer_realm, peer_site, timeout=None):
 
     return sync_list_checksum
 
-def outdate_sync_map(realm=None, site=None, object_types=None):
+@match_typing
+def outdate_sync_map(
+    realm: str=None,
+    site: str=None,
+    object_types: List=None
+    ):
     """ Make sure sync maps that include one of object_types are cleared. """
     if site:
         if not realm:
@@ -553,7 +623,8 @@ def clear_outdated_sync_maps():
         processed.append(x)
     lock.release_lock()
 
-def clear_sync_map(realm, site, object_types=None):
+@match_typing
+def clear_sync_map(realm: str, site: str, object_types: Union[List,None]=None):
     """ Clear given realm/site from sync map. """
     for x in list(multiprocessing.sync_map.copy()):
         for x_realm in list(multiprocessing.sync_map[x].copy()):
@@ -588,10 +659,19 @@ def clear_sync_map(realm, site, object_types=None):
                     # Update entry.
                     multiprocessing.sync_map[x] = map_entry
 
-
-def get_sync_list(realm, site, object_types=None, skip_users=None,
-    skip_admin=False, skip_list=None, include_uuids=None,
-    checksum_only_types=None, include_templates=False, quiet=False):
+@match_typing
+def get_sync_list(
+    realm: str,
+    site: str,
+    object_types: List=None,
+    skip_users: List=None,
+    skip_admin: bool=False,
+    skip_list: List=None,
+    include_uuids: dict=None,
+    checksum_only_types: Union[List,None]=None,
+    include_templates: bool=False,
+    quiet: bool=False
+    ):
     """ Get sync list. """
     sync_list = {}
     # Get logger.
@@ -768,7 +848,11 @@ def get_sync_list(realm, site, object_types=None, skip_users=None,
 
     return sync_list, sync_list_checksum
 
-def get_instance_from_oid(object_id, object_config=None):
+@match_typing
+def get_instance_from_oid(
+    object_id: oid.OTPmeOid,
+    object_config: Union[dict,ObjectConfig]=None
+    ):
     """ Load instance from oid. """
     # Get logger.
     logger = config.logger
@@ -830,26 +914,42 @@ def get_instance_from_oid(object_id, object_config=None):
 
     return instance
 
-def get_object(object_id=None, uuid=None, object_type=None,
-    path=None, rel_path=None, realm=None, site=None, unit=None,
-    name=None, run_policies=False, use_cache=True, **kwargs):
+@match_typing
+def get_object(
+    object_id: Union[oid.OTPmeOid,None]=None,
+    uuid: Union[str,None]=None,
+    object_type: Union[str,None]=None,
+    path: Union[str,None]=None,
+    rel_path: Union[str,None]=None,
+    realm: Union[str,None]=None,
+    site: Union[str,None]=None,
+    unit: Union[str,None]=None,
+    name: Union[str,None]=None,
+    run_policies: bool=False,
+    use_cache: bool=True,
+    **kwargs
+    ):
     """ Get object from backend. """
     instance = None
     # Get logger.
     logger = config.logger
 
     if use_cache:
-        instance = get_object_from_cache(object_id=object_id,
-                                        uuid=uuid,
-                                        object_type=object_type,
-                                        path=path,
-                                        rel_path=rel_path,
-                                        realm=realm,
-                                        site=site,
-                                        unit=unit,
-                                        name=name,
-                                        run_policies=run_policies,
-                                        **kwargs)
+        try:
+            instance = get_object_from_cache(object_id=object_id,
+                                            uuid=uuid,
+                                            object_type=object_type,
+                                            path=path,
+                                            rel_path=rel_path,
+                                            realm=realm,
+                                            site=site,
+                                            unit=unit,
+                                            name=name,
+                                            run_policies=run_policies,
+                                            **kwargs)
+        except Exception as e:
+            msg = "Failed to get object from cache: %s" % e
+            raise OTPmeException(msg)
         if instance:
             return instance
 
@@ -930,9 +1030,20 @@ def get_object(object_id=None, uuid=None, object_type=None,
 
     return instance
 
-def get_object_from_cache(object_id=None, uuid=None, object_type=None,
-    path=None, rel_path=None, realm=None, site=None, unit=None,
-    name=None, run_policies=False, **kwargs):
+@match_typing
+def get_object_from_cache(
+    object_id: Union[oid.OTPmeOid,None]=None,
+    uuid: Union[str,None]=None,
+    object_type: Union[str,None]=None,
+    path: Union[str,None]=None,
+    rel_path: Union[str,None]=None,
+    realm: Union[str,None]=None,
+    site: Union[str,None]=None,
+    unit: Union[str,None]=None,
+    name: Union[str,None]=None,
+    run_policies: bool=False,
+    **kwargs
+    ):
     """ Get object from cache. """
     # Get logger.
     logger = config.logger
@@ -1033,13 +1144,34 @@ def get_object_from_cache(object_id=None, uuid=None, object_type=None,
 #                    result.append(v)
 #    return result
 
+@match_typing
 @search_cache.cache_function()
-def search(attribute=None, value=None, values=None, attributes={},
-    less_than=None, greater_than=None, ignore_case=False, object_type=None,
-    object_types=None, order_by=None, reverse_order=False, join_search_attr=None,
-    join_search_val=None, join_object_type=None, join_attribute=None,
-    return_type="uuid", max_results=0, size_limit=0, realm=None, site=None,
-    return_attributes=None, verify_acls=None, return_query_count=False, **kwargs):
+def search(
+    attribute: str=None,
+    value: str=None,
+    values: List=None,
+    attributes: dict={},
+    less_than: int=None,
+    greater_than: int=None,
+    ignore_case: bool=False,
+    object_type: str=None,
+    object_types: List=None,
+    order_by: str=None,
+    reverse_order: bool=False,
+    join_search_attr: str=None,
+    join_search_val: str=None,
+    join_object_type: str=None,
+    join_attribute: str=None,
+    return_type: str="uuid",
+    max_results: int=0,
+    size_limit: int=0,
+    realm: Union[str,None]=None,
+    site: Union[str,None]=None,
+    return_attributes: List=None,
+    verify_acls: List=None,
+    return_query_count: bool=False,
+    **kwargs
+    ) -> Union[List,dict]:
     """ Search objects. """
     _result = []
     result = []
@@ -1099,9 +1231,17 @@ def search(attribute=None, value=None, values=None, attributes={},
 
     return result
 
-def get_sessions(session_id=None, uuid=None, user=None, token=None,
-    session_type=None, access_group=None, return_type="uuid",
-    return_attributes=None):
+@match_typing
+def get_sessions(
+    session_id: Union[str,None]=None,
+    uuid: Union[str,None]=None,
+    user: Union[str,None]=None,
+    token: Union[str,None]=None,
+    session_type: Union[str,None]=None,
+    access_group: Union[str,None]=None,
+    return_type: str="uuid",
+    return_attributes: List=None,
+    ):
     """ Get sessions from backend. """
     search_attrs = {}
     if uuid is not None:

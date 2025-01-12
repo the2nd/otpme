@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -8,10 +10,12 @@ try:
 except:
     pass
 
+from otpme.lib import oid
 from otpme.lib import config
 from otpme.lib import otpme_acl
 from otpme.lib.classes.token import Token
 from otpme.lib.daemon.scriptd import run_script
+from otpme.lib.job.callback import JobCallback
 
 from otpme.lib.classes.token \
             import get_acls \
@@ -100,10 +104,19 @@ def register_token_type():
     token_type = __name__.split(".")[-1]
     config.register_sub_object_type("token", token_type)
 
+@match_class_typing
 class ScriptToken(Token):
     """ 'script' token that runs a script to verify user/pass. """
-    def __init__(self, object_id=None, user=None, name=None,
-        realm=None, site=None, path=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        user: Union[str,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        **kwargs,
+        ):
 
         # Call parent class init.
         super(ScriptToken, self).__init__(object_id=object_id,
@@ -143,7 +156,12 @@ class ScriptToken(Token):
         # read from config.
         Token.set_variables(self)
 
-    def test(self, password=None, callback=default_callback, **kwargs):
+    def test(
+        self,
+        password: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """
         Test if the given password/OTP can be verified by this token.
         """
@@ -183,9 +201,20 @@ class ScriptToken(Token):
 
         return callback.ok(ok_message)
 
-    def verify(self, auth_type, auth_user, auth_token, auth_group=None,
-        auth_client=None, auth_client_ip=None, auth_pass=None,
-        auth_otp=None, auth_challenge=None, auth_response=None, **kwargs):
+    def verify(
+        self,
+        auth_type: str,
+        auth_user: str,
+        auth_token: str,
+        auth_group: Union[str,None]=None,
+        auth_client: Union[str,None]=None,
+        auth_client_ip: Union[str,None]=None,
+        auth_pass: Union[str,None]=None,
+        auth_otp: Union[str,None]=None,
+        auth_challenge: Union[str,None]=None,
+        auth_response: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Run auth script for script-token. """
         if not self.auth_script:
             msg = (_("No script configured for script-token: %s")
@@ -220,25 +249,25 @@ class ScriptToken(Token):
 
         return auth_script_result
 
-    def enable_auth_script(self, callback=default_callback, **kwargs):
+    def enable_auth_script(self, callback: JobCallback=default_callback, **kwargs):
         """ Enable token auth script. """
         msg = (_("Authentication script is always enabled for token type "
                 "'%s'.") % self.token_type)
         return callback.error(msg)
 
-    def disable_auth_script(self, callback=default_callback, **kwargs):
+    def disable_auth_script(self, callback: JobCallback=default_callback, **kwargs):
         """ Enable token auth script. """
         msg = (_("Disabling authentication script not allowed with token type "
                 "'%s'.") % self.token_type)
         return callback.error(msg)
 
-    def _add(self, callback=default_callback, **kwargs):
+    def _add(self, callback: JobCallback=default_callback, **kwargs):
         """ Add a token. """
         msg = (_("NOTE: You have to configure an auth script for "
                     "this token to make it usable."))
         return callback.ok(msg)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

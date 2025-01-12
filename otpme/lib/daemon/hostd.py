@@ -1203,14 +1203,16 @@ class HostDaemon(OTPmeDaemon):
                                                 value="*",
                                                 realm=config.realm,
                                                 site=config.site,
-                                                return_type="oid")
-                    for node_oid in all_nodes:
-                        if node_oid == self.host.oid:
+                                                return_type="instance")
+                    for node in all_nodes:
+                        if node.oid == self.host.oid:
+                            continue
+                        if not node.enabled:
                             continue
                         try:
-                            self.sync_notify(realm=realm, site=site, node=node_oid)
+                            self.sync_notify(realm=realm, site=site, node=node.oid)
                         except Exception as e:
-                            msg = "Error sending sync notify: %s: %s" % (x, e)
+                            msg = "Error sending sync notify: %s: %s" % (node, e)
                             self.logger.warning(msg)
                             config.raise_exception()
 

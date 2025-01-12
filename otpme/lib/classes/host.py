@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -15,6 +17,7 @@ from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.classes.otpme_host import OTPmeHost
 from otpme.lib.protocols.utils import register_commands
 
@@ -52,6 +55,9 @@ write_value_acls = {
                 "add"       : [
                                 "sync_group",
                                 "dynamic_group",
+                            ],
+                "edit"       : [
+                                "config",
                             ],
                 "remove"    : [
                                 "sync_group",
@@ -585,6 +591,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -594,6 +601,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -864,11 +872,20 @@ def register_sync_settings():
     config.register_object_sync(host_type="node", object_type="host")
     config.register_object_sync(host_type="host", object_type="host")
 
+@match_class_typing
 class Host(OTPmeHost):
     """ OTPme host object. """
     commands = commands
-    def __init__(self, object_id=None, name=None, path=None,
-        unit=None, realm=None, site=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid, None]=None,
+        name: Union[str,None]=None,
+        path: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class)
         self.type = "host"
 
@@ -957,7 +974,7 @@ class Host(OTPmeHost):
         # Use parent class method to merge host config.
         return OTPmeHost._get_object_config(self, object_config=host_config)
 
-    def get_sync_parameters(self, realm, site, peer_uuid):
+    def get_sync_parameters(self, realm: str, site: str, peer_uuid: str):
         """ Get data to build sync list. """
         # Get sync paramters via parten class.
         sync_params = super(Host, self).get_sync_parameters(realm, site, peer_uuid)
@@ -997,19 +1014,24 @@ class Host(OTPmeHost):
                 realm_access_group = result[0]
                 # Get tokens to sync form accessgroup.
                 token_uuids += realm_access_group.get_tokens(include_roles=True,
+                                                            skip_disabled=False,
                                                             return_type="uuid")
                 # Get users to sync form accessgroup.
                 user_uuids += realm_access_group.get_token_users(include_roles=True,
+                                                                skip_disabled=False,
                                                                 return_type="uuid")
             # Get users to sync from host.
             user_uuids += self.get_sync_users(include_roles=True,
+                                            skip_disabled=False,
                                             return_type="uuid")
             # Get token users to sync from host.
             user_uuids += self.get_token_users(include_roles=True,
+                                            skip_disabled=False,
                                             return_type="uuid")
             # Get tokens to sync from host.
             token_uuids += self.get_tokens(include_roles=True,
-                                        return_type="uuid")
+                                            skip_disabled=False,
+                                            return_type="uuid")
 
         # Sync users by sync groups.
         if self.sync_groups_enabled:
@@ -1029,12 +1051,15 @@ class Host(OTPmeHost):
                     continue
                 # Get users.
                 user_uuids += x_group.get_sync_users(include_roles=True,
+                                                    skip_disabled=False,
                                                     return_type="uuid")
                 # Get token users.
                 user_uuids += x_group.get_token_users(include_roles=True,
+                                                    skip_disabled=False,
                                                     return_type="uuid")
                 # Get tokens
                 token_uuids += x_group.get_tokens(include_roles=True,
+                                                skip_disabled=False,
                                                 return_type="uuid")
                 # Get default group users.
                 user_uuids += x_group.default_group_users
@@ -1090,8 +1115,13 @@ class Host(OTPmeHost):
     @check_acls(['enable:sync_by_login_token'])
     @object_lock()
     @backend.transaction
-    def enable_sync_by_login_token(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_sync_by_login_token(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable sync by assigned tokens. """
         if self.sync_by_login_token:
             return callback.error(_("Already enabled."))
@@ -1111,8 +1141,13 @@ class Host(OTPmeHost):
     @check_acls(['disable:sync_by_login_token'])
     @object_lock()
     @backend.transaction
-    def disable_sync_by_login_token(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_sync_by_login_token(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable sync by assigned tokens. """
         if not self.sync_by_login_token:
             return callback.error(_("Already disabled."))
@@ -1132,8 +1167,14 @@ class Host(OTPmeHost):
     @check_acls(['add:sync_group'])
     @object_lock()
     @backend.transaction
-    def add_sync_group(self, group_name, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def add_sync_group(
+        self,
+        group_name: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Add sync group. """
         result = backend.search(object_type="group",
                                     attribute="name",
@@ -1167,8 +1208,14 @@ class Host(OTPmeHost):
     @check_acls(['remove:sync_group'])
     @object_lock()
     @backend.transaction
-    def remove_sync_group(self, group_name, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def remove_sync_group(
+        self,
+        group_name: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Remove sync group. """
         result = backend.search(object_type="group",
                                     attribute="name",
@@ -1202,8 +1249,13 @@ class Host(OTPmeHost):
     @check_acls(['enable:sync_groups'])
     @object_lock()
     @backend.transaction
-    def enable_sync_groups(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_sync_groups(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable sync groups. """
         if self.sync_groups_enabled:
             return callback.error(_("Already enabled."))
@@ -1223,8 +1275,13 @@ class Host(OTPmeHost):
     @check_acls(['disable:sync_groups'])
     @object_lock()
     @backend.transaction
-    def disable_sync_groups(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_sync_groups(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable sync groups. """
         if not self.sync_groups_enabled:
             return callback.error(_("Already disabled."))
@@ -1242,9 +1299,15 @@ class Host(OTPmeHost):
         return self._cache(callback=callback)
 
     @cli.check_rapi_opts()
-    def get_sync_groups(self, return_type="name", skip_disabled=False,
-        include_roles=False, callback=default_callback,
-        _caller="API", **kwargs):
+    def get_sync_groups(
+        self,
+        return_type: str="name",
+        skip_disabled: bool=False,
+        include_roles: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Get all sync groups assigned to this object. """
         exception = None
         if not return_type in [ 'instance', 'uuid', 'oid', 'name', 'read_oid', 'full_oid']:
@@ -1278,7 +1341,7 @@ class Host(OTPmeHost):
 
         return callback.ok(result)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config( self, callback: JobCallback=default_callback, **kwargs):
         """ Show host config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

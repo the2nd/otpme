@@ -186,9 +186,7 @@ class JobCallback(object):
         #        to the corresponding python types. This means that e.g. a
         #        password that is just the string "False" will fail.
         # Convert string to type().
-        reply = stuff.string_to_type(value=answer,
-                                    ignore_int=True,
-                                    ignore_float=True)
+        reply = stuff.string_to_type(value=answer)
 
         return reply
 
@@ -306,8 +304,8 @@ class JobCallback(object):
         query_id = self._gen_query_id()
         # Build query string.
         query = ask(query_id=query_id,
-                        input_prefill=input_prefill,
-                        prompt=message)
+                    input_prefill=input_prefill,
+                    prompt=message)
         # Send query.
         return self._send_query(query_id, query, timeout=timeout)
 
@@ -323,8 +321,8 @@ class JobCallback(object):
         query_id = self._gen_query_id()
         # Build query string.
         query = askpass(query_id=query_id,
-                                prompt=prompt,
-                                null_ok=null_ok)
+                        prompt=prompt,
+                        null_ok=null_ok)
         # Send query.
         result = self._send_query(query_id, query, timeout=timeout)
         return result

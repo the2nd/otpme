@@ -2,7 +2,8 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
-#from pyotp.hotp import HOTP
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -10,6 +11,7 @@ try:
 except:
     pass
 
+from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import qrcode
@@ -19,6 +21,7 @@ from otpme.lib.otp.oath import hotp
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import decode
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.token.oath.oath import OathToken
 from otpme.lib.third_party.oath_toolkit import uri
 from otpme.lib.token.oath.oath import OATH_OTP_FORMATS
@@ -333,10 +336,19 @@ def register_config_params():
                                     default_value=10,
                                     object_types=object_types)
 
+@match_class_typing
 class HotpToken(OathToken):
     """ Class for OATH HOTP tokens. """
-    def __init__(self, object_id=None, user=None, name=None,
-        realm=None, site=None, path=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        user: Union[str,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        **kwargs,
+        ):
         # Call parent class init.
         super(HotpToken, self).__init__(object_id=object_id,
                                         realm=realm,
@@ -356,7 +368,7 @@ class HotpToken(OathToken):
         self.pass_type = "otp"
         self.otp_type = "counter"
         self.otp_format = None
-        self.deploy_token_secret_len = None
+        self.secret_len = None
 
         self.need_password = True
         self.auth_script_enabled = False
@@ -422,6 +434,7 @@ class HotpToken(OathToken):
                                             'var_name'      : 'get_token_counter',
                                             'type'          : int,
                                             'required'      : False,
+                                            'encryption'    : config.disk_encryption,
                                         },
 
             'COUNTER_SYNC_TIME'         : {
@@ -437,8 +450,8 @@ class HotpToken(OathToken):
                                             'required'      : False,
                                         },
 
-            'DEPLOY_TOKEN_SECRET_LEN'   : {
-                                            'var_name'      : 'deploy_token_secret_len',
+            'SECRET_LEN'                : {
+                                            'var_name'      : 'secret_len',
                                             'type'          : int,
                                             'required'      : False,
                                         },
@@ -466,14 +479,11 @@ class HotpToken(OathToken):
             self.pin_mandatory = False
 
     @property
-    def secret_len(self):
-        """ Get token secret length. """
-        secret_len = self.deploy_token_secret_len
-        if secret_len is None:
-            secret_len = self.get_config_parameter("hotp_secret_len")
-        return secret_len
+    def default_pin_len(self):
+        default_pin_len = self.get_config_parameter("hotp_default_pin_len")
+        return default_pin_len
 
-    def update_otp_cache(self, otp, counter):
+    def update_otp_cache(self, otp: str, counter: int):
         """ Add OTP + counter to OTP cache. """
         self.otp_cache[otp] = counter
 
@@ -484,7 +494,12 @@ class HotpToken(OathToken):
         return start, end
 
     @check_acls(['view:token_counter'])
-    def show_token_counter(self, callback=default_callback, _caller="API", **kwargs):
+    def show_token_counter(
+        self,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         token_counter = self.get_token_counter()
         return callback.ok(token_counter)
 
@@ -497,8 +512,15 @@ class HotpToken(OathToken):
         return offline_data
 
     @check_acls(['generate:otp'])
-    def gen_otp(self, secret=None, otp_count=1, prefix_pin=False,
-        callback=default_callback, _caller="API", **kwargs):
+    def gen_otp(
+        self,
+        secret: Union[str,None]=None,
+        otp_count: int=1,
+        prefix_pin: int=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """
         Generate one or more OTPs for this token within the valid counter range.
         """
@@ -507,7 +529,7 @@ class HotpToken(OathToken):
                 secret = self.get_secret(callback=callback)
             if self.mode == "mode2":
                 pin = callback.askpass("Please enter PIN: ")
-                if len(pin) != self.pin_len:
+                if len(str(pin)) != self.pin_len:
                     msg = "Invalid PIN."
                     return callback.error(msg)
                 secret = self.get_secret(pin=pin, callback=callback)
@@ -542,13 +564,21 @@ class HotpToken(OathToken):
             return callback.ok(otp)
         return [otp]
 
-    def verify_otp(self, otp, secret=None, handle_used_otps=True,
-        mode=None, otp_includes_pin=True, verify_pin=True, sft=None,
-        recursive_use=False, session_uuid=None, **kwargs):
+    def verify_otp(
+        self,
+        otp: str,
+        secret: Union[str,None]=None,
+        handle_used_otps: bool=True,
+        mode: str=None,
+        otp_includes_pin: bool=True,
+        verify_pin: bool=True,
+        sft: Union[bool,None]=None,
+        recursive_use: bool=False,
+        session_uuid: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Verify OTP for this token. """
         pin = None
-        # Make sure OTP is str().
-        otp = str(otp)
 
         if handle_used_otps:
             if self.is_used_otp(otp):
@@ -572,24 +602,6 @@ class HotpToken(OathToken):
         if mode == "mode2":
             verify_pin = False
 
-        # Get PIN from OTP if needed.
-        if otp_includes_pin:
-            if len(otp) < (int(self.pin_len) + int(self.otp_len)):
-                msg = ("Token PIN enabled but the given OTP is too "
-                        "short to include a PIN!")
-                logger.debug(msg)
-                return None
-            _otp = otp[self.pin_len:]
-            pin = otp[:self.pin_len]
-        else:
-            _otp = otp
-
-        # If we got a secret this request is to verify the secret itself
-        # (e.g. mode change)
-        if not secret:
-            # Get token secret.
-            secret = self.get_secret(pin=pin)
-
         # Get token counter check range.
         token_counter_start, token_counter_end = self.get_counter_range()
 
@@ -606,7 +618,7 @@ class HotpToken(OathToken):
             verify_pin = False
             if not sft and not recursive_use:
                 org_pin_len = self.pin_len
-                self.pin_len = 0
+                self.pin_len = 2
                 while True:
                     if self.pin_len >= (len(otp) - self.otp_len):
                         self.pin_len = org_pin_len
@@ -624,6 +636,29 @@ class HotpToken(OathToken):
                     if status:
                         self.pin_len = org_pin_len
                         return status
+
+        # Get PIN from OTP if needed.
+        if otp_includes_pin:
+            if len(otp) < (int(self.pin_len) + int(self.otp_len)):
+                msg = ("Token PIN enabled but the given OTP is too "
+                        "short to include a PIN!")
+                logger.debug(msg)
+                return None
+            _otp = otp[self.pin_len:]
+            try:
+                pin = int(otp[:self.pin_len])
+            except ValueError:
+                msg = "OTP does not include a PIN."
+                logger.info(msg)
+                return None
+        else:
+            _otp = otp
+
+        # If we got a secret this request is to verify the secret itself
+        # (e.g. mode change)
+        if not secret:
+            # Get token secret.
+            secret = self.get_secret(pin=pin)
 
         # Log token counter range.
         msg = ("Verifiying OTP within counter range: start='%s' end='%s'."
@@ -676,8 +711,14 @@ class HotpToken(OathToken):
         msg = (_("WARNING: You may have hit a BUG of Token().verify_otp()."))
         raise Exception(msg)
 
-    def verify_mschap_otp(self, challenge, response,
-        session_uuid=None, handle_used_otps=True, **kwargs):
+    def verify_mschap_otp(
+        self,
+        challenge: str,
+        response: str,
+        session_uuid: Union[str,None]=None,
+        handle_used_otps: bool=True,
+        **kwargs,
+        ):
         """ Verify MSCHAP challenge/response against OTPs """
         from otpme.lib import mschap_util
 
@@ -759,8 +800,15 @@ class HotpToken(OathToken):
         raise Exception(msg)
 
     @check_acls(['generate:qrcode'])
-    def gen_qrcode(self, pin=None, qrcode_file=None, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def gen_qrcode(
+        self,
+        pin: Union[int,None]=None,
+        qrcode_file: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Generate QRCode for token deployment. """
         if run_policies:
             try:
@@ -773,8 +821,7 @@ class HotpToken(OathToken):
         if pin is None:
             if self.mode == "mode2":
                 pin = callback.askpass("Please enter PIN: ")
-                pin = str(pin)
-                if len(pin) != self.pin_len:
+                if len(str(pin)) != self.pin_len:
                     msg = "Invalid PIN."
                     return callback.error(msg)
 
@@ -806,8 +853,14 @@ class HotpToken(OathToken):
     @check_acls(['resync'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def resync(self, otp=None, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def resync(
+        self,
+        otp: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Resync our counter state with token by given OTP. """
         from otpme.lib.otp.oath import hotp
         if not otp:
@@ -838,8 +891,7 @@ class HotpToken(OathToken):
         pin = None
         if self.mode == "mode2":
             pin = callback.askpass("Please enter PIN: ")
-            pin = str(pin)
-            if len(pin) != self.pin_len:
+            if len(str(pin)) != self.pin_len:
                 msg = "Invalid PIN."
                 return callback.error(msg)
 
@@ -890,7 +942,13 @@ class HotpToken(OathToken):
 
         return self._cache(callback=callback)
 
-    def add_used_otp(self, otp, resync=False, session_uuid=None, quiet=True):
+    def add_used_otp(
+        self,
+        otp: str,
+        resync: bool=False,
+        session_uuid: Union[str,None]=None,
+        quiet: bool=True,
+        ):
         """ Add used OTP + counter for this user/token. """
         try:
             token_counter = self.otp_cache[otp]
@@ -929,22 +987,31 @@ class HotpToken(OathToken):
             msg = "Failed to add used OTP: %s" % e
             raise OTPmeException(msg)
 
-    def _check_range_format(self, check_range, callback=default_callback):
+    def _check_range_format(
+        self,
+        check_range: int,
+        callback: JobCallback=default_callback,
+        ):
         """ Check if the given counter range is valid. """
-        if isinstance(check_range, int):
-            if check_range > 0:
-                return callback.ok()
-            msg = (_("Counter check range must be greater than 0."))
+        if not isinstance(check_range, int):
+            msg = "Counter check range must be an integer."
             return callback.error(msg)
-        msg = "Counter check range must be an integer."
+        if check_range > 0:
+            return callback.ok()
+        msg = (_("Counter check range must be greater than 0."))
         return callback.error(msg)
 
     @check_acls(['edit:counter_check_range'])
     @object_lock()
     @backend.transaction
-    def change_counter_check_range(self, run_policies=True,
-        counter_check_range=None, _caller="API",
-        callback=default_callback, **kwargs):
+    def change_counter_check_range(
+        self,
+        run_policies: bool=True,
+        counter_check_range: Union[int,None]=None,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change token counter check range. """
         if run_policies:
             try:
@@ -982,8 +1049,16 @@ class HotpToken(OathToken):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def deploy(self, server_secret, secret_len, pin, secret_encoding,
-        _caller="API", verbose_level=0, callback=default_callback):
+    def deploy(
+        self,
+        server_secret: str,
+        secret_len: int,
+        pin: int,
+        secret_encoding: str,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        ):
         """ Deploy HOTP token """
         if not self.check_pin(pin=pin, callback=callback):
             return callback.error("Invalid PIN.")
@@ -993,8 +1068,8 @@ class HotpToken(OathToken):
 
         self.mode = "mode2"
         self.secret = None
-        self.server_secret = str(server_secret)
-        self.deploy_token_secret_len = secret_len
+        self.server_secret = server_secret
+        self.secret_len = secret_len
         self.secret_encoding = secret_encoding
 
         if verbose_level > 0:
@@ -1013,10 +1088,11 @@ class HotpToken(OathToken):
         """ Add a token. """
         # Get default TOTP settings.
         self.otp_format = self.get_config_parameter("hotp_format")
+        self.secret_len = self.get_config_parameter("hotp_secret_len")
         self.counter_check_range = self.get_config_parameter("hotp_check_range")
         return super(HotpToken, self)._add(*args, **kwargs)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token info. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

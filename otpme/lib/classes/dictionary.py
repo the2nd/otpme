@@ -2,6 +2,9 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import sys
+from typing import List
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -16,6 +19,7 @@ from otpme.lib import backend
 from otpme.lib.spsc import SPSC
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
@@ -46,6 +50,7 @@ read_value_acls = {
             }
 write_value_acls = {
                     "add"       : [ "words", "dictionary" ],
+                    "edit"      : [ "config" ],
                     "delete"    : [ "dictionary" ],
             }
 
@@ -227,6 +232,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -236,6 +242,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -517,11 +524,20 @@ def register_sync_settings():
     config.register_object_sync(host_type="node", object_type="dictionary")
     config.register_object_sync(host_type="host", object_type="dictionary")
 
+@match_class_typing
 class Dictionary(OTPmeObject):
     """ Dictionary object. """
     commands = commands
-    def __init__(self, object_id=None, path=None, name=None,
-        unit=None, site=None, realm=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        path: Union[str,None]=None,
+        name: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        site: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class)
         self.type = "dictionary"
 
@@ -589,14 +605,19 @@ class Dictionary(OTPmeObject):
         # Set OID.
         self.set_oid()
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
         # Make sure name is a string and lowercase.
         self.name = str(name).lower()
 
     @check_acls(['dump'])
-    def dump(self, run_policies=True, _caller="API",
-        callback=default_callback, **kwargs):
+    def dump(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Dump dictionary words. """
         if run_policies:
             try:
@@ -627,7 +648,12 @@ class Dictionary(OTPmeObject):
 
     @object_lock()
     @backend.transaction
-    def clear(self, _caller="API", callback=default_callback, **kwargs):
+    def clear(
+        self,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Remove all dictionary data. """
         self.dictionary = {}
         self.update_dict_size()
@@ -636,8 +662,14 @@ class Dictionary(OTPmeObject):
     @check_acls(['add:words'])
     @object_lock()
     @backend.transaction
-    def add_words(self, word_list, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def add_words(
+        self,
+        word_list: List,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add words to dictionary. """
         if run_policies:
             try:
@@ -653,7 +685,7 @@ class Dictionary(OTPmeObject):
         position = len(self.dictionary)
         dict_changed = False
         for word in word_list:
-            if not word in self.dictionary:
+            if word not in self.dictionary:
                 position += 1
                 self.dictionary[word] = position
                 dict_changed = True
@@ -668,7 +700,13 @@ class Dictionary(OTPmeObject):
     @check_acls(['rename'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
+    def rename(
+        self,
+        new_name: str,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Rename dictionary. """
         # Build new OID.
         new_oid = oid.get(object_type="dictionary",
@@ -681,8 +719,13 @@ class Dictionary(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
-    def add(self, dict_type="list", verbose_level=0,
-        callback=default_callback, **kwargs):
+    def add(
+        self,
+        dict_type: str="list",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a dictionary. """
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(callback=callback, **kwargs)
@@ -706,9 +749,15 @@ class Dictionary(OTPmeObject):
     @check_acls(['delete'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete dictionary. """
         if not self.exists():
             return callback.error("Dictionary does not exist exists.")
@@ -736,7 +785,11 @@ class Dictionary(OTPmeObject):
                                     force=force, callback=callback)
 
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Show dictionary config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

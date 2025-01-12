@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import List
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -14,6 +17,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.register import register_module
 from otpme.lib.cache import assigned_role_cache
 from otpme.lib.cache import assigned_token_cache
@@ -57,6 +61,9 @@ write_value_acls = {
                                     "token",
                                     "role",
                                     "dynamic_group",
+                                ],
+                    "edit"       : [
+                                    "config",
                                 ],
                     "remove"    : [
                                     "user",
@@ -410,6 +417,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -419,6 +427,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -772,11 +781,20 @@ def get_roles(role_uuid=None, skip_disabled=False, parent=False,
         result = sorted(result)
     return result
 
+@match_class_typing
 class Role(OTPmeObject):
     """ Role object """
     commands = commands
-    def __init__(self, object_id=None, path=None, name=None,
-        unit=None, site=None, realm=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        path: Union[str,None]=None,
+        name: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        site: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class)
         self.type = "role"
 
@@ -868,10 +886,8 @@ class Role(OTPmeObject):
         # Set OID.
         self.set_oid()
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
-        # Make sure name is a string.
-        name = str(name)
         # Only base roles must have uppercase names.
         base_roles = config.get_base_objects("role")
         if name.upper() in base_roles:
@@ -880,8 +896,13 @@ class Role(OTPmeObject):
             self.name = name.lower()
 
     @assigned_token_cache.cache_method()
-    def is_assigned_token(self, token_uuid, check_parent_roles=True,
-        skip_disabled_roles=True, processed_roles=[]):
+    def is_assigned_token(
+        self,
+        token_uuid: str,
+        check_parent_roles: bool=True,
+        skip_disabled_roles: bool=True,
+        processed_roles: List=[]
+        ):
         if token_uuid in self.tokens:
             return True
         if not check_parent_roles:
@@ -901,8 +922,13 @@ class Role(OTPmeObject):
         return False
 
     @assigned_role_cache.cache_method()
-    def is_assigned_role(self, role_uuid, check_parent_roles=True,
-        skip_disabled_roles=True, processed_roles=[]):
+    def is_assigned_role(
+        self,
+        role_uuid: str,
+        check_parent_roles: bool=True,
+        skip_disabled_roles: bool=True,
+        processed_roles: List=[]
+        ):
         if role_uuid in self.roles:
             return True
         if not check_parent_roles:
@@ -923,9 +949,16 @@ class Role(OTPmeObject):
         return False
 
     @cli.check_rapi_opts()
-    def get_roles(self, return_type="name", parent=False,
-        skip_disabled=False, recursive=False, _caller="API",
-        callback=default_callback, **kwargs):
+    def get_roles(
+        self,
+        return_type: str="name",
+        parent: bool=False,
+        skip_disabled: bool=False,
+        recursive: bool=False,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get all roles of this role. """
         result = get_roles(role_uuid=self.uuid,
                             parent=parent,
@@ -941,8 +974,13 @@ class Role(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    def get_access_groups(self, return_type="name", _caller="API",
-        callback=default_callback, **kwargs):
+    def get_access_groups(
+        self,
+        return_type: str="name",
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return list with all access group names this role is in. """
         result = backend.search(realm=self.realm,
                             site=self.site,
@@ -957,8 +995,13 @@ class Role(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    def get_groups(self, return_type="uuid", _caller="API",
-        callback=default_callback, **kwargs):
+    def get_groups(
+        self,
+        return_type: str="uuid",
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return list with all group names this role is in. """
         result = backend.search(realm=self.realm,
                             site=self.site,
@@ -974,7 +1017,13 @@ class Role(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
+    def rename(
+        self,
+        new_name: str,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Rename role. """
         base_roles = config.get_base_objects("role")
         if self.name in base_roles:
@@ -990,7 +1039,12 @@ class Role(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
-    def add(self, verbose_level=0, callback=default_callback, **kwargs):
+    def add(
+        self,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a role. """
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(callback=callback, **kwargs)
@@ -1002,9 +1056,16 @@ class Role(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, force=False, run_policies=True,
-        verify_acls=True, verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Delete role. """
         if not self.exists():
             return callback.error("Role does not exist exists.")
@@ -1088,9 +1149,15 @@ class Role(OTPmeObject):
 
     @check_acls(['remove:orphans'])
     @object_lock()
-    def remove_orphans(self, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def remove_orphans(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Remove orphan UUIDs. """
         if run_policies:
             try:
@@ -1169,7 +1236,7 @@ class Role(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show role config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

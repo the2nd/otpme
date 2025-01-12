@@ -5,6 +5,9 @@ import time
 import magic
 import base64
 import datetime
+from typing import List
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -28,6 +31,7 @@ from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.register import register_module
 from otpme.lib.encryption import hash_password
 from otpme.lib.policy import one_time_policy_run
@@ -106,6 +110,7 @@ write_value_acls = {
                                 "token",
                                 ],
                     "edit"      : [
+                                "config",
                                 "group",
                                 "private_key",
                                 "private_key_pass",
@@ -678,6 +683,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -687,6 +693,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -1251,11 +1258,20 @@ def user_is_blocked(user_uuid, access_group, realm, site):
                 is_blocked = False
     return is_blocked
 
+@match_class_typing
 class User(OTPmeObject):
     """ Class that implements OTPmeUser. """
     commands = commands
-    def __init__(self, object_id=None, path=None, name=None,
-        unit=None, site=None, realm=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        path: Union[str,None]=None,
+        name: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        site: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class).
         self.type = "user"
 
@@ -1487,10 +1503,8 @@ class User(OTPmeObject):
         # Set OID.
         self.set_oid()
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
-        # Make sure name is a string
-        name = str(name)
         name_upper = name.upper()
         internal_users = config.get_internal_objects("user")
         if name_upper in internal_users:
@@ -1524,7 +1538,7 @@ class User(OTPmeObject):
         return group_oid.name
 
     @group.setter
-    def group(self, new_group):
+    def group(self, new_group: str):
         result = backend.search(object_type="group",
                                 #realm=config.realm,
                                 #site=config.site,
@@ -1553,8 +1567,12 @@ class User(OTPmeObject):
     def group_uuid(self, group_uuid):
         return self._change_group(group_uuid)
 
-    def _change_group(self, group_uuid,
-        verify_acls=True, callback=default_callback):
+    def _change_group(
+        self,
+        group_uuid: str,
+        verify_acls: bool=True,
+        callback: JobCallback=default_callback,
+        ):
         """ Change users group. """
         # Remove user from current group.
         current_group_uuid = None
@@ -1601,8 +1619,13 @@ class User(OTPmeObject):
         self.update_extensions("change_group", callback=callback)
         return result
 
-    def cross_site_move(self, path, default_group=None,
-        callback=default_callback, **kwargs):
+    def cross_site_move(
+        self,
+        path: str,
+        default_group: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Do cross site move of user. """
         if config.use_api:
             msg = "Cannot do cross-site move in API mode."
@@ -1765,7 +1788,7 @@ class User(OTPmeObject):
 
         return callback.ok()
 
-    def move(self, *args, callback=default_callback, **kwargs):
+    def move(self, *args, callback: JobCallback=default_callback, **kwargs):
         """ Move user to other unit. """
         if self.name == config.admin_user_name:
             msg = "Moving admin user is not allowed."
@@ -1790,8 +1813,14 @@ class User(OTPmeObject):
 
     @check_acls(['add:photo'])
     @object_lock()
-    def add_photo(self, image_data, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def add_photo(
+        self,
+        image_data: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1828,8 +1857,13 @@ class User(OTPmeObject):
 
     @check_acls(['del:photo'])
     @object_lock()
-    def del_photo(self, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def del_photo(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1848,8 +1882,17 @@ class User(OTPmeObject):
 
     @check_acls(['dump:photo'])
     @object_lock()
-    def dump_photo(self, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def dump_photo(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        if not self.photo:
+            msg = "No photo set."
+            return callback.error(msg)
+
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1861,13 +1904,9 @@ class User(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not self.photo:
-            msg = "No photo set."
-            return callback.error(msg)
-
         return callback.ok(self.photo)
 
-    def get_members(self, return_type="full_oid", **kwargs):
+    def get_members(self, return_type: str="full_oid", **kwargs):
         """ Get all user tokens. """
         token_list = self.get_tokens(return_type=return_type)
         members = {}
@@ -1885,11 +1924,16 @@ class User(OTPmeObject):
                 logger.critical(msg)
         return super(User, self)._write(**kwargs)
 
-    def get_sign_mode(self, callback=default_callback, **kwargs):
+    def get_sign_mode(self, callback: JobCallback=default_callback, **kwargs):
         """ Get users sign mode. """
         return callback.ok(self.sign_mode)
 
-    def _set_key(self, aes_key=None, rsa_key=None, encrypted=False):
+    def _set_key(
+        self,
+        aes_key: Union[str,None]=None,
+        rsa_key: Union[str,None]=None,
+        encrypted: bool=False,
+        ):
         """
         Encode (create one line string with AES+RSA key) private key string.
         """
@@ -1908,9 +1952,15 @@ class User(OTPmeObject):
 
     @object_lock()
     @check_acls(['edit:group'])
-    def change_group(self, new_group, verbose_level=0,
-        run_policies=True, callback=default_callback,
-        _caller="API", **kwargs):
+    def change_group(
+        self,
+        new_group: str,
+        verbose_level: int=0,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change object group. """
         if new_group == "":
             msg = (_("Missing group."))
@@ -1954,8 +2004,16 @@ class User(OTPmeObject):
 
     @check_acls(['edit:private_key'])
     @object_lock(full_lock=True)
-    def change_private_key(self, private_key, force=False, verbose_level=0,
-        run_policies=True, callback=default_callback, _caller="API", **kwargs):
+    def change_private_key(
+        self,
+        private_key: str,
+        force: bool=False,
+        verbose_level=0,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Set users RSA private key or stuff to get it. """
         if run_policies:
             try:
@@ -1985,8 +2043,16 @@ class User(OTPmeObject):
 
     @check_acls(['edit:public_key'])
     @object_lock(full_lock=True)
-    def change_public_key(self, public_key, force=False, verbose_level=0,
-        run_policies=True, callback=default_callback, _caller="API", **kwargs):
+    def change_public_key(
+        self,
+        public_key: str,
+        force: bool=False,
+        verbose_level: int=0,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Set users RSA public key. """
         if run_policies:
             try:
@@ -2013,8 +2079,13 @@ class User(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    def get_key_script(self, return_type="path",
-        _caller="API", callback=default_callback, **kwargs):
+    def get_key_script(
+        self,
+        return_type: str="path",
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get user key script name or UUID + options. """
         opts = None
         script = None
@@ -2050,8 +2121,13 @@ class User(OTPmeObject):
                 result = script
         return callback.ok(result)
 
-    def get_ssh_script(self, return_type="name",
-        _caller="API", callback=default_callback, **kwargs):
+    def get_ssh_script(
+        self,
+        return_type: str="name",
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get user SSH agent script name or UUID + options. """
         script = None
         opts = None
@@ -2081,8 +2157,16 @@ class User(OTPmeObject):
                 result = script
         return callback.ok(result)
 
-    def get_key(self, private=False, decrypt=False, aes_key=None,
-        force=False, callback=default_callback, _caller="API", **kwargs):
+    def get_key(
+        self,
+        private: bool=False,
+        decrypt: bool=False,
+        aes_key: Union[str,None]=None,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Return user key as string. """
         if private:
             if not self.verify_acl("view_all:private_key"):
@@ -2120,10 +2204,22 @@ class User(OTPmeObject):
     @check_special_user()
     @cli.check_rapi_opts()
     #@object_lock(full_lock=True)
-    def gen_keys(self, sign_mode="client", encrypt_key=True, aes_key=None,
-        aes_key_enc=None, key_len=None, pass_hash_type="PBKDF2", force=False,
-        run_policies=True, stdin_pass=False, verbose_level=0,
-        callback=default_callback, _caller="API", **kwargs):
+    def gen_keys(
+        self,
+        sign_mode: str="client",
+        encrypt_key: bool=True,
+        aes_key: Union[str,None]=None,
+        aes_key_enc: Union[str,None]=None,
+        key_len: Union[int,None]=None,
+        pass_hash_type: str="PBKDF2",
+        force: bool=False,
+        run_policies: bool=True,
+        stdin_pass: bool=False,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Create users RSA private/public key pair. """
         if sign_mode not in [ 'client', 'server' ]:
             msg = ("Unknown sign mode: %s" % sign_mode)
@@ -2265,8 +2361,15 @@ class User(OTPmeObject):
     @check_special_user()
     @cli.check_rapi_opts()
     #@object_lock(full_lock=True)
-    def del_keys(self, force=False, run_policies=True, verbose_level=0,
-        callback=default_callback, _caller="API", **kwargs):
+    def del_keys(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Create users RSA private/public key pair. """
         if run_policies:
             try:
@@ -2301,8 +2404,13 @@ class User(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    def get_private_key(self, decrypt=True, aes_key=None,
-        callback=default_callback, _caller="API"):
+    def get_private_key(
+        self,
+        decrypt: bool=True,
+        aes_key: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        _caller="API",
+        ):
         """ Get private key (e.g. decrypt it). """
         if not self.private_key:
             msg = "No private key set."
@@ -2340,8 +2448,13 @@ class User(OTPmeObject):
 
     @check_acls(['edit:private_key_pass'])
     @object_lock(full_lock=True)
-    def change_key_pass(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_key_pass(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change private key passphrase. """
         if not self.private_key:
             return callback.error("No private key set.")
@@ -2414,9 +2527,16 @@ class User(OTPmeObject):
 
     @check_acls(['sign'])
     @object_lock()
-    def sign_data(self, data=None, digest=None, aes_key=None,
-        run_policies=True, callback=default_callback,
-        _caller="API", **kwargs):
+    def sign_data(
+        self,
+        data: Union[str,None]=None,
+        digest: Union[str,None]=None,
+        aes_key: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Sign given data with users private key. """
         if not data and not digest:
             msg = ("Need at least 'data' or 'digest'.")
@@ -2459,8 +2579,16 @@ class User(OTPmeObject):
         return callback.ok(signature)
 
     @check_acls(['verify'])
-    def verify(self, signature, data=None, digest=None, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def verify(
+        self,
+        signature: str,
+        data: Union[str,None]=None,
+        digest: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Verify given data+message with users public key. """
         if not data and not digest:
             msg = ("Need at least 'data' or 'digest'.")
@@ -2493,8 +2621,14 @@ class User(OTPmeObject):
         return callback.ok()
 
     @check_acls(['encrypt'])
-    def encrypt(self, data, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def encrypt(
+        self,
+        data: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Encrypt given data with users public key. """
         if self.sign_mode != "server":
             return callback.error("Key is not handled by server.")
@@ -2527,8 +2661,15 @@ class User(OTPmeObject):
         return callback.ok(cipher)
 
     @check_acls(['decrypt'])
-    def decrypt(self, data, aes_key=None, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def decrypt(
+        self,
+        data: str,
+        aes_key: Union[str,None]=None,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Decrypt given data with users private key. """
         if self.sign_mode != "server":
             return callback.error("Key is not handled by server.")
@@ -2569,9 +2710,19 @@ class User(OTPmeObject):
         return callback.ok(decrypted_data)
 
     @object_lock()
-    def _handle_acl(self, action, acl, recursive_acls=False,
-        apply_default_acls=False, object_types=[], verify_acls=True,
-        force=False, verbose_level=0, callback=default_callback, **kwargs):
+    def _handle_acl(
+        self,
+        action: str,
+        acl: object,
+        recursive_acls: bool=False,
+        apply_default_acls: bool=False,
+        object_types: List=[],
+        verify_acls: bool=True,
+        force: bool=False,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Method to call inherit_default_acl() for all site units. """
         exception = None
 
@@ -2628,7 +2779,11 @@ class User(OTPmeObject):
         else:
             return callback.ok()
 
-    def is_admin(self, check_admin_user=True, check_admin_role=True):
+    def is_admin(
+        self,
+        check_admin_user: bool=True,
+        check_admin_role: bool=True,
+        ):
         """ Check if the user has admin priviledges. """
         if check_admin_user:
             for token_uuid in self.tokens:
@@ -2657,7 +2812,7 @@ class User(OTPmeObject):
         logger.debug("Authentication took %s seconds." % age)
         return auth_status
 
-    def token(self, token_name):
+    def token(self, token_name: str):
         """ Return token instance. """
         token = backend.get_object(object_type="token",
                                     realm=self.realm,
@@ -2668,11 +2823,25 @@ class User(OTPmeObject):
             token.dst_token = token.get_destination_token()
         return token
 
-    def get_tokens(self, client=None, host=None, access_group=None,
-        check_parent_groups=False, resolv_token_links=True,
-        check_sf_tokens=False, token_type=None, pass_type=None,
-        token_types=None, pass_types=None, skip_disabled=True, quiet=True,
-        return_type="uuid", callback=default_callback, _caller="API", **kwargs):
+    def get_tokens(
+        self,
+        client: Union[OTPmeObject,None]=None,
+        host: Union[OTPmeObject,None]=None,
+        access_group: Union[OTPmeObject,None]=None,
+        check_parent_groups: bool=False,
+        resolv_token_links: bool=True,
+        check_sf_tokens: bool=False,
+        token_type: Union[str,None]=None,
+        pass_type: Union[str,None]=None,
+        token_types: Union[List,None]=None,
+        pass_types: Union[List,None]=None,
+        skip_disabled: bool=True,
+        quiet: bool=True,
+        return_type: str="uuid",
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """
         Return a list with tokens of this user, selected by access_group (and
         its parents if check_parent_groups=True) or all. If access_group (with
@@ -2688,7 +2857,7 @@ class User(OTPmeObject):
 
         # If we got no pass types list but a pass type add it to list.
         if pass_types is None:
-            if pass_type != None:
+            if pass_type is not None:
                 pass_types = [pass_type]
 
         def check_token_types(token, token_types=None, pass_types=None):
@@ -2848,8 +3017,13 @@ class User(OTPmeObject):
 
         return callback.ok(result)
 
-    def get_groups(self, return_type="uuid", _caller="API",
-        callback=default_callback, **kwargs):
+    def get_groups(
+        self,
+        return_type: str="uuid",
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return list with all groups this user is in. """
         # Get all user tokens.
         token_list = self.get_tokens(return_type="instance")
@@ -2870,8 +3044,13 @@ class User(OTPmeObject):
 
         return callback.ok(result)
 
-    def get_access_groups(self, return_type="name", _caller="API",
-        callback=default_callback, **kwargs):
+    def get_access_groups(
+        self,
+        return_type: str="name",
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return list with all accessgroups this user is in. """
         # Get all user tokens.
         token_list = self.get_tokens(return_type="instance")
@@ -2892,11 +3071,11 @@ class User(OTPmeObject):
 
         return callback.ok(result)
 
-    def is_blocked(self, access_group, realm, site):
+    def is_blocked(self, access_group: str, realm: str, site: str):
         """ Check if user is blocked. """
         return user_is_blocked(self.uuid, access_group, realm, site)
 
-    def _gen_used_hash(self, string):
+    def _gen_used_hash(self, string: str):
         """ Generate MD5 hash of used SLP/SOTP/OTP/pass hash to be saved to backend. """
         # Generate MD5 hash from used SLP/SOTP/OTP/pass hash and salt. We use
         # MD5 here for performance reasons. To increase security the salt
@@ -2922,7 +3101,12 @@ class User(OTPmeObject):
                                     return_attributes=['uuid', 'expiry'])
         return used_objects
 
-    def is_used_sotp(self, hash, challenge=None, response=None):
+    def is_used_sotp(
+        self,
+        hash: str,
+        challenge: Union[str,None]=None,
+        response: Union[str,None]=None,
+        ):
         """
         Check if given SOTP hash is already used and remove outdated hashes
         from cache.
@@ -2978,7 +3162,7 @@ class User(OTPmeObject):
                     break
         return was_used
 
-    def add_used_sotp(self, hash):
+    def add_used_sotp(self, hash: str):
         """ Add SOTP hash to list of already used hashes for this user. """
         # Generate hash
         _hash = self._gen_used_hash(hash)
@@ -3007,7 +3191,7 @@ class User(OTPmeObject):
             msg = "Failed to add used SOTP."
             logger.warning(msg)
 
-    def remove_outdated_failed_pass_hashes(self, access_group):
+    def remove_outdated_failed_pass_hashes(self, access_group: str):
         """ Remove outdated failed pass hashes of this user. """
         # Get max fail for accessgroup.
         result = backend.search(object_type="accessgroup",
@@ -3044,7 +3228,7 @@ class User(OTPmeObject):
             for x in result[0:del_failed_pass]:
                 x.delete()
 
-    def count_fail(self, pass_hash, access_group):
+    def count_fail(self, pass_hash: str, access_group: str):
         """ Increase login failures for user or user/group. """
         # FIXME: NOFIX: One could think count_fail() should be method of
         #               Token() to count failed login tries per token.
@@ -3105,14 +3289,20 @@ class User(OTPmeObject):
             logger.critical(msg)
             return False
 
-    def failcount(self, access_group):
+    def failcount(self, access_group: str):
         """ Return user or user/group failed login count. """
         return user_failcount(self.uuid, access_group)
 
     @check_acls(['unblock'])
     @backend.transaction
-    def unblock(self, access_group=None, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def unblock(
+        self,
+        access_group: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Unblock user. """
         if run_policies:
             try:
@@ -3158,10 +3348,21 @@ class User(OTPmeObject):
     @check_acls(['deploy:token'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def deploy_token(self, token_name, token_type, smartcard_type,
-        replace=False, deploy_data=None, pre_deploy=False, force=False,
-        run_policies=True,verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def deploy_token(
+        self,
+        token_name: str,
+        token_type: str,
+        smartcard_type: str,
+        replace: bool=False,
+        deploy_data: Union[str,None]=None,
+        pre_deploy: bool=False,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Deploy existing or new token. """
         if not deploy_data and not pre_deploy:
             msg = ("Need at least 'pre_deploy' or 'deploy_data'!")
@@ -3273,11 +3474,25 @@ class User(OTPmeObject):
     @check_acls(['add:token'])
     @object_lock()
     @backend.transaction
-    def add_token(self, token_name=None, token_type=None, token_uuid=None,
-        new_token=None, destination_token=None, replace=False, gen_qrcode=True,
-        no_token_infos=False, force=False, enable_mschap=False, run_policies=True,
-        verify_acls=True, verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def add_token(
+        self,
+        token_name: Union[str,None]=None,
+        token_type: Union[str,None]=None,
+        token_uuid: Union[str,None]=None,
+        new_token: Union[OTPmeObject,None]=None,
+        destination_token: Union[str,None]=None,
+        replace: bool=False,
+        gen_qrcode: bool=True,
+        no_token_infos: bool=False,
+        force: bool=False,
+        enable_mschap: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Adds token to user. """
         if self.template_object:
             msg = "Cannot add token to template user."
@@ -3467,9 +3682,17 @@ class User(OTPmeObject):
 
     @object_lock()
     @backend.transaction
-    def del_token(self, token_name, force=False, keep_token=False,
-        run_policies=True, remove_default_token=False,
-        callback=default_callback, _caller="API", **kwargs):
+    def del_token(
+        self,
+        token_name: str,
+        force: bool=False,
+        keep_token: bool=False,
+        run_policies: bool=True,
+        remove_default_token: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete user token. """
         token = self.token(token_name)
         if not token:
@@ -3547,8 +3770,13 @@ class User(OTPmeObject):
 
     @check_acls(['enable:disabled_login'])
     @object_lock()
-    def enable_disabled_login(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_disabled_login(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable user disabled login. """
         if run_policies:
             try:
@@ -3567,8 +3795,13 @@ class User(OTPmeObject):
 
     @check_acls(['disable:disabled_login'])
     @object_lock()
-    def disable_disabled_login(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_disabled_login(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable user disabled login. """
         if run_policies:
             try:
@@ -3587,8 +3820,13 @@ class User(OTPmeObject):
 
     @check_acls(['enable:autosign'])
     @object_lock()
-    def enable_autosign(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_autosign(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable user auto-sign feature. """
         if run_policies:
             try:
@@ -3607,8 +3845,13 @@ class User(OTPmeObject):
 
     @check_acls(['disable:autosign'])
     @object_lock()
-    def disable_autosign(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_autosign(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable user auto-sign feature. """
         if run_policies:
             try:
@@ -3627,8 +3870,13 @@ class User(OTPmeObject):
 
     @check_acls(['enable:auth_script'])
     @object_lock()
-    def enable_auth_script(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_auth_script(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable user auth script. """
         if not self.auth_script:
             msg = "Auth script not configured."
@@ -3663,8 +3911,13 @@ class User(OTPmeObject):
 
     @check_acls(['disable:auth_script'])
     @object_lock()
-    def disable_auth_script(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_auth_script(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable user auth script. """
         # Check if auth_script is already disabled.
         if not self.auth_script_enabled:
@@ -3689,8 +3942,13 @@ class User(OTPmeObject):
 
     @check_acls(['enable:login_script'])
     @object_lock()
-    def enable_login_script(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_login_script(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable user login script. """
         if not self.login_script:
             msg = "Login script not configured."
@@ -3723,8 +3981,13 @@ class User(OTPmeObject):
 
     @check_acls(['disable:login_script'])
     @object_lock()
-    def disable_login_script(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_login_script(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable user login script. """
         # Check if login_script is already disabled.
         if not self.login_script_enabled:
@@ -3749,8 +4012,15 @@ class User(OTPmeObject):
     @check_acls(['edit:key_script'])
     @check_special_user()
     @object_lock(full_lock=True)
-    def change_key_script(self, key_script=None, script_options=None,
-        run_policies=True, callback=default_callback, _caller="API", **kwargs):
+    def change_key_script(
+        self,
+        key_script: Union[str,None]=None,
+        script_options: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change user key script. """
         if script_options:
             script_options = script_options.split(" ")
@@ -3773,8 +4043,15 @@ class User(OTPmeObject):
     @check_acls(['edit:agent_script'])
     @check_special_user()
     @object_lock(full_lock=True)
-    def change_agent_script(self, agent_script=None, script_options=None,
-        run_policies=True, callback=default_callback, _caller="API", **kwargs):
+    def change_agent_script(
+        self,
+        agent_script: Union[str,None]=None,
+        script_options: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change user agent script. """
         if script_options:
             script_options = script_options.split(" ")
@@ -3797,8 +4074,15 @@ class User(OTPmeObject):
     @check_acls(['edit:login_script'])
     @check_special_user()
     @object_lock(full_lock=True)
-    def change_login_script(self, login_script=None, script_options=None,
-        run_policies=True, callback=default_callback, _caller="API", **kwargs):
+    def change_login_script(
+        self,
+        login_script: Union[str,None]=None,
+        script_options: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change user login script. """
         if script_options:
             script_options = script_options.split(" ")
@@ -3821,8 +4105,15 @@ class User(OTPmeObject):
     @check_acls(['edit:auth_script'])
     @check_special_user()
     @object_lock(full_lock=True)
-    def change_auth_script(self, auth_script=None, script_options=None,
-        run_policies=True, callback=default_callback, _caller="API", **kwargs):
+    def change_auth_script(
+        self,
+        auth_script: Union[str,None]=None,
+        script_options: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change user auth script. """
         if script_options:
             script_options = script_options.split(" ")
@@ -3845,7 +4136,13 @@ class User(OTPmeObject):
     @check_special_user()
     @object_lock(full_lock=True)
     @backend.transaction
-    def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
+    def rename(
+        self,
+        new_name: str,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Rename user. """
         if config.auth_token:
             if config.auth_token.owner_uuid == self.uuid:
@@ -3894,12 +4191,29 @@ class User(OTPmeObject):
     @backend.transaction
     @one_time_policy_run
     @run_pre_post_add_policies()
-    def add(self, group=None, default_role=None, add_default_token=None,
-        default_token=None, default_token_type=None, template_name=None,
-        template_object=None, gen_qrcode=True, no_token_infos=False,
-        run_policies=True, force=False, verify_acls=True, groups=None,
-        default_roles=None, ldif_attributes=None, default_attributes={},
-        _caller="API", verbose_level=0, callback=default_callback, **kwargs):
+    def add(
+        self,
+        group: Union[str,None]=None,
+        default_role: Union[str,None]=None,
+        add_default_token: bool=None,
+        default_token: Union[str,None]=None,
+        default_token_type: Union[str,None]=None,
+        template_name: Union[str,None]=None,
+        template_object: Union[str,None]=None,
+        gen_qrcode: bool=True,
+        no_token_infos: bool=False,
+        run_policies: bool=True,
+        force: bool=False,
+        verify_acls: bool=True,
+        groups: Union[List,None]=None,
+        default_roles: Union[List,None]=None,
+        ldif_attributes: Union[str,None]=None,
+        default_attributes: dict={},
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add user. """
         # Check if user exist on any site.
         result = backend.search(object_type="user",
@@ -4375,9 +4689,16 @@ class User(OTPmeObject):
     @check_special_user()
     @object_lock(recursive=True, full_lock=True)
     @backend.transaction
-    def delete(self, force=False, verify_acls=True, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        verify_acls: bool=True,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete user. """
         internal_users = config.get_internal_objects("user")
         if self.name in internal_users:
@@ -4492,8 +4813,16 @@ class User(OTPmeObject):
     @check_acls(['remove:orphans'])
     @object_lock()
     @backend.transaction
-    def remove_orphans(self, force=False, run_policies=True, verbose_level=0,
-        recursive=False, callback=default_callback, _caller="API", **kwargs):
+    def remove_orphans(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        recursive: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Remove orphan UUIDs. """
         if run_policies:
             try:
@@ -4574,7 +4903,12 @@ class User(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    def show(self, callback=default_callback, token_name=None, **kwargs):
+    def show(
+        self,
+        callback: JobCallback=default_callback,
+        token_name: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Show user info. """
         view_public_acl = False
         if self.verify_acl("view_public"):

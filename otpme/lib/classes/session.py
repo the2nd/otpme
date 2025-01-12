@@ -4,6 +4,9 @@ import os
 import time
 from datetime import datetime
 from datetime import timedelta
+from typing import List
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     import simdjson as json
@@ -31,6 +34,7 @@ from otpme.lib import encryption
 from otpme.lib import otpme_pass
 from otpme.lib import mschap_util
 from otpme.lib.locking import object_lock
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.object_config import ObjectConfig
 from otpme.lib.classes.otpme_object import OTPmeLockObject
@@ -191,12 +195,25 @@ def register_backend():
                                 index_rebuild_func=index_rebuild,
                                 path_getter=path_getter)
 
+@match_class_typing
 class Session(OTPmeLockObject):
     """ OTPme session object. """
-    def __init__(self, session_type=None, username=None, access_group=None,
-        object_id=None, object_config=None, uuid=None, cache=False,
-        pass_hash=None, pass_hash_params=None, session_id=None, token=None,
-        client=None, client_ip=None, slp=None):
+    def __init__(self,
+        session_type: Union[str,None]=None,
+        username: Union[str,None]=None,
+        access_group: Union[str,None]=None,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        object_config: Union[ObjectConfig,None]=None,
+        uuid: Union[str,None]=None,
+        cache: bool=False,
+        pass_hash: Union[str,None]=None,
+        pass_hash_params: Union[List,None]=None,
+        session_id: Union[str,None]=None,
+        token: Union[str,None]=None,
+        client: Union[str,None]=None,
+        client_ip: Union[str,None]=None,
+        slp: Union[str,None]=None,
+        ):
         """ Init. """
         super(Session, self).__init__()
         self.realm = config.realm
@@ -364,13 +381,13 @@ class Session(OTPmeLockObject):
                                 site=self.site,
                                 name=self.name)
 
-    def add_index(self, key, value):
+    def add_index(self, key: str, value: Union[str,int,float]):
         """ Add attribute to session index. """
         if [key, value] in self.index:
             return
         self.index.append([key, value])
 
-    def del_index(self, key, value=None):
+    def del_index(self, key: str, value: Union[str,int,float,None]=None):
         """ Remove attribute from object index. """
         if value is not None:
             try:
@@ -420,7 +437,7 @@ class Session(OTPmeLockObject):
                                         self.session_id)
         return session_name
 
-    def export_config(self, callback=default_callback, **kwargs):
+    def export_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Export session config. """
         if not self.exists():
             msg = (_("Object '%s' does not exist.") % self.oid)
@@ -459,7 +476,7 @@ class Session(OTPmeLockObject):
         # Set instance variables
         self.set_variables()
 
-    def exists(self, outdate=False, **kwargs):
+    def exists(self, outdate: bool=False, **kwargs):
         """ Check if session exists. """
         # Without config we do not exist :)
         if not self._load():
@@ -470,7 +487,7 @@ class Session(OTPmeLockObject):
             return self.outdate()
         return True
 
-    def _load(self, read_from_cache=True):
+    def _load(self):
         """ Read session config from backend. """
         # Check if we got the object config via kwargs.
         object_config = None
@@ -482,8 +499,7 @@ class Session(OTPmeLockObject):
 
         # Try to get object config from backend.
         if not object_config:
-            object_config = backend.read_config(object_id=self.oid,
-                                    read_from_cache=read_from_cache)
+            object_config = backend.read_config(object_id=self.oid)
         if not object_config:
             return False
 
@@ -499,7 +515,7 @@ class Session(OTPmeLockObject):
 
         return True
 
-    def get_config_parameter(self, parameter):
+    def get_config_parameter(self, parameter: str):
         """ Try to get config parameter from object_config. """
         try:
             val = self.object_config.get(parameter, no_headers=True)
@@ -638,7 +654,11 @@ class Session(OTPmeLockObject):
 
         return True
 
-    def update_last_used_time(self, update_child_sessions=False, force=False):
+    def update_last_used_time(
+        self,
+        update_child_sessions: bool=False,
+        force: bool=False,
+        ):
         """ Update the time this session was last used. """
         if not force:
             # Update last used timestamp only every 30 seconds to save some IOPS.
@@ -707,7 +727,7 @@ class Session(OTPmeLockObject):
         return unused_session_expire
 
     @object_lock()
-    def start_reneg(self, pass_hash):
+    def start_reneg(self, pass_hash: str):
         """ Mark session as waiting for renegotiation to finish. """
         # Set new password hash.
         self.reneg_hash = pass_hash
@@ -747,8 +767,14 @@ class Session(OTPmeLockObject):
             status = False
         return status
 
-    def verify(self, password=None, password_hash=None,
-        challenge=None, response=None, **kwargs):
+    def verify(
+        self,
+        password: Union[str,None]=None,
+        password_hash: Union[str,None]=None,
+        challenge: Union[str,None]=None,
+        response: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Verify session. """
         if not password and not password_hash and not (challenge and response):
             msg = (_("Need 'password' or 'challenge' + 'response'!"))
@@ -774,10 +800,23 @@ class Session(OTPmeLockObject):
                 return verify_reply
         return verify_reply
 
-    def _verify(self, auth_type, session_hash, password=None,
-        password_hash=None, challenge=None, response=None, check_sotp=False,
-        do_reneg=False, reneg_salt=None, rsp_hash_type=None, auth_ag=None,
-        check_auth=True, check_slp=True, check_srp=True):
+    def _verify(
+        self,
+        auth_type: str,
+        session_hash: str,
+        password: Union[str,None]=None,
+        password_hash: Union[str,None]=None,
+        challenge: Union[str,None]=None,
+        response: Union[str,None]=None,
+        check_sotp: bool=False,
+        do_reneg: bool=False,
+        reneg_salt: Union[str,None]=None,
+        rsp_hash_type: Union[str,None]=None,
+        auth_ag: Union[str,None]=None,
+        check_auth: bool=True,
+        check_slp: bool=True,
+        check_srp: bool=True,
+        ):
         """ Verify given session hash via password or MSCHAP challenge/response. """
         # default should be None -> session does not match request
         verify_reply = {'status' : None}
@@ -1030,7 +1069,7 @@ class Session(OTPmeLockObject):
         return verify_reply
 
     @object_lock()
-    def add_child_session(self, session_id):
+    def add_child_session(self, session_id: str):
         """ Add session ID to child sessions. """
         # Add child session if its not already there.
         if session_id in self.child_sessions:
@@ -1047,8 +1086,13 @@ class Session(OTPmeLockObject):
     #        re-login needed). A ugly side effect is the added amount of not used
     #        sessions to verify for each request.
     @object_lock()
-    def create_child_sessions(self, groups_processed=None,
-        offline_data_key=None, start_group=None, access_group=None):
+    def create_child_sessions(
+        self,
+        groups_processed: List=None,
+        offline_data_key: Union[str,None]=None,
+        start_group: Union[object,None]=None,
+        access_group: Union[str,None]=None,
+        ):
         """
         Walk through all child groups and add child sessions
         to parent session.
@@ -1141,7 +1185,11 @@ class Session(OTPmeLockObject):
                                                 start_group=start_group, access_group=c)
         return True
 
-    def get_child_sessions(self, child_sessions=False, tree_level=0):
+    def get_child_sessions(
+        self,
+        child_sessions: bool=False,
+        tree_level: int=0,
+        ):
         """
         Return dictionary with all child sessions and their tree level recursive.
         """
@@ -1169,7 +1217,7 @@ class Session(OTPmeLockObject):
         return child_sessions
 
     @object_lock()
-    def add(self, offline_data_key=None):
+    def add(self, offline_data_key: Union[str,None]=None):
         """ Add a session. """
         # Set session creation time.
         self.creation_time = time.time()
@@ -1204,8 +1252,14 @@ class Session(OTPmeLockObject):
         return result
 
     @object_lock()
-    def delete(self, force=False, recursive=False, verify_acls=True,
-        callback=default_callback, **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        recursive: bool=False,
+        verify_acls: bool=True,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Delete session. """
         if verify_acls and config.auth_token:
             if config.auth_token.uuid != config.admin_token_uuid:

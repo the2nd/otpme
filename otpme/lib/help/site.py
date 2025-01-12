@@ -398,6 +398,14 @@ cmd_help = {
                                 },
                 },
 
+    'cluster_key'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-site cluster_key {site} {cluster_key}',
+                    'cmd'   :   '<|object|> <cluster_key>',
+                    '_help' :   {
+                                    'cmd'                   : 'Change cluster key.',
+                                },
+                },
+
     'add_fido2_ca_cert'   : {
                     '_cmd_usage_help' : 'Usage: otpme-site add_fido2_ca_cert {site} {ca_cert}',
                     'cmd'   :   '<|object|> <file:ca_cert>',

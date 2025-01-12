@@ -79,7 +79,7 @@ def update_sync_map(lock=None, syncing=False):
                                 realm=config.realm,
                                 return_type="instance")
     # Get users to skip.
-    skip_users = config.get_internal_objects("user")
+    skip_users = list(config.get_internal_objects("user"))
     # Get object types to sync.
     try:
         host_type = config.host_data['type']

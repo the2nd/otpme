@@ -2,6 +2,8 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import random
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -16,6 +18,7 @@ from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.daemon.scriptd import run_script
 from otpme.lib.classes.otpme_host import OTPmeHost
 from otpme.lib.protocols.utils import register_commands
@@ -63,6 +66,7 @@ write_value_acls = {
                                 "vote_script",
                             ],
                 "edit"      : [
+                                "config",
                                 "vote_script",
                             ],
             }
@@ -522,6 +526,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -531,6 +536,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -792,11 +798,20 @@ def register_sync_settings():
     config.register_object_sync(host_type="node", object_type="node")
     config.register_object_sync(host_type="host", object_type="node")
 
+@match_class_typing
 class Node(OTPmeHost):
     """ OTPme node object. """
     commands = commands
-    def __init__(self, object_id=None, name=None, path=None,
-        unit=None, realm=None, site=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        name: Union[str,None]=None,
+        path: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class)
         self.type = "node"
         # Call parent class init.
@@ -927,8 +942,15 @@ class Node(OTPmeHost):
 
     @check_acls(['edit:vote_script'])
     @object_lock()
-    def change_vote_script(self, vote_script=None, script_options=None,
-        run_policies=True, callback=default_callback, _caller="API", **kwargs):
+    def change_vote_script(
+        self,
+        vote_script: Union[str,None]=None,
+        script_options: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change node vote script. """
         if script_options:
             script_options = script_options.split(" ")
@@ -950,8 +972,13 @@ class Node(OTPmeHost):
 
     @check_acls(['enable:vote_script'])
     @object_lock()
-    def enable_vote_script(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_vote_script(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable vote script. """
         if not self.vote_script:
             msg = "No vote script configured."
@@ -974,8 +1001,13 @@ class Node(OTPmeHost):
 
     @check_acls(['disable:vote_script'])
     @object_lock()
-    def disable_vote_script(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_vote_script(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable vote script. """
         if not self.vote_script_enabled:
             msg = "Vote script already disabled."
@@ -993,14 +1025,14 @@ class Node(OTPmeHost):
         self.vote_script_enabled = False
         return self._cache(callback=callback)
 
-    def disable(self, *args, callback=default_callback, **kwargs):
+    def disable(self, *args, callback: JobCallback=default_callback, **kwargs):
         if config.master_node:
             if self.name == config.host_data['name']:
                 msg = "Cannot disable master node."
                 return callback.error(msg)
         return super(Node, self).disable(*args, callback=callback, **kwargs)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show host config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

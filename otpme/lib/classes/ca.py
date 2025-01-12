@@ -3,6 +3,9 @@
 import os
 import time
 import datetime
+from typing import List
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -17,6 +20,7 @@ from otpme.lib import backend
 from otpme.lib.pki import utils
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
@@ -67,7 +71,10 @@ read_value_acls = {
 write_value_acls = {
                     "renew"     : [ "cert" ],
                     "revoke"    : [ "cert" ],
-                    "edit"      : [ "crl_validity" ],
+                    "edit"      : [
+                                "config"
+                                "crl_validity"
+                                ],
         }
 
 default_acls = []
@@ -332,6 +339,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -341,6 +349,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -628,11 +637,20 @@ def register_sync_settings():
     """ Register sync settings. """
     config.register_object_sync(host_type="node", object_type="ca")
 
+@match_class_typing
 class Ca(OTPmeObject):
     """ Creates CA object """
     commands = commands
-    def __init__(self, object_id=None, path=None, name=None,
-        unit=None, site=None, realm=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        path: Union[str,None]=None,
+        name: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        site: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class)
         self.type = "ca"
 
@@ -746,7 +764,7 @@ class Ca(OTPmeObject):
         # Set OID.
         self.set_oid()
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
         # Make sure name is a string.
         name = str(name)
@@ -759,7 +777,12 @@ class Ca(OTPmeObject):
 
     @check_acls(['edit:crl_validity'])
     @object_lock()
-    def set_crl_validity(self, crl_validity, callback=default_callback, **kwargs):
+    def set_crl_validity(
+        self,
+        crl_validity: int,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         try:
             crl_validity = int(crl_validity)
         except:
@@ -770,12 +793,30 @@ class Ca(OTPmeObject):
 
     @check_acls(['create_cert'])
     @object_lock(full_lock=True)
-    def create_cert(self, cn, valid, self_signed, basic_constraints=None,
-        key_usage=None, ext_key_usage=None, key=None, cert_req=None,
-        organization=None, country=None, state=None, locality=None,
-        ou=None, email=None, key_len=None, sign_algo=None,
-        timezone=None, run_policies=True, _caller="API",
-        callback=default_callback, **kwargs):
+    def create_cert(
+        self,
+        cn: str,
+        valid: int,
+        self_signed: bool,
+        basic_constraints: List=None,
+        key_usage: List=None,
+        ext_key_usage: List=None,
+        key: Union[str,None]=None,
+        cert_req: Union[str,None]=None,
+        organization: Union[str,None]=None,
+        country: Union[str,None]=None,
+        state: Union[str,None]=None,
+        locality: Union[str,None]=None,
+        ou: Union[str,None]=None,
+        email: Union[str,None]=None,
+        key_len: int=None,
+        sign_algo: str=None,
+        timezone: str=None,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Create cert for the given common name. """
         if run_policies:
             try:
@@ -836,12 +877,26 @@ class Ca(OTPmeObject):
 
     @check_acls(['create_ca_cert'])
     @object_lock(full_lock=True)
-    def create_ca_cert(self, cn, self_signed=False,
-        key=None, key_len=None, cert_req=None, country=None,
-        state=None, locality=None, organization=None,
-        ou=None, email=None, valid=None, run_policies=True,
-        verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def create_ca_cert(
+        self,
+        cn: str,
+        self_signed: bool=False,
+        key: Union[str,None]=None,
+        key_len: int=None,
+        cert_req: Union[str,None]=None,
+        country: Union[str,None]=None,
+        state: Union[str,None]=None,
+        locality: Union[str,None]=None,
+        organization: Union[str,None]=None,
+        ou: Union[str,None]=None,
+        email: Union[str,None]=None,
+        valid=None,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Create CA cert for given common name. """
         if key_len is None:
             key_len = config.default_ca_key_len
@@ -886,10 +941,24 @@ class Ca(OTPmeObject):
 
     @check_acls(['create_server_cert'])
     @object_lock(full_lock=True)
-    def create_server_cert(self, cn, cert_req=None, key=None,
-        organization=None, country=None, state=None, valid=None,
-        ou=None, key_len=None, locality=None, email=None, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def create_server_cert(
+        self,
+        cn: str,
+        cert_req: Union[str,None]=None,
+        key: Union[str,None]=None,
+        organization: Union[str,None]=None,
+        country: Union[str,None]=None,
+        state: Union[str,None]=None,
+        valid: Union[int,None]=None,
+        ou: Union[str,None]=None,
+        key_len: Union[int,None]=None,
+        locality: Union[str,None]=None,
+        email: Union[str,None]=None,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Create server cert for given common name. """
         if key_len is None:
             key_len = config.default_server_key_len
@@ -935,10 +1004,24 @@ class Ca(OTPmeObject):
 
     @check_acls(['create_client_cert'])
     @object_lock(full_lock=True)
-    def create_client_cert(self, cn, valid=None, key_len=None, cert_req=None,
-        key=None, organization=None, country=None, state=None, ou=None,
-        locality=None, email=None, run_policies=True, _caller="API",
-        callback=default_callback, **kwargs):
+    def create_client_cert(
+        self,
+        cn: str,
+        valid: Union[int,None]=None,
+        key_len: Union[int,None]=None,
+        cert_req: Union[str,None]=None,
+        key: Union[str,None]=None,
+        organization: Union[str,None]=None,
+        country: Union[str,None]=None,
+        state: Union[str,None]=None,
+        ou: Union[str,None]=None,
+        locality: Union[str,None]=None,
+        email: Union[str,None]=None,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Create client cert for given common name. """
         if key_len is None:
             key_len = config.default_client_key_len
@@ -984,11 +1067,27 @@ class Ca(OTPmeObject):
         return cert, key
 
     @object_lock(full_lock=True)
-    def create_host_cert(self, cn, host_type="host",
-        country=None, state=None, locality=None, organization=None,
-        ou=None, email=None, self_signed=False, ca_cert=None,
-        ca_key=None, key=None, key_len=None, cert_req=None, valid=None,
-        verify_acls=True, callback=default_callback, **kwargs):
+    def create_host_cert(
+        self,
+        cn: str,
+        host_type: str="host",
+        country: Union[str,None]=None,
+        state: Union[str,None]=None,
+        locality: Union[str,None]=None,
+        organization: Union[str,None]=None,
+        ou: Union[str,None]=None,
+        email: Union[str,None]=None,
+        self_signed: bool=False,
+        ca_cert: Union[str,None]=None,
+        ca_key: Union[str,None]=None,
+        key: Union[str,None]=None,
+        key_len: Union[int,None]=None,
+        cert_req: Union[str,None]=None,
+        valid: Union[int,None]=None,
+        verify_acls: bool=True,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Create node/host cert for given common name. """
         if verify_acls:
             if host_type == "host":
@@ -1051,8 +1150,14 @@ class Ca(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def set_crl(self, crl, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def set_crl(
+        self,
+        crl: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Set site CRL. """
         if run_policies:
             try:
@@ -1083,8 +1188,15 @@ class Ca(OTPmeObject):
     @check_acls(['update_crl'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def update_crl(self, sign_algo=None, run_policies=True, timezone=None,
-        _caller="API", callback=default_callback, **kwargs):
+    def update_crl(
+        self,
+        sign_algo: Union[str,None]=None,
+        run_policies: bool=True,
+        timezone: Union[str,None]=None,
+        _caller: str="API",
+        callback=default_callback,
+        **kwargs,
+        ):
         """ Remove outdated revoked certs from CA's CRL. """
         if run_policies:
             try:
@@ -1139,7 +1251,10 @@ class Ca(OTPmeObject):
 
         return callback.ok()
 
-    def update_realm_ca_data(self, callback=default_callback):
+    def update_realm_ca_data(
+        self,
+        callback: JobCallback=default_callback,
+        ):
         """ Update realm CA data. """
         realm = backend.get_object(uuid=config.realm_uuid,
                                     object_type="realm")
@@ -1151,7 +1266,12 @@ class Ca(OTPmeObject):
             msg = (_("Unable to update realm CA data: %s") % e)
             raise OTPmeException(msg)
 
-    def get_crl(self, _caller="API", callback=default_callback, **kwargs):
+    def get_crl(
+        self,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get CA's CRL as base64 string """
         if not self.crl:
             msg = "CA does not have a CRL."
@@ -1161,8 +1281,16 @@ class Ca(OTPmeObject):
     @check_acls(['revoke:cert'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def revoke_cert(self, cert, crl_sign_algo=None, timezone=None,
-        run_policies=True, _caller="API", callback=default_callback, **kwargs):
+    def revoke_cert(
+        self,
+        cert: str,
+        crl_sign_algo: str=None,
+        timezone: str=None,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Revoke certificate. """
         if run_policies:
             try:
@@ -1268,7 +1396,12 @@ class Ca(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def set_cert(self, cert, key=None, callback=default_callback):
+    def set_cert(
+        self,
+        cert: str,
+        key: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        ):
         """ Set CA cert/key """
         # Set new cert/key.
         self.cert = cert
@@ -1300,10 +1433,24 @@ class Ca(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
-    def add(self, cn=None, country=None, state=None,
-        locality=None, organization=None, ou=None, email=None, cert=None,
-        key=None, key_len=None, no_cert=False, valid=None,
-        verbose_level=0, callback=default_callback, **kwargs):
+    def add(
+        self,
+        cn: Union[str,None]=None,
+        country: Union[str,None]=None,
+        state: Union[str,None]=None,
+        locality: Union[str,None]=None,
+        organization: Union[str,None]=None,
+        ou: Union[str,None]=None,
+        email: Union[str,None]=None,
+        cert: Union[str,None]=None,
+        key: Union[str,None]=None,
+        key_len: Union[int,None]=None,
+        no_cert: bool=False,
+        valid: Union[int,None]=None,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a CA. """
         if key_len is None:
             key_len = config.default_ca_key_len
@@ -1359,9 +1506,15 @@ class Ca(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete CA. """
         if not self.exists():
             return callback.error(_("CA does not exist exists."))
@@ -1404,7 +1557,11 @@ class Ca(OTPmeObject):
         return OTPmeObject.delete(self, verbose_level=verbose_level,
                                     force=force, callback=callback)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Show CA config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -8,6 +10,7 @@ try:
 except:
     pass
 
+from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -15,6 +18,7 @@ from otpme.lib import otpme_acl
 from otpme.lib.locking import object_lock
 from otpme.lib.classes.token import Token
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.utils import register_commands
 
 from otpme.lib.classes.token \
@@ -256,10 +260,19 @@ def register_config_parameters():
                                     default_value=8,
                                     object_types=object_types)
 
+@match_class_typing
 class PasswordToken(Token):
     """ Class for static password 'tokens'. """
-    def __init__(self, object_id=None, user=None, name=None,
-        realm=None, site=None, path=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        user: Union[str,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        **kwargs,
+        ):
 
         # Call parent class init.
         super(PasswordToken, self).__init__(object_id=object_id,
@@ -287,6 +300,7 @@ class PasswordToken(Token):
         self.offline_unused_expiry = 0
         self.keep_session = False
         self.mschap_enabled = False
+        self.offline_pinnable = True
         # Hardware tokens that we can handle (e.g. on otpme-token deploy)
         # FIXME: implement deployment of yubikey in static mode (e.g. password via usb keyboard presses)
         self.supported_hardware_tokens = [ 'yubikey-static' ]
@@ -349,7 +363,7 @@ class PasswordToken(Token):
                     }
         return offline_data
 
-    def get_offline_config(self, second_factor_usage=False):
+    def get_offline_config(self, second_factor_usage: bool=False):
         """ Get offline config of token. (e.g. without PIN). """
         offline_config = self.object_config.copy()
         need_encryption = True
@@ -359,8 +373,14 @@ class PasswordToken(Token):
     @check_acls(['edit:2ftoken'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def change_2f_token(self, second_factor_token, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_2f_token(
+        self,
+        second_factor_token: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change token second factor token. """
         if run_policies:
             try:
@@ -395,8 +415,14 @@ class PasswordToken(Token):
     @check_acls(['enable:2ftoken'])
     @object_lock()
     @backend.transaction
-    def enable_2f_token(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_2f_token(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable the second factor token. """
         if self.second_factor_token_enabled:
             return callback.error("Second factor token already enabled.")
@@ -434,8 +460,14 @@ class PasswordToken(Token):
     @check_acls(['disable:2ftoken'])
     @object_lock()
     @backend.transaction
-    def disable_2f_token(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_2f_token(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable the second factor token. """
         if not self.second_factor_token_enabled:
             return callback.error("Second factor token already disabled.")
@@ -461,7 +493,7 @@ class PasswordToken(Token):
         return self._cache(callback=callback)
 
     @object_lock(full_lock=True)
-    def resync(self, callback=default_callback, **kwargs):
+    def resync(self, callback: JobCallback=default_callback, **kwargs):
         """ Wrapper method to call resync() of 2ftoken. """
         try:
             sftoken = self.get_sftoken()
@@ -470,7 +502,12 @@ class PasswordToken(Token):
                                     % e)
         return sftoken.resync(callback=callback, **kwargs)
 
-    def test(self, password=None, callback=default_callback, **kwargs):
+    def test(
+        self,
+        password: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Test if the given password/OTP can be verified by this token. """
         ok_message = "Token verified successful: %s" % self.rel_path
         error_message = "Password verification failed."
@@ -514,15 +551,21 @@ class PasswordToken(Token):
 
         return callback.ok(ok_message)
 
-    def verify(self, auth_type, **kwargs):
+    def verify(self, auth_type: str, **kwargs):
         """ Call default verify method. """
         if auth_type == "mschap":
             return self.verify_mschap_static(**kwargs)
         return self.verify_static(**kwargs)
 
-    def verify_static(self, password, password_hash=None,
-        smartcard_data=None, ignore_2f_token=False,
-        session_uuid=None, **kwargs):
+    def verify_static(
+        self,
+        password: str,
+        password_hash: Union[str,None]=None,
+        smartcard_data: Union[dict,None]=None,
+        ignore_2f_token: bool=False,
+        session_uuid: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Verify given password against 'password' token. """
         log_used_otp_warning = False
 
@@ -613,8 +656,13 @@ class PasswordToken(Token):
         raise Exception(msg)
 
     @check_acls(['generate:mschap'])
-    def gen_mschap(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def gen_mschap(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Generate MSCHAP challenge response stuff for testing. """
         if not self.nt_hash:
             msg = "Missing NT HASH."
@@ -633,7 +681,12 @@ class PasswordToken(Token):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def _add(self, enable_mschap=False, callback=default_callback, **kwargs):
+    def _add(
+        self,
+        enable_mschap: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a token. """
         if enable_mschap:
             self.enable_mschap(force=True, quiet=True, callback=callback)
@@ -660,7 +713,7 @@ class PasswordToken(Token):
 
         return callback.ok(return_message)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

@@ -152,11 +152,12 @@ def object_lock(write=True, recursive=False, timeout=None,
     def wrapper(f):
         @wraps(f)
         def wrapped(self, *f_args, **f_kwargs):
+            from otpme.lib import config
             lock_caller = f.__name__
             try:
                 callback = f_kwargs['callback']
             except:
-                callback = None
+                callback = config.get_callback()
             # Check if locking was disabled by lock_object kwarg.
             try:
                 lock_object = f_kwargs.pop('lock_object')

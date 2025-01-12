@@ -3,6 +3,9 @@
 import os
 import datetime
 #import importlib
+from typing import List
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -22,6 +25,7 @@ from otpme.lib.classes.user import User
 from otpme.lib.classes.group import Group
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
@@ -59,6 +63,7 @@ read_value_acls = {
 
 write_value_acls = {
                 "edit"  : [
+                        "config",
                         "key_attribute",
                         "sync_interval",
                         ],
@@ -283,6 +288,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls', 'object_types'],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -292,6 +298,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls', 'object_types',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -506,11 +513,20 @@ def register_sync_settings():
     """ Register sync settings. """
     config.register_object_sync(host_type="node", object_type="resolver")
 
+@match_class_typing
 class Resolver(OTPmeObject):
     """ Generic OTPme resolver object. """
     commands = commands
-    def __init__(self, object_id=None, name=None, path=None,
-        realm=None, site=None, unit=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid, None]=None,
+        name: Union[str,None]=None,
+        path: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class)
         self.type = "resolver"
 
@@ -549,15 +565,15 @@ class Resolver(OTPmeObject):
                         },
                     }
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
         # Make sure name is a string and lowercase.
-        self.name = str(name).lower()
+        self.name = name.lower()
         # Set our lock iD used to prevent race condition e.g when delete() is
         # called while we are running.
         self.lock_id = "resolver_sync_%s" % self.name
 
-    def _get_object_config(self, resolver_config=None):
+    def _get_object_config(self, resolver_config: Union[dict,None]=None):
         """ Get object config dict. """
         resolver_base_config = {
                         'RESOLVER_TYPE'             : {
@@ -624,8 +640,14 @@ class Resolver(OTPmeObject):
     @check_acls(['enable:sync_units'])
     @object_lock()
     @backend.transaction
-    def enable_sync_units(self, run_policies=True,
-        force=False, callback=default_callback, _caller="API", **kwargs):
+    def enable_sync_units(
+        self,
+        run_policies: bool=True,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        _caller="API",
+        **kwargs,
+        ):
         """ Enable deletion of objects missing on resolver site. """
         if self.sync_units:
             msg = "Sync of units already enabled."
@@ -646,8 +668,14 @@ class Resolver(OTPmeObject):
     @check_acls(['disable:sync_units'])
     @object_lock()
     @backend.transaction
-    def disable_sync_units(self, run_policies=True,
-        force=False, callback=default_callback, _caller="API", **kwargs):
+    def disable_sync_units(
+        self,
+        run_policies: bool=True,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable deletion of objects missing on resolver site. """
         if not self.sync_units:
             msg = "Sync of units already disabled."
@@ -668,8 +696,14 @@ class Resolver(OTPmeObject):
     @check_acls(['enable:deletions'])
     @object_lock()
     @backend.transaction
-    def enable_deletions(self, run_policies=True,
-        force=False, callback=default_callback, _caller="API", **kwargs):
+    def enable_deletions(
+        self,
+        run_policies: bool=True,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable deletion of objects missing on resolver site. """
         if self.sync_deletions:
             msg = "Sync of deletions already enabled."
@@ -690,8 +724,14 @@ class Resolver(OTPmeObject):
     @check_acls(['disable:deletions'])
     @object_lock()
     @backend.transaction
-    def disable_deletions(self, run_policies=True,
-        force=False, callback=default_callback, _caller="API", **kwargs):
+    def disable_deletions(
+        self,
+        run_policies: bool=True,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable deletion of objects missing on resolver site. """
         if not self.sync_deletions:
             msg = "Sync of deletions already disabled."
@@ -712,8 +752,16 @@ class Resolver(OTPmeObject):
     @check_acls(['edit:key_attribute'])
     @object_lock()
     @backend.transaction
-    def change_key_attribute(self, object_type, key_attribute, force=False,
-        run_policies=True, callback=default_callback, _caller="API", **kwargs):
+    def change_key_attribute(
+        self,
+        object_type: str,
+        key_attribute: str,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change attribute used to sync objects. """
         if not key_attribute:
             return callback.error("Got empty key attribute.")
@@ -731,8 +779,15 @@ class Resolver(OTPmeObject):
         return self._cache(callback=callback)
 
     @check_acls(['run', 'test'])
-    def test(self, object_types=None, run_policies=True, verbose_level=0,
-        callback=default_callback, _caller="API", **kwargs):
+    def test(
+        self,
+        object_types: Union[List,None]=None,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Test the resolver. """
         if run_policies:
             try:
@@ -755,8 +810,16 @@ class Resolver(OTPmeObject):
         return callback.ok("All tests successful.")
 
     @check_acls(['run'])
-    def run(self, object_types=None, run_policies=True, verbose_level=0,
-        daemon_run=False, callback=default_callback, _caller="API", **kwargs):
+    def run(
+        self,
+        object_types: Union[List,None]=None,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        daemon_run: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Run the resolver. """
         if run_policies:
             try:
@@ -779,8 +842,14 @@ class Resolver(OTPmeObject):
 
         return sync_status
 
-    def check_object_resolver(self, object_id, interactive=False,
-        run_policies=True, callback=default_callback, **kwargs):
+    def check_object_resolver(
+        self,
+        object_id: oid.OTPmeOid,
+        interactive: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Make sure we are allowed to handle the object. """
         # Get object resolver.
         result = backend.search(attribute="read_oid",
@@ -817,8 +886,15 @@ class Resolver(OTPmeObject):
 
         return False
 
-    def start_sync(self, object_types=None, test=False, interactive=None,
-        daemon_run=False, verbose_level=0, callback=default_callback):
+    def start_sync(
+        self,
+        object_types: Union[List,None]=None,
+        test: bool=False,
+        interactive: bool=None,
+        daemon_run: bool=False,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        ):
         """ Start import of objects from this resolver. """
         # Handle locking.
         try:
@@ -1570,8 +1646,14 @@ class Resolver(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
-    def add(self, ldap_template=None, verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def add(
+        self,
+        ldap_template: Union[str,None]=None,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a resolver. """
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(callback=callback, **kwargs)
@@ -1604,7 +1686,13 @@ class Resolver(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
+    def rename(
+        self,
+        new_name: str,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Rename resolver. """
         # Check if resolver is in use.
         try:
@@ -1631,8 +1719,12 @@ class Resolver(OTPmeObject):
         return result
 
     @check_acls(['sync_interval'])
-    def set_sync_interval(self, sync_interval,
-        callback=default_callback, **kwargs):
+    def set_sync_interval(
+        self,
+        sync_interval: str,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Set resolver sync interval. """
         try:
             interval = units.time2int(sync_interval)
@@ -1644,9 +1736,16 @@ class Resolver(OTPmeObject):
         return self._cache(callback=callback)
 
     @check_acls(['get_objects'])
-    def get_resolver_objects(self, object_types=[], return_type="name",
-        run_policies=True, force=False, _caller="API",
-        callback=default_callback, **kwargs):
+    def get_resolver_objects(
+        self,
+        object_types: List=[],
+        return_type: str="name",
+        run_policies: bool=True,
+        force: bool=False,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get all resolver objects. """
         if run_policies:
             try:
@@ -1678,9 +1777,16 @@ class Resolver(OTPmeObject):
         return callback.ok(result)
 
     @check_acls(['delete:objects'])
-    def delete_objects(self, object_types=[], force=False,
-        run_policies=True, verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def delete_objects(
+        self,
+        object_types: List=[],
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete resolver objects. """
         if not object_types:
             object_types = self.object_types
@@ -1770,9 +1876,17 @@ class Resolver(OTPmeObject):
     @check_acls(['delete:object'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, delete_objects=False, force=False, run_policies=True,
-        verify_acls=True, verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def delete(
+        self,
+        delete_objects: bool=False,
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete resolver. """
         # Get parent object to check ACLs.
         parent_object = self.get_parent_object()
@@ -1855,7 +1969,12 @@ class Resolver(OTPmeObject):
 
         return callback.ok()
 
-    def show_config(self, config_lines="", callback=default_callback, **kwargs):
+    def show_config(
+        self,
+        config_lines: str="",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Show resolver config. """
         lines = []
 

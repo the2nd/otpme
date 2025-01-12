@@ -393,3 +393,6 @@ class AgentConn(object):
         """ Close connection. """
         self.connection.close()
         self.connected = False
+
+    def cleanup(self):
+        pass

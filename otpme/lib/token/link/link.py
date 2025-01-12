@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -8,12 +10,14 @@ try:
 except:
     pass
 
+from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
+from otpme.lib.job.callback import JobCallback
 
 from otpme.lib.classes.token \
             import get_acls \
@@ -120,10 +124,19 @@ def register_token_type():
     """ Register token type. """
     config.register_sub_object_type("token", "link")
 
+@match_class_typing
 class LinkToken(Token):
     """ Class to link a token from one user to another. """
-    def __init__(self, object_id=None, user=None, name=None,
-        realm=None, site=None, path=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        user: Union[str,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        **kwargs,
+        ):
 
         # Call parent class init.
         super(LinkToken, self).__init__(object_id=object_id,
@@ -182,7 +195,7 @@ class LinkToken(Token):
                 if dest_token.allow_offline is not None:
                     self.allow_offline = False
 
-    def get_offline_config(self, second_factor_usage=False):
+    def get_offline_config(self, second_factor_usage: bool=False):
         """ Get offline config of token. """
         # Make sure our object config is up-to-date.
         self.update_object_config()
@@ -195,7 +208,12 @@ class LinkToken(Token):
         offline_config['NEED_OFFLINE_ENCRYPTION'] = need_encryption
         return offline_config
 
-    def test(self, password=None, callback=default_callback, **kwargs):
+    def test(
+        self,
+        password: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Test if destination token can be verified. """
         dst_token = self.get_destination_token()
         return dst_token.test(password=password, callback=callback, **kwargs)
@@ -218,7 +236,12 @@ class LinkToken(Token):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def _add(self, destination_token_uuid, callback=default_callback, **kwargs):
+    def _add(
+        self,
+        destination_token_uuid: str,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a token. """
         # Set link destination.
         self.destination_token = destination_token_uuid

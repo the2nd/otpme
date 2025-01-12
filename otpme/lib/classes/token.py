@@ -2,6 +2,9 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
+from typing import List
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -21,6 +24,7 @@ from otpme.lib.cache import config_cache
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.role import get_roles
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.register import register_module
 from otpme.lib.classes.otpme_object import load_object
 from otpme.lib.classes.otpme_object import OTPmeObject
@@ -74,6 +78,7 @@ write_value_acls = {
                                 "dynamic_group",
                             ],
                     "edit"  : [
+                                "config",
                                 "auto_disable",
                             ],
                 }
@@ -358,6 +363,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -367,6 +373,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -846,11 +853,22 @@ def register_sync_settings():
     config.register_object_sync(host_type="node", object_type="token")
     config.register_object_sync(host_type="host", object_type="token")
 
+@match_class_typing
 class Token(OTPmeObject):
     """ Generic OTPme token object. """
     commands = commands
-    def __init__(self, object_id=None, user=None, name=None, owner_uuid=None,
-        path=None, realm=None, site=None, dummy=False, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        user: Union[str,None]=None,
+        name: Union[str,None]=None,
+        owner_uuid: Union[str,None]=None,
+        path: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        dummy: bool=False,
+        **kwargs,
+        ):
         # Set our type (used in parent class)
         self.type = "token"
 
@@ -898,7 +916,6 @@ class Token(OTPmeObject):
         self.pin_len = 0
         self.pin_enabled = None
         self.pin_mandatory = None
-        self.default_pin_len = None
         self.need_password = False
         # False means token type does not have a password.
         self.password_hash = False
@@ -911,6 +928,7 @@ class Token(OTPmeObject):
         self.signatures = {}
         self.valid_token_options = []
         self.supports_qrcode = False
+        self.offline_pinnable = False
 
         self.track_last_used = True
         self.acl_inheritance_enabled = True
@@ -954,14 +972,14 @@ class Token(OTPmeObject):
                         },
                     }
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
-        # Make sure name is a string and lowercase.
-        self.name = str(name).lower()
+        # Make sure name is lowercase.
+        self.name = name.lower()
         if self.rel_path:
             self.owner = self.rel_path.split("/")[0]
 
-    def set_oid(self, new_oid=None, **kwargs):
+    def set_oid(self, new_oid: Union[oid.OTPmeOid,None]=None, **kwargs):
         """ Set our OID. """
         if not new_oid:
             new_oid = oid.OTPmeOid(object_type=self.type,
@@ -982,7 +1000,7 @@ class Token(OTPmeObject):
                                     self.name)
         self.rel_path = "%s/%s" % (self.owner, self.name)
 
-    def _get_object_config(self, token_config=None):
+    def _get_object_config(self, token_config: Union[dict,None]=None):
         """ Get object config dict. """
         token_base_config = {
                         'TOKEN_TYPE'                : {
@@ -1121,10 +1139,10 @@ class Token(OTPmeObject):
         return self._temp_password_hash
 
     @temp_password_hash.setter
-    def temp_password_hash(self, pass_hash):
+    def temp_password_hash(self, pass_hash: str):
         self._temp_password_hash = pass_hash
 
-    def get_offline_config(self, second_factor_usage=False):
+    def get_offline_config(self, second_factor_usage: bool=False):
         """
         Get offline config of token. this method should be overridden by the
         child class
@@ -1138,7 +1156,11 @@ class Token(OTPmeObject):
         offline_config['NEED_OFFLINE_ENCRYPTION'] = need_encryption
         return offline_config
 
-    def get_parent_object(self, run_policies=True, callback=default_callback):
+    def get_parent_object(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        ):
         """ Get parent object of this token (user). """
         owner_uuid = self.owner_uuid
         if not owner_uuid:
@@ -1177,7 +1199,7 @@ class Token(OTPmeObject):
         sftoken.offline = self.offline
         return sftoken
 
-    def split_password(self, password):
+    def split_password(self, password: str):
         """ Split off password, OTP, PIN etc. """
         pin_len = 0
         otp_len = 0
@@ -1227,7 +1249,7 @@ class Token(OTPmeObject):
 
         return result
 
-    def get_hash_args(self, hash_type=None):
+    def get_hash_args(self, hash_type: Union[str,None]=None):
         """ Get password hash arguments from config. """
         if hash_type is None:
             hash_type = self.get_config_parameter('default_pw_hash_type')
@@ -1244,7 +1266,7 @@ class Token(OTPmeObject):
         hash_args['salt'] = salt
         return hash_args
 
-    def gen_password_hash(self, password, quiet=True):
+    def gen_password_hash(self, password: str, quiet: bool=True):
         hash_args = self.password_hash_params
         password_hash = otpme_pass.gen_pass_hash(username=self.owner,
                                                 password=password,
@@ -1254,8 +1276,14 @@ class Token(OTPmeObject):
 
     @check_acls(['upgrade_pass_hash'])
     @backend.transaction
-    def upgrade_pass_hash(self, hash_type=None, hash_args=None,
-        verbose_level=0, callback=default_callback, **kwargs):
+    def upgrade_pass_hash(
+        self,
+        hash_type: Union[str,None]=None,
+        hash_args: Union[dict,None]=None,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Upgrade password hash. """
         if hash_args is None:
             hash_args = self.get_hash_args(hash_type=hash_type)
@@ -1277,8 +1305,12 @@ class Token(OTPmeObject):
         self.password_hash_params += hash_data['hash_args']
         return self._cache(callback=callback)
 
-    def _gen_mschap(self, password=None,
-        password_hash=None, callback=default_callback):
+    def _gen_mschap(
+        self,
+        password: Union[str,None]=None,
+        password_hash: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        ):
         """ Generate MSCHAP challenge response stuff for testing. """
         from otpme.lib import mschap_util
         return_msg = ""
@@ -1295,8 +1327,14 @@ class Token(OTPmeObject):
         return callback.ok(return_msg)
 
     @cli.check_rapi_opts()
-    def get_hosts(self, return_type="name", skip_disabled=False,
-        _caller="API", callback=default_callback, **kwargs):
+    def get_hosts(
+        self,
+        return_type: str="name",
+        skip_disabled: bool=False,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         search_attr = {
                     'token' : {
                         'value'     : self.uuid,
@@ -1325,8 +1363,14 @@ class Token(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    def get_nodes(self, return_type="name", skip_disabled=False,
-        _caller="API", callback=default_callback, **kwargs):
+    def get_nodes(
+        self,
+        return_type: str="name",
+        skip_disabled: bool=False,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         search_attr = {
                     'token' : {
                         'value'     : self.uuid,
@@ -1355,9 +1399,15 @@ class Token(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    def get_roles(self, return_type="read_oid", recursive=False,
-        _caller="API", skip_disabled=True,
-        callback=default_callback, **kwargs):
+    def get_roles(
+        self,
+        return_type: str="read_oid",
+        recursive: bool=False,
+        _caller: str="API",
+        skip_disabled: bool=True,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return list with all roles this token is in. """
         search_attr = {
                     'token' : {
@@ -1412,7 +1462,7 @@ class Token(OTPmeObject):
             result = "\n".join(result)
         return callback.ok(result)
 
-    def _get_access_groups(self, include_roles=True):
+    def _get_access_groups(self, include_roles: bool=True):
         """ Return list with all access groups this token is in. """
         # Get access groups.
         all_groups = backend.search(realm=self.realm,
@@ -1456,8 +1506,14 @@ class Token(OTPmeObject):
         return token_groups
 
     @cli.check_rapi_opts()
-    def get_access_groups(self, include_roles=True, return_type="name",
-        _caller="API", callback=default_callback, **kwargs):
+    def get_access_groups(
+        self,
+        include_roles: bool=True,
+        return_type: str="name",
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return list with all access groups this token is in (cached) """
         token_groups = self._get_access_groups(include_roles=include_roles)
         result = []
@@ -1490,8 +1546,14 @@ class Token(OTPmeObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    def get_groups(self, include_roles=True, return_type="uuid",
-        _caller="API", callback=default_callback, **kwargs):
+    def get_groups(
+        self,
+        include_roles: bool=True,
+        return_type: str="uuid",
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return list with all groups this token is in (cached) """
         # Get groups this token is assiged to.
         token_groups = backend.search(realm=self.realm,
@@ -1537,13 +1599,17 @@ class Token(OTPmeObject):
         return user_name
 
     @owner.setter
-    def owner(self, owner_name):
+    def owner(self, owner_name: str):
         """ Set name of token owner. """
         if owner_name is None:
             return
         self.owner_uuid = stuff.get_user_uuid(owner_name)
 
-    def is_admin(self, check_admin_user=True, check_admin_role=True):
+    def is_admin(
+        self,
+        check_admin_user: bool=True,
+        check_admin_role: bool=True,
+        ):
         """ Check if the token has admin priviledges """
         if check_admin_user:
             if self.uuid == config.admin_token_uuid:
@@ -1565,7 +1631,7 @@ class Token(OTPmeObject):
         msg = (_("WARNING: You may have hit a BUG of Token().is_admin()."))
         raise OTPmeException(msg)
 
-    def gen_used_hash(self, data):
+    def gen_used_hash(self, data: str):
         """ Generate hash for used OTP/counter. """
         # FIXME: Are there any security implications with this????
         # Generate OTP hash from used OTP and salt. We use MD5 for this
@@ -1623,8 +1689,7 @@ class Token(OTPmeObject):
     #                            pass_hash=used_otp_hash)
 
     #        # Try to get object config from backend.
-    #        object_config = read_method(object_id=otp_oid,
-    #                                    read_from_cache=True)
+    #        object_config = read_method(object_id=otp_oid)
 
     #        # Skip missing objects.
     #        # FIXME: Normally this should not happen. Should we log it?
@@ -1637,7 +1702,7 @@ class Token(OTPmeObject):
 
     #    return used_otps
 
-    def is_used_otp(self, otp):
+    def is_used_otp(self, otp: str):
         """ Check if given OTP is already used. """
         # Check for replacement method when beeing offline (e.g. offline tokens)
         delete_method = backend.delete_object
@@ -1710,8 +1775,14 @@ class Token(OTPmeObject):
 
         return otp_was_used
 
-    def _add_used_otp(self, otp, expiry, sync_time=None,
-        session_uuid=None, quiet=True):
+    def _add_used_otp(
+        self,
+        otp: str,
+        expiry: float,
+        sync_time: Union[float,None]=None,
+        session_uuid: Union[str,None]=None,
+        quiet: bool=True,
+        ):
         """ Add OTP to list of already used OTPs for this token. """
         if not quiet:
             logger.debug("Adding OTP to list of used OTPs.")
@@ -1745,7 +1816,11 @@ class Token(OTPmeObject):
                 msg = "Failed to add used OTP: %s" % e
                 logger.warning(msg)
 
-    def _add_token_counter(self, token_counter, session_uuid=None):
+    def _add_token_counter(
+        self,
+        token_counter: int,
+        session_uuid: Union[str,None]=None,
+        ):
         """ Add token counter to shared list of this token. """
         if not isinstance(token_counter, int):
             raise OTPmeException("Need token_counter as <int>.")
@@ -1811,9 +1886,6 @@ class Token(OTPmeObject):
 
         counter_list = self._get_token_counter()
 
-        if len(counter_list) == 0:
-            return -1
-
         # Get highest counter and delete all others.
         prev_counter = None
         highest_counter_data = (0, -1)
@@ -1851,8 +1923,13 @@ class Token(OTPmeObject):
         return highest_counter
 
     @check_acls(['view_all:pin'])
-    def show_pin(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def show_pin(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Show token PIN. """
         if not self.pin:
             return callback.error("No PIN saved for thist token.")
@@ -1868,8 +1945,13 @@ class Token(OTPmeObject):
     @check_acls(['enable:pin'])
     @object_lock()
     @backend.transaction
-    def enable_pin(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_pin(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable optional token PIN. """
         # Check if PIN is already enabled.
         if self.pin_enabled:
@@ -1903,8 +1985,13 @@ class Token(OTPmeObject):
     @check_acls(['disable:pin'])
     @object_lock()
     @backend.transaction
-    def disable_pin(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_pin(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable optional token PIN. """
         if self.pin_mandatory:
             return callback.error("PIN is mandatory for this token.")
@@ -1941,8 +2028,15 @@ class Token(OTPmeObject):
     @check_acls(['enable:mschap'])
     @object_lock()
     @backend.transaction
-    def enable_mschap(self, run_policies=True, force=False, quiet=False,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_mschap(
+        self,
+        run_policies: bool=True,
+        force: bool=False,
+        quiet: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable optional MSCHAP authentication. """
         if not force:
             if not self.password_hash:
@@ -1974,8 +2068,13 @@ class Token(OTPmeObject):
     @check_acls(['disable:mschap'])
     @object_lock()
     @backend.transaction
-    def disable_mschap(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_mschap(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable optional MSCHAP authentication. """
         if not self.password_hash:
             return callback.error("Token does not have a password.")
@@ -2003,8 +2102,13 @@ class Token(OTPmeObject):
     @check_acls(['enable:offline'])
     @object_lock()
     @backend.transaction
-    def enable_offline(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_offline(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable offline usage of this token. """
         # Check if token supports offline usage.
         if self.allow_offline is None:
@@ -2047,8 +2151,13 @@ class Token(OTPmeObject):
     @check_acls(['disable:offline'])
     @object_lock()
     @backend.transaction
-    def disable_offline(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_offline(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable offline usage of this token. """
         # Check if token supports offline usage.
         if self.allow_offline is None:
@@ -2091,8 +2200,14 @@ class Token(OTPmeObject):
     @check_acls(['edit:offline_expiry'])
     @object_lock()
     @backend.transaction
-    def change_offline_expiry(self, expiry, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def change_offline_expiry(
+        self,
+        expiry: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Set offline expiry of this token. """
         # Check if token supports offline usage.
         if self.allow_offline is None:
@@ -2140,8 +2255,14 @@ class Token(OTPmeObject):
     @check_acls(['edit:offline_unused_expiry'])
     @object_lock()
     @backend.transaction
-    def change_offline_unused_expiry(self, expiry, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_offline_unused_expiry(
+        self,
+        expiry: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Set offline unused expiry of this token. """
         # Check if token supports offline usage.
         if self.allow_offline is None:
@@ -2189,8 +2310,13 @@ class Token(OTPmeObject):
     @check_acls(['enable:session_keep'])
     @object_lock()
     @backend.transaction
-    def enable_session_keep(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_session_keep(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable keeping of REALM sessions for re-use after beeing offline. """
         # Check if token supports session keeping.
         if self.keep_session == None:
@@ -2237,8 +2363,13 @@ class Token(OTPmeObject):
     @check_acls(['disable:session_keep'])
     @object_lock()
     @backend.transaction
-    def disable_session_keep(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_session_keep(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable session keeping for this token. """
         # Check if token supports session keeping.
         if self.keep_session == None:
@@ -2286,8 +2417,13 @@ class Token(OTPmeObject):
     @check_acls(['enable:auth_script'])
     @object_lock()
     @backend.transaction
-    def enable_auth_script(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_auth_script(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable token auth script. """
         if not self.auth_script:
             return callback.error("No auth script set.")
@@ -2312,8 +2448,13 @@ class Token(OTPmeObject):
     @check_acls(['disable:auth_script'])
     @object_lock()
     @backend.transaction
-    def disable_auth_script(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_auth_script(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable token auth script. """
         # Check if auth_script is already disabled.
         if not self.auth_script_enabled:
@@ -2336,8 +2477,15 @@ class Token(OTPmeObject):
     @check_acls(['edit:auth_script'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def change_auth_script(self, auth_script=None, script_options=None,
-        run_policies=True, callback=default_callback, _caller="API", **kwargs):
+    def change_auth_script(
+        self,
+        auth_script: Union[str,None]=None,
+        script_options: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change token auth script. """
         if script_options:
             script_options = script_options.split(" ")
@@ -2357,7 +2505,11 @@ class Token(OTPmeObject):
                         script_options_var='auth_script_options',
                         script=auth_script, callback=callback)
 
-    def check_password(self, password, callback=default_callback):
+    def check_password(
+        self,
+        password: str,
+        callback: JobCallback=default_callback,
+        ):
         """ Check password via assiged policy. """
         # Check if token or user has configured a password policy.
         pass_policies = self.get_policies(hook='check_password',
@@ -2381,7 +2533,12 @@ class Token(OTPmeObject):
 
         return callback.ok()
 
-    def verify_temp_password(self, password, password_hash=None, **kwargs):
+    def verify_temp_password(
+        self,
+        password: str,
+        password_hash: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Verify token temp password. """
         if password is None:
             msg = "Attribute <password> required."
@@ -2404,7 +2561,13 @@ class Token(OTPmeObject):
         config.temp_pass_auth = True
         return True
 
-    def verify_mschap_static(self, challenge, response, temp=False, **kwargs):
+    def verify_mschap_static(
+        self,
+        challenge: str,
+        response: str,
+        temp: bool=False,
+        **kwargs,
+        ):
         """ Verify MSCHAP challenge/response against static passwords. """
         from otpme.lib import mschap_util
         # Verify second factor token if enabled.
@@ -2442,10 +2605,19 @@ class Token(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def change_password(self, password=None, auto_password=False,
-        verify_current_pass=False, force=False, verify_acls=True,
-        temp=False, run_policies=True, callback=default_callback,
-        _caller="API", **kwargs):
+    def change_password(
+        self,
+        password: Union[str,None]=None,
+        auto_password: bool=False,
+        verify_current_pass: bool=False,
+        force: bool=False,
+        verify_acls: bool=True,
+        temp: bool=False,
+        run_policies=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change token password. """
         if force:
             if not self.verify_acl("force_password"):
@@ -2597,9 +2769,19 @@ class Token(OTPmeObject):
     @check_acls(['set_temp_password'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def set_temp_password(self, temp_password=None, auto_password=False,
-        duration="1h", force=False, verify_acls=True, remove=False,
-        run_policies=True, callback=default_callback, _caller="API", **kwargs):
+    def set_temp_password(
+        self,
+        temp_password: Union[str,None]=None,
+        auto_password: bool=False,
+        duration: str="1h",
+        force: bool=False,
+        verify_acls: bool=True,
+        remove: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change token password. """
         # Use destination token if we have one.
         if self.destination_token:
@@ -2671,10 +2853,12 @@ class Token(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    def check_pin(self, pin, callback=default_callback):
+    def check_pin(
+        self,
+        pin: int,
+        callback: JobCallback=default_callback,
+        ):
         """ Check PIN via assiged policy. """
-        # Make sure PIN is int().
-        pin = str(pin)
         # Check if token or user has configured a PIN policy.
         pin_policies = self.get_policies(hook='check_pin',
                                         return_type="instance")
@@ -2698,8 +2882,15 @@ class Token(OTPmeObject):
     @check_acls(['edit:pin'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def change_pin(self, pin=None, auto_pin=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_pin(
+        self,
+        pin: Union[int,None]=None,
+        auto_pin: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change token PIN. """
         if run_policies:
             try:
@@ -2734,11 +2925,11 @@ class Token(OTPmeObject):
 
         if not pin:
             while True:
-                new_pin1 = str(callback.askpass("New PIN: "))
+                new_pin1 = callback.askpass("New PIN: ")
                 if not self.check_pin(new_pin1, callback=callback):
                     return callback.error()
 
-                new_pin2 = str(callback.askpass("Re-type PIN: "))
+                new_pin2 = callback.askpass("Re-type PIN: ")
                 if new_pin1 == new_pin2:
                     pin = new_pin1
                     break
@@ -2767,16 +2958,20 @@ class Token(OTPmeObject):
         for session in token_sessions:
             if session.access_group == config.realm_access_group:
                 continue
-            session.delete(force=True,
-                        verify_acls=False)
+            session.delete(force=True, verify_acls=False)
 
         if return_message:
             callback.send(return_message)
 
         return self._cache(callback=callback)
 
-    def get_otp(self, run_policies=True, callback=default_callback,
-        _caller="API", **kwargs):
+    def get_otp(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Gen OTP and return it as string. """
         if self.destination_token:
             verify_token = self.get_destination_token()
@@ -2798,15 +2993,21 @@ class Token(OTPmeObject):
         otp = verify_token.gen_otp(callback=callback, **kwargs)[0]
         return callback.ok(otp)
 
-    def change_mode(self, callback=default_callback, **kwargs):
+    def change_mode(self, callback: JobCallback=default_callback, **kwargs):
         """ This method must be overridden by the token child class """
         return callback.error("Token does not have different operation modes.")
 
     @check_acls(['edit:otp_format'])
     @object_lock()
     @backend.transaction
-    def change_otp_format(self, otp_format, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_otp_format(
+        self,
+        otp_format: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change token OTP format. """
         try:
             if otp_format not in self.valid_otp_formats:
@@ -2828,8 +3029,12 @@ class Token(OTPmeObject):
         self.otp_format = otp_format
         return self._cache(callback=callback)
 
-    def get_otp_formats(self, _caller="API",
-        callback=default_callback, **kwargs):
+    def get_otp_formats(
+        self,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get valid token OTP formats """
         try:
             otp_formats = self.valid_otp_formats
@@ -2839,8 +3044,12 @@ class Token(OTPmeObject):
             otp_formats = "\n".join(otp_formats)
         return callback.ok(otp_formats)
 
-    def get_modes(self, _caller="API",
-        callback=default_callback, **kwargs):
+    def get_modes(
+        self,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get valid token OTP modes """
         try:
             modes = self.valid_modes
@@ -2850,12 +3059,12 @@ class Token(OTPmeObject):
             modes = "\n".join(modes)
         return callback.ok(modes)
 
-    def resync(self, callback=default_callback, **kwargs):
+    def resync(self, callback: JobCallback=default_callback, **kwargs):
         """ Dummy method. """
         return callback.error("Invalid command for this token: resync")
 
     @object_lock()
-    def inherit_acls(self, callback=default_callback, **kwargs):
+    def inherit_acls(self, callback: JobCallback=default_callback, **kwargs):
         """ Wrapper method to inherit ACLs from token owner instead of unit. """
         # Our parent object is the token owner which may already be locked
         # if this is a token add/del. So we have to acquire no lock.
@@ -2868,15 +3077,25 @@ class Token(OTPmeObject):
         return super(Token, self).inherit_acls(parent_object=user,
                                         callback=callback, **kwargs)
 
-    def pre_deploy(self, _caller="API", verbose_level=0,
-        callback=default_callback, **kwargs):
+    def pre_deploy(
+        self,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """
         Deploy token. This method could be overridden by the token child class
         """
         return callback.ok()
 
-    def deploy(self, _caller="API", verbose_level=0,
-        callback=default_callback, **kwargs):
+    def deploy(
+        self,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """
         Deploy token. This method should be overridden by the token child class
         """
@@ -2886,8 +3105,17 @@ class Token(OTPmeObject):
     @load_object(force=False)
     @backend.transaction
     @run_pre_post_add_policies()
-    def add(self, owner_uuid, verbose_level=0, write=True, run_policies=True,
-        force=False, callback=default_callback, _caller="API", **kwargs):
+    def add(
+        self,
+        owner_uuid: str,
+        verbose_level: int=0,
+        write: bool=True,
+        run_policies: bool=True,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Add token. """
         # Set owner before running _prepare_add() to ensure parent object can
         # be determined.
@@ -2927,7 +3155,7 @@ class Token(OTPmeObject):
                                             **kwargs)
         return add_status
 
-    def is_default_token(self, callback=default_callback):
+    def is_default_token(self, callback: JobCallback=default_callback):
         """ Check if token is users default token. """
         token_owner = backend.get_object(object_type="user",
                                         uuid=self.owner_uuid)
@@ -2937,7 +3165,7 @@ class Token(OTPmeObject):
             return True
         return False
 
-    def is_special_object(self, return_true_false=True):
+    def is_special_object(self, return_true_false: bool=True):
         """ Check if object is a base or internal object. """
         base_object, \
         internal_object = cli.check_special_object("user", self.owner)
@@ -2951,7 +3179,13 @@ class Token(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
+    def rename(
+        self,
+        new_name: str,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Rename a token. """
         if self.is_default_token(callback=callback):
             allow_rename = self.get_config_parameter('allow_default_token_rename')
@@ -2970,9 +3204,17 @@ class Token(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def move(self, new_token_path, force=False, replace=False,
-        run_policies=True, verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def move(
+        self,
+        new_token_path: str,
+        force: bool=False,
+        replace: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Move a token from one user to another. """
         try:
             new_owner_name = new_token_path.split("/")[0]
@@ -3170,8 +3412,15 @@ class Token(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, force=False, remove_default_token=False,
-        verify_acls=True, verbose_level=0, callback=default_callback, **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        remove_default_token: bool=False,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Delete token. """
         exception = []
 
@@ -3286,7 +3535,12 @@ class Token(OTPmeObject):
         return super(Token, self).delete(verbose_level=verbose_level,
                                     force=force, callback=callback)
 
-    def show_config(self, config_lines="", callback=default_callback, **kwargs):
+    def show_config(
+        self,
+        config_lines: List=[],
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Show token config. """
         lines = []
 

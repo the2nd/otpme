@@ -217,6 +217,7 @@ def gen_pin(pin_len=4):
     for i in range(pin_len):
         number = random.randint(0,9)
         pin = "%s%s" % (pin, number)
+    pin = int(pin)
     return pin
 
 def gen_secret(len=32, encoding="hex"):

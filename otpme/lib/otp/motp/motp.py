@@ -23,7 +23,7 @@ def generate(secret, pin=None, otp_count=1, otp_len=None, epoch_time=None):
         epoch_time = int(str(int(time.time()))[:-1])
     # If we got a PIN append it to our secret (e.g. when used from MOTP token)
     if pin:
-        secret += pin
+        secret += str(pin)
     # Calculate OTP for each otp_count second in the future.
     i = 0
     otps = []

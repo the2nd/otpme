@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -8,6 +10,7 @@ try:
 except:
     pass
 
+from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -15,6 +18,7 @@ from otpme.lib import otpme_acl
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.daemon.scriptd import run_script
 from otpme.lib.protocols.utils import register_commands
 
@@ -226,10 +230,19 @@ def register_config_params():
     # Register push scripot.
     config.register_base_object("script", push_script_name)
 
+@match_class_typing
 class OtppushToken(Token):
     """ Class for OTP push tokens (e.g. send OTP via SMS). """
-    def __init__(self, object_id=None, user=None, name=None,
-        realm=None, site=None, path=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        user: Union[str,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        **kwargs,
+        ):
 
         # Call parent class init.
         super(OtppushToken, self).__init__(object_id=object_id,
@@ -313,7 +326,12 @@ class OtppushToken(Token):
         # read from config.
         Token.set_variables(self)
 
-    def test(self, password=None, callback=default_callback, **kwargs):
+    def test(
+        self,
+        password: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """
         Test if the given password/OTP can be verified by this token
         and send OTP via SMS.
@@ -340,7 +358,12 @@ class OtppushToken(Token):
 
         return callback.ok(ok_message)
 
-    def verify(self, challenge=None, response=None, **kwargs):
+    def verify(
+        self,
+        challenge: Union[str,None]=None,
+        response: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Call default verify method. """
         if challenge and response:
             return self.verify_mschap_static(challenge=challenge,
@@ -349,10 +372,8 @@ class OtppushToken(Token):
         else:
             return self.verify_static(**kwargs)
 
-    def verify_static(self, password, **kwargs):
+    def verify_static(self, password: str, **kwargs):
         """ Verify given password against 'password' token. """
-        if not isinstance(password, str):
-            raise Exception("'password' needs to be of type str()")
         # Create password hash.
         password_hash = self.gen_password_hash(password=password)
         if password_hash == self.password_hash:
@@ -362,7 +383,12 @@ class OtppushToken(Token):
         msg = (_("WARNING: You may have hit a BUG of Token().verify_static()."))
         raise Exception(msg)
 
-    def verify_mschap_static(self, challenge, response, **kwargs):
+    def verify_mschap_static(
+        self,
+        challenge: str,
+        response: str,
+        **kwargs,
+        ):
         """ Verify MSCHAP challenge/response. """
         from otpme.lib import mschap_util
         # Get NT key from verify()
@@ -382,9 +408,14 @@ class OtppushToken(Token):
     @check_acls(['edit:push_script'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def change_push_script(self, push_script=None,
-        run_policies=True, callback=default_callback,
-        _caller="API", **kwargs):
+    def change_push_script(
+        self,
+        push_script: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change token push script. """
         if run_policies:
             try:
@@ -403,8 +434,14 @@ class OtppushToken(Token):
     @check_acls(['edit:push_token'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def change_push_token(self, push_token=None, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_push_token(
+        self,
+        push_token: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change token push token. """
         # Check if we got push_token as argument.
         if not push_token:
@@ -440,12 +477,17 @@ class OtppushToken(Token):
         self.push_token = token.uuid
         return self._cache(callback=callback)
 
-    # xxxxxxxxxxxxxxxxxxx
     # FIXME: implement using phone number from ldif attribute! -> add search filter?
     @check_acls(['edit:phone_number'])
     @object_lock(full_lock=True)
-    def change_phone_number(self, phone_number=None, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_phone_number(
+        self,
+        phone_number: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change object phone_number. """
         if run_policies:
             try:
@@ -471,7 +513,7 @@ class OtppushToken(Token):
             self.phone_number = str(phone_number)
         return self._cache(callback=callback)
 
-    def send_otp(self, callback=default_callback):
+    def send_otp(self, callback: JobCallback=default_callback):
         """ Send OTP via push script. """
         if self.push_token is None:
             msg = (_("No OTP push token configured. Cannot send OTP to user."))
@@ -544,7 +586,12 @@ class OtppushToken(Token):
         return callback.ok()
 
     @backend.transaction
-    def _add(self, verbose_level=0, callback=default_callback, **kwargs):
+    def _add(
+        self,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a token. """
         return_message = None
 
@@ -571,7 +618,7 @@ class OtppushToken(Token):
 
         return callback.ok(return_message)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

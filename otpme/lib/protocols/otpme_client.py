@@ -1926,52 +1926,6 @@ class OTPmeClient1(OTPmeClientBase):
             self.verify_preauth = False
             self.request_jwt = False
 
-    def cleanup(self):
-        """ Prepare a clean exit. """
-        # Remove ssh key pass from agent if needed.
-        if self.use_ssh_agent \
-        and self.connection.agent_conn \
-        and self.connection.agent_conn.check_ssh_key_pass():
-            msg = ("Removing SSH key passphrase from agent...")
-            self.logger.debug(msg)
-            try:
-                self.connection.agent_conn.del_ssh_key_pass()
-            except Exception as e:
-                msg = ("Error removing SSH key passphrase from agent: %s" % e)
-                self.logger.warning(msg)
-
-        # Close ssh-agent  connection
-        if self.connection.ssh_agent_conn:
-            try:
-                self.connection.ssh_agent_conn.close()
-            except:
-                pass
-            # Remove agent connection
-            self.connection.ssh_agent_conn = None
-
-        # Close otpme-agent connection
-        if self.connection.agent_conn:
-            self.connection.agent_conn.close()
-            # Remove agent connection
-            self.connection.agent_conn = None
-
-        # Workaround for "[Errno 16] Resource busy" with yubikey.
-        if self.smartcard:
-            del self.smartcard
-            self.smartcard = None
-
-        # Release offline token lock.
-        if self._offline_token:
-            self._offline_token.unlock()
-
-        # Run cleanup method.
-        if self.cleanup_method:
-            try:
-                self.cleanup_method()
-            except Exception as e:
-                msg = ("Error running cleanup method: %s" % e)
-                self.logger.critical(msg)
-
     def get_hostd_conn(self):
         """ Get connection to hostd. """
         from otpme.lib import connections
@@ -3368,29 +3322,6 @@ class OTPmeClient1(OTPmeClientBase):
             # If this is a realm login try to get offline tokens etc. from
             # response.
             if self.add_login_session:
-                # Try to get session timeouts from auth response.
-                try:
-                    session_timeout = self.auth_reply['timeout']
-                except:
-                    self.cleanup()
-                    msg = (_("Malformed auth response: Missing session timeout"))
-                    raise OTPmeException(msg)
-                if config.debug_level(DEBUG_SLOT) > 0:
-                    msg = ("Got session timeout from auth response: %s"
-                            % session_timeout)
-                    self.logger.debug(msg)
-                try:
-                    session_unused_timeout = self.auth_reply['unused_timeout']
-                except:
-                    self.cleanup()
-                    msg = (_("Malformed auth response: Missing unused "
-                            "session timeout"))
-                    raise OTPmeException(msg)
-                if config.debug_level(DEBUG_SLOT) > 0:
-                    msg = ("Got session unused timeout from auth response: %s"
-                            % session_unused_timeout)
-                    self.logger.debug(msg)
-
                 offline_tokens = self.auth_reply['offline_tokens']
                 if offline_tokens:
                     # Get offline session key (e.g. to be forwarded on login redirect).
@@ -3609,29 +3540,85 @@ class OTPmeClient1(OTPmeClientBase):
             msg = ("Error setting login token to otpme-agent: %s" % e)
             self.logger.critical(msg)
 
+        # Get offline tokens from auth reply.
+        offline_tokens = self.auth_reply['offline_tokens']
+
+        clear_offline_tokens = False
+        if offline_tokens:
+            clear_offline_tokens = True
+        if self._offline_token.pinned:
+            clear_offline_tokens = False
+
         # Clear old offline tokens.
-        if not self._offline_token.pinned:
+        if clear_offline_tokens:
             try:
                 self._offline_token.clear()
             except Exception as e:
                 msg = ("Error clearing cached offline tokens: %s" % e)
                 self.logger.critical(msg)
 
-        # Get auth reply values.
-        login_time = self.auth_reply['login_time']
-        session_uuid = self.auth_reply['session']
-        session_timeout = self.auth_reply['timeout']
-        session_unused_timeout = self.auth_reply['unused_timeout']
-        keep_offline_session = self.auth_reply['keep_session']
+        # Get session UUID.
+        try:
+            session_uuid = self.auth_reply['session']
+        except:
+            self.cleanup()
+            msg = (_("Malformed auth response: Missing session UUID"))
+            raise OTPmeException(msg)
+        if config.debug_level(DEBUG_SLOT) > 0:
+            msg = ("Got session UUID from auth response: %s"
+                    % session_uuid)
+            self.logger.debug(msg)
+        # Get offline session keeping.
+        try:
+            keep_offline_session = self.auth_reply['keep_session']
+        except:
+            self.cleanup()
+            msg = (_("Malformed auth response: Missing keep_session"))
+            raise OTPmeException(msg)
+        if config.debug_level(DEBUG_SLOT) > 0:
+            msg = ("Got session keep from auth response: %s"
+                    % keep_offline_session)
+            self.logger.debug(msg)
+        # Get login time.
+        try:
+            login_time = self.auth_reply['login_time']
+        except:
+            self.cleanup()
+            msg = (_("Malformed auth response: Missing login time"))
+            raise OTPmeException(msg)
+        if config.debug_level(DEBUG_SLOT) > 0:
+            msg = ("Got login time from auth response: %s"
+                    % login_time)
+            self.logger.debug(msg)
+        # Get session timeout.
+        try:
+            session_timeout = self.auth_reply['timeout']
+        except:
+            self.cleanup()
+            msg = (_("Malformed auth response: Missing session timeout"))
+            raise OTPmeException(msg)
+        if config.debug_level(DEBUG_SLOT) > 0:
+            msg = ("Got session timeout from auth response: %s"
+                    % session_timeout)
+            self.logger.debug(msg)
+        # Get session unused timeout.
+        try:
+            session_unused_timeout = self.auth_reply['unused_timeout']
+        except:
+            self.cleanup()
+            msg = (_("Malformed auth response: Missing unused "
+                    "session timeout"))
+            raise OTPmeException(msg)
+        if config.debug_level(DEBUG_SLOT) > 0:
+            msg = ("Got session unused timeout from auth response: %s"
+                    % session_unused_timeout)
+            self.logger.debug(msg)
 
         # Do not add offline token on temp pass authentication.
         temp_pass_auth = self.auth_reply['temp_pass_auth']
 
         # Check for offline tokens if requested.
         if self.cache_login_tokens and not temp_pass_auth:
-            # Get offline tokens from auth reply.
-            offline_tokens = self.auth_reply['offline_tokens']
-            login_token_uuid = self.auth_reply['login_token_uuid']
             if offline_tokens:
                 if self._offline_token.pinned:
                     self.logger.info("Ignoring received offline tokens, keeping "
@@ -3645,13 +3632,12 @@ class OTPmeClient1(OTPmeClientBase):
                     # Acquire offline token lock.
                     self._offline_token.lock()
 
+        # Decode offline tokens.
         if cache_offline_tokens:
             # Set login token before adding/decoding offline tokens. This is
             # required to get second factor tokens loaded.
+            login_token_uuid = self.auth_reply['login_token_uuid']
             self._offline_token.set_login_token(login_token_uuid, session_uuid)
-
-        # Decode offline tokens.
-        if cache_offline_tokens:
             try:
                 token_instances = self.decode_offline_token(login_token_uuid,
                                                             offline_tokens)
@@ -3801,9 +3787,6 @@ class OTPmeClient1(OTPmeClientBase):
 
         if self.interactive:
             return
-
-        # Stop agent connections etc.
-        self.cleanup()
 
     def decode_offline_token(self, login_token_uuid, offline_tokens):
         """ Decode offline token from auth reply. """
@@ -4002,3 +3985,49 @@ class OTPmeClient1(OTPmeClientBase):
         if self.sync_token_data:
             hostd_conn = self.get_hostd_conn()
             hostd_conn.trigger_token_data_sync()
+
+    def cleanup(self):
+        """ Prepare a clean exit. """
+        # Remove ssh key pass from agent if needed.
+        if self.use_ssh_agent \
+        and self.connection.agent_conn \
+        and self.connection.agent_conn.check_ssh_key_pass():
+            msg = ("Removing SSH key passphrase from agent...")
+            self.logger.debug(msg)
+            try:
+                self.connection.agent_conn.del_ssh_key_pass()
+            except Exception as e:
+                msg = ("Error removing SSH key passphrase from agent: %s" % e)
+                self.logger.warning(msg)
+
+        # Close ssh-agent  connection
+        if self.connection.ssh_agent_conn:
+            try:
+                self.connection.ssh_agent_conn.close()
+            except:
+                pass
+            # Remove agent connection
+            self.connection.ssh_agent_conn = None
+
+        # Close otpme-agent connection
+        if self.connection.agent_conn:
+            self.connection.agent_conn.close()
+            # Remove agent connection
+            self.connection.agent_conn = None
+
+        # Workaround for "[Errno 16] Resource busy" with yubikey.
+        if self.smartcard:
+            del self.smartcard
+            self.smartcard = None
+
+        # Release offline token lock.
+        if self._offline_token:
+            self._offline_token.unlock()
+
+        # Run cleanup method.
+        if self.cleanup_method:
+            try:
+                self.cleanup_method()
+            except Exception as e:
+                msg = ("Error running cleanup method: %s" % e)
+                self.logger.critical(msg)

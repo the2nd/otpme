@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -12,11 +14,12 @@ from otpme.lib import oid
 from otpme.lib import cli
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib.humanize import units
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.cache import assigned_token_cache
 from otpme.lib.protocols.utils import register_commands
-from otpme.lib.humanize import units
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 
@@ -81,6 +84,7 @@ write_value_acls = {
                             ],
 
                 "edit"      : [
+                            "config",
                             "max_fail",
                             "max_fail_reset",
                             "max_sessions",
@@ -515,6 +519,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -524,6 +529,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -789,11 +795,20 @@ def register_sync_settings():
     """ Register sync settings. """
     config.register_object_sync(host_type="node", object_type="accessgroup")
 
+@match_class_typing
 class AccessGroup(OTPmeObject):
     """ Creates access group object. """
     commands = commands
-    def __init__(self, object_id=None, name=None, unit=None,
-        realm=None, site=None, path=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        name: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class)
         self.type = "accessgroup"
 
@@ -958,7 +973,7 @@ class AccessGroup(OTPmeObject):
         # Set OID.
         self.set_oid()
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
         # Make sure name is a string.
         name = str(name)
@@ -970,8 +985,13 @@ class AccessGroup(OTPmeObject):
             self.name = name.lower()
 
     @assigned_token_cache.cache_method()
-    def is_assigned_token(self, token_uuid, skip_disabled_roles=True,
-        skip_disabled_groups=True, check_parent_groups=False):
+    def is_assigned_token(
+        self,
+        token_uuid: str,
+        skip_disabled_roles: bool=True,
+        skip_disabled_groups: bool=True,
+        check_parent_groups: bool=False,
+        ):
         """ Check if token is assigned to this acccessgroup. """
         from otpme.lib.classes.role import get_roles
         if token_uuid in self.tokens:
@@ -1010,8 +1030,14 @@ class AccessGroup(OTPmeObject):
                 return group
         return False
 
-    def parents(self, recursive=False, sessions=None,
-        session_master=False, return_type='name', skip_disabled=True):
+    def parents(
+        self,
+        recursive: bool=False,
+        sessions: bool=None,
+        session_master: bool=False,
+        return_type: str='name',
+        skip_disabled: bool=True,
+        ):
         """ Get all parent groups of this group. """
         result = []
         child_attribute = "child_group"
@@ -1090,8 +1116,14 @@ class AccessGroup(OTPmeObject):
                 result.append(return_attribute)
         return result
 
-    def childs(self, recursive=False, sessions=None,
-        session_master=False, return_type='name', skip_disabled=True):
+    def childs(
+        self,
+        recursive: bool=False,
+        sessions: bool=False,
+        session_master: bool=False,
+        return_type: str='name',
+        skip_disabled: bool=True,
+        ):
         """ Get all child groups of this group. """
         result = []
         join_attribute = "child_group"
@@ -1172,7 +1204,7 @@ class AccessGroup(OTPmeObject):
                 result.append(return_attribute)
         return result
 
-    def get_session_master(self, return_type='name'):
+    def get_session_master(self, return_type: str='name'):
         """ Get session master of session tree. """
         # Check if we are the session master.
         if self.session_master:
@@ -1202,8 +1234,14 @@ class AccessGroup(OTPmeObject):
     @check_acls(['add:child_group'])
     @object_lock()
     @backend.transaction
-    def add_child_group(self, group_name, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def add_child_group(
+        self,
+        group_name: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Adds a child group to this group. """
         group = backend.get_object(object_type="accessgroup",
                                     realm=config.realm,
@@ -1243,8 +1281,14 @@ class AccessGroup(OTPmeObject):
     @check_acls(['remove:child_group'])
     @object_lock()
     @backend.transaction
-    def remove_child_group(self, group_name, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def remove_child_group(
+        self,
+        group_name: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Removes a child group from this group. """
         group = backend.get_object(object_type="accessgroup",
                                 realm=config.realm,
@@ -1279,8 +1323,14 @@ class AccessGroup(OTPmeObject):
     @check_acls(['add:child_session'])
     @object_lock()
     @backend.transaction
-    def add_child_session(self, group_name, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def add_child_session(
+        self,
+        group_name: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Adds a child session to this group. """
         group = backend.get_object(object_type="accessgroup",
                                 realm=config.realm,
@@ -1332,8 +1382,14 @@ class AccessGroup(OTPmeObject):
     @check_acls(['remove:child_session'])
     @object_lock()
     @backend.transaction
-    def remove_child_session(self, group_name, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def remove_child_session(
+        self,
+        group_name: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Removes a child session from this group. """
         group = backend.get_object(object_type="accessgroup",
                                 realm=config.realm,
@@ -1367,8 +1423,14 @@ class AccessGroup(OTPmeObject):
 
     @check_acls(['edit:max_sessions'])
     @object_lock()
-    def change_max_sessions(self, max_sessions=0, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def change_max_sessions(
+        self,
+        max_sessions: int=0,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change max sessions for this group. """
         if run_policies:
             try:
@@ -1390,9 +1452,14 @@ class AccessGroup(OTPmeObject):
 
     @check_acls(['edit:relogin_timeout'])
     @object_lock()
-    def change_relogin_timeout(self, relogin_timeout=0,
-        run_policies=True, callback=default_callback,
-        _caller="API", **kwargs):
+    def change_relogin_timeout(
+        self,
+        relogin_timeout: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change relogin timeout for this group. """
         try:
             relogin_timeout = units.time2int(relogin_timeout, time_unit="s")
@@ -1418,8 +1485,14 @@ class AccessGroup(OTPmeObject):
 
     @check_acls(['edit:max_fail'])
     @object_lock()
-    def change_max_fail(self, max_fail, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_max_fail(
+        self,
+        max_fail: int,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change max authentication failures for this group. """
         if run_policies:
             try:
@@ -1441,8 +1514,14 @@ class AccessGroup(OTPmeObject):
 
     @check_acls(['edit:max_fail_reset'])
     @object_lock()
-    def change_max_fail_reset(self, reset_time, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_max_fail_reset(
+        self,
+        reset_time: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change max authentication failures for this group. """
         if run_policies:
             try:
@@ -1468,8 +1547,14 @@ class AccessGroup(OTPmeObject):
 
     @check_acls(['edit:session_timeout'])
     @object_lock()
-    def change_session_timeout(self, timeout, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def change_session_timeout(
+        self,
+        timeout: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change session timeout for sessions this group creates. """
         try:
             session_timeout = units.time2int(timeout, time_unit="s")
@@ -1499,8 +1584,14 @@ class AccessGroup(OTPmeObject):
 
     @check_acls(['edit:unused_session_timeout'])
     @object_lock()
-    def change_unused_session_timeout(self, unused_timeout,
-        run_policies=True, _caller="API", callback=default_callback, **kwargs):
+    def change_unused_session_timeout(
+        self,
+        unused_timeout: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change unused session timeout for sessions this group creates. """
         try:
             unused_session_timeout = units.time2int(unused_timeout,
@@ -1531,8 +1622,13 @@ class AccessGroup(OTPmeObject):
 
     @check_acls(['enable:sessions'])
     @object_lock()
-    def enable_sessions(self, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def enable_sessions(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Enable sessions for this access group. """
         if self.name == config.mgmt_access_group:
             return callback.error("Cannot enable sessions for MGMT accessgroup.")
@@ -1555,8 +1651,13 @@ class AccessGroup(OTPmeObject):
 
     @check_acls(['disable:sessions'])
     @object_lock()
-    def disable_sessions(self, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def disable_sessions(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Disable sessions for this access group. """
         if self.name == config.realm_access_group:
             msg = (_("Cannot disable sessions for REALM accessgroup."))
@@ -1582,8 +1683,13 @@ class AccessGroup(OTPmeObject):
 
     @check_acls(['enable:session_master'])
     @object_lock()
-    def enable_session_master(self, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def enable_session_master(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Enable session master feature for this group. """
         if self.session_master:
             return callback.error("Group is already session master.")
@@ -1615,8 +1721,13 @@ class AccessGroup(OTPmeObject):
 
     @check_acls(['disable:session_master'])
     @object_lock()
-    def disable_session_master(self, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def disable_session_master(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Disable session master feature for this access group. """
         if not self.session_master:
             msg = (_("Session master already disabled for this group."))
@@ -1639,8 +1750,13 @@ class AccessGroup(OTPmeObject):
 
     @check_acls(['enable:timeout_pass_on'])
     @object_lock()
-    def enable_timeout_pass_on(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_timeout_pass_on(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable session timeout pass on for this group. """
         if self.timeout_pass_on:
             msg = (_("Timeout pass on already enabled for this group."))
@@ -1663,8 +1779,13 @@ class AccessGroup(OTPmeObject):
 
     @check_acls(['disable:timeout_pass_on'])
     @object_lock()
-    def disable_timeout_pass_on(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_timeout_pass_on(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable session timeout pass on for this access group. """
         if not self.timeout_pass_on:
             msg = (_("Timeout pass on already disabled for this group."))
@@ -1687,7 +1808,13 @@ class AccessGroup(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
+    def rename(
+        self,
+        new_name: str,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Rename accessgroup. """
         base_access_groups = config.get_base_objects("accessgroup")
         if self.name in base_access_groups:
@@ -1704,7 +1831,13 @@ class AccessGroup(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
-    def add(self, uuid=None, verbose_level=0, callback=default_callback, **kwargs):
+    def add(
+        self,
+        uuid: Union[str,None]=None,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a accessgroup. """
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(callback=callback, **kwargs)
@@ -1725,9 +1858,16 @@ class AccessGroup(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, force=False, run_policies=True, verify_acls=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete accessgroup. """
         if not self.exists():
             return callback.error("Accessgroup does not exist exists.")
@@ -1876,9 +2016,15 @@ class AccessGroup(OTPmeObject):
 
     @check_acls(['remove:orphans'])
     @object_lock()
-    def remove_orphans(self, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def remove_orphans(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Remove orphan UUIDs. """
         if run_policies:
             try:
@@ -1969,7 +2115,7 @@ class AccessGroup(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show accessgroup config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

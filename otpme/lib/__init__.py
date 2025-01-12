@@ -63,7 +63,11 @@ def set_realm_site():
             raise OTPmeException(msg)
 
     # Check if realm exists, set realm and realm master.
-    _realm = Realm(name=config.realm)
+    try:
+        _realm = Realm(name=config.realm)
+    except Exception as e:
+        msg = "Failed to load realm: %s" % e
+        raise OTPmeException(msg)
     if not _realm.exists():
         msg = (_("Unknown realm: %s") % config.realm)
         raise OTPmeException(msg)
@@ -129,8 +133,8 @@ def do_direct_init():
         try:
             set_realm_site()
         except Exception as e:
-            config.raise_exception()
             error_message(e)
+            config.raise_exception()
             sys.exit(1)
 
     # Update realm data cache file.

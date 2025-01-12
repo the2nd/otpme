@@ -4,6 +4,8 @@ import os
 #import pyotp
 import base64
 import hashlib
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -17,6 +19,7 @@ from otpme.lib import backend
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
 
 from otpme.lib.exceptions import *
 
@@ -34,6 +37,7 @@ OATH_OTP_FORMATS = {
         'hex-notrunc'   : 4,
         }
 
+@match_class_typing
 class OathToken(Token):
     """ Base class for OATH tokens. """
     def __init__(self, *args, **kwargs):
@@ -62,7 +66,7 @@ class OathToken(Token):
             otp_len = 6
         return otp_len
 
-    def get_offline_config(self, second_factor_usage=False):
+    def get_offline_config(self, second_factor_usage: bool=False):
         """ Get offline config of token. (e.g. without PIN). """
         # Make sure our object config is up-to-date.
         self.update_object_config()
@@ -105,8 +109,14 @@ class OathToken(Token):
 
         return offline_config
 
-    def get_secret(self, pin=None, mode=None,
-        callback=default_callback, _caller="API", ** kwargs):
+    def get_secret(
+        self,
+        pin: Union[int,None]=None,
+        mode: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Get token secret """
         if not mode:
             mode = self.mode
@@ -137,8 +147,15 @@ class OathToken(Token):
     @check_acls(['edit:mode'])
     @object_lock()
     @backend.transaction
-    def change_mode(self, new_mode, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_mode(
+        self,
+        new_mode: str,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change token operation mode. """
         # Make sure new mode is of type string.
         new_mode = str(new_mode)
@@ -163,8 +180,7 @@ class OathToken(Token):
         if new_mode == "mode1":
             if not force:
                 pin = callback.askpass("Please enter PIN: ")
-                pin = str(pin)
-                if len(pin) != self.pin_len:
+                if len(str(pin)) != self.pin_len:
                     msg = "Invalid PIN."
                     return callback.error(msg)
                 self.secret = self.get_secret(pin=pin)
@@ -188,7 +204,11 @@ class OathToken(Token):
                     pin_otp = str(pin_otp)
 
                     # Split OTP in PIN and OTP.
-                    pin = pin_otp[:self.pin_len]
+                    try:
+                        pin = int(pin_otp[:self.pin_len])
+                    except ValueError:
+                        msg = "Unable to get PIN."
+                        return callback.error(msg)
 
                     # Generate secret from server secret and PIN.
                     secret = self.get_secret(pin=pin,
@@ -207,8 +227,6 @@ class OathToken(Token):
                         msg = "Error adding OTP to list of used OTPs: %s" % e
                         return callback.error(msg)
 
-                self.pin = None
-                self.secret = None
                 return_message = (_("Token switched to mode2."))
             else:
                 msg = (_("WARNING: Changing token mode to 'mode2' requires "
@@ -217,12 +235,17 @@ class OathToken(Token):
                 if not force:
                     new_pin = None
                     while True:
-                        new_pin1 = str(callback.askpass("New PIN:", null_ok=True))
-                        if new_pin1 == "":
+                        new_pin1 = callback.askpass("New PIN:", null_ok=True)
+                        try:
+                            new_pin1 = int(new_pin1)
+                        except ValueError:
+                            msg = "PIN must be numerical."
+                            callback.error(msg)
+                            continue
+                        if len(str(new_pin1)) == 0:
                             if new_pin:
                                 break
-                            else:
-                                continue
+                            continue
                         if not self.check_pin(pin=new_pin1, callback=callback):
                             continue
                         new_pin2 = callback.askpass("Repeat PIN: ")
@@ -236,10 +259,10 @@ class OathToken(Token):
                     return_message = (_("New token secret: %s") % token_secret)
                     msg = ("Please re-sync token after deploying secret to token!")
                     callback.send(msg)
-                self.pin = None
-                self.secret = None
-                self.pin_enabled = True
-                self.pin_mandatory = True
+            self.pin = None
+            self.secret = None
+            self.pin_enabled = True
+            self.pin_mandatory = True
 
         # Set new mode.
         self.mode = new_mode
@@ -248,11 +271,16 @@ class OathToken(Token):
 
         return self._cache(callback=callback)
 
-    def _enable_pin(self, pre=False, callback=default_callback, **kwargs):
+    def _enable_pin(self, *args, callback=default_callback, **kwargs):
         """ Enable token PIN. """
         return True
 
-    def _disable_pin(self, pre=False, callback=default_callback, **kwargs):
+    def _disable_pin(
+        self,
+        pre: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Disable token PIN. """
         if not pre:
             return True
@@ -264,8 +292,14 @@ class OathToken(Token):
                 callback.send(msg)
         return True
 
-    def _change_secret(self, secret=None, pre=False,
-        force=False, callback=default_callback, **kwargs):
+    def _change_secret(
+        self,
+        secret: Union[str,None]=None,
+        pre: bool=False,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Handle stuff when changing token secret """
         if self.mode == "mode2":
             if pre:
@@ -289,7 +323,12 @@ class OathToken(Token):
             self.server_secret = None
         return callback.ok()
 
-    def change_pin(self, *args, callback=default_callback, **kwargs):
+    def change_pin(
+        self,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change token PIN. """
         result =  super(OathToken, self).change_pin(*args,
                                                 callback=callback,
@@ -300,8 +339,14 @@ class OathToken(Token):
             self.pin = None
         return self._cache(callback=callback)
 
-    def _change_pin(self, pin=None, pre=False,
-        force=False, callback=default_callback, **kwargs):
+    def _change_pin(
+        self,
+        pin: Union[int,None]=None,
+        pre: bool=False,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Handle stuff when changing token PIN """
         if self.mode == "mode2":
             if pre and not force:
@@ -338,7 +383,12 @@ class OathToken(Token):
 
         return callback.ok()
 
-    def _enable_offline(self, pre=False, callback=default_callback, **kwargs):
+    def _enable_offline(
+        self,
+        pre: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Handle stuff when enabling offline mode. """
         if pre:
             if self.mode == "mode1":
@@ -355,7 +405,12 @@ class OathToken(Token):
                 callback.send(msg)
         return True
 
-    def test(self, password=None, callback=default_callback, **kwargs):
+    def test(
+        self,
+        password: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Test if the given OTP can be verified by this token. """
         ok_message = "Token verified successful."
         error_message = "Token verification failed."
@@ -365,14 +420,20 @@ class OathToken(Token):
             otp_prompt = "OTP: "
         if not password:
             password = callback.askpass(otp_prompt)
+            password = str(password)
         if not password:
             return callback.error("Unable to get password.")
-        status = self.verify_otp(otp=str(password), **kwargs)
+        status = self.verify_otp(otp=password, **kwargs)
         if status:
             return callback.ok(ok_message)
         return callback.error(error_message)
 
-    def verify(self, challenge=None, response=None, **kwargs):
+    def verify(
+        self,
+        challenge: Union[str,None]=None,
+        response: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Call default verify method. """
         if challenge and response:
             return self.verify_mschap_otp(challenge=challenge,
@@ -393,8 +454,13 @@ class OathToken(Token):
         raise OTPmeException(msg)
 
     @check_acls(['generate:otp'])
-    def gen_mschap(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def gen_mschap(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Generate MSCHAP challenge response stuff for testing. """
         if self.mode == "mode2":
             msg = "Cannot gen MSCHAP data in mode2."
@@ -418,8 +484,13 @@ class OathToken(Token):
         return super(OathToken, self)._gen_mschap(password=otp, callback=callback)
 
     @object_lock(full_lock=True)
-    def pre_deploy(self, _caller="API", verbose_level=0,
-        callback=default_callback, **kwargs):
+    def pre_deploy(
+        self,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         reply = {
                 'secret_len'    : self.secret_len,
                 }
@@ -427,16 +498,21 @@ class OathToken(Token):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def _add(self, gen_qrcode=True, no_token_infos=False,
-        verify_acls=True, callback=default_callback, **kwargs):
+    def _add(
+        self,
+        gen_qrcode: bool=True,
+        no_token_infos: bool=False,
+        verify_acls: bool=True,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a token. """
         # Gen server secret.
         #self.server_secret = pyotp.random_base32()
         self.server_secret = stuff.gen_secret(self.secret_len, "base32")
         # Gen PIN.
-        default_pin_len = self.get_config_parameter("hotp_default_pin_len")
-        pin = stuff.gen_pin(default_pin_len)
-        self.pin_len = default_pin_len
+        pin = stuff.gen_pin(self.default_pin_len)
+        self.pin_len = self.default_pin_len
         # Get token secret.
         token_secret = self.get_secret(pin=pin, callback=callback)
         # Generate salt for used OTP hashes.
@@ -471,8 +547,13 @@ class OathToken(Token):
         return callback.ok()
 
     @check_acls(['view_all:secret'])
-    def show_secret(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def show_secret(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Show object secret. """
         if run_policies:
             try:

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -25,11 +27,22 @@ def register_backend():
     config.register_index_attribute('user_uuid')
     config.register_index_attribute('token_uuid')
 
+@match_class_typing
 class UsedHash(OTPmeDataObject):
     """ Class that implements used hashes object. """
-    def __init__(self, user_uuid=None, token_uuid=None, accessgroup_uuid=None,
-        session_uuid=None, object_hash=None, counter=None, sync_time=None,
-        expiry=None, object_id=None, **kwargs):
+    def __init__(
+        self,
+        user_uuid: Union[str,None]=None,
+        token_uuid: Union[str,None]=None,
+        accessgroup_uuid: Union[str,None]=None,
+        session_uuid: Union[str,None]=None,
+        object_hash: Union[str,None]=None,
+        counter: Union[int,None]=None,
+        sync_time: Union[float,None]=None,
+        expiry: Union[float,None]=None,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class).
         self.user_uuid = user_uuid
         self.token_uuid = token_uuid

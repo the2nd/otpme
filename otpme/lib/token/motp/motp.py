@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -8,6 +10,7 @@ try:
 except:
     pass
 
+from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -17,6 +20,7 @@ from otpme.lib.otp.motp import motp
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.utils import register_commands
 
 from otpme.lib.classes.token \
@@ -282,10 +286,19 @@ def register_config_params():
                                     default_value=16,
                                     object_types=object_types)
 
+@match_class_typing
 class MotpToken(Token):
     """ Class for MOTP tokens. """
-    def __init__(self, object_id=None, user=None, name=None,
-        realm=None, site=None, path=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        user: Union[str,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        **kwargs,
+        ):
         # Call parent class init.
         super(MotpToken, self).__init__(object_id=object_id,
                                         realm=realm,
@@ -328,9 +341,8 @@ class MotpToken(Token):
         token_config = {
             'PIN'                       : {
                                             'var_name'      : 'pin',
-                                            'type'          : str,
+                                            'type'          : int,
                                             'required'      : False,
-                                            #'encoding'      : 'BASE64',
                                             'encryption'    : config.disk_encryption,
                                         },
 
@@ -374,11 +386,10 @@ class MotpToken(Token):
         # read from config.
         Token.set_variables(self)
 
-    def gen_secret(self, token_secret, pin, ** kwargs):
+    def gen_secret(self, token_secret: str, pin: int, ** kwargs):
         """ Generate server secret from token secret and PIN. """
         import hashlib
-        if isinstance(token_secret, str):
-            token_secret = token_secret.encode("utf-8")
+        token_secret = token_secret.encode("utf-8")
         hash_string = b"%s%s" % (str(pin).encode(), token_secret)
         sha512 = hashlib.sha512()
         sha512.update(hash_string)
@@ -386,16 +397,30 @@ class MotpToken(Token):
         secret = secret[0:self.secret_len]
         return secret
 
-    def _change_pin(self, pin=None,  callback=default_callback, **kwargs):
+    @property
+    def default_pin_len(self):
+        default_pin_len = self.get_config_parameter("motp_default_pin_len")
+        return default_pin_len
+
+    def _change_pin(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change token PIN """
-        self.pin = pin
-        return self._cache(callback=callback)
+        return callback.ok()
 
     @check_acls(['edit:validity_time'])
     @object_lock()
     @backend.transaction
-    def change_validity_time(self, run_policies=True, validity_time=None,
-        _caller="API", callback=default_callback, **kwargs):
+    def change_validity_time(
+        self,
+        run_policies: bool=True,
+        validity_time: Union[int,None]=None,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change token validity time. """
         if run_policies:
             try:
@@ -428,8 +453,14 @@ class MotpToken(Token):
     @check_acls(['edit:timedrift_tolerance'])
     @object_lock()
     @backend.transaction
-    def change_timedrift_tolerance(self, run_policies=True, timedrift_tolerance=None,
-        _caller="API", callback=default_callback, **kwargs):
+    def change_timedrift_tolerance(
+        self,
+        run_policies: bool=True,
+        timedrift_tolerance: Union[int,None]=None,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change token timedrift tolerance. """
         if run_policies:
             try:
@@ -459,7 +490,7 @@ class MotpToken(Token):
 
         return self._cache(callback=callback)
 
-    def get_offline_config(self, second_factor_usage=False):
+    def get_offline_config(self, second_factor_usage: bool=False):
         """ Get offline config of token. (e.g. without PIN). """
         # Make sure our object config is up-to-date.
         self.update_object_config()
@@ -480,8 +511,13 @@ class MotpToken(Token):
         return offline_config
 
     @check_acls(['generate:otp'])
-    def gen_otp(self, otp_count=1, callback=default_callback,
-        _caller="API", **kwargs):
+    def gen_otp(
+        self,
+        otp_count: int=1,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Generate one or more OTPs for this token. """
         if not self.secret:
             return callback.error("Token secret missing.")
@@ -501,7 +537,12 @@ class MotpToken(Token):
                 return callback.ok(otp)
             return [otp]
 
-    def test(self, password=None, callback=default_callback, **kwargs):
+    def test(
+        self,
+        password: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Test if the given OTP can be verified by this token. """
         ok_message = "Token verified successful."
         error_message = "Token verification failed."
@@ -515,7 +556,12 @@ class MotpToken(Token):
             return callback.ok(ok_message)
         return callback.error(error_message)
 
-    def verify(self, challenge=None, response=None, **kwargs):
+    def verify(
+        self,
+        challenge: Union[str,None]=None,
+        response: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Call default verify method. """
         if challenge and response:
             return self.verify_mschap_otp(challenge=challenge,
@@ -524,8 +570,13 @@ class MotpToken(Token):
         else:
             return self.verify_otp(**kwargs)
 
-    def verify_otp(self, otp, handle_used_otps=True,
-        session_uuid=None, **kwargs):
+    def verify_otp(
+        self,
+        otp: str,
+        handle_used_otps: bool=True,
+        session_uuid: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Verify OTP for this token. """
 
         if handle_used_otps:
@@ -581,8 +632,14 @@ class MotpToken(Token):
                 "token type '%s'.") % self.token_type)
         raise OTPmeException(msg)
 
-    def verify_mschap_otp(self, challenge, response,
-        handle_used_otps=True, session_uuid=None, **kwargs):
+    def verify_mschap_otp(
+        self,
+        challenge: str,
+        response: str,
+        handle_used_otps: bool=True,
+        session_uuid: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Verify MSCHAP challenge/response against OTP. """
         nt_key = None
         otp = None
@@ -636,8 +693,13 @@ class MotpToken(Token):
         raise Exception(msg)
 
     @check_acls(['generate:otp'])
-    def gen_mschap(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def gen_mschap(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Generate MSCHAP challenge response stuff for testing. """
         if run_policies:
             try:
@@ -650,7 +712,12 @@ class MotpToken(Token):
         otp = self.gen_otp()[0]
         return Token._gen_mschap(self, password=otp, callback=callback)
 
-    def add_used_otp(self, otp, session_uuid=None, quiet=True):
+    def add_used_otp(
+        self,
+        otp: str,
+        session_uuid: Union[str,None]=None,
+        quiet: bool=True,
+        ):
         """ Add OTP to list of already used OTPs for this token. """
         # In offline mode check if we should cache/sync used OTPs.
         if self.offline:
@@ -683,13 +750,18 @@ class MotpToken(Token):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def _add(self, no_token_infos=False, callback=default_callback, **kwargs):
+    def _add(
+        self,
+        no_token_infos: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a token. """
         # Get default MOTP settings.
         self.validity_time = self.get_config_parameter("motp_validity_time")
         self.timedrift_tolerance = self.get_config_parameter("motp_timedrift_tolerance")
         self.otp_len = self.get_config_parameter("motp_len")
-        self.pin_len = self.get_config_parameter("motp_default_pin_len")
+        self.pin_len = self.default_pin_len
         self.pin = stuff.gen_pin(self.pin_len)
         self.secret_len = self.get_config_parameter("motp_secret_len")
         token_secret = stuff.gen_secret(self.secret_len)
@@ -713,7 +785,7 @@ class MotpToken(Token):
 
         return callback.ok()
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token info. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

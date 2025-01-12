@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import List
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -127,11 +130,21 @@ def register_backend():
                                 path_getter=path_getter,
                                 oid_getter=oid_getter)
 
+@match_class_typing
 class RevokedSignature(OTPmeDataObject):
     """ Class that implements revoked signature object. """
-    def __init__(self, signer=None, signer_uuid=None, sign_tags=None,
-        sign_ref=None, signature_hash=None, revoked_object=None,
-        revocation_time=None, object_id=None, **kwargs):
+    def __init__(
+        self,
+        signer: Union[str,None]=None,
+        signer_uuid: Union[str,None]=None,
+        sign_tags: Union[List,None]=None,
+        sign_ref: Union[str,None]=None,
+        signature_hash: Union[str,None]=None,
+        revoked_object: Union[str,None]=None,
+        revocation_time: Union[float,None]=None,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        **kwargs,
+        ):
         self.type = "revoked_signature"
         # Set our type (used in parent class).
         self.signer = signer

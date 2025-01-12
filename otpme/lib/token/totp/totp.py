@@ -4,6 +4,8 @@ import os
 import time
 #from pyotp.totp import TOTP
 from datetime import datetime
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -11,6 +13,7 @@ try:
 except:
     pass
 
+from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import qrcode
@@ -20,6 +23,7 @@ from otpme.lib.otp.oath import totp
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import decode
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.token.oath.oath import OathToken
 from otpme.lib.third_party.oath_toolkit import uri
 from otpme.lib.token.oath.oath import OATH_OTP_FORMATS
@@ -338,10 +342,19 @@ def register_config_params():
                                     default_value=10,
                                     object_types=object_types)
 
+@match_class_typing
 class TotpToken(OathToken):
     """ Class for OATH TOTP tokens. """
-    def __init__(self, object_id=None, user=None, name=None,
-        realm=None, site=None, path=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        user: Union[str,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        **kwargs,
+        ):
         # Call parent class init.
         super(TotpToken, self).__init__(object_id=object_id,
                                             realm=realm,
@@ -359,6 +372,7 @@ class TotpToken(OathToken):
         self.token_type = "totp"
         self.pass_type = "otp"
         self.otp_type = "time"
+        self.secret_len = None
 
         self.otp_format = None
         self.need_password = True
@@ -367,6 +381,7 @@ class TotpToken(OathToken):
         self.offline_expiry = 0
         self.offline_unused_expiry = 0
         self.keep_session = False
+        self.sync_offline_otps = True
 
         # TOTP specific settings
         # FIXME: make this per token config setting!
@@ -411,6 +426,12 @@ class TotpToken(OathToken):
                                             'encryption'    : config.disk_encryption,
                                         },
 
+            'SECRET_LEN'                : {
+                                            'var_name'      : 'secret_len',
+                                            'type'          : int,
+                                            'required'      : False,
+                                        },
+
             'OTP_FORMAT'                : {
                                             'var_name'      : 'otp_format',
                                             'type'          : str,
@@ -452,16 +473,21 @@ class TotpToken(OathToken):
             self.pin_mandatory = False
 
     @property
-    def secret_len(self):
-        """ Get token secret length. """
-        secret_len = self.get_config_parameter("totp_secret_len")
-        return secret_len
+    def default_pin_len(self):
+        default_pin_len = self.get_config_parameter("totp_default_pin_len")
+        return default_pin_len
 
     @check_acls(['edit:period'])
     @object_lock()
     @backend.transaction
-    def change_period(self, run_policies=True, period=None,
-        _caller="API", callback=default_callback, **kwargs):
+    def change_period(
+        self,
+        run_policies: bool=True,
+        period: Union[int,None]=None,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change token check period. """
         if run_policies:
             try:
@@ -490,8 +516,14 @@ class TotpToken(OathToken):
     @check_acls(['edit:backward_drift'])
     @object_lock()
     @backend.transaction
-    def change_backward_drift(self, run_policies=True, backward_drift=None,
-        _caller="API", callback=default_callback, **kwargs):
+    def change_backward_drift(
+        self,
+        run_policies: bool=True,
+        backward_drift: Union[int,None]=None,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change token check backward_drift. """
         if run_policies:
             try:
@@ -520,8 +552,14 @@ class TotpToken(OathToken):
     @check_acls(['edit:forward_drift'])
     @object_lock()
     @backend.transaction
-    def change_forward_drift(self, run_policies=True, forward_drift=None,
-        _caller="API", callback=default_callback, **kwargs):
+    def change_forward_drift(
+        self,
+        run_policies: bool=True,
+        forward_drift: Union[int,None]=None,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change token check forward_drift. """
         if run_policies:
             try:
@@ -548,15 +586,22 @@ class TotpToken(OathToken):
         return self._cache(callback=callback)
 
     @check_acls(['generate:otp'])
-    def gen_otp(self, otp_count=1, secret=None, prefix_pin=False,
-        callback=default_callback, _caller="API", **kwargs):
+    def gen_otp(
+        self,
+        otp_count: int=1,
+        secret: Union[str,None]=None,
+        prefix_pin: int=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Generate one or more OTPs for this token. """
         if not secret:
             if self.mode == "mode1":
                 secret = self.get_secret(callback=callback)
             if self.mode == "mode2":
                 pin = callback.askpass("Please enter PIN: ")
-                if len(pin) != self.pin_len:
+                if len(str(pin)) != self.pin_len:
                     msg = "Invalid PIN."
                     return callback.error(msg)
                 secret = self.get_secret(pin=pin, callback=callback)
@@ -589,9 +634,19 @@ class TotpToken(OathToken):
             return callback.ok(otp)
         return [otp]
 
-    def verify_otp(self, otp, secret=None, handle_used_otps=True,
-        mode=None, otp_includes_pin=True, verify_pin=True, sft=None,
-        recursive_use=False, session_uuid=None, **kwargs):
+    def verify_otp(
+        self,
+        otp: str,
+        secret: Union[str,None]=None,
+        handle_used_otps: bool=True,
+        mode: Union[str,None]=None,
+        otp_includes_pin: bool=True,
+        verify_pin: bool=True,
+        sft: bool=None,
+        recursive_use: bool=False,
+        session_uuid: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Verify OTP for this token.  """
         # Make sure OTP is str().
         otp = str(otp)
@@ -619,17 +674,6 @@ class TotpToken(OathToken):
         # saved on server side.
         if mode == "mode2":
             verify_pin = False
-
-        # Get PIN from OTP if needed.
-        if otp_includes_pin:
-            if len(otp) < (int(self.pin_len) + int(self.otp_len)):
-                logger.debug("Token PIN enabled but the given OTP is too short "
-                            "to include a PIN!")
-                return None
-            _otp = otp[self.pin_len:]
-            pin = otp[:self.pin_len]
-        else:
-            _otp = otp
 
         # Calculate epoch time to verify OTP.
         epoch_time = time.time()
@@ -673,11 +717,31 @@ class TotpToken(OathToken):
                         self.pin_len = org_pin_len
                         return status
 
+        # Get PIN from OTP if needed.
+        if otp_includes_pin:
+            if len(otp) < (int(self.pin_len) + int(self.otp_len)):
+                logger.debug("Token PIN enabled but the given OTP is too short "
+                            "to include a PIN!")
+                return None
+            _otp = otp[self.pin_len:]
+            try:
+                pin = int(otp[:self.pin_len])
+            except ValueError:
+                msg = "OTP does not include a PIN."
+                logger.info(msg)
+                return None
+        else:
+            _otp = otp
+
         # If we got a secret this request is to verify the secret itself
         # (e.g. mode change).
         if not secret:
             # Get token secret.
-            secret = self.get_secret(pin=pin)
+            try:
+                secret = self.get_secret(pin=pin)
+            except Exception as e:
+                msg = "Failed to get secret: %s" % e
+                raise OTPmeException(msg)
 
         # Log OTP time range.
         logger.debug("Verifiying OTP within timerange: start='%s' end='%s'."
@@ -724,8 +788,14 @@ class TotpToken(OathToken):
         msg = (_("WARNING: You may have hit a BUG of Token().verify_otp()."))
         raise Exception(msg)
 
-    def verify_mschap_otp(self, challenge, response,
-        handle_used_otps=True, session_uuid=None, **kwargs):
+    def verify_mschap_otp(
+        self,
+        challenge: str,
+        response: str,
+        handle_used_otps: bool=True,
+        session_uuid: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Verify MSCHAP challenge/response against OTPs. """
         from otpme.lib import mschap_util
         nt_key = None
@@ -790,8 +860,15 @@ class TotpToken(OathToken):
         raise Exception(msg)
 
     @check_acls(['generate:qrcode'])
-    def gen_qrcode(self, pin=None, qrcode_file=None, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def gen_qrcode(
+        self,
+        pin: Union[int,None]=None,
+        qrcode_file: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Generate QRCode to deploy token secret. """
         if run_policies:
             try:
@@ -804,7 +881,7 @@ class TotpToken(OathToken):
         if pin is None:
             if self.mode == "mode2":
                 pin = callback.askpass("Please enter PIN: ")
-                if len(pin) != self.pin_len:
+                if len(str(pin)) != self.pin_len:
                     msg = "Invalid PIN."
                     return callback.error(msg)
 
@@ -828,15 +905,17 @@ class TotpToken(OathToken):
         # Generate QRcode.
         _qrcode = qrcode.gen_qrcode(oath_uri, "terminal")
 
-        # xxxxxxxxxxxxx
         # FIXME: how to create png/svg image without writing to file?
         return callback.ok(_qrcode)
 
-    def add_used_otp(self, otp, session_uuid=None, quiet=True):
+    def add_used_otp(
+        self,
+        otp: str,
+        session_uuid: Union[str,None]=None,
+        quiet: bool=True,
+        ):
         """ Add used OTP for this user/token. """
-        # In offline mode we do not add used OTPs to make brute force attacks
-        # harder (no OTP hash saved to disk).
-        if self.offline:
+        if not self.sync_offline_otps:
             return True
         # Cache TOTPs twice the time they are valid.
         expiry = time.time() + (self.period * self.forward_drift * 2)
@@ -851,12 +930,13 @@ class TotpToken(OathToken):
         """ Add a token. """
         # Get default TOTP settings.
         self.otp_format = self.get_config_parameter("totp_format")
+        self.secret_len = self.get_config_parameter("totp_secret_len")
         self.period = self.get_config_parameter("totp_period")
         self.forward_drift = self.get_config_parameter("totp_forward_drift")
         self.backward_drift = self.get_config_parameter("totp_backward_drift")
         return super(TotpToken, self)._add(*args, **kwargs)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token info. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

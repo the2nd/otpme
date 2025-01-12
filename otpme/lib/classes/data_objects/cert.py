@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -47,9 +49,15 @@ def register_config():
                             cache_region="data_object",
                             backup_attributes=['realm', 'site', 'fingerprint'])
 
+@match_class_typing
 class OTPmeCert(SSLCert):
     """ Class that implements last used object. """
-    def __init__(self, realm=None, site=None, **kwargs):
+    def __init__(
+        self,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        **kwargs,
+        ):
         self.type = "cert"
         self.realm = realm
         self.site = site

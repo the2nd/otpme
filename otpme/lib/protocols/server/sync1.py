@@ -570,7 +570,7 @@ class OTPmeSyncP1(OTPmeServer1):
         if not session:
             msg = (_("Unknown session: %s") % session_uuid)
             self.logger.critical(msg)
-            status = False
+            status = status_codes.UNKNOWN_OBJECT
             response = "SYNC_UNKNOWN_SESSION: %s" % session_uuid
             return status, response
 

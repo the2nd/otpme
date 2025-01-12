@@ -56,6 +56,12 @@ def close_connections(proc_id=None):
                 #msg = "Closing connection: %s" % conn
                 #logger.debug(msg)
                 try:
+                    conn.cleanup()
+                except Exception as e:
+                    msg = ("Connection cleanup failed: %s: %s"
+                            % (conn, e))
+                    logger.warning(msg)
+                try:
                     conn.close()
                 except Exception as e:
                     msg = ("Failed to close connection: %s: %s"

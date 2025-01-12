@@ -822,7 +822,7 @@ class PamHandler(object):
         # Build static password part from password and PIN if given.
         static_pass_part = static_pass
         if pin:
-            static_pass_part += pin
+            static_pass_part += str(pin)
 
         if found_smartcard:
             # If we have a smartcard offline token try to detect local
@@ -1686,20 +1686,21 @@ class PamHandler(object):
                     msg = ("Error running login script: %s" % e)
                     self.logger.warning(msg)
             # Save SSH agent script.
-            ssh_agent_script_file = os.path.join(self.login_session_dir, "ssh-agent-script.json")
-            msg = "Saving ssh-agent script: %s" % ssh_agent_script_file
-            agent_script_data = {
-                                'ssh_agent_script'          : self.ssh_agent_script,
-                                'ssh_agent_script_uuid'     : self.ssh_agent_script_uuid,
-                                'ssh_agent_script_path'     : self.ssh_agent_script_path,
-                                'ssh_agent_script_opts'     : self.ssh_agent_script_opts,
-                                'ssh_agent_script_signs'    : self.ssh_agent_script_signs,
-                                }
-            agent_script_data = json.dumps(agent_script_data)
-            filetools.create_file(ssh_agent_script_file,
-                                content=agent_script_data,
-                                user=self.username,
-                                mode=0o600)
+            if self.ssh_agent_script:
+                ssh_agent_script_file = os.path.join(self.login_session_dir, "ssh-agent-script.json")
+                msg = "Saving ssh-agent script: %s" % ssh_agent_script_file
+                agent_script_data = {
+                                    'ssh_agent_script'          : self.ssh_agent_script,
+                                    'ssh_agent_script_uuid'     : self.ssh_agent_script_uuid,
+                                    'ssh_agent_script_path'     : self.ssh_agent_script_path,
+                                    'ssh_agent_script_opts'     : self.ssh_agent_script_opts,
+                                    'ssh_agent_script_signs'    : self.ssh_agent_script_signs,
+                                    }
+                agent_script_data = json.dumps(agent_script_data)
+                filetools.create_file(ssh_agent_script_file,
+                                    content=agent_script_data,
+                                    user=self.username,
+                                    mode=0o600)
         else:
             # Read pinentry message file.
             if os.path.exists(self.pinentry_message_file):

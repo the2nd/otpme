@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -8,6 +10,7 @@ try:
 except:
     pass
 
+from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -16,6 +19,7 @@ from otpme.lib.otp.motp import motp
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.utils import register_commands
 
 from otpme.lib.classes.token \
@@ -91,7 +95,7 @@ recursive_default_acls = []
 
 # Currently we only support yubikeys an there its most likely that slot 2 is
 # used for HMAC authentication.
-default_slot = 2
+DEFAULT_SLOT = 2
 
 commands = {
     'secret'   : {
@@ -236,10 +240,19 @@ def register_config_params():
                                     default_value=16,
                                     object_types=object_types)
 
+@match_class_typing
 class YubikeyhmacToken(Token):
     """ Class for OTPme authentication with HMAC tokens (e.g. yubikey) """
-    def __init__(self, object_id=None, user=None, name=None,
-        realm=None, site=None, path=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        user: Union[str,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        **kwargs,
+        ):
         # Call parent class init.
         super(YubikeyhmacToken, self).__init__(object_id=object_id,
                                             realm=realm,
@@ -276,8 +289,9 @@ class YubikeyhmacToken(Token):
         self.smartcard_id = None
         self.hmac_id = None
         self.hmac_challenge = None
-        self.slot = default_slot
+        self.slot = DEFAULT_SLOT
         self.need_password = True
+        self.offline_pinnable = True
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
         self.supported_hardware_tokens = [ 'yubikey_hmac' ]
 
@@ -353,13 +367,10 @@ class YubikeyhmacToken(Token):
                                 'slot'  : self.slot,
                                 }
 
-    def get_offline_config(self, second_factor_usage=False):
+    def get_offline_config(self, second_factor_usage: bool=False):
         """ Get offline config of token. (e.g. without PIN). """
         offline_config = self.object_config.copy()
-        # Enable encryption because RSP will be saved in offline token config.
         offline_config['NEED_OFFLINE_ENCRYPTION'] = True
-        #offline_config.pop('SECRET')
-        #offline_config.pop('HMAC_CHALLENGE')
         return offline_config
 
     def get_offline_data(self):
@@ -376,8 +387,14 @@ class YubikeyhmacToken(Token):
     @check_acls(['edit:validity_time'])
     @object_lock()
     @backend.transaction
-    def change_validity_time(self, run_policies=True, validity_time=None,
-        _caller="API", callback=default_callback, **kwargs):
+    def change_validity_time(
+        self,
+        run_policies: bool=True,
+        validity_time: Union[int,None]=None,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change token validity time. """
         if run_policies:
             try:
@@ -410,8 +427,14 @@ class YubikeyhmacToken(Token):
     @check_acls(['edit:timedrift_tolerance'])
     @object_lock()
     @backend.transaction
-    def change_timedrift_tolerance(self, run_policies=True, timedrift_tolerance=None,
-        _caller="API", callback=default_callback, **kwargs):
+    def change_timedrift_tolerance(
+        self,
+        run_policies: bool=True,
+        timedrift_tolerance: Union[int,None]=None,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change token timedrift tolerance. """
         if run_policies:
             try:
@@ -442,7 +465,12 @@ class YubikeyhmacToken(Token):
         return self._cache(callback=callback)
 
     @check_acls(['generate:otp'])
-    def gen_otp(self, otp_count=1, callback=default_callback, **kwargs):
+    def gen_otp(
+        self,
+        otp_count: int=1,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Generate one or more OTPs for this token. """
         if otp_count > 1:
             otps = motp.generate(secret=self.secret,
@@ -455,7 +483,7 @@ class YubikeyhmacToken(Token):
                                 otp_len=self.otp_len)
             return [otp]
 
-    def test(self, callback=default_callback, **kwargs):
+    def test(self, callback: JobCallback=default_callback, **kwargs):
         """ Test if smartcard connected to the client can be verfied. """
         ok_message = "Token verified successful: %s" % self.rel_path
         error_message = "Token verification failed."
@@ -478,7 +506,7 @@ class YubikeyhmacToken(Token):
             return callback.ok(ok_message)
         return callback.error(error_message)
 
-    def verify(self, smartcard_data=None, **kwargs):
+    def verify(self, smartcard_data: dict, **kwargs):
         """ Call default verify method. """
         smartcard_id = smartcard_data['smartcard_id']
         if smartcard_id != self.smartcard_id:
@@ -487,8 +515,13 @@ class YubikeyhmacToken(Token):
         otp = smartcard_data['otp']
         return self.verify_otp(otp)
 
-    def verify_otp(self, otp, handle_used_otps=True,
-        session_uuid=None, **kwargs):
+    def verify_otp(
+        self,
+        otp: str,
+        handle_used_otps: bool=True,
+        session_uuid: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Verify OTP for this token. """
         if handle_used_otps:
             if self.is_used_otp(otp):
@@ -533,12 +566,17 @@ class YubikeyhmacToken(Token):
         raise Exception(msg)
 
     @check_acls(['generate:otp'])
-    def gen_mschap(self, callback=default_callback, **kwargs):
+    def gen_mschap(self, callback: JobCallback=default_callback, **kwargs):
         """ Generate MSCHAP challenge response stuff for testing. """
         otp = self.gen_otp()[0]
         return Token._gen_mschap(self, password=otp, callback=callback, **kwargs)
 
-    def add_used_otp(self, otp, session_uuid=None, quiet=True):
+    def add_used_otp(
+        self,
+        otp: str,
+        session_uuid: Union[str,None]=None,
+        quiet: bool=True,
+        ):
         """ Add OTP to list of already used OTPs for this token. """
         # In offline mode check if we should cache/sync used OTPs.
         if self.offline:
@@ -571,9 +609,17 @@ class YubikeyhmacToken(Token):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def deploy(self, smartcard_id, secret, hmac_challenge, hmac_id,
-        slot=default_slot, _caller="API", verbose_level=0,
-        callback=default_callback):
+    def deploy(
+        self,
+        smartcard_id: str,
+        secret: str,
+        hmac_challenge: str,
+        hmac_id: str,
+        slot: int=DEFAULT_SLOT,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        ):
         """ Deploy HMAC token. """
         if verbose_level > 0:
             callback.send(_("Setting smartcard ID to token: %s")
@@ -595,7 +641,7 @@ class YubikeyhmacToken(Token):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def _add(self, callback=default_callback, **kwargs):
+    def _add(self, callback: JobCallback=default_callback, **kwargs):
         """ Add a token. """
         # Get default HOTP settings.
         self.validity_time = self.get_config_parameter("otpme_validity_time")
@@ -607,7 +653,7 @@ class YubikeyhmacToken(Token):
         self.used_otp_salt = stuff.gen_secret(32)
         return callback.ok()
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Chow token config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

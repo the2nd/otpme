@@ -9,7 +9,10 @@ import types
 import pprint
 import datetime
 import importlib
+from typing import List
+from typing import Union
 from functools import wraps
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -34,11 +37,13 @@ from otpme.lib import multiprocessing
 from otpme.lib.pki.cert import SSLCert
 from otpme.lib.extensions import utils
 from otpme.lib.cache import ldif_cache
+from otpme.lib.otpme_acl import OTPmeACL
 from otpme.lib.cache import config_cache
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import encode
 from otpme.lib.cache import ldap_search_cache
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.cache import assigned_role_cache
 from otpme.lib.cache import assigned_token_cache
 from otpme.lib.policy import one_time_policy_run
@@ -424,6 +429,7 @@ def get_ldif(ldif, attributes=None, verify_acl_func=None,
 
     return result
 
+@match_class_typing
 class OTPmeLockObject(object):
     """ OTPme lock object. """
     def __init__(self):
@@ -437,9 +443,19 @@ class OTPmeLockObject(object):
             return
         return _lock
 
-    def acquire_lock(self, lock_caller, write=False, recursive=False,
-        skip_same_caller=False, timeout=None, reload_on_change=True,
-        full=False, cluster=True, _caller="API", callback=default_callback):
+    def acquire_lock(
+        self,
+        lock_caller: str,
+        write: bool=False,
+        recursive: bool=False,
+        skip_same_caller: bool=False,
+        timeout: Union[int,None]=None,
+        reload_on_change: bool=True,
+        full: bool=False,
+        cluster: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        ):
         """ Acquire object lock. """
         if self.offline:
             return
@@ -514,8 +530,13 @@ class OTPmeLockObject(object):
                     self._object_lock.acquire_lock(lock_caller=transaction.lock_caller,
                                                         skip_same_caller=True)
 
-    def release_lock(self, lock_caller=None,
-        recursive=False, force=False, callback=None):
+    def release_lock(
+        self,
+        lock_caller: str=None,
+        recursive: bool=False,
+        force: bool=False,
+        callback: JobCallback=None,
+        ):
         """ Release object lock. """
         if self.offline:
             return
@@ -536,10 +557,17 @@ class OTPmeLockObject(object):
         else:
             return "read"
 
+@match_class_typing
 class OTPmeBaseObject(OTPmeLockObject):
     """ Generic OTPme object. """
-    def __init__(self, object_config=None,
-    uuid=None, no_transaction=False, **kwargs):
+    def __init__(
+        self,
+        object_config: Union[ObjectConfig,dict,None]=None,
+        uuid: Union[str,None]=None,
+        no_transaction: bool=False,
+        **kwargs,
+        ):
+        self.incremental_objects = {}
         self.incremental_updates = []
         self.oid = None
         self.uuid = uuid
@@ -645,23 +673,23 @@ class OTPmeBaseObject(OTPmeLockObject):
     def get_list_prop_getter(self, attr):
         def prop_getter(self):
             try:
-                x_attr = getattr(self, attr)
-            except AttributeError:
+                x_attr = self.incremental_objects[attr]
+            except KeyError:
                 x_attr = None
             if x_attr:
                 return x_attr
             x_attr = IncrementalList(data=[],
                                     key=attr,
                                     incremental_data=self.incremental_updates)
-            setattr(self, attr, x_attr)
+            self.incremental_objects[attr] = x_attr
             return x_attr
         return prop_getter
 
     def get_list_prop_setter(self, attr):
         def prop_setter(self, _list):
             try:
-                cur_attr = getattr(self, attr)
-            except AttributeError:
+                cur_attr = self.incremental_objects[attr]
+            except KeyError:
                 cur_attr = None
             if cur_attr:
                 for x in cur_attr:
@@ -669,29 +697,29 @@ class OTPmeBaseObject(OTPmeLockObject):
             x_attr = IncrementalList(data=_list,
                                     key=attr,
                                     incremental_data=self.incremental_updates)
-            setattr(self, attr, x_attr)
+            self.incremental_objects[attr] = x_attr
         return prop_setter
 
     def get_dict_prop_getter(self, attr):
         def prop_getter(self):
             try:
-                x_attr = getattr(self, attr)
-            except AttributeError:
+                x_attr = self.incremental_objects[attr]
+            except KeyError:
                 x_attr = None
             if x_attr:
                 return x_attr
             x_attr = IncrementalDict(data={},
                                     key=attr,
                                     incremental_data=self.incremental_updates)
-            setattr(self, attr, x_attr)
+            self.incremental_objects[attr] = x_attr
             return x_attr
         return prop_getter
 
     def get_dict_prop_setter(self, attr):
         def prop_setter(self, _dict):
             try:
-                cur_attr = getattr(self, attr)
-            except AttributeError:
+                cur_attr = self.incremental_objects[attr]
+            except KeyError:
                 cur_attr = None
             x_attr = IncrementalDict(data=_dict,
                                     key=attr,
@@ -702,7 +730,7 @@ class OTPmeBaseObject(OTPmeLockObject):
                         continue
                     v = cur_attr[k]
                     x_attr.incremental_del(k, v)
-            setattr(self, attr, x_attr)
+            self.incremental_objects[attr] = x_attr
         return prop_setter
 
     def __repr__(self):
@@ -714,7 +742,7 @@ class OTPmeBaseObject(OTPmeLockObject):
 
     def __str__(self):
         if not self.oid:
-            raise OTPmeException("Object without OID. :(")
+            return "Object without OID: %s: %s" % (self.type, id(self))
         if self.oid.full_oid:
             return self.oid.full_oid
         if self.oid.read_oid:
@@ -1086,7 +1114,7 @@ class OTPmeBaseObject(OTPmeLockObject):
             return False
 
     @load_object()
-    def _load(self, read_from_cache=True, no_update=False):
+    def _load(self, no_update: bool=False):
         """ Load object config from backend. """
         # Check for replacement method when beeing offline (e.g. offline tokens)
         read_method = backend.read_config
@@ -1110,8 +1138,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         # Try to get object config from backend.
         if not object_config:
             try:
-                object_config = read_method(object_id=self.oid,
-                                    read_from_cache=read_from_cache)
+                object_config = read_method(object_id=self.oid)
             except Exception as e:
                 msg = ("Error reading object config (%s): %s: %s"
                         % (read_method, self, e))
@@ -1177,7 +1204,12 @@ class OTPmeBaseObject(OTPmeLockObject):
 
         return True
 
-    def _config_attribute(self, attribute, conf, update=False):
+    def _config_attribute(
+        self,
+        attribute: str,
+        conf: dict,
+        update: bool=False,
+        ):
         """ Read/Update object config attribute. """
         # Get required flag.
         try:
@@ -1399,7 +1431,7 @@ class OTPmeBaseObject(OTPmeLockObject):
                 # If the attribute is None and not required we can ignore it.
                 if val is None and not required:
                     return
-                msg = (_("Cannot load. Got wrong value for '%(attribute)s': "
+                msg = (_("Got wrong value for '%(attribute)s': "
                         "%(object_id)s: Wanted: %(type_wanted)s Got: %(val_type)s: %(val)s")
                         % {"attribute":attribute,
                             "object_id":self.oid,
@@ -1407,7 +1439,6 @@ class OTPmeBaseObject(OTPmeLockObject):
                             "val_type":repr(type(val)),
                             "val":val})
                 logger.warning(msg)
-                raise OTPmeException(msg)
 
             # Set class variable.
             if val is None:
@@ -1457,12 +1488,16 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.update_index('last_modified', self.last_modified)
 
     @object_lock()
-    def touch(self, callback=default_callback, **kwargs):
+    def touch(self, callback: JobCallback=default_callback, **kwargs):
         return self._write(callback=callback)
 
     @object_lock()
-    def _write(self, cluster=True, wait_for_cluster_writes=True,
-        update_last_modified=True, callback=default_callback):
+    def _write(self,
+        cluster: bool=True,
+        wait_for_cluster_writes: bool=True,
+        update_last_modified: bool=True,
+        callback: JobCallback=default_callback,
+        ):
         """ Write object config to backend. """
         if self.oid is None:
             msg = ("Object misses OID: %s" % self)
@@ -1557,12 +1592,21 @@ class OTPmeBaseObject(OTPmeLockObject):
 
         return callback.ok()
 
-    def update_index(self, key, value, **kwargs):
+    def update_index(
+        self,
+        key: Union[str,int,float],
+        value: Union[str,int,float,None],
+        **kwargs,
+        ):
         """ Update attribute in object index. """
         self.del_index(key)
         self.add_index(key, value, **kwargs)
 
-    def add_index(self, key, value):
+    def add_index(
+        self,
+        key: Union[str,int,float],
+        value: Union[str,int,float,None],
+        ):
         """ Add attribute to object index. """
         if [key, value] in self.index:
             return
@@ -1570,7 +1614,11 @@ class OTPmeBaseObject(OTPmeLockObject):
         now = time.time_ns()
         self.index_journal.append([now, 'add', key, value])
 
-    def del_index(self, key, value=None):
+    def del_index(
+        self,
+        key: Union[str,int,float],
+        value: Union[str,int,float,None]=None,
+        ):
         """ Remove attribute from object index. """
         if value is not None:
             try:
@@ -1589,8 +1637,14 @@ class OTPmeBaseObject(OTPmeLockObject):
             now = time.time_ns()
             self.index_journal.append([now, 'del', x_key, x_val])
 
-    def add(self, uuid=None, verbose_level=0, callback=default_callback,
-        write=True, **kwargs):
+    def add(
+        self,
+        uuid: Union[str,None]=None,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        write: bool=True,
+        **kwargs,
+        ):
         """ Should be called from child class to add object. """
         if uuid is not None:
             self.uuid = uuid
@@ -1611,8 +1665,13 @@ class OTPmeBaseObject(OTPmeLockObject):
             return self._write(callback=callback)
         return self._cache(callback=callback)
 
-    def delete(self, force=False, verbose_level=0,
-        callback=default_callback, **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Delete object from backend. """
         msg = "Deleting object: %s" % self.oid
         logger.debug(msg)
@@ -1644,7 +1703,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         logger.debug(msg)
         self.last_used = int(time.time())
 
-    def get_last_used_time(self, return_type="epoch"):
+    def get_last_used_time(self, return_type: str="epoch"):
         """ Get last_used time of this object. """
         last_used = self.last_used
         if return_type == "date":
@@ -1656,7 +1715,7 @@ class OTPmeBaseObject(OTPmeLockObject):
                 logger.warning(msg, exc_info=True)
         return last_used
 
-    def is_special_object(self, return_true_false=True):
+    def is_special_object(self, return_true_false: bool=True):
         """ Check if object is a base or internal object. """
         base_object, \
         internal_object = cli.check_special_object(self.type, self.name)
@@ -1668,11 +1727,22 @@ class OTPmeBaseObject(OTPmeLockObject):
             return True
         return False
 
+@match_class_typing
 class OTPmeObject(OTPmeBaseObject):
     """ Generic OTPme object. """
-    def __init__(self, object_id=None, realm=None, site=None,
-        unit=None, name=None, path=None, object_config=None,
-        template=False, dummy=False, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        name: Union[str,None]=None,
+        path: Union[str,None]=None,
+        object_config: Union[ObjectConfig,dict,None]=None,
+        template: bool=False,
+        dummy: bool=False,
+        **kwargs,
+        ):
         # Call parent class init.
         super(OTPmeObject, self).__init__(object_config=object_config, **kwargs)
 
@@ -1910,8 +1980,7 @@ class OTPmeObject(OTPmeBaseObject):
                     if not site_oid:
                         msg = (_("Unknown site '%s'.") % self.site)
                         raise OTPmeException(msg)
-                    site_uuid = backend.get_uuid(site_oid)
-                    self.site_uuid = site_uuid
+                    self.site_uuid = stuff.resolve_oid(site_oid)
                 else:
                     self.site_uuid = config.site_uuid
 
@@ -1919,8 +1988,14 @@ class OTPmeObject(OTPmeBaseObject):
             msg = (_("Invalid name: %s") % self.name)
             raise OTPmeException(msg)
 
-    def set_oid(self, new_oid=None, switch_lock=False,
-        lock_caller=None, callback=default_callback, **kwargs):
+    def set_oid(
+        self,
+        new_oid: Union[oid.OTPmeOid,None]=None,
+        switch_lock: bool=False,
+        lock_caller: str=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Set our OID. """
         # Without lock nothing to switch.
         if not self._object_lock:
@@ -1965,22 +2040,22 @@ class OTPmeObject(OTPmeBaseObject):
         # Finally set new OID.
         self.oid = new_oid
 
-    def set_resolver(self, resolver):
+    def set_resolver(self, resolver: str):
         """ Set resolver. """
         self.resolver = resolver
         self.update_index('resolver', self.resolver)
 
-    def set_resolver_key(self, resolver_key):
+    def set_resolver_key(self, resolver_key: str):
         """ Set resolver key. """
         self.resolver_key = resolver_key
         self.update_index('resolver_key', self.resolver_key)
 
-    def set_resolver_checksum(self, resolver_checksum):
+    def set_resolver_checksum(self, resolver_checksum: str):
         """ Set resolver checksum. """
         self.resolver_checksum = resolver_checksum
         self.update_index('resolver_checksum', self.resolver_checksum)
 
-    def _load(self, read_from_cache=True, no_update=False):
+    def _load(self, no_update: bool=False):
         """ Load object config from backend. """
         # Call base class write method.
         result = super(OTPmeObject, self)._load()
@@ -1988,7 +2063,7 @@ class OTPmeObject(OTPmeBaseObject):
         self.preload_extensions()
         return result
 
-    def exists(self, run_policies=True):
+    def exists(self, run_policies: bool=True):
         """ Check if object exists. """
         if self.object_config:
             object_exists = backend.object_exists(self.oid)
@@ -2031,7 +2106,7 @@ class OTPmeObject(OTPmeBaseObject):
         return self._enabled
 
     @enabled.setter
-    def enabled(self, enabled):
+    def enabled(self, enabled: bool):
         self._enabled = enabled
 
     @property
@@ -2065,7 +2140,7 @@ class OTPmeObject(OTPmeBaseObject):
         return valid_config_params
 
     @config_cache.cache_method()
-    def get_config_parameter(self, parameter):
+    def get_config_parameter(self, parameter: str):
         """ Get config parameter. """
         # Try to get the default value.
         try:
@@ -2098,8 +2173,14 @@ class OTPmeObject(OTPmeBaseObject):
 
         return value
 
-    def set_config_param(self, parameter, value=None,
-        callback=default_callback, **kwargs):
+    @check_acls(acls=['edit:config'])
+    def set_config_param(
+        self,
+        parameter: str,
+        value: Union[str,int,float,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Set config parameter. """
         try:
             value_type = config.valid_config_params[parameter]['type']
@@ -2363,8 +2444,14 @@ class OTPmeObject(OTPmeBaseObject):
             }
         return base_config
 
-    def acquire_lock(self, lock_caller, recursive=False,
-        skip_same_caller=False, callback=default_callback, **kwargs):
+    def acquire_lock(
+        self,
+        lock_caller: str,
+        recursive: bool=False,
+        skip_same_caller: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Acquire object lock. """
         if self.offline:
             return
@@ -2379,8 +2466,13 @@ class OTPmeObject(OTPmeBaseObject):
                                 skip_same_caller=skip_same_caller,
                                 callback=callback)
 
-    def acquire_child_locks(self, lock_caller, skip_same_caller=False,
-        callback=default_callback, _caller="API"):
+    def acquire_child_locks(
+        self,
+        lock_caller: str,
+        skip_same_caller: bool=False,
+        callback: JobCallback=default_callback,
+        _caller="API",
+        ):
         """ Lock all child objects. """
         # Lock all child objects.
         child_objects = self.get_members(return_type="instance", recursive=True)
@@ -2391,7 +2483,13 @@ class OTPmeObject(OTPmeBaseObject):
                                 callback=callback)
                 self.child_locks.append(x)
 
-    def release_lock(self, lock_caller=None, recursive=False, callback=None, **kwargs):
+    def release_lock(
+        self,
+        lock_caller: str=None,
+        recursive: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Release object lock. """
         # Remove child locks.
         if recursive:
@@ -2400,7 +2498,11 @@ class OTPmeObject(OTPmeBaseObject):
         super(OTPmeObject, self).release_lock(lock_caller=lock_caller,
                                                 callback=callback, **kwargs)
 
-    def release_child_locks(self, lock_caller, callback=default_callback):
+    def release_child_locks(
+        self,
+        lock_caller: str,
+        callback: JobCallback=default_callback,
+        ):
         """ Release lock of all child objects. """
         # Release child objects.
         for x in list(self.child_locks):
@@ -2454,7 +2556,7 @@ class OTPmeObject(OTPmeBaseObject):
         auto_revoke = self.get_config_parameter("auto_revoke")
         return auto_revoke
 
-    def acquire_cached_lock(self, callback=default_callback):
+    def acquire_cached_lock(self, callback: JobCallback=default_callback):
         """ Acquire cached lock. """
         self.acquire_lock(lock_caller="cached",
                         skip_same_caller=True,
@@ -2462,7 +2564,7 @@ class OTPmeObject(OTPmeBaseObject):
         # Add object to callback (used after job has finished).
         callback.add_locked_object(self)
 
-    def _cache(self, callback=default_callback):
+    def _cache(self, callback: JobCallback=default_callback):
         """ Mark object changes to be written on next write. """
         # Mark object as modified.
         self._modified = True
@@ -2483,8 +2585,12 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok()
 
     @object_lock()
-    def _write(self, update_last_modified=True,
-        callback=default_callback, **kwargs):
+    def _write(
+        self,
+        update_last_modified: bool=True,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Write object config to backend. """
         if not self.offline:
             if not self._object_lock:
@@ -2552,8 +2658,14 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok()
 
     @check_acls(acls=['export'])
-    def export_config(self, run_policies=True, password=None,
-        _caller="API", callback=default_callback, **kwargs):
+    def export_config(
+        self,
+        run_policies: bool=True,
+        password: str=None,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Export object config. """
         if not self.exists():
             msg = (_("Object '%s' does not exist.") % self.oid)
@@ -2594,7 +2706,11 @@ class OTPmeObject(OTPmeBaseObject):
         """ Dummy method, to be overridden by child class. """
         return []
 
-    def get_parent_object(self, run_policies=True, callback=default_callback):
+    def get_parent_object(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        ):
         """ Get parent object of this object (e.g. its unit). """
         parent_type = "unit"
         parent_uuid = self.unit_uuid
@@ -2621,7 +2737,11 @@ class OTPmeObject(OTPmeBaseObject):
 
         return parent_object
 
-    def preload_extensions(self, verbose_level=0, callback=default_callback):
+    def preload_extensions(
+        self,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        ):
         """ Preload all extensions for this object. """
         from otpme.lib.extensions import utils
         # Empty extensions stuff.
@@ -2632,7 +2752,11 @@ class OTPmeObject(OTPmeBaseObject):
             _e.preload(self)
             self._extensions[_e.name] = _e
 
-    def load_extensions(self, verbose_level=0, callback=default_callback):
+    def load_extensions(
+        self,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        ):
         """ Load all extensions for this object. """
         from otpme.lib.extensions import utils
         # Empty extensions stuff.
@@ -2655,9 +2779,16 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['add:extension'])
     @object_lock()
-    def add_extension(self, extension, default_attributes={},
-        run_policies=True, verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def add_extension(
+        self,
+        extension: str,
+        default_attributes: dict={},
+        run_policies: bool=True,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add OTPme extension to object. """
         if extension in self.extensions:
             msg = (_("Extension already enabled for this object."))
@@ -2712,9 +2843,15 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['remove:extension'])
     @object_lock()
-    def remove_extension(self, extension, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def remove_extension(
+        self,
+        extension: str,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Remove OTPme extension from object. """
         if not extension in self.extensions:
             msg = ("Extension not enabled for this object.")
@@ -2764,8 +2901,13 @@ class OTPmeObject(OTPmeBaseObject):
     #    return self._update_extensions(hook, callback=callback, **kwargs)
 
     #@object_lock()
-    def update_extensions(self, hook, extensions=None,
-        fail_on_unknown_hook=False, **kwargs):
+    def update_extensions(
+        self,
+        hook: str,
+        extensions: list=None,
+        fail_on_unknown_hook: bool=False,
+        **kwargs,
+        ):
         """ Update OTPme extensions. """
         # Get callback.
         try:
@@ -2895,8 +3037,14 @@ class OTPmeObject(OTPmeBaseObject):
 
         return update_status, updated_childs
 
-    def _add_extension_attribute(self, extension, attribute,
-        value, auto_value=False, callback=default_callback):
+    def _add_extension_attribute(
+        self,
+        extension: str,
+        attribute: str,
+        value: Union[str,int,float],
+        auto_value: bool=False,
+        callback: JobCallback=default_callback,
+        ):
         """ Add extension attribute. """
         if not extension in self.extension_attributes:
             self.extension_attributes[extension] = {}
@@ -2919,8 +3067,13 @@ class OTPmeObject(OTPmeBaseObject):
         self.extension_attributes[extension][attribute][value]['auto'] = auto_value
         return self._cache(callback=callback)
 
-    def _del_extension_attribute(self, extension, attribute,
-        value=None, callback=default_callback):
+    def _del_extension_attribute(
+        self,
+        extension: str,
+        attribute: str,
+        value: Union[str,int,float,None]=None,
+        callback: JobCallback=default_callback,
+        ):
         """ Delete extension attribute. """
         if value is None:
             try:
@@ -2934,8 +3087,13 @@ class OTPmeObject(OTPmeBaseObject):
             return
         return self._cache(callback=callback)
 
-    def get_extension_attribute(self, extension, attribute,
-        auto_value=None, callback=default_callback):
+    def get_extension_attribute(
+        self,
+        extension: str,
+        attribute: str,
+        auto_value: bool=None,
+        callback: JobCallback=default_callback,
+        ):
         """ Get extension attribute values. """
         # NOTE: We have to handle JSONs inablity to have str dict keys!
         attr_values = []
@@ -2952,8 +3110,12 @@ class OTPmeObject(OTPmeBaseObject):
             attr_values.append(x_val)
         return attr_values
 
-    def get_extension_attributes(self, extension,
-        auto_value=None, callback=default_callback):
+    def get_extension_attributes(
+        self,
+        extension: str,
+        auto_value: bool=None,
+        callback: JobCallback=default_callback,
+        ):
         """ Get extension attributes. """
         try:
             x_attrs = self.extension_attributes[extension]
@@ -2972,9 +3134,17 @@ class OTPmeObject(OTPmeBaseObject):
         return attr_list
 
     @object_lock()
-    def add_sync_user(self, user_name, force=False, run_policies=True,
-        verify_acls=True, _caller="API", verbose_level=0,
-        callback=default_callback, **kwargs):
+    def add_sync_user(
+        self,
+        user_name: str,
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Adds user to object. """
         if self.sync_users is None:
             msg = (_("Object does not support users."))
@@ -3021,9 +3191,17 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
-    def remove_sync_user(self, user_name, force=False, verify_acls=True,
-        run_policies=True, verbose_level=0,
-        callback=default_callback, _caller="API", **kwargs):
+    def remove_sync_user(
+        self,
+        user_name: str,
+        force: bool=False,
+        verify_acls: bool=True,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Removes user from objects members list. """
         if self.sync_users is None:
             msg = (_("Object does not support users."))
@@ -3072,9 +3250,17 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock()
     @cli.check_rapi_opts()
-    def add_role(self, role_name=None, role_uuid=None, verify_acls=True,
-        run_policies=True, verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def add_role(
+        self,
+        role_name: str=None,
+        role_uuid: str=None,
+        verify_acls: bool=True,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Adds a role to objects member roles list. """
         if self.roles is None:
             msg = (_("Object does not support roles."))
@@ -3163,8 +3349,16 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
-    def remove_role(self, role_name, verify_acls=True, run_policies=True,
-        verbose_level=0, _caller="API", callback=default_callback, **kwargs):
+    def remove_role(
+        self,
+        role_name: str,
+        verify_acls: bool=True,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Removes a role from objects member roles list. """
         if self.roles is None:
             msg = (_("Object does not support roles."))
@@ -3228,10 +3422,22 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
-    def add_token(self, token_path, token_options=None, login_interfaces=[],
-        force=False, run_policies=True, verify_acls=True, auto_sign=None,
-        sign=False, tags=None, _caller="API", verbose_level=0,
-        callback=default_callback, **kwargs):
+    def add_token(
+        self,
+        token_path: str,
+        token_options: dict=None,
+        login_interfaces: List=[],
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        auto_sign: Union[bool,None]=None,
+        sign: bool=False,
+        tags: str=None,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Adds a token to objects member tokens list. """
         if self.tokens is None:
             msg = (_("Object does not support tokens."))
@@ -3495,9 +3701,18 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
-    def remove_token(self, token_path, keep_sign=False, force=False,
-        verify_acls=True, run_policies=True, verbose_level=0,
-        callback=default_callback, _caller="API", **kwargs):
+    def remove_token(
+        self,
+        token_path: str,
+        keep_sign: bool=False,
+        force: bool=False,
+        verify_acls: bool=True,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Removes a token from objects member tokens list. """
         if self.tokens is None:
             msg = (_("Object does not support tokens."))
@@ -3591,8 +3806,16 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock()
     @check_acls(['add:dynamic_groups'])
-    def add_dynamic_group(self, group_name, force=False, run_policies=True,
-        _caller="API", verbose_level=0, callback=default_callback, **kwargs):
+    def add_dynamic_group(
+        self,
+        group_name: str,
+        force: bool=False,
+        run_policies: bool=True,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Adds dynamic group to object. """
         if self.dynamic_groups is None:
             msg = (_("Object does not support dynamic groups."))
@@ -3623,8 +3846,16 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock()
     @check_acls(['remove:dynamic_groups'])
-    def remove_dynamic_group(self, group_name, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback, _caller="API", **kwargs):
+    def remove_dynamic_group(
+        self,
+        group_name: str,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Removes dynamic group from object. """
         if self.dynamic_groups is None:
             msg = (_("Object does not support dynamic groups."))
@@ -3654,9 +3885,15 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['add:policy'])
     @object_lock()
-    def add_policy(self, policy_name, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def add_policy(
+        self,
+        policy_name: str,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Add OTPme policy to object. """
         if self.type == "site":
             object_site = self.name
@@ -3719,8 +3956,13 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    def update_policy(self, policy_name, verbose_level=0,
-        callback=default_callback, **kwargs):
+    def update_policy(
+        self,
+        policy_name: str,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Update OTPme policy of object. """
         # Get policy.
         result = backend.search(object_type="policy",
@@ -3749,9 +3991,15 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['remove:policy'])
     @object_lock()
-    def remove_policy(self, policy_name, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def remove_policy(
+        self,
+        policy_name: str,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Remove OTPme policy from object. """
         result = backend.search(object_type="policy",
                                 attribute="name",
@@ -3790,9 +4038,18 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    def get_policies(self, policy_type=None, policy_types=None, hook=None,
-        child_object=None, return_type="uuid", ignore_hooks=False,
-        _caller="API", callback=default_callback, **kwargs):
+    def get_policies(
+        self,
+        policy_type: Union[str,None]=None,
+        policy_types: Union[List,None]=None,
+        hook: Union[str,None]=None,
+        child_object: Union[OTPmeBaseObject,None]=None,
+        return_type: str="uuid",
+        ignore_hooks: bool=False,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get policies enabled for this object. """
         if not backend.is_available():
             raise BackendUnavailable("Backend not available.")
@@ -3892,9 +4149,18 @@ class OTPmeObject(OTPmeBaseObject):
 
         return callback.ok(result)
 
-    def run_policies(self, hook_name=None, token=None, child_object=None,
-        policy_type=None, ignore_policy_types=[], force=False,
-        callback=default_callback, _caller="API", **kwargs):
+    def run_policies(
+        self,
+        hook_name: str=None,
+        token: OTPmeBaseObject=None,
+        child_object: OTPmeBaseObject=None,
+        policy_type: str=None,
+        ignore_policy_types: List=[],
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Run policies for the given hook. """
         # We need to get arguments via local() before assigning any other vars.
         args = locals()
@@ -3969,9 +4235,15 @@ class OTPmeObject(OTPmeBaseObject):
         return success_policy_types
 
     @cli.check_rapi_opts()
-    def get_sync_users(self, return_type="name", skip_disabled=False,
-        include_roles=False, callback=default_callback,
-        _caller="API", **kwargs):
+    def get_sync_users(
+        self,
+        return_type: str="name",
+        skip_disabled: bool=False,
+        include_roles: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Get all users assigned to this object. """
         exception = None
         if not return_type in [ 'instance', 'uuid', 'oid', 'name', 'read_oid', 'full_oid']:
@@ -4031,9 +4303,15 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    def get_token_users(self, return_type="name", skip_disabled=False,
-        include_roles=False, callback=default_callback,
-        _caller="API", **kwargs):
+    def get_token_users(
+        self,
+        return_type: str="name",
+        skip_disabled: bool=False,
+        include_roles: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Get all users that have a token assigned to this object. """
         exception = None
         if not return_type in [ 'instance', 'uuid', 'oid', 'name', 'read_oid', 'full_oid']:
@@ -4084,10 +4362,19 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    def get_tokens(self, return_type="rel_path", token_types=None,
-        skip_disabled=True, include_roles=False, user_uuid=None,
-        include_options=False, include_login_interfaces=False,
-        callback=default_callback, _caller="API", **kwargs):
+    def get_tokens(
+        self,
+        return_type: str="rel_path",
+        token_types: Union[List,None]=None,
+        skip_disabled: bool=True,
+        include_roles: bool=False,
+        user_uuid: Union[str,None]=None,
+        include_options: bool=False,
+        include_login_interfaces: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Get all tokens tokens assigned to this object. """
         exception = None
         if not return_type in [ 'instance', 'uuid', 'oid', 'rel_path', 'read_oid', 'full_oid' ]:
@@ -4183,8 +4470,14 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(result)
 
     @cli.check_rapi_opts()
-    def get_roles(self, return_type="read_oid", _caller="API",
-        skip_disabled=True, callback=default_callback, **kwargs):
+    def get_roles(
+        self,
+        return_type: str="read_oid",
+        _caller: str="API",
+        skip_disabled: bool=True,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return list with all roles assigned to this object. """
         result = []
         if self.roles:
@@ -4218,7 +4511,11 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(result)
 
     @assigned_token_cache.cache_method()
-    def is_assigned_token(self, token_uuid, processed_roles=[]):
+    def is_assigned_token(
+        self,
+        token_uuid: str,
+        processed_roles: List=[],
+        ):
         if token_uuid in self.tokens:
             return True
         for role_uuid in self.roles:
@@ -4235,7 +4532,7 @@ class OTPmeObject(OTPmeBaseObject):
         return False
 
     @assigned_role_cache.cache_method()
-    def is_assigned_role(self, role_uuid):
+    def is_assigned_role(self, role_uuid: str):
         if role_uuid in self.roles:
             return True
         for x_uuid in self.roles:
@@ -4249,8 +4546,13 @@ class OTPmeObject(OTPmeBaseObject):
         return False
 
     @cli.check_rapi_opts()
-    def get_dynamic_groups(self, include_roles=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def get_dynamic_groups(
+        self,
+        include_roles: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return list with all dynamic groups assigned to this object. """
         if self.dynamic_groups is None:
             msg = "This object supports no dynamic groups."
@@ -4275,8 +4577,14 @@ class OTPmeObject(OTPmeBaseObject):
             result = "\n".join(result)
         return callback.ok(result)
 
-    def get_attribute(self, attribute, verbose_level=0,
-        verify_acls=False, callback=default_callback, **kwargs):
+    def get_attribute(
+        self,
+        attribute: str,
+        verbose_level: int=0,
+        verify_acls: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get object attribute. """
         # Handle base attributes.
         base_attributes = {
@@ -4310,9 +4618,17 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['add:attribute'])
     @object_lock()
-    def add_attribute(self, attribute, value=None, run_policies=True,
-        ignore_ro=False, verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def add_attribute(
+        self,
+        attribute: str,
+        value: Union[str,int,float,None]=None,
+        run_policies: bool=True,
+        ignore_ro: bool=False,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Add attribute to object. """
         if run_policies:
             try:
@@ -4371,9 +4687,18 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['edit:attribute'])
     @object_lock()
-    def modify_attribute(self, attribute, old_value, new_value,
-        run_policies=True, ignore_ro=False, verbose_level=0,
-        callback=default_callback, _caller="API", **kwargs):
+    def modify_attribute(
+        self,
+        attribute: str,
+        old_value: Union[str,int,float],
+        new_value: Union[str,int,float],
+        run_policies: bool=True,
+        ignore_ro: bool=False,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Add attribute to object. """
         if run_policies:
             try:
@@ -4432,10 +4757,18 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['delete:attribute'])
     @object_lock()
-    def del_attribute(self, attribute, value=None, run_policies=True,
-        ignore_ro=False, ignore_missing=False,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def del_attribute(
+        self,
+        attribute: str,
+        value: Union[str,int,float,None]=None,
+        run_policies: bool=True,
+        ignore_ro: bool=False,
+        ignore_missing: bool=False,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete attribute from object. """
         if run_policies:
             try:
@@ -4494,7 +4827,11 @@ class OTPmeObject(OTPmeBaseObject):
     #        attributes += e.get_attributes(self)
     #    return callback.ok("\n".join(attributes))
 
-    def list_valid_object_classes(self, callback=default_callback, **kwargs):
+    def list_valid_object_classes(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ List all valid object classes of object """
         valid_object_classes = []
         for x in self._extensions:
@@ -4503,7 +4840,11 @@ class OTPmeObject(OTPmeBaseObject):
         valid_object_classes.sort()
         return callback.ok("\n".join(valid_object_classes))
 
-    def list_valid_attributes(self, callback=default_callback, **kwargs):
+    def list_valid_attributes(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ List all valid attributes of object """
         valid_attributes = []
         for x in self._extensions:
@@ -4514,9 +4855,15 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['add:object_class'])
     @object_lock()
-    def add_object_class(self, object_class, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def add_object_class(
+        self,
+        object_class: str,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Add object_class to object """
         if run_policies:
             try:
@@ -4561,9 +4908,16 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['delete:object_class'])
     @object_lock()
-    def del_object_class(self, object_class=False, force=False,
-        run_policies=True, verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def del_object_class(
+        self,
+        object_class: bool=False,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Delete object class from object """
         if run_policies:
             try:
@@ -4610,7 +4964,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    def add_ldif(self, ldif):
+    def add_ldif(self, ldif: List):
         """ Add LDIF to object. """
         for x in ldif:
             a = x[0]
@@ -4632,7 +4986,7 @@ class OTPmeObject(OTPmeBaseObject):
         ldif_cache.invalidate()
         ldap_search_cache.invalidate()
 
-    def del_ldif(self, ldif):
+    def del_ldif(self, ldif: List):
         """ Del LDIF from object. """
         for x in ldif:
             a = x[0]
@@ -4656,7 +5010,7 @@ class OTPmeObject(OTPmeBaseObject):
         ldif_cache.invalidate()
         ldap_search_cache.invalidate()
 
-    def add_ldif_attributes(self, ldif):
+    def add_ldif_attributes(self, ldif: List):
         """ Add LDIF attributes to object. """
         for x in ldif:
             a = x[0]
@@ -4666,7 +5020,7 @@ class OTPmeObject(OTPmeBaseObject):
         ldif_cache.invalidate()
         ldap_search_cache.invalidate()
 
-    def del_ldif_attributes(self, ldif):
+    def del_ldif_attributes(self, ldif: List):
         """ Add LDIF attributes to object. """
         for x in ldif:
             a = x[0]
@@ -4677,8 +5031,13 @@ class OTPmeObject(OTPmeBaseObject):
         ldap_search_cache.invalidate()
 
     @ldif_cache.cache_method()
-    def get_ldif(self, _caller="API", verify_acls=True,
-        callback=default_callback, **kwargs):
+    def get_ldif(
+        self,
+        _caller: str="API",
+        verify_acls: bool=True,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return objects LDIF. """
         text = False
         if _caller == "CLIENT":
@@ -4691,7 +5050,12 @@ class OTPmeObject(OTPmeBaseObject):
                         **kwargs)
         return callback.ok(ldif)
 
-    def get_object_classes(self, _caller="API", callback=default_callback, **kwargs):
+    def get_object_classes(
+        self,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return objects LDIF object classes """
         if _caller == "CLIENT":
             ocs = "\n".join(self.object_classes)
@@ -4702,8 +5066,14 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['enable:object'])
     @check_special_user()
     @object_lock()
-    def enable(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable the object. """
         if self._enabled:
             object_type = "%s%s" % (self.type[0].upper(), self.type[1:])
@@ -4746,8 +5116,14 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['disable:object'])
     @object_lock()
-    def disable(self, force=False, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def disable(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Disable the object. """
         if not force:
             if config.auth_token:
@@ -4802,8 +5178,14 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
-    def enable_acl_inheritance(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_acl_inheritance(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable ACL inheritance for the object """
         if self.acl_inheritance_enabled is None:
             return callback.error("Object cannot inherit ACLs.")
@@ -4841,8 +5223,14 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
-    def disable_acl_inheritance(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_acl_inheritance(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable ACL inheritance for the object """
         if self.acl_inheritance_enabled is None:
             return callback.error("Object cannot inherit ACLs.")
@@ -4879,12 +5267,22 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    def verify_acl(self, acl, **kwargs):
+    def verify_acl(
+        self,
+        acl: str,
+        **kwargs,
+        ):
         """ Wrapper class that may be overridden by child class """
         return self._verify_acl(acl, **kwargs)
 
-    def _verify_acl(self, acl, need_exact_acl=False,
-        check_admin_user=True, check_admin_role=True, auth_token=None):
+    def _verify_acl(
+        self,
+        acl: str,
+        need_exact_acl: bool=False,
+        check_admin_user: bool=True,
+        check_admin_role: bool=True,
+        auth_token: Union[OTPmeBaseObject,None]=None,
+        ):
         """ Check if current user is authorized by the given ACL """
         # Site admins should not have access to realm, site or admin token
         # without ACL check.
@@ -4901,8 +5299,14 @@ class OTPmeObject(OTPmeBaseObject):
                                     auth_token=auth_token)
         return result
 
-    def get_acl_apply_ids(self, acl, inherit=False,
-        callback=default_callback, _caller="API", **kwargs):
+    def get_acl_apply_ids(
+        self,
+        acl: OTPmeACL,
+        inherit: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Get normal and recursive apply IDs. """
         # Default apply IDs.
         apply_id = None
@@ -4944,8 +5348,13 @@ class OTPmeObject(OTPmeBaseObject):
 
         return apply_id, recursive_apply_id
 
-    def check_supported_acl(self, acl, _caller="API",
-        callback=default_callback, **kwargs):
+    def check_supported_acl(
+        self,
+        acl: OTPmeACL,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Check if the given ACL is supported by this object. """
         acl_types = ['acls']
         if acl.default:
@@ -4961,8 +5370,13 @@ class OTPmeObject(OTPmeBaseObject):
         return False
 
     @supported_acls_cache.cache_method()
-    def get_supported_acls(self, acl_types=['acls'], _caller="API",
-        callback=default_callback, **kwargs):
+    def get_supported_acls(
+        self,
+        acl_types: List=['acls'],
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get all supported ACLs of object """
         from otpme.lib.extensions import utils
         acls = []
@@ -5050,8 +5464,15 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(acls)
 
     @object_lock()
-    def inherit_default_acl(self, acl, force=False, verify_acls=True,
-        verbose_level=0, callback=default_callback, **kwargs):
+    def inherit_default_acl(
+        self,
+        acl: OTPmeACL,
+        force: bool=False,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Inherit default ACL from parent object. """
         exception = None
 
@@ -5112,8 +5533,15 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok()
 
     @object_lock()
-    def disinherit_default_acl(self, acl, force=False, verify_acls=True,
-        verbose_level=0, callback=default_callback, **kwargs):
+    def disinherit_default_acl(
+        self,
+        acl: OTPmeACL,
+        force: bool=False,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Disinherit default ACL from parent object. """
         exception = None
         # Skip normal ACLs.
@@ -5175,8 +5603,16 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok()
 
     @object_lock()
-    def inherit_acls(self, parent_object=None, remove=False, force=False,
-        verify_acls=True, verbose_level=0, callback=default_callback, **kwargs):
+    def inherit_acls(
+        self,
+        parent_object: Union[OTPmeBaseObject,None]=None,
+        remove: bool=False,
+        force: bool=False,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Inherit ACLs from parent object. """
         exception = None
 
@@ -5225,8 +5661,13 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok()
 
     @check_acls(acls=['view:acl'])
-    def get_acls(self, run_policies=True, _caller="API",
-        callback=default_callback, **kwargs):
+    def get_acls(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get ACLs of object. """
         if run_policies:
             try:
@@ -5282,7 +5723,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         return callback.ok(acls)
 
-    def _handle_acl(self, action, acl, callback=default_callback, **kwargs):
+    def _handle_acl(self, *args, callback=default_callback, **kwargs):
         """ Should be overridden by child class. """
         return callback.ok()
 
@@ -5338,11 +5779,25 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock()
     @one_time_policy_run
-    def handle_acl(self, action, acl, owner_type=None, owner_name=None,
-        owner_uuid=None, object_types=[], recursive_acls=False,
-        apply_default_acls=False, _acl_objects=[], force=False,
-        verify_acls=True, run_policies=True, verbose_level=0,
-        callback=default_callback, _caller="API", **kwargs):
+    def handle_acl(
+        self,
+        action: str,
+        acl: str,
+        owner_type: Union[str,None]=None,
+        owner_name: Union[str,None]=None,
+        owner_uuid: Union[str,None]=None,
+        object_types: Union[List,None]=[],
+        recursive_acls: bool=False,
+        apply_default_acls: bool=False,
+        _acl_objects: List=[],
+        force: bool=False,
+        verify_acls: bool=True,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Handle ACL add/del. """
         raw_acl = None
         valid_acl = True
@@ -5614,9 +6069,15 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(['edit:auto_disable'])
     @object_lock()
     @backend.transaction
-    def change_auto_disable(self, auto_disable, unused=False,
-        run_policies=True, callback=default_callback,
-        _caller="API", **kwargs):
+    def change_auto_disable(
+        self,
+        auto_disable: Union[str, int],
+        unused: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change auto disable value. """
         if auto_disable != 0:
             try:
@@ -5648,9 +6109,15 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['edit:secret'])
     @object_lock(full_lock=True)
-    def change_secret(self, auto_secret=False, secret=False,
-        run_policies=True, callback=default_callback,
-        _caller="API", **kwargs):
+    def change_secret(
+        self,
+        secret: str=None,
+        auto_secret: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change object secret """
         if run_policies:
             try:
@@ -5725,8 +6192,13 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @check_acls(acls=['view_all:secret'])
-    def show_secret(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def show_secret(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Show object secret. """
         if run_policies:
             try:
@@ -5742,7 +6214,11 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error()
         return callback.ok(self.secret)
 
-    def get_cert(self, callback=default_callback, **kwargs):
+    def get_cert(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return certificate as base64. """
         if not self.cert:
             msg = (_("%s does not have a certificate.") % self.name)
@@ -5750,9 +6226,14 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(self.cert)
 
     @check_acls(acls=['view_all:cert_key'])
-    def get_cert_key(self, passphrase=None,
-        run_policies=True, callback=default_callback,
-        _caller="API", **kwargs):
+    def get_cert_key(
+        self,
+        passphrase: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Return private key. optionally encrypted with <passphrase>. """
         if not self.key:
             msg = (_("%s does not have a private key.") % self.name)
@@ -5773,7 +6254,12 @@ class OTPmeObject(OTPmeBaseObject):
             key = self.key
         return callback.ok(key)
 
-    def get_ca_chain(self, crl=None, callback=default_callback, **kwargs):
+    def get_ca_chain(
+        self,
+        crl: str=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return CA chain needed to verify object certificate. """
         from otpme.lib.pki import utils
         if not self.cert:
@@ -5787,7 +6273,13 @@ class OTPmeObject(OTPmeBaseObject):
     # Besides we dont need a transaction for object moves it keeps object
     # locks longer than needed and slows down other jobs while moving.
     #@backend.transaction
-    def move(self, new_unit, force=False, callback=default_callback, **kwargs):
+    def move(
+        self,
+        new_unit: str,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change object unit. """
         lock_caller = "move"
         if new_unit == "":
@@ -5838,8 +6330,17 @@ class OTPmeObject(OTPmeBaseObject):
             _new_unit.release_lock(lock_caller=lock_caller)
         return move_result
 
-    def _move(self, new_unit, lock_caller, run_policies=True, keep_acls=None,
-        verbose_level=0, callback=default_callback, _caller="API", **kwargs):
+    def _move(
+        self,
+        new_unit: OTPmeBaseObject,
+        lock_caller: str,
+        run_policies: bool=True,
+        keep_acls: bool=None,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change object unit. """
         if run_policies:
             try:
@@ -5982,8 +6483,15 @@ class OTPmeObject(OTPmeBaseObject):
         return self._write(callback=callback)
 
     @object_lock(full_lock=True)
-    def change_script(self, script_var, script_options_var,
-        script=None, script_options=None, callback=default_callback, **kwargs):
+    def change_script(
+        self,
+        script_var: str,
+        script_options_var: str,
+        script: Union[str,None]=None,
+        script_options: Union[List,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Change the given script and its options. """
         # Get current script and script options.
         cur_script = getattr(self, script_var)
@@ -6025,12 +6533,18 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    def get_sign_data(self, callback=default_callback, **kwargs):
+    def get_sign_data(self, callback: JobCallback=default_callback, **kwargs):
         """ Dummy method to get sign data from object. """
         return callback.error("Object not signable.")
 
-    def get_sign_users(self, username=None, user_uuid=None,
-        verbose_level=0, callback=default_callback, **kwargs):
+    def get_sign_users(
+        self,
+        username: Union[str,None]=None,
+        user_uuid: Union[str,None]=None,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """
         Get user instance(s) that signed this object. If 'username' is given
         only the instance of this user is returned if there is a valid signature
@@ -6097,8 +6611,15 @@ class OTPmeObject(OTPmeBaseObject):
         return default_tags
 
     @object_lock(full_lock=True)
-    def resign(self, force=False, run_policies=False, verbose_level=0,
-        callback=default_callback, _caller="API", **kwargs):
+    def resign(
+        self,
+        force: bool=False,
+        run_policies: bool=False,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Resign all signatures of the current auth user.. """
         if not config.auth_token:
             msg = "Not logged in."
@@ -6135,13 +6656,19 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok()
 
     @object_lock(full_lock=True)
-    def sign(self, tags=None, sign_ref=None, force=False, stdin_pass=False,
-        run_policies=True, callback=default_callback, _caller="API", **kwargs):
+    def sign(
+        self,
+        tags: List=None,
+        sign_ref: str=None,
+        force: bool=False,
+        stdin_pass: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Sign the given object. """
         from otpme.lib.classes.signing import OTPmeSignature
-        if tags and not isinstance(tags, list):
-            msg = (_("<tags> must be list."))
-            return callback.error(msg)
 
         signer = config.auth_user
         if not signer:
@@ -6232,14 +6759,17 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Add signature to object.
         status = self.add_sign(sig,
-                            tags=sign_tags,
                             force=force,
                             run_policies=run_policies,
                             callback=callback,
                             _caller=_caller)
         return status
 
-    def load_sign(self, user_uuid, sign_id):
+    def load_sign(
+        self,
+        user_uuid: str,
+        sign_id: str,
+        ):
         """ Load signature object. """
         from otpme.lib.classes.signing import OTPmeSignature
         signature = self.signatures[user_uuid][sign_id]['signature']
@@ -6248,9 +6778,15 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['add:signature'])
     @object_lock()
-    def add_sign(self, signature, tags=None, force=False,
-        run_policies=True, callback=default_callback,
-        _caller="API", **kwargs):
+    def add_sign(
+        self,
+        signature: object,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Add signature to object. """
         from otpme.lib.classes.signing import OTPmeSignature
         if not config.auth_token:
@@ -6336,9 +6872,17 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['delete:signature'])
     @object_lock()
-    def del_sign(self, username=None, user_uuid=None, tags=None,
-        sign_id=None, run_policies=True, _caller="API",
-        callback=default_callback, **kwargs):
+    def del_sign(
+        self,
+        username: Union[str,None]=None,
+        user_uuid: Union[str,None]=None,
+        tags: Union[List,None]=None,
+        sign_id: Union[str,None]=None,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Delete object signature. """
         if not self.signable:
             return callback.error(_("Object is not signable."))
@@ -6433,9 +6977,19 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
-    def verify_sign(self, signature=None, sign_id=None, username=None,
-        user_uuid=None, tags=None, verify_acls=True, verbose_level=0,
-        _caller="API", callback=default_callback, **kwargs):
+    def verify_sign(
+        self,
+        signature: Union[str,None]=None,
+        sign_id: Union[str,None]=None,
+        username: Union[str,None]=None,
+        user_uuid: Union[str,None]=None,
+        tags: Union[List,str,None]=None,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Verify object signature(s). """
         from otpme.lib.classes.signing import resolve_tags
         if verify_acls:
@@ -6578,9 +7132,16 @@ class OTPmeObject(OTPmeBaseObject):
 
     # NOTE: No need to check ACLs for this method. Any user needs access
     #       to signatures, at least to verify them on key script execution.
-    def get_sign(self, username=None, user_uuid=None, tags=None,
-        verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def get_sign(
+        self,
+        username: Union[str,None]=None,
+        user_uuid: Union[str,None]=None,
+        tags: Union[List,None]=None,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return object signature(s). """
         try:
             user_list = self.get_sign_users(username=username,
@@ -6641,8 +7202,16 @@ class OTPmeObject(OTPmeBaseObject):
 
         return callback.ok(result)
 
-    def search_sign(self, username=None, user_uuid=None, tags=None,
-        sign_object=None, callback=default_callback, _caller="API", **kwargs):
+    def search_sign(
+        self,
+        username: Union[str,None]=None,
+        user_uuid: Union[str,None]=None,
+        tags: Union[List,None]=None,
+        sign_object: str=None,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Search signature by attr/value. """
         result = {}
         for signer_uuid in self.signatures:
@@ -6680,9 +7249,15 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['edit:description'])
     @object_lock()
-    def change_description(self, description=None,
-        run_policies=True, callback=default_callback,
-        verbose_level=0, _caller="API", **kwargs):
+    def change_description(
+        self,
+        description: str=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        verbose_level: int=0,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change object description. """
         if run_policies:
             try:
@@ -6712,7 +7287,7 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
-    def add_default_policies(self, callback=default_callback):
+    def add_default_policies(self, callback: JobCallback=default_callback):
         """ Add default policies to object. """
         # Sites do not inherit policies.
         if self.type == "site":
@@ -6755,8 +7330,15 @@ class OTPmeObject(OTPmeBaseObject):
                                 callback=callback)
         return self._cache(callback=callback)
 
-    def _run_parent_object_policies(self, policy_hook, parent_object=None,
-        child_object=None, callback=default_callback, _caller="API", **kwargs):
+    def _run_parent_object_policies(
+        self,
+        policy_hook: str,
+        parent_object: Union[OTPmeBaseObject,None]=None,
+        child_object: Union[OTPmeBaseObject,None]=None,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Run parent object policies (e.g. AuthOnAction()). """
         # Get parent object to check ACLs and run policies.
         if not parent_object:
@@ -6773,11 +7355,22 @@ class OTPmeObject(OTPmeBaseObject):
                                 _caller=_caller,
                                 **kwargs)
 
-    def _prepare_add(self, uuid=None, handle_uuid=True,
-        add_acl=None, verify_acls=True, need_exact_acl=False,
-        check_exists=True, policy_hook=None, run_policies=True,
-        template=None, callback=default_callback,
-        verbose_level=0, _caller="API", **kwargs):
+    def _prepare_add(
+        self,
+        uuid: Union[str,None]=None,
+        handle_uuid: bool=True,
+        add_acl: Union[str,None]=None,
+        verify_acls: bool=True,
+        need_exact_acl: bool=False,
+        check_exists: bool=True,
+        policy_hook: Union[str,None]=None,
+        run_policies: bool=True,
+        template: Union[OTPmeBaseObject,None]=None,
+        callback: JobCallback=default_callback,
+        verbose_level: int=0,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Will do some basic stuff like lock the object, verify ACLs etc. """
         if check_exists:
             realm = config.realm
@@ -6869,10 +7462,22 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock(full_lock=True)
     @load_object(force=False)
-    def add(self, creator=None, resolver=None, extensions=[], enabled=True,
-        default_attributes={}, inherit_acls=True, template=None,
-        template_object=False, verbose_level=0, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def add(
+        self,
+        creator: Union[str,None]=None,
+        resolver: Union[str,None]=None,
+        extensions: List=[],
+        enabled: bool=True,
+        default_attributes: dict={},
+        inherit_acls: bool=True,
+        template: Union[OTPmeBaseObject,None]=None,
+        template_object: bool=False,
+        verbose_level: int=0,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Should be called from child class to add default extensions etc. """
         # The resolver this object was added by.
         if resolver is not None:
@@ -7047,8 +7652,13 @@ class OTPmeObject(OTPmeBaseObject):
 
         return add_result
 
-    def _run_pre_add_policies(self, callback=default_callback,
-        verbose_level=0, _caller="API", **kwargs):
+    def _run_pre_add_policies(
+        self,
+        callback: JobCallback=default_callback,
+        verbose_level: int=0,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Run pre add policies (e.g. objecttemplates). """
         parent_object = self.get_parent_object()
         if not parent_object:
@@ -7061,8 +7671,13 @@ class OTPmeObject(OTPmeBaseObject):
                                         _caller=_caller,
                                         **kwargs)
 
-    def _run_post_add_policies(self, callback=default_callback,
-        verbose_level=0, _caller="API", **kwargs):
+    def _run_post_add_policies(
+        self,
+        callback: JobCallback=default_callback,
+        verbose_level: int=0,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Run post add policies (e.g defaultgroups). """
         # We have to run unit policies before adding an object e.g. to reauth.
         parent_object = self.get_parent_object()
@@ -7079,9 +7694,16 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['rename:object'])
     @object_lock(recursive=True, full_lock=True)
     @backend.transaction
-    def _rename(self, new_oid, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def _rename(
+        self,
+        new_oid: oid.OTPmeOid,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Rename object. """
         lock_caller = "_rename"
         if not self._object_lock:
@@ -7157,9 +7779,17 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, force=False, run_policies=True, add_to_trash=True,
-        deleted_by=None, verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        add_to_trash: bool=True,
+        deleted_by: Union[str,None]=None,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Delete object from backend. """
         if not self._object_lock:
             msg = "Cannot delete without object lock."
@@ -7228,8 +7858,13 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['remove:orphans'])
     @object_lock()
-    def remove_orphan_acls(self, force=False, verbose_level=0,
-        callback=default_callback, **kwargs):
+    def remove_orphan_acls(
+        self,
+        force: bool=False,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Remove orphan ACLs. """
         acl_list = self.get_orphan_acls()
 
@@ -7270,8 +7905,13 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['remove:orphans'])
     @object_lock()
-    def remove_orphan_policies(self, force=False, verbose_level=0,
-        callback=default_callback, **kwargs):
+    def remove_orphan_policies(
+        self,
+        force: bool=False,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Remove orphan policies. """
         policy_list = self.get_orphan_policies()
 
@@ -7316,8 +7956,13 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['remove:orphans'])
     @object_lock()
-    def remove_orphan_signatures(self, force=False, verbose_level=0,
-        callback=default_callback, **kwargs):
+    def remove_orphan_signatures(
+        self,
+        force: bool=False,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Remove orphan signatures. """
         if not self.signable:
             return callback.ok()
@@ -7356,7 +8001,12 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
-    def remove_orphans(self, force=False, callback=default_callback, **kwargs):
+    def remove_orphans(
+        self,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """
         Remove orphan UUIDs. This method could be overridden by the child class
         e.g. to remove orphan tokens. But then the child class must take care of
@@ -7374,12 +8024,20 @@ class OTPmeObject(OTPmeBaseObject):
             return_status = status
         return return_status
 
-    def show_config_parameters(self, callback=default_callback, **kwargs):
+    def show_config_parameters(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         result = self.config_params.copy()
         return callback.ok(result)
 
-    def show_config(self, config_lines=[],
-        callback=default_callback, **kwargs):
+    def show_config(
+        self,
+        config_lines: List=[],
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Show object config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")
@@ -7586,6 +8244,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         return callback.ok(output)
 
+@match_class_typing
 class OTPmeClientObject(OTPmeObject):
     """ OTPme client object class. """
     def __init__(self, *args, **kwargs):
@@ -7593,7 +8252,7 @@ class OTPmeClientObject(OTPmeObject):
         # Call parent class init.
         super(OTPmeClientObject, self).__init__(*args, **kwargs)
 
-    def _get_object_config(self, object_config=None):
+    def _get_object_config(self, object_config: Union[dict,None]=None):
         """ Get object config dict """
         base_config = {
                         'LOGINS_LIMITED'       : {
@@ -7625,8 +8284,13 @@ class OTPmeClientObject(OTPmeObject):
 
     @check_acls(['limit_logins'])
     @object_lock()
-    def limit_logins(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def limit_logins(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Limit logins. """
         if self.logins_limited:
             return callback.error(_("Logins already limited."))
@@ -7646,8 +8310,13 @@ class OTPmeClientObject(OTPmeObject):
 
     @check_acls(['unlimit_logins'])
     @object_lock()
-    def unlimit_logins(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def unlimit_logins(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Unlimit logins. """
         if not self.logins_limited:
             return callback.error(_("Logins already unlimited."))
@@ -7665,7 +8334,11 @@ class OTPmeClientObject(OTPmeObject):
         self.update_index('logins_limited', self.logins_limited)
         return self._cache(callback=callback)
 
-    def authorize_token(self, token, login_interface=None):
+    def authorize_token(
+        self,
+        token: OTPmeBaseObject,
+        login_interface: Union[str,None]=None,
+        ):
         """
         Check if given token is allowed to login to this host/node/client.
         """
@@ -7821,10 +8494,17 @@ class OTPmeClientObject(OTPmeObject):
             success_policy_types += role.run_policies("authorize",
                                                     token=token)
 
+@match_class_typing
 class OTPmeDataObject(OTPmeBaseObject):
     """ Generic OTPme object. """
-    def __init__(self, object_id=None, realm=None,
-        site=None, object_config=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        object_config: Union[ObjectConfig,dict,None]=None,
+        **kwargs,
+        ):
         # Call parent class init.
         super(OTPmeDataObject, self).__init__(object_config=object_config, **kwargs)
 
@@ -7912,7 +8592,11 @@ class OTPmeDataObject(OTPmeBaseObject):
         """ Not available for data objects. """
         return False
 
-    def exists(self, load_object=True, **kwargs):
+    def exists(
+        self,
+        load_object: bool=True,
+        **kwargs,
+        ):
         """ Check if object exists. """
         if not load_object:
             return backend.object_exists(self.oid)
@@ -7933,9 +8617,17 @@ class OTPmeDataObject(OTPmeBaseObject):
         return True
 
     @object_lock(full_lock=True)
-    def add(self, creator=None, resolver=None, extensions=[],
-        enabled=True, verbose_level=0, callback=default_callback,
-        write=True, **kwargs):
+    def add(
+        self,
+        creator: Union[str,None]=None,
+        resolver: Union[str,None]=None,
+        extensions: List=[],
+        enabled: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        write: bool=True,
+        **kwargs,
+        ):
         """ Add the object. """
         if backend.object_exists(self.oid):
             msg = (_("%s%s already exists.")

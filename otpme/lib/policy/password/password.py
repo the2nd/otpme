@@ -366,6 +366,8 @@ class PasswordPolicy(Policy):
 
     def check_pin(self, pin, callback=default_callback):
         """ Check if the given PIN is in the correct format """
+        # Make sure PIN is string.
+        pin = str(pin)
         pin_regex = '^[0-9]*$'
         pin_re = re.compile(pin_regex)
         if not pin_re.match(pin):

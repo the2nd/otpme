@@ -6,6 +6,9 @@ from fido2.utils import sha256
 from fido2.ctap1 import SignatureData
 from fido2.ctap1 import RegistrationData
 
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
+
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import padding
 
@@ -15,6 +18,7 @@ try:
 except:
     pass
 
+from otpme.lib import oid
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
@@ -22,6 +26,7 @@ from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.utils import register_commands
 
 from otpme.lib.classes.token \
@@ -168,11 +173,20 @@ def register_config_parameters():
                                     default_value=False,
                                     object_types=object_types)
 
+@match_class_typing
 class Fido2Token(Token):
     """ Class for fido2 tokens. """
     commands = commands
-    def __init__(self, object_id=None, user=None, name=None,
-        realm=None, site=None, path=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        user: Union[str,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        **kwargs,
+        ):
 
         # Call parent class init.
         super(Fido2Token, self).__init__(object_id=object_id,
@@ -201,6 +215,7 @@ class Fido2Token(Token):
         self.offline_expiry = 0
         self.offline_unused_expiry = 0
         self.keep_session = False
+        self.offline_pinnable = True
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
         self.supported_hardware_tokens = [ 'fido2' ]
 
@@ -247,7 +262,7 @@ class Fido2Token(Token):
         # read from config.
         Token.set_variables(self)
 
-    def get_offline_config(self, second_factor_usage=False):
+    def get_offline_config(self, second_factor_usage: bool=False):
         """ Get offline config of token. (e.g. without PIN). """
         offline_config = self.object_config.copy()
         # FIXME: implement self.allow_offline_rsp!!!
@@ -265,8 +280,12 @@ class Fido2Token(Token):
         return challenge, challenge_hash, challenge_hash_hex
 
     @object_lock(full_lock=True)
-    def pre_deploy(self, _caller="API",
-        verbose_level=0, callback=default_callback):
+    def pre_deploy(
+        self,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        ):
         """ Deploy fido2 token. """
         # Generate registration ID.
         self.reg_app_id = "https://%s" % self.realm
@@ -281,8 +300,13 @@ class Fido2Token(Token):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def deploy(self, registration_data, uv="discouraged", _caller="API",
-        verbose_level=0, callback=default_callback):
+    def deploy(
+        self,
+        registration_data: str,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        ):
         """ Deploy fido2 token. """
         # Generate app id hash.
         app_id_hash = sha256(self.reg_app_id.encode())
@@ -353,7 +377,12 @@ class Fido2Token(Token):
         msg = "Fido2 token deployed successful."
         return callback.ok(msg)
 
-    def test(self, force=False, callback=default_callback, **kwargs):
+    def test(
+        self,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Test token authentication. """
         # Get app ID.
         app_id = self.reg_app_id
@@ -393,7 +422,12 @@ class Fido2Token(Token):
         msg = "Token verified successful: %s" % self.rel_path
         return callback.ok(msg)
 
-    def verify(self, smartcard_data, callback=default_callback, **kwargs):
+    def verify(
+        self,
+        smartcard_data: dict,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Verify signature. """
         # Get challenge.
         challenge = smartcard_data['challenge']
@@ -423,7 +457,12 @@ class Fido2Token(Token):
         return True
 
     @object_lock(full_lock=True)
-    def _add(self, callback=default_callback, _caller="API", **kwargs):
+    def _add(
+        self,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Add a fido2 token. """
         if _caller == "CLIENT":
             return_message = (_("NOTE: You have to deploy this fido2 token to "
@@ -431,7 +470,7 @@ class Fido2Token(Token):
             return callback.ok(return_message)
         return callback.ok()
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

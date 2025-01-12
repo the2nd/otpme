@@ -3,6 +3,9 @@
 import os
 import time
 import datetime
+from typing import List
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -10,6 +13,7 @@ try:
 except:
     pass
 
+from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -21,6 +25,7 @@ from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.classes.otpme_object import OTPmeClientObject
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 
@@ -106,10 +111,19 @@ def get_default_acls(**kwargs):
 def get_recursive_default_acls(**kwargs):
     return _get_recursive_default_acls(recursive_default_acls, **kwargs)
 
+@match_class_typing
 class OTPmeHost(OTPmeClientObject):
     """ Generic OTPme host object """
-    def __init__(self, object_id=None, name=None, path=None,
-        unit=None, realm=None, site=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        name: Union[str,None]=None,
+        path: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        **kwargs,
+        ):
         # Call parent class init.
         super(OTPmeHost, self).__init__(object_id=object_id,
                                         realm=realm,
@@ -136,7 +150,7 @@ class OTPmeHost(OTPmeClientObject):
         self.private_key = None
         self.dynamic_groups = []
 
-    def _get_object_config(self, object_config=None):
+    def _get_object_config(self, object_config: Union[dict,None]=None):
         """ Get object config dict """
         base_config = {
                         'PUBLIC_KEY'                : {
@@ -272,7 +286,7 @@ class OTPmeHost(OTPmeClientObject):
         # Make sure name is a string and lowercase.
         self.name = str(name).lower()
 
-    def get_sync_parameters(self, realm, site, peer_uuid):
+    def get_sync_parameters(self, realm: str, site: str, peer_uuid: str):
         """ Get data to build sync list. """
         # Get peer.
         peer = backend.get_object(uuid=peer_uuid)
@@ -329,7 +343,7 @@ class OTPmeHost(OTPmeClientObject):
         if skip_per_site_users:
             skip_users += list(config.get_per_site_objects("user"))
         if skip_internal_users:
-            skip_users += config.get_internal_objects("user")
+            skip_users += list(config.get_internal_objects("user"))
         skip_users = list(set(skip_users))
 
         # Build sync parameters.
@@ -346,8 +360,14 @@ class OTPmeHost(OTPmeClientObject):
                     }
         return sync_params
 
-    def get_ssh_authorized_keys(self, user=None, verbose_level=0,
-        _caller="API", callback=default_callback, **kwargs):
+    def get_ssh_authorized_keys(
+        self,
+        user: Union[str,None]=None,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get authorized keys from all valid SSH tokens. """
         possible_tokens = {}
         if _caller == "API":
@@ -492,8 +512,13 @@ class OTPmeHost(OTPmeClientObject):
     @check_acls(['enable:jotp'])
     @object_lock()
     @backend.transaction
-    def enable_jotp(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_jotp(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable JOTP usage. """
         if self.jotp_enabled:
             return callback.error(_("JOTP already enabled."))
@@ -518,8 +543,13 @@ class OTPmeHost(OTPmeClientObject):
     @check_acls(['disable:jotp'])
     @object_lock()
     @backend.transaction
-    def disable_jotp(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_jotp(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable JOTP usage. """
         if not self.jotp_enabled:
             return callback.error(_("JOTP already disabled."))
@@ -539,8 +569,13 @@ class OTPmeHost(OTPmeClientObject):
     @check_acls(['enable:lotp'])
     @object_lock()
     @backend.transaction
-    def enable_lotp(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_lotp(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable LOTP usage. """
         if self.lotp_enabled:
             return callback.error(_("LOTP already enabled."))
@@ -565,8 +600,13 @@ class OTPmeHost(OTPmeClientObject):
     @check_acls(['disable:lotp'])
     @object_lock()
     @backend.transaction
-    def disable_lotp(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_lotp(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable LOTP usage. """
         if not self.lotp_enabled:
             return callback.error(_("LOTP already disabled."))
@@ -586,8 +626,13 @@ class OTPmeHost(OTPmeClientObject):
     @check_acls(['enable:jotp_rejoin'])
     @object_lock()
     @backend.transaction
-    def enable_jotp_rejoin(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_jotp_rejoin(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable JOTP rejoining. """
         if self.allow_jotp_rejoin:
             return callback.error(_("LOTP rejoin already enabled."))
@@ -612,8 +657,13 @@ class OTPmeHost(OTPmeClientObject):
     @check_acls(['disable:jotp_rejoin'])
     @object_lock()
     @backend.transaction
-    def disable_jotp_rejoin(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_jotp_rejoin(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable JOTP rejoining. """
         if not self.allow_jotp_rejoin:
             return callback.error(_("LOTP rejoin already disabled."))
@@ -634,8 +684,14 @@ class OTPmeHost(OTPmeClientObject):
     @check_acls(['edit:public_key'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def change_public_key(self, public_key=None, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_public_key(
+        self,
+        public_key: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change host public key. """
         if run_policies:
             try:
@@ -666,8 +722,13 @@ class OTPmeHost(OTPmeClientObject):
     @check_acls(['revoke:cert'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def revoke_cert(self, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def revoke_cert(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Revoke our certificate. """
         if self.cert is None:
             return callback.error("Host does not have a certificate.")
@@ -714,8 +775,16 @@ class OTPmeHost(OTPmeClientObject):
     @check_acls(['renew:cert'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def renew_cert(self, cert_req, cert_valid=None, run_policies=True,
-        verbose_level=0, _caller="API", callback=default_callback, **kwargs):
+    def renew_cert(
+        self,
+        cert_req: str,
+        cert_valid: Union[int,None]=None,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Renew our certificate. """
         # Make sure we got a CSR with the correct FQDN.
         try:
@@ -805,7 +874,7 @@ class OTPmeHost(OTPmeClientObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def gen_auth_key(self, callback=default_callback, **kwargs):
+    def gen_auth_key(self, callback: JobCallback=default_callback, **kwargs):
         """ Generate host auth key pair. """
         _host_key = RSAKey(bits=config.default_host_auth_key_len)
         self.public_key = _host_key.public_key_base64
@@ -813,7 +882,7 @@ class OTPmeHost(OTPmeClientObject):
         self._cache(callback=callback)
         return private_key
 
-    def load_auth_key(self, private=False):
+    def load_auth_key(self, private: bool=False):
         """ Load host auth key. """
         if private:
             msg = (_("Unable to load %s auth key: This is not %s %s")
@@ -850,7 +919,7 @@ class OTPmeHost(OTPmeClientObject):
         challenge = "%s:%s" % (epoch_time, nonce)
         return challenge
 
-    def sign_challenge(self, challenge):
+    def sign_challenge(self, challenge: str):
         """ Sign authentication challenge. """
         auth_key = self.load_auth_key(private=True)
         if config.debug_level() > 3:
@@ -859,7 +928,7 @@ class OTPmeHost(OTPmeClientObject):
         response = encode(response, "hex")
         return response
 
-    def verify_challenge(self, challenge, response):
+    def verify_challenge(self, challenge: str, response: str):
         """ Verify authentication challenge/response. """
         auth_key = self.load_auth_key()
         response = decode(response, "hex")
@@ -884,9 +953,18 @@ class OTPmeHost(OTPmeClientObject):
     @check_acls(['join'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def join_realm(self, finish=False, cert=None, cert_req=None, public_key=None,
-        cert_valid=None, run_policies=True, verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def join_realm(self,
+        finish: bool=False,
+        cert: Union[str,None]=None,
+        cert_req: Union[str,None]=None,
+        public_key: Union[str,None]=None,
+        cert_valid: Union[int,None]=None,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Make host join the realm (e.g. create certs, gen LOTP etc.). """
         if run_policies:
             try:
@@ -971,9 +1049,16 @@ class OTPmeHost(OTPmeClientObject):
     @check_acls(['leave'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def leave_realm(self, keep_cert=False, keep_auth_key=False,
-        run_policies=True, callback=default_callback, verbose_level=0,
-        _caller="API", **kwargs):
+    def leave_realm(
+        self,
+        keep_cert: bool=False,
+        keep_auth_key: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        verbose_level: int=0,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Make host leave the realm (e.g. revoke certs, gen JOTP etc.). """
         if run_policies:
             try:
@@ -1011,9 +1096,17 @@ class OTPmeHost(OTPmeClientObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
-    def add(self, gen_jotp=True, cert_req=None, cert_valid=None,
-        public_key=None, enabled=False, callback=default_callback,
-        verbose_level=0, **kwargs):
+    def add(
+        self,
+        gen_jotp: bool=True,
+        cert_req: Union[str,None]=None,
+        cert_valid: Union[int,None]=None,
+        public_key: Union[str,None]=None,
+        enabled: bool=False,
+        callback: JobCallback=default_callback,
+        verbose_level: int=0,
+        **kwargs,
+        ):
         """ Add a host. """
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(check_exists=False,
@@ -1080,9 +1173,16 @@ class OTPmeHost(OTPmeClientObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, force=False, run_policies=True, verify_acls=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete host. """
         if not self.exists():
             return callback.error("Host does not exist exists.")
@@ -1149,9 +1249,15 @@ class OTPmeHost(OTPmeClientObject):
 
     @check_acls(['remove:orphans'])
     @object_lock()
-    def remove_orphans(self, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def remove_orphans(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Remove orphan UUIDs. """
         if run_policies:
             try:
@@ -1218,8 +1324,12 @@ class OTPmeHost(OTPmeClientObject):
 
         return self._cache(callback=callback)
 
-    def show_config(self, config_lines=[],
-        callback=default_callback, **kwargs):
+    def show_config(
+        self,
+        config_lines: List=[],
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         lines = []
         lines += config_lines
         join_date = None

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -16,6 +18,7 @@ from otpme.lib import otpme_acl
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.register import register_module
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
@@ -49,6 +52,9 @@ write_value_acls = {
                                 "token",
                                 "role",
                                 "default_group_user",
+                                ],
+                    "edit"       : [
+                                "config",
                                 ],
                     "remove"    : [
                                 "user",
@@ -396,6 +402,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -405,6 +412,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -653,11 +661,20 @@ def register_ldap_object():
                                 default_scope="one",
                                 scopes=['one'])
 
+@match_class_typing
 class Group(OTPmeObject):
     """ Creates access group object. """
     commands = commands
-    def __init__(self, object_id=None, name=None, realm=None,
-        unit=None, site=None, path=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class)
         self.type = "group"
 
@@ -753,7 +770,7 @@ class Group(OTPmeObject):
         # Set OID.
         self.set_oid()
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
         # Make sure name is a string and lowercase.
         self.name = str(name).lower()
@@ -761,8 +778,14 @@ class Group(OTPmeObject):
     @check_acls(['add:default_group_user'])
     @object_lock()
     @backend.transaction
-    def add_default_group_user(self, user_uuid, verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def add_default_group_user(
+        self,
+        user_uuid: str,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Adds user as its default group. """
         if user_uuid in self.default_group_users:
             msg = (_("User already added to group '%s'.") % self.name)
@@ -776,8 +799,15 @@ class Group(OTPmeObject):
     @check_acls(['remove:default_group_user'])
     @object_lock()
     @backend.transaction
-    def remove_default_group_user(self, user_uuid, ignore_missing=False, verbose_level=0,
-        _caller="API", callback=default_callback, **kwargs):
+    def remove_default_group_user(
+        self,
+        user_uuid: str,
+        ignore_missing: bool=False,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Removes a user from groups members list. """
         if not user_uuid in self.default_group_users:
             if ignore_missing:
@@ -793,8 +823,14 @@ class Group(OTPmeObject):
         return self._cache(callback=callback)
 
     @object_lock()
-    def list_default_group_users(self, return_type="name", verbose_level=0,
-        _caller="API", callback=default_callback, **kwargs):
+    def list_default_group_users(
+        self,
+        return_type: str="name",
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ List default group users. """
         exception = None
         if not return_type in [ 'uuid', 'oid', 'name', 'read_oid', 'full_oid']:
@@ -824,7 +860,13 @@ class Group(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
+    def rename(
+        self,
+        new_name: str,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Rename group. """
         base_groups = config.get_base_objects("group")
         if self.name in base_groups:
@@ -841,8 +883,14 @@ class Group(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
-    def add(self, ldif_attributes=None, default_attributes={},
-        verbose_level=0, callback=default_callback, **kwargs):
+    def add(
+        self,
+        ldif_attributes: Union[str,None]=None,
+        default_attributes: dict={},
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a group. """
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(callback=callback, **kwargs)
@@ -876,9 +924,16 @@ class Group(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, force=False, run_policies=True, verify_acls=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete group. """
         if not self.exists():
             return callback.error("Group does not exist.")
@@ -957,9 +1012,15 @@ class Group(OTPmeObject):
 
     @check_acls(['remove:orphans'])
     @object_lock()
-    def remove_orphans(self, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def remove_orphans(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Remove orphan UUIDs. """
         if run_policies:
             try:
@@ -1066,7 +1127,11 @@ class Group(OTPmeObject):
 
         return self._cache(callback=callback)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Show group config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

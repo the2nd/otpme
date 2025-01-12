@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -115,9 +117,15 @@ def register_backend():
                                 path_getter=path_getter,
                                 oid_getter=oid_getter)
 
+@match_class_typing
 class DataRevision(OTPmeDataObject):
     """ Class that implements data revision object. """
-    def __init__(self, data_revision=None, object_id=None, **kwargs):
+    def __init__(
+        self,
+        data_revision: Union[float,None]=None,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        **kwargs,
+        ):
         self.type = "data_revision"
 
         # Call parent class init.
@@ -169,7 +177,7 @@ class DataRevision(OTPmeDataObject):
         return self._data_revision
 
     @data_revision.setter
-    def data_revision(self, data_revision):
+    def data_revision(self, data_revision: float):
         old_data_revision = self._data_revision
         self._data_revision = data_revision
         if data_revision is None:

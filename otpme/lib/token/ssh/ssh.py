@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import time
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -8,6 +11,7 @@ try:
 except:
     pass
 
+from otpme.lib import oid
 from otpme.lib import ssh
 from otpme.lib import stuff
 from otpme.lib import config
@@ -18,6 +22,7 @@ from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.token \
             import get_acls \
@@ -299,10 +304,19 @@ def register_token_type():
     """ Register token type. """
     config.register_sub_object_type("token", "ssh")
 
+@match_class_typing
 class SshToken(Token):
     """ Class for SSH tokens. """
-    def __init__(self, object_id=None, user=None, name=None,
-        realm=None, site=None, path=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        user: Union[str,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        **kwargs,
+        ):
 
         # Call parent class init.
         super(SshToken, self).__init__(object_id=object_id,
@@ -360,6 +374,7 @@ class SshToken(Token):
         self.signatures = {}
         self.cross_site_links = True
         self.need_password = True
+        self.offline_pinnable = True
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
         self.supported_hardware_tokens = [ 'yubikey_gpg', 'openssh' ]
 
@@ -447,23 +462,14 @@ class SshToken(Token):
         # read from config.
         Token.set_variables(self)
 
-    def get_offline_config(self, second_factor_usage=False):
+    def get_offline_config(self, second_factor_usage: bool=False):
         """ Get offline config of token. (e.g. without PIN). """
         offline_config = self.object_config.copy()
-        need_encryption = False
-
-        #if self.private_key:
-        #    need_encryption = True
-
-        # FIXME: implement self.allow_offline_rsp!!!
         need_encryption = True
-        #if self.allow_offline_rsp:
-        #    need_encryption = True
-
         offline_config['NEED_OFFLINE_ENCRYPTION'] = need_encryption
         return offline_config
 
-    def verify_acl(self, action):
+    def verify_acl(self, action: str):
         """ Verify ACLs required to allow <action>. """
         # Parent class cannot know the ACL to allow verification of signatures
         # e.g. "view:script" for script objects and "view_public_key" for SSH
@@ -486,12 +492,17 @@ class SshToken(Token):
         return  False
 
     @check_acls(['view:ssh_public_key'])
-    def get_sign_data(self, callback=default_callback, **kwargs):
+    def get_sign_data(self, callback: JobCallback=default_callback, **kwargs):
         """ Return public key to be signed by parent class method. """
         ssh_public_key = self.ssh_public_key
         return callback.ok(ssh_public_key)
 
-    def get_card_types(self, _caller="API", callback=default_callback, **kwargs):
+    def get_card_types(
+        self,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get supported hardware card/token types. """
         card_types = [ 'gpg' ]
         if _caller == "CLIENT":
@@ -501,8 +512,14 @@ class SshToken(Token):
     @check_acls(['edit:card_type'])
     @object_lock()
     @backend.transaction
-    def change_card_type(self, card_type=None, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_card_type(
+        self,
+        card_type: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Get supported hardware card/token types. """
         if card_type:
             if not card_type in self.get_card_types():
@@ -529,16 +546,21 @@ class SshToken(Token):
     @check_acls(['edit:key_type'])
     @object_lock()
     @backend.transaction
-    def change_key_type(self, key_type="rsa", run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_key_type(
+        self,
+        key_type: str="rsa",
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Get supported hardware card/token types. """
-        if key_type != "":
-            if not key_type in self.valid_key_types:
-                msg = (_("Unsupported key type: %s") % key_type)
-                return callback.error(msg)
-            if key_type == self.key_type:
-                msg = (_("Key type already set to: %s") % key_type)
-                return callback.error(msg)
+        if not key_type in self.valid_key_types:
+            msg = (_("Unsupported key type: %s") % key_type)
+            return callback.error(msg)
+        if key_type == self.key_type:
+            msg = (_("Key type already set to: %s") % key_type)
+            return callback.error(msg)
 
         if run_policies:
             try:
@@ -557,8 +579,14 @@ class SshToken(Token):
     @check_acls(['edit:ssh_public_key'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def change_ssh_public_key(self, ssh_public_key=None, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_ssh_public_key(
+        self,
+        ssh_public_key: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change token SSH public key. """
         if run_policies:
             try:
@@ -582,7 +610,7 @@ class SshToken(Token):
             self.offline_challenge = None
         return self._cache(callback=callback)
 
-    def get_private_key(self, password, instance=False):
+    def get_private_key(self, password: str, instance: bool=False):
         """ Get decrytped private key. """
         if not self.ssh_private_key:
             raise Exception("No private key set.")
@@ -597,7 +625,7 @@ class SshToken(Token):
         private_key = key.private_key_base64
         return private_key
 
-    def resync(self, callback=default_callback, **kwargs):
+    def resync(self, callback: JobCallback=default_callback, **kwargs):
         """ Wrapper method to call resync() of 2ftoken. """
         try:
             sftoken = self.get_sftoken()
@@ -618,7 +646,12 @@ class SshToken(Token):
             return ssh.gen_challenge(self.ssh_public_key, otp_len=otp_len)
         return ssh.gen_challenge(self.ssh_public_key, otp_len=0)
 
-    def test(self, password=None, callback=default_callback, **kwargs):
+    def test(
+        self,
+        password: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Test if SSH authentication with this token can be verified. """
         ok_message = "Token verified successful."
         error_message = "Token verification failed."
@@ -645,10 +678,15 @@ class SshToken(Token):
 
         return callback.error(error_message)
 
-    def verify(self, challenge=None, response=None,
-        otp=None, session_uuid=None, **kwargs):
+    def verify(
+        self,
+        challenge: Union[str,None]=None,
+        response: Union[str,None]=None,
+        otp: Union[str,None]=None,
+        session_uuid: Union[str,None]=None,
+        **kwargs,
+        ):
         """ Verify challenge/response. """
-        import time
         if not self.ssh_public_key:
             logger.warning("Token '%s' is missing SSH public key." % self.name)
             return None
@@ -743,24 +781,15 @@ class SshToken(Token):
     @check_acls(['edit:2ftoken'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def change_2f_token(self, second_factor_token, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_2f_token(
+        self,
+        second_factor_token: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change token second factor token. """
-        if second_factor_token == "":
-            self.second_factor_token = second_factor_token
-
-        # Get user instance of token owner.
-        user = backend.get_object(object_type="user", uuid=self.owner_uuid)
-        # Get token instance of 2f_token by name.
-        token = user.token(second_factor_token)
-
-        if not token:
-            msg = (_("Token '%s' does not exist.") % second_factor_token)
-            return callback.error(msg)
-        if token.pass_type != "otp":
-            msg = (_("Token '%s' is not an OTP token.") % second_factor_token)
-            return callback.error(msg)
-
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -772,20 +801,41 @@ class SshToken(Token):
             except Exception:
                 return callback.error()
 
-        # Set 2f token.
-        self.second_factor_token = token.uuid
+        if second_factor_token == "":
+            self.second_factor_token = None
+        else:
+            # Get user instance of token owner.
+            user = backend.get_object(object_type="user", uuid=self.owner_uuid)
+            # Get token instance of 2f_token by name.
+            token = user.token(second_factor_token)
+
+            if not token:
+                msg = (_("Token '%s' does not exist.") % second_factor_token)
+                return callback.error(msg)
+            if token.pass_type != "otp":
+                msg = (_("Token '%s' is not an OTP token.") % second_factor_token)
+                return callback.error(msg)
+
+            # Set 2f token.
+            self.second_factor_token = token.uuid
         return self._cache(callback=callback)
 
     @check_acls(['enable:2ftoken'])
     @object_lock()
     @backend.transaction
-    def enable_2f_token(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_2f_token(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable the second factor token. """
         if self.second_factor_token_enabled:
             return callback.error("Second factor token already enabled.")
 
-        if self.second_factor_token == "":
+        if not self.second_factor_token:
             return callback.error("No second factor token configured.")
 
         # Check if second factor token is available.
@@ -818,8 +868,14 @@ class SshToken(Token):
     @check_acls(['disable:2ftoken'])
     @object_lock()
     @backend.transaction
-    def disable_2f_token(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_2f_token(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable the second factor token. """
         if not self.second_factor_token_enabled:
             return callback.error("Second factor token already disabled.")
@@ -846,9 +902,17 @@ class SshToken(Token):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def deploy(self, public_key=None, private_key=None, password=None,
-        pass_hash_type="PBKDF2", card_type=None, _caller="API",
-        verbose_level=0, callback=default_callback):
+    def deploy(
+        self,
+        public_key: Union[str,None]=None,
+        private_key: Union[str,None]=None,
+        password: Union[str,None]=None,
+        pass_hash_type: str="PBKDF2",
+        card_type: Union[str,None]=None,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        ):
         """ Deploy SSH token. """
         if not public_key and not private_key:
             return callback.error("Need at least public or private key.")
@@ -883,8 +947,14 @@ class SshToken(Token):
     @check_acls(['edit:password'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def change_key_password(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_key_password(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change private key encryption password. """
         if not self.ssh_private_key:
             msg = "No private key set for this token."
@@ -926,8 +996,7 @@ class SshToken(Token):
             if new_password1 == new_password2:
                 password = new_password1
                 break
-            else:
-                return callback.error("Sorry, passwords do not match.")
+            return callback.error("Sorry, passwords do not match.")
 
         # Make sure password is a string.
         password = str(password)
@@ -957,7 +1026,12 @@ class SshToken(Token):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def _add(self, public_key=None, callback=default_callback, **kwargs):
+    def _add(
+        self,
+        public_key: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a token. """
         return_message = None
         if public_key:
@@ -981,7 +1055,7 @@ class SshToken(Token):
         offline_data = {'ssh_public_key':self.ssh_public_key}
         return offline_data
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show token config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

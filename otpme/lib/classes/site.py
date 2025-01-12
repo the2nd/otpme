@@ -3,6 +3,9 @@
 import os
 import time
 from cryptography import x509
+from typing import List
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -25,6 +28,7 @@ from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import encode
 from otpme.lib.register import register_module
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.pki.utils import check_ssl_cert_key
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
@@ -67,6 +71,7 @@ read_value_acls = {
                                 "admin_token",
                                 "sso_secret",
                                 "sso_csrf_secret",
+                                "cluster_key",
                                 "fido2_ca_cert",
                                 ],
         }
@@ -91,6 +96,7 @@ write_value_acls = {
                                 "sync",
                                 ],
                     "edit"      : [
+                                "config",
                                 "address",
                                 "auth_fqdn",
                                 "mgmt_fqdn",
@@ -100,6 +106,7 @@ write_value_acls = {
                                 "sso_key",
                                 "sso_secret",
                                 "sso_csrf_secret",
+                                "cluster_key",
                                 ],
                     "renew"     : [
                                 "cert",
@@ -355,6 +362,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls', 'object_types'],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -364,6 +372,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls', 'object_types',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -570,6 +579,15 @@ commands = {
                 'exists'    : {
                     'method'            : 'change_sso_csrf_secret',
                     'args'              : ['secret'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'cluster_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_cluster_key',
+                    'args'              : ['cluster_key'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -884,11 +902,18 @@ def register_backend():
                                 index_rebuild_func=index_rebuild,
                                 path_getter=path_getter)
 
+@match_class_typing
 class Site(OTPmeObject):
     """ OTPme site object. """
     commands = commands
-    def __init__(self, object_id=None, path=None,
-        name=None, realm=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        path: Union[str,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class).
         self.type = "site"
 
@@ -1139,10 +1164,10 @@ class Site(OTPmeObject):
 
         return object_config
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
-        # Make sure name is a string and lowercase.
-        self.name = str(name).lower()
+        # Make sure name is lowercase.
+        self.name = name.lower()
 
     def set_variables(self):
         """ Set instance variables. """
@@ -1170,9 +1195,18 @@ class Site(OTPmeObject):
         return master_site
 
     @object_lock()
-    def _handle_acl(self, action, acl, recursive_acls=False,
-        apply_default_acls=False, object_types=[], verify_acls=True,
-        verbose_level=0, callback=default_callback, **kwargs):
+    def _handle_acl(
+        self,
+        action: str,
+        acl: object,
+        recursive_acls: bool=False,
+        apply_default_acls: bool=False,
+        object_types: List=[],
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Method to call inherit_default_acl() for all site units. """
         exception = None
 
@@ -1237,8 +1271,14 @@ class Site(OTPmeObject):
     @check_acls(['edit:address'])
     @object_lock()
     @backend.transaction
-    def change_address(self, address, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_address(
+        self,
+        address: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change site IP address. """
         if run_policies:
             try:
@@ -1259,8 +1299,14 @@ class Site(OTPmeObject):
     @check_acls(['edit:auth_fqdn'])
     @object_lock()
     @backend.transaction
-    def change_auth_fqdn(self, fqdn, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_auth_fqdn(
+        self,
+        fqdn: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change site auth FQDN. """
         if run_policies:
             try:
@@ -1281,8 +1327,14 @@ class Site(OTPmeObject):
     @check_acls(['edit:mgmt_fqdn'])
     @object_lock()
     @backend.transaction
-    def change_mgmt_fqdn(self, fqdn, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_mgmt_fqdn(
+        self,
+        fqdn: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change site mgmt FQDN. """
         if run_policies:
             try:
@@ -1303,8 +1355,14 @@ class Site(OTPmeObject):
     @check_acls(['edit:radius_cert'])
     @object_lock()
     @backend.transaction
-    def change_radius_cert(self, radius_cert, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_radius_cert(
+        self,
+        radius_cert: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change radius cert. """
         if run_policies:
             try:
@@ -1324,8 +1382,13 @@ class Site(OTPmeObject):
     @check_acls(['edit:radius_cert'])
     @object_lock()
     @backend.transaction
-    def del_radius_cert(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def del_radius_cert(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete radius cert. """
         if run_policies:
             try:
@@ -1345,8 +1408,14 @@ class Site(OTPmeObject):
     @check_acls(['edit:radius_key'])
     @object_lock()
     @backend.transaction
-    def change_radius_key(self, radius_key, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_radius_key(
+        self,
+        radius_key: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change radius cert. """
         if run_policies:
             try:
@@ -1366,8 +1435,13 @@ class Site(OTPmeObject):
     @check_acls(['edit:radius_cert'])
     @object_lock()
     @backend.transaction
-    def del_radius_key(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def del_radius_key(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete radius key. """
         if run_policies:
             try:
@@ -1387,8 +1461,14 @@ class Site(OTPmeObject):
     @check_acls(['edit:sso_cert'])
     @object_lock()
     @backend.transaction
-    def change_sso_cert(self, sso_cert, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_sso_cert(
+        self,
+        sso_cert: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change sso cert. """
         if run_policies:
             try:
@@ -1406,8 +1486,13 @@ class Site(OTPmeObject):
     @check_acls(['edit:sso_cert'])
     @object_lock()
     @backend.transaction
-    def del_sso_cert(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def del_sso_cert(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete sso cert. """
         if run_policies:
             try:
@@ -1425,8 +1510,14 @@ class Site(OTPmeObject):
     @check_acls(['edit:sso_key'])
     @object_lock()
     @backend.transaction
-    def change_sso_key(self, sso_key, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_sso_key(
+        self,
+        sso_key: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change sso cert. """
         if run_policies:
             try:
@@ -1444,8 +1535,13 @@ class Site(OTPmeObject):
     @check_acls(['edit:sso_cert'])
     @object_lock()
     @backend.transaction
-    def del_sso_key(self, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def del_sso_key(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete sso key. """
         if run_policies:
             try:
@@ -1463,8 +1559,14 @@ class Site(OTPmeObject):
     @check_acls(['edit:sso_secret'])
     @object_lock()
     @backend.transaction
-    def change_sso_secret(self, secret, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_sso_secret(
+        self,
+        secret: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change sso secret. """
         if run_policies:
             try:
@@ -1482,8 +1584,14 @@ class Site(OTPmeObject):
     @check_acls(['edit:sso_csrf_secret'])
     @object_lock()
     @backend.transaction
-    def change_sso_csrf_secret(self, secret, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_sso_csrf_secret(
+        self,
+        secret: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change sso CSRF secret. """
         if run_policies:
             try:
@@ -1498,11 +1606,42 @@ class Site(OTPmeObject):
         self.sso_csrf_secret = secret
         return self._cache(callback=callback)
 
+    @check_acls(['edit:cluster_key'])
+    @object_lock()
+    @backend.transaction
+    def change_cluster_key(
+        self,
+        cluster_key: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Change cluster key. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_cluster_key",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.cluster_key = cluster_key
+        return self._cache(callback=callback)
+
     @check_acls(['enable:auth'])
     @object_lock()
     @backend.transaction
-    def enable_auth(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_auth(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable authentication with the site. """
         if self.auth_enabled:
             msg = (_("Authentication with site '%s' is already enabled.")
@@ -1542,8 +1681,14 @@ class Site(OTPmeObject):
     @check_acls(['disable:auth'])
     @object_lock()
     @backend.transaction
-    def disable_auth(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_auth(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable authentication with the site. """
         if not self.auth_enabled:
             msg = (_("Authentication with site '%s' is already disabled.")
@@ -1583,8 +1728,14 @@ class Site(OTPmeObject):
     @check_acls(['enable:sync'])
     @object_lock()
     @backend.transaction
-    def enable_sync(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_sync(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable synchronization with the site. """
         if self.sync_enabled:
             msg = (_("Synchronization with site '%s' is already enabled.")
@@ -1623,8 +1774,14 @@ class Site(OTPmeObject):
     @check_acls(['disable:sync'])
     @object_lock()
     @backend.transaction
-    def disable_sync(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_sync(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable synchronization with the site. """
         if self.uuid == config.site_uuid:
             msg = (_("Cannot disable synchronization of own site."))
@@ -1658,8 +1815,13 @@ class Site(OTPmeObject):
         self.update_index("sync_enabled", self.sync_enabled)
         return self._write(callback=callback)
 
-    def create_site_cert(self, valid=None, key_len=None,
-        callback=default_callback, **kwargs):
+    def create_site_cert(
+        self,
+        valid: Union[int,None]=None,
+        key_len: Union[int,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Create site certificate """
         from otpme.lib.classes.ca import Ca
         if key_len is None:
@@ -1689,8 +1851,16 @@ class Site(OTPmeObject):
     @check_acls(['renew:cert'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def renew_cert(self, valid=None, key_len=None, run_policies=True,
-        verbose_level=0, callback=default_callback, _caller="API", **kwargs):
+    def renew_cert(
+        self,
+        valid: Union[int,None]=None,
+        key_len: Union[int,None]=None,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Renew site certificate """
         if run_policies:
             try:
@@ -1739,10 +1909,24 @@ class Site(OTPmeObject):
         return self._write(callback=callback)
 
     @object_lock(full_lock=True)
-    def create_site_ca(self, ca_country=None, ca_state=None, ca_locality=None,
-        ca_organization=None, ca_ou=None, ca_email=None, cert=None, key=None,
-        no_cert=False, ca_key_len=None, ca_valid=None, site_key_len=None,
-        site_valid=None, callback=default_callback, **kwargs):
+    def create_site_ca(
+        self,
+        ca_country: Union[str,None]=None,
+        ca_state: Union[str,None]=None,
+        ca_locality: Union[str,None]=None,
+        ca_organization: Union[str,None]=None,
+        ca_ou: Union[str,None]=None,
+        ca_email: Union[str,None]=None,
+        cert: Union[str,None]=None,
+        key: Union[str,None]=None,
+        no_cert: bool=False,
+        ca_key_len: Union[int,None]=None,
+        ca_valid: Union[int,None]=None,
+        site_key_len: Union[int,None]=None,
+        site_valid: Union[int,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Create site CA """
         from otpme.lib.classes.ca import Ca
         if site_valid is None:
@@ -1821,9 +2005,18 @@ class Site(OTPmeObject):
         return callback.ok()
 
     @object_lock(full_lock=True)
-    def create_master_node(self, node_name, cert_req=None,
-        gen_jotp=True, cert_valid=None, uuid=None, public_key=None,
-        _caller="API", callback=default_callback, **kwargs):
+    def create_master_node(
+        self,
+        node_name: str,
+        cert_req: Union[str,None]=None,
+        gen_jotp: bool=True,
+        cert_valid: Union[int,None]=None,
+        uuid: Union[str,None]=None,
+        public_key: Union[str,None]=None,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Creating master node object for this site. """
         if cert_valid is None:
             cert_valid = config.default_node_validity
@@ -1866,9 +2059,15 @@ class Site(OTPmeObject):
     @check_acls(['add:trust'])
     @object_lock()
     @backend.transaction
-    def add_trust(self, site_name, force=False,
-        run_policies=True, callback=default_callback,
-        _caller="API", **kwargs):
+    def add_trust(
+        self,
+        site_name: str,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Add site trust relationship. """
         if self.uuid != config.site_uuid:
             msg = ("Permission denied.")
@@ -1912,9 +2111,15 @@ class Site(OTPmeObject):
     @check_acls(['delete:trust'])
     @object_lock()
     @backend.transaction
-    def del_trust(self, site_name, force=False,
-        run_policies=True, callback=default_callback,
-        _caller="API", **kwargs):
+    def del_trust(
+        self,
+        site_name: str,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete site trust relationship. """
         if self.uuid != config.site_uuid:
             msg = ("Permission denied.")
@@ -1956,7 +2161,14 @@ class Site(OTPmeObject):
 
     @object_lock(full_lock=True)
     @run_pre_post_add_policies()
-    def add(self, site_address, node_name, callback=default_callback, **kwargs):
+    @backend.transaction
+    def add(
+        self,
+        node_name: str,
+        site_address: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add site. """
         from otpme.lib.register import register_modules
         # Register all modules.
@@ -1990,6 +2202,7 @@ class Site(OTPmeObject):
         # Start site add.
         add_result = self._add(**kwargs)
         if not add_result:
+            config.site_init = False
             return add_result
 
         config.site_init = False
@@ -2003,12 +2216,12 @@ class Site(OTPmeObject):
         callback.send("Site added successful.")
         return self._write(callback=callback)
 
-    def add_per_site_objects(self, callback=default_callback):
+    def add_per_site_objects(self, callback: JobCallback=default_callback):
         """ Add per site objects. """
         #self.add_object_templates(callback=callback)
         self.add_per_site_users(callback=callback)
 
-    def add_per_site_users(self, callback=default_callback):
+    def add_per_site_users(self, callback: JobCallback=default_callback):
         """ Add users that exists on all sites (e.g. TOKENSTORE). """
         per_site_users = config.get_per_site_objects("user")
         for user_name in per_site_users:
@@ -2033,7 +2246,7 @@ class Site(OTPmeObject):
                             verify_acls=False,
                             callback=callback)
 
-    def add_object_templates(self, callback=default_callback):
+    def add_object_templates(self, callback: JobCallback=default_callback):
         """ Add object templates. """
         for object_type in config.tree_object_types:
             object_name = config.get_object_template(object_type)
@@ -2065,11 +2278,30 @@ class Site(OTPmeObject):
                 raise OTPmeException(msg)
 
     @object_lock(full_lock=True)
-    def _add(self, site_address, node_name, site_fqdn=None, no_ca=False, no_node=False,
-        ca_country=None, ca_state=None, ca_locality=None, ca_organization=None,
-        ca_ou=None, ca_email=None, ca_key_len=None, ca_valid=None,
-        site_key_len=None, site_valid=None, dictionaries=None, no_dicts=False,
-        id_ranges=None, verbose_level=0, callback=default_callback, **kwargs):
+    def _add(
+        self,
+        node_name: str,
+        site_address: Union[str,None]=None,
+        site_fqdn: Union[str,None]=None,
+        no_ca: bool=False,
+        no_node: bool=False,
+        ca_country: Union[str,None]=None,
+        ca_state: Union[str,None]=None,
+        ca_locality: Union[str,None]=None,
+        ca_organization: Union[str,None]=None,
+        ca_ou: Union[str,None]=None,
+        ca_email: Union[str,None]=None,
+        ca_key_len: Union[int,None]=None,
+        ca_valid: Union[int,None]=None,
+        site_key_len: Union[int,None]=None,
+        site_valid: Union[int,None]=None,
+        dictionaries: Union[List,None]=None,
+        no_dicts: bool=False,
+        id_ranges: Union[str,None]=None,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a site. """
         if site_key_len is None:
             site_key_len = config.default_site_key_len
@@ -2128,6 +2360,8 @@ class Site(OTPmeObject):
         # Set flask secrets.
         self.sso_secret = stuff.gen_secret(len=64, encoding="hex")
         self.sso_csrf_secret = stuff.gen_secret(len=64, encoding="hex")
+        # Set cluster key.
+        self.cluster_key = stuff.gen_secret(len=64, encoding="hex")
 
         # Set REALM_USERS_GROUP UUID.
         self.user_role_uuid = stuff.gen_uuid()
@@ -2192,8 +2426,12 @@ class Site(OTPmeObject):
         return self._write(callback=callback)
 
     @object_lock(full_lock=True)
-    def add_early_objects(self, id_ranges=None,
-        callback=default_callback, **kwargs):
+    def add_early_objects(
+        self,
+        id_ranges: Union[str,None]=None,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add site base objects. """
         from otpme.lib.classes.unit import Unit
         all_units = []
@@ -2216,7 +2454,7 @@ class Site(OTPmeObject):
                                         site=self.name)
         id_range_policy.add(callback=callback)
         if id_ranges is None:
-            id_ranges = "uidNumber:s:10000-20000,gidNumber:s:10000-20000"
+            id_ranges = "uidNumber:s:70000-80000,gidNumber:s:70000-80000"
         id_ranges = id_ranges.split(",")
         for id_range in id_ranges:
             id_range_policy.add_id_range(id_range=id_range)
@@ -2226,8 +2464,13 @@ class Site(OTPmeObject):
         return True
 
     @object_lock(full_lock=True)
-    def add_base_objects(self, dictionaries=[], no_dicts=False,
-        callback=default_callback, **kwargs):
+    def add_base_objects(
+        self,
+        dictionaries: List=[],
+        no_dicts: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add site base objects. """
         from otpme.lib.classes.unit import Unit
         from otpme.lib.classes.dictionary import Dictionary
@@ -2711,7 +2954,7 @@ class Site(OTPmeObject):
         # Create admin user.
         return self.add_admin_user(callback=callback)
 
-    def add_base_policies(self, callback=default_callback):
+    def add_base_policies(self, callback: JobCallback=default_callback):
         """ Add base policies. """
         from otpme.lib import policy as _policy
         base_policies = config.get_base_objects("policy")
@@ -2756,7 +2999,7 @@ class Site(OTPmeObject):
         cache.flush()
 
     @object_lock(full_lock=True)
-    def add_base_groups(self, callback=default_callback):
+    def add_base_groups(self, callback: JobCallback=default_callback):
         """ Create base groups. """
         master_site = self.get_master_site()
         base_groups = config.get_base_objects("group")
@@ -2786,7 +3029,7 @@ class Site(OTPmeObject):
                     self.realm_users_group_uuid = master_site.realm_users_group_uuid
 
     @object_lock(full_lock=True)
-    def add_admin_user(self, callback=default_callback):
+    def add_admin_user(self, callback: JobCallback=default_callback):
         """ Create site admin user. """
         # Create admin user.
         msg = (_("Adding admin user: %s") % config.admin_user_name)
@@ -2858,8 +3101,13 @@ class Site(OTPmeObject):
 
     @check_acls(['add:fido2_ca_cert'])
     @object_lock()
-    def add_fido2_ca_cert(self, ca_cert, force=False,
-        callback=default_callback, **kwargs):
+    def add_fido2_ca_cert(
+        self,
+        ca_cert: str,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         if isinstance(ca_cert, str):
             ca_cert = ca_cert.encode()
         try:
@@ -2875,8 +3123,13 @@ class Site(OTPmeObject):
 
     @check_acls(['delete:fido2_ca_cert'])
     @object_lock()
-    def del_fido2_ca_cert(self, subject, force=False,
-        callback=default_callback, **kwargs):
+    def del_fido2_ca_cert(
+        self,
+        subject: str,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         try:
             self.fido2_ca_certs.pop(subject)
         except KeyError:
@@ -2886,7 +3139,11 @@ class Site(OTPmeObject):
 
     @check_acls(['view:fido2_ca_cert'])
     @object_lock()
-    def get_fido2_ca_certs(self, callback=default_callback, **kwargs):
+    def get_fido2_ca_certs(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         subjects = list(self.fido2_ca_certs.keys())
         subjects = "\n".join(subjects)
         return callback.ok(subjects)
@@ -2895,9 +3152,16 @@ class Site(OTPmeObject):
     @check_acls(['delete:object'])
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, force=False, verify_acls=True,
-        run_policies=True, verbose_level=0,
-        callback=default_callback, _caller="API", **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        verify_acls: bool=True,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete site. """
         # We should never delete ourselves ;)
         if config.site == self.name:
@@ -2963,9 +3227,16 @@ class Site(OTPmeObject):
 
     @check_acls(['delete:orphans'])
     @object_lock()
-    def remove_orphans(self, force=False, recursive=False,
-        run_policies=True, verbose_level=0, _caller="API",
-        callback=default_callback, **kwargs):
+    def remove_orphans(
+        self,
+        force: bool=False,
+        recursive: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Remove orphan UUIDs. """
         if run_policies:
             try:
@@ -3023,7 +3294,7 @@ class Site(OTPmeObject):
 
         return self._write(callback=callback)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show site config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")
@@ -3061,7 +3332,8 @@ class Site(OTPmeObject):
                     site_ca = ca.rel_path
 
         cluster_key = ""
-        if config.auth_token and config.auth_token.is_admin():
+        if self.verify_acl("view:cluster_key") \
+        or self.verify_acl("edit:cluster_key"):
             cluster_key = self.cluster_key
 
         lines = []

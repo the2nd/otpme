@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -47,9 +49,15 @@ def register_config():
                             object_cache=1024,
                             cache_region="data_object")
 
+@match_class_typing
 class OTPmeRSAKey(RSAKey):
     """ Class that implements cacheable OTPme RSA key. """
-    def __init__(self, realm=None, site=None, **kwargs):
+    def __init__(
+        self,
+        realm: Union[str,None]=None,
+        site: Union[str,None]=None,
+        **kwargs,
+        ):
         if not realm:
             msg = "Need <realm>."
             raise OTPmeException(msg)
@@ -75,5 +83,4 @@ class OTPmeRSAKey(RSAKey):
         self.oid = oid.OTPmeOid(object_type=self.type,
                                 realm=self.realm,
                                 site=self.site,
-                                #uuid=self.uuid)
                                 fingerprint=self.fingerprint())

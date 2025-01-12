@@ -1194,6 +1194,8 @@ class OTPmeSyncP1(OTPmeClient1):
             status_code, \
             reply = self.connection.send(command, command_args)
             if not status:
+                if status_code == status_codes.UNKNOWN_OBJECT:
+                    raise UnknownObject(reply)
                 try_count += 1
                 msg = ("Error receiving list from peer: %s"
                         % reply)
@@ -1343,12 +1345,23 @@ class OTPmeSyncP1(OTPmeClient1):
                         continue
                     local_objects[x_oid.read_oid] = dict(x_object_config)
 
+                if not local_objects:
+                    continue
+
                 # Try to get list with remote objects that we are missing.
-                remote_objects = self.get_token_data(data_type=data_type,
-                                        token_oid=token.oid.read_oid,
-                                        session_uuid=session_uuid,
-                                        local_objects=local_objects,
-                                        offline=True)
+                try:
+                    remote_objects = self.get_token_data(data_type=data_type,
+                                            token_oid=token.oid.read_oid,
+                                            session_uuid=session_uuid,
+                                            local_objects=local_objects,
+                                            offline=True)
+                except UnknownObject:
+                    for x_oid, x_object_config in get_method(token.oid):
+                        if offline_token.delete_object(x_oid):
+                            msg = "Removing outdated object: %s" % x_oid
+                            self.logger.info(msg)
+                    continue
+
                 # Add remote objects.
                 for x_oid in remote_objects['new_objects']:
                     x_config = remote_objects['new_objects'][x_oid]
@@ -1363,7 +1376,6 @@ class OTPmeSyncP1(OTPmeClient1):
                         msg = ("Removed %s: %s" % (data_type, x_oid))
                         self.logger.debug(msg)
                         self.removed_objects.append(x_oid)
-                    continue
 
                 new_object_count = len(self.synced_objects)
                 self.logger.debug("Added %s new %ss: %s"

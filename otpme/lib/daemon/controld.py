@@ -202,15 +202,21 @@ def register():
     config.register_config_var("_two_node_setup", None, False)
     # Register site init property.
     def site_init_getter(self):
-        try:
-            return config._site_init.value
-        except AttributeError:
-            return False
+        if config.daemon_mode:
+            try:
+                return config._site_init.value
+            except AttributeError:
+                return False
+        else:
+            return config._site_init
     def site_init_setter(self, new_status):
-        try:
-            config._site_init.value = new_status
-        except AttributeError:
-            return
+        if config.daemon_mode:
+            try:
+                config._site_init.value = new_status
+            except AttributeError:
+                return
+        else:
+            config._site_init = new_status
     config.register_property(name="site_init",
                             getx=site_init_getter,
                             setx=site_init_setter)

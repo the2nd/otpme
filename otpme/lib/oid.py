@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -434,11 +436,20 @@ def get(object_id=None, **kwargs):
     oid = OTPmeOid(object_id=object_id, **kwargs)
     return oid
 
+@match_class_typing
 class OTPmeOid(object):
     """ OTPme OID class. """
-    def __init__(self, object_type=None, object_id=None,
-        realm=None, path=None, resolve=False, full=False,
-        verify=False, **kwargs):
+    def __init__(
+        self,
+        object_type: Union[str,None]=None,
+        object_id: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        path: Union[str,None]=None,
+        resolve: bool=False,
+        full: bool=False,
+        verify: bool=False,
+        **kwargs
+        ):
 
         self.path = path
         self.realm = realm
@@ -571,7 +582,7 @@ class OTPmeOid(object):
             msg = ("Invalid OID: %s" % check_oid)
             raise OTPmeException(msg)
 
-    def decode_oid(self, object_id):
+    def decode_oid(self, object_id: str):
         """ Decode object ID. """
         self.object_type = get_object_type(object_id)
         self.realm = get_object_realm(object_id)

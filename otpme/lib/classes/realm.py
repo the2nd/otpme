@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import List
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -21,6 +24,7 @@ from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import encode
 from otpme.lib.encryption.rsa import RSAKey
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.register import register_module
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
@@ -75,6 +79,7 @@ write_value_acls = {
                             "sync",
                             ],
                 "edit"      : [
+                            "config",
                             "secret",
                             ],
 }
@@ -309,6 +314,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls'],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -318,6 +324,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls'],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -717,10 +724,17 @@ def register_backend():
                                 path_getter=path_getter,
                                 oid_getter=oid_getter)
 
+@match_class_typing
 class Realm(OTPmeObject):
     """ OTPme realm object. """
     commands = commands
-    def __init__(self, object_id=None, path=None, name=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        path: Union[str,None]=None,
+        name: Union[str,None]=None,
+        **kwargs,
+        ):
         # set our type (used in parent class)
         self.type = "realm"
         # Call parent class init.
@@ -851,10 +865,10 @@ class Realm(OTPmeObject):
 
         return object_config
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
         # Make sure name is a string and lowercase.
-        self.name = str(name).lower()
+        self.name = name.lower()
 
     def set_variables(self):
         """ Set instance variables. """
@@ -866,8 +880,14 @@ class Realm(OTPmeObject):
     @check_acls(['enable:auth'])
     @object_lock()
     @backend.transaction
-    def enable_auth(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_auth(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable authentication with the realm. """
         if self.auth_enabled:
             msg = (_("Authentication with realm '%s' is already enabled.")
@@ -906,8 +926,14 @@ class Realm(OTPmeObject):
     @check_acls(['disable:auth'])
     @object_lock()
     @backend.transaction
-    def disable_auth(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_auth(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable authentication with the realm. """
         if self.own:
             msg = (_("Cannot disable authentication for own realm."))
@@ -950,8 +976,14 @@ class Realm(OTPmeObject):
     @check_acls(['enable:sync'])
     @object_lock()
     @backend.transaction
-    def enable_sync(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def enable_sync(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Enable synchronization with the realm. """
         if self.sync_enabled:
             msg = (_("Synchronization with realm '%s' is already enabled.")
@@ -985,8 +1017,14 @@ class Realm(OTPmeObject):
     @check_acls(['disable:sync'])
     @object_lock()
     @backend.transaction
-    def disable_sync(self, force=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def disable_sync(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Disable synchronization with the realm. """
         if self.own:
             msg = (_("Cannot disable synchronization for own realm."))
@@ -1023,7 +1061,12 @@ class Realm(OTPmeObject):
 
     @object_lock()
     @backend.transaction
-    def add_alias(self, alias, callback=default_callback, **kwargs):
+    def add_alias(
+        self,
+        alias: str,
+        callback=default_callback,
+        **kwargs,
+        ):
         """ Add an realm alias. """
         if not self.verify_acl(acl="add:alias", check_admin_role=False):
             msg = ("Permission denied.")
@@ -1043,7 +1086,12 @@ class Realm(OTPmeObject):
 
     @object_lock()
     @backend.transaction
-    def del_alias(self, alias, callback=default_callback, **kwargs):
+    def del_alias(
+        self,
+        alias: str,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Deletes an alias from this realm. """
         if not self.verify_acl(acl="delete:alias", check_admin_role=False):
             msg = ("Permission denied.")
@@ -1058,8 +1106,12 @@ class Realm(OTPmeObject):
 
         return self._write(callback=callback)
 
-    def get_ca_data(self, verify_acls=True,
-        callback=default_callback, **kwargs):
+    def get_ca_data(
+        self,
+        verify_acls: bool=True,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Get realms CA data. """
         if verify_acls:
             if not self.verify_acl(acl="view:ca_data", check_admin_role=False):
@@ -1069,8 +1121,14 @@ class Realm(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def update_ca_data(self, verify_acls=True, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def update_ca_data(
+        self,
+        verify_acls: bool=True,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Update realm's ca data (e.g. cert chains and CRL's). """
         if verify_acls:
             if not self.verify_acl(acl="update_ca_data", check_admin_role=False):
@@ -1135,12 +1193,28 @@ class Realm(OTPmeObject):
         return self._write(callback=callback)
 
     @object_lock(full_lock=True)
-    def init(self, realm_master, site_fqdn, site_address=None,
-        ca_key_len=None, ca_valid=None, ca_country=None, ca_state=None,
-        ca_locality=None, ca_organization=None, ca_ou=None, ca_email=None,
-        site_key_len=None, site_valid=None, node_key_len=None,
-        id_ranges=None, no_dicts=False, dictionaries=[],
-        callback=default_callback, **kwargs):
+    def init(
+        self,
+        realm_master: str,
+        site_fqdn: str,
+        site_address: Union[str,None]=None,
+        ca_key_len: Union[int,None]=None,
+        ca_valid: Union[int,None]=None,
+        ca_country: Union[str,None]=None,
+        ca_state: Union[str,None]=None,
+        ca_locality: Union[str,None]=None,
+        ca_organization: Union[str,None]=None,
+        ca_ou: Union[str,None]=None,
+        ca_email: Union[str,None]=None,
+        site_key_len: Union[int,None]=None,
+        site_valid: Union[int,None]=None,
+        node_key_len: Union[int,None]=None,
+        id_ranges: Union[str,None]=None,
+        no_dicts: bool=False,
+        dictionaries: List=[],
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Init OTPme realm. """
         from otpme.lib.classes.site import Site
         if ca_valid is None:
@@ -1527,8 +1601,16 @@ class Realm(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, force=False, verify_acls=True, run_policies=True,
-        verbose_level=0, callback=default_callback, _caller="API", **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        verify_acls: bool=True,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete realm. """
         # We should never delete ourselves ;)
         if self.own:
@@ -1559,7 +1641,7 @@ class Realm(OTPmeObject):
         return OTPmeObject.delete(self, verbose_level=verbose_level,
                                     force=force, callback=callback)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show realm config. """
         if not self.verify_acl(acl="view_public:object", check_admin_role=False):
             msg = ("Permission denied.")

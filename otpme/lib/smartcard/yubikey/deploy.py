@@ -44,12 +44,6 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
         #    status = False
         #cli.user_input("Please re-plug yubikey and press RETURN.")
 
-        try:
-            gpg.start_agent()
-        except Exception as e:
-            error_message(str(e))
-            return False
-
         message("Resetting yubikey GPG applet...")
         # Try to reset yubikey GPG applet
         try:
@@ -57,9 +51,6 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
         except Exception as e:
             error_message(_("Error resetting yubikey GPG applet: %s") % e)
             status = False
-
-        # Stop gpg-agent.
-        gpg.stop_agent()
 
         if not status:
             return False

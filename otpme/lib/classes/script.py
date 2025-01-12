@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -16,6 +18,7 @@ from otpme.lib import backend
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import decode
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
@@ -51,7 +54,10 @@ read_value_acls = {
 write_value_acls = {
                 "add"       : [ "signature" ],
                 "delete"    : [ "signature" ],
-                "edit"      : [ "script" ],
+                "edit"      : [
+                                "config",
+                                "script",
+                            ],
             }
 
 default_acls = []
@@ -279,6 +285,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -288,6 +295,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -497,11 +505,20 @@ def register_sync_settings():
     """ Register sync settings. """
     config.register_object_sync(host_type="node", object_type="script")
 
+@match_class_typing
 class Script(OTPmeObject):
     """ Implements OTPme script object. """
     commands = commands
-    def __init__(self, object_id=None, name=None, realm=None,
-        unit=None, site=None, path=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class).
         self.type = "script"
 
@@ -573,10 +590,10 @@ class Script(OTPmeObject):
         # Set OID.
         self.set_oid()
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
-        # Make sure name is a string and lowercase.
-        self.name = str(name).lower()
+        # Make sure name is lowercase.
+        self.name = name.lower()
 
     def check_base_script(self):
         """ Check if script is a base script. """
@@ -586,7 +603,7 @@ class Script(OTPmeObject):
                 return True
         return False
 
-    def verify_acl(self, action):
+    def verify_acl(self, action: str):
         """ Verify ACLs required to allow <action>. """
         # Parent class cannot know the ACL to allow verification of signatures
         # e.g. "view:script" for script objects and "view_public_key" for SSH
@@ -608,15 +625,20 @@ class Script(OTPmeObject):
 
         return  False
 
-    def get_sign_data(self, callback=default_callback, **kwargs):
+    def get_sign_data(self, callback: JobCallback=default_callback, **kwargs):
         """ Return script to be signed by parent class method. """
         # Get script, this also checks ACLs.
         script = self.dump(**kwargs)
         return callback.ok(script)
 
     @check_acls(['view:script', 'dump'])
-    def dump(self, run_policies=True, _caller="API",
-        callback=default_callback, **kwargs):
+    def dump(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Return script as string. """
         if not self.script:
             if _caller == "CLIENT":
@@ -637,7 +659,13 @@ class Script(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
+    def rename(
+        self,
+        new_name: str,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Rename script. """
         if self.check_base_script():
             msg = (_("Cannot rename base script."))
@@ -650,7 +678,7 @@ class Script(OTPmeObject):
                         name=new_name)
         return self._rename(new_oid, callback=callback, _caller=_caller, **kwargs)
 
-    def move(self, callback=default_callback, **kwargs):
+    def move(self, callback: JobCallback=default_callback, **kwargs):
         if self.check_base_script():
             msg = (_("Cannot move base script."))
             return callback.error(msg)
@@ -659,8 +687,16 @@ class Script(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
-    def add(self, script, replace=False, uuid=None, verify_acls=True,
-        verbose_level=0, callback=default_callback, **kwargs):
+    def add(
+        self,
+        script: str,
+        replace: bool=False,
+        uuid: Union[str,None]=None,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a script. """
         if verify_acls:
             if replace:
@@ -760,8 +796,14 @@ class Script(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def copy(self, destination_script, force=False,
-        verbose_level=0, callback=default_callback, **kwargs):
+    def copy(
+        self,
+        destination_script: str,
+        force: bool=False,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Copy this script (and its signatures) to another one. """
         # Resolv object path (e.g. unit/script).
         if "/" in destination_script:
@@ -834,8 +876,16 @@ class Script(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
-    def delete(self, force=False, run_policies=True, verify_acls=True,
-        verbose_level=0, callback=default_callback, _caller="API", **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete script. """
         if self.check_base_script():
             msg = (_("Cannot delete base script."))
@@ -875,7 +925,7 @@ class Script(OTPmeObject):
         return OTPmeObject.delete(self, verbose_level=verbose_level,
                                     force=force, callback=callback)
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show script config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

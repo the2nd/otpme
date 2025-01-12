@@ -3,6 +3,8 @@
 import os
 import magic
 import base64
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -18,6 +20,7 @@ from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.daemon.clusterd import cluster_radius_reload
 from otpme.lib.classes.otpme_object import OTPmeClientObject
@@ -79,6 +82,7 @@ write_value_acls = {
                                 "sso_popup",
                                 ],
                     "edit"      : [
+                                "config",
                                 "accessgroup",
                                 "secret",
                                 "login_url",
@@ -507,6 +511,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_acl',
                     'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -516,6 +521,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_acl',
                     'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
                 },
@@ -765,11 +771,21 @@ def register_sync_settings():
     """ Register sync settings. """
     config.register_object_sync(host_type="node", object_type="client")
 
+@match_class_typing
 class Client(OTPmeClientObject):
     """ Creates client object """
     commands = commands
-    def __init__(self, object_id=None, name=None, realm=None,
-        unit=None, site=None, path=None, access_group=None, **kwargs):
+    def __init__(
+        self,
+        object_id: Union[oid.OTPmeOid,None]=None,
+        name: Union[str,None]=None,
+        realm: Union[str,None]=None,
+        unit: Union[str,None]=None,
+        site: Union[str,None]=None,
+        path: Union[str,None]=None,
+        access_group: Union[str,None]=None,
+        **kwargs,
+        ):
         # Set our type (used in parent class).
         self.type = "client"
 
@@ -905,7 +921,7 @@ class Client(OTPmeClientObject):
         # Set OID.
         self.set_oid()
 
-    def _set_name(self, name):
+    def _set_name(self, name: str):
         """ Set object name. """
         # Make sure name is a string.
         name = str(name)
@@ -925,12 +941,17 @@ class Client(OTPmeClientObject):
         cluster_radius_reload()
         return result
 
-    # xxxxxxxxxxxxxxxxxxx
     # FIXME: check if IP is valid!!!
     @object_lock()
     @check_acls(['add:address'])
-    def add_address(self, address, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def add_address(
+        self,
+        address: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Adds a address to this client. """
         if address in self.addresses:
             return callback.error(_("Address '%s' already added to this client.")
@@ -954,8 +975,14 @@ class Client(OTPmeClientObject):
 
     @object_lock()
     @check_acls(['delete:address'])
-    def del_address(self, address, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def del_address(
+        self,
+        address: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Deletes a address from this client. """
         if not address in self.addresses:
             return callback.error(_("Address '%s' is not an address of this client.")
@@ -979,9 +1006,14 @@ class Client(OTPmeClientObject):
 
     @object_lock()
     @check_acls(['edit:accessgroup'])
-    def change_access_group(self, access_group=None,
-        run_policies=True, callback=default_callback,
-        _caller="API", **kwargs):
+    def change_access_group(
+        self,
+        access_group: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change client access group. """
         from otpme.lib.classes.accessgroup import AccessGroup
         if access_group == self.access_group:
@@ -1020,8 +1052,14 @@ class Client(OTPmeClientObject):
 
     @check_acls(['add:sso_logo'])
     @object_lock()
-    def add_sso_logo(self, image_data, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def add_sso_logo(
+        self,
+        image_data: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1050,8 +1088,13 @@ class Client(OTPmeClientObject):
 
     @check_acls(['del:sso_logo'])
     @object_lock()
-    def del_sso_logo(self, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def del_sso_logo(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1069,8 +1112,13 @@ class Client(OTPmeClientObject):
 
     @check_acls(['dump:sso_logo'])
     @object_lock()
-    def dump_sso_logo(self, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def dump_sso_logo(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1090,8 +1138,14 @@ class Client(OTPmeClientObject):
 
     @check_acls(['edit:sso_name'])
     @object_lock()
-    def change_sso_name(self, sso_name, run_policies=True,
-        _caller="API", callback=default_callback, **kwargs):
+    def change_sso_name(
+        self,
+        sso_name: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         if run_policies:
             try:
                 self.run_policies("modify",
@@ -1109,8 +1163,13 @@ class Client(OTPmeClientObject):
 
     @check_acls(['enable:sso'])
     @object_lock()
-    def enable_sso(self, run_policies=True, _caller="API",
-        callback=default_callback, **kwargs):
+    def enable_sso(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Enable SSO portal app. """
         if self.sso_enabled:
             msg = (_("SSO already enabled."))
@@ -1142,8 +1201,13 @@ class Client(OTPmeClientObject):
 
     @check_acls(['disable:sso'])
     @object_lock()
-    def disable_sso(self, run_policies=True, _caller="API",
-        callback=default_callback, **kwargs):
+    def disable_sso(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Disable SSO portal app. """
         if not self.sso_enabled:
             msg = (_("SSO already disabled."))
@@ -1167,8 +1231,14 @@ class Client(OTPmeClientObject):
 
     @object_lock()
     @check_acls(acls=['edit:login_url'])
-    def change_login_url(self, login_url=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_login_url(
+        self,
+        login_url: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change object login_url """
         if run_policies:
             try:
@@ -1189,8 +1259,14 @@ class Client(OTPmeClientObject):
 
     @object_lock()
     @check_acls(acls=['edit:helper_url'])
-    def change_helper_url(self, helper_url=False, run_policies=True,
-        callback=default_callback, _caller="API", **kwargs):
+    def change_helper_url(
+        self,
+        helper_url: str=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Change object helper_url """
         if run_policies:
             try:
@@ -1211,8 +1287,13 @@ class Client(OTPmeClientObject):
 
     @check_acls(['enable:sso_popup'])
     @object_lock()
-    def enable_sso_popup(self, run_policies=True, _caller="API",
-        callback=default_callback, **kwargs):
+    def enable_sso_popup(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Enable SSO portal app. """
         if self.sso_popup:
             msg = (_("SSO popup already enabled."))
@@ -1243,8 +1324,13 @@ class Client(OTPmeClientObject):
 
     @check_acls(['disable:sso_popup'])
     @object_lock()
-    def disable_sso_popup(self, run_policies=True, _caller="API",
-        callback=default_callback, **kwargs):
+    def disable_sso_popup(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Disable SSO portal app. """
         if not self.sso_popup:
             msg = (_("SSO popup already disabled."))
@@ -1267,9 +1353,15 @@ class Client(OTPmeClientObject):
 
     @check_acls(['remove:orphans'])
     @object_lock()
-    def remove_orphans(self, force=False, run_policies=True,
-        verbose_level=0, callback=default_callback,
-        _caller="API", **kwargs):
+    def remove_orphans(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Remove orphan UUIDs. """
         if run_policies:
             try:
@@ -1335,7 +1427,13 @@ class Client(OTPmeClientObject):
         return self._cache(callback=callback)
 
     @object_lock(full_lock=True)
-    def rename(self, new_name, callback=default_callback, _caller="API", **kwargs):
+    def rename(
+        self,
+        new_name: str,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Rename client. """
         base_clients = config.get_base_objects("client")
         if self.name in base_clients:
@@ -1354,7 +1452,13 @@ class Client(OTPmeClientObject):
 
     @object_lock(full_lock=True)
     @run_pre_post_add_policies()
-    def add(self, address=None, verbose_level=0, callback=default_callback, **kwargs):
+    def add(
+        self,
+        address: Union[str,None]=None,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Add a client. """
         if address:
             result = backend.search(object_type="client",
@@ -1387,8 +1491,16 @@ class Client(OTPmeClientObject):
         return callback.ok()
 
     @object_lock(full_lock=True)
-    def delete(self, force=False, run_policies=True, verify_acls=True,
-        verbose_level=0, callback=default_callback, _caller="API", **kwargs):
+    def delete(
+        self,
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
         """ Delete client. """
         if not self.exists():
             return callback.error("Client does not exist exists.")
@@ -1430,7 +1542,11 @@ class Client(OTPmeClientObject):
         cluster_radius_reload()
         return result
 
-    def show_config(self, callback=default_callback, **kwargs):
+    def show_config(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Show client config. """
         if not self.verify_acl("view_public:object"):
             msg = ("Permission denied.")

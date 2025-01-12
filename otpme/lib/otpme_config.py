@@ -1069,9 +1069,10 @@ class OTPmeConfig(object):
                 data_revision.add()
                 return
 
+            default_callback = self.get_callback()
             data_revision = result[0]
             data_revision.data_revision = time.time()
-            data_revision._write()
+            data_revision._write(callback=default_callback)
         finally:
             lock.release_lock()
 

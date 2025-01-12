@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+from typing import Union
+from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -12,6 +14,7 @@ from otpme.lib import oid
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import filetools
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.classes.otpme_object import OTPmeDataObject
 
 logger = config.logger
@@ -131,9 +134,16 @@ def register_backend():
                                 path_getter=path_getter,
                                 oid_getter=oid_getter)
 
+@match_class_typing
 class LastAssignedID(OTPmeDataObject):
     """ Class that implements last used object. """
-    def __init__(self, id_type=None, last_assigned_id=None, policy_uuid=None, **kwargs):
+    def __init__(
+        self,
+        id_type: Union[str,None]=None,
+        last_assigned_id: Union[int,None]=None,
+        policy_uuid: Union[str,None]=None,
+        **kwargs,
+        ):
         self.id_type = id_type
         self.policy_uuid = policy_uuid
         self.last_assigned_id = last_assigned_id
@@ -172,7 +182,7 @@ class LastAssignedID(OTPmeDataObject):
                                 policy_uuid=self.policy_uuid,
                                 last_assigned_id=self.last_assigned_id)
 
-    def add(self, callback=default_callback):
+    def add(self, callback: JobCallback=default_callback):
         """ Add the object. """
         # Add policy UUID to index.
         self.add_index('id_type', self.id_type)

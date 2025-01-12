@@ -231,7 +231,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         except KeyError:
             pass
 
-    def get_method_args(self, command_args, args, opt_args, default_args):
+    def get_method_args(self, command_args, args, opt_args):
         """ Return requested args from command_args + global args """
         _method_args = {}
         # Method arguments that will be passed to all methods (if present)
@@ -246,10 +246,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                 _method_args[a] = command_args.pop(a)
             except:
                 pass
-
-        # Get default args.
-        for a in default_args:
-            _method_args[a] = default_args[a]
 
         # Get mandatory args.
         for a in args:
@@ -269,9 +265,8 @@ class OTPmeMgmtP1(OTPmeServer1):
         for a in opt_args:
             if opt_args[a] is None:
                 try:
-                    _method_args[a] = command_args[a]
-                    command_args.pop(a)
-                except:
+                    _method_args[a] = command_args.pop(a)
+                except KeyError:
                     pass
             else:
                 _method_args[a] = opt_args[a]
@@ -291,14 +286,13 @@ class OTPmeMgmtP1(OTPmeServer1):
         return _method_args
 
     def start_job(self, name, target_method, args={}, opt_args={},
-        default_args={}, command_args={}, thread=True, process=False):
+        command_args={}, thread=True, process=False):
         """ Start command as child process. """
         if len(self.running_jobs) >= self.max_jobs:
             job_reply = "Max jobs reached (%s)" % self.max_jobs
             return False, job_reply
         # Get method args from command_args
-        _method_args = self.get_method_args(command_args, args,
-                                        opt_args, default_args)
+        _method_args = self.get_method_args(command_args, args, opt_args)
         _caller = _method_args['_caller']
 
         # Get timeout arg.
@@ -1046,36 +1040,29 @@ class OTPmeMgmtP1(OTPmeServer1):
             message = "Unknown command: %s" % trash_command
             return self.build_response(status, message)
 
+        args = {}
         try:
-            args = command_map['trash']['exists'][trash_command]['args']
-            for i in args:
-                if i in args:
-                    continue
-                # Try to get default value from method args.
-                try:
-                    args[i] = command_map['trash']['exists'][trash_command]['args'][i]
-                except:
-                    pass
-        except:
-            args = {}
+            _args = command_map['trash']['exists'][trash_command]['args']
+        except KeyError:
+            _args = []
+        for i in _args:
+            # Try to get default value.
+            try:
+                args[i] = command_map['trash']['exists'][trash_command]['dargs'][i]
+            except KeyError:
+                args[i] = None
 
         opt_args = {}
         try:
             _opt_args = command_map['trash']['exists'][trash_command]['oargs']
-            for i in _opt_args:
-                if i in opt_args:
-                    continue
-                opt_args[i] = None
-        except:
-            opt_args = {}
-
-        try:
+        except KeyError:
+            _opt_args = []
+        for i in _opt_args:
+            # Try to get default value.
             try:
-                default_args = command_map[x_type][object_status][trash_command]['dargs']
-            except:
-                default_args = command_map[object_type][object_status][trash_command]['dargs']
-        except:
-            default_args = {}
+                opt_args[i] = command_map['trash']['exists'][trash_command]['dargs'][i]
+            except KeyError:
+                opt_args[i] = None
 
         try:
             job_type = command_map['trash']['exists'][trash_command]['job_type']
@@ -1105,7 +1092,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                 response = self.start_job(name="trash_show",
                                     target_method=show_trash,
                                     args=args, opt_args=opt_args,
-                                    default_args=default_args,
                                     command_args=command_args,
                                     process=job_process,
                                     thread=job_thread)
@@ -1133,7 +1119,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                 response = self.start_job(name="trash_restore",
                                     target_method=restore,
                                     args=args, opt_args=opt_args,
-                                    default_args=default_args,
                                     command_args=command_args,
                                     process=job_process,
                                     thread=job_thread)
@@ -1161,7 +1146,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                 response = self.start_job(name="trash_delete",
                                     target_method=delete,
                                     args=args, opt_args=opt_args,
-                                    default_args=default_args,
                                     command_args=command_args,
                                     process=job_process,
                                     thread=job_thread)
@@ -1181,7 +1165,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                 response = self.start_job(name="trash_empty",
                                     target_method=empty,
                                     args=args, opt_args=opt_args,
-                                    default_args=default_args,
                                     command_args=command_args,
                                     process=job_process,
                                     thread=job_thread)
@@ -1224,9 +1207,8 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         # Try to get job UUID and callbacks.
         try:
-            job_uuid = command_args['job_uuid']
-            command_args.pop('job_uuid')
-        except:
+            job_uuid = command_args.pop('job_uuid')
+        except KeyError:
             job_uuid = None
 
         # If a job exists handle it.
@@ -1778,53 +1760,60 @@ class OTPmeMgmtP1(OTPmeServer1):
                     if object_identifier:
                         opt_args['search_regex'] = object_identifier
 
+            # Get default args.
+            try:
+                _dargs = command_map[x_type][object_status][subcommand]['dargs']
+            except KeyError:
+                try:
+                    _dargs = command_map[object_type][object_status][subcommand]['dargs']
+                except KeyError:
+                    _dargs = []
+            for i in _dargs:
+                if i in args:
+                    continue
+                # Try to get default value.
+                try:
+                    args[i] = command_map[x_type][object_status][subcommand]['dargs'][i]
+                except KeyError:
+                    args[i] = None
             # Merge method args from dict.
             try:
+                _args = command_map[x_type][object_status][subcommand]['args']
+            except KeyError:
                 try:
-                    _args = command_map[x_type][object_status][subcommand]['args']
-                except:
                     _args = command_map[object_type][object_status][subcommand]['args']
-                for i in _args:
-                    if i in args:
-                        continue
-                    # Try to get default value from method args.
+                except KeyError:
+                    _args = []
+            for i in _args:
+                if i in args:
+                    continue
+                # Try to get default value.
+                try:
+                    args[i] = command_map[x_type][object_status][subcommand]['dargs'][i]
+                except KeyError:
                     try:
-                        args[i] = command_map[x_type][object_status][subcommand]['args'][i]
-                    except:
-                        try:
-                            args[i] = command_map[object_type][object_status][subcommand]['args'][i]
-                        except:
-                            args[i] = None
-            except:
-                pass
+                        args[i] = command_map[object_type][object_status][subcommand]['dargs'][i]
+                    except KeyError:
+                        args[i] = None
 
             try:
+                _opt_args = command_map[x_type][object_status][subcommand]['oargs']
+            except:
                 try:
-                    _opt_args = command_map[x_type][object_status][subcommand]['oargs']
-                except:
                     _opt_args = command_map[object_type][object_status][subcommand]['oargs']
-                for i in _opt_args:
-                    if i in opt_args:
-                        continue
-                    opt_args[i] = None
-            except:
-                pass
-
-            try:
+                except KeyError:
+                    _opt_args = []
+            for i in _opt_args:
+                if i in opt_args:
+                    continue
+                # Try to get default value.
                 try:
-                    default_args = command_map[x_type][object_status][subcommand]['dargs']
+                    opt_args[i] = command_map[x_type][object_status][subcommand]['dargs'][i]
                 except:
-                    default_args = command_map[object_type][object_status][subcommand]['dargs']
-            except:
-                default_args = {}
-
-            ## WARNING: enabling command_args debug output may contain passwords and other sensitive data!!
-            #if config.debug_enabled and config.raise_exceptions:
-            #    if command_args:
-            #        _command_args = []
-            #        for i in command_args:
-            #            _command_args.append("%s=%s, " % (i, command_args[i]))
-            #        logger.debug("Got command args: %s" % ", ".join(_command_args))
+                    try:
+                        opt_args[i] = command_map[object_type][object_status][subcommand]['dargs'][i]
+                    except:
+                        opt_args[i] = None
 
             try:
                 job_type = command_map[x_type][object_status][subcommand]['job_type']
@@ -1857,8 +1846,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 job_name = "%s %s" % (job_name, object_name)
 
             if job_type is None:
-                _method_args = self.get_method_args(command_args, args,
-                                                opt_args, default_args)
+                _method_args = self.get_method_args(command_args, args, opt_args)
                 try:
                     response = command_method(**_method_args)
                     status = True
@@ -1872,7 +1860,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                     response = self.start_job(name=job_name,
                                         target_method=command_method,
                                         args=args, opt_args=opt_args,
-                                        default_args=default_args,
                                         command_args=command_args,
                                         process=job_process,
                                         thread=job_thread)
