@@ -31,9 +31,9 @@ def host_data_getter(self):
     except:
         try:
             update_data()
-        except Exception:
+        except Exception as e:
             if not config.realm_join:
-                msg = "Failed to load host data."
+                msg = "Failed to load host data: %s" % e
                 logger.critical(msg)
                 config.raise_exception()
     return host_data

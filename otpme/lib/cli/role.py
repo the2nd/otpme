@@ -119,7 +119,7 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
             or check_acl("add:role") \
             or check_acl("remove:role"):
                 # Get all roles of this role.
-                return_attrs = ['site', 'name', 'enabled']
+                return_attrs = ['site', 'rel_path', 'enabled']
                 role_roles_result = backend.search(object_type="role",
                                         join_object_type="role",
                                         join_search_attr="uuid",
@@ -132,17 +132,14 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 roles_count = len(role_roles_result)
                 for x in role_roles_result:
                     role_status_string = ""
-                    x_role_name = role_roles_result[x]['name']
+                    x_role_rel_path = role_roles_result[x]['rel_path']
                     x_role_site = role_roles_result[x]['site']
                     x_role_enabled = role_roles_result[x]['enabled'][0]
                     if not x_role_enabled:
                         role_status_string = " (D)"
-                    if x_role_site != config.site:
-                        role_string = "%s/%s%s" % (x_role_site,
-                                                x_role_name,
-                                                role_status_string)
-                    else:
-                        role_string = "%s%s" % (x_role_name, role_status_string)
+                    role_string = ("%s (%s) %s" % (x_role_rel_path,
+                                                x_role_site,
+                                                role_status_string))
                     role_roles.append(role_string)
                     processed_roles = len(role_roles)
                     if processed_roles == max_roles:

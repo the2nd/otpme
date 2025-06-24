@@ -93,21 +93,27 @@ def get_modules(_modules):
     ordered_mods = sort_modules(module_list)
     return ordered_mods
 
-def get_dep_tree(module_list):
+def get_dep_tree(module_list, seen=[]):
     """ Get modules dependency tree. """
     order_data = {}
     module_list = set(module_list)
     for mod_name in module_list:
+        if mod_name in seen:
+            msg = ("Circular dependency detected: %s: %s"
+                    % (mod_name, seen))
+            raise OTPmeException(msg)
+        seen.append(mod_name)
         before, after = get_mod_deps(mod_name)
         order_data[mod_name] = {}
         order_data[mod_name]['before'] = before
         order_data[mod_name]['after'] = after
-        before_order_data = get_dep_tree(before)
+        before_order_data = get_dep_tree(before, seen)
         for x in before_order_data:
             order_data[x] = before_order_data[x]
-        after_order_data = get_dep_tree(after)
+        after_order_data = get_dep_tree(after, seen)
         for x in after_order_data:
             order_data[x] = after_order_data[x]
+        seen.remove(mod_name)
     return order_data
 
 def sort_modules(module_list):

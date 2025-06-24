@@ -523,7 +523,7 @@ class OTPmeAgent(UnixDaemon):
             login_session = self.login_sessions[login_pid]
             login_session['server_sessions'][realm][site] = session
             self.login_sessions[login_pid] = login_session
-        except:
+        except KeyError:
             msg = ("Session does not exist anymore. Cannot update reneg: %s"
                     % login_pid)
             self.logger.debug(msg)
@@ -675,7 +675,7 @@ class OTPmeAgent(UnixDaemon):
 
         # If our (server) session does not exist anymore delete agent session.
         if update_status is None:
-            self.delete_session(login_pid, force=True)
+            self.delete_session(login_pid, force=True, realm=realm, site=site)
             # Try to remove on-disk RSP/session.
             self.remove_offline_rsp(login_user, session_id)
         else:
@@ -775,7 +775,7 @@ class OTPmeAgent(UnixDaemon):
         finally:
             auth_conn.close()
 
-    def delete_session(self, login_pid, force=False):
+    def delete_session(self, login_pid, force=False, realm=None, site=None):
         """ Delete user session. """
         # Try to get session.
         try:
@@ -793,13 +793,34 @@ class OTPmeAgent(UnixDaemon):
         except KeyError:
             session_id = None
 
-        self.logger.info("Removing session for user '%s." % login_user)
-
         # Get all server sessions of login_pid.
         try:
             server_sessions = session['server_sessions']
         except:
             server_sessions = {}
+
+        if realm and site:
+            msg = ("Removing session for user '%s: %s/%s"
+                    % (login_user, realm, site))
+            self.logger.info(msg)
+            if not force:
+                # Wait until session is not in use anymore.
+                conn_lock = self.acquire_connection_lock(login_pid, realm, site)
+            # Remove server session.
+            try:
+                server_sessions[realm].pop(site)
+            except KeyError:
+                pass
+            finally:
+                if not force:
+                    conn_lock.release_lock()
+            # Update session.
+            session['server_sessions'] = server_sessions
+            self.login_sessions[login_pid] = session
+
+            return
+
+        self.logger.info("Removing session for user '%s." % login_user)
 
         for realm in dict(server_sessions):
             for site in dict(server_sessions[realm]):
@@ -924,24 +945,33 @@ class OTPmeAgent(UnixDaemon):
         # Get login handler.
         login_handler = LoginHandler()
         # Send auth/login request.
-        login_handler.login(username=login_user,
-                            realm=realm,
-                            site=site,
-                            login_use_dns=False,
-                            use_dns=use_dns,
-                            jwt_auth=True,
-                            jwt_method=_get_jwt,
-                            auth_only=False,
-                            use_ssh_agent=False,
-                            use_smartcard=False,
-                            endpoint=False,
-                            change_user=True,
-                            sync_token_data=False,
-                            add_agent_session=False,
-                            add_login_session=False,
-                            need_ssh_key_pass=False,
-                            check_login_status=False,
-                            cache_login_tokens=False)
+        try:
+            login_handler.login(username=login_user,
+                                realm=realm,
+                                site=site,
+                                login_use_dns=False,
+                                use_dns=use_dns,
+                                jwt_auth=True,
+                                jwt_method=_get_jwt,
+                                auth_only=False,
+                                use_ssh_agent=False,
+                                use_smartcard=False,
+                                endpoint=False,
+                                change_user=True,
+                                sync_token_data=False,
+                                add_agent_session=False,
+                                add_login_session=False,
+                                need_ssh_key_pass=False,
+                                check_login_status=False,
+                                cache_login_tokens=False)
+        except ConnectionError as e:
+            msg = "Login failed: %s" % e
+            self.logger.warning(msg)
+            raise OTPmeException(msg)
+        except Exception as e:
+            msg = "Login error: %s" % e
+            self.logger.critical(msg)
+            return False
         # Get RSP.
         rsp = login_handler.login_reply['rsp']
         # Get auth reply.
@@ -1056,7 +1086,8 @@ class OTPmeAgent(UnixDaemon):
 
         if daemon_conn:
             if keepalive:
-                msg = ("Sending keepalive message to '%s'." % daemon)
+                msg = ("Sending keepalive message to '%s': %s/%s"
+                        % (daemon, realm, site))
                 self.logger.debug(msg)
             try:
                 status, \
@@ -1095,14 +1126,20 @@ class OTPmeAgent(UnixDaemon):
             if self.config_reload:
                 return
 
-            # Try to get user and RSP from session.
+            # Try to get login user.
             try:
                 login_user = self.login_sessions[login_pid]['login_user']
+            except Exception as e:
+                msg = (_("Error getting login user."))
+                self.logger.critical(msg)
+                raise OTPmeException(msg)
+            # Try to get RSP.
+            try:
                 rsp = self.login_sessions[login_pid]['server_sessions'][realm][site]['rsp']
             except Exception as e:
-                msg = (_("Error reading session infos: %s") % e)
+                msg = (_("Error getting RSP."))
                 self.logger.critical(msg)
-                raise Exception(msg)
+                raise OTPmeException(msg)
 
             # Connect to daemon.
             try:
@@ -1140,16 +1177,16 @@ class OTPmeAgent(UnixDaemon):
                     msg = ("Connection to daemon '%s' established." % daemon)
                     self.logger.info(msg)
 
-                if not login_pid in self.connections:
+                if login_pid not in self.connections:
                     self.connections[login_pid] = {}
 
-                if not realm in self.connections[login_pid]:
+                if realm not in self.connections[login_pid]:
                     self.connections[login_pid][realm] = {}
 
-                if not site in self.connections[login_pid][realm]:
+                if site not in self.connections[login_pid][realm]:
                     self.connections[login_pid][realm][site] = {}
 
-                if not daemon in self.connections[login_pid][realm][site]:
+                if daemon not in self.connections[login_pid][realm][site]:
                     self.connections[login_pid][realm][site][daemon] = {}
 
                 try:
@@ -1333,15 +1370,18 @@ class OTPmeAgent(UnixDaemon):
         while not daemon_conn:
             try:
                 daemon_conn = self.get_daemon_conn(realm=realm,
-                                                    site=site,
-                                                    daemon=daemon,
-                                                    login_pid=login_pid,
-                                                    use_dns=use_dns)
+                                                site=site,
+                                                daemon=daemon,
+                                                login_pid=login_pid,
+                                                use_dns=use_dns)
             except AuthFailed as e:
                 reply = str(e)
                 status_code = status_codes.NEED_USER_AUTH
             except OTPmeException as e:
                 reply = str(e)
+                status_code = status_codes.ERR
+            except Exception as e:
+                reply = "Internal error getting daemon connection."
                 status_code = status_codes.ERR
             if not self.config_reload:
                 break
@@ -1360,7 +1400,7 @@ class OTPmeAgent(UnixDaemon):
             comm_handler.close()
             return status_code, reply
 
-        msg = ("Sending request to daemon '%s/%s/%s'." % (realm, site, daemon))
+        msg = ("Sending request to daemon: %s: %s/%s" % (daemon, realm, site))
         self.logger.debug(msg)
 
         # Get proxy request options.
@@ -1433,6 +1473,7 @@ class OTPmeAgent(UnixDaemon):
 
     def run(self):
         """ Run the agent loop. """
+        register_module("otpme.lib.classes.realm")
         register_module("otpme.lib.protocols.server.agent1")
         register_module("otpme.lib.sotp")
         from otpme.lib import connections

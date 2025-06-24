@@ -886,9 +886,10 @@ class PamHandler(object):
                 self.logger.debug("Got %s keys from SSH agent."
                                 % len(agent_keys))
                 # Get SSH agent key instance.
-                ssh_login_key = None
-                if verify_token.ssh_public_key in agent_keys:
+                try:
                     ssh_login_key = agent_keys[verify_token.ssh_public_key]
+                except KeyError:
+                    ssh_login_key = None
 
                 if not ssh_login_key:
                     msg = (_("Cannot find SSH public key of token: %s")

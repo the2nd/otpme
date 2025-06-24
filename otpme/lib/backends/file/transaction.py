@@ -184,12 +184,16 @@ def get_object_transactions():
                                                 sort_by="ctime")
     return object_transactions
 
-def begin_transaction(name, callback=default_callback):
+def begin_transaction(name=None, callback=default_callback):
     """ Begin transaction. """
-    if not config.transactions_enabled:
-        return
+    proc_id = multiprocessing.get_id()
+    if proc_id is None:
+        msg = "Transaction failed: Unable to get process/thread name."
+        raise OTPmeException(msg)
+    if name is not None:
+        proc_id = "%s:%s" % (proc_id, name)
     # Get object transaction.
-    _transaction = ObjectTransaction(name=name, callback=callback)
+    _transaction = ObjectTransaction(name=proc_id, callback=callback)
     # Mark transaction as active.
     _transaction.active = True
     if config.debug_level(DEBUG_SLOT) > 0:
@@ -205,8 +209,6 @@ def begin_transaction(name, callback=default_callback):
 
 def end_transaction():
     """ End transaction. """
-    if not config.transactions_enabled:
-        return
     # Remove transaction from list.
     _transaction = get_transaction(active=None)
     if not _transaction:
@@ -256,8 +258,6 @@ def end_transaction():
 
 def abort_transaction():
     """ Abort transaction. """
-    if not config.transactions_enabled:
-        return
     # Remove transaction from list.
     _transaction = get_transaction()
     if not _transaction:
@@ -267,6 +267,8 @@ def abort_transaction():
     try:
         # Remove transaction.
         remove_transaction()
+        # Rollback transaction.
+        _transaction.rollback()
         # Delete transaction.
         _transaction.remove()
         # Release object locks.
@@ -388,19 +390,13 @@ def transaction(func):
         except:
             callback = default_callback
         start_transaction = True
-        if not config.transactions_enabled:
-            start_transaction = False
         # Make sure we do not try to start another transaction
         # (e.g. on recursive method call).
         _transaction = get_transaction()
         if _transaction:
             start_transaction = False
         if start_transaction:
-            proc_id = multiprocessing.get_id()
-            if proc_id is None:
-                msg = "Transaction failed: Unable to get process/thread name."
-                raise OTPmeException(msg)
-            begin_transaction(proc_id, callback=callback)
+            begin_transaction(callback=callback)
         # Run function.
         result = func(*args, **kwargs)
         if start_transaction:
@@ -1719,6 +1715,12 @@ class ObjectTransaction(BaseTransaction):
                     pass
 
         return added_objects, deleted_objects
+
+    def rollback(self):
+        if not self.session:
+            return
+        self.session.rollback()
+        self.session.close()
 
     def replay(self):
         """ Replay transaction. """

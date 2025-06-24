@@ -713,11 +713,6 @@ class ClusterDaemon(OTPmeDaemon):
         except Exception as e:
             msg = "Failed to close shared bool: %s" % e
             self.logger.warning(msg)
-        try:
-            self.nsscache_sync.unlink()
-        except Exception as e:
-            msg = "Failed to unlink shared bool: %s" % e
-            self.logger.warning(msg)
         return super(ClusterDaemon, self).signal_handler(_signal, frame)
 
     def clear_processed_journal_entries(self):

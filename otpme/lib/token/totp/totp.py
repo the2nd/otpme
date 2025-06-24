@@ -2,9 +2,9 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
-#from pyotp.totp import TOTP
-from datetime import datetime
 from typing import Union
+from pyotp.totp import TOTP
+from datetime import datetime
 from strongtyping.strong_typing import match_class_typing
 
 try:
@@ -22,11 +22,8 @@ from otpme.lib import otpme_acl
 from otpme.lib.otp.oath import totp
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
-from otpme.lib.encoding.base import decode
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.token.oath.oath import OathToken
-from otpme.lib.third_party.oath_toolkit import uri
-from otpme.lib.token.oath.oath import OATH_OTP_FORMATS
 from otpme.lib.protocols.utils import register_commands
 
 from otpme.lib.classes.token \
@@ -59,11 +56,7 @@ read_value_acls = {
                             "secret",
                             "pin",
                             "auth_script",
-                            "otp_format",
                             "mode",
-                            "period",
-                            "forward_drift",
-                            "backward_drift",
                             "offline_status",
                             "offline_expiry",
                             "offline_unused_expiry",
@@ -80,11 +73,7 @@ write_value_acls = {
                             "secret",
                             "pin",
                             "auth_script",
-                            "otp_format",
                             "mode",
-                            "period",
-                            "forward_drift",
-                            "backward_drift",
                             "offline_expiry",
                             "offline_unused_expiry",
                             ],
@@ -191,46 +180,11 @@ commands = {
                     },
                 },
             },
-    'otp_format'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'change_otp_format',
-                    'args'              : ['otp_format'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
     'mode'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'change_mode',
                     'args'              : ['new_mode'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'check_period'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'change_period',
-                    'oargs'             : ['period'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'backward_drift'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'change_backward_drift',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'forward_drift'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'change_forward_drift',
-                    'oargs'             : ['forward_drift'],
                     'job_type'          : 'process',
                     },
                 },
@@ -310,31 +264,10 @@ def register_config_params():
                     'unit',
                     'user',
                 ]
-    # Default TOTP OTP format.
-    config.register_config_parameter(name="totp_format",
-                                    ctype=str,
-                                    default_value="dec6",
-                                    valid_values=list(OATH_OTP_FORMATS),
-                                    object_types=object_types)
-    # TOTP check period.
-    config.register_config_parameter(name="totp_period",
-                                    ctype=int,
-                                    default_value=30,
-                                    object_types=object_types)
     # Default TOTP PIN length.
     config.register_config_parameter(name="totp_default_pin_len",
                                     ctype=int,
                                     default_value=4,
-                                    object_types=object_types)
-    # TOTP forward drift tolerance.
-    config.register_config_parameter(name="totp_forward_drift",
-                                    ctype=int,
-                                    default_value=1,
-                                    object_types=object_types)
-    # TOTP backward drift tolerance.
-    config.register_config_parameter(name="totp_backward_drift",
-                                    ctype=int,
-                                    default_value=1,
                                     object_types=object_types)
     # The TOTP secret length.
     config.register_config_parameter(name="totp_secret_len",
@@ -374,7 +307,6 @@ class TotpToken(OathToken):
         self.otp_type = "time"
         self.secret_len = None
 
-        self.otp_format = None
         self.need_password = True
         self.auth_script_enabled = False
         self.allow_offline = False
@@ -383,12 +315,6 @@ class TotpToken(OathToken):
         self.keep_session = False
         self.sync_offline_otps = True
 
-        # TOTP specific settings
-        # FIXME: make this per token config setting!
-        self.drift = 0
-        self.period = None
-        self.forward_drift = None
-        self.backward_drift = None
         # Token ACLs to add to new token via tokenacls policy.
         self.token_acls = [
                             'generate:otp',
@@ -431,30 +357,6 @@ class TotpToken(OathToken):
                                             'type'          : int,
                                             'required'      : False,
                                         },
-
-            'OTP_FORMAT'                : {
-                                            'var_name'      : 'otp_format',
-                                            'type'          : str,
-                                            'required'      : False,
-                                        },
-
-            'PERIOD'                    : {
-                                            'var_name'      : 'period',
-                                            'type'          : int,
-                                            'required'      : False,
-                                        },
-
-            'FORWARD_DRIFT'             : {
-                                            'var_name'      : 'forward_drift',
-                                            'type'          : int,
-                                            'required'      : False,
-                                        },
-
-            'BACKWARD_DRIFT'             : {
-                                            'var_name'      : 'backward_drift',
-                                            'type'          : int,
-                                            'required'      : False,
-                                        },
             }
 
         # Use parent class method to merge token configs.
@@ -477,120 +379,11 @@ class TotpToken(OathToken):
         default_pin_len = self.get_config_parameter("totp_default_pin_len")
         return default_pin_len
 
-    @check_acls(['edit:period'])
-    @object_lock()
-    @backend.transaction
-    def change_period(
-        self,
-        run_policies: bool=True,
-        period: Union[int,None]=None,
-        _caller: str="API",
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Change token check period. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("change_check_period",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception:
-                return callback.error()
-
-        if period is None:
-            while True:
-                answer = callback.ask("Check period: ")
-                try:
-                    period = int(answer)
-                    break
-                except:
-                    pass
-
-        self.period = period
-
-        return self._cache(callback=callback)
-
-    @check_acls(['edit:backward_drift'])
-    @object_lock()
-    @backend.transaction
-    def change_backward_drift(
-        self,
-        run_policies: bool=True,
-        backward_drift: Union[int,None]=None,
-        _caller: str="API",
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Change token check backward_drift. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("change_check_period",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception:
-                return callback.error()
-
-        if backward_drift is None:
-            while True:
-                answer = callback.ask("Backward drift: ")
-                try:
-                    backward_drift = int(answer)
-                    break
-                except:
-                    pass
-
-        self.backward_drift = backward_drift
-
-        return self._cache(callback=callback)
-
-    @check_acls(['edit:forward_drift'])
-    @object_lock()
-    @backend.transaction
-    def change_forward_drift(
-        self,
-        run_policies: bool=True,
-        forward_drift: Union[int,None]=None,
-        _caller: str="API",
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Change token check forward_drift. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("change_check_period",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception:
-                return callback.error()
-
-        if forward_drift is None:
-            while True:
-                answer = callback.ask("Forward drift: ")
-                try:
-                    forward_drift = int(answer)
-                    break
-                except:
-                    pass
-
-        self.forward_drift = forward_drift
-
-        return self._cache(callback=callback)
-
     @check_acls(['generate:otp'])
     def gen_otp(
         self,
-        otp_count: int=1,
         secret: Union[str,None]=None,
-        prefix_pin: int=False,
+        prefix_pin: str=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
@@ -598,41 +391,25 @@ class TotpToken(OathToken):
         """ Generate one or more OTPs for this token. """
         if not secret:
             if self.mode == "mode1":
-                secret = self.get_secret(callback=callback)
+                secret = self.get_secret(encoding="base32", callback=callback)
             if self.mode == "mode2":
                 pin = callback.askpass("Please enter PIN: ")
-                if len(str(pin)) != self.pin_len:
+                if len(pin) != self.pin_len:
                     msg = "Invalid PIN."
                     return callback.error(msg)
-                secret = self.get_secret(pin=pin, callback=callback)
-
+                secret = self.get_secret(encoding="base32",
+                                        pin=pin,
+                                        callback=callback)
         if not secret:
             callback.error("Unable to get token secret.")
 
         epoch_time = time.time()
-        if otp_count > 1:
-            otps = []
-            for i in range(0, otp_count):
-                otp = totp.generate_totp(epoch_time=epoch_time,
-                                        secret=secret,
-                                        period=self.period,
-                                        format=self.otp_format)
-                if prefix_pin:
-                    otp = "%s%s" % (prefix_pin, otp)
-                otps.append(otp)
-                epoch_time = epoch_time + (i * self.period)
-            if _caller == "CLIENT":
-                return callback.ok(otps)
-            return otps
-        otp = totp.generate_totp(epoch_time=epoch_time,
-                                secret=secret,
-                                period=self.period,
-                                format=self.otp_format)
+        otp = totp.generate_totp(epoch_time=epoch_time, secret=secret)
         if prefix_pin:
             otp = "%s%s" % (prefix_pin, otp)
         if _caller == "CLIENT":
             return callback.ok(otp)
-        return [otp]
+        return otp
 
     def verify_otp(
         self,
@@ -679,12 +456,8 @@ class TotpToken(OathToken):
         epoch_time = time.time()
 
         # Calculate times for log entry.
-        otp_validity_range_start_timestamp = float(epoch_time - (self.period * self.backward_drift))
-        otp_validity_range_start_timestamp = float(str(otp_validity_range_start_timestamp)[:-2])
-        otp_validity_range_end_timestamp = float(epoch_time + (self.period + self.forward_drift))
-        otp_validity_range_end_timestamp = float(str(otp_validity_range_end_timestamp)[:-2])
-        otp_validity_start_time = str(datetime.fromtimestamp(otp_validity_range_start_timestamp))
-        otp_validity_end_time = str(datetime.fromtimestamp(otp_validity_range_end_timestamp))
+        otp_validity_start_time = str(datetime.fromtimestamp(epoch_time - 15))
+        otp_validity_end_time = str(datetime.fromtimestamp(epoch_time + 15))
 
         # Tokens do not include a PIN in offline config we could verify here.
         # The PIN is verified in different ways:
@@ -725,7 +498,7 @@ class TotpToken(OathToken):
                 return None
             _otp = otp[self.pin_len:]
             try:
-                pin = int(otp[:self.pin_len])
+                pin = otp[:self.pin_len]
             except ValueError:
                 msg = "OTP does not include a PIN."
                 logger.info(msg)
@@ -738,7 +511,7 @@ class TotpToken(OathToken):
         if not secret:
             # Get token secret.
             try:
-                secret = self.get_secret(pin=pin)
+                secret = self.get_secret(pin=pin, encoding="base32")
             except Exception as e:
                 msg = "Failed to get secret: %s" % e
                 raise OTPmeException(msg)
@@ -747,16 +520,7 @@ class TotpToken(OathToken):
         logger.debug("Verifiying OTP within timerange: start='%s' end='%s'."
                     % (otp_validity_start_time, otp_validity_end_time))
         # Verify OTP.
-        # FIXME: check if token drift needs update here?
-        totp_status, \
-        totp_drift = totp.verify_totp(epoch_time,
-                                    secret=secret,
-                                    period=self.period,
-                                    otp=_otp,
-                                    format=self.otp_format,
-                                    backward_drift=self.backward_drift,
-                                    forward_drift=self.forward_drift,
-                                    drift=self.drift)
+        totp_status = totp.verify_totp(epoch_time, secret=secret, otp=_otp)
         if totp_status:
             # Verify PIN.
             if verify_pin:
@@ -808,6 +572,8 @@ class TotpToken(OathToken):
 
         # Cannot verify token in mode2.
         if self.mode == "mode2":
+            msg = "Cannot verify token in mode2: %s" % self.rel_path
+            logger.debug(msg)
             return return_value
 
         pin = None
@@ -818,38 +584,29 @@ class TotpToken(OathToken):
         epoch_time = time.time()
 
         # Calculate times for log entry.
-        otp_validity_range_start_timestamp = float(epoch_time - (self.period * self.backward_drift))
-        otp_validity_range_start_timestamp = float(str(otp_validity_range_start_timestamp)[:-2])
-        otp_validity_range_end_timestamp = float(epoch_time + (self.period + self.forward_drift))
-        otp_validity_range_end_timestamp = float(str(otp_validity_range_end_timestamp)[:-2])
-        otp_validity_start_time = str(datetime.fromtimestamp(otp_validity_range_start_timestamp))
-        otp_validity_end_time = str(datetime.fromtimestamp(otp_validity_range_end_timestamp))
+        otp_validity_start_time = str(datetime.fromtimestamp(epoch_time - 15))
+        otp_validity_end_time = str(datetime.fromtimestamp(epoch_time + 15))
 
-        # xxxxxxxxxxxxxxxxxxxxx
-        # FIXME: we also need OTPs from self.backward_drift here!
         # Get list with valid OTPs of this token.
-        otps = self.gen_otp(otp_count=self.forward_drift + 1,
-                            prefix_pin=pin,
-                            verify_acls=False)
+        otp = self.gen_otp(prefix_pin=pin, verify_acls=False)
 
         logger.debug("Verifiying OTP within timerange: start='%s' end='%s'."
                     % (otp_validity_start_time, otp_validity_end_time))
-        # Walk through all valid OTPs.
-        for _otp in otps:
-            # Get NT key from verify().
-            status, nt_key = mschap_util.verify(stuff.gen_nt_hash(_otp),
-                                                challenge, response)
-            if status:
-                if handle_used_otps:
-                    if self.is_used_otp(_otp):
-                        return failed_return_value
-                    self.add_used_otp(otp=_otp,
-                                    session_uuid=session_uuid,
-                                    quiet=False)
-                    if self.pin_enabled:
-                        otp = _otp[self.pin_len:]
-                        self.add_used_otp(otp=otp, session_uuid=session_uuid)
-                return status, nt_key, _otp
+
+        # Get NT key from verify().
+        status, nt_key = mschap_util.verify(stuff.gen_nt_hash(otp),
+                                            challenge, response)
+        if status:
+            if handle_used_otps:
+                if self.is_used_otp(otp):
+                    return failed_return_value
+                self.add_used_otp(otp=otp,
+                                session_uuid=session_uuid,
+                                quiet=False)
+                if self.pin_enabled:
+                    _otp = otp[self.pin_len:]
+                    self.add_used_otp(otp=_otp, session_uuid=session_uuid)
+            return status, nt_key, otp
 
         # Default should be None (which means no valid OTP found but not
         # definitively failed because we havent found an already used OTP)
@@ -862,7 +619,7 @@ class TotpToken(OathToken):
     @check_acls(['generate:qrcode'])
     def gen_qrcode(
         self,
-        pin: Union[int,None]=None,
+        pin: Union[str,None]=None,
         qrcode_file: Union[str,None]=None,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -881,27 +638,18 @@ class TotpToken(OathToken):
         if pin is None:
             if self.mode == "mode2":
                 pin = callback.askpass("Please enter PIN: ")
-                if len(str(pin)) != self.pin_len:
+                if len(pin) != self.pin_len:
                     msg = "Invalid PIN."
                     return callback.error(msg)
 
         # Get secret to gen QRCode.
-        secret = self.get_secret(pin=pin)
-        secret = decode(secret, "base32")
-        secret = secret.encode()
+        secret = self.get_secret(pin=pin, encoding="base32")
 
         # Gen OATH URI.
         user_string = "%s@%s" % (self.rel_path, self.realm)
-        #oath_uri = TOTP(secret)
-        #oath_uri = oath_uri.provisioning_uri(name=user_string,
-        #                                    issuer_name=config.my_name)
-        # Use oath-toolkit.
-        oath_uri = uri.generate(key_type=self.token_type,
-                                key=secret,
-                                user=user_string,
-                                issuer=config.my_name,
-                                counter=None)
-
+        oath_uri = TOTP(secret)
+        oath_uri = oath_uri.provisioning_uri(name=user_string,
+                                            issuer_name=config.my_name)
         # Generate QRcode.
         _qrcode = qrcode.gen_qrcode(oath_uri, "terminal")
 
@@ -915,10 +663,12 @@ class TotpToken(OathToken):
         quiet: bool=True,
         ):
         """ Add used OTP for this user/token. """
-        if not self.sync_offline_otps:
-            return True
+        # In offline mode check if we should cache/sync used OTPs.
+        if self.offline:
+            if not self.sync_offline_otps:
+                return True
         # Cache TOTPs twice the time they are valid.
-        expiry = time.time() + (self.period * self.forward_drift * 2)
+        expiry = time.time() + (30 * 2)
         # Add used OTP using parent class method.
         self._add_used_otp(otp, expiry,
                         session_uuid=session_uuid,
@@ -929,11 +679,7 @@ class TotpToken(OathToken):
     def _add(self, *args, **kwargs):
         """ Add a token. """
         # Get default TOTP settings.
-        self.otp_format = self.get_config_parameter("totp_format")
         self.secret_len = self.get_config_parameter("totp_secret_len")
-        self.period = self.get_config_parameter("totp_period")
-        self.forward_drift = self.get_config_parameter("totp_forward_drift")
-        self.backward_drift = self.get_config_parameter("totp_backward_drift")
         return super(TotpToken, self)._add(*args, **kwargs)
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
@@ -942,24 +688,6 @@ class TotpToken(OathToken):
             msg = ("Permission denied.")
             return callback.error(msg, exception=PermissionDenied)
         lines = []
-
-        period = ""
-        if self.verify_acl("view:period") \
-        or self.verify_acl("edit:period"):
-            period = str(self.period)
-        lines.append('PERIOD="%s"' % period)
-
-        backward_drift = ""
-        if self.verify_acl("view:backward_drift") \
-        or self.verify_acl("edit:backward_drift"):
-            backward_drift = str(self.backward_drift)
-        lines.append('BACKWARD_DRIFT="%s"' % backward_drift)
-
-        forward_drift = ""
-        if self.verify_acl("view:forward_drift") \
-        or self.verify_acl("edit:forward_drift"):
-            forward_drift = str(self.forward_drift)
-        lines.append('FORWARD_DRIFT="%s"' % forward_drift)
 
         server_secret = ""
         if self.verify_acl("view:server_secret"):

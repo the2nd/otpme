@@ -330,7 +330,10 @@ class CommandHandler(object):
     def handle_command(self, command, command_line, client_type="CLIENT"):
         """ Handle given command. """
         register_module("otpme.lib.protocols.otpme_client")
-        register_module("otpme.lib.protocols.server.mgmt1")
+        if config.use_api:
+            # We need to register controld to get e.g. config.daemon_shutdown.
+            register_module("otpme.lib.daemon.controld")
+            register_module("otpme.lib.protocols.server.mgmt1")
         # Add newline to command output?
         self.newline = True
         # Command args we send to the server.
@@ -370,6 +373,16 @@ class CommandHandler(object):
                 return self.get_help()
             return self.get_authorized_keys(username)
 
+        if command == "controld":
+            register_module('otpme.lib.daemon.controld')
+            return self.handle_daemon_command(command_line, command, subcommand)
+
+        if command == "agent":
+            return self.handle_agent_command(subcommand)
+
+        if command == "tool" and subcommand == "detect_smartcard":
+            return self.handle_smartcard_detection(command, subcommand)
+
         # Get password from stdin if --stdin-pass was given.
         if config.read_stdin_pass:
             self.user_password = config.stdin_pass
@@ -394,8 +407,6 @@ class CommandHandler(object):
             config.realm_init = True
             # Disable locking on realm init.
             config.locking_enabled = False
-            # Disable transactions.
-            config.transactions_enabled = False
             # Make sure index is ready.
             _index = config.get_index_module()
             _index.command("init")
@@ -499,7 +510,7 @@ class CommandHandler(object):
             config.handle_post_base_object_registration()
 
             # Re-init backend after module registration.
-            init_file_dir_perms = True
+            init_file_dir_perms = False
             if config.realm_init:
                 init_file_dir_perms = True
             backend.init(init_file_dir_perms=init_file_dir_perms)
@@ -509,6 +520,7 @@ class CommandHandler(object):
 
         if command == "cluster":
             if subcommand == "status":
+                register_module("otpme.lib.daemon.controld")
                 return self.handle_cluster_status(command, subcommand)
 
             if subcommand == "required_votes":
@@ -571,16 +583,6 @@ class CommandHandler(object):
                 from otpme.lib.register import register_modules
                 register_modules()
                 #self.init(use_backend=True)
-
-        if command == "controld":
-            register_module('otpme.lib.daemon.controld')
-            return self.handle_daemon_command(command_line, command, subcommand)
-
-        if command == "agent":
-            return self.handle_agent_command(subcommand)
-
-        if command == "tool" and subcommand == "detect_smartcard":
-            return self.handle_smartcard_detection(command, subcommand)
 
         if command == "tool":
             return self.handle_tool_command(command, subcommand, command_line)
@@ -1178,12 +1180,15 @@ class CommandHandler(object):
             return self.do_backup(backup_dir)
 
         if subcommand == "unpin_offline_token":
+            register_module("otpme.lib.offline_token")
             return self.unpin_offline_token()
 
         if subcommand == "pin_offline_token":
+            register_module("otpme.lib.offline_token")
             return self.pin_offline_token()
 
         if subcommand == "show_offline_token":
+            register_module("otpme.lib.offline_token")
             try:
                 command_syntax = self.get_command_syntax(command, subcommand)
             except:
@@ -1467,8 +1472,6 @@ class CommandHandler(object):
         from otpme.lib.backends.file.index import INDEX_DIR
         # Register modules.
         register_modules()
-        # Make sure transactions are active on join.
-        config.transactions_enabled = True
         try:
             host_type = command_args['host_type']
         except:
@@ -3061,6 +3064,7 @@ class CommandHandler(object):
 
     def get_jwt(self, username, challenge, reason="TESTING", access_group=None):
         """ Request JWT from authd. """
+        register_module("otpme.lib.classes.realm")
         from otpme.lib import connections
         if access_group is None:
             access_group = config.realm_access_group
@@ -3075,7 +3079,7 @@ class CommandHandler(object):
             raise OTPmeException(msg)
         try:
             authd_conn.authenticate(command="auth")
-        except:
+        except Exception as e:
             authd_conn.close()
             raise
         command_args = {}

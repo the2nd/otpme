@@ -423,7 +423,7 @@ def check_path(object_type, object_path):
 def is_oid(object_id):
     """ Check if object ID is in correct format. """
     object_type = get_object_type(object_id)
-    if not object_type in config.object_types:
+    if object_type not in config.object_types:
         return False
     regex_string = object_regex[object_type]['oid']
     regex = re.compile("^%s$" % regex_string)

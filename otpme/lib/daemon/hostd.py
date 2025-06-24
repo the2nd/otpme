@@ -37,7 +37,7 @@ from otpme.lib import nsscache
 LOCK_TYPE = "hostd.sync"
 
 REGISTER_BEFORE = ['otpme.lib.daemon.controld']
-REGISTER_AFTER = []
+REGISTER_AFTER = ['otpme.lib.offline_token']
 
 def register():
     """ Register OTPme daemon. """

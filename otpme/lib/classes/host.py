@@ -777,7 +777,8 @@ def get_recursive_default_acls():
                                 otpme_host_recursive_default_acls)
     return _acls
 
-REGISTER_BEFORE = ['otpme.lib.policy']
+#REGISTER_BEFORE = ['otpme.lib.policy']
+REGISTER_BEFORE = []
 REGISTER_AFTER = ["otpme.lib.classes.unit"]
 
 DEFAULT_UNIT = "hosts"

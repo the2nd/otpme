@@ -95,8 +95,11 @@ def register():
                 search_regex_getter=search_regex_getter,
                 max_len=10)
 
-def search_regex_getter():
+def search_regex_getter(show_all=False):
     """ Get default token search regex. """
+    if show_all:
+        search_regex = "*"
+        return search_regex
     # If we got no search regex we only show tokens of the logged in user.
     try:
         login_user = backend.get_object(object_type="user",

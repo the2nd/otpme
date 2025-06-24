@@ -124,7 +124,6 @@ register_global_opt("--lock-wait-timeout <int>", "Lock wait timeout in seconds w
 register_global_opt("--lock-ignore-changed-objects", "Ignore if an object changed while waiting for lock.")
 register_global_opt("--job-timeout <int>", "Job timeout.")
 register_global_opt("--disable-locking", "Disable locking in API mode (use with caution!).")
-register_global_opt("--disable-transactions", "Disable transactions.")
 register_global_opt("--debug-daemons <authd,mgmtd>", "Enable debug stuff only for the given daemons.")
 register_global_opt("--debug-profile-sort <cumtime,ncalls,tottime>", "Statistic output sorting.")
 register_global_opt("--debug-func-caches <instance_cache,search_cache>", "Enable debug stuff only for the given function caches.")
@@ -650,9 +649,6 @@ def get_main_opts(clear_cache=False, mod_name=None):
         elif sys.argv[0] == "--disable-locking":
             sys.argv.pop(0)
             main_opts['locking_enabled'] = False
-        elif sys.argv[0] == "--disable-transactions":
-            sys.argv.pop(0)
-            main_opts['transactions_enabled'] = False
         elif sys.argv[0] == "-u":
             sys.argv.pop(0)
             main_opts['login_user'] = str(sys.argv[0])

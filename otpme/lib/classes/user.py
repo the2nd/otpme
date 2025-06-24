@@ -969,6 +969,7 @@ def register_hooks():
     config.register_auth_on_action_hook("user", "change_agent_script")
     config.register_auth_on_action_hook("user", "change_login_script")
     config.register_auth_on_action_hook("user", "change_auth_script")
+    config.register_auth_on_action_hook("user", "move")
     config.register_auth_on_action_hook("user", "sign")
     config.register_auth_on_action_hook("user", "verify")
     config.register_auth_on_action_hook("user", "encrypt")
@@ -1540,8 +1541,6 @@ class User(OTPmeObject):
     @group.setter
     def group(self, new_group: str):
         result = backend.search(object_type="group",
-                                #realm=config.realm,
-                                #site=config.site,
                                 attribute="name",
                                 value=new_group,
                                 return_type="uuid")
@@ -1571,10 +1570,10 @@ class User(OTPmeObject):
         self,
         group_uuid: str,
         verify_acls: bool=True,
+        new_user: bool=False,
         callback: JobCallback=default_callback,
         ):
         """ Change users group. """
-        # Remove user from current group.
         current_group_uuid = None
         # Get new group.
         result = backend.search(object_type="group",
@@ -1595,34 +1594,234 @@ class User(OTPmeObject):
                                     return_type="uuid")
             if result:
                 current_group_uuid = result[0]
-        if current_group_uuid == group_uuid:
-            msg = "User already in group: %s" % new_group
+
+        if not new_user and not current_group_uuid:
+            msg = "Default group not set (e.g. sync required?)."
             return callback.error(msg)
-        msg = "Setting group: %s" % new_group.name
+
+        old_group = None
         if current_group_uuid:
+            if current_group_uuid == group_uuid:
+                msg = "User already in group: %s" % new_group.name
+                return callback.error(msg)
             result = backend.search(object_type="group",
                                     attribute="uuid",
                                     value=current_group_uuid,
                                     return_type="instance")
             if result:
                 old_group = result[0]
-                old_group.remove_default_group_user(self.uuid,
-                                            verify_acls=verify_acls,
-                                            ignore_missing=True)
+
         # Add user to new group.
-        callback.send(msg)
+        local_add = None
+        local_remove = None
+        cross_site_add = None
+        cross_site_remove = None
+        cross_site_change = None
+        if new_group.site == config.site:
+            local_add = True
+            if old_group:
+                if old_group.site == config.site:
+                    local_remove = True
+                else:
+                    cross_site_remove = True
+        else:
+            if old_group:
+                if old_group.site == config.site:
+                    local_remove = True
+                    cross_site_add = True
+                else:
+                    cross_site_change = True
+            else:
+                cross_site_add = True
+
+        if cross_site_add or cross_site_remove or cross_site_change:
+            if callback == default_callback:
+                msg = "Cannot change user default group without valid callback."
+                return callback.error(msg)
+
+        transaction_started = False
+        if local_add or local_remove:
+            transaction_started = True
+            backend.begin_transaction(name="change_user_default_group",
+                                    callback=callback)
+        if local_add:
+            msg = "Setting group: %s" % new_group.name
+            callback.send(msg)
+            result = new_group.add_default_group_user(self.uuid,
+                                                verify_acls=verify_acls,
+                                                callback=callback)
+        if cross_site_add:
+            msg = "Setting group: %s" % new_group.name
+            callback.send(msg)
+            result = self.cross_site_user_default_group_change(action="add",
+                                                            user=self,
+                                                            new_group=new_group,
+                                                            callback=callback)
+            if not result:
+                msg = "Failed to change user default group."
+                return callback.error(msg)
+
+        if local_remove:
+            old_group.remove_default_group_user(self.uuid,
+                                        verify_acls=verify_acls,
+                                        ignore_missing=True,
+                                        callback=callback)
+
+        if cross_site_remove:
+            result = self.cross_site_user_default_group_change(action="remove",
+                                                                user=self,
+                                                                old_group=old_group,
+                                                                callback=callback)
+            if not result:
+                # Clear callback modified objects.
+                callback.forget_modified_objects()
+                # Abort global transaction.
+                backend.abort_transaction()
+                msg = "Failed to change user default group."
+                return callback.error()
+
+        if transaction_started:
+            backend.end_transaction()
+
+        if cross_site_change:
+            result = self.cross_site_user_default_group_change(action="change",
+                                                                user=self,
+                                                                old_group=old_group,
+                                                                new_group=new_group,
+                                                                callback=callback)
+            if not result:
+                msg = "Failed to change user default group."
+                return callback.error()
+
+        # Set new group UUID and update index and extensions.
         self._group_uuid = new_group.uuid
         self.update_index('group', self._group_uuid)
-        result = new_group.add_default_group_user(self.uuid,
-                                            verify_acls=verify_acls,
-                                            callback=callback)
         self.update_extensions("change_group", callback=callback)
-        return result
+
+        return self._cache(callback=callback)
+
+    def cross_site_user_default_group_change(self,
+        action: str,
+        user: OTPmeObject,
+        old_group: OTPmeObject=None,
+        new_group: OTPmeObject=None,
+        callback: JobCallback=default_callback,
+        ):
+        # Load JWT signing key.
+        our_site = backend.get_object(uuid=config.site_uuid)
+        sign_key = our_site._key
+
+        # Set source site.
+        src_realm = config.realm
+        src_site = config.site
+        # Set destination site.
+        old_group_name = None
+        old_group_uuid = None
+        new_group_name = None
+        new_group_uuid = None
+        if action == "add":
+            dst_realm = new_group.realm
+            dst_site = new_group.site
+            new_group_name = new_group.name
+            new_group_uuid = new_group.uuid
+        elif action == "remove":
+            dst_realm = old_group.realm
+            dst_site = old_group.site
+            old_group_name = old_group.name
+            old_group_uuid = old_group.uuid
+        elif action == "change":
+            dst_realm = new_group.realm
+            dst_site = new_group.site
+            new_group_name = new_group.name
+            new_group_uuid = new_group.uuid
+            old_group_name = old_group.name
+            old_group_uuid = old_group.uuid
+
+        # Build JWT.
+        jwt_data = {
+                'src_realm'         : src_realm,
+                'src_site'          : src_site,
+                'dst_realm'         : dst_realm,
+                'dst_site'          : dst_site,
+                'action'            : action,
+                'old_group_name'    : old_group_name,
+                'old_group_uuid'    : old_group_uuid,
+                'new_group_name'    : new_group_name,
+                'new_group_uuid'    : new_group_uuid,
+                'user_name'         : user.name,
+                'user_uuid'         : user.uuid,
+                'reason'            : "USER_DEFAULT_GROUP_CHANGE",
+                }
+        # Sign object move data.
+        _jwt = jwt.encode(payload=jwt_data, key=sign_key, algorithm='RS256')
+
+        object_data = {
+                    'src_realm'     : src_realm,
+                    'src_site'      : src_site,
+                    'dst_realm'     : dst_realm,
+                    'dst_site'      : dst_site,
+                    'action'        : action,
+                    'jwt'           : _jwt,
+                    }
+
+        # Actually move objects to other site.
+        response = callback.change_user_default_group(object_data)
+
+        try:
+            status = response['status']
+        except KeyError:
+            msg = "Response missing status."
+            return callback.error(msg)
+
+        try:
+            reply = response['reply']
+        except KeyError:
+            msg = "Response missing reply."
+            return callback.error(msg)
+
+        if not status:
+            if action == "add":
+                msg = "Set user default group failed: %s" % reply
+            elif action == "remove":
+                msg = "Unset user default group failed: %s" % reply
+            elif action == "change":
+                msg = "Change user default group failed: %s" % reply
+            return callback.error(msg)
+
+        # Get destination site cert to encrypt objects and
+        # verify reply JWT.
+        _dst_site = backend.get_object(object_type="site",
+                                        realm=dst_realm,
+                                        name=dst_site)
+        # Encrypt encryption key with destination site public key.
+        try:
+            dst_site_public_key = RSAKey(key=_dst_site._cert.public_key())
+        except Exception as e:
+            msg = (_("Unable to get public key of site "
+                    "certificate: %s: %s") % (dst_site, e))
+            logger.warning(msg)
+            return callback.error(msg)
+
+        # Decode reply JWT.
+        try:
+            reply_jwt_data = jwt.decode(jwt=reply,
+                                    key=dst_site_public_key,
+                                    algorithm='RS256')
+        except Exception as e:
+            msg = "JWT verification failed: %s" % e
+            logger.warning(msg)
+            return callback.error(msg)
+
+        if reply_jwt_data != jwt_data:
+            msg = ("Got wrong JWT data from peer:\n\t%s\n\t%s"
+                    % (jwt_data, reply_jwt_data))
+            return callback.error(msg)
+
+        return callback.ok()
 
     def cross_site_move(
         self,
         path: str,
-        default_group: Union[str,None]=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -1632,35 +1831,9 @@ class User(OTPmeObject):
             return callback.error(msg)
 
         path_data = oid.resolve_path(object_path=path,
-                                        object_type="unit")
+                                    object_type="unit")
         dst_realm = path_data['realm']
         dst_site = path_data['site']
-
-        # Make sure we can change users default group.
-        _default_group = None
-        if self.group_uuid:
-            result = backend.search(object_type="group",
-                                    attribute="uuid",
-                                    value=self.group_uuid,
-                                    return_type="instance")
-            if result:
-                _default_group = result[0]
-                if not _default_group.verify_acl("remove:default_group_user"):
-                    msg = "Failed to change users default group: Permission denied"
-                    return callback.error(msg)
-
-        result = backend.search(object_type="group",
-                                attribute="name",
-                                value=default_group,
-                                realm=config.realm,
-                                return_type="instance")
-        if not result:
-            msg = "Unknown new default group: %s" % default_group
-            return callback.error(msg)
-        new_default_group = result[0]
-        if new_default_group.site != dst_site:
-            msg = "New default group must be from site: %s" % dst_site
-            return callback.error(msg)
 
         object_config = self.object_config.copy()
         object_ids = [(self.oid.full_oid, self.uuid)]
@@ -1668,7 +1841,6 @@ class User(OTPmeObject):
                     self.oid.full_oid   : {
                                             'path'          : path,
                                             'object_config' : object_config,
-                                            'default_group' : default_group,
                                         },
                 }
 
@@ -1713,7 +1885,6 @@ class User(OTPmeObject):
                 'dst_path'      : path,
                 'dst_realm'     : dst_realm,
                 'dst_site'      : dst_site,
-                'default_group' : default_group,
                 'object_ids'    : object_ids,
                 'enc_key'       : enc_key_encrypted,
                 'reason'        : "OBJECT_MOVE",
@@ -1766,11 +1937,6 @@ class User(OTPmeObject):
                         % (x_oid, x_uuid, y_uuid))
                 return callback.error(msg)
 
-
-        if _default_group:
-            _default_group.remove_default_group_user(self.uuid,
-                                            ignore_missing=True)
-
         # Actually delete objects from backend.
         for object_type in reversed(config.object_add_order):
             for x_oid in objects:
@@ -1788,7 +1954,13 @@ class User(OTPmeObject):
 
         return callback.ok()
 
-    def move(self, *args, callback: JobCallback=default_callback, **kwargs):
+    def move(self,
+        *args,
+        _caller: str="API",
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
         """ Move user to other unit. """
         if self.name == config.admin_user_name:
             msg = "Moving admin user is not allowed."
@@ -1797,6 +1969,19 @@ class User(OTPmeObject):
         if self.name in internal_users:
             msg = "Moving internal user is not allowed."
             return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("move",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
+
         new_unit = kwargs['new_unit']
         if new_unit.startswith("/"):
             path_data = oid.resolve_path(new_unit, object_type="user")
@@ -1830,7 +2015,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         # Check if data is base64 and decode.
         if stuff.is_base64(image_data):
@@ -1873,7 +2059,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         self.photo = None
         self.del_attribute(attribute="jpegPhoto")
@@ -1902,7 +2089,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         return callback.ok(self.photo)
 
@@ -1984,7 +2172,7 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                msg = str(e)
+                msg = "Error running policies: %s" % e
                 return callback.error(msg)
 
         try:
@@ -2024,7 +2212,8 @@ class User(OTPmeObject):
                                     callback=callback,
                                     _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         if self.private_key != None and not force:
             if self.confirmation_policy != "force":
@@ -2063,7 +2252,8 @@ class User(OTPmeObject):
                                     callback=callback,
                                     _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         if self.public_key != None and not force:
             if self.confirmation_policy != "force":
@@ -2245,7 +2435,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         if self.private_key or self.public_key:
             ask_user = True
@@ -2380,7 +2571,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         if not self.private_key and not self.public_key:
             msg = "No user keys present."
@@ -2471,7 +2663,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         remove_key_pass = False
         # Check if the current key is encrypted.
@@ -2553,7 +2746,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
         # Try to get private key (e.g. decrypt)
         try:
             private_key = self.get_private_key(decrypt=True,
@@ -2605,7 +2799,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
         try:
             key = RSAKey(key=decode(self.public_key, "base64"))
         except Exception as e:
@@ -2640,7 +2835,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
         # Try to decode public key.
         try:
             public_key = decode(self.public_key, "base64")
@@ -2681,7 +2877,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
         # Try to get private key (e.g. decrypt).
         try:
             private_key = self.get_private_key(decrypt=True,
@@ -3313,7 +3510,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         if access_group:
             group_oid = oid.get(object_type="accessgroup",
@@ -3377,7 +3575,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         token = backend.get_object(object_type="token",
                                     realm=self.realm,
@@ -3787,7 +3986,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         self.allow_disabled_login = True
 
@@ -3812,7 +4012,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         self.allow_disabled_login = False
 
@@ -3837,7 +4038,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         self.autosign_enabled = True
 
@@ -3862,7 +4064,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         self.autosign_enabled = False
 
@@ -3897,7 +4100,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         # Check if auth_script is already enabled.
         if self.auth_script_enabled:
@@ -3933,7 +4137,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         self.auth_script_enabled = False
         self.update_index('auth_script_enabled', self.auth_script_enabled)
@@ -3973,7 +4178,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         self.login_script_enabled = True
 
@@ -4003,7 +4209,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         self.login_script_enabled = False
 
@@ -4033,7 +4240,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         return self.change_script(script_var='key_script',
                         script_options_var='key_script_options',
@@ -4064,7 +4272,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         return self.change_script(script_var='agent_script',
                         script_options_var='agent_script_options',
@@ -4095,7 +4304,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         return self.change_script(script_var='login_script',
                         script_options_var='login_script_options',
@@ -4126,7 +4336,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         return self.change_script(script_var='auth_script',
                         script_options_var='auth_script_options',
@@ -4439,6 +4650,7 @@ class User(OTPmeObject):
         if self.group is None:
             try:
                 self._change_group(default_group.uuid,
+                                new_user=True,
                                 verify_acls=verify_acls,
                                 callback=callback)
             except UnknownObject as e:
@@ -4732,7 +4944,8 @@ class User(OTPmeObject):
             try:
                 self.run_policies("delete", callback=callback, _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         token_list = self.get_tokens(return_type="instance")
         token_list_names = [i.name for i in token_list]
@@ -4833,7 +5046,8 @@ class User(OTPmeObject):
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
 
         remove_orphans = True
         acl_list = self.get_orphan_acls()

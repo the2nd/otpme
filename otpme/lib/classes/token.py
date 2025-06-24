@@ -2782,7 +2782,7 @@ class Token(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Change token password. """
+        """ Set token temp password. """
         # Use destination token if we have one.
         if self.destination_token:
             # Before changing password of the destination token we have to run
@@ -2850,12 +2850,13 @@ class Token(OTPmeObject):
         add_info = ", ".join(add_info)
         msg = "%s (%s)" % (msg, add_info)
         logger.info(msg)
+        callback.send(msg)
 
         return self._cache(callback=callback)
 
     def check_pin(
         self,
-        pin: int,
+        pin: str,
         callback: JobCallback=default_callback,
         ):
         """ Check PIN via assiged policy. """
@@ -2884,7 +2885,7 @@ class Token(OTPmeObject):
     @backend.transaction
     def change_pin(
         self,
-        pin: Union[int,None]=None,
+        pin: Union[str,None]=None,
         auto_pin: bool=False,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -3592,6 +3593,12 @@ class Token(OTPmeObject):
                 lines.append('TEMP_PASSWORD_HASH="%s"' % self.temp_password_hash)
             else:
                 lines.append('TEMP_PASSWORD_HASH=""')
+
+        if self.temp_password_expire:
+            if self.verify_acl("view:temp_password_expire"):
+                lines.append('TEMP_PASSWORD_EXPIRY="%s"' % self.temp_password_expire)
+            else:
+                lines.append('TEMP_PASSWORD_EXPIRY=""')
 
         if isinstance(self.mschap_enabled, bool):
             if self.verify_acl("view:mschap") \

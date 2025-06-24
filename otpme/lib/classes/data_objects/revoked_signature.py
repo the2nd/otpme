@@ -116,7 +116,11 @@ def register_backend():
                             uniq_name=False,
                             add_after=["ca"],
                             object_cache=1024,
-                            cache_region="data_object")
+                            cache_region="data_object",
+                            backup_attributes=['realm',
+                                                'site',
+                                                'signer_uuid',
+                                                'signature_hash'])
     # Register index attributes.
     config.register_index_attribute('sign_ref')
     config.register_index_attribute('signer_uuid')

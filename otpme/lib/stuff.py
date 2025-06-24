@@ -214,10 +214,9 @@ def gen_pin(pin_len=4):
     """ Generate PIN from length given as arg. """
     import random
     pin = ""
-    for i in range(pin_len):
+    for i in range(0, pin_len):
         number = random.randint(0,9)
         pin = "%s%s" % (pin, number)
-    pin = int(pin)
     return pin
 
 def gen_secret(len=32, encoding="hex"):
@@ -335,83 +334,102 @@ def get_daemon_socket(daemon, node_name):
     return daemon_socket
 
 def order_data_by_deps(order_data):
-    """ Return list ordered by before/after deps. """
-    after_deps = {}
-    before_deps = {}
-    final_order = sorted(order_data)
-    while True:
-        did_change = False
-        for x in order_data:
-            try:
-                before = order_data[x]['before']
-            except KeyError:
-                msg = "Missing before deps: %s" % x
-                raise OTPmeException(msg)
-            try:
-                after = order_data[x]['after']
-            except KeyError:
-                msg = "Missing before deps: %s" % x
-
-            if not before and not after:
+    deps = {}
+    for module in order_data:
+        try:
+            before = order_data[module]['before']
+        except KeyError:
+            before = []
+        try:
+            after = order_data[module]['after']
+        except KeyError:
+            after = []
+        # We can use 'after' as deps for the module.
+        if module not in deps:
+            deps[module] = []
+        deps[module] += after
+        # Add emtpy 'after' deps to deps.
+        for x in after:
+            if x in deps:
                 continue
+            deps[x] = []
+        # Walk through 'before' deps to build deps from it.
+        for x in before:
+            if x not in deps:
+                deps[x] = []
+            deps[x].append(module)
+    # Function to order modules.
+    def order_deps(module, deps, module_order, seen):
+        if module in seen:
+            msg = ("Circular dependency detected: %s: %s"
+                    % (module, seen))
+            raise OTPmeException(msg)
+        seen.append(module)
+        x_deps = deps[module]
+        for x_module in x_deps:
+            order_deps(x_module, deps, module_order, seen)
+        seen.remove(module)
+        # Skip already added modules.
+        if module in module_order:
+            return
+        # Add module to order list.
+        module_order.append(module)
+    # Actually order the modules.
+    seen = []
+    module_order = []
+    for module in deps:
+        order_deps(module, deps, module_order, seen)
+    return module_order
 
-            if before:
-                for b in before:
-                    if b not in before_deps:
-                        continue
-                    if x in before_deps[b]:
-                        msg = "Dependency loop detected: %s <> %s" % (x, b)
-                        raise OTPmeException(msg)
-                before_deps[x] = before
-                before_pos = None
-                cur_pos = final_order.index(x)
-                for x_before in before:
-                    if x_before not in final_order:
-                        continue
-                    x_before_pos = final_order.index(x_before)
-                    if before_pos is None:
-                        before_pos = x_before_pos
-                    else:
-                        if x_before_pos > before_pos:
-                            before_pos = x_before_pos
-                    if cur_pos <= before_pos:
-                        before_pos = None
-                if before_pos is not None:
-                    if cur_pos > before_pos:
-                        final_order.pop(cur_pos)
-                        final_order.insert(before_pos, x)
-                        did_change = True
-
-            if after:
-                for a in after:
-                    if a not in after_deps:
-                        continue
-                    if x in after_deps[a]:
-                        msg = "Dependency loop detected: %s <> %s" % (x, a)
-                        raise OTPmeException(msg)
-                after_deps[x] = after
-                after_pos = None
-                cur_pos = final_order.index(x)
-                for x_after in after:
-                    if x_after not in final_order:
-                        continue
-                    x_after_pos = final_order.index(x_after) + 1
-                    if after_pos is None:
-                        after_pos = x_after_pos
-                    else:
-                        if x_after_pos > after_pos:
-                            after_pos = x_after_pos
-                    if cur_pos >= after_pos:
-                        after_pos = None
-                if after_pos is not None:
-                    if cur_pos < after_pos:
-                        final_order.pop(cur_pos)
-                        final_order.insert(after_pos, x)
-                        did_change = True
-        # If nothing changed we are done
-        if not did_change:
-            break
-    return final_order
+## This function was created by ChatGPT.
+#def order_data_by_deps(modules: dict):
+#    """
+#    Resolves dependencies between modules based on `before` and `after` keys.
+#
+#    :param modules: A dictionary where keys are module names, and values are sub-dictionaries
+#                    containing 'before' and 'after' dependencies.
+#    :return: A list of modules in the order they should be loaded.
+#    :raises ValueError: If a circular dependency is detected.
+#    """
+#    from collections import deque
+#    from collections import defaultdict
+#    # Build the graph
+#    graph = defaultdict(list)
+#    in_degree = defaultdict(int)
+#
+#    for module, dependencies in modules.items():
+#        # Handle 'after' dependencies (current module depends on others)
+#        for dep in dependencies.get("after", []):
+#            graph[dep].append(module)
+#            in_degree[module] += 1
+#
+#        # Handle 'before' dependencies (others depend on the current module)
+#        for dep in dependencies.get("before", []):
+#            graph[module].append(dep)
+#            in_degree[dep] += 1
+#
+#        # Ensure the module itself is in the graph
+#        if module not in in_degree:
+#            in_degree[module] = 0
+#
+#    # Topological sorting using Kahn's algorithm
+#    queue = deque([node for node in in_degree if in_degree[node] == 0])
+#    sorted_modules = []
+#
+#    while queue:
+#        current = queue.popleft()
+#        sorted_modules.append(current)
+#
+#        for neighbor in graph[current]:
+#            in_degree[neighbor] -= 1
+#            if in_degree[neighbor] == 0:
+#                queue.append(neighbor)
+#
+#    # Check for circular dependencies
+#    if len(sorted_modules) != len(in_degree):
+#        raise ValueError("Circular dependency detected!")
+#
+#    return sorted_modules
 
 def get_logged_in_users():
     """ Get all logged in users. """

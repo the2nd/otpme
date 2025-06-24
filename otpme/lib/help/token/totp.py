@@ -42,7 +42,7 @@ cmd_help = {
 
     'pin'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token pin {token} [pin]',
-                    'cmd'   :   '--generate :auto_pin=True: <|object|> [pin]',
+                    'cmd'   :   '--generate :auto_pin=True: <|object|> ["pin"]',
                     '_help' :   {
                                     'cmd'                   : 'change token pin',
                                     '--generate'            : 'generate PIN',
@@ -97,38 +97,6 @@ cmd_help = {
                                 },
                 },
 
-    'otp_format'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token otp_format {token} [otp_format]',
-                    'cmd'   :   '<|object|> [otp_format]',
-                    '_help' :   {
-                                    'cmd'                   : 'change token OTP format',
-                                },
-                },
-
-    'check_period'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token check_period {token} [int]',
-                    'cmd'   :   '<|object|> [period]',
-                    '_help' :   {
-                                    'cmd'                   : 'change OTP check period',
-                                },
-                },
-
-    'backward_drift'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token backward_drift {token} [int]',
-                    'cmd'   :   '<|object|> [backward_drift]',
-                    '_help' :   {
-                                    'cmd'                   : 'change OTP backward drift',
-                                },
-                },
-
-    'forward_drift'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token forward_drift {token} [int]',
-                    'cmd'   :   '<|object|> [forward_drift]',
-                    '_help' :   {
-                                    'cmd'                   : 'change OTP forward drift',
-                                },
-                },
-
     'mode'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token mode {token} {mode}',
                     'cmd'   :   '<|object|> <new_mode>',
@@ -142,10 +110,6 @@ cmd_help = {
                 },
 
     '_list_card_types'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_list_otp_formats'    : {
                     'cmd'   :   '<|object|>',
                 },
     }

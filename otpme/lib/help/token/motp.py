@@ -42,7 +42,7 @@ cmd_help = {
 
     'pin'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token pin {token} [pin]',
-                    'cmd'   :   '--generate :auto_pin=True: <|object|> [pin]',
+                    'cmd'   :   '--generate :auto_pin=True: <|object|> ["pin"]',
                     '_help' :   {
                                     'cmd'                   : 'change token pin',
                                     '--generate'            : 'generate PIN',

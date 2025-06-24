@@ -154,7 +154,7 @@ def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
         role_tokens_result = []
         if get_roles:
             member_roles = []
-            return_attrs = ['name', 'rel_path', 'enabled']
+            return_attrs = ['name', 'rel_path', 'enabled', 'site']
             roles_count, roles_result = backend.search(object_type="role",
                                                 attribute="uuid",
                                                 value="*",
@@ -168,12 +168,15 @@ def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
                                                 return_attributes=return_attrs)
             for role_uuid in roles_result:
                 role_name = roles_result[role_uuid]['name']
+                role_site = roles_result[role_uuid]['site']
                 role_rel_path = roles_result[role_uuid]['rel_path']
                 role_enabled = roles_result[role_uuid]['enabled'][0]
                 role_status_string = ""
                 if not role_enabled:
                     role_status_string = " (D)"
-                role_string = "%s%s" % (role_rel_path, role_status_string)
+                role_string = ("%s (%s) %s" % (role_rel_path,
+                                            role_site,
+                                            role_status_string))
                 member_roles.append(role_string)
 
                 return_attrs = ['name', 'rel_path', 'enabled']

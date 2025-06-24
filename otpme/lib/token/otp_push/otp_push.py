@@ -222,10 +222,9 @@ def register_config_params():
     push_script_name = "push_script.sh"
     scripts_unit = config.get_default_unit("script")
     default_push_script = "%s/%s" % (scripts_unit, push_script_name)
-    default_push_script = default_push_script + " %USERNAME %PHONE_NUMBER [OTP]"
     config.register_config_parameter(name="default_otp_push_script",
                                     ctype=str,
-                                    default_value=push_script_name,
+                                    default_value=default_push_script,
                                     object_types=object_types)
     # Register push scripot.
     config.register_base_object("script", push_script_name)
@@ -600,19 +599,21 @@ class OtppushToken(Token):
         new_pass = stuff.gen_password(pass_len)
 
         self.change_password(password=new_pass,
-                                verify_acls=False,
-                                force=True,
-                                callback=callback)
+                            verify_acls=False,
+                            force=True,
+                            callback=callback)
 
         if self.verify_acl("view:password"):
             return_message = (_("Push password: %s") % new_pass)
 
         # Set default push script.
-        default_push_script = self.get_config_parameter("default_push_script")
+        default_push_script = self.get_config_parameter("default_otp_push_script")
         if verbose_level > 0:
             msg = (_("Setting default push script: %s")
                     % default_push_script)
             callback.send(msg)
+
+        self.push_script_options = ['%USERNAME', '%PHONE_NUMBER', '[OTP]']
 
         self.change_push_script(default_push_script, callback=callback)
 

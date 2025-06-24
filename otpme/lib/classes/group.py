@@ -809,13 +809,12 @@ class Group(OTPmeObject):
         **kwargs,
         ):
         """ Removes a user from groups members list. """
-        if not user_uuid in self.default_group_users:
+        if user_uuid not in self.default_group_users:
             if ignore_missing:
                 return
             msg = (_("User not in group '%s'.")
                     % self.name)
             return callback.error(msg)
-
         # Remove user from group.
         self.default_group_users.remove(user_uuid)
         # Update index.
@@ -1040,21 +1039,24 @@ class Group(OTPmeObject):
         token_uuids = set(self.tokens + list(self.token_options))
         for i in token_uuids:
             token_oid = backend.get_oid(object_type="token", uuid=i)
-            if not token_oid:
-                token_list.append(i)
+            if token_oid:
+                continue
+            token_list.append(i)
 
         role_list = []
         for i in self.roles:
             role_oid = backend.get_oid(object_type="role", uuid=i)
-            if not role_oid:
-                role_list.append(i)
+            if role_oid:
+                continue
+            role_list.append(i)
 
         default_group_users_list = []
         user_uuids = self.default_group_users
         for i in user_uuids:
             user_oid = backend.get_oid(object_type="user", uuid=i)
-            if not user_oid:
-                default_group_users_list.append(i)
+            if user_oid:
+                continue
+            default_group_users_list.append(i)
 
         if not force:
             msg = ""
@@ -1169,8 +1171,8 @@ class Group(OTPmeObject):
                 if not otpme_acl.access_granted(object_id=role_oid,
                                                 acl="view_public:object"):
                     continue
-                role_name = role_oid.name
-                role_list.append(role_name)
+                role_path = "%s (%s)" % (role_oid.rel_path, role_oid.site)
+                role_list.append(role_path)
             role_list.sort()
         else:
             role_list = [""]

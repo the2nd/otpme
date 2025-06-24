@@ -445,18 +445,17 @@ def get(daemon, **kwargs):
         # Get daemon connection.
         try:
             daemon_conn = get_connection(**conn_kwargs)
-        except ConnectionError as e:
+        except (NoClusterService, ConnectionError) as e:
             connect_exception = e
             msg = str(connect_exception)
             logger.warning(msg)
             continue
-        else:
-            connect_exception = None
-            break
 
+        connect_exception = None
         status, \
         status_code, \
         reply = daemon_conn.send("ping", timeout=3)
+        break
 
     if connect_exception:
         if len(connect_addresses) > 1:

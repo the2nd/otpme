@@ -1541,17 +1541,17 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             q = q.join(IndexObjectAttribute, IndexObject.attributes)
             q = q.filter(IndexObjectAttribute.name == order_by_attribute)
             if reverse_order:
-                q = q.distinct(IndexObjectAttribute.value)
+                #q = q.distinct(IndexObjectAttribute.value)
                 q = q.order_by(desc(IndexObjectAttribute.value))
             else:
-                q = q.distinct(IndexObjectAttribute.value)
+                #q = q.distinct(IndexObjectAttribute.value)
                 q = q.order_by(IndexObjectAttribute.value)
         else:
             if reverse_order:
-                q = q.distinct(order_by)
+                #q = q.distinct(order_by)
                 q = q.order_by(desc(order_by))
             else:
-                q = q.distinct(order_by)
+                #q = q.distinct(order_by)
                 q = q.order_by(order_by)
 
         # Apply limit to search.
@@ -2306,37 +2306,38 @@ def index_rebuild():
     """ Rebuild index. """
     from otpme.lib import init_otpme
     from otpme.lib.register import register_modules
+    from otpme.lib.backends.file.index import INDEX_DIR
     global init
     # Register modules.
     register_modules()
 
     logger.info("Starting index rebuild...")
 
-    # Make sure DB indices are created.
+    # Get index module.
     _index = config.get_index_module()
-    if not _index.status():
-        _index.start()
-
-    # Make sure DB classes are loaded.
-    init()
 
     # Backup last used timestamps.
     index_rebuild_data = None
     index_rebuild_data_file = os.path.join(config.spool_dir, "rebuild.json")
-    if os.path.exists(index_rebuild_data_file):
-        index_rebuild_data = filetools.read_file(index_rebuild_data_file)
-        index_rebuild_data = json.loads(index_rebuild_data)
-    else:
-        index_rebuild_data = index_search(attribute="uuid",
-                                        value="*",
-                                        return_attributes=["uuid", "last_used"])
-        for x_uuid in dict(index_rebuild_data):
-            x_last_used = index_rebuild_data[x_uuid]['last_used']
-            if x_last_used is not None:
-                continue
-            index_rebuild_data.pop(x_uuid)
-        file_content = json.dumps(index_rebuild_data)
-        filetools.create_file(index_rebuild_data_file, file_content)
+    if os.path.exists(INDEX_DIR):
+        if not _index.status():
+            _index.start()
+        # Make sure DB classes are loaded.
+        init()
+        if os.path.exists(index_rebuild_data_file):
+            index_rebuild_data = filetools.read_file(index_rebuild_data_file)
+            index_rebuild_data = json.loads(index_rebuild_data)
+        else:
+            index_rebuild_data = index_search(attribute="uuid",
+                                            value="*",
+                                            return_attributes=["uuid", "last_used"])
+            for x_uuid in dict(index_rebuild_data):
+                x_last_used = index_rebuild_data[x_uuid]['last_used']
+                if x_last_used is not None:
+                    continue
+                index_rebuild_data.pop(x_uuid)
+            file_content = json.dumps(index_rebuild_data)
+            filetools.create_file(index_rebuild_data_file, file_content)
 
     _index.command("drop")
     _index.command("init")
@@ -2396,11 +2397,12 @@ def index_rebuild():
         rebuild_function()
 
     # Set last used timestamps.
-    for x_uuid in index_rebuild_data:
-        last_used = index_rebuild_data[x_uuid]['last_used']
-        msg = "Setting last used time: %s: %s" % (x_uuid, last_used)
-        logger.debug(msg)
-        set_last_used(uuid=x_uuid, timestamp=last_used)
+    if index_rebuild_data:
+        for x_uuid in index_rebuild_data:
+            last_used = index_rebuild_data[x_uuid]['last_used']
+            msg = "Setting last used time: %s: %s" % (x_uuid, last_used)
+            logger.debug(msg)
+            set_last_used(uuid=x_uuid, timestamp=last_used)
 
     # Remove last used data file.
     if os.path.exists(index_rebuild_data_file):

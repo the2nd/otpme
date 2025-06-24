@@ -3,6 +3,7 @@
 import os
 import time
 from typing import Union
+from pyotp.hotp import HOTP
 from strongtyping.strong_typing import match_class_typing
 
 try:
@@ -20,11 +21,8 @@ from otpme.lib import otpme_acl
 from otpme.lib.otp.oath import hotp
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
-from otpme.lib.encoding.base import decode
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.token.oath.oath import OathToken
-from otpme.lib.third_party.oath_toolkit import uri
-from otpme.lib.token.oath.oath import OATH_OTP_FORMATS
 from otpme.lib.protocols.utils import register_commands
 
 from otpme.lib.classes.token \
@@ -58,7 +56,6 @@ read_value_acls = {
                             "server_secret",
                             "pin",
                             "auth_script",
-                            "otp_format",
                             "counter_check_range",
                             "mode",
                             "counter_sync_time",
@@ -79,7 +76,6 @@ write_value_acls = {
                             "secret",
                             "pin",
                             "auth_script",
-                            "otp_format",
                             "counter_check_range",
                             "mode",
                             "offline_expiry",
@@ -197,15 +193,6 @@ commands = {
                     },
                 },
             },
-    'otp_format'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'change_otp_format',
-                    'args'              : ['otp_format'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
     'mode'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -309,12 +296,6 @@ def register_config_params():
                     'unit',
                     'user',
                 ]
-    # Default HOTP OTP format.
-    config.register_config_parameter(name="hotp_format",
-                                    ctype=str,
-                                    default_value="dec6",
-                                    valid_values=list(OATH_OTP_FORMATS),
-                                    object_types=object_types)
     # Counter check range when doing HOTP auth.
     config.register_config_parameter(name="hotp_check_range",
                                     ctype=int,
@@ -367,7 +348,6 @@ class HotpToken(OathToken):
         self.token_type = "hotp"
         self.pass_type = "otp"
         self.otp_type = "counter"
-        self.otp_format = None
         self.secret_len = None
 
         self.need_password = True
@@ -421,13 +401,6 @@ class HotpToken(OathToken):
                                             'type'          : str,
                                             'required'      : False,
                                             'encryption'    : config.disk_encryption,
-                                        },
-
-
-            'OTP_FORMAT'                : {
-                                            'var_name'      : 'otp_format',
-                                            'type'          : str,
-                                            'required'      : False,
                                         },
 
             'COUNTER'                   : {
@@ -515,8 +488,7 @@ class HotpToken(OathToken):
     def gen_otp(
         self,
         secret: Union[str,None]=None,
-        otp_count: int=1,
-        prefix_pin: int=False,
+        prefix_pin: str=False,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
@@ -526,43 +498,28 @@ class HotpToken(OathToken):
         """
         if not secret:
             if self.mode == "mode1":
-                secret = self.get_secret(callback=callback)
+                secret = self.get_secret(encoding="base32", callback=callback)
             if self.mode == "mode2":
                 pin = callback.askpass("Please enter PIN: ")
-                if len(str(pin)) != self.pin_len:
+                if len(pin) != self.pin_len:
                     msg = "Invalid PIN."
                     return callback.error(msg)
-                secret = self.get_secret(pin=pin, callback=callback)
+                secret = self.get_secret(encoding="base32",
+                                        pin=pin,
+                                        callback=callback)
 
         if not secret:
             return callback.error("Unable to get token secret.")
 
-        from otpme.lib.otp.oath import hotp
         token_counter_start, token_counter_end = self.get_counter_range()
-        if otp_count > 1:
-            otps = []
-            for i in range(0, otp_count):
-                token_counter = token_counter_start + i
-                otp = hotp.generate_hotp(token_counter,
-                                        secret, self.otp_format,
-                                        secret_encoding=self.secret_encoding)
-                if prefix_pin:
-                    otp = "%s%s" % (prefix_pin, otp)
-                self.update_otp_cache(otp, token_counter)
-                otps.append(otp)
-            if _caller == "CLIENT":
-                return callback.ok(otps)
-            return otps
         token_counter = token_counter_start + 1
-        otp = hotp.generate_hotp(token_counter,
-                                secret, self.otp_format,
-                                secret_encoding=self.secret_encoding)
+        otp = hotp.generate_hotp(token_counter, secret)
         if prefix_pin:
             otp = "%s%s" % (prefix_pin, otp)
         self.update_otp_cache(otp, token_counter)
         if _caller == "CLIENT":
             return callback.ok(otp)
-        return [otp]
+        return otp
 
     def verify_otp(
         self,
@@ -646,7 +603,7 @@ class HotpToken(OathToken):
                 return None
             _otp = otp[self.pin_len:]
             try:
-                pin = int(otp[:self.pin_len])
+                pin = otp[:self.pin_len]
             except ValueError:
                 msg = "OTP does not include a PIN."
                 logger.info(msg)
@@ -658,7 +615,7 @@ class HotpToken(OathToken):
         # (e.g. mode change)
         if not secret:
             # Get token secret.
-            secret = self.get_secret(pin=pin)
+            secret = self.get_secret(pin=pin, encoding="base32")
 
         # Log token counter range.
         msg = ("Verifiying OTP within counter range: start='%s' end='%s'."
@@ -669,9 +626,7 @@ class HotpToken(OathToken):
         hotp_status, \
         hotp_count = hotp.verify_hotp(counter_start=token_counter_start,
                                     counter_end=token_counter_end,
-                                    secret=secret, otp=_otp,
-                                    format=self.otp_format,
-                                    secret_encoding=self.secret_encoding)
+                                    secret=secret, otp=_otp)
         if hotp_status:
             self.update_otp_cache(otp, hotp_count)
             if otp_includes_pin:
@@ -737,9 +692,6 @@ class HotpToken(OathToken):
         if self.pin_enabled:
             pin = self.pin
 
-        # Get secret.
-        secret = self.get_secret(pin=pin)
-
         # Get token counter check range.
         token_counter_start, token_counter_end = self.get_counter_range()
 
@@ -751,6 +703,9 @@ class HotpToken(OathToken):
         msg = ("Verifiying OTP within counter range: start='%s' end='%s'."
                 % (token_counter_start, token_counter_end))
         logger.debug(msg)
+
+        # Get secret.
+        secret = self.get_secret(pin=pin, encoding="base32")
 
         # Walk through all valid OTPs.
         for _otp in otps:
@@ -769,8 +724,7 @@ class HotpToken(OathToken):
                 hotp_status, \
                 hotp_count = hotp.verify_hotp(counter_start=token_counter_start,
                                             counter_end=token_counter_end,
-                                            secret=secret, otp=check_otp,
-                                            format=self.otp_format)
+                                            secret=secret, otp=check_otp)
 
                 if hotp_status:
                     # Make sure the OTP was not already used (counter must be higher
@@ -802,7 +756,7 @@ class HotpToken(OathToken):
     @check_acls(['generate:qrcode'])
     def gen_qrcode(
         self,
-        pin: Union[int,None]=None,
+        pin: Union[str,None]=None,
         qrcode_file: Union[str,None]=None,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
@@ -821,29 +775,21 @@ class HotpToken(OathToken):
         if pin is None:
             if self.mode == "mode2":
                 pin = callback.askpass("Please enter PIN: ")
-                if len(str(pin)) != self.pin_len:
+                if len(pin) != self.pin_len:
                     msg = "Invalid PIN."
                     return callback.error(msg)
 
         # Get secret to gen QRCode.
-        secret = self.get_secret(pin=pin)
-        secret = decode(secret, "base32")
-        secret = secret.encode()
+        secret = self.get_secret(pin=pin, encoding="base32")
 
         token_counter_start, token_counter_end = self.get_counter_range()
 
         # Gen OATH URI.
         user_string = "%s@%s" % (self.rel_path, self.realm)
-        #oath_uri = HOTP(secret)
-        #oath_uri = oath_uri.provisioning_uri(name=user_string,
-        #                                    issuer_name=config.my_name,
-        #                                    initial_count=token_counter_start)
-        # Use oath-toolkit.
-        oath_uri = uri.generate(key_type=self.token_type,
-                                key=secret,
-                                user=user_string,
-                                issuer=config.my_name,
-                                counter=token_counter_start)
+        oath_uri = HOTP(secret)
+        oath_uri = oath_uri.provisioning_uri(name=user_string,
+                                            issuer_name=config.my_name,
+                                            initial_count=token_counter_start)
         # Generate QRcode.
         _qrcode = qrcode.gen_qrcode(oath_uri, "terminal")
         # xxxxxxxxxxxxx
@@ -891,12 +837,14 @@ class HotpToken(OathToken):
         pin = None
         if self.mode == "mode2":
             pin = callback.askpass("Please enter PIN: ")
-            if len(str(pin)) != self.pin_len:
+            if len(pin) != self.pin_len:
                 msg = "Invalid PIN."
                 return callback.error(msg)
 
         # Get token secret.
-        token_secret = self.get_secret(pin=pin, callback=callback)
+        token_secret = self.get_secret(encoding="base32",
+                                        pin=pin,
+                                        callback=callback)
 
         # Get current token counter.
         current_counter = self.get_token_counter()
@@ -914,9 +862,7 @@ class HotpToken(OathToken):
         hotp_count = hotp.verify_hotp(counter_start=token_counter_start,
                                         counter_end=token_counter_end,
                                         secret=token_secret,
-                                        otp=otp,
-                                        format=self.otp_format,
-                                        secret_encoding=self.secret_encoding)
+                                        otp=otp)
         if not hotp_status:
             return callback.error("Unable to synchronize token.")
 
@@ -1053,7 +999,7 @@ class HotpToken(OathToken):
         self,
         server_secret: str,
         secret_len: int,
-        pin: int,
+        pin: str,
         secret_encoding: str,
         _caller: str="API",
         verbose_level: int=0,
@@ -1073,7 +1019,7 @@ class HotpToken(OathToken):
         self.secret_encoding = secret_encoding
 
         if verbose_level > 0:
-            token_secret = self.get_secret(pin=pin)
+            token_secret = self.get_secret(encoding="base32", pin=pin)
             msg = (_("Token secret: %s") % token_secret)
             callback.send(msg)
 
@@ -1087,7 +1033,6 @@ class HotpToken(OathToken):
     def _add(self, *args, **kwargs):
         """ Add a token. """
         # Get default TOTP settings.
-        self.otp_format = self.get_config_parameter("hotp_format")
         self.secret_len = self.get_config_parameter("hotp_secret_len")
         self.counter_check_range = self.get_config_parameter("hotp_check_range")
         return super(HotpToken, self)._add(*args, **kwargs)

@@ -92,9 +92,9 @@ class YubikeyHotpClientHandler(object):
             pin2 = cli.read_pass(prompt="Repeat PIN: ")
             if pin1 != pin2:
                 message("Sorry PINs do not match!")
-            else:
-                pin = pin1
-                break
+                continue
+            pin = str(pin1)
+            break
 
         # Generate token server secret.
         server_secret = stuff.gen_secret(self.secret_len)
@@ -111,7 +111,7 @@ class YubikeyHotpClientHandler(object):
         deploy_args['server_secret'] = server_secret
         deploy_args['secret_len'] = self.secret_len
         deploy_args['secret_encoding'] = "hex"
-        deploy_args['pin'] = int(pin)
+        deploy_args['pin'] = pin
 
         if no_token_write:
             return deploy_args

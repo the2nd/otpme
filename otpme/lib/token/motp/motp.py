@@ -341,7 +341,7 @@ class MotpToken(Token):
         token_config = {
             'PIN'                       : {
                                             'var_name'      : 'pin',
-                                            'type'          : int,
+                                            'type'          : str,
                                             'required'      : False,
                                             'encryption'    : config.disk_encryption,
                                         },
@@ -386,11 +386,11 @@ class MotpToken(Token):
         # read from config.
         Token.set_variables(self)
 
-    def gen_secret(self, token_secret: str, pin: int, ** kwargs):
+    def gen_secret(self, token_secret: str, pin: str, ** kwargs):
         """ Generate server secret from token secret and PIN. """
         import hashlib
         token_secret = token_secret.encode("utf-8")
-        hash_string = b"%s%s" % (str(pin).encode(), token_secret)
+        hash_string = b"%s%s" % (pin.encode(), token_secret)
         sha512 = hashlib.sha512()
         sha512.update(hash_string)
         secret = sha512.hexdigest()
@@ -526,13 +526,13 @@ class MotpToken(Token):
             otps = motp.generate(secret=self.secret,
                                 otp_count=otp_count,
                                 otp_len=self.otp_len,
-                                pin=str(self.pin))
+                                pin=self.pin)
             return otps
         else:
             otp = motp.generate(secret=self.secret,
                                 otp_count=otp_count,
                                 otp_len=self.otp_len,
-                                pin=str(self.pin))
+                                pin=self.pin)
             if _caller != "API":
                 return callback.ok(otp)
             return [otp]

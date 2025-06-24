@@ -164,7 +164,22 @@ commands = {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : ['node_name', 'site_address'],
-                    'oargs'             : ['site_fqdn', 'dictionaries', 'id_ranges'],
+                    'oargs'             : [
+                                            'site_fqdn',
+                                            'dictionaries',
+                                            'id_ranges',
+                                            'ca_country',
+                                            'ca_state',
+                                            'ca_locality',
+                                            'ca_organization',
+                                            'ca_ou',
+                                            'ca_email',
+                                            'ca_key_len',
+                                            'ca_valid',
+                                            'site_key_len',
+                                            'site_valid',
+                                            'no_dicts',
+                                            ],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
@@ -2303,6 +2318,7 @@ class Site(OTPmeObject):
         **kwargs,
         ):
         """ Add a site. """
+        from otpme.lib.classes.dictionary import Dictionary
         if site_key_len is None:
             site_key_len = config.default_site_key_len
         if site_valid is None:
@@ -2311,12 +2327,9 @@ class Site(OTPmeObject):
             ca_valid = config.default_ca_validity
         if ca_key_len is None:
             ca_key_len = config.default_ca_key_len
-        # Get default dicts.
-        if dictionaries is None:
-            dictionaries = config.get_base_objects("dictionary")
 
         # Disable interactive policies (e.g. reauth).
-        if not "interactive" in config.ignore_policy_tags:
+        if "interactive" not in config.ignore_policy_tags:
             config.ignore_policy_tags.append("interactive")
 
         if not site_address:
@@ -2404,6 +2417,92 @@ class Site(OTPmeObject):
         if not add_status:
             return callback.error("Unable to add base objects.")
 
+        # Create base dicts.
+        if no_dicts:
+            dictionaries_sorted = []
+        else:
+            dictionaries_sorted = dictionaries
+
+        # Get base dictionaries.
+        base_dictionaries = config.get_base_objects("dictionary")
+
+        for d in dictionaries_sorted:
+            if not d in base_dictionaries:
+                return callback.error("Unknown dictionary: %s" % d)
+
+        for d in dictionaries_sorted:
+            # Get dict type.
+            dict_type = base_dictionaries[d]['type']
+
+            dictionary = Dictionary(name=d, realm=self.realm, site=self.name)
+            if dictionary.exists():
+                dictionary.add_default_policies()
+                continue
+            if not dictionary.add(verify_acls=False, dict_type=dict_type, callback=callback):
+                msg = (_("Problem adding base dictionary '%s'.")
+                        % dictionary.path)
+                return callback.error(msg)
+            # Get path to dictionary file.
+            dict_file = "%s/%s.gz" % (config.dictionary_dir, d)
+
+            if not os.path.exists(dict_file):
+                msg = (_("No such file or directory: %s") % dict_file)
+                return callback.error(msg)
+
+            pbar = None
+            title = (_("Processing file: %s ") % os.path.basename(dict_file))
+            if config.use_api:
+                try:
+                    file_size = get_uncompressed_size(dict_file)
+                except UnsupportedCompressionType:
+                    file_size = os.path.getsize(dict_file)
+                pbar = stuff.get_progressbar(maxval=file_size, title=title)
+            else:
+                callback.send(title)
+
+            from otpme.lib.spsc import SPSC
+            spsc = SPSC()
+            spsc.import_from_file(filename=dict_file,
+                                    dict_name=d,
+                                    min_word_len=3,
+                                    progressbar=pbar)
+
+            word_list = spsc.dump(d)
+            dictionary.add_words(word_list)
+
+        # If we got some dicts add them to the password_strength policy.
+        if dictionaries_sorted:
+            call_methods = []
+            policy_name = "password_strength"
+            strength_checker = "spsc"
+            strength_checker_dicts = ",".join(dictionaries_sorted)
+            strength_checker_opts = 'min_score=2;dict_order=%s' % strength_checker_dicts
+            x = {'change_strength_checker': {'strength_checker': strength_checker}},
+            call_methods.append(x)
+            x = {'change_strength_checker_opts': {'options': strength_checker_opts}},
+            call_methods.append(x)
+
+            # Get policy.
+            result = backend.search(attribute="name",
+                                    value=policy_name,
+                                    object_type="policy",
+                                    return_type="instance",
+                                    realm=config.realm,
+                                    site=config.site)
+            policy = result[0]
+
+            # Set policy properties.
+            for x in call_methods:
+                method_name = list(x[0])[0]
+                policy_method = getattr(policy, method_name)
+                policy_method_args = dict(x[0][method_name])
+                policy_method_args['callback'] = callback
+                policy_method(verify_acls=False, **policy_method_args)
+
+        # Write objects.
+        callback.write_modified_objects()
+        cache.flush()
+
         # Create site CA if not disabled.
         if not no_ca:
             self.create_site_ca(ca_country=ca_country,
@@ -2466,14 +2565,13 @@ class Site(OTPmeObject):
     @object_lock(full_lock=True)
     def add_base_objects(
         self,
-        dictionaries: List=[],
-        no_dicts: bool=False,
+        #dictionaries: List=[],
+        #no_dicts: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Add site base objects. """
         from otpme.lib.classes.unit import Unit
-        from otpme.lib.classes.dictionary import Dictionary
         all_units = []
         # Create early base units.
         early_units = config.get_base_objects("unit", early=True)
@@ -2488,93 +2586,6 @@ class Site(OTPmeObject):
                 msg = (_("Problem adding base unit '%s'.") % unit_path)
                 config.raise_exception()
                 return callback.error(msg)
-
-        # Create base dicts.
-        if no_dicts:
-            dictionaries_sorted = []
-        else:
-            dictionaries_sorted = dictionaries
-
-        # Get base dictionaries.
-        base_dictionaries = config.get_base_objects("dictionary")
-
-        for d in dictionaries_sorted:
-            if not d in base_dictionaries:
-                return callback.error("Unknown dictionary: %s" % d)
-
-        for d in dictionaries_sorted:
-            # Get dict type.
-            dict_type = base_dictionaries[d]['type']
-
-            dictionary = Dictionary(name=d, realm=self.realm, site=self.name)
-            if dictionary.exists():
-                dictionary.add_default_policies()
-                continue
-            if not dictionary.add(verify_acls=False, dict_type=dict_type, callback=callback):
-                msg = (_("Problem adding base dictionary '%s'.")
-                        % dictionary.path)
-                return callback.error(msg)
-            # Get path to dictionary file.
-            #dict_file = "%s/%s" % (config.dictionary_dir, d)
-            dict_file = "%s/%s.gz" % (config.dictionary_dir, d)
-
-            if not os.path.exists(dict_file):
-                msg = (_("No such file or directory: %s") % dict_file)
-                return callback.error(msg)
-
-            pbar = None
-            title = (_("Processing file: %s ") % os.path.basename(dict_file))
-            if config.use_api:
-                try:
-                    file_size = get_uncompressed_size(dict_file)
-                except UnsupportedCompressionType:
-                    file_size = os.path.getsize(dict_file)
-                pbar = stuff.get_progressbar(maxval=file_size, title=title)
-            else:
-                callback.send(title)
-
-            from otpme.lib.spsc import SPSC
-            spsc = SPSC()
-            spsc.import_from_file(filename=dict_file,
-                                    dict_name=d,
-                                    min_word_len=3,
-                                    progressbar=pbar)
-
-            word_list = spsc.dump(d)
-            dictionary.add_words(word_list)
-
-        # If we got some dicts add them to the password_strength policy.
-        if dictionaries_sorted:
-            call_methods = []
-            policy_name = "password_strength"
-            strength_checker = "spsc"
-            strength_checker_dicts = ",".join(dictionaries_sorted)
-            strength_checker_opts = 'min_score=2;dict_order=%s' % strength_checker_dicts
-            x = {'change_strength_checker': {'strength_checker': strength_checker}},
-            call_methods.append(x)
-            x = {'change_strength_checker_opts': {'options': strength_checker_opts}},
-            call_methods.append(x)
-
-            # Get policy.
-            result = backend.search(attribute="name",
-                                    value=policy_name,
-                                    object_type="policy",
-                                    return_type="instance",
-                                    realm=config.realm,
-                                    site=config.site)
-            policy = result[0]
-
-            # Set policy properties.
-            for x in call_methods:
-                method_name = list(x[0])[0]
-                policy_method = getattr(policy, method_name)
-                policy_method_args = dict(x[0][method_name])
-                policy_method_args['callback'] = callback
-                policy_method(verify_acls=False, **policy_method_args)
-
-        # Write objects.
-        callback.write_modified_objects()
-        cache.flush()
 
         # Create base units.
         base_units = config.get_base_objects("unit")

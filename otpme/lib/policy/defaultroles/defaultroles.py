@@ -40,7 +40,7 @@ default_callback = config.get_callback()
 POLICY_TYPE = "defaultroles"
 BASE_POLICY_NAME = "default_roles"
 REGISTER_BEFORE = ['otpme.lib.policy.defaultpolicies.defaultpolicies']
-REGISTER_AFTER = []
+REGISTER_AFTER = ['otpme.lib.classes.realm']
 
 read_acls =  []
 write_acls =  []

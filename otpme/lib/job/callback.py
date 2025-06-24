@@ -26,6 +26,7 @@ from otpme.lib.protocols.utils import send_msg
 from otpme.lib.protocols.utils import dump_data
 from otpme.lib.protocols.utils import move_objects
 from otpme.lib.protocols.utils import gen_user_keys
+from otpme.lib.protocols.utils import change_user_default_group
 
 from otpme.lib.exceptions import *
 
@@ -37,6 +38,7 @@ class JobCallback(object):
                 self.uuid = uuid
                 self.exit_info = {}
                 self._caller = "API"
+                self.return_value = None
                 class FakeBool(object):
                     def __init__(self):
                         self.value = False
@@ -91,7 +93,6 @@ class JobCallback(object):
     def write_modified_objects(self):
         """ Write objects modified by this callback. """
         from otpme.lib import cache
-        #from otpme.lib import backend
         objects_written = []
         for object_id in self.modified_objects:
             o = cache.get_modified_object(object_id)
@@ -107,6 +108,13 @@ class JobCallback(object):
             cache.add_instance(o)
             objects_written.append(o.oid.full_oid)
         return objects_written
+
+    def forget_modified_objects(self):
+        """ Forget objects modified by this callback. """
+        from otpme.lib import cache
+        for object_id in list(self.modified_objects):
+            cache.remove_modified_object(object_id)
+            self.modified_objects.remove(object_id)
 
     def release_cache_locks(self):
         """ Release all 'cached' locks. """
@@ -157,7 +165,7 @@ class JobCallback(object):
             self.job.stop()
         self.last_used = time.time()
 
-    def _send_query(self, query_id, query, timeout=1):
+    def _send_query(self, query_id, query, timeout=1, convert_type=True):
         """ Send query to client and handle answer. """
         # Callback was used.
         self.last_used = time.time()
@@ -186,9 +194,10 @@ class JobCallback(object):
         #        to the corresponding python types. This means that e.g. a
         #        password that is just the string "False" will fail.
         # Convert string to type().
-        reply = stuff.string_to_type(value=answer)
+        if convert_type:
+            answer = stuff.string_to_type(value=answer)
 
-        return reply
+        return answer
 
     def send(self, message='\0OTPME_NULL\0', error=False,
         command=None, timeout=1, ignore_escaping=False):
@@ -324,7 +333,10 @@ class JobCallback(object):
                         prompt=prompt,
                         null_ok=null_ok)
         # Send query.
-        result = self._send_query(query_id, query, timeout=timeout)
+        result = self._send_query(query_id,
+                                query,
+                                timeout=timeout,
+                                convert_type=False)
         return result
 
     @handle_exception
@@ -429,7 +441,7 @@ class JobCallback(object):
 
     @handle_exception
     def move_objects(self, object_data, timeout=1):
-        """ Send query to client to generate users privat/public keys. """
+        """ Send query to client to move objects cross-site. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
             raise OTPmeException(self.api_exception)
@@ -439,6 +451,22 @@ class JobCallback(object):
         query_id = self._gen_query_id()
         # Build query string.
         query = move_objects(query_id, object_data=object_data)
+        # Send query.
+        reply = self._send_query(query_id, query, timeout=timeout)
+        return reply
+
+    @handle_exception
+    def change_user_default_group(self, object_data, timeout=1):
+        """ Send query to client to change users default group cross-site. """
+        # If the callback is disabled we do not send anything to the client.
+        if not self.enabled:
+            raise OTPmeException(self.api_exception)
+        if self.api_mode:
+            raise OTPmeException(self.api_exception)
+        # Gen query ID.
+        query_id = self._gen_query_id()
+        # Build query string.
+        query = change_user_default_group(query_id, object_data=object_data)
         # Send query.
         reply = self._send_query(query_id, query, timeout=timeout)
         return reply

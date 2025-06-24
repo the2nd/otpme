@@ -42,14 +42,18 @@ def backup_object(object_id, decrypt=False):
     if object_id.object_type == "user":
         result = backend.search(object_type="group",
                                 attribute="user",
-                                value=object_uuid)
+                                value=object_uuid,
+                                realm=config.realm,
+                                site=config.site)
         if result:
             file_content['user_group'] = result[0]
     if object_id.object_type == "token":
         # Get token roles.
         token_roles = backend.search(object_type="role",
                                     attribute="token",
-                                    value=object_uuid)
+                                    value=object_uuid,
+                                    realm=config.realm,
+                                    site=config.site)
         x_token_roles_opts = []
         for x in token_roles:
             x_token_role = backend.get_object(uuid=x)
@@ -65,8 +69,10 @@ def backup_object(object_id, decrypt=False):
         file_content['token_roles'] = x_token_roles_opts
         # Get token groups.
         token_groups = backend.search(object_type="group",
-                                        attribute="token",
-                                        value=object_uuid)
+                                    attribute="token",
+                                    value=object_uuid,
+                                    realm=config.realm,
+                                    site=config.site)
         x_token_groups_opts = []
         for x in token_groups:
             x_token_group = backend.get_object(uuid=x)
@@ -80,6 +86,21 @@ def backup_object(object_id, decrypt=False):
                 x_token_login_interfaces = []
             x_token_groups_opts.append((x, x_token_opts, x_token_login_interfaces))
         file_content['token_groups'] = x_token_groups_opts
+    if object_id.object_type == "role":
+        # Get role roles.
+        role_roles = backend.search(object_type="role",
+                                    attribute="role",
+                                    value=object_uuid,
+                                    realm=config.realm,
+                                    site=config.site)
+        file_content['role_roles'] = role_roles
+        # Get role groups.
+        role_groups = backend.search(object_type="group",
+                                    attribute="role",
+                                    value=object_uuid,
+                                    realm=config.realm,
+                                    site=config.site)
+        file_content['role_groups'] = role_groups
     file_content = json.dumps(file_content)
     return file_content
 
@@ -96,6 +117,13 @@ def restore_object(object_data, callback=default_callback, **kwargs):
     if x_object:
         if x_object.oid != object_id:
             msg = "Object with UUID exists: %s" % x_object
+            return callback.error(msg)
+    if object_id.object_type == "user":
+        user_object = backend.get_object(object_type="user",
+                                        realm=config.realm,
+                                        name=object_id.name)
+        if user_object and user_object.site != config.site:
+            msg = "User with this name exists: %s" % user_object
             return callback.error(msg)
     x_object = backend.get_object(object_id)
     if x_object:
@@ -149,6 +177,25 @@ def restore_object(object_data, callback=default_callback, **kwargs):
             x_role.add_token(token_path=object_id.rel_path,
                             token_options=x_token_opts,
                             login_interfaces=x_token_login_interfaces,
+                            callback=callback,
+                            verify_acls=False)
+    if object_id.object_type == "role":
+        role_roles = object_data['role_groups']
+        for x_group_uuid in role_roles:
+            x_group = backend.get_object(uuid=x_group_uuid)
+            if not x_group:
+                msg = "Unknown group: %s" % x_group_uuid
+                return callback.error(msg)
+            x_group.add_role(role_uuid=object_uuid,
+                            callback=callback,
+                            verify_acls=False)
+        role_roles = object_data['role_roles']
+        for x_role_uuid in role_roles:
+            x_role = backend.get_object(uuid=x_role_uuid)
+            if not x_role:
+                msg = "Unknown role: %s" % x_role_uuid
+                return callback.error(msg)
+            x_role.add_role(role_uuid=object_uuid,
                             callback=callback,
                             verify_acls=False)
     # Set last used time.

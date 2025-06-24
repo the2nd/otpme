@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import sys
 from typing import List
 from typing import Union
 from strongtyping.strong_typing import match_class_typing
@@ -14,6 +13,7 @@ except:
 
 from otpme.lib import oid
 from otpme.lib import cli
+from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.spsc import SPSC
@@ -642,7 +642,7 @@ class Dictionary(OTPmeObject):
     @object_lock()
     def update_dict_size(self):
         """ Update size of dictionary. """
-        self.dict_size = sys.getsizeof(self.dictionary)
+        self.dict_size = stuff.get_dict_size(self.dictionary)
         # Update index.
         self.update_index("dict_size", self.dict_size)
 

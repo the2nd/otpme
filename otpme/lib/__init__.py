@@ -216,7 +216,6 @@ def init_otpme(use_backend=None):
     from otpme.lib.register import register_module
     register_module('otpme.lib.host')
     register_module('otpme.lib.cache')
-    register_module('otpme.lib.classes.user')
     # FIXME: Migrate to register_at_fork() when on python3.
     #from otpme.lib.multiprocessing import atfork
     ## Register forking stuff.
@@ -309,6 +308,7 @@ def init_otpme(use_backend=None):
         config.use_backend = True
         # When running in API mode we may load a fake login token.
         if config.api_auth_token:
+            register_module('otpme.lib.classes.user')
             config.auth_token = get_api_auth_token()
             config.auth_user = backend.get_object(object_type="user",
                                             uuid=config.auth_token.owner_uuid)

@@ -121,7 +121,11 @@ def register_backend():
                             uniq_name=False,
                             add_after=["token"],
                             object_cache=1024,
-                            cache_region="data_object")
+                            cache_region="data_object",
+                            backup_attributes=['realm',
+                                                'site',
+                                                'token_uuid',
+                                                'object_hash'])
     # Register object to backend.
     class_getter = lambda: TokenCounter
     backend.register_object_type(object_type="token_counter",

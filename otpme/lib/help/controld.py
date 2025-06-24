@@ -52,7 +52,6 @@ cmd_help = {
                     '--debug-timing-limit <seconds>'    : 'Print warning if function/method call takes longer than <seconds>. (default 0.2)',
                     '--debug-counter-limit <call_count>': 'Print warning if function/method is called more than <call_count>.',
                     '--debug-func-caches <instance_cache,search_cache>' : 'Enable debug stuff only for the given function caches.',
-                    '--disable-transactions'            : 'Disable transactions.',
                     '--keep-floating-ip'                : 'Do not deconfigure floating IP when shutting down on master node.',
                     '--version'                         : 'Show version',
                 },

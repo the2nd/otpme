@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-#import time
+import time
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -10,6 +10,7 @@ except:
     pass
 
 from otpme.lib import config
+from otpme.lib import backend
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
 
@@ -24,6 +25,20 @@ def register():
 
 class AuthDaemon(OTPmeDaemon):
     """ AuthDaemon """
+    def __init__(self, *args, **kwargs):
+        self.last_session_outdate = 0
+        super(AuthDaemon, self).__init__(*args, **kwargs)
+
+    def outdate_sessions(self):
+        now = time.time()
+        outdate_age = now - self.last_session_outdate
+        if outdate_age < 300:
+            return
+        self.last_session_outdate = time.time()
+        all_sessions = backend.get_sessions(return_type="instance")
+        for session in all_sessions:
+            session.exists(outdate=True)
+
     def _run(self, **kwargs):
         """ Start daemon loop. """
         # Configure ourselves (e.g. certificates etc.)
@@ -103,3 +118,6 @@ class AuthDaemon(OTPmeDaemon):
                 pass
             except Exception as e:
                 self.logger.critical("Unhandled error in authd: %s" % e)
+
+            # Make sure outdated expired get removed.
+            self.outdate_sessions()

@@ -63,7 +63,6 @@ REGISTER_AFTER = [
                 "otpme.lib.encryption.ec",
                 "otpme.lib.encoding.base",
                 #"otpme.lib.compression.base",
-                "otpme.lib.offline_token",
                 "otpme.lib.connections",
                 "otpme.lib.sotp",
                 ]
@@ -970,13 +969,14 @@ class OTPmeClient(OTPmeClientBase):
 
     def askpass(self, command_dict, null_ok=False):
         """ Ask user for password, PIN, OTP, etc. """
+        if config.stdin_pass:
+            return config.stdin_pass
         pass_prompt = command_dict['prompt']
         # Try to get password from user.
         try:
             password = self.get_password(pass_prompt, null_ok=null_ok)
         except Exception:
             password = None
-
         return password
 
     def passauth(self, command_dict):
@@ -1399,14 +1399,15 @@ class OTPmeClient(OTPmeClientBase):
                                     realm=dst_realm,
                                     site=dst_site)
         except ConnectionError as e:
-            msg = "Site connection failed: %s" % e
-            print(msg)
-            return
+            status = False
+            reply = "Site connection failed: %s" % e
+            response = {'status':status, 'reply':reply}
+            return response
         except Exception as e:
-            msg = (_("Unable to connect to mgmt daemon: %s") % e)
-            print(msg)
-            config.raise_exception()
-            return
+            status = False
+            reply = (_("Unable to connect to mgmt daemon: %s") % e)
+            response = {'status':status, 'reply':reply}
+            return response
 
         command_args = {
                         'subcommand'    : 'user',
@@ -1416,12 +1417,115 @@ class OTPmeClient(OTPmeClientBase):
                         'jwt'           : jwt,
                     }
 
-        status, \
-        status_code, \
-        reply = mgmt_conn.send(command="move_object",
-                            command_args=command_args)
+        try:
+            status, \
+            status_code, \
+            reply = mgmt_conn.send(command="move_object",
+                                command_args=command_args)
+        except Exception as e:
+            status = False
+            reply = str(e)
+        finally:
+            try:
+                mgmt_conn.close()
+            except Exception as e:
+                msg = "Failed to close connection to mgmtd: %s" % e
+                self.logger.warning(msg)
 
-        mgmt_conn.close()
+
+        response = {'status':status, 'reply':reply}
+
+        return response
+
+    def change_user_default_group(self, command_dict):
+        """ Change user default group. """
+        # Get sign request.
+        object_data = command_dict['object_data']
+        action = object_data['action']
+        src_realm = object_data['src_realm']
+        src_site = object_data['src_site']
+        dst_realm = object_data['dst_realm']
+        dst_site = object_data['dst_site']
+        jwt = object_data['jwt']
+        cert = stuff.get_site_cert(realm=src_realm, site=src_site)
+        if not cert:
+            msg = "Unable to get site certificate."
+            raise OTPmeException(msg)
+        site_cert = SSLCert(cert=cert)
+        try:
+            jwt_key = RSAKey(key=site_cert.public_key())
+        except Exception as e:
+            msg = (_("Unable to get public key of site "
+                    "certificate: %s: %s") % (self.site, e))
+            raise OTPmeException(msg)
+        try:
+            jwt_data = _jwt.decode(jwt=jwt,
+                                key=jwt_key,
+                                algorithm='RS256')
+        except Exception as e:
+            msg = "JWT verification failed: %s" % e
+            self.logger.warning(msg)
+
+        if not config.force:
+            x = pprint.pformat(jwt_data)
+            if action == "remove":
+                msg = (_("Remove user default group membership on %s/%s?\n%s\n[y/n] ")
+                        % (dst_realm, dst_site, x))
+            elif action == "add":
+                msg = (_("Add user default group membership on %s/%s?\n%s\n[y/n] ")
+                        % (dst_realm, dst_site, x))
+            elif action == "change":
+                msg = (_("Change user default group membership on %s/%s?\n%s\n[y/n] ")
+                        % (dst_realm, dst_site, x))
+            else:
+                response = {'status':False, 'reply':'Unknown action: %s.' % action}
+                return response
+            paras = { 'prompt':msg, 'input_prefill':None }
+            answer = self.ask(paras)
+            if answer.lower() != "y":
+                reply = 'Default group %s aborted by user.' % action
+                response = {'status':False, 'reply':reply}
+                return response
+
+        username = self.username
+        try:
+            mgmt_conn = connections.get(daemon="mgmtd",
+                                    username=username,
+                                    auto_auth=False,
+                                    realm=dst_realm,
+                                    site=dst_site)
+        except ConnectionError as e:
+            status = False
+            reply = "Site connection failed: %s" % e
+            response = {'status':status, 'reply':reply}
+            return response
+        except Exception as e:
+            status = False
+            reply = (_("Unable to connect to mgmt daemon: %s") % e)
+            response = {'status':status, 'reply':reply}
+            return response
+
+        command_args = {
+                        'subcommand'    : 'user',
+                        'src_realm'     : src_realm,
+                        'src_site'      : src_site,
+                        'jwt'           : jwt,
+                    }
+
+        try:
+            status, \
+            status_code, \
+            reply = mgmt_conn.send(command="change_user_default_group",
+                                command_args=command_args)
+        except Exception as e:
+            status = False
+            reply = str(e)
+        finally:
+            try:
+                mgmt_conn.close()
+            except Exception as e:
+                msg = "Failed to close connection to mgmtd: %s" % e
+                self.logger.warning(msg)
 
         response = {'status':status, 'reply':reply}
 
@@ -1586,6 +1690,10 @@ class OTPmeClient(OTPmeClientBase):
             elif client_command == "OBJECT_MOVE":
                 send_request = True
                 request = self.move_objects(response)
+
+            elif client_command == "CHANGE_USER_DEFAULT_GROUP":
+                send_request = True
+                request = self.change_user_default_group(response)
 
             # Send request
             if send_request:
@@ -2098,6 +2206,8 @@ class OTPmeClient1(OTPmeClientBase):
         auth_command = "auth"
         if login:
             auth_command = "login"
+        if self.reneg:
+            auth_command = "session_reneg"
         try:
             redirect_connection.authenticate(command=auth_command)
         finally:
@@ -2292,6 +2402,8 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Add preauth request.
         command_args['preauth_request'] = preauth_request
+        # Add reneg.
+        command_args['reneg'] = self.reneg
 
         # Send preauth request.
         if self.socket_uri:
@@ -2661,7 +2773,7 @@ class OTPmeClient1(OTPmeClientBase):
                 pass
             if self.ssh_public_keys:
                 if self.use_ssh_agent is None:
-                    self.use_ssh_agent = True
+                    self.use_ssh_agent = "auto"
                 if self.start_ssh_agent is None:
                     if self.ssh_agent_method:
                         self.start_ssh_agent = True
@@ -3054,6 +3166,7 @@ class OTPmeClient1(OTPmeClientBase):
             # Load module to handle offline tokens and login session file.
             if not self._offline_token:
                 try:
+                    register_module("otpme.lib.offline_token")
                     from otpme.lib.offline_token import OfflineToken
                     # Get offline token handler.
                     self._offline_token = OfflineToken()

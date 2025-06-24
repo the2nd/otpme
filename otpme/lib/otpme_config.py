@@ -176,8 +176,6 @@ class OTPmeConfig(object):
         self.register_config_var("cache_enabled", bool, False)
         # Indicates if locking is enabled.
         self.register_config_var("locking_enabled", bool, True)
-        # Indicates if transactions are enabled.
-        self.register_config_var("transactions_enabled", bool, True)
         # Job timeout.
         self.register_config_var("job_timeout", int, 120)
 
@@ -1253,8 +1251,8 @@ class OTPmeConfig(object):
 
     def register_object_type(self, object_type, tree_object=None,
         backend_object=True, uniq_name=False, object_cache=False,
-        cache_region=None, add_before=None, add_after=None,
-        sync_before=None, sync_after=None, backup_attributes=None):
+        cache_region=None, add_before=[], add_after=[],
+        sync_before=[], sync_after=[], backup_attributes=None):
         """ Register object type. """
         if tree_object:
             object_list = self.tree_object_types
@@ -2373,6 +2371,12 @@ class OTPmeConfig(object):
         if not result:
             return
         _realm = result[0]
+        # FIXME: This is a test to find a long standing bug where _realm is a node object on sites sync.
+        try:
+            _realm.master
+        except:
+            print("realm object", _realm)
+            print("realm", self.realm)
         realm_master = backend.get_object(object_type="site",
                                         uuid=_realm.master)
         if not realm_master:

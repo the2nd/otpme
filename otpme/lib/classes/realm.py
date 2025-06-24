@@ -544,13 +544,14 @@ REALM_ACCESSGROUP = "REALM"
 MGMT_ACCESSGROUP = "MGMT"
 JOIN_ACCESSGROUP = "JOIN"
 
-REGISTER_BEFORE = []
-REGISTER_AFTER = [
-                #"otpme.lib.classes.otpme_object",
-                #'otpme.lib.extensions',
-                #'otpme.lib.classes.policy',
-                ]
-
+REGISTER_BEFORE = [
+                    #"otpme.lib.classes.resolver",
+                    #"otpme.lib.classes.policy",
+                    #"otpme.lib.extensions",
+                    #"otpme.lib.resolver",
+                    #"otpme.lib.policy",
+                    ]
+REGISTER_AFTER = []
 
 def register():
     register_dn()
@@ -1336,6 +1337,8 @@ class Realm(OTPmeObject):
                                     no_node=True,
                                     verify_acls=False,
                                     id_ranges=id_ranges,
+                                    no_dicts=no_dicts,
+                                    dictionaries=dictionaries,
                                     callback=callback,
                                     **kwargs)
         if not add_status:
@@ -1476,9 +1479,7 @@ class Realm(OTPmeObject):
         cache.flush()
 
         # Finalize base object creation.
-        master_site.add_base_objects(no_dicts=no_dicts,
-                                    dictionaries=dictionaries,
-                                    callback=callback)
+        master_site.add_base_objects(callback=callback)
         master_site.add_base_groups(callback=callback)
         master_site.add_per_site_objects(callback=callback)
 

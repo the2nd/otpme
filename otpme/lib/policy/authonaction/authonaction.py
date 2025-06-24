@@ -452,7 +452,7 @@ class AuthonactionPolicy(Policy):
             msg = (_("Cannot run policy without auth token: %s") % self.oid)
             raise self.policy_exception(msg)
 
-        if not '_caller' in kwargs:
+        if '_caller' not in kwargs:
             msg = (_("AuthonactionPolicy needs <_caller>."))
             raise OTPmeException(msg)
 

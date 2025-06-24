@@ -198,3 +198,12 @@ def move_objects(query_id, object_data):
             'object_data'   : object_data,
             }
     return request
+
+def change_user_default_group(query_id, object_data):
+    """ Sends request to client to change user default group on other site. """
+    request = {
+            'query_id'      : query_id,
+            'command'       : 'OTPME_CHANGE_USER_DEFAULT_GROUP',
+            'object_data'   : object_data,
+            }
+    return request

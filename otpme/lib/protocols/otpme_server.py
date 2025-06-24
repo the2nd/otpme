@@ -119,6 +119,8 @@ class OTPmeServer1(object):
         except:
             self.require_cluster_status = True
 
+        self.session_reneg = False
+
         # Client infos.
         self.client = client
         self.client_name = client
@@ -555,11 +557,15 @@ class OTPmeServer1(object):
                 self.logger.debug(msg)
             try:
                 enc_key = command_args['enc_key']
-            except:
+            except KeyError:
                 enc_key = None
             try:
+                self.session_reneg = command_args['reneg']
+            except KeyError:
+                pass
+            try:
                 preauth_request = command_args['preauth_request']
-            except:
+            except KeyError:
                 msg = (_("Protocol violation: Missing preauth request"))
                 raise ServerQuit(msg)
 
@@ -574,7 +580,7 @@ class OTPmeServer1(object):
             # Do preauth.
             preauth_result = self.handle_preauth(preauth_request, enc_key=enc_key)
 
-            # Notify protocol handler about the preauth start.
+            # Notify protocol handler about the preauth end.
             try:
                 self._end_preauth(command, command_args, preauth_result)
             except Exception as e:
@@ -622,6 +628,7 @@ class OTPmeServer1(object):
             return self.build_response(status, message)
 
         if command == "session_reneg":
+            self.session_reneg = True
             message = "Please send auth request with SROTP as password."
             status = status_codes.NEED_USER_AUTH
             return self.build_response(status, message)
@@ -1047,7 +1054,7 @@ class OTPmeServer1(object):
 
                 if self.user:
                     # If user is from an other site we have to do redirected authentication.
-                    if self.user.site_uuid != config.site_uuid:
+                    if self.user.site_uuid != config.site_uuid and not self.session_reneg:
                         user_site = backend.get_object(object_type="site",
                                                     uuid=self.user.site_uuid)
                         if config.site_uuid not in user_site.trusted_sites:
@@ -1244,24 +1251,24 @@ class OTPmeServer1(object):
                 continue
             ssh_public_keys.append(verify_token.ssh_public_key)
 
-        # Get users agent script.
-        if self.user.agent_script:
-            x = backend.get_object(object_type="script",
-                                uuid=self.user.agent_script)
-            agent_script = decode(x.script, "base64")
-            agent_script_uuid = x.uuid
-            agent_script_path = x.rel_path
-            agent_script_options = self.user.agent_script_options.copy()
-            agent_script_signs = x.signatures.copy()
-        else:
-            agent_script = None
-            agent_script_uuid = None
-            agent_script_path = None
-            agent_script_options = None
-            agent_script_signs = None
-
         if verify_token:
             self.preauth_status = True
+            # Get users agent script.
+            if self.user.agent_script:
+                x = backend.get_object(object_type="script",
+                                    uuid=self.user.agent_script)
+                agent_script = decode(x.script, "base64")
+                agent_script_uuid = x.uuid
+                agent_script_path = x.rel_path
+                agent_script_options = self.user.agent_script_options.copy()
+                agent_script_signs = x.signatures.copy()
+            else:
+                agent_script = None
+                agent_script_uuid = None
+                agent_script_path = None
+                agent_script_options = None
+                agent_script_signs = None
+
             preauth_reply = {
                     'realm'                 : config.realm,
                     'site'                  : config.site,
@@ -1280,8 +1287,8 @@ class OTPmeServer1(object):
                     }
 
         else:
-            message = (_("No token found to authenticate for accessgroup: %s")
-                        % self.access_group)
+            self.preauth_status = False
+            message = (_("No token found to authenticate user."))
             preauth_reply = {
                     'realm'                 : config.realm,
                     'site'                  : config.site,
@@ -1487,6 +1494,9 @@ class OTPmeServer1(object):
             return valid_tokens
 
         if not self.peer.logins_limited:
+            return valid_tokens
+
+        if self.user.is_admin():
             return valid_tokens
 
         # Get tokens valid for login host/node.

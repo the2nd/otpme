@@ -403,6 +403,10 @@ def get_opts(command_syntax, command_line, command_args,
         result = check_string(x, "+", "+")
         return result
 
+    def check_string_opt(x):
+        result = check_string(x, '"', '"')
+        return result
+
     para_count = 0
     cmd_list = command_syntax.split(" ")
     while len(cmd_list) > 0:
@@ -649,8 +653,7 @@ def get_opts(command_syntax, command_line, command_args,
                     para_is_file = cmd_paras[para_count]['file']
                     cmd_paras.pop(para_count)
                 elif para_count in cmd_opt_paras:
-                    para_var = cmd_opt_paras[para_count]
-                    cmd_opt_paras.pop(para_count)
+                    para_var = cmd_opt_paras.pop(para_count)
                 elif para_count in cmd_key_val_paras:
                     key_name = cmd_key_val_paras[para_count][0]
                     key_name = key_name.replace("<", "").replace(">", "")
@@ -689,16 +692,22 @@ def get_opts(command_syntax, command_line, command_args,
                             para_val = para_val.decode()
                     else:
                         para_val = command_line[0]
+                    var_type = None
                     try:
                         para_var = check_list_opt(para_var)
                         var_type = list
                     except:
-                        var_type = None
+                        pass
                     try:
                         para_var = check_dict_opt(para_var)
                         var_type = dict
                     except:
-                        var_type = None
+                        pass
+                    try:
+                        para_var = check_string_opt(para_var)
+                        var_type = str
+                    except:
+                        pass
                     if var_type == list:
                         para_val = para_val.split(",")
                     elif var_type == dict:
@@ -710,6 +719,8 @@ def get_opts(command_syntax, command_line, command_args,
                             val = stuff.string_to_type(val)
                             args_dict[arg] = val
                         para_val = args_dict
+                    elif var_type == str:
+                        para_val = str(para_val)
                     else:
                         para_val = stuff.string_to_type(para_val)
                     command_args[para_var] = para_val
@@ -945,7 +956,7 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
     # Get default search regex if none was given.
     if search_regex is None:
         if search_regex_getter:
-            search_regex = search_regex_getter()
+            search_regex = search_regex_getter(show_all=show_all)
     # Check output fields format.
     try:
         if output_fields:

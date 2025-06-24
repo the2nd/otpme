@@ -296,7 +296,7 @@ def oid_getter(path):
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = [
-                'otpme.lib.daemon.controld',
+                #'otpme.lib.daemon.controld',
                 'otpme.lib.extensions.ldif_handler',
                 'otpme.lib.classes.data_objects.cert',
                 'otpme.lib.classes.data_objects.rsa_key',
@@ -593,7 +593,6 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.origin_cache = None
 
         self.offline = False
-        self.check_attribute_types = True
         self.create_time = int(time.time())
         self.last_modified = 0
         self.track_last_used = False
@@ -1325,30 +1324,27 @@ class OTPmeBaseObject(OTPmeLockObject):
             encode_as_json = True
 
         if update:
-            if self.check_attribute_types:
-                # Make sure we got a value of the wanted type.
-                type_ok = False
-                if type(type_wanted) == type \
-                or type(type_wanted) == type(str):
-                    if isinstance(val, type_wanted):
-                        type_ok = True
-                    else:
-                        if force_type:
-                            # None type values will always stay None.
-                            if val is None:
+            # Make sure we got a value of the wanted type.
+            type_ok = False
+            if type(type_wanted) == type \
+            or type(type_wanted) == type(str):
+                if isinstance(val, type_wanted):
+                    type_ok = True
+                else:
+                    if force_type:
+                        # None type values will always stay None.
+                        if val is None:
+                            type_ok = True
+                        else:
+                            try:
+                                val = type_wanted(val)
                                 type_ok = True
-                            else:
-                                try:
-                                    val = type_wanted(val)
-                                    type_ok = True
-                                except:
-                                    pass
+                            except:
+                                pass
 
-                elif type_wanted == "uuid":
-                    if isinstance(val, str) and stuff.is_uuid(val):
-                        type_ok = True
-            else:
-                type_ok = True
+            elif type_wanted == "uuid":
+                if isinstance(val, str) and stuff.is_uuid(val):
+                    type_ok = True
 
             # If the attribute is None and not required remove it from the
             # current object config.
@@ -1359,12 +1355,11 @@ class OTPmeBaseObject(OTPmeLockObject):
 
             if not type_ok:
                 msg = (_("Cannot update. Got wrong value for '%(attribute)s': "
-                        "%(object_id)s: Wanted: %(type_wanted)s Got: %(val_type)s: %(val)s")
+                        "%(object_id)s: Wanted: %(type_wanted)s Got: %(val_type)s")
                         % {"attribute":attribute,
                             "object_id":self.oid,
                             "type_wanted":type_wanted,
-                            "val_type":repr(type(val)),
-                            "val":val})
+                            "val_type":repr(type(val))})
                 logger.warning(msg)
                 raise OTPmeException(msg)
 
@@ -1394,51 +1389,45 @@ class OTPmeBaseObject(OTPmeLockObject):
                     val = json.decode(val)
                 except OTPmeTypeError:
                     pass
-            if self.check_attribute_types:
-                type_ok = False
-                if type_wanted is list:
-                    if isinstance(val, list):
+            type_ok = False
+            if type_wanted is list:
+                if isinstance(val, list):
+                    type_ok = True
+            elif type_wanted is dict:
+                if isinstance(val, dict):
+                    type_ok = True
+            elif type_wanted == "uuid":
+                if isinstance(val, str) and stuff.is_uuid(val):
+                    type_ok = True
+            elif type(type_wanted) is type \
+            or type(type_wanted) is type(str):
+                if isinstance(val, type_wanted):
+                    type_ok = True
+                elif force_type:
+                    # None type values will always stay None.
+                    if val is None:
                         type_ok = True
-                elif type_wanted is dict:
-                    if isinstance(val, dict):
-                        type_ok = True
-                elif type_wanted == "uuid":
-                    if isinstance(val, str) and stuff.is_uuid(val):
-                        type_ok = True
-                elif type(type_wanted) is type \
-                or type(type_wanted) is type(str):
-                    if isinstance(val, type_wanted):
-                        type_ok = True
-                    elif force_type:
-                        # None type values will always stay None.
-                        if val is None:
-                            type_ok = True
-                        else:
-                            try:
-                                val = type_wanted(val)
-                                type_ok = True
-                            except:
-                                pass
                     else:
-                        type_ok = False
+                        try:
+                            val = type_wanted(val)
+                            type_ok = True
+                        except:
+                            pass
                 else:
-                    msg = (_("Got unknown value type: %s") % type_wanted)
-                    raise OTPmeException(msg)
+                    type_ok = False
             else:
-                type_ok = True
+                msg = (_("Got unknown value type: %s") % type_wanted)
+                raise OTPmeException(msg)
 
             if not type_ok:
-                # If the attribute is None and not required we can ignore it.
-                if val is None and not required:
-                    return
-                msg = (_("Got wrong value for '%(attribute)s': "
-                        "%(object_id)s: Wanted: %(type_wanted)s Got: %(val_type)s: %(val)s")
-                        % {"attribute":attribute,
-                            "object_id":self.oid,
-                            "type_wanted":type_wanted,
-                            "val_type":repr(type(val)),
-                            "val":val})
-                logger.warning(msg)
+                if val is not None:
+                    msg = (_("Got wrong value for '%(attribute)s': "
+                            "%(object_id)s: Wanted: %(type_wanted)s Got: %(val_type)s")
+                            % {"attribute":attribute,
+                                "object_id":self.oid,
+                                "type_wanted":type_wanted,
+                                "val_type":repr(type(val))})
+                    logger.warning(msg)
 
             # Set class variable.
             if val is None:
@@ -1856,31 +1845,6 @@ class OTPmeObject(OTPmeBaseObject):
                             ],
                         },
                     }
-
-
-
-        # Type checking is only needed on nodes the object is managed by.
-        self.check_attribute_types = True
-        try:
-            host_type = config.host_data['type']
-        except:
-            host_type = None
-        if host_type == "host":
-            self.check_attribute_types = False
-        elif host_type == "node":
-            try:
-                my_realm = config.host_data['realm']
-            except:
-                my_realm = None
-            if self.realm != my_realm:
-                self.check_attribute_types = False
-            else:
-                try:
-                    my_site = config.host_data['site']
-                except:
-                    my_site = None
-                if self.site != my_site:
-                    self.check_attribute_types = False
 
         # We only set realm if subclass is not of type realm.
         if self.type != "realm":
@@ -3425,7 +3389,7 @@ class OTPmeObject(OTPmeBaseObject):
     def add_token(
         self,
         token_path: str,
-        token_options: dict=None,
+        token_options: Union[dict,None]=None,
         login_interfaces: List=[],
         force: bool=False,
         run_policies: bool=True,
@@ -3686,7 +3650,7 @@ class OTPmeObject(OTPmeBaseObject):
                     return callback.abort()
 
         # Add token to this object.
-        if not token.uuid in self.tokens:
+        if token.uuid not in self.tokens:
             self.tokens.append(token.uuid)
             # Update index.
             self.add_index('token', token.uuid)
@@ -4074,7 +4038,7 @@ class OTPmeObject(OTPmeBaseObject):
                 return_attributes.append(return_type)
             _return_type = "instance"
             if ignore_hooks:
-                _return_type = "name"
+                _return_type = return_type
             # Search policies assigned to this object.
             search_result = backend.search(object_type="policy",
                                             attribute="uuid",
@@ -4093,16 +4057,16 @@ class OTPmeObject(OTPmeBaseObject):
                 add_policy = False
                 check_all = True
                 check_type = True
-                if not "all" in policy.hooks:
+                if "all" not in policy.hooks:
                     check_all = False
-                    if not self.type in policy.hooks:
+                    if self.type not in policy.hooks:
                         if not child_object:
                             continue
-                        if not child_object.type in policy.hooks:
+                        if child_object.type not in policy.hooks:
                             continue
                 if not self.type in policy.hooks:
                     if child_object:
-                        if not child_object.type in policy.hooks:
+                        if child_object.type not in policy.hooks:
                             check_type = False
                     else:
                         check_type = False
@@ -5728,7 +5692,7 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok()
 
     @object_lock()
-    def add_acl(self, *args, **kwargs):
+    def add_acl(self, *args, callback=default_callback, **kwargs):
         """ Add ACL to object. """
         try:
             recursive_acls = kwargs['recursive_acls']
@@ -5745,15 +5709,15 @@ class OTPmeObject(OTPmeBaseObject):
             if transaction:
                 begin_transaction = False
         if begin_transaction:
-            backend.begin_transaction("add_acl")
-        result = self.handle_acl("add", *args, **kwargs)
+            backend.begin_transaction(name="add_acl", callback=callback)
+        result = self.handle_acl("add", *args, callback=callback, **kwargs)
         if begin_transaction:
             backend.end_transaction()
 
         return result
 
     @object_lock()
-    def del_acl(self, *args, **kwargs):
+    def del_acl(self, *args, callback=default_callback, **kwargs):
         """ Delete ACL from object. """
         try:
             recursive_acls = kwargs['recursive_acls']
@@ -5770,8 +5734,8 @@ class OTPmeObject(OTPmeBaseObject):
             if transaction:
                 begin_transaction = False
         if begin_transaction:
-            backend.begin_transaction("add_acl")
-        result = self.handle_acl("del", *args, **kwargs)
+            backend.begin_transaction(name="del_acl", callback=callback)
+        result = self.handle_acl("del", *args, callback=callback, **kwargs)
         if begin_transaction:
             backend.end_transaction()
 
@@ -6287,8 +6251,15 @@ class OTPmeObject(OTPmeBaseObject):
         # Remove tailing slash.
         if new_unit.endswith("/"):
             new_unit = new_unit[:-1]
-        # Build absolute path.
-        if not new_unit.startswith("/"):
+
+        if new_unit.startswith("/"):
+            path_data = oid.resolve_path(new_unit, object_type="user")
+            new_site = path_data['site']
+            if new_site != self.site:
+                msg = "Cross-site moves are not support by this object."
+                return callback.error(msg)
+        else:
+            # Build absolute path.
             new_unit = "/%s/%s/%s" % (self.realm, self.site, new_unit)
 
         # Get regex to check if name is valid.
@@ -7004,7 +6975,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         if tags:
             # We may get tags as comma separated list from command line.
-            if type(tags) != list:
+            if isinstance(tags, str):
                 tags = tags.split(",")
 
         # Get list with users signed this object.

@@ -388,12 +388,11 @@ cmd_help = {
                 },
 
     'move'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user move --default-group {group} [--keep-acls] {user} {unit}',
-                    'cmd'   :   '--keep-acls :keep_acls=True: --default-group :default_group: <|object|> <new_unit>',
+                    '_cmd_usage_help' : 'Usage: otpme-user move [--keep-acls] {user} {unit}',
+                    'cmd'   :   '--keep-acls :keep_acls=True: <|object|> <new_unit>',
                     '_help' :   {
                                     'cmd'                   : 'change users unit',
                                     '--keep-acls'           : 'Keep object ACLs.',
-                                    '--default-group'       : 'New default group of user.'
                                 },
                 },
 

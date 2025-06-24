@@ -42,6 +42,7 @@ valid_commands = [
                 'backend',
                 'stop_job',
                 'move_object',
+                'change_user_default_group',
                 'dump_index',
                 'dump_object',
                 'reset_reauth',
@@ -530,7 +531,7 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         return job_status, job_reply
 
-    def verify_move_jwt(self, src_realm, src_site, jwt):
+    def verify_cross_site_jwt(self, src_realm, src_site, jwt):
         _src_site = backend.get_object(object_type="site",
                                         realm=src_realm,
                                         name=src_site)
@@ -597,7 +598,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         src_site = command_args['src_site']
 
         try:
-            jwt_data = self.verify_move_jwt(src_realm, src_site, jwt)
+            jwt_data = self.verify_cross_site_jwt(src_realm, src_site, jwt)
         except Exception as e:
             message = "JWT verification failed"
             msg = "%s: %s" % (message, e)
@@ -609,34 +610,6 @@ class OTPmeMgmtP1(OTPmeServer1):
             objects_enc_key = jwt_data['enc_key']
         except KeyError:
             message = "JWT data misses decryption key."
-            self.logger.warning(message)
-            status = False
-            return self.build_response(status, message)
-
-        try:
-            default_group = jwt_data['default_group']
-        except KeyError:
-            message = "JWT data misses default group."
-            self.logger.warning(message)
-            status = False
-            return self.build_response(status, message)
-
-        # Make sure new default group exists.
-        result = backend.search(object_type="group",
-                                attribute="name",
-                                value=default_group,
-                                realm=config.realm,
-                                site=config.site,
-                                return_type="instance")
-        if not result:
-            message = "Unknown group: %s" % default_group
-            self.logger.warning(message)
-            status = False
-            return self.build_response(status, message)
-
-        _default_group = result[0]
-        if not _default_group.verify_acl("add:default_group_user"):
-            message = "Failed to set new default group: %s" % default_group
             self.logger.warning(message)
             status = False
             return self.build_response(status, message)
@@ -755,7 +728,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                 move_object.set_oid(new_oid=x_dst_oid)
                 move_object.unit_uuid = dst_unit.uuid
                 move_object.set_unit()
-                move_object.group = default_group
                 move_object.update_extensions("site_move")
                 move_object._write()
                 moved_objects[x_src_oid.full_oid] = {}
@@ -800,6 +772,231 @@ class OTPmeMgmtP1(OTPmeServer1):
         move_reply = self.build_move_reply(moved_objects)
 
         return self.build_response(True, move_reply)
+
+    def change_user_default_group(self, command_args):
+        jwt = command_args['jwt']
+        src_realm = command_args['src_realm']
+        src_site = command_args['src_site']
+
+        try:
+            jwt_data = self.verify_cross_site_jwt(src_realm, src_site, jwt)
+        except Exception as e:
+            message = "JWT verification failed"
+            msg = "%s: %s" % (message, e)
+            self.logger.warning(msg)
+            status = False
+            return self.build_response(status, message)
+
+        try:
+            action = jwt_data['action']
+        except KeyError:
+            message = "JWT data misses group action."
+            self.logger.warning(message)
+            status = False
+            return self.build_response(status, message)
+
+        try:
+            user_name = jwt_data['user_name']
+        except KeyError:
+            message = "JWT data misses user name."
+            self.logger.warning(message)
+            status = False
+            return self.build_response(status, message)
+
+        try:
+            user_uuid = jwt_data['user_uuid']
+        except KeyError:
+            message = "JWT data misses user UUID."
+            self.logger.warning(message)
+            status = False
+            return self.build_response(status, message)
+
+        result = backend.search(object_type="user",
+                                attribute="name",
+                                value=user_name,
+                                realm=src_realm,
+                                site=src_site,
+                                return_type="instance")
+        if not result:
+            message = "Unknown user: %s" % user_name
+            self.logger.warning(message)
+            status = False
+            return self.build_response(status, message)
+
+        _user = result[0]
+        if _user.uuid != user_uuid:
+            message = ("Got user %s with wrong UUID: %s: %s"
+                        % (_user.name, _user.uuid, user_uuid))
+            status = False
+            return self.build_response(status, message)
+
+        if _user.site != src_site:
+            message = ("Got user %s from wrong site: %s"
+                        % (_user.name, _user.site))
+            status = False
+            return self.build_response(status, message)
+
+        if _user.site == config.site:
+            message = ("Got user %s from own site: %s"
+                        % (_user.name, _user.site))
+            status = False
+            return self.build_response(status, message)
+
+        try:
+            old_group_name = jwt_data['old_group_name']
+        except KeyError:
+            message = "JWT data misses old group name."
+            self.logger.warning(message)
+            status = False
+            return self.build_response(status, message)
+
+        try:
+            old_group_uuid = jwt_data['old_group_uuid']
+        except KeyError:
+            message = "JWT data misses old group UUID."
+            self.logger.warning(message)
+            status = False
+            return self.build_response(status, message)
+
+        try:
+            new_group_name = jwt_data['new_group_name']
+        except KeyError:
+            message = "JWT data misses new group name."
+            self.logger.warning(message)
+            status = False
+            return self.build_response(status, message)
+
+        try:
+            new_group_uuid = jwt_data['new_group_uuid']
+        except KeyError:
+            message = "JWT data misses new group UUID."
+            self.logger.warning(message)
+            status = False
+            return self.build_response(status, message)
+
+        old_group = None
+        if old_group_name:
+            result = backend.search(object_type="group",
+                                    attribute="name",
+                                    value=old_group_name,
+                                    realm=config.realm,
+                                    site=config.site,
+                                    return_type="instance")
+            if not result:
+                message = "Unknown group: %s" % old_group_name
+                self.logger.warning(message)
+                status = False
+                return self.build_response(status, message)
+
+            old_group = result[0]
+            if old_group.uuid != old_group_uuid:
+                message = ("Got group %s with wrong UUID: %s: %s"
+                            % (old_group.name, old_group.uuid, old_group_uuid))
+                status = False
+                return self.build_response(status, message)
+
+            if old_group.site != config.site:
+                message = ("Got group %s from wrong site: %s" % old_group.site)
+                status = False
+                return self.build_response(status, message)
+
+        new_group = None
+        if new_group_name:
+            result = backend.search(object_type="group",
+                                    attribute="name",
+                                    value=new_group_name,
+                                    realm=config.realm,
+                                    site=config.site,
+                                    return_type="instance")
+            if not result:
+                message = "Unknown group: %s" % new_group_name
+                self.logger.warning(message)
+                status = False
+                return self.build_response(status, message)
+
+            new_group = result[0]
+            if new_group.uuid != new_group_uuid:
+                message = ("Got group %s with wrong UUID: %s: %s"
+                            % (new_group.name, new_group.uuid, new_group_uuid))
+                status = False
+                return self.build_response(status, message)
+
+            if new_group.site != config.site:
+                message = ("Got group %s from wrong site: %s" % new_group.site)
+                status = False
+                return self.build_response(status, message)
+
+        default_callback = config.get_callback()
+        if action == "add":
+            status = False
+            try:
+                status = new_group.add_default_group_user(user_uuid=user_uuid,
+                                                        callback=default_callback)
+            except Exception as e:
+                message = "Failed to add default group user: %s" % e
+                self.logger.warning(message)
+                return self.build_response(status, message)
+            if status:
+                message = "Added default group user."
+            else:
+                message = default_callback.job.return_value
+        elif action == "remove":
+            status = False
+            try:
+                status = old_group.remove_default_group_user(user_uuid=user_uuid,
+                                                            callback=default_callback)
+            except Exception as e:
+                message = "Failed to remove default group user: %s" % e
+                self.logger.warning(message)
+                return self.build_response(status, message)
+            if status:
+                message = "Removed default group user."
+            else:
+                message = default_callback.job.return_value
+        elif action == "change":
+            status = False
+            message = "Users default group changed."
+            # Remove user from old group.
+            try:
+                status = old_group.remove_default_group_user(user_uuid=user_uuid,
+                                                            callback=default_callback)
+            except Exception as e:
+                message = "Failed to remove default group user: %s" % e
+                self.logger.warning(message)
+                return self.build_response(status, message)
+            if status:
+                # Add user to new group.
+                try:
+                    status = new_group.add_default_group_user(user_uuid=user_uuid,
+                                                            callback=default_callback)
+                except Exception as e:
+                    message = "Failed to add default group user: %s" % e
+                    self.logger.warning(message)
+                    return self.build_response(status, message)
+                if not status:
+                    message = "Failed to set users default group."
+            else:
+                message = "Failed to unset users default group."
+
+        if not status:
+            return self.build_response(status, message)
+
+        # Build JWT reply.
+        our_site = backend.get_object(object_type="site",
+                                        realm=config.realm,
+                                        name=config.site)
+        try:
+            jwt_key = RSAKey(key=our_site.key)
+        except Exception as e:
+            msg = (_("Unable to get public key of site "
+                    "certificate: %s: %s") % (our_site, e))
+            raise OTPmeException(msg)
+
+        jwt = _jwt.encode(payload=jwt_data,
+                        key=jwt_key,
+                        algorithm='RS256')
+
+        return self.build_response(True, jwt)
 
     def handle_backend_commands(self, backend_command, command_args):
         """ Handle 'backend' commands. """
@@ -1310,6 +1507,10 @@ class OTPmeMgmtP1(OTPmeServer1):
             return self.build_response(True, None)
 
         # Handle backend commands.
+        if command == "change_user_default_group":
+            return self.change_user_default_group(command_args)
+
+        # Handle backend commands.
         if command == "move_object":
             return self.move_object(command_args)
 
@@ -1517,6 +1718,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                                 get_default_unit = True
                                 if config.auth_user:
                                     result = config.auth_user.get_policies(policy_type="defaultunits",
+                                                                            ignore_hooks=True,
                                                                             return_type="instance")
                                     if result:
                                         default_units_policy = result[0]

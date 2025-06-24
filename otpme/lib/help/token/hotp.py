@@ -43,7 +43,7 @@ cmd_help = {
 
     'pin'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token pin {token} [pin]',
-                    'cmd'   :   '--generate :auto_pin=True: <|object|> [pin]',
+                    'cmd'   :   '--generate :auto_pin=True: <|object|> ["pin"]',
                     '_help' :   {
                                     'cmd'                   : 'change token pin',
                                     '--generate'            : 'generate PIN',
@@ -98,14 +98,6 @@ cmd_help = {
                                 },
                 },
 
-    'otp_format'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token otp_format {token} [otp_format]',
-                    'cmd'   :   '<|object|> [otp_format]',
-                    '_help' :   {
-                                    'cmd'                   : 'change token OTP format',
-                                },
-                },
-
     'counter_check_range'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token counter_check_range {token} [int]',
                     'cmd'   :   '<|object|> [counter_check_range]',
@@ -143,10 +135,6 @@ cmd_help = {
                 },
 
     '_list_card_types'    : {
-                    'cmd'   :   '<|object|>',
-                },
-
-    '_list_otp_formats'    : {
                     'cmd'   :   '<|object|>',
                 },
     }

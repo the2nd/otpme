@@ -81,6 +81,7 @@ from otpme.lib.backends.file.transaction import transaction
 from otpme.lib.backends.file.transaction import get_transaction
 from otpme.lib.backends.file.transaction import end_transaction
 from otpme.lib.backends.file.transaction import begin_transaction
+from otpme.lib.backends.file.transaction import abort_transaction
 from otpme.lib.backends.file.transaction import replay_transactions
 from otpme.lib.backends.file.transaction import get_file_transactions
 from otpme.lib.backends.file.transaction import get_object_transactions
@@ -1192,7 +1193,6 @@ def search(
     _result = index_search(realm=realm,
                             site=site,
                             verify_acls=_verify_acls,
-                            #verify_acls=verify_acls,
                             attributes=attributes,
                             attribute=attribute,
                             value=value,
