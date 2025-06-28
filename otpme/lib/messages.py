@@ -46,7 +46,8 @@ def message(msg, newline=True, sameline=False,
             print_method.write(msg)
     print_method.flush()
 
-def error_message(msg, **kwargs):
+def error_message(msg, color=True, **kwargs):
     """ Print a user message to stderr """
-    msg = colored(msg, 'red')
+    if color:
+        msg = colored(msg, 'red')
     message(msg, stderr=True, **kwargs)

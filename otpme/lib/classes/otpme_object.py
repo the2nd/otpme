@@ -4064,7 +4064,7 @@ class OTPmeObject(OTPmeBaseObject):
                             continue
                         if child_object.type not in policy.hooks:
                             continue
-                if not self.type in policy.hooks:
+                if self.type not in policy.hooks:
                     if child_object:
                         if child_object.type not in policy.hooks:
                             check_type = False
@@ -6326,7 +6326,6 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(msg)
 
         exception = None
-        old_unit = self.unit
         inherit_acls = True
         inherit_acls_message = ""
 
@@ -6393,9 +6392,6 @@ class OTPmeObject(OTPmeBaseObject):
         self.unit = new_unit.rel_path
         self.unit_uuid = new_unit.uuid
 
-        # Update index.
-        self.update_index('unit', self.unit_uuid)
-
         # Remember old OID for move.
         old_oid = self.oid
 
@@ -6419,12 +6415,8 @@ class OTPmeObject(OTPmeBaseObject):
                     % (self.type, new_oid.name, e))
             return callback.error(msg)
 
-        # Update extensions.
-        self.update_extensions("change_unit",
-                            old_unit=old_unit,
-                            new_unit=self.unit,
-                            verbose_level=verbose_level,
-                            callback=callback)
+        # Update index and extensions.
+        self.update_after_move(verbose_level=verbose_level, callback=callback)
 
         # FIXME: we need an inherit_acls=False + --inherit-acls n option
         if inherit_acls:
@@ -6452,6 +6444,20 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Write object as soon as possible to release lock.
         return self._write(callback=callback)
+
+    def update_after_move(
+        self,
+        verbose_level=2,
+        callback: JobCallback=default_callback,
+        **kwargs
+        ):
+        # Update index.
+        self.update_index('unit', self.unit_uuid)
+        # Update extensions.
+        self.update_extensions("change_unit",
+                            new_unit=self.unit,
+                            verbose_level=verbose_level,
+                            callback=callback)
 
     @object_lock(full_lock=True)
     def change_script(

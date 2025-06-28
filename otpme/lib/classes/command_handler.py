@@ -486,8 +486,11 @@ class CommandHandler(object):
                 register_module("otpme.lib.classes.role")
                 register_module("otpme.lib.cli.role")
             if command == "policy":
-                register_module("otpme.lib.classes.policy")
-                register_module("otpme.lib.cli.policy")
+                from otpme.lib.register import register_modules
+                # Register modules.
+                register_modules()
+                #register_module("otpme.lib.classes.policy")
+                #register_module("otpme.lib.cli.policy")
             if command == "accessgroup":
                 register_module("otpme.lib.classes.accessgroup")
                 register_module("otpme.lib.cli.accessgroup")
@@ -1104,7 +1107,23 @@ class CommandHandler(object):
             return self.handle_cache_command(command_line)
 
         if subcommand == "index":
-            return self.handle_index_command(command_line)
+            command = command_line[0]
+            if command == "backup":
+                return self.handle_index_backup()
+            elif command == "restore":
+                try:
+                    restore_file = command_line[1]
+                except KeyError:
+                    restore_file = None
+                if not restore_file:
+                    return self.get_help()
+                if stuff.controld_status():
+                    msg = "Please stop OTPme daemon first."
+                    print(msg)
+                    return False
+                return self.handle_index_restore(restore_file)
+            else:
+                return self.handle_index_command(command_line)
 
         if subcommand == "regen_master_key":
             return self.regen_master_key()
@@ -1327,6 +1346,69 @@ class CommandHandler(object):
         _index = config.get_index_module()
         command = command_line[0]
         _index.command(command)
+
+    def handle_index_backup(self):
+        """ Handle index backup command. """
+        try:
+            import simdjson as json
+        except:
+            try:
+                import ujson as json
+            except:
+                import json
+        from otpme.lib.index import do_index_backup
+        from otpme.lib.register import register_modules
+        # Register modules.
+        register_modules()
+        # Reload config after module registration.
+        config.reload()
+        _index = config.get_index_module()
+        self.init()
+        backend.init()
+        if not _index.status():
+            _index.start()
+        index_data = do_index_backup()
+        index_data = json.dumps(index_data)
+        return index_data
+
+    def handle_index_restore(self, restore_file):
+        """ Handle index restore command. """
+        try:
+            import simdjson as json
+        except:
+            try:
+                import ujson as json
+            except:
+                import json
+        from otpme.lib import filetools
+        from otpme.lib.index import do_index_restore
+        from otpme.lib.register import register_modules
+        # Register modules.
+        register_modules()
+        # Reload config after module registration.
+        config.reload()
+        _index = config.get_index_module()
+        backend.init()
+        if not _index.status():
+            _index.start()
+        if not os.path.exists(restore_file):
+            msg = "No such file or directory: %s" % restore_file
+            raise OTPmeException(msg)
+        try:
+            file_content = filetools.read_file(restore_file)
+        except Exception as e:
+            msg = (_("Error reading index dump file: %s") % e)
+            raise OTPmeException(msg)
+        index_data = json.loads(file_content)
+        try:
+            do_index_restore(index_data)
+        except Exception as e:
+            msg = "Failed to do index restore: %s" % e
+            raise OTPmeException(msg)
+        msg = "Creating DB indexes..."
+        print(msg)
+        _index.command("create_db_indices")
+        return
 
     def handle_radius_command(self, command_line):
         """ Handle radius command. """

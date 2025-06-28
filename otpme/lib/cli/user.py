@@ -119,8 +119,6 @@ def row_getter(realm, site, user_order, user_data, acls,
                 group_result = backend.search(object_type="group",
                                         attribute="user",
                                         value=user_uuid,
-                                        realm=realm,
-                                        site=site,
                                         return_attributes=return_attrs)
                 group_string = "N/A"
                 if group_result:

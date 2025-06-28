@@ -358,9 +358,6 @@ class AuthonactionPolicy(Policy):
             # Add default hooks.
             for hook in self.default_hooks:
                 config.register_auth_on_action_hook(x, hook)
-            ## Add registered hooks.
-            #for hook in config.auth_on_action_hooks[x]:
-            #    config.register_auth_on_action_hook(x, hook)
 
         # Timeout after a user is asked for reauth if no action was done which
         # normally requires a reauth. We use 30s by default to prevent repeatedly
@@ -798,6 +795,15 @@ class AuthonactionPolicy(Policy):
 
     def _add(self, callback=default_callback, **kwargs):
         """ Add a policy. """
+        for object_type in self.object_types:
+            try:
+                object_type_hooks = config.auth_on_action_hooks[object_type]
+            except KeyError:
+                continue
+            for hook in object_type_hooks:
+                self.add_hook(object_type=object_type,
+                            hook_name=hook,
+                            callback=callback)
         return callback.ok()
 
     def show_config(self, callback=default_callback, **kwargs):

@@ -1787,6 +1787,7 @@ def index_dump(object_id=None, uuid=None, session=None, **kwargs):
     except UnknownClass:
         msg = "Unknown object class: %s" % object_type
         raise OTPmeException(msg)
+    result = {'read_oid':object_id.read_oid}
     q = session.query(IndexObject)
     if object_id:
         x = q.filter(IndexObject.read_oid == object_id.read_oid)
@@ -1796,16 +1797,86 @@ def index_dump(object_id=None, uuid=None, session=None, **kwargs):
     if not index_object:
         msg = "Unknown object."
         raise OTPmeException(msg)
+    base_attributes = {}
+    for c in IndexObject.__table__.columns:
+        attr_name = c.name.replace("user.", "")
+        if attr_name == "id":
+            continue
+        attr_val = getattr(index_object, attr_name)
+        base_attributes[attr_name] = attr_val
+    result['base_attributes'] = base_attributes
     q = session.query(IndexObjectAttribute)
     x = q.filter(IndexObjectAttribute.ioid == index_object.id)
-    object_attributes = x.all()
-    result = [str(index_object)]
-    for x in object_attributes:
-        #attr_str = pprint.pformat(x)
-        attr_str = str(x)
-        result.append(attr_str)
-    result = "\n".join(result)
+    object_attributes = {}
+    for x in x.all():
+        object_attributes[x.id] = {}
+        object_attributes[x.id]['realm'] = x.realm
+        object_attributes[x.id]['site'] = x.site
+        object_attributes[x.id]['object_type'] = x.object_type
+        object_attributes[x.id]['name'] = x.name
+        object_attributes[x.id]['value'] = x.value
+    result['object_attributes'] = object_attributes
+    q = session.query(IndexObjectACL)
+    x = q.filter(IndexObjectACL.ioid == index_object.id)
+    object_acls = {}
+    for x in x.all():
+        object_acls[x.id] = {}
+        object_acls[x.id]['realm'] = x.realm
+        object_acls[x.id]['site'] = x.site
+        object_acls[x.id]['object_type'] = x.object_type
+        object_acls[x.id]['value'] = x.value
+    result['object_acls'] = object_acls
     return result
+
+@handle_transaction
+def index_restore(index_data, session=None, **kwargs):
+    try:
+        read_oid = index_data['read_oid']
+    except KeyError:
+        msg = "Index data misses read_oid."
+        raise OTPmeException(msg)
+    try:
+        base_attributes = index_data['base_attributes']
+    except KeyError:
+        msg = "Index data misses base_attributes."
+        raise OTPmeException(msg)
+    try:
+        object_attributes = index_data['object_attributes']
+    except KeyError:
+        msg = "Index data misses object_attributes."
+        raise OTPmeException(msg)
+    try:
+        object_acls = index_data['object_acls']
+    except KeyError:
+        msg = "Index data misses object_acls."
+        raise OTPmeException(msg)
+    object_id = oid.get(read_oid)
+    try:
+        IndexObject, \
+        IndexObjectAttribute, \
+        IndexObjectACL = get_class(object_id.object_type)
+    except UnknownClass:
+        msg = "Unknown object class: %s" % object_type
+        raise OTPmeException(msg)
+    # Build attributes.
+    attributes = []
+    for attr_id in object_attributes:
+        attr_attrs = object_attributes[attr_id]
+        a = IndexObjectAttribute(**attr_attrs)
+        attributes.append(a)
+    # Build ACLs.
+    acls = []
+    for acl_id in object_acls:
+        acl_attrs = object_acls[acl_id]
+        a = IndexObjectACL(**acl_attrs)
+        acls.append(a)
+    # Build index object.
+    index_object = IndexObject(attributes=attributes,
+                            acls=acls,
+                            **base_attributes)
+    # Add object to index.
+    session.add(index_object)
+    session.commit()
 
 @handle_transaction
 #@oid_lock(args_oid_pos=[0], write=True)

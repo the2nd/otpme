@@ -55,6 +55,7 @@ from otpme.lib.backends.file.file import delete
 from otpme.lib.backends.file.file import get_oid
 from otpme.lib.backends.file.file import get_uuid
 from otpme.lib.backends.file.file import index_dump
+from otpme.lib.backends.file.file import index_restore
 from otpme.lib.backends.file.file import index_search
 from otpme.lib.backends.file.file import object_exists
 from otpme.lib.backends.file.file import get_last_used

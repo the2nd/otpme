@@ -1744,6 +1744,19 @@ class AuthHandler(object):
                                                 uuid=login_token_uuid,
                                                 run_policies=True,
                                                 _no_func_cache=True)
+            if not self.auth_token:
+                self.auth_failed = True
+                self.auth_message = "AUTH_JWT_UNKNOWN_TOKEN"
+
+        if not self.auth_failed:
+            if self.auth_token.realm != site.realm:
+                self.auth_failed = True
+                self.auth_message = "AUTH_JWT_INVALID_TOKEN_REALM"
+
+        if not self.auth_failed:
+            if self.auth_token.site != site.name:
+                self.auth_failed = True
+                self.auth_message = "AUTH_JWT_INVALID_TOKEN_SITE"
 
         # Verify auth token (group membership etc.)
         if not self.auth_failed:

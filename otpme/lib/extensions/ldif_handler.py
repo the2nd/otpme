@@ -1032,7 +1032,7 @@ class OTPmeLDIFHandler(object):
 
         return modified_attributes
 
-    def change_unit(self, o, old_unit, new_unit, callback=default_callback, **kwargs):
+    def change_unit(self, o, new_unit, callback=default_callback, **kwargs):
         """ Handle change unit hook. """
         # Get current DN attribute.
         try:

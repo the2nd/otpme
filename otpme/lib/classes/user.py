@@ -1835,19 +1835,33 @@ class User(OTPmeObject):
         dst_realm = path_data['realm']
         dst_site = path_data['site']
 
-        object_config = self.object_config.copy()
         object_ids = [(self.oid.full_oid, self.uuid)]
+        user_policies = self.get_policies(ignore_hooks=True,
+                                        return_type="name")
+        for policy_name in user_policies:
+            self.remove_policy(policy_name=policy_name,
+                                verify_acls=False)
+        self.update_object_config()
+        object_config = self.object_config.copy()
         objects = {
                     self.oid.full_oid   : {
                                             'path'          : path,
                                             'object_config' : object_config,
+                                            'policies'      : user_policies,
                                         },
                 }
 
         token_list = self.get_tokens(return_type="instance")
         for token in token_list:
-            token_oc = token.object_config.copy()
             objects[token.oid.full_oid] = {}
+            token_policies = token.get_policies(ignore_hooks=True,
+                                                return_type="name")
+            for policy_name in token_policies:
+                token.remove_policy(policy_name=policy_name,
+                                    verify_acls=False)
+                token.update_object_config()
+            objects[token.oid.full_oid]['policies'] = token_policies
+            token_oc = token.object_config.copy()
             objects[token.oid.full_oid]['object_config'] = token_oc
             object_ids.append((token.oid.full_oid, token.uuid))
 
@@ -1987,6 +2001,9 @@ class User(OTPmeObject):
             path_data = oid.resolve_path(new_unit, object_type="user")
             new_site = path_data['site']
             if new_site != self.site:
+                if config.auth_user.uuid == self.uuid:
+                    msg = "Cannot move own user while logged in."
+                    return callback.error(msg)
                 return self.cross_site_move(*args, path=new_unit,
                                             callback=callback,
                                             **kwargs)

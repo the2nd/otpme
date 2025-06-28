@@ -675,6 +675,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         moved_objects = {}
         for x_src_oid in objects:
             x_oc = objects[x_src_oid]['object_config']
+            x_policies = objects[x_src_oid]['policies']
             x_src_oid = oid.get(x_src_oid)
             if x_src_oid.object_type == "user":
                 try:
@@ -728,7 +729,14 @@ class OTPmeMgmtP1(OTPmeServer1):
                 move_object.set_oid(new_oid=x_dst_oid)
                 move_object.unit_uuid = dst_unit.uuid
                 move_object.set_unit()
+                move_object.update_after_move()
                 move_object.update_extensions("site_move")
+                for policy_name in x_policies:
+                    policy_oid = "policy|hboss.intern/koeln/%s" % policy_name
+                    policy_oid = oid.get(policy_oid)
+                    if not backend.object_exists(policy_oid):
+                        continue
+                    move_object.add_policy(policy_name, verify_acls=False)
                 move_object._write()
                 moved_objects[x_src_oid.full_oid] = {}
                 moved_objects[x_src_oid.full_oid]['uuid'] = move_object.uuid
@@ -760,6 +768,12 @@ class OTPmeMgmtP1(OTPmeServer1):
                 move_object.site_uuid = config.site_uuid
                 move_object.set_oid(new_oid=x_dst_oid)
                 move_object.update_extensions("site_move")
+                for policy_name in x_policies:
+                    policy_oid = "policy|hboss.intern/koeln/%s" % policy_name
+                    policy_oid = oid.get(policy_oid)
+                    if not backend.object_exists(policy_oid):
+                        continue
+                    move_object.add_policy(policy_name, verify_acls=False)
                 move_object._write()
                 moved_objects[x_src_oid.full_oid] = {}
                 moved_objects[x_src_oid.full_oid]['uuid'] = move_object.uuid
