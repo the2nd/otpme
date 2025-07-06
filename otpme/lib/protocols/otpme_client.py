@@ -204,8 +204,10 @@ class OTPmeClient(OTPmeClientBase):
 
         # Set signal handler.
         if self.interactive:
-            signal.signal(signal.SIGINT, self.signal_handler)
+            self.org_termin_signal_handler = signal.getsignal(signal.SIGTERM)
+            self.org_int_signal_handler = signal.getsignal(signal.SIGINT)
             signal.signal(signal.SIGTERM, self.signal_handler)
+            signal.signal(signal.SIGINT, self.signal_handler)
 
         # Set args to be passed on to protocol handler.
         self.proto_handler_args = dict(kwargs)
@@ -386,11 +388,19 @@ class OTPmeClient(OTPmeClientBase):
         if _signal == 15:
             self.logger.warning("Exiting on 'SIGTERM'.")
         self.stop_job = True
-        if self.jobs:
-            return
-        self.close()
-        self.cleanup()
-        os._exit(0)
+        # Pass on signal handler stuff to mgmtd to stop jobs.
+        if self.daemon == "mgmtd":
+            if self.jobs:
+                return
+            self.close()
+            self.cleanup()
+        else:
+            if _signal == 15:
+                if self.org_termin_signal_handler:
+                    return self.org_termin_signal_handler(_signal, frame)
+            if _signal == 2:
+                if self.org_int_signal_handler:
+                    return self.org_int_signal_handler(_signal, frame)
 
     @property
     def job(self):
@@ -1543,9 +1553,9 @@ class OTPmeClient(OTPmeClientBase):
             # Check if we got a OTPme command.
             if not isinstance(response, dict):
                 break
-            if not 'command' in response:
+            if 'command' not in response:
                 break
-            if not 'query_id' in response:
+            if 'query_id' not in response:
                 break
 
             # Get command from dict.

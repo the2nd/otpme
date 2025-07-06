@@ -932,8 +932,6 @@ class Resolver(OTPmeObject):
         all_remote_objects = {}
         all_local_objects = {}
         for object_type in self.object_types:
-            if callback.stop_job:
-                return callback.abort()
             if daemon_run:
                 if not self.is_enabled:
                     break
@@ -968,8 +966,6 @@ class Resolver(OTPmeObject):
         skipped_objects = []
         unchanged_objects = []
         for object_type in self.object_types:
-            if callback.stop_job:
-                return callback.abort()
             if daemon_run:
                 if not self.is_enabled:
                     break
@@ -1056,8 +1052,6 @@ class Resolver(OTPmeObject):
                 add_order.append(add_object)
 
             for x in sorted(add_order):
-                if callback.stop_job:
-                    return callback.abort()
                 if daemon_run:
                     if not self.is_enabled:
                         break
@@ -1574,8 +1568,6 @@ class Resolver(OTPmeObject):
         # Delete orphan objects.
         for object_type in all_local_objects:
             for x in all_local_objects[object_type]:
-                if callback.stop_job:
-                    return callback.abort()
                 if daemon_run:
                     if not self.is_enabled:
                         break
@@ -1842,8 +1834,6 @@ class Resolver(OTPmeObject):
         for object_type in reversed(all_objects):
             object_list = all_objects[object_type]
             for uuid in object_list:
-                if callback.stop_job:
-                    return callback.abort()
                 # Get object.
                 o = backend.get_object(uuid=uuid)
                 msg = (_("Deleting %s: %s") % (object_type, o.oid))

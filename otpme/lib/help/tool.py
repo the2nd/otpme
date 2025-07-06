@@ -343,7 +343,7 @@ cmd_help = {
 
     'do_sync'      : {
                     '_cmd_usage_help' : 'Usage: otpme-tool do_sync [ --realm <realm> --site <site> --resync --no-memory-cache --ignore-changed-objects --offline] {objects|token_counters|used_otps|nsscache|ssh_authorized_keys}',
-                    'cmd'   :   '--realm :realm: --site :site: --resync :resync=True: --no-memory-cache :mem_cache=False: --ignore-changed-objects :ignore_changed_objects=True: --offline :offline=True: <|object|>',
+                    'cmd'   :   '--realm :realm: --site :site: --resync :resync=True: --no-memory-cache :mem_cache=False: --ignore-changed-objects :ignore_changed_objects=True: --sync-older-objects :sync_older_objects=True: --offline :offline=True: <|object|>',
                     '_help' :   {
                                     'cmd'                       : 'Do a manual hostd sync.',
                                     '--realm <realm>'           : 'Realm to sync.',
@@ -351,6 +351,7 @@ cmd_help = {
                                     '--resync'                  : 'Do a complete resync.',
                                     '--offline'                 : 'Do a sync of offline token data.',
                                     '--no-memory-cache'         : 'Do not cache objects in memory.',
+                                    '--sync-older-objects'      : 'Sync objects even if they are older than the local ones.',
                                     '--ignore-changed-objects'  : 'Sync objects even if they changed while syncing.',
                                 },
                 },

@@ -469,7 +469,8 @@ class OTPmeLock(OTPmeFakeLock):
         if lock_caller is None:
             lock_caller = self.lock_id
         if not self.lock_callers:
-            wait_message = "Waiting for lock: %s" % self.lock_id
+            wait_message = ("Waiting for lock: %s (%s)"
+                            % (self.lock_id, self.flock.path))
 
             #if self.cluster:
             #    try:

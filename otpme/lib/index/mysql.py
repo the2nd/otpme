@@ -284,7 +284,7 @@ def _reload():
         msg = "Mysql not running."
         raise NotRunning(msg)
     logger = config.logger
-    msg = "Stopping mysql..."
+    msg = "Reloading mysql..."
     logger.debug(msg)
     socket_file = get_socket_file()
     reload_cmd = [ config.mysql_admin_bin,

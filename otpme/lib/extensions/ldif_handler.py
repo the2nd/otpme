@@ -517,7 +517,7 @@ class OTPmeLDIFHandler(object):
 
         return at
 
-    def add_attribute_value(self, o, attribute, value,
+    def add_attribute_value(self, o, attribute, value, position=-1,
         auto_value=False, verify=True, callback=default_callback):
         """ Add attribute value to object config. """
         # Make sure we only add allowed attribute values.
@@ -530,7 +530,9 @@ class OTPmeLDIFHandler(object):
         # No need to update object if value already exists.
         if value in current_attr_values:
             if value in current_attr_ext_values:
-                return
+                msg = ("Attribute value already exists: %s=%s"
+                        % (attribute, value))
+                raise OTPmeException(msg)
 
         # For single value attributes we override the current value.
         if config.ldap_attribute_types[attribute].single_value:
@@ -546,7 +548,7 @@ class OTPmeLDIFHandler(object):
         o._add_extension_attribute(self.name, attribute, value,
                                     auto_value=auto_value,
                                     callback=callback)
-        o.add_ldif([(attribute, value)])
+        o.add_ldif([(attribute, value)], position=position)
 
     def del_attribute_value(self, o, attribute, value,
         callback=default_callback):
@@ -660,8 +662,9 @@ class OTPmeLDIFHandler(object):
 
         return callback.ok()
 
-    def add_attribute(self, o, a, v=None, ignore_ro=False, verify=True,
-        auto_value=False, verbose_level=0, callback=default_callback):
+    def add_attribute(self, o, a, v=None, position=-1, ignore_ro=False,
+        verify=True, auto_value=False, verbose_level=0,
+        callback=default_callback):
         """ Add attribute to object. """
         found_object_class = True
         # FIXME: what are valid chars for attributes and values?
@@ -719,11 +722,12 @@ class OTPmeLDIFHandler(object):
                                     value=v,
                                     verify=verify,
                                     auto_value=auto_value,
+                                    position=position,
                                     callback=callback)
             except Exception as e:
-                config.raise_exception()
+                #config.raise_exception()
                 msg = (_("Unable to add attribute: %s: %s") % (a, e))
-                return callback.error(msg)
+                raise OTPmeException(msg)
 
             if attribute_mappings and v:
                 for x in attribute_mappings:
@@ -777,13 +781,13 @@ class OTPmeLDIFHandler(object):
                 msg = (_("Attribute '%s' is readonly.") % a)
                 return callback.send(msg)
 
-        if not o.type in self.object_types:
+        if o.type not in self.object_types:
             msg = (_("Unable to delete attribute from object type '%s'.")
                     % o.type)
             return callback.error(msg)
 
         x_attrs = config.get_ldif_attributes(self.name, o.type)
-        if not a in x_attrs:
+        if a not in x_attrs:
             msg = (_("Cannot delete unknown attribute: %s: %s")
                     % (self.name, a))
             return callback.error(msg)
@@ -862,7 +866,7 @@ class OTPmeLDIFHandler(object):
             if value_count > 0:
                 # Check if the given value exists.
                 if v not in value_list:
-                    return callback.error("Unknown 'attribute=value' pair.")
+                    raise OTPmeException("Unknown 'attribute=value' pair.")
                 # If this is a mandatory attribute and the last one of this
                 # type.
                 if mandatory_attribute and value_count < 2:

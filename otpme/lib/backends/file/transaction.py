@@ -186,6 +186,10 @@ def get_object_transactions():
 
 def begin_transaction(name=None, callback=default_callback):
     """ Begin transaction. """
+    _transaction = get_transaction(active=None)
+    if _transaction:
+        msg = "Running transaction exists: %s" % _transaction.name
+        raise AlreadyExists(msg)
     proc_id = multiprocessing.get_id()
     if proc_id is None:
         msg = "Transaction failed: Unable to get process/thread name."

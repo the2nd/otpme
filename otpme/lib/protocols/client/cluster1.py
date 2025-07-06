@@ -69,7 +69,9 @@ class OTPmeClusterP1(OTPmeClient1):
         status_code, \
         reply = self.connection.send(command, command_args)
         if not status:
-            msg = "Failed to delete object: %s: %s" % (object_id, reply)
+            msg = "Failed to check if object exists: %s: %s" % (object_id, reply)
+            if status_code == status_codes.NO_CLUSTER_SERVICE:
+                raise NoClusterService(msg)
             raise OTPmeException(msg)
         return reply
 
@@ -84,6 +86,8 @@ class OTPmeClusterP1(OTPmeClient1):
         reply = self.connection.send(command, command_args)
         if not status:
             msg = "Failed to delete object: %s: %s" % (object_id, reply)
+            if status_code == status_codes.NO_CLUSTER_SERVICE:
+                raise NoClusterService(msg)
             raise OTPmeException(msg)
         return reply
 

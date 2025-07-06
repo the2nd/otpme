@@ -831,7 +831,7 @@ class OTPmeClusterP1(OTPmeServer1):
                 logger.warning(message)
                 status = True
             else:
-                msg = "nsscache sync started."
+                msg = "nsscache sync queued."
                 logger.info(msg)
 
         elif command == "do_radius_reload":

@@ -636,7 +636,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_attribute',
                     'args'              : ['attribute'],
-                    'oargs'             : ['value'],
+                    'oargs'             : ['position', 'value'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1641,9 +1641,13 @@ class User(OTPmeObject):
 
         transaction_started = False
         if local_add or local_remove:
-            transaction_started = True
-            backend.begin_transaction(name="change_user_default_group",
-                                    callback=callback)
+            try:
+                backend.begin_transaction(name="change_user_default_group",
+                                        callback=callback)
+            except AlreadyExists:
+                transaction_started = False
+            else:
+                transaction_started = True
         if local_add:
             msg = "Setting group: %s" % new_group.name
             callback.send(msg)
@@ -2392,7 +2396,6 @@ class User(OTPmeObject):
             except Exception as e:
                 msg = str(e)
                 return callback.error(msg)
-            return callback.ok(private_key)
         elif not private and self.public_key:
             # If decrypt (-n) is set we return the public key in its original
             # form (e.g. not as a one line base64 string).
@@ -4702,6 +4705,7 @@ class User(OTPmeObject):
         add_result = super(User, self).add(template=template,
                                         run_policies=False,
                                         inherit_acls=False,
+                                        verify_acls=verify_acls,
                                         default_attributes=default_attributes,
                                         verbose_level=verbose_level,
                                         callback=callback, **kwargs)
@@ -4709,7 +4713,7 @@ class User(OTPmeObject):
             return add_result
 
         # Make sure user has displayName attribute.
-        self.add_attribute(attribute="displayName")
+        self.add_attribute(attribute="displayName", verify_acls=verify_acls)
 
         # Internal users (e.g. TOKENSTORE) do not need any scripts etc.
         internal_users = config.get_internal_objects("user")
@@ -4876,7 +4880,8 @@ class User(OTPmeObject):
 
         # Run post policies ALSO BEFORE adding token (e.g. tokenacls).
         if run_policies:
-            super(User, self)._run_post_add_policies(verbose_level=verbose_level,
+            super(User, self)._run_post_add_policies(verify_acls=verify_acls,
+                                                    verbose_level=verbose_level,
                                                     callback=callback, **kwargs)
 
         # Non-admin users are done here.

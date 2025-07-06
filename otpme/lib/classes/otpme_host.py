@@ -302,8 +302,9 @@ class OTPmeHost(OTPmeClientObject):
         sync_object_types = config.get_sync_object_types(host_type=self.type)
         # Other sites should not sent us sites.
         own_host = backend.get_object(uuid=config.uuid)
-        if peer.site != own_host.site:
+        if peer.realm != own_host.realm or peer.site != own_host.site:
             sync_object_types.remove("site")
+            sync_object_types.remove("data_revision")
         valid_object_types = list(sync_object_types)
         result = backend.search(object_type="site",
                                 realm=realm,

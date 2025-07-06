@@ -183,7 +183,7 @@ class IncrementalList(list, IncrementaObject):
             return True
         return False
 
-    def incremental_add(self, item):
+    def incremental_add(self, item, index=-1):
         if isinstance(item, IncrementalDict):
             item = item.copy()
         if isinstance(item, IncrementalList):
@@ -193,7 +193,8 @@ class IncrementalList(list, IncrementaObject):
                                     'add',
                                     self.type,
                                     self.dict_path,
-                                    item))
+                                    item,
+                                    index))
 
     def incremental_del(self, item):
         self.incremental_data.append((time.time(),
@@ -204,7 +205,7 @@ class IncrementalList(list, IncrementaObject):
                                     item))
 
     def __setitem__(self, index, item):
-        self.incremental_add(item)
+        self.incremental_add(item, index=index)
         return super(IncrementalList, self).__setitem__(index, item)
 
     def __delitem__(self, index):
@@ -228,7 +229,7 @@ class IncrementalList(list, IncrementaObject):
         return super(IncrementalList, self).append(value)
 
     def insert(self, index, value):
-        self.incremental_add(value)
+        self.incremental_add(value, index=index)
         return super(IncrementalList, self).insert(index, value)
 
     def pop(self, index=-1):
@@ -243,7 +244,7 @@ class IncrementalList(list, IncrementaObject):
     def set(self, _list):
         super(IncrementalList, self).__init__(_list)
 
-def incremental_update(update_dict, action, key, dict_path, value_type, value):
+def incremental_update(update_dict, action, key, dict_path, value_type, value, index=-1):
     if len(dict_path) > 1:
         root_key = dict_path[0]
         try:
@@ -274,7 +275,10 @@ def incremental_update(update_dict, action, key, dict_path, value_type, value):
             _dict_dict = _dict_dict[x_key]
         if value_type == "list":
             if action == "add":
-                dict_val.append(value)
+                if index == -1:
+                    dict_val.append(value)
+                else:
+                    dict_val.insert(index, value)
             if action == "del":
                 try:
                     dict_val.remove(value)
@@ -313,7 +317,10 @@ def incremental_update(update_dict, action, key, dict_path, value_type, value):
                 update_dict[root_key] = []
                 current_list = update_dict[root_key]
             if action == "add":
-                current_list.append(value)
+                if index == -1:
+                    current_list.append(value)
+                else:
+                    current_list.insert(index, value)
             if action == "del":
                 try:
                     current_list.remove(value)

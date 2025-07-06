@@ -182,7 +182,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'enable',
-                    'job_type'          : 'thread',
+                    'job_type'          : 'process',
                     },
                 },
             },
@@ -190,7 +190,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable',
-                    'job_type'          : 'thread',
+                    'job_type'          : 'process',
                     },
                 },
             },

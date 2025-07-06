@@ -889,7 +889,14 @@ class JsonFile(object):
                         current_oc[attr] = []
                         current_list = current_oc[attr]
                     if action == "add":
-                        current_list.append(value)
+                        try:
+                            index = x[6]
+                        except IndexError:
+                            index = -1
+                        if index == -1:
+                            current_list.append(value)
+                        else:
+                            current_list.insert(index, value)
                     elif action == "del":
                         try:
                             current_list.remove(value)
@@ -898,17 +905,19 @@ class JsonFile(object):
                     else:
                         msg = "Unknown action: %s" % action
                         raise OTPmeException(msg)
-                    try:
-                        current_oc[attr] = sorted(current_list)
-                    except TypeError:
-                        current_oc[attr] = current_list
+                    current_oc[attr] = current_list
                 if attr in dict_attributes:
                     if value_type == "list":
                         value = x[5]
+                        try:
+                            index = x[6]
+                        except IndexError:
+                            index = -1
                         key = dict_path[-1]
                     if value_type == "dict":
                         key = x[5]
                         value = x[6]
+                        index = -1
                     try:
                         current_dict = current_oc[attr]
                     except KeyError:
@@ -920,7 +929,8 @@ class JsonFile(object):
                                                     key,
                                                     dict_path,
                                                     value_type,
-                                                    value)
+                                                    value,
+                                                    index=index)
                         action = "add"
                         key = dict_path[0]
                     if action == "add":

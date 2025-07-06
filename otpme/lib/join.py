@@ -725,7 +725,7 @@ class JoinHandler(object):
             filetools.touch(config.node_joined_file)
 
         # Update nsscache:
-        nsscache.update()
+        nsscache.update(config.realm, config.site)
         # Enable nsscache symlinks.
         nsscache.enable()
 

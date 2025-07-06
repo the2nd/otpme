@@ -33,8 +33,16 @@ def register():
     config.register_otpme_protocol("syncd", PROTOCOL_VERSION)
     locking.register_lock_type(LOCK_TYPE, module=__file__)
 
+def get_own_realm_site():
+    own_host = backend.get_object(uuid=config.uuid)
+    if not own_host:
+        msg = "Unknown host: %s" % config.uuid
+        raise OTPmeException(msg)
+    return (own_host.realm, own_host.site)
+
 def validate_received_object(src_site, o):
     """ Make sure its save to write the given object on this node. """
+    own_realm, own_site = get_own_realm_site()
     # Get object data.
     object_id = o.oid
     object_type = o.type
@@ -50,7 +58,7 @@ def validate_received_object(src_site, o):
             raise OTPmeException(msg)
         # Realm-master nodes should never receive their own realm.
         if config.realm_master_node:
-            if object_name == config.realm:
+            if object_name == own_realm:
                 msg = ("Uuuh remote site sent us our own realm.")
                 raise OTPmeException(msg)
         return
@@ -64,8 +72,8 @@ def validate_received_object(src_site, o):
             raise OTPmeException(msg)
         # Site-master nodes should never receive their own site object.
         if config.master_node:
-            if object_realm == config.realm \
-            and object_name == config.site:
+            if object_realm == own_realm \
+            and object_name == own_site:
                 msg = ("Uuuh remote site sent us our own site.")
                 raise OTPmeException(msg)
         return
@@ -312,15 +320,17 @@ class OTPmeSyncP1(OTPmeClient1):
 
     def sync_objects(self, realm, site, resync=False, max_tries=5,
         skip_object_deletion=True, sync_last_used=False,
-        ignore_changed_objects=False):
+        sync_older_objects=False, ignore_changed_objects=False):
+        own_realm, own_site = get_own_realm_site()
         # Acquire sync lock.
         lock_id = "sync_objects:%s/%s" % (realm, site)
         sync_lock = locking.acquire_lock(lock_type=LOCK_TYPE, lock_id=lock_id)
         try:
             result = self._sync_objects(realm, site,
                                 resync=resync, max_tries=max_tries,
-                                ignore_changed_objects=ignore_changed_objects,
-                                skip_object_deletion=skip_object_deletion)
+                                sync_older_objects=sync_older_objects,
+                                skip_object_deletion=skip_object_deletion,
+                                ignore_changed_objects=ignore_changed_objects)
         finally:
             sync_lock.release_lock()
         # Update sync status.
@@ -332,11 +342,14 @@ class OTPmeSyncP1(OTPmeClient1):
         if sync_last_used:
             if result is not False:
                 if self.connection.peer:
-                    self.sync_last_used(realm, site)
+                    if self.connection.peer.realm == own_realm \
+                    and self.connection.peer.site == own_site:
+                        self.sync_last_used(realm, site)
         return result
 
     def _sync_objects(self, realm, site, resync=False, max_tries=5,
-        ignore_changed_objects=False, skip_object_deletion=True):
+        sync_older_objects=False, ignore_changed_objects=False,
+        skip_object_deletion=True):
         """ Sync objects with peer. """
         exit_status = True
         received_objects = 0
@@ -371,7 +384,9 @@ class OTPmeSyncP1(OTPmeClient1):
                                     site=site,
                                     sync_type="objects",
                                     object_count=remote_object_count)
-            self.merge_sync_cache(realm, site, skip_object_deletion)
+            self.merge_sync_cache(realm, site,
+                    sync_older_objects=sync_older_objects,
+                    skip_object_deletion=skip_object_deletion)
             self.sync_cache.clear()
             return
 
@@ -713,7 +728,9 @@ class OTPmeSyncP1(OTPmeClient1):
             self.sync_cache.local_sync_list = local_sync_list
             self.sync_cache.remote_sync_list = remote_sync_list
             # Merge sync cache.
-            self.merge_sync_cache(realm, site, skip_object_deletion)
+            self.merge_sync_cache(realm, site,
+                            sync_older_objects=sync_older_objects,
+                            skip_object_deletion=skip_object_deletion)
         else:
             if not skip_object_deletion:
                 self.remove_deleted_objects(realm, site, local_sync_list,
@@ -770,10 +787,12 @@ class OTPmeSyncP1(OTPmeClient1):
 
         return exit_status
 
-    def merge_sync_cache(self, realm, site, skip_object_deletion=True):
+    def merge_sync_cache(self, realm, site,
+        sync_older_objects=False, skip_object_deletion=True):
         """ Merge sync cache. """
         add_list = {}
         add_order = list(config.object_add_order)
+        own_realm, own_site = get_own_realm_site()
         # On hosts realm/sites are synced by HostDaemon().sync_sites().
         if config.host_data['type'] == "host":
             add_order.remove("realm")
@@ -906,14 +925,14 @@ class OTPmeSyncP1(OTPmeClient1):
                     self.logger.critical(msg)
                     continue
 
-                # Prevent sync of users that exist on our site.
                 if object_type == "user":
                     user_site = object_id.site
-                    if user_site != config.site:
+                    if user_site != own_site:
+                        # Prevent sync of users that exist on our site.
                         user_name = object_id.name
                         local_oid = oid.get(object_type="user",
-                                            realm=config.realm,
-                                            site=config.site,
+                                            realm=own_realm,
+                                            site=own_site,
                                             name=user_name)
                         if not new_object.template_object:
                             if backend.object_exists(local_oid):
@@ -922,10 +941,77 @@ class OTPmeSyncP1(OTPmeClient1):
                                         % object_id)
                                 self.logger.warning(msg)
                                 continue
+                        # Prevent sync of user with duplicate uidNumber.
+                        found_duplicate = False
+                        user_uidnumber = new_object.get_attribute("uidNumber")
+                        for x_uidnumber in user_uidnumber:
+                            result = backend.search(object_type="user",
+                                                    attribute="ldif:uidNumber",
+                                                    value=x_uidnumber,
+                                                    return_type="oid")
+                            if not result:
+                                continue
+                            x_oid = result[0]
+                            if x_oid == new_object.oid:
+                                continue
+                            msg = ("Cannot sync user with duplicate uidNumber: %s: %s <> %s"
+                                    % (x_uidnumber, new_object, x_oid))
+                            found_duplicate = True
+                            break
+                        if found_duplicate:
+                            self.logger.warning(msg)
+                            continue
+
+                if object_type == "group":
+                    group_site = object_id.site
+                    if group_site != own_site:
+                        # Prevent sync of groups that exist on our site.
+                        group_name = object_id.name
+                        local_oid = oid.get(object_type="group",
+                                            realm=own_realm,
+                                            site=own_site,
+                                            name=group_name)
+                        if not new_object.template_object:
+                            if backend.object_exists(local_oid):
+                                msg = ("Group already exists on our site: %s"
+                                        % object_id)
+                                self.logger.warning(msg)
+                                continue
+                        # Prevent sync of group with duplicate gidNumber.
+                        found_duplicate = False
+                        group_gidnumber = new_object.get_attribute("gidNumber")
+                        for x_gidnumber in group_gidnumber:
+                            result = backend.search(object_type="group",
+                                                    attribute="ldif:gidNumber",
+                                                    value=x_gidnumber,
+                                                    return_type="oid")
+                            if not result:
+                                continue
+                            x_oid = result[0]
+                            if x_oid == new_object.oid:
+                                continue
+                            msg = ("Cannot sync group with duplicate gidNumber: %s: %s <> %s"
+                                    % (x_gidnumber, new_object, x_oid))
+                            found_duplicate = True
+                            break
+                        if found_duplicate:
+                            self.logger.warning(msg)
+                            continue
+
                 if object_type == "token":
+                    # Skip blacklisted user tokens.
                     user_name = object_id.rel_path.split("/")[0]
                     if user_name in self.blacklisted_users:
                         continue
+                    # Make sure we update LDIF/nsscache.
+                    x_groups = new_object.get_groups(return_type="full_oid")
+                    for full_oid in x_groups:
+                        full_oid = oid.get(full_oid)
+                        nsscache.update_object(full_oid, "update")
+                    x_roles = new_object.get_roles(return_type="full_oid", recursive=True)
+                    for full_oid in x_roles:
+                        full_oid = oid.get(full_oid)
+                        nsscache.update_object(full_oid, "update")
 
                 # Make sure the object is valid.
                 try:
@@ -959,9 +1045,13 @@ class OTPmeSyncP1(OTPmeClient1):
                     if config.host_data['type'] == "node":
                         # Allow older object if its the own node. This is required
                         # because clusterd en-/disables the own node object.
-                        if  current_object.uuid != config.uuid:
-                            if current_object.last_modified > new_object.last_modified:
-                                continue
+                        if not sync_older_objects:
+                            if realm == own_realm and site == own_site:
+                                if current_object.uuid != config.uuid:
+                                    if current_object.last_modified > new_object.last_modified:
+                                        msg = "Ignoring older object from peer: %s" % object_id
+                                        self.logger.warning(msg)
+                                        continue
 
                 # Removed old object with different OID (e.g. object was
                 # moved).
@@ -1013,8 +1103,8 @@ class OTPmeSyncP1(OTPmeClient1):
                 # Write object to backend.
                 cluster = False
                 if self.host_type == "node":
-                    if realm == config.realm:
-                        if site == config.site:
+                    if realm == own_realm:
+                        if site == own_site:
                             if config.master_node:
                                 cluster = True
                 index_journal = new_object.index_journal_archive.copy()
@@ -1069,6 +1159,7 @@ class OTPmeSyncP1(OTPmeClient1):
         del_list = {}
         del_count = 0
         del_order = list(config.object_add_order)
+        own_realm, own_site = get_own_realm_site()
         # Realm/sites are synced by HostDaemon().sync_sites().
         del_order.remove("realm")
         del_order.remove("site")
@@ -1137,22 +1228,22 @@ class OTPmeSyncP1(OTPmeClient1):
                     x_object = backend.get_object(object_id)
                     if not x_object:
                         continue
-                    x_groups = x_object.get_groups(return_type="read_oid")
-                    for read_oid in x_groups:
-                        read_oid = oid.get(read_oid)
-                        nsscache.update_object(read_oid, "update")
-                    x_roles = x_object.get_roles(return_type="read_oid", recursive=True)
-                    for read_oid in x_roles:
-                        read_oid = oid.get(read_oid)
-                        nsscache.update_object(read_oid, "update")
+                    x_groups = x_object.get_groups(return_type="full_oid")
+                    for full_oid in x_groups:
+                        full_oid = oid.get(full_oid)
+                        nsscache.update_object(full_oid, "update")
+                    x_roles = x_object.get_roles(return_type="full_oid", recursive=True)
+                    for full_oid in x_roles:
+                        full_oid = oid.get(full_oid)
+                        nsscache.update_object(full_oid, "update")
                 # Remove object.
                 msg = ("Removing object (%s/%s): %s"
                     % (del_counter, del_count, object_id))
                 self.logger.debug(msg)
                 cluster = False
                 if self.host_type == "node":
-                    if realm == config.realm:
-                        if site == config.site:
+                    if realm == own_realm:
+                        if site == own_site:
                             if config.master_node:
                                 cluster = True
                 try:
@@ -1222,7 +1313,8 @@ class OTPmeSyncP1(OTPmeClient1):
 
     def _sync_token_data(self, data_type="otp", offline=False):
         # Acquire sync lock.
-        lock_id = "sync_%s:%s/%s" % (data_type, config.realm, config.site)
+        own_realm, own_site = get_own_realm_site()
+        lock_id = "sync_%s:%s/%s" % (data_type, own_realm, own_site)
         sync_lock = locking.acquire_lock(lock_type=LOCK_TYPE, lock_id=lock_id)
         if offline:
             try:
@@ -1266,12 +1358,8 @@ class OTPmeSyncP1(OTPmeClient1):
         for uuid in user_uuids:
             user = backend.get_object(uuid=uuid)
             if user.realm != self.connection.realm:
-                msg = "Ignoring user from other realm."
-                self.logger.debug(msg)
                 continue
             if user.site != self.connection.site:
-                msg = "Ignoring user from other site."
-                self.logger.debug(msg)
                 continue
             # Set user we want to read offline tokens for.
             try:
@@ -1553,8 +1641,8 @@ class OTPmeSyncP1(OTPmeClient1):
 
     def do_sync(self, sync_type="objects", sync_last_used=False,
         ignore_changed_objects=False, skip_object_deletion=False,
-        max_tries=3, resync=False, offline=False,
-        realm=config.realm, site=config.site):
+        sync_older_objects=False, max_tries=3, resync=False,
+        offline=False, realm=config.realm, site=config.site):
         """ Sync objects with realm/site. """
         sync_status = False
 
@@ -1564,6 +1652,7 @@ class OTPmeSyncP1(OTPmeClient1):
                                 resync=resync,
                                 max_tries=max_tries,
                                 sync_last_used=sync_last_used,
+                                sync_older_objects=sync_older_objects,
                                 skip_object_deletion=skip_object_deletion,
                                 ignore_changed_objects=ignore_changed_objects)
 

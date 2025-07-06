@@ -1567,7 +1567,7 @@ class Realm(OTPmeObject):
 
         from otpme.lib import nsscache
         # Update nsscache.
-        nsscache.update()
+        nsscache.update(config.realm, config.site)
         # Enable nsscache symlinks.
         nsscache.enable()
 

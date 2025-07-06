@@ -472,7 +472,7 @@ class HostDaemon(OTPmeDaemon):
                 sync_conn = self.get_sync_connection(realm=site.realm,
                                                     site=site.name)
             except Exception as e:
-                msg = ("Error receiving sites list: %s" % e)
+                msg = ("Error getting sync connection: %s" % e)
                 self.logger.warning(msg)
                 sync_status = False
                 continue
@@ -592,6 +592,7 @@ class HostDaemon(OTPmeDaemon):
                 try:
                     backend.write_config(object_id=x_oid,
                                     object_config=object_config,
+                                    full_data_update=True,
                                     full_index_update=True)
                 except Exception as e:
                     msg = "Failed to write object: %s: %s" % (x_oid, e)
@@ -737,7 +738,7 @@ class HostDaemon(OTPmeDaemon):
                         realm=realm, site=site)
 
     def start_sync(self, sync_type="objects", queue=True, resync=False,
-        nsscache_resync=False, offline=False, realm=None, site=None):
+        nsscache_resync=False, offline=False, realm=None, site=None, **kwargs):
         """ Start sync job as child process. """
         if sync_type == "sites" and queue:
             # Check for existing sync child.
@@ -866,7 +867,8 @@ class HostDaemon(OTPmeDaemon):
                                                         sync_type,
                                                         resync,
                                                         nsscache_resync,
-                                                        offline,))
+                                                        offline,),
+                                                target_kwargs=kwargs)
             # Add realm/site.
             child_info = sync_type
             child_info = ("%s (%s)" % (child_info, site))
@@ -880,7 +882,8 @@ class HostDaemon(OTPmeDaemon):
 
     @handle_sync_child()
     def _start_sync(self, realm, site, sync_type="objects",
-        resync=False, nsscache_resync=False, offline=False, **kwargs):
+        resync=False, nsscache_resync=False, offline=False,
+        sync_from_command=False, **kwargs):
         """ Start sync. """
         # Handle multiprocessing stuff.
         multiprocessing.atfork(exit_on_signal=True)
@@ -1018,14 +1021,30 @@ class HostDaemon(OTPmeDaemon):
                 proto_class = protocols.client.get_class(sync_proto)
                 # Create protocol handler.
                 proto_handler = proto_class(connection=sync_conn)
-                # Start sync job.
+                # Ignore changed objects?
                 ignore_changed_objects = config.hostd_sync_ignore_changed_objects
+                # Sync last used timestamps?
+                sync_last_used = False
+                if self.host_type == "node":
+                    sync_last_used = True
+                # Add sync job to running jobs to prevent master failover
+                # while jobs are running.
+                job_uuid = stuff.gen_uuid()
+                job_name = "Sync: %s" % sync_type
+                multiprocessing.running_jobs[job_uuid] = {
+                                                        'name'      : job_name,
+                                                        'start_time': time.time(),
+                                                        'auth_token': "hostd",
+                                                        'pid'       : os.getpid(),
+                                                        }
+                # Start sync job.
                 try:
                     sync_status = proto_handler.do_sync(sync_type=sync_type,
                                     realm=realm,
                                     site=site,
                                     resync=resync,
                                     offline=offline,
+                                    sync_last_used=sync_last_used,
                                     ignore_changed_objects=ignore_changed_objects)
                 except SyncDisabled:
                     msg = ("Synchronization disabled by site: %s/%s"
@@ -1056,6 +1075,7 @@ class HostDaemon(OTPmeDaemon):
                 finally:
                     if sync_conn:
                         sync_conn.close()
+                    multiprocessing.running_jobs.pop(job_uuid)
 
                 # Start sync of other objects if required.
                 if resync_token_data:
@@ -1065,23 +1085,18 @@ class HostDaemon(OTPmeDaemon):
         # Make sure nsscache is up-to-date.
         start_nsscache_sync = False
         if sync_type == "nsscache":
-            # If there is already a object sync running it will start an
-            # nsscache sync so there is nothing to do.
-            try:
-                object_child = self._sync_childs['objects']
-            except:
-                object_child = None
-            if not object_child:
-                start_nsscache_sync = True
+            start_nsscache_sync = True
 
         if sync_type == "objects":
-            # If there is already a nsscache sync running theres nothing to do.
-            try:
-                nsscache_child = self._sync_childs['nsscache']
-            except:
-                nsscache_child = None
-            if not nsscache_child:
-                start_nsscache_sync = True
+            start_nsscache_sync = True
+
+        # Do not run nsscache sync of own site on nodes. They get triggered by clusterd.
+        if start_nsscache_sync:
+            if not sync_from_command:
+                if self.host_type == "node":
+                    if realm == config.realm:
+                        if site == config.site:
+                            start_nsscache_sync = False
 
         # Skip nsscache sync if last object creation was within the last 30 seconds.
         if start_nsscache_sync:
@@ -1104,9 +1119,20 @@ class HostDaemon(OTPmeDaemon):
                                 realm=realm,
                                 site=site)
 
+            # Add sync job to running jobs to prevent master failover
+            # while jobs are running.
+            job_uuid = stuff.gen_uuid()
+            job_name = "Sync: nsscache"
+            multiprocessing.running_jobs[job_uuid] = {
+                                                    'name'      : job_name,
+                                                    'start_time': time.time(),
+                                                    'auth_token': "hostd",
+                                                    'pid'       : os.getpid(),
+                                                    }
             nsscache_sync_status = False
             try:
-                nsscache_sync_status = nsscache.update(resync=resync,
+                nsscache_sync_status = nsscache.update(realm, site,
+                                            resync=resync,
                                             cache_resync=nsscache_resync,
                                             lock=sync_lock)
             except Exception as e:
@@ -1117,6 +1143,7 @@ class HostDaemon(OTPmeDaemon):
             finally:
                 # Release sync lock.
                 sync_lock.release_lock()
+                multiprocessing.running_jobs.pop(job_uuid)
 
             if sync_status is None:
                 sync_status = nsscache_sync_status
@@ -1394,11 +1421,11 @@ class HostDaemon(OTPmeDaemon):
         if self.host_type == "node":
             self.start_sync(sync_type="sites")
             self.start_sync(sync_type="objects")
-            self.start_sync(sync_type="nsscache")
             self.start_sync(sync_type="ssh_authorized_keys")
             self.start_sync(sync_type="used_otps", offline=True)
             self.start_sync(sync_type="token_counters", offline=True)
             self.start_sync(sync_type="notify")
+            self.start_sync(sync_type="nsscache")
             #self.start_sync(sync_type="used_otps")
             #self.start_sync(sync_type="token_counters")
         else:
@@ -1569,7 +1596,8 @@ class HostDaemon(OTPmeDaemon):
                                 resolver_run_interval,
                                 cache_outdate_interval,
                                 host_object_reload_interval,
-                                token_data_removal_interval)
+                                token_data_removal_interval,
+                                self.sync_interval)
                 if recv_timeout is None:
                     recv_timeout = new_timeout
                 recv_timeout = min(recv_timeout, new_timeout)
@@ -1633,15 +1661,15 @@ class HostDaemon(OTPmeDaemon):
                         self.comm_handler.send("controld", command="reload_done")
 
                     if daemon_command == "sync_notify":
-                        if not "notify" in self.sync_by_command:
+                        if "notify" not in self.sync_by_command:
                             self.sync_by_command.append('notify')
                     if daemon_command == "sync_sites":
-                        if not "notify" in self.sync_by_command:
+                        if "notify" not in self.sync_by_command:
                             self.sync_by_command.append('sites')
                     if daemon_command == "sync_token_data":
-                        if not "used_otps" in self.sync_by_command:
+                        if "used_otps" not in self.sync_by_command:
                             self.sync_by_command.append('used_otps')
-                        if not "token_counters" in self.sync_by_command:
+                        if "token_counters" not in self.sync_by_command:
                             self.sync_by_command.append('token_counters')
 
                     # Object sync commands are a dict containing sync realm/site.
@@ -1725,7 +1753,9 @@ class HostDaemon(OTPmeDaemon):
                     start_sync = False
                     nsscache_resync = False
                     # Check if we got sync commands via socket.
+                    sync_from_command = False
                     if self.sync_by_command:
+                        sync_from_command = True
                         # Check if we got the current sync type via command.
                         if sync_type in self.sync_by_command:
                             start_sync = True
@@ -1812,6 +1842,7 @@ class HostDaemon(OTPmeDaemon):
                             self.start_sync(sync_type=sync_type,
                                             resync=resync,
                                             nsscache_resync=nsscache_resync,
+                                            sync_from_command=sync_from_command,
                                             realm=sync_realm,
                                             site=sync_site)
 

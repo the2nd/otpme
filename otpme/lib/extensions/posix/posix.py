@@ -158,9 +158,8 @@ class OTPmeExtension(OTPmeLDIFHandler):
         ldif_attribute = "ldif:%s" % attribute
         result = backend.search(attribute=ldif_attribute,
                                 value=value,
-                                #realm=config.realm,
                                 object_type=object_type,
-                                return_type="read_oid")
+                                return_type="full_oid")
         if not result:
             return
 

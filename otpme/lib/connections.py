@@ -63,6 +63,8 @@ def close_connections(proc_id=None):
                     logger.warning(msg)
                 try:
                     conn.close()
+                except ConnectionQuit:
+                    pass
                 except Exception as e:
                     msg = ("Failed to close connection: %s: %s"
                             % (conn, e))

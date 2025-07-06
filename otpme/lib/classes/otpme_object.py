@@ -223,6 +223,10 @@ def run_pre_post_add_policies():
                 run_policies = f_kwargs['run_policies']
             except:
                 run_policies = True
+            try:
+                verify_acls = f_kwargs['verify_acls']
+            except:
+                verify_acls = True
             if run_policies:
                 try:
                     self._run_pre_add_policies(callback=callback)
@@ -233,7 +237,8 @@ def run_pre_post_add_policies():
             if result is not False:
                 if run_policies:
                     try:
-                        self._run_post_add_policies(callback=callback)
+                        self._run_post_add_policies(verify_acls=verify_acls,
+                                                    callback=callback)
                     except PolicyException as e:
                         msg = str(e)
                         return callback.error(msg)
@@ -3010,9 +3015,9 @@ class OTPmeObject(OTPmeBaseObject):
         callback: JobCallback=default_callback,
         ):
         """ Add extension attribute. """
-        if not extension in self.extension_attributes:
+        if extension not in self.extension_attributes:
             self.extension_attributes[extension] = {}
-        if not attribute in self.extension_attributes[extension]:
+        if attribute not in self.extension_attributes[extension]:
             self.extension_attributes[extension][attribute] = {}
         try:
             x_auto = self.extension_attributes[extension][attribute][value]['auto']
@@ -3025,7 +3030,7 @@ class OTPmeObject(OTPmeBaseObject):
         if value == x_value:
             if auto_value == x_auto:
                 return
-        if not value in self.extension_attributes[extension][attribute]:
+        if value not in self.extension_attributes[extension][attribute]:
             self.extension_attributes[extension][attribute][value] = {}
         self.extension_attributes[extension][attribute][value]['value'] = value
         self.extension_attributes[extension][attribute][value]['auto'] = auto_value
@@ -4121,6 +4126,7 @@ class OTPmeObject(OTPmeBaseObject):
         policy_type: str=None,
         ignore_policy_types: List=[],
         force: bool=False,
+        verify_acls: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
@@ -4173,6 +4179,7 @@ class OTPmeObject(OTPmeBaseObject):
                             child_object=child_object,
                             force=force,
                             token=token,
+                            verify_acls=verify_acls,
                             callback=callback,
                             _caller=_caller,
                             **policy_options)
@@ -4588,6 +4595,7 @@ class OTPmeObject(OTPmeBaseObject):
         value: Union[str,int,float,None]=None,
         run_policies: bool=True,
         ignore_ro: bool=False,
+        position: int=-1,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -4632,12 +4640,13 @@ class OTPmeObject(OTPmeBaseObject):
         # Try to add attribute.
         try:
             extension.add_attribute(self, attribute, value,
+                                position=position,
                                 ignore_ro=ignore_ro,
                                 verbose_level=verbose_level,
                                 callback=callback)
         except Exception as e:
             #config.raise_exception()
-            msg = (_("Unable to add attribute: %s: %s") % (attribute, e))
+            msg = str(e)
             return callback.error(msg)
 
         # Update extensions.
@@ -4928,7 +4937,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
-    def add_ldif(self, ldif: List):
+    def add_ldif(self, ldif: List, position=-1):
         """ Add LDIF to object. """
         for x in ldif:
             a = x[0]
@@ -4939,7 +4948,10 @@ class OTPmeObject(OTPmeBaseObject):
             if a not in self.ldif:
                 self.ldif[a] = []
             if v not in self.ldif[a]:
-                self.ldif[a].append(v)
+                if position == -1:
+                    self.ldif[a].append(v)
+                else:
+                    self.ldif[a].insert(position, v)
                 # Update index.
                 ldif_attr = "ldif:%s" % a
                 self.add_index(ldif_attr, v)
@@ -5063,7 +5075,7 @@ class OTPmeObject(OTPmeBaseObject):
                                 force=force)
             except Exception as e:
                 msg = str(e)
-                self.logger.warning(msg)
+                logger.warning(msg)
                 return callback.error()
 
         self._enabled = True
@@ -7450,6 +7462,7 @@ class OTPmeObject(OTPmeBaseObject):
         template: Union[OTPmeBaseObject,None]=None,
         template_object: bool=False,
         verbose_level: int=0,
+        verify_acls: bool=True,
         run_policies: bool=True,
         _caller: str="API",
         callback: JobCallback=default_callback,
@@ -7506,6 +7519,7 @@ class OTPmeObject(OTPmeBaseObject):
         if internal_user:
             # Call base class add method.
             return super(OTPmeObject, self).add(verbose_level=verbose_level,
+                                                    verify_acls=verify_acls,
                                                     callback=callback,
                                                     **kwargs)
         # Extensions to add.
@@ -7566,11 +7580,18 @@ class OTPmeObject(OTPmeBaseObject):
                                                                 callback=default_callback)
                     for x in x_vals:
                         if x not in x_auto_val:
-                            self.add_attribute(attr, x, ignore_ro=True, callback=callback)
+                            self.add_attribute(attribute=attr,
+                                                value=x,
+                                                ignore_ro=True,
+                                                verify_acls=verify_acls,
+                                                callback=callback)
                             continue
                         if attr in x_attrs:
                             continue
-                        self.add_attribute(attr, ignore_ro=True, callback=callback)
+                        self.add_attribute(attribute=attr,
+                                        ignore_ro=True,
+                                        verify_acls=verify_acls,
+                                        callback=callback)
 
         # Add default policies.
         self.add_default_policies(callback=callback)

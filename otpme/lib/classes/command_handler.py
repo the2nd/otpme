@@ -4,7 +4,6 @@ import os
 import sys
 import time
 import glob
-import signal
 import pprint
 import datetime
 #from prettytable import ALL
@@ -47,10 +46,6 @@ class CommandHandler(object):
         #register_module("otpme.lib.connections")
         # Get logger.
         self.logger = config.logger
-        self.terminate = False
-        self.exit_on_signal = True
-        if config.daemon_mode:
-            self.exit_on_signal = False
         self.mgmt_client = None
         self.command_map = command_map
         self.command = None
@@ -65,11 +60,6 @@ class CommandHandler(object):
         self.user_aes_pass = None
         self.init_done = False
         self.interactive = interactive
-        # Add signal handler.
-        if config.daemon_mode:
-            return
-        signal.signal(signal.SIGINT, self.signal_handler)
-        signal.signal(signal.SIGTERM, self.signal_handler)
 
     def __getattr__(self, name):
         """ Forward method call to OTPmeMgmtClient(). """
@@ -96,19 +86,6 @@ class CommandHandler(object):
         register_module('otpme.lib.trash')
         init_otpme(**kwargs)
         self.init_done = True
-
-    def signal_handler(self, _signal, frame):
-        """ Handle signals. """
-        from otpme.lib import multiprocessing
-        if _signal == 2:
-            self.logger.warning("Exiting on Ctrl+C")
-        if _signal == 15:
-            self.logger.warning("Exiting on 'SIGTERM'.")
-        self.terminate = True
-        connections.close_connections()
-        if self.exit_on_signal:
-            multiprocessing.cleanup()
-            os._exit(0)
 
     def get_help(self, message="", command=None,
         subcommand=None, command_map=None):
@@ -2218,6 +2195,10 @@ class CommandHandler(object):
             ignore_changed_objects = command_args['ignore_changed_objects']
         except:
             ignore_changed_objects = False
+        try:
+            sync_older_objects = command_args['sync_older_objects']
+        except:
+            sync_older_objects = False
 
         # Init in API mode because hostd may not be running when
         # doing manual sync.
@@ -2228,11 +2209,17 @@ class CommandHandler(object):
 
         config.sync_mem_cache = mem_cache
 
+        sync_last_used = False
+        host_type = config.host_data['type']
+        if host_type == "node":
+            sync_last_used = True
         sync_status = self.do_sync(sync_type=sync_type,
                     realm=realm,
                     site=site,
                     resync=resync,
                     offline=offline,
+                    sync_last_used=sync_last_used,
+                    sync_older_objects=sync_older_objects,
                     ignore_changed_objects=ignore_changed_objects)
         if sync_status is False:
             msg = "Sync failed."
@@ -2484,7 +2471,6 @@ class CommandHandler(object):
         from otpme.lib import backend
         from otpme.lib.classes.user import User
         status = True
-        self.exit_on_signal = False
         register_module("otpme.lib.filetools")
 
         # Init otpme.
@@ -2539,11 +2525,6 @@ class CommandHandler(object):
                 error_message(_("Error adding user: %s") % e)
             add_time = debug.end_timing()
 
-            if self.terminate is True:
-                #backend.end_transaction()
-                callback.write_modified_objects()
-                break
-
             #if config.debug_timings:
             #    debug.print_timing_result(print_status=True)
             #    config.debug_timings = False
@@ -2560,7 +2541,6 @@ class CommandHandler(object):
                 #backend.end_transaction()
                 break
 
-        self.exit_on_signal = True
         if not status:
             msg = ("There where errors while creating users.")
             raise OTPmeException(msg)
@@ -2634,6 +2614,7 @@ class CommandHandler(object):
         #from otpme.lib.register import register_modules
         ## Register modules.
         #register_modules()
+        register_module("otpme.lib.classes.script")
         if realm is None:
             realm = config.realm
         if site is None:
@@ -2650,7 +2631,7 @@ class CommandHandler(object):
             script_uuid = self.get_uuid_by_oid(x_oid.full_oid)
         except Exception as e:
             config.raise_exception()
-            msg = (_("Error getting key script UUID: %s") % e)
+            msg = (_("Error getting script UUID: %s") % e)
             raise OTPmeException(msg)
         return script_uuid
 
@@ -3056,7 +3037,7 @@ class CommandHandler(object):
         return output
 
     def do_sync(self, sync_type="objects", resync=False, offline=False,
-        ignore_changed_objects=False, sync_last_used=False,
+        sync_older_objects=False, ignore_changed_objects=False, sync_last_used=False,
         skip_object_deletion=False, max_tries=config.hostd_sync_retry_count,
         realm=None, site=None, sync_cache_on_failure=True, socket_uri=None):
         """ Do a manual hostd sync. """
@@ -3074,7 +3055,8 @@ class CommandHandler(object):
             site = config.site
         if sync_type == "nsscache":
             try:
-                nsscache_sync_status = nsscache.update(resync=resync,
+                nsscache_sync_status = nsscache.update(realm, site,
+                                                    resync=resync,
                                                     cache_resync=resync,
                                                     lock=None)
             except Exception as e:
@@ -3118,6 +3100,7 @@ class CommandHandler(object):
                                     offline=offline,
                                     max_tries=max_tries,
                                     sync_last_used=sync_last_used,
+                                    sync_older_objects=sync_older_objects,
                                     skip_object_deletion=skip_object_deletion,
                                     ignore_changed_objects=ignore_changed_objects)
         if sync_conn:

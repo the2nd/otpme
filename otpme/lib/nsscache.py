@@ -12,7 +12,7 @@ from otpme.lib import oid
 from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import filetools
-from otpme.lib import multiprocessing
+from otpme.lib.pidfile import pidfile_handler
 
 from otpme.lib.exceptions import *
 
@@ -51,13 +51,44 @@ NSSCACHE_OBJECT_TYPES = {
                                 },
                         }
 
+def get_last_synced_revision():
+    if not os.path.exists(config.nsscache_sync_file):
+        return
+    # Get logger.
+    logger = config.logger
+    try:
+        last_synced_revision = filetools.read_file(config.nsscache_sync_file)
+    except Exception as e:
+        msg = "Failed to read last synced revision: %s" % e
+        logger.warning(msg)
+        return
+    try:
+        last_synced_revision = float(last_synced_revision)
+    except Exception as e:
+        msg = "Invalid revision format, should be float: %s" % e
+        logger.warning(msg)
+        return
+    return last_synced_revision
+
+def set_last_synced_revision(last_synced_revision):
+    # Get logger.
+    logger = config.logger
+    try:
+        filetools.create_file(path=config.nsscache_sync_file,
+                            content=str(last_synced_revision))
+    except Exception as e:
+        msg = "Failed to read last synced revision: %s" % e
+        logger.warning(msg)
+        return
+    return last_synced_revision
+
 def gen_cachefile_path(object_id, action):
     """ Generate cache file path. """
     if action not in valid_actions:
         msg = "Invalid action: %s" % action
         raise OTPmeException(msg)
-    path = "%s/%s.%s" % (config.nsscache_spool_dir,
-                        object_id.read_oid.replace("/", "+"),
+    path = "%s/%s.%s" % (config.nsscache_objects_dir,
+                        object_id.full_oid.replace("/", "+"),
                         action)
     return path
 
@@ -174,7 +205,8 @@ def update_object(object_id, action):
                     group=config.group,
                     mode=0o660)
 
-def update(resync=False, cache_resync=False, lock=None):
+@pidfile_handler(config.nsscache_pidfile)
+def update(realm, site, resync=False, cache_resync=False, lock=None):
     """ Update nsscache cache files. """
     from otpme.lib import backend
     from otpme.lib.third_party.nss_cache.maps import group
@@ -184,10 +216,14 @@ def update(resync=False, cache_resync=False, lock=None):
     # Get logger.
     logger = config.logger
 
-    logger.info("Starting sync of nsscache...")
+    msg = "Starting sync of nsscache: %s/%s" % (realm, site)
+    logger.info(msg)
 
     if lock is None:
         lock = locking.OTPmeFakeLock(lock_type=LOCK_TYPE, lock_id="fake")
+
+    # Get current data revision.
+    data_revision = config.get_data_revision()
 
     # Set "syncing" status.
     update_sync_map(lock=lock, syncing=True)
@@ -195,7 +231,7 @@ def update(resync=False, cache_resync=False, lock=None):
     nsscache_config = {'dir': config.nsscache_dir}
     user_cache = files.FilesPasswdMapHandler(nsscache_config)
     group_cache = files.FilesGroupMapHandler(nsscache_config)
-    nss_cache_files = filetools.list_dir(config.nsscache_spool_dir)
+    nss_cache_files = filetools.list_dir(config.nsscache_objects_dir)
 
     # Object types we support.
     object_types = NSSCACHE_ADD_ORDER
@@ -240,16 +276,18 @@ def update(resync=False, cache_resync=False, lock=None):
     updated_objects = {}
     removed_objects = {}
     files_to_remove = {}
+
     update_members = True
-    if not config.use_api:
-        if not config.master_node:
-            update_members = False
-
-        if config.master_failover:
-            update_members = False
-
-        if not config.cluster_status:
-            update_members = False
+    if config.host_type == "host":
+        update_members = False
+    else:
+        if not config.use_api:
+            if not config.master_node:
+                update_members = False
+            if config.master_failover:
+                update_members = False
+            if not config.cluster_status:
+                update_members = False
 
     if update_members:
         # Get roles/groups to update members of.
@@ -258,9 +296,13 @@ def update(resync=False, cache_resync=False, lock=None):
         update_groups = []
         update_objects = len(nss_cache_files)
         for f in nss_cache_files:
-            file_path = os.path.join(config.nsscache_spool_dir, f)
+            file_path = os.path.join(config.nsscache_objects_dir, f)
             x_oid = ".".join(f.split(".")[:-1]).replace("+", "/")
             x_oid = oid.get(x_oid)
+            if x_oid.realm != realm:
+                continue
+            if x_oid.site != site:
+                continue
 
             counter += 1
             msg = "Reading nsscache (%s/%s): %s" % (counter, update_objects, x_oid)
@@ -270,9 +312,10 @@ def update(resync=False, cache_resync=False, lock=None):
             if not x_object:
                 continue
 
-            if x_object.type == "user":
-                update_roles += x_object.get_roles(return_type="instance")
-                update_groups += x_object.get_groups(return_type="instance")
+            # FIXME: do we need this lines?
+            #if x_object.type == "user":
+            #    update_roles += x_object.get_roles(return_type="instance")
+            #    update_groups += x_object.get_groups(return_type="instance")
 
             if x_object.type == "role":
                 if x_object.site != config.site:
@@ -292,60 +335,61 @@ def update(resync=False, cache_resync=False, lock=None):
 
         # Update group members from role members.
         updated_groups = []
-        for role in set(sorted(update_roles)):
-            if role.site != config.site:
-                continue
-            msg = "Updating group members from role: %s" % role.oid
-            logger.info(msg)
-            callback = config.get_callback()
-            try:
-                updated_groups += role.update_extensions("update_members",
-                                                        callback=callback)[1]
-            except Exception as e:
-                msg = ("Failed to update role members: %s: %s"
-                        % (role.oid, e))
-            finally:
-                update_objects = False
-                if config.master_node:
-                    if config.cluster_status:
-                        if not config.master_failover:
-                            update_objects = True
-                if config.use_api:
-                    update_objects = True
-                if update_objects:
-                    callback.write_modified_objects()
-                    callback.release_cache_locks()
+        if config.host_type == "node":
+            for role in set(sorted(update_roles)):
+                if role.site != config.site:
+                    continue
+                msg = "Updating group members from role: %s" % role.oid
+                logger.info(msg)
+                callback = config.get_callback()
+                try:
+                    updated_groups += role.update_extensions("update_members",
+                                                            callback=callback)[1]
+                except Exception as e:
+                    msg = ("Failed to update role members: %s: %s"
+                            % (role.oid, e))
+                finally:
+                    update_objects = False
+                    if config.master_node:
+                        if config.cluster_status:
+                            if not config.master_failover:
+                                update_objects = True
+                    if config.use_api:
+                        update_objects = True
+                    if update_objects:
+                        callback.write_modified_objects()
+                        callback.release_cache_locks()
 
-        # Update group members (but not those processed by role updates above).
-        for _group in set(sorted(update_groups)):
-            if _group.site != config.site:
-                continue
-            if _group.oid in updated_groups:
-                continue
-            callback = config.get_callback()
-            try:
-                _group.update_extensions("update_members",
-                                        callback=callback)
-            except Exception as e:
-                msg = ("Failed to update group members: %s: %s"
-                        % (_group.oid, e))
-            finally:
-                update_objects = False
-                if config.master_node:
-                    if config.cluster_status:
-                        if not config.master_failover:
-                            update_objects = True
-                if config.use_api:
-                    update_objects = True
-                if update_objects:
-                    callback.write_modified_objects()
-                    callback.release_cache_locks()
-                    updated_groups.append(_group.oid)
+            # Update group members (but not those processed by role updates above).
+            for _group in set(sorted(update_groups)):
+                if _group.site != config.site:
+                    continue
+                if _group.oid in updated_groups:
+                    continue
+                callback = config.get_callback()
+                try:
+                    _group.update_extensions("update_members",
+                                            callback=callback)
+                except Exception as e:
+                    msg = ("Failed to update group members: %s: %s"
+                            % (_group.oid, e))
+                finally:
+                    update_objects = False
+                    if config.master_node:
+                        if config.cluster_status:
+                            if not config.master_failover:
+                                update_objects = True
+                    if config.use_api:
+                        update_objects = True
+                    if update_objects:
+                        callback.write_modified_objects()
+                        callback.release_cache_locks()
+                        updated_groups.append(_group.oid)
 
-        for x in updated_groups:
-            update_file = gen_cachefile_path(x, UPDATE_EXT)
-            update_file = os.path.basename(update_file)
-            nss_cache_files.append(update_file)
+            for x in updated_groups:
+                update_file = gen_cachefile_path(x, UPDATE_EXT)
+                update_file = os.path.basename(update_file)
+                nss_cache_files.append(update_file)
 
     if cache_resync:
         for object_type in object_types:
@@ -368,7 +412,7 @@ def update(resync=False, cache_resync=False, lock=None):
                                     site=site,
                                     object_type=object_type,
                                     attributes=search_attrs,
-                                    return_type="read_oid")
+                                    return_type="full_oid")
             if result:
                 try:
                     x_updated_objects = updated_objects[object_type]
@@ -378,24 +422,33 @@ def update(resync=False, cache_resync=False, lock=None):
                 updated_objects[object_type] = x_updated_objects
     else:
         # No spool dir, no updates ;)
-        if not os.path.exists(config.nsscache_spool_dir):
+        if not os.path.exists(config.nsscache_objects_dir):
             update_sync_map(lock=lock)
             msg = "No nsscache updates found."
             logger.info(msg)
+            # Mark current revision as synced.
+            if realm == config.realm:
+                if site == config.site:
+                    set_last_synced_revision(data_revision)
             return None
 
         for f in set(nss_cache_files):
-            file_path = os.path.join(config.nsscache_spool_dir, f)
+            action = f.split(".")[-1]
+            if action not in valid_actions:
+                continue
+            full_oid = ".".join(f.split(".")[:-1]).replace("+", "/")
+            object_id = oid.get(full_oid)
+            object_type = object_id.object_type
+            if object_id.realm != realm:
+                continue
+            if object_id.site != site:
+                continue
+
+            file_path = os.path.join(config.nsscache_objects_dir, f)
             try:
                 files_to_remove[file_path] = os.path.getmtime(file_path)
             except FileNotFoundError:
                 continue
-            action = f.split(".")[-1]
-            if action not in valid_actions:
-                continue
-            read_oid = ".".join(f.split(".")[:-1]).replace("+", "/")
-            object_id = oid.get(read_oid)
-            object_type = object_id.object_type
 
             if object_type == "role":
                 try:
@@ -410,7 +463,7 @@ def update(resync=False, cache_resync=False, lock=None):
                     x_updated_objects = updated_objects[object_type]
                 except:
                     x_updated_objects = []
-                x_updated_objects.append(read_oid)
+                x_updated_objects.append(full_oid)
                 updated_objects[object_type] = x_updated_objects
 
             if action == "remove":
@@ -425,6 +478,10 @@ def update(resync=False, cache_resync=False, lock=None):
         update_sync_map(lock=lock)
         msg = "No nsscache updates found."
         logger.info(msg)
+        # Mark current revision as synced.
+        if realm == config.realm:
+            if site == config.site:
+                set_last_synced_revision(data_revision)
         return None
 
     object_count = 0
@@ -434,7 +491,7 @@ def update(resync=False, cache_resync=False, lock=None):
         if object_type == "user":
             return_attrs = [
                             'name',
-                            'read_oid',
+                            'full_oid',
                             'extension',
                             'ldif:cn',
                             'ldif:uidNumber',
@@ -445,14 +502,14 @@ def update(resync=False, cache_resync=False, lock=None):
         if object_type == "group":
             return_attrs = [
                             'name',
-                            'read_oid',
+                            'full_oid',
                             'extension',
                             'ldif:gidNumber',
                             'ldif:memberUid',
                             ]
         # Get objects.
         result = backend.search(object_type=object_type,
-                                attribute="read_oid",
+                                attribute="full_oid",
                                 values=object_oids,
                                 return_attributes=return_attrs)
         object_attributes[object_type] = result
@@ -471,8 +528,8 @@ def update(resync=False, cache_resync=False, lock=None):
             if "posix" not in extensions:
                 continue
             # Get OID and type.
-            read_oid = object_attrs[uuid]['read_oid']
-            object_id = oid.get(read_oid)
+            full_oid = object_attrs[uuid]['full_oid']
+            object_id = oid.get(full_oid)
             object_type = object_id.object_type
             # Skip unsupported objects.
             if not object_type in object_types:
@@ -497,28 +554,28 @@ def update(resync=False, cache_resync=False, lock=None):
                     uidnumber = object_attrs[uuid]['ldif:uidNumber'][0]
                 except:
                     msg = ("Cannot create nsscache map: Object is missing "
-                            "uidNumber: %s" % read_oid)
+                            "uidNumber: %s" % full_oid)
                     logger.warning(msg)
                     continue
                 try:
                     gidnumber = object_attrs[uuid]['ldif:gidNumber'][0]
                 except:
                     msg = ("Cannot create nsscache map: Object is missing "
-                            "gidNumber: %s" % read_oid)
+                            "gidNumber: %s" % full_oid)
                     logger.warning(msg)
                     continue
                 try:
                     homedir = object_attrs[uuid]['ldif:homeDirectory'][0]
                 except:
                     msg = ("Cannot create nsscache map: Object is missing "
-                            "homeDirectory: %s" % read_oid)
+                            "homeDirectory: %s" % full_oid)
                     logger.warning(msg)
                     continue
                 try:
                     loginshell = object_attrs[uuid]['ldif:loginShell'][0]
                 except:
                     msg = ("Cannot create nsscache map: Object is missing "
-                            "loginShell: %s" % read_oid)
+                            "loginShell: %s" % full_oid)
                     logger.warning(msg)
                     continue
                 # Gen passwd entry.
@@ -536,7 +593,7 @@ def update(resync=False, cache_resync=False, lock=None):
                     gidnumber = object_attrs[uuid]['ldif:gidNumber'][0]
                 except Exception as e:
                     msg = ("Cannot create nsscache map: Object is missing "
-                            "gidNumber: %s" % read_oid)
+                            "gidNumber: %s" % full_oid)
                     logger.warning(msg)
                     continue
                 try:
@@ -604,10 +661,32 @@ def update(resync=False, cache_resync=False, lock=None):
                 nsscache_removes += 1
                 nsscache_current_entries[object_type].pop(name)
 
+            # Remove non existing users from updated groups.
+            if config.host_type == "host":
+                if object_type == "group":
+                    for group_name in nsscache_update_entries[object_type]:
+                        entry = nsscache_update_entries[object_type][group_name]
+                        local_users = backend.search(object_type="user",
+                                                    attribute="uuid",
+                                                    value="*",
+                                                    return_type="name")
+                        for x_uid in list(entry.members):
+                            if x_uid in local_users:
+                                continue
+                            entry.members.remove(x_uid)
+
             # Handle new/updated entries.
             for name in sorted(nsscache_update_entries[object_type]):
-                update_needed = True
                 entry = nsscache_update_entries[object_type][name]
+                try:
+                    current_entry = nsscache_current_entries[object_type][entry.name]
+                except KeyError:
+                    current_entry = None
+                if current_entry == entry:
+                    msg = "No update required for %s: %s" % (object_type, name)
+                    logger.debug(msg)
+                    continue
+                update_needed = True
                 if name in nsscache_current_entries[object_type]:
                     msg = ("Updating %s in nsscache: %s" % (object_type, name))
                     logger.debug(msg)
@@ -654,11 +733,14 @@ def update(resync=False, cache_resync=False, lock=None):
                                 user=config.user,
                                 group=config.group)
 
-    cluster_nsscache = False
     if nsscache_adds > 0 or nsscache_updates > 0 or nsscache_removes > 0:
         cluster_nsscache = True
         msg = ("Updated nsscache: adds: %s updates: %s removes: %s"
                 % (nsscache_adds, nsscache_updates, nsscache_removes))
+        logger.info(msg)
+    else:
+        cluster_nsscache = False
+        msg = "No nsscache update needed."
         logger.info(msg)
 
     # Inform hostd that we are in sync again.
@@ -682,14 +764,15 @@ def update(resync=False, cache_resync=False, lock=None):
             logger.critical(msg)
 
     if config.host_data['type'] == "node":
-        try:
-            current_master_node = multiprocessing.master_node['master']
-        except:
-            current_master_node = None
-        if config.host_data['name'] != current_master_node:
+        if not config.master_node:
             cluster_nsscache = False
         if cluster_nsscache:
             cluster_nsscache_sync()
+
+    # Mark current revision as synced.
+    if realm == config.realm:
+        if site == config.site:
+            set_last_synced_revision(data_revision)
 
     return True
 

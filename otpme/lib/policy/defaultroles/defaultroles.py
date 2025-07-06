@@ -239,7 +239,7 @@ class DefaultrolesPolicy(Policy):
         return callback.ok()
 
     def handle_hook(self, hook_name=None, child_object=None,
-        callback=default_callback, **kwargs):
+        verify_acls=True, callback=default_callback, **kwargs):
         """ Handle policy hooks. """
         if hook_name == "post_add_user":
             # Handle default roles if user does have a default token.
@@ -258,7 +258,9 @@ class DefaultrolesPolicy(Policy):
                         old_exc_val = callback.raise_exception
                         callback.raise_exception = True
                         try:
-                            role.add_token(default_token, callback=callback)
+                            role.add_token(default_token,
+                                        verify_acls=verify_acls,
+                                        callback=callback)
                         except AlreadyExists:
                             continue
                         except Exception as e:

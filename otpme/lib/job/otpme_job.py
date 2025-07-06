@@ -154,12 +154,10 @@ class OTPmeJob(object):
                 from otpme.lib import config
                 # Get logger.
                 logger = config.logger
-                msg = "Received SIGTERM."
-                logger.info(msg)
-                if _signal == 2:
-                    self.callback.stop_job = True
                 if _signal == 15:
-                    self.close()
+                    msg = "Received SIGTERM."
+                    logger.info(msg)
+                    #self.close()
                     os._exit(0)
 
             multiprocessing.atfork(quiet=True,
@@ -306,7 +304,7 @@ class OTPmeJob(object):
             return True
         return False
 
-    def stop(self, signal=2):
+    def stop(self, signal=15):
         """ Stop job. """
         if self.stopped:
             return
@@ -349,6 +347,8 @@ class OTPmeJob(object):
 
     def join(self):
         """ Stop multiprocessing manager and join job thread/process. """
+        if not self.start_process:
+            return
         if self._child_joined:
             return
         # Join child thread/process.

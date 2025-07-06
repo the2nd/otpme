@@ -294,9 +294,10 @@ cmd_help = {
 
      'add_attribute'    : {
                     '_cmd_usage_help' : 'Usage: otpme-user add_attribute {user} {attribute}=[value]',
-                    'cmd'   :   '<|object|> <attribute>=[value]',
+                    'cmd'   :   '-i :position: <|object|> <attribute>=[value]',
                     '_help' :   {
                                     'cmd'                   : 'add (ldap) attribute to user',
+                                    '-i <position>'         : 'Insert multi-value attribute at position.',
                                 },
                 },
 

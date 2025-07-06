@@ -27,10 +27,12 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import locking
+from otpme.lib import nsscache
 from otpme.lib import filetools
 from otpme.lib import connections
 from otpme.lib import sign_key_cache
 from otpme.lib import multiprocessing
+from otpme.lib.pidfile import is_running
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
 from otpme.lib.classes.object_config import ObjectConfig
@@ -62,7 +64,6 @@ def register():
     multiprocessing.register_shared_dict("member_nodes")
     multiprocessing.register_shared_list("pause_writes")
     multiprocessing.register_shared_dict("running_jobs")
-    multiprocessing.register_shared_dict("nsscache_sync")
     multiprocessing.register_shared_dict("cluster_quorum")
     multiprocessing.register_shared_dict("cluster_journal")
     multiprocessing.register_shared_dict("node_connections")
@@ -985,6 +986,9 @@ class ClusterDaemon(OTPmeDaemon):
         for journal_entry in self.get_cluster_out_journal():
             entry_timestamp = os.path.basename(journal_entry)
             cluster_journal_entry = ClusterJournalEntry(timestamp=entry_timestamp)
+            object_event = get_object_event(cluster_journal_entry.timestamp)
+            object_event.set()
+            object_event.unlink()
             try:
                 cluster_journal_entry.delete()
             except ObjectDeleted:
@@ -1001,6 +1005,10 @@ class ClusterDaemon(OTPmeDaemon):
         except KeyError:
             pass
         self.calc_quorum()
+        # Wakeup cluster out event handler to re-process cluster journal entries.
+        if not multiprocessing.cluster_out_event:
+            return
+        multiprocessing.cluster_out_event.set()
 
     def node_disconnect(self, node_name):
         try:
@@ -1346,12 +1354,21 @@ class ClusterDaemon(OTPmeDaemon):
                                     return_type="name")
 
         if len(enabled_nodes) == 1:
+            if not config.one_node_setup:
+                msg = "Switched to one-node-setup."
+                self.logger.info(msg)
             config.one_node_setup = True
             config.two_node_setup = False
         elif len(enabled_nodes) == 2:
+            if not config.two_node_setup:
+                msg = "Switched to two-node-setup."
+                self.logger.info(msg)
             config.one_node_setup = False
             config.two_node_setup = True
         else:
+            if config.one_node_setup or config.two_node_setup:
+                msg = "Switched to multi-node-setup."
+                self.logger.info(msg)
             config.one_node_setup = False
             config.two_node_setup = False
 
@@ -1373,6 +1390,7 @@ class ClusterDaemon(OTPmeDaemon):
         # Make sure left over events are handled.
         if config.one_node_setup:
             self.clean_cluster_out_journal()
+            self.check_nsscache_sync()
 
         # Get all nodes.
         result = backend.search(object_type="node",
@@ -1418,20 +1436,22 @@ class ClusterDaemon(OTPmeDaemon):
                 proc = self.node_check_connections[node_name]
             except:
                 continue
-            if proc.is_alive():
-                continue
-            self.close_node_check_connection(node_name)
+            if not proc.is_alive():
+                self.close_node_check_connection(node_name)
+                try:
+                    multiprocessing.node_connections.pop(node_name)
+                except KeyError:
+                    pass
             try:
                 proc = self.node_write_connections[node_name]
             except:
                 continue
-            if proc.is_alive():
-                continue
-            self.close_node_write_connection(node_name)
-            try:
-                multiprocessing.node_connections.pop(node_name)
-            except KeyError:
-                pass
+            if not proc.is_alive():
+                self.close_node_write_connection(node_name)
+                try:
+                    multiprocessing.node_connections.pop(node_name)
+                except KeyError:
+                    pass
 
         for node_name in enabled_nodes:
             try:
@@ -1475,17 +1495,6 @@ class ClusterDaemon(OTPmeDaemon):
             if node and node.enabled:
                 continue
             self.close_node_write_connection(node_name)
-            self.node_leave(node_name)
-            try:
-                multiprocessing.node_connections.pop(node_name)
-            except KeyError:
-                pass
-        # Remove nodes not active anymore (e.g. deleted).
-        for node_name in enabled_nodes:
-            if node_name in self.node_check_connections:
-                continue
-            if node_name in self.node_write_connections:
-                continue
             self.node_leave(node_name)
             try:
                 multiprocessing.node_connections.pop(node_name)
@@ -1597,6 +1606,10 @@ class ClusterDaemon(OTPmeDaemon):
         if self.node_conn is None:
             try:
                 self.node_conn = self.get_clusterd_connection(node_name)
+            except NoClusterService:
+                if not self.node_offline:
+                    self.node_leave(node_name)
+                    self.node_offline = True
             except Exception as e:
                 if not self.node_offline:
                     if not quiet:
@@ -1668,8 +1681,11 @@ class ClusterDaemon(OTPmeDaemon):
             if self.node_disabled:
                 self.exit_child()
             skip_deletions = True
+            run_nsscache_sync = False
             if os.path.exists(config.node_joined_file):
                 skip_deletions = False
+                run_nsscache_sync = True
+            # Run initial sync.
             try:
                 sync_status = command_handler.do_sync(sync_type="objects",
                                                     realm=config.realm,
@@ -1691,6 +1707,20 @@ class ClusterDaemon(OTPmeDaemon):
                     return sync_status
                 time.sleep(1)
                 continue
+            # Run nsscache sync.
+            if run_nsscache_sync:
+                try:
+                    sync_status = command_handler.do_sync(sync_type="nsscache",
+                                                        realm=config.realm,
+                                                        site=config.site)
+                except Exception as e:
+                    sync_status = False
+                    msg = "Initial sync of nsscache failed: %s" % e
+                    self.logger.warning(msg)
+                if sync_status is False:
+                    msg = "Initial nsscache sync failed."
+                    self.logger.warning(msg)
+                    return sync_status
             #filetools.delete(config.node_joined_file)
             msg = "Initial sync with master node finished."
             self.logger.info(msg)
@@ -1758,16 +1788,16 @@ class ClusterDaemon(OTPmeDaemon):
             self.handle_node_connections()
             # Handle nsscache sync.
             if self.nsscache_sync.value:
+                self.nsscache_sync.value = False
                 try:
-                    last_sync_revision = multiprocessing.nsscache_sync['revision']
-                except KeyError:
-                    last_sync_revision = 0
-                data_revision = config.get_data_revision()
-                if data_revision != last_sync_revision:
-                    self.nsscache_sync.value = False
-                    multiprocessing.nsscache_sync['revision'] = data_revision
                     command_handler = CommandHandler()
                     command_handler.start_sync(sync_type="nsscache")
+                except Exception as e:
+                    msg = "Failed to trigger nsscache sync: %s" % e
+                    self.logger.warning(msg)
+                else:
+                    msg = "Triggered nsscache sync."
+                    self.logger.info(msg)
 
             if self.host_name not in multiprocessing.master_sync_done:
                 try:
@@ -1946,6 +1976,20 @@ class ClusterDaemon(OTPmeDaemon):
 
     def set_node_online(self, node_name):
         """ Set node online. """
+        # Check if node exists and is enabled.
+        result = backend.search(object_type="node",
+                            attribute="name",
+                            value=node_name,
+                            realm=config.realm,
+                            site=config.site,
+                            return_type="instance")
+        if not result:
+            msg = "Unknown node: %s" % node_name
+            self.logger.warning(msg)
+            return False
+        node = result[0]
+        if not node.enabled:
+            return False
         # Check if node is online. If connections was broken
         # peer_nodes_set_online will be cleared.
         node_conn = self.get_node_connection(node_name)
@@ -2142,6 +2186,21 @@ class ClusterDaemon(OTPmeDaemon):
                         % (journal_file, e))
                 self.logger.critical(msg)
 
+    def check_nsscache_sync(self):
+        """ Check if nsscache sync is needed. """
+        if is_running(config.nsscache_pidfile):
+            return
+        data_revision = config.get_data_revision()
+        synced_data_revision = nsscache.get_last_synced_revision()
+        if synced_data_revision == data_revision:
+            return
+        min_seconds = 15
+        now = time.time()
+        age = now - data_revision
+        if age < min_seconds:
+            return
+        self.nsscache_sync.value = True
+
     def start_two_node_handler(self):
         try:
             self._start_two_node_handler()
@@ -2299,7 +2358,6 @@ class ClusterDaemon(OTPmeDaemon):
                                         pid=self.pid,
                                         existing_logger=config.logger)
         start_over= True
-        last_data_revision  = None
         while True:
             # Wait for cluster event.
             event_timeout = 3
@@ -2344,18 +2402,7 @@ class ClusterDaemon(OTPmeDaemon):
             if not config.master_node:
                 continue
 
-            data_revision = config.get_data_revision()
-            if last_data_revision == data_revision:
-                continue
-
-            min_seconds = 15
-            now = time.time()
-            age = now - data_revision
-            if age < min_seconds:
-                continue
-
-            last_data_revision = data_revision
-            self.nsscache_sync.value = True
+            self.check_nsscache_sync()
 
     def handle_cluster_out_journal(self, node_name):
         while True:
@@ -2389,8 +2436,10 @@ class ClusterDaemon(OTPmeDaemon):
                     try:
                         remote_data_revision = self.node_conn.get_data_revision()
                     except Exception as e:
+                        self.node_disconnect(node_name)
                         msg = "Failed to get data revision: %s: %s" % (node_name, e)
-                        raise OTPmeException(msg)
+                        self.logger.warning(msg)
+                        return True
                     local_data_revision = config.get_data_revision()
                     if remote_data_revision < local_data_revision:
                         result = backend.search(object_type="data_revision",
@@ -2411,13 +2460,13 @@ class ClusterDaemon(OTPmeDaemon):
                                 msg = ("Failed to send object: %s: %s: %s"
                                         % (node_name, object_id, e))
                                 self.logger.warning(msg)
-                                raise OTPmeException(msg)
+                                return True
                             except Exception as e:
                                 self.node_disconnect(node_name)
                                 msg = ("Error sending object: %s: %s: %s"
                                         % (node_name, object_id, e))
                                 self.logger.warning(msg)
-                                raise OTPmeException(msg)
+                                return True
             finally:
                 multiprocessing.pause_writes.remove(self.pid)
 
@@ -2537,6 +2586,10 @@ class ClusterDaemon(OTPmeDaemon):
                             msg = ("Failed to send object exists request: %s: %s: %s"
                                     % (node_name, object_id, e))
                             self.logger.warning(msg)
+                            self.check_member_nodes(cluster_journal_entry)
+                            raise ProcessingFailed(msg)
+                        except NoClusterService:
+                            self.node_disconnect(node_name)
                             self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         except Exception as e:
@@ -2824,8 +2877,9 @@ class ClusterDaemon(OTPmeDaemon):
 
     def check_online_nodes(self, cluster_journal_entry):
         entry_nodes = cluster_journal_entry.get_nodes()
+        online_nodes = sorted(multiprocessing.online_nodes)
         online_nodes_in_sync = True
-        for node_name in multiprocessing.online_nodes:
+        for node_name in online_nodes:
             if node_name in entry_nodes:
                 continue
             online_nodes_in_sync = False

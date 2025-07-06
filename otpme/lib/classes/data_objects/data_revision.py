@@ -24,7 +24,7 @@ DATA_REVISION_DIR = os.path.join(config.data_dir, "data", "data_revision")
 def register():
     register_oid()
     register_backend()
-    #register_sync_settings()
+    register_sync_settings()
 
 def register_oid():
     full_oid_schema = [ 'realm', 'site' ]
@@ -42,10 +42,10 @@ def register_oid():
     oid.register_rel_path_getter(object_type="data_revision",
                                 getter=rel_path_getter)
 
-#def register_sync_settings():
-#    """ Register sync settings. """
-#    config.register_cluster_sync(object_type="data_revision")
-#    config.register_object_sync(host_type="host", object_type="data_revision")
+def register_sync_settings():
+    """ Register sync settings. """
+    #config.register_cluster_sync(object_type="data_revision")
+    config.register_object_sync(host_type="node", object_type="data_revision")
 
 def register_backend():
     """ Register object for the file backend. """

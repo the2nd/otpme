@@ -128,8 +128,10 @@ def update_ldap_cache(auth_token, client, object_id, ldap_entry, checksum):
 
 def get_ldap_search_cache(auth_token, client, cache_key):
     """ Get cached entry. """
+    global ldap_cache
     global ldap_query_cache
     if config.ldap_cache_clear:
+        ldap_cache.clear()
         ldap_query_cache.clear()
         config.ldap_cache_clear = False
         return

@@ -177,7 +177,7 @@ class OTPmeConfig(object):
         # Indicates if locking is enabled.
         self.register_config_var("locking_enabled", bool, True)
         # Job timeout.
-        self.register_config_var("job_timeout", int, 120)
+        self.register_config_var("job_timeout", int, 60)
 
         self.register_config_var("command_handler", None, None)
         self.register_config_var("command_line_opts", list, [])
@@ -472,6 +472,7 @@ class OTPmeConfig(object):
         self.register_config_var("ssh_deploy_dir", str, None)
         self.register_config_var("authorized_keys_dir", str, None)
         self.register_config_var("nsscache_spool_dir", str, None)
+        self.register_config_var("nsscache_objects_dir", str, None)
         self.register_config_var("transaction_dir", str, None)
 
         ssl_dir = os.path.join(self.config_dir, "ssl")
@@ -491,6 +492,10 @@ class OTPmeConfig(object):
         host_key_file = os.path.join(self.ssl_dir, "hostkey.pem")
         self.register_config_var("host_key_file", str, host_key_file,
                                 config_file_parameter="HOST_KEY_FILE")
+
+        self.register_config_var("nsscache_sync_file", str, None)
+
+        self.register_config_var("nsscache_pidfile", str, None)
 
         self.register_config_var("controld_pidfile", str, None)
         self.register_config_var("authd_socket_path", str, None)
@@ -892,6 +897,7 @@ class OTPmeConfig(object):
         self.sync_status_file_path = os.path.join(self.cache_dir, "sync-status.json")
 
         self.controld_pidfile = os.path.join(self.pidfile_dir, "otpme-controld.pid")
+        self.nsscache_pidfile = os.path.join(self.pidfile_dir, "nsscache-sync.pid")
 
         self.authd_socket_path = "socket://%s/otpme-authd" % self.sockets_dir
         self.hostd_socket_path = "socket://%s/otpme-hostd" % self.sockets_dir
@@ -909,8 +915,12 @@ class OTPmeConfig(object):
         self.ssh_deploy_dir = os.path.join(self.cache_dir, "ssh")
         # Directory to cache SSH authorized_keys files.
         self.authorized_keys_dir = os.path.join(self.ssh_deploy_dir, "authorized_keys")
-        # Directory to spool objects that needs to be updated in nsscache.
+        # Directory to spool objects nsscache data.
         self.nsscache_spool_dir = os.path.join(self.spool_dir, "nsscache")
+        # Directory to spool objects that needs to be updated in nsscache.
+        self.nsscache_objects_dir = os.path.join(self.nsscache_spool_dir, "objects")
+        # Last synced nsscache revision.
+        self.nsscache_sync_file = os.path.join(self.nsscache_spool_dir, "synced_revision")
         # Directory to spool transaction.
         self.transaction_dir = os.path.join(self.spool_dir, "transactions")
 
@@ -2006,6 +2016,7 @@ class OTPmeConfig(object):
                     self.ssh_deploy_dir : 0o750,
                     self.sign_key_cache_dir : 0o775,
                     self.nsscache_spool_dir : 0o770,
+                    self.nsscache_objects_dir : 0o770,
                     self.authorized_keys_dir : 0o750,
                     self.transaction_dir : 0o770,
                     # pam_otpme creates softlinks to users ssh/gpg-agent sockets
