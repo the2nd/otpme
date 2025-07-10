@@ -8,6 +8,7 @@ try:
 except:
     pass
 
+from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_unit_string
@@ -122,7 +123,7 @@ def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
         role_tokens_result = []
         if get_roles:
             member_roles = []
-            return_attrs = ['site', 'rel_path', 'enabled']
+            return_attrs = ['site', 'name', 'enabled']
             roles_count, roles_result = backend.search(object_type="role",
                                                 attribute="uuid",
                                                 value="*",
@@ -130,23 +131,27 @@ def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
                                                 join_search_attr="uuid",
                                                 join_search_val=group_uuid,
                                                 join_attribute="role",
-                                                order_by="rel_path",
+                                                order_by="name",
                                                 max_results=max_roles,
                                                 return_query_count=True,
                                                 return_attributes=return_attrs)
             for role_uuid in roles_result:
                 role_site = roles_result[role_uuid]['site']
-                role_rel_path = roles_result[role_uuid]['rel_path']
+                role_name = roles_result[role_uuid]['name']
                 role_enabled = roles_result[role_uuid]['enabled'][0]
                 role_status_string = ""
                 if not role_enabled:
                     role_status_string = " (D)"
-                role_string = ("%s (%s) %s" % (role_rel_path,
-                                            role_site,
+                if role_site == config.site:
+                    role_string = ("%s %s" % (role_name,
                                             role_status_string))
+                else:
+                    role_string = ("%s (%s) %s" % (role_name,
+                                                role_site,
+                                                role_status_string))
                 member_roles.append(role_string)
 
-                return_attrs = ['name', 'rel_path', 'enabled']
+                return_attrs = ['name', 'name', 'enabled']
                 role_tokens_count, \
                 role_tokens_result = backend.search(object_type="token",
                                                 attribute="uuid",
@@ -155,7 +160,7 @@ def row_getter(realm, site, group_order, group_data, acls, max_roles=5,
                                                 join_search_attr="uuid",
                                                 join_search_val=role_uuid,
                                                 join_attribute="token",
-                                                order_by="rel_path",
+                                                order_by="name",
                                                 max_results=max_tokens,
                                                 return_query_count=True,
                                                 return_attributes=return_attrs)

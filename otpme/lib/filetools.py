@@ -842,6 +842,22 @@ class JsonFile(object):
             modified_attributes.remove("INDEX_JOURNAL")
         except ValueError:
             pass
+        try:
+            object_config.pop('LDIF_JOURNAL')
+        except KeyError:
+            pass
+        try:
+            modified_attributes.remove("LDIF_JOURNAL")
+        except ValueError:
+            pass
+        try:
+            object_config.pop('ACL_JOURNAL')
+        except KeyError:
+            pass
+        try:
+            modified_attributes.remove("ACL_JOURNAL")
+        except ValueError:
+            pass
 
         new_db = False
         if not os.path.exists(self.file_path):
@@ -1052,6 +1068,22 @@ class SQLiteFile(object):
             pass
         try:
             modified_attributes.remove("INDEX_JOURNAL")
+        except ValueError:
+            pass
+        try:
+            object_config.pop('LDIF_JOURNAL')
+        except KeyError:
+            pass
+        try:
+            modified_attributes.remove("LDIF_JOURNAL")
+        except ValueError:
+            pass
+        try:
+            object_config.pop('ACL_JOURNAL')
+        except KeyError:
+            pass
+        try:
+            modified_attributes.remove("ACL_JOURNAL")
         except ValueError:
             pass
 

@@ -293,6 +293,14 @@ class ObjectConfig(object):
             temp_oc.pop('INDEX_JOURNAL_ARCHIVE')
         except:
             pass
+        try:
+            temp_oc.pop('LDIF_JOURNAL_ARCHIVE')
+        except:
+            pass
+        try:
+            temp_oc.pop('ACL_JOURNAL_ARCHIVE')
+        except:
+            pass
 
         # Add object salt. This salt is added to each object config to make
         # brute force attacks against the checksum harder on hosts/nodes where
@@ -725,42 +733,36 @@ class ObjectConfig(object):
             except KeyError:
                 modified_attributes = []
             reduced_config = self.decrypted_config
+
+            keep_attribues = [
+                                "SALT",
+                                "UUID",
+                                "LDIF",
+                                "ACLS",
+                                "INDEX",
+                                "TEMPLATE",
+                                "CHECKSUM",
+                                "SYNC_CHECKSUM",
+                                "INDEX_JOURNAL",
+                                "LAST_MODIFIED",
+                                "INCREMENT_ID",
+                                "INCREMENT_IDS",
+                                "DICT_ATTRIBUTES",
+                                "LIST_ATTRIBUTES",
+                                "MODIFIED_ATTRIBUTES",
+                                "DELETED_ATTRIBUTES",
+                                "INCREMENTAL_UPDATES",
+                                "INDEX_JOURNAL_ARCHIVE",
+                                "LDIF_JOURNAL_ARCHIVE",
+                                "ACL_JOURNAL_ARCHIVE",
+                            ]
+
         for x in dict(reduced_config):
             if x in self.modified_attributes:
                 continue
             if x in modified_attributes:
                 continue
-            if x == "SALT":
-                continue
-            if x == "UUID":
-                continue
-            if x == "LDIF":
-                continue
-            if x == "TEMPLATE":
-                continue
-            if x == "CHECKSUM":
-                continue
-            if x == "SYNC_CHECKSUM":
-                continue
-            if x == "INDEX_JOURNAL":
-                continue
-            if x == "LAST_MODIFIED":
-                continue
-            if x == "INCREMENT_ID":
-                continue
-            if x == "INCREMENT_IDS":
-                continue
-            if x == "DICT_ATTRIBUTES":
-                continue
-            if x == "LIST_ATTRIBUTES":
-                continue
-            if x == "MODIFIED_ATTRIBUTES":
-                continue
-            if x == "DELETED_ATTRIBUTES":
-                continue
-            if x == "INCREMENTAL_UPDATES":
-                continue
-            if x == "INDEX_JOURNAL_ARCHIVE":
+            if x in keep_attribues:
                 continue
             reduced_config.pop(x)
         try:
@@ -769,6 +771,8 @@ class ObjectConfig(object):
             incremental_updates = []
         for x in incremental_updates:
             attr = x[1]
+            if attr in keep_attribues:
+                continue
             try:
                 reduced_config.pop(attr)
             except KeyError:

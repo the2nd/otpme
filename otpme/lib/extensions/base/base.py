@@ -243,7 +243,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
                     % (old_name, new_name))
             raise OTPmeException(msg)
         # Add new DN.
-        o.add_ldif([("dn", dn)])
+        o.add_ldif([["dn", dn]])
 
         return callback.ok()
 
@@ -271,7 +271,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
         o.del_ldif([("dn", current_dn)])
         # Add new DN attribute
         dn = self.build_dn(o, dn_attribute)
-        o.add_ldif([("dn", dn)])
+        o.add_ldif([["dn", dn]])
         # Update location.
         self.del_attribute(o=o, a="l", callback=callback)
         self.add_attribute_value(o=o,

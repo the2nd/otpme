@@ -863,11 +863,15 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             msg = "Unknown object: %s" % read_oid
             raise UnknownObject(msg)
 
+        object_ldif = object_data['ldif']
+        if not object_ldif:
+            msg = "Object without ldif: %s" % read_oid
+            raise UnknownObject(msg)
+
         update_user_cache = False
         object_uuid = object_data['uuid']
         object_name = object_data['name']
         object_type = object_data['type']
-        object_ldif = object_data['ldif']
         object_acls = object_data['acls']
         object_checksum = object_data['checksum']
         if verify_acls:

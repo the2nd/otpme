@@ -246,9 +246,15 @@ def write_config(
     cluster: bool=False,
     wait_for_cluster_writes: bool=False,
     full_index_update: bool=False,
-    full_data_update: bool=None,
+    full_data_update: bool=False,
+    full_ldif_update: bool=False,
+    full_acl_update: bool=False,
     index_journal: Union[List,None]=[],
+    ldif_journal: Union[List,None]=[],
+    acl_journal: Union[List,None]=[],
     index_auto_update: bool=False,
+    ldif_auto_update: bool=False,
+    acl_auto_update: bool=False,
     no_transaction: bool=False,
     encrypt: bool=True
     ):
@@ -264,6 +270,18 @@ def write_config(
         raise OTPmeException(msg)
     if full_index_update and index_auto_update:
         msg = "You can use only one of <full_index_update> or <index_auto_update>."
+        raise OTPmeException(msg)
+    if full_acl_update and acl_journal:
+        msg = "You can use only one of <full_acl_update> or <acl_journal>."
+        raise OTPmeException(msg)
+    if full_acl_update and acl_auto_update:
+        msg = "You can use only one of <full_acl_update> or <acl_auto_update>."
+        raise OTPmeException(msg)
+    if full_ldif_update and ldif_journal:
+        msg = "You can use only one of <full_ldif_update> or <ldif_journal>."
+        raise OTPmeException(msg)
+    if full_ldif_update and ldif_auto_update:
+        msg = "You can use only one of <full_ldif_update> or <ldif_auto_update>."
         raise OTPmeException(msg)
 
     # Replay any leftover transaction.
@@ -284,10 +302,16 @@ def write_config(
     # Write config file.
     write_status = write(object_id=object_id,
                     object_config=object_config,
+                    acl_journal=acl_journal,
+                    ldif_journal=ldif_journal,
                     index_journal=index_journal,
                     full_index_update=full_index_update,
                     full_data_update=full_data_update,
+                    full_ldif_update=full_ldif_update,
+                    full_acl_update=full_acl_update,
                     index_auto_update=index_auto_update,
+                    ldif_auto_update=ldif_auto_update,
+                    acl_auto_update=acl_auto_update,
                     no_transaction=no_transaction,
                     wait_for_cluster_writes=wait_for_cluster_writes,
                     cluster=cluster)

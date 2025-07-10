@@ -448,9 +448,34 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = "Missing object config."
                 status = False
             try:
+                acl_journal = command_args['acl_journal']
+            except:
+                message = "Missing ACL journal."
+                status = False
+            try:
+                ldif_journal = command_args['ldif_journal']
+            except:
+                message = "Missing LDIF journal."
+                status = False
+            try:
                 index_journal = command_args['index_journal']
             except:
                 message = "Missing index journal."
+                status = False
+            try:
+                acl_auto_update = command_args['acl_auto_update']
+            except:
+                message = "Missing acl_auto_update."
+                status = False
+            try:
+                ldif_auto_update = command_args['ldif_auto_update']
+            except:
+                message = "Missing ldif_auto_update."
+                status = False
+            try:
+                index_auto_update = command_args['index_auto_update']
+            except:
+                message = "Missing index_auto_update."
                 status = False
             try:
                 full_data_update = command_args['full_data_update']
@@ -460,6 +485,14 @@ class OTPmeClusterP1(OTPmeServer1):
                 full_index_update = command_args['full_index_update']
             except:
                 full_index_update = False
+            try:
+                full_ldif_update = command_args['full_ldif_update']
+            except:
+                full_ldif_update = False
+            try:
+                full_acl_update = command_args['full_acl_update']
+            except:
+                full_acl_update = False
             if config.daemon_shutdown:
                 message = "Daemon shutdown."
                 status = False
@@ -481,7 +514,14 @@ class OTPmeClusterP1(OTPmeServer1):
                                 'action'            : 'write',
                                 'object_id'         : object_id,
                                 'object_config'     : object_config,
+                                'acl_journal'       : acl_journal,
+                                'ldif_journal'      : ldif_journal,
                                 'index_journal'     : index_journal,
+                                'acl_auto_update'   : acl_auto_update,
+                                'ldif_auto_update'  : ldif_auto_update,
+                                'index_auto_update' : index_auto_update,
+                                'full_acl_update'   : full_acl_update,
+                                'full_ldif_update'  : full_ldif_update,
                                 'full_data_update'  : full_data_update,
                                 'full_index_update' : full_index_update,
                             }

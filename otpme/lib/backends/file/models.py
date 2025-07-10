@@ -85,6 +85,10 @@ class IndexObject(object):
     checksum = Column(String(128), unique=False, nullable=False, index=False)
     # Objects sync checksum.
     sync_checksum = Column(String(128), unique=False, nullable=False, index=False)
+    # Last ACL ID of index object.
+    last_acl_id = Column(String(128), unique=False, nullable=True, index=False)
+    # Last LDIF ID of index object.
+    last_ldif_id = Column(String(128), unique=False, nullable=True, index=False)
     # Last index ID of index object.
     last_index_id = Column(String(128), unique=False, nullable=True, index=False)
     # Last used timestamp of index object.

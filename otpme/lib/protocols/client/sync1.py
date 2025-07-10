@@ -1108,11 +1108,17 @@ class OTPmeSyncP1(OTPmeClient1):
                             if config.master_node:
                                 cluster = True
                 index_journal = new_object.index_journal_archive.copy()
+                ldif_journal = new_object.ldif_journal_archive.copy()
+                acl_journal = new_object.acl_journal_archive.copy()
                 try:
                     backend.write_config(object_id,
                                     instance=new_object,
                                     index_auto_update=True,
                                     index_journal=index_journal,
+                                    ldif_auto_update=True,
+                                    ldif_journal=ldif_journal,
+                                    acl_auto_update=True,
+                                    acl_journal=acl_journal,
                                     full_data_update=True,
                                     cluster=cluster)
                     self.synced_objects.append(object_id)
@@ -1527,7 +1533,8 @@ class OTPmeSyncP1(OTPmeClient1):
             if backend.write_config(object_id=x_oid,
                                     object_config=x_config,
                                     full_index_update=True,
-                                    full_data_update=True):
+                                    full_data_update=True,
+                                    full_acl_update=True):
                 self.synced_objects.append(x_oid)
 
         # Remove outdated objects.

@@ -163,7 +163,8 @@ def cluster_daemon_reload():
     multiprocessing.cluster_out_event.set()
 
 def cluster_sync_object(action, object_id=None, object_uuid=None,
-    object_data=None, new_object_id=None, checksum=None, index_journal=None,
+    object_data=None, new_object_id=None, checksum=None,
+    index_journal=None, ldif_journal=None, acl_journal=None,
     trash_id=None, deleted_by=None, wait_for_write=True):
     if config.host_type != "node":
         return
@@ -188,6 +189,8 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
                                                     trash_id=trash_id,
                                                     deleted_by=deleted_by,
                                                     checksum=checksum,
+                                                    acl_journal=acl_journal,
+                                                    ldif_journal=ldif_journal,
                                                     index_journal=index_journal,
                                                     object_data=object_data,
                                                     new_object_id=new_object_id)
@@ -414,7 +417,8 @@ class ClusterJournalEntry(ClusterEntry):
     """ Cluster journal entry. """
     def __init__(self, timestamp, object_uuid=None, action=None,
         object_id=None, checksum=None, object_data=None, index_journal=None,
-        new_object_id=None, trash_id=None, deleted_by=None):
+        ldif_journal=None, acl_journal=None, new_object_id=None, trash_id=None,
+        deleted_by=None):
         journal_dir = config.cluster_out_journal_dir
         super(ClusterJournalEntry, self).__init__(journal_dir=journal_dir,
                                                     _lock_type=JOURNAL_LOCK_TYPE,
@@ -425,6 +429,8 @@ class ClusterJournalEntry(ClusterEntry):
         self.new_object_id_file = os.path.join(self.entry_dir, "new_object_id")
         self.object_checksum_file = os.path.join(self.entry_dir, "object_checksum")
         self.index_journal_file = os.path.join(self.entry_dir, "index_journal")
+        self.ldif_journal_file = os.path.join(self.entry_dir, "ldif_journal")
+        self.acl_journal_file = os.path.join(self.entry_dir, "acl_journal")
         self.trash_id_file = os.path.join(self.entry_dir, "trash_id")
         self.deleted_by_file = os.path.join(self.entry_dir, "deleted_by")
         if action is not None:
@@ -435,6 +441,10 @@ class ClusterJournalEntry(ClusterEntry):
             self.object_uuid = object_uuid
         if object_data is not None:
             self.object_data = object_data
+        if acl_journal is not None:
+            self.acl_journal = acl_journal
+        if ldif_journal is not None:
+            self.ldif_journal = ldif_journal
         if index_journal is not None:
             self.index_journal = index_journal
         if checksum is not None:
@@ -596,6 +606,60 @@ class ClusterJournalEntry(ClusterEntry):
                                     content=index_journal)
         except Exception as e:
             msg = ("Failed to add index journal to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
+
+    @property
+    @entry_lock(write=False)
+    def acl_journal(self):
+        try:
+            acl_journal = filetools.read_file(self.acl_journal_file)
+        except FileNotFoundError:
+            acl_journal = None
+        except Exception as e:
+            acl_journal = None
+            msg = ("Failed to read ACL journal from cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
+        acl_journal = json.loads(acl_journal)
+        return acl_journal
+
+    @acl_journal.setter
+    #@entry_lock(write=True)
+    def acl_journal(self, acl_journal):
+        acl_journal = json.dumps(acl_journal)
+        try:
+            filetools.create_file(path=self.acl_journal_file,
+                                    content=acl_journal)
+        except Exception as e:
+            msg = ("Failed to add ACL journal to cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
+
+    @property
+    @entry_lock(write=False)
+    def ldif_journal(self):
+        try:
+            ldif_journal = filetools.read_file(self.ldif_journal_file)
+        except FileNotFoundError:
+            ldif_journal = None
+        except Exception as e:
+            ldif_journal = None
+            msg = ("Failed to read LDIF journal from cluster entry: %s: %s"
+                    % (self.timestamp, e))
+            self.logger.critical(msg)
+        ldif_journal = json.loads(ldif_journal)
+        return ldif_journal
+
+    @ldif_journal.setter
+    #@entry_lock(write=True)
+    def ldif_journal(self, ldif_journal):
+        ldif_journal = json.dumps(ldif_journal)
+        try:
+            filetools.create_file(path=self.ldif_journal_file,
+                                    content=ldif_journal)
+        except Exception as e:
+            msg = ("Failed to add ACL journal to cluster entry: %s: %s"
                     % (self.timestamp, e))
             self.logger.critical(msg)
 
@@ -2066,7 +2130,14 @@ class ClusterDaemon(OTPmeDaemon):
                 object_id = oid.get(object_id)
                 full_data_update = object_data['full_data_update']
                 full_index_update = object_data['full_index_update']
+                full_ldif_update = object_data['full_ldif_update']
+                full_acl_update = object_data['full_acl_update']
                 index_journal = object_data['index_journal']
+                ldif_journal = object_data['ldif_journal']
+                acl_journal = object_data['acl_journal']
+                index_auto_update = object_data['index_auto_update']
+                ldif_auto_update = object_data['ldif_auto_update']
+                acl_auto_update = object_data['acl_auto_update']
                 object_config = object_data['object_config']
                 object_config = ObjectConfig(object_id, object_config)
                 object_config = object_config.decrypt(config.master_key)
@@ -2081,7 +2152,14 @@ class ClusterDaemon(OTPmeDaemon):
                                             cluster=False,
                                             full_data_update=full_data_update,
                                             full_index_update=full_index_update,
+                                            full_ldif_update=full_ldif_update,
+                                            full_acl_update=full_acl_update,
+                                            index_auto_update=index_auto_update,
+                                            ldif_auto_update=ldif_auto_update,
+                                            acl_auto_update=acl_auto_update,
                                             index_journal=index_journal,
+                                            ldif_journal=ldif_journal,
+                                            acl_journal=acl_journal,
                                             object_config=object_config)
                     except Exception as e:
                         msg = "Failed to write object: %s: %s" % (object_id, e)
@@ -2551,6 +2629,11 @@ class ClusterDaemon(OTPmeDaemon):
                             self.check_online_nodes(cluster_journal_entry)
                         continue
                     full_data_update = False
+                    acl_auto_update = True
+                    full_acl_update = False
+                    ldif_auto_update = True
+                    full_ldif_update = False
+                    index_auto_update = True
                     full_index_update = False
                     full_object_update = False
                     strip_object_config = True
@@ -2570,10 +2653,21 @@ class ClusterDaemon(OTPmeDaemon):
                             oc = backend.read_config(object_id)
                         if oc:
                             full_data_update = True
+                            full_acl_update = True
+                            acl_auto_update = False
+                            full_ldif_update = True
+                            ldif_auto_update = False
                             full_index_update = True
+                            index_auto_update = False
                             full_object_update = True
                             strip_object_config = False
                             object_config = oc.copy()
+                    acl_journal = []
+                    if not full_acl_update:
+                        acl_journal = cluster_journal_entry.acl_journal
+                    ldif_journal = []
+                    if not full_ldif_update:
+                        ldif_journal = cluster_journal_entry.ldif_journal
                     index_journal = []
                     if not full_index_update:
                         index_journal = cluster_journal_entry.index_journal
@@ -2606,7 +2700,14 @@ class ClusterDaemon(OTPmeDaemon):
                     try:
                         write_status = node_conn.write(object_id.full_oid,
                                                         object_config,
+                                                        acl_journal=acl_journal,
+                                                        ldif_journal=ldif_journal,
                                                         index_journal=index_journal,
+                                                        acl_auto_update=acl_auto_update,
+                                                        ldif_auto_update=ldif_auto_update,
+                                                        index_auto_update=index_auto_update,
+                                                        full_acl_update=full_acl_update,
+                                                        full_ldif_update=full_ldif_update,
                                                         full_data_update=full_data_update,
                                                         full_index_update=full_index_update)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:

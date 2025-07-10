@@ -265,7 +265,7 @@ class OTPmeLDIFHandler(object):
         if not dn_attribute in o.ldif_attributes:
             dn = self.build_dn(o, dn_attribute)
             if dn:
-                ldif.append(('dn', dn))
+                ldif.append(['dn', dn])
 
         # We can only continue if DN is complete.
         if not ldif_incomplete:
@@ -295,13 +295,13 @@ class OTPmeLDIFHandler(object):
                             msg = ("Got multiple values for single value "
                                     "attribute: %s: %s" % (at, at_val))
                             raise OTPmeException(msg)
-                        x_ldif = (at, at_val[0])
+                        x_ldif = [at, at_val[0]]
                         if x_ldif in ldif:
                             continue
                         ldif.append(x_ldif)
                     else:
                         for v in at_val:
-                            x_ldif = (at, v)
+                            x_ldif = [at, v]
                             if x_ldif in ldif:
                                 continue
                             ldif.append(x_ldif)
@@ -310,7 +310,7 @@ class OTPmeLDIFHandler(object):
             # Add object classes to LDIF.
             for oc in o.object_classes:
                 if oc in self.object_classes[o.type]:
-                    ldif.append(('objectClass', oc))
+                    ldif.append(['objectClass', oc])
 
             # Add all object attributes of this extension to LDIF.
             for at in o.get_extension_attributes(extension=self.name):
@@ -324,13 +324,13 @@ class OTPmeLDIFHandler(object):
                         msg = ("Got multiple values for single value "
                                 "attribute: %s: %s" % (at, at_val))
                         raise OTPmeException(msg)
-                    x_ldif = (at, at_val[0])
+                    x_ldif = [at, at_val[0]]
                     if x_ldif in ldif:
                         continue
                     ldif.append(x_ldif)
                 else:
                     for v in at_val:
-                        x_ldif = (at, v)
+                        x_ldif = [at, v]
                         if x_ldif in ldif:
                             continue
                         ldif.append(x_ldif)
@@ -351,7 +351,7 @@ class OTPmeLDIFHandler(object):
                         ldif_incomplete = True
 
             if o.type == "realm":
-                ldif.append(('subschemaSubentry', 'cn=Subschema'))
+                ldif.append(['subschemaSubentry', 'cn=Subschema'])
 
         # Only add LDIF stuff if its complete.
         if not ldif_incomplete:
@@ -548,7 +548,7 @@ class OTPmeLDIFHandler(object):
         o._add_extension_attribute(self.name, attribute, value,
                                     auto_value=auto_value,
                                     callback=callback)
-        o.add_ldif([(attribute, value)], position=position)
+        o.add_ldif([[attribute, value]], position=position)
 
     def del_attribute_value(self, o, attribute, value,
         callback=default_callback):
@@ -1060,6 +1060,6 @@ class OTPmeLDIFHandler(object):
                     % (old_name, new_name))
             raise OTPmeException(msg)
         # Add new DN.
-        o.add_ldif([("dn", dn)])
+        o.add_ldif([["dn", dn]])
 
         return callback.ok()

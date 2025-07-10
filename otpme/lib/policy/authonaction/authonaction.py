@@ -253,48 +253,14 @@ def register_policy_type():
 
 def register_policy_object():
     """ Register policy object. """
-    # Default hooks of auth-on-action policy for any in tree object.
-    auth_on_action_default_hooks = [
-                    'modify',
-                    'export',
-                    'delete',
-                    'get_acls',
-                ]
-    # Base policy hooks.
-    call_methods = [
-                    ({'add_hook': {'object_type': 'realm', 'hook_name': 'add_site'}},),
-                    ({'add_hook': {'object_type': 'site', 'hook_name': 'add_unit'}},),
-                    ({'add_hook': {'object_type': 'token', 'hook_name': 'get_otp'}},),
-                    ({'add_hook': {'object_type': 'token', 'hook_name': 'show_pin'}},),
-                    ({'add_hook': {'object_type': 'token', 'hook_name': 'gen_qrcode'}},),
-                ]
     # Register policy for all in-tree objects.
     for object_type in config.tree_object_types:
-        # Add default hooks.
-        for hook in auth_on_action_default_hooks:
-            method_kwargs = {
-                            'add_hook' : {
-                                            'object_type'   : object_type,
-                                            'hook_name'     : hook,
-                                        },
-                            }
-            call_methods.append((method_kwargs,))
-        # Add auth-on-action policy hooks for adding objects.
-        hook_name = "pre_add_%s" % object_type
-        method_kwargs = {
-                        'add_hook' : {
-                                    'object_type'   : 'unit',
-                                    'hook_name'     : hook_name,
-                                    },
-                        }
-        call_methods.append((method_kwargs,))
         # Register policy as default policy for new objects.
         config.register_default_policy(object_type, BASE_POLICY_NAME)
     # Register policy as base object.
     config.register_base_object(object_type="policy",
                                 name=BASE_POLICY_NAME,
-                                stype=POLICY_TYPE,
-                                call_methods=call_methods)
+                                stype=POLICY_TYPE)
 
 class AuthonactionPolicy(Policy):
     """ Class that implements OTPme auth on action policy. """
@@ -324,6 +290,8 @@ class AuthonactionPolicy(Policy):
         # For units we have to support the "add" hook for each in-tree object.
         for x in config.tree_object_types:
             hook = "pre_add_%s" % x
+            config.register_auth_on_action_hook('unit', hook)
+            hook = "post_add_%s" % x
             config.register_auth_on_action_hook('unit', hook)
 
         # Hooks that are valid for all object types we support.
@@ -618,8 +586,8 @@ class AuthonactionPolicy(Policy):
 
         if object_type in self.hooks:
             if hook_name in self.hooks[object_type]:
-                msg = ("Hook already added for this object type: %s: %s"
-                        % (object_type, hook_name)) + " " + self.name
+                msg = ("Hook already added for this object type: %s: %s: %s"
+                        % (object_type, hook_name, self.name))
                 return callback.error(msg)
 
         if run_policies:

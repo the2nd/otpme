@@ -315,6 +315,10 @@ def _reload():
 
 def stop():
     from otpme.lib import system_command
+    global engine
+    global Session
+    engine = None
+    Session = None
     if not status():
         msg = "Postgres not running."
         raise NotRunning(msg)

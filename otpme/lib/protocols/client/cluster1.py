@@ -43,13 +43,23 @@ class OTPmeClusterP1(OTPmeClient1):
         return reply
 
     def write(self, object_id, object_config, index_journal=None,
-        full_data_update=False, full_index_update=False):
+        ldif_journal=None, acl_journal=None, full_acl_update=False,
+        full_ldif_update=False, full_index_update=False,
+        index_auto_update=True, ldif_auto_update=True,
+        acl_auto_update=True, full_data_update=False):
         """ Send object to peer. """
         command = "write"
         command_args = {}
         command_args['object_id'] = object_id
         command_args['object_config'] = object_config
+        command_args['acl_journal'] = acl_journal
+        command_args['ldif_journal'] = ldif_journal
         command_args['index_journal'] = index_journal
+        command_args['acl_auto_update'] = acl_auto_update
+        command_args['ldif_auto_update'] = ldif_auto_update
+        command_args['index_auto_update'] = index_auto_update
+        command_args['full_acl_update'] = full_acl_update
+        command_args['full_ldif_update'] = full_ldif_update
         command_args['full_data_update'] = full_data_update
         command_args['full_index_update'] = full_index_update
         status, \

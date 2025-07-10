@@ -427,10 +427,11 @@ def read(object_id, parameters=None, no_lock=False, use_index=True):
     return object_config
 
 #@oid_lock(args_oid_pos=[0], write=True)
-def write(object_id, object_config, index_journal=None,
-    full_index_update=False, index_auto_update=False, no_lock=False,
-    commit_files=None, full_data_update=None, cluster=False,
-    wait_for_cluster_writes=True, no_index_writes=False,
+def write(object_id, object_config, index_journal=None, ldif_journal=None,
+    acl_journal=None, full_index_update=False, index_auto_update=False,
+    full_ldif_update=False, ldif_auto_update=False, full_acl_update=False,
+    acl_auto_update=False, no_lock=False, commit_files=None, full_data_update=None,
+    cluster=False, wait_for_cluster_writes=True, no_index_writes=False,
     parent_dir_check=True, no_transaction=False, transaction_replay=False):
     """ Write object config and update config cache. """
     from otpme.lib.backend import outdate_object
@@ -477,6 +478,12 @@ def write(object_id, object_config, index_journal=None,
         # Add object to transaction.
         _transaction.add_object(object_id=object_id,
                                 object_config=object_config,
+                                acl_journal=acl_journal,
+                                ldif_journal=ldif_journal,
+                                full_ldif_update=full_ldif_update,
+                                full_acl_update=full_acl_update,
+                                acl_auto_update=acl_auto_update,
+                                ldif_auto_update=ldif_auto_update,
                                 index_journal=index_journal,
                                 full_index_update=full_index_update,
                                 index_auto_update=index_auto_update,
@@ -573,6 +580,12 @@ def write(object_id, object_config, index_journal=None,
     index_handler.index_add(object_id,
                 object_paths=object_paths,
                 object_config=object_config,
+                acl_journal=acl_journal,
+                full_acl_update=full_acl_update,
+                acl_auto_update=acl_auto_update,
+                ldif_journal=ldif_journal,
+                full_ldif_update=full_ldif_update,
+                ldif_auto_update=ldif_auto_update,
                 index_journal=index_journal,
                 full_index_update=full_index_update,
                 index_auto_update=index_auto_update,
@@ -618,6 +631,8 @@ def write(object_id, object_config, index_journal=None,
     if cluster:
         write_transaction.cluster_write(object_uuid=uuid,
                                     object_id=object_id,
+                                    acl_journal=acl_journal,
+                                    ldif_journal=ldif_journal,
                                     index_journal=index_journal,
                                     object_config=object_config,
                                     wait_for_write=wait_for_cluster_writes)
@@ -1267,6 +1282,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             raise OTPmeException(msg)
         if not join_search_val:
             msg = "Missing <join_search_val>."
+            raise OTPmeException(msg)
         try:
             JoinIndexObject, \
             JoinIndexObjectAttribute, \
@@ -1484,11 +1500,14 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         # ACLs for each object returned by query.
         object_acls = {}
 
-        # Query to return all ACLs of selected objects.
+        # Query to return all given ACLs of selected objects.
         sub_query = acl_q.with_entities(IndexObject.id)
         acl_q = session.query(IndexObjectACL)
         acl_q = acl_q.join(IndexObject, IndexObjectACL.ioid == IndexObject.id)
         acl_q = acl_q.filter(IndexObjectACL.ioid.in_(sub_query))
+        # Select only given ACLs (verify_acls).
+        if verify_acls:
+            acl_q = acl_q.filter(IndexObjectACL.value.in_(verify_acls))
         acl_entities = tuple(list(entities) + [IndexObjectACL.value])
         acl_q = acl_q.with_entities(*acl_entities)
 
@@ -1882,8 +1901,9 @@ def index_restore(index_data, session=None, **kwargs):
 #@oid_lock(args_oid_pos=[0], write=True)
 def index_add(object_id, object_paths=None, object_config=None, uuid=None,
     checksum=None, sync_checksum=None, index_journal=[], index_auto_update=False,
-    full_index_update=False, object_acls=[], autocommit=True,
-    no_lock=False, session=None, **kwargs):
+    full_index_update=False, ldif_journal=[], full_ldif_update=False,
+    ldif_auto_update=False, acl_journal=[], acl_auto_update=False,
+    full_acl_update=False, autocommit=True, no_lock=False, session=None, **kwargs):
     """ Add object to search index. """
     #from sqlalchemy.sql import select
     from sqlalchemy.sql import delete
@@ -1895,6 +1915,18 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
         raise OTPmeException(msg)
     if full_index_update and index_auto_update:
         msg = "Cannot use <full_index_update> with <index_auto_update>."
+        raise OTPmeException(msg)
+    if full_ldif_update and not object_config:
+        msg = "Need <object_config> on full_ldif_update=True."
+        raise OTPmeException(msg)
+    if full_ldif_update and ldif_auto_update:
+        msg = "Cannot use <full_ldif_update> with <ldif_auto_update>."
+        raise OTPmeException(msg)
+    if full_acl_update and not object_config:
+        msg = "Need <object_config> on full_acl_update=True."
+        raise OTPmeException(msg)
+    if full_acl_update and acl_auto_update:
+        msg = "Cannot use <full_acl_update> with <acl_auto_update>."
         raise OTPmeException(msg)
 
     # Gen read OID of object.
@@ -1959,11 +1991,6 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
             sync_checksum = object_config['SYNC_CHECKSUM']
         except:
             sync_checksum = None
-        # Get object ACLs.
-        try:
-            object_acls = object_config['ACLS']
-        except:
-            object_acls = []
         # Get object template status.
         try:
             template = object_config['TEMPLATE']
@@ -1974,15 +2001,6 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
             object_ldif = object_config['LDIF']
         except:
             object_ldif = None
-
-    # Skip default ACLs.
-    oacls = []
-    if object_acls:
-        for x in object_acls:
-            acl = otpme_acl.decode(x)
-            if acl.default:
-                continue
-            oacls.append(x)
 
     # Check if the object already exists in the index DB.
     q = session.query(IndexObject)
@@ -2014,22 +2032,28 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
             index_object = None
 
     if not index_object:
+        full_acl_update = True
+        acl_auto_update = False
+        full_ldif_update = True
+        ldif_auto_update = False
         full_index_update = True
         index_auto_update = False
 
+    # Handle index auto update.
     if index_auto_update and index_object:
-        last_index_id = None
-        if index_object.last_index_id:
-            last_index_id = json.loads(index_object.last_index_id)
-        if last_index_id and last_index_id in index_journal:
-            index_auto_update_start_pos = index_journal.index(last_index_id) + 1
-            index_journal = index_journal.copy()
-            index_journal = index_journal[index_auto_update_start_pos:]
-        else:
-            if last_index_id:
-                msg = "Index journal out of sync. Will do a full index update: %s" % object_id
-                logger.info(msg)
-            full_index_update = True
+        if index_journal:
+            last_index_id = None
+            if index_object.last_index_id:
+                last_index_id = json.loads(index_object.last_index_id)
+            if last_index_id and last_index_id in index_journal:
+                index_auto_update_start_pos = index_journal.index(last_index_id) + 1
+                index_journal = index_journal.copy()
+                index_journal = index_journal[index_auto_update_start_pos:]
+            else:
+                if last_index_id:
+                    msg = "Index journal out of sync. Will do a full index update: %s" % object_id
+                    logger.info(msg)
+                full_index_update = True
 
     # Get object attributes from index DB.
     if full_index_update:
@@ -2037,7 +2061,7 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
         try:
             object_index = object_config['INDEX']
         except KeyError:
-            msg = "Unable to update object index: Missing 'INDEX'"
+            msg = "Unable to update object index: %s: Missing 'INDEX'" % object_id
             raise OTPmeException(msg)
 
     # Add/del attributes of existing object (update index).
@@ -2103,13 +2127,6 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
             now = time.time_ns()
             index_journal.append((now, "add", attr, value))
 
-    # If the object exists get its ACLs from index DB.
-    object_acls = None
-    if index_object:
-        q = session.query(IndexObjectACL)
-        x = q.filter(IndexObjectACL.ioid == index_object.id)
-        object_acls = x.all()
-
     # Handle index journal.
     attributes = []
     if index_journal:
@@ -2144,54 +2161,171 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
                 result = q.all()
                 for a in result:
                     session.delete(a)
-        if index_object:
+    if index_object:
+        if index_journal:
             last_index_id = json.dumps(index_journal[-1])
             index_object.last_index_id = last_index_id
+        elif full_index_update:
+            last_index_id = json.dumps("FULL")
+            index_object.last_index_id = last_index_id
 
-    # Make sure we remove orphan ACLs of an existing index object.
-    clear_acl_cache = False
-    if object_acls:
-        for i in object_acls:
-            del_acl = True
-            for x in oacls:
-                if i.value == x:
-                    del_acl = False
-                    break
-            if not del_acl:
+    # Handle ACL auto update.
+    if acl_auto_update and index_object:
+        if acl_journal:
+            last_acl_id = None
+            if index_object.last_acl_id:
+                last_acl_id = json.loads(index_object.last_acl_id)
+            if last_acl_id and last_acl_id in acl_journal:
+                acl_auto_update_start_pos = acl_journal.index(last_acl_id) + 1
+                acl_journal = acl_journal.copy()
+                acl_journal = acl_journal[acl_auto_update_start_pos:]
+            else:
+                if last_acl_id:
+                    msg = "ACL journal out of sync. Will do a full ACL update: %s" % object_id
+                    logger.info(msg)
+                full_acl_update = True
+
+    # Get object ACLs from index DB.
+    if full_acl_update:
+        # Get object ACLs.
+        try:
+            object_acls = object_config['ACLS']
+        except KeyError:
+            object_acls = []
+            full_acl_update = False
+            #msg = "Unable to update object index: %s: Missing 'ACLS'" % object_id
+            #raise OTPmeException(msg)
+        # Skip default ACLs.
+        for x in list(object_acls):
+            acl = otpme_acl.decode(x)
+            if not acl.default:
                 continue
-            clear_acl_cache = True
-            session.delete(i)
-            object_acls.remove(i)
+            object_acls.remove(x)
 
-    # Add ACLs.
-    acls = []
-    for acl in oacls:
-        # Check if we have to add the ACL.
-        add_acl = True
-        if object_acls:
-            for i in object_acls:
-                # No need to add the ACL if it already exists in the DB.
-                if i.value == acl:
-                    add_acl = False
-        if not add_acl:
-            continue
-        clear_acl_cache = True
-        # Add ACL.
-        a = IndexObjectACL(realm=object_realm,
-                        site=object_site,
-                        object_type=object_type,
-                        value=acl)
-        # If the object already exists in the DB we just have to add the
-        # new/changed ACL.
-        if index_object:
+    # Add/del ACLs of existing object (update index).
+    if full_acl_update and index_object and object_acls:
+        # Delete current attributes.
+        # https://github.com/sqlalchemy/sqlalchemy/issues/6300
+        sql_stmt = delete(IndexObjectACL)
+        sql_stmt = sql_stmt.where(IndexObjectACL.ioid == index_object.id)
+        session.execute(sql_stmt)
+        # Add new ACLs.
+        for raw_acl in object_acls:
+            # Add ACL.
+            a = IndexObjectACL(realm=object_realm,
+                            site=object_site,
+                            object_type=object_type,
+                            value=raw_acl)
             # Reference ACL to existing index object.
             a.ioid = index_object.id
             session.add(a)
-            #local_object = session.merge(a)
-            #session.add(local_object)
-        else:
-            # Add ACL to list of ACLs for the new index object.
-            acls.append(a)
+    elif full_acl_update:
+        acl_journal = []
+        for raw_acl in object_acls:
+            now = time.time_ns()
+            acl_journal.append([now, "add", raw_acl])
+
+    # Handle ACL journal.
+    acls = []
+    clear_acl_cache = False
+    if acl_journal:
+        for x_entry in acl_journal:
+            clear_acl_cache = True
+            x_entry_type = x_entry[1]
+            x_raw_acl = x_entry[2]
+
+            # Add attributes.
+            if x_entry_type == "add":
+                a = IndexObjectACL(realm=object_realm,
+                                site=object_site,
+                                object_type=object_type,
+                                value=x_raw_acl)
+                # If the object already exists in the DB we just have to add the
+                # new/changed ACL.
+                if index_object:
+                    # Reference attribute to existing index object.
+                    a.ioid = index_object.id
+                    session.add(a)
+                else:
+                    # Add attribute to list of ACLs for the new index object.
+                    acls.append(a)
+
+            if x_entry_type == "del":
+                if not index_object:
+                    continue
+                q = session.query(IndexObjectACL)
+                q = q.filter(IndexObjectACL.ioid == index_object.id)
+                q = q.filter(IndexObjectACL.value == x_raw_acl)
+                result = q.all()
+                for a in result:
+                    session.delete(a)
+    if index_object:
+        if acl_journal:
+            last_acl_id = json.dumps(acl_journal[-1])
+            index_object.last_acl_id = last_acl_id
+        elif full_acl_update:
+            last_acl_id = json.dumps("FULL")
+            index_object.last_acl_id = last_acl_id
+
+    # Handle LDIF auto update.
+    if ldif_auto_update and index_object:
+        if ldif_journal:
+            last_ldif_id = None
+            if index_object.last_ldif_id:
+                last_ldif_id = json.loads(index_object.last_ldif_id)
+            if last_ldif_id and last_ldif_id in ldif_journal:
+                ldif_auto_update_start_pos = ldif_journal.index(last_ldif_id) + 1
+                ldif_journal = ldif_journal.copy()
+                ldif_journal = ldif_journal[ldif_auto_update_start_pos:]
+            else:
+                if last_ldif_id:
+                    msg = "LDIF journal out of sync. Will do a full LDIF update: %s" % object_id
+                    logger.info(msg)
+                full_ldif_update = True
+
+    # Get object LDIF from index DB.
+    if full_ldif_update:
+        if not object_ldif:
+            full_ldif_update = False
+    elif ldif_auto_update and index_object:
+        object_ldif = json.loads(index_object.ldif)
+        for x in ldif_journal:
+            x_entry_action = x[1]
+            x_entry_data = x[2]
+            if x_entry_action == "add":
+                x_entry_position = x[3]
+                for x_data in x_entry_data:
+                    x_attr = x_data[0]
+                    x_val = x_data[1]
+                    try:
+                        cur_vals = object_ldif[x_attr]
+                    except KeyError:
+                        cur_vals = []
+                        object_ldif[x_attr] = cur_vals
+                    cur_vals.insert(x_entry_position, x_val)
+            elif x_entry_action == "del":
+                for x_data in x_entry_data:
+                    x_attr = x_data[0]
+                    x_val = x_data[1]
+                    try:
+                        cur_vals = object_ldif[x_attr]
+                    except KeyError:
+                        continue
+                    try:
+                        cur_vals.remove(x_val)
+                    except ValueError:
+                        pass
+            else:
+                msg = "Unknown action for ldif journal: %s" % x_entry_action
+                raise OTPmeException(msg)
+
+    if index_object:
+        if ldif_journal:
+            last_ldif_id = json.dumps(ldif_journal[-1])
+            index_object.last_ldif_id = last_ldif_id
+        elif full_ldif_update:
+            last_ldif_id = json.dumps("FULL")
+            index_object.last_ldif_id = last_ldif_id
 
     # Get object data (e.g. OTPme attributes and fs paths).
     object_name = object_id.name
@@ -2409,6 +2543,8 @@ def index_rebuild():
                 index_rebuild_data.pop(x_uuid)
             file_content = json.dumps(index_rebuild_data)
             filetools.create_file(index_rebuild_data_file, file_content)
+        # Stop index DB. This also clears current connections.
+        _index.stop()
 
     _index.command("drop")
     _index.command("init")

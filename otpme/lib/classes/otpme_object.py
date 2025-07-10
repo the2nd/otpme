@@ -610,6 +610,10 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.object_config = {}
         self.index_journal = []
         self.index_journal_archive = []
+        self.acl_journal = []
+        self.acl_journal_archive = []
+        self.ldif_journal = []
+        self.ldif_journal_archive = []
         self.no_transaction = no_transaction
         self.kwargs_object_config = object_config
         # Object version.
@@ -1513,6 +1517,12 @@ class OTPmeBaseObject(OTPmeLockObject):
         if self.index_journal:
             index_journal = copy.deepcopy(self.index_journal)
         self.index_journal = []
+        try:
+            last_archive_entry = self.index_journal_archive[-1]
+        except IndexError:
+            last_archive_entry = None
+        if last_archive_entry:
+            index_journal.insert(0, last_archive_entry)
         # Add index journal in loop to prevent more incremental updates than needed.
         for x in index_journal:
             self.index_journal_archive.append(x)
@@ -1533,10 +1543,74 @@ class OTPmeBaseObject(OTPmeLockObject):
                 continue
             self.index_journal_archive.remove(x)
 
+        # Process ACL journal.
+        acl_journal = []
+        if self.acl_journal:
+            acl_journal = copy.deepcopy(self.acl_journal)
+        self.acl_journal = []
+        try:
+            last_archive_entry = self.acl_journal_archive[-1]
+        except IndexError:
+            last_archive_entry = None
+        if last_archive_entry:
+            acl_journal.insert(0, last_archive_entry)
+        # Add ACL journal in loop to prevent more incremental updates than needed.
+        for x in acl_journal:
+            self.acl_journal_archive.append(x)
+        # Remove old ACL journal archive entries.
+        try:
+            last_journal_entry = acl_journal[-1]
+        except IndexError:
+            last_journal_entry = None
+        max_journal_archive_entries = 250
+        if last_journal_entry:
+            journal_id_pos = self.acl_journal_archive.index(last_journal_entry)
+            journal_archive_del_pos = len(self.acl_journal_archive) - max_journal_archive_entries
+            if journal_id_pos <= journal_archive_del_pos:
+                max_journal_archive_entries = len(self.acl_journal_archive) - journal_id_pos
+        new_acl_journal_archive = list(self.acl_journal_archive[-max_journal_archive_entries:])
+        for x in self.acl_journal_archive:
+            if x in new_acl_journal_archive:
+                continue
+            self.acl_journal_archive.remove(x)
+
+        # Process LDIF journal.
+        ldif_journal = []
+        if self.ldif_journal:
+            ldif_journal = copy.deepcopy(self.ldif_journal)
+        self.ldif_journal = []
+        try:
+            last_archive_entry = self.ldif_journal_archive[-1]
+        except IndexError:
+            last_archive_entry = None
+        if last_archive_entry:
+            ldif_journal.insert(0, last_archive_entry)
+        # Add ACL journal in loop to prevent more incremental updates than needed.
+        for x in ldif_journal:
+            self.ldif_journal_archive.append(x)
+        # Remove old ACL journal archive entries.
+        try:
+            last_journal_entry = ldif_journal[-1]
+        except IndexError:
+            last_journal_entry = None
+        max_journal_archive_entries = 250
+        if last_journal_entry:
+            journal_id_pos = self.ldif_journal_archive.index(last_journal_entry)
+            journal_archive_del_pos = len(self.ldif_journal_archive) - max_journal_archive_entries
+            if journal_id_pos <= journal_archive_del_pos:
+                max_journal_archive_entries = len(self.ldif_journal_archive) - journal_id_pos
+        new_ldif_journal_archive = list(self.ldif_journal_archive[-max_journal_archive_entries:])
+        for x in self.ldif_journal_archive:
+            if x in new_ldif_journal_archive:
+                continue
+            self.ldif_journal_archive.remove(x)
+
         # Update object config from variables.
         self.update_object_config()
 
         # Add incremental update stuff.
+        self.object_config['ACL_JOURNAL'] = acl_journal
+        self.object_config['LDIF_JOURNAL'] = ldif_journal
         self.object_config['INDEX_JOURNAL'] = index_journal
         self.object_config['LIST_ATTRIBUTES'] = self.list_attributes
         self.object_config['DICT_ATTRIBUTES'] = self.dict_attributes
@@ -1570,7 +1644,12 @@ class OTPmeBaseObject(OTPmeLockObject):
                         cluster=cluster,
                         wait_for_cluster_writes=wait_for_cluster_writes,
                         no_transaction=self.no_transaction,
-                        index_journal=index_journal)
+                        index_auto_update=True,
+                        ldif_auto_update=True,
+                        acl_auto_update=True,
+                        index_journal=index_journal,
+                        ldif_journal=ldif_journal,
+                        acl_journal=acl_journal)
         except Exception as e:
             config.raise_exception()
             msg = (_("Error writing config for %s '%s': %s")
@@ -1801,6 +1880,7 @@ class OTPmeObject(OTPmeBaseObject):
                             "LDIF_ATTRIBUTES",
                             "EXTENSION_ATTRIBUTES",
                             "INDEX_JOURNAL_ARCHIVE",
+                            "ACL_JOURNAL_ARCHIVE",
                             "POLICIES",
                             "POLICY_OPTIONS",
                             "CONFIG_PARAMS",
@@ -1831,6 +1911,7 @@ class OTPmeObject(OTPmeBaseObject):
                             "LDIF_ATTRIBUTES",
                             "EXTENSION_ATTRIBUTES",
                             "INDEX_JOURNAL_ARCHIVE",
+                            "ACL_JOURNAL_ARCHIVE",
                             "ENABLED",
                             "UNUSED_DISABLE",
                             "AUTO_DISABLE",
@@ -2250,6 +2331,18 @@ class OTPmeObject(OTPmeBaseObject):
 
             'INDEX_JOURNAL_ARCHIVE'      : {
                                             'var_name'      : 'index_journal_archive',
+                                            'type'          : list,
+                                            'required'      : False,
+                                        },
+
+            'LDIF_JOURNAL_ARCHIVE'       : {
+                                            'var_name'      : 'ldif_journal_archive',
+                                            'type'          : list,
+                                            'required'      : False,
+                                        },
+
+            'ACL_JOURNAL_ARCHIVE'       : {
+                                            'var_name'      : 'acl_journal_archive',
                                             'type'          : list,
                                             'required'      : False,
                                         },
@@ -4958,6 +5051,9 @@ class OTPmeObject(OTPmeBaseObject):
 
         self.add_ldif_attributes(ldif)
 
+        now = time.time_ns()
+        self.ldif_journal.append([now, "add", ldif, position])
+
         # Invalidate LDIF cache.
         ldif_cache.invalidate()
         ldap_search_cache.invalidate()
@@ -4982,6 +5078,9 @@ class OTPmeObject(OTPmeBaseObject):
                 self.ldif.pop(a)
 
         self.del_ldif_attributes(ldif)
+
+        now = time.time_ns()
+        self.ldif_journal.append([now, "del", ldif])
 
         ldif_cache.invalidate()
         ldap_search_cache.invalidate()
@@ -5935,6 +6034,8 @@ class OTPmeObject(OTPmeBaseObject):
                     # Add ACL.
                     if raw_acl not in self.acls:
                         self.acls.append(raw_acl)
+                        now = time.time_ns()
+                        self.acl_journal.append([now, action, raw_acl])
                         msg = (_("Adding ACL %(resolved_acl)s to %(object_id)s")
                                 % {"resolved_acl":resolved_acl,
                                 "object_id":self.oid})
@@ -5951,11 +6052,13 @@ class OTPmeObject(OTPmeBaseObject):
                         if verbose_level > 0:
                             callback.send(msg)
                         self.acls.remove(raw_acl)
+                        now = time.time_ns()
+                        self.acl_journal.append([now, action, raw_acl])
 
             # Add this object to be written at the end of this
             # method call (loop).
             if object_modified:
-                if not self in _acl_objects:
+                if self not in _acl_objects:
                     _acl_objects.append(self)
 
         # Call child class method (e.g. to inherit ACLs)
@@ -7397,6 +7500,18 @@ class OTPmeObject(OTPmeBaseObject):
         msg = "Adding %s: %s" % (self.type, self.name)
         callback.send(msg)
 
+        if handle_uuid:
+            if self.uuid is None:
+                if uuid:
+                    for t in config.tree_object_types:
+                        x = backend.get_object(object_type=t, uuid=uuid)
+                        if x:
+                            msg = (_("UUID conflict: %s <> %s") % (self.oid, x.oid))
+                            return callback.error(msg)
+                    self.uuid = uuid
+                else:
+                    self.uuid = stuff.gen_uuid()
+
         # Add policies from template.
         if template:
             for x in template.get_policies():
@@ -7430,18 +7545,6 @@ class OTPmeObject(OTPmeBaseObject):
                 config.raise_exception()
                 msg = str(e)
                 return callback.error(msg)
-
-        if handle_uuid:
-            if self.uuid is None:
-                if uuid:
-                    for t in config.tree_object_types:
-                        x = backend.get_object(object_type=t, uuid=uuid)
-                        if x:
-                            msg = (_("UUID conflict: %s <> %s") % (self.oid, x.oid))
-                            return callback.error(msg)
-                    self.uuid = uuid
-                else:
-                    self.uuid = stuff.gen_uuid()
 
         # Make sure object is updated in modified objects (e.g. transaction).
         # We need a object UUID for this!!

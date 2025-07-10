@@ -63,11 +63,18 @@ def register_backend():
             return
         x_dir_name = os.path.dirname(path)
         x_dir_name = os.path.dirname(x_dir_name)
+        x_dir_name = os.path.dirname(x_dir_name)
+        x_dir_name = os.path.dirname(x_dir_name)
         x_dir_name = os.path.basename(x_dir_name)
         if x_dir_name != path_id:
             return
-        object_realm = config.realm
-        object_site = config.site
+        object_realm = os.path.dirname(path)
+        object_realm = os.path.dirname(object_realm)
+        object_realm = os.path.dirname(object_realm)
+        object_realm = os.path.basename(object_realm)
+        object_site = os.path.dirname(path)
+        object_site = os.path.dirname(object_site)
+        object_site = os.path.basename(object_site)
         signer_uuid = os.path.dirname(path)
         signer_uuid = os.path.basename(signer_uuid)
         signature_hash = os.path.basename(path)
@@ -79,9 +86,12 @@ def register_backend():
         return object_id
     def path_getter(object_id):
         revoked_signs_dir = backend.get_data_dir(path_id)
+        realm = object_id.realm
+        site = object_id.site
         sign_hash = object_id.signature_hash
         signer_uuid = object_id.signer_uuid
-        config_dir = os.path.join(revoked_signs_dir, signer_uuid)
+        config_dir = os.path.join(revoked_signs_dir, realm, site)
+        config_dir = os.path.join(config_dir, signer_uuid)
         config_dir = os.path.join(config_dir, sign_hash)
         config_file = os.path.join(config_dir, config.object_config_file_name)
         config_paths = {}
@@ -92,24 +102,29 @@ def register_backend():
         return config_paths
     def index_rebuild():
         revoked_sign_dir = backend.get_data_dir(path_id)
-        for user_uuid in filetools.list_dir(revoked_sign_dir):
-            if not stuff.is_uuid(user_uuid):
-                continue
-            revoked_signs_dir = os.path.join(revoked_sign_dir, user_uuid)
-            revoked_sign_files = filetools.list_dir(revoked_signs_dir)
-            counter = 0
-            files_count = len(revoked_sign_files)
-            for x in revoked_sign_files:
-                counter += 1
-                x_path = os.path.join(revoked_signs_dir, x)
-                x_file = os.path.join(x_path, config.object_config_file_name)
-                msg = ("Processing %s (%s/%s): %s"
-                    % (path_id, counter, files_count, x_file))
-                logger.debug(msg)
-                x_oid = oid_getter(x_path)
-                backend.index_add(object_id=x_oid,
-                                object_config="auto",
-                                full_index_update=True)
+        for realm_dir in filetools.list_dir(revoked_sign_dir):
+            realm_dir = os.path.join(revoked_sign_dir, realm_dir)
+            for sites_dir in filetools.list_dir(realm_dir):
+                sites_dir = os.path.join(realm_dir, sites_dir)
+                for user_uuid in filetools.list_dir(sites_dir):
+                    if not stuff.is_uuid(user_uuid):
+                        continue
+                    revoked_signs_dir = os.path.join(sites_dir, user_uuid)
+                    revoked_sign_files = filetools.list_dir(revoked_signs_dir)
+                    counter = 0
+                    files_count = len(revoked_sign_files)
+                    for x in revoked_sign_files:
+                        counter += 1
+                        x_path = os.path.join(revoked_signs_dir, x)
+                        x_file = os.path.join(x_path, config.object_config_file_name)
+                        msg = ("Processing %s (%s/%s): %s"
+                            % (path_id, counter, files_count, x_file))
+                        logger.debug(msg)
+                        x_oid = oid_getter(x_path)
+                        print("IIIIIII", x_oid)
+                        backend.index_add(object_id=x_oid,
+                                        object_config="auto",
+                                        full_index_update=True)
     # Register object to config.
     config.register_object_type(object_type="revoked_signature",
                             tree_object=False,

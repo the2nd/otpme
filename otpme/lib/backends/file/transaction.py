@@ -805,7 +805,8 @@ class FileTransaction(BaseTransaction):
         # Call parent class write method to finalize write.
         return super(FileTransaction, self)._write()
 
-    def cluster_write(self, object_uuid, object_id, index_journal, object_config, wait_for_write=True):
+    def cluster_write(self, object_uuid, object_id, index_journal,
+        ldif_journal, acl_journal, object_config, wait_for_write=True):
         """ Cluster write action. """
         action = "cluster_write"
         journal_file = self.get_journal_file(action)
@@ -813,6 +814,8 @@ class FileTransaction(BaseTransaction):
                         'action'            : action,
                         'object_uuid'       : object_uuid,
                         'object_id'         : object_id.full_oid,
+                        'acl_journal'       : acl_journal,
+                        'ldif_journal'      : ldif_journal,
                         'index_journal'     : index_journal,
                         'object_config'     : object_config,
                         'wait_for_write'    : wait_for_write,
@@ -1062,6 +1065,8 @@ class FileTransaction(BaseTransaction):
                 if not self.no_disk_writes:
                     wait_for_write = journal_entry['wait_for_write']
                     object_config = journal_entry['object_config']
+                    acl_journal = journal_entry['acl_journal']
+                    ldif_journal = journal_entry['ldif_journal']
                     index_journal = journal_entry['index_journal']
                     object_uuid = journal_entry['object_uuid']
                     object_id = journal_entry['object_id']
@@ -1077,6 +1082,8 @@ class FileTransaction(BaseTransaction):
                                                     object_id=object_id,
                                                     object_data=object_config,
                                                     checksum=object_checksum,
+                                                    acl_journal=acl_journal,
+                                                    ldif_journal=ldif_journal,
                                                     index_journal=index_journal,
                                                     wait_for_write=wait_for_write)
                     if cluster_event:
