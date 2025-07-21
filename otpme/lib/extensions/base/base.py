@@ -250,12 +250,15 @@ class OTPmeExtension(OTPmeLDIFHandler):
     def change_description(self, o, callback=default_callback, **kwargs):
         """ Handle change_description hook. """
         if o.description:
-            self.add_attribute_value(o=o,
-                                attribute='description',
-                                value=o.description,
-                                verify=True,
-                                auto_value=True,
-                                callback=callback)
+            try:
+                self.add_attribute_value(o=o,
+                                    attribute='description',
+                                    value=o.description,
+                                    verify=True,
+                                    auto_value=True,
+                                    callback=callback)
+            except AlreadyExists:
+                pass
         else:
             self.del_attribute(o=o, a="description", callback=callback)
         return callback.ok()
@@ -273,13 +276,14 @@ class OTPmeExtension(OTPmeLDIFHandler):
         dn = self.build_dn(o, dn_attribute)
         o.add_ldif([["dn", dn]])
         # Update location.
-        self.del_attribute(o=o, a="l", callback=callback)
-        self.add_attribute_value(o=o,
-                            attribute="l",
-                            value=o.site,
-                            verify=True,
-                            auto_value=True,
-                            callback=callback)
+        if o.type == "user":
+            self.del_attribute(o=o, a="l", callback=callback)
+            self.add_attribute_value(o=o,
+                                attribute="l",
+                                value=o.site,
+                                verify=True,
+                                auto_value=True,
+                                callback=callback)
         return callback.ok()
 
     def update_modified_timestamp(self, o, callback=default_callback, **kwargs):

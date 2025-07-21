@@ -232,7 +232,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         except KeyError:
             pass
 
-    def get_method_args(self, command_args, args, opt_args):
+    def get_method_args(self, command_args, args, _args, opt_args, _opt_args, _dargs):
         """ Return requested args from command_args + global args """
         _method_args = {}
         # Method arguments that will be passed to all methods (if present)
@@ -249,28 +249,44 @@ class OTPmeMgmtP1(OTPmeServer1):
                 pass
 
         # Get mandatory args.
-        for a in args:
+        for a in _args:
+            if a in global_args:
+                continue
             try:
-                _method_args[a] = command_args[a]
-                command_args.pop(a)
-            except:
-                # Try to get default value from method args.
+                _method_args[a] = command_args.pop(a)
+            except KeyError:
                 try:
                     _method_args[a] = args[a]
-                except:
-                    # If args and command_args misses a required arg the
-                    # command is incomplete.
-                    return False
+                except KeyError:
+                    try:
+                        _method_args[a] = _dargs[a]
+                    except KeyError:
+                        # If args and command_args misses a required arg the
+                        # command is incomplete.
+                        msg = "Missing required argument: %s" % a
+                        raise OTPmeException(msg)
 
         # Get optional args.
-        for a in opt_args:
-            if opt_args[a] is None:
+        for a in _opt_args:
+            if a in global_args:
+                continue
+            if a in args:
+                continue
+            try:
+                _method_args[a] = command_args.pop(a)
+            except KeyError:
                 try:
-                    _method_args[a] = command_args.pop(a)
+                    _method_args[a] = opt_args[a]
                 except KeyError:
-                    pass
-            else:
-                _method_args[a] = opt_args[a]
+                    try:
+                        _method_args[a] = _dargs[a]
+                    except KeyError:
+                        pass
+
+        for a in _dargs:
+            if a in _method_args:
+                continue
+            _method_args[a] = _dargs[a]
 
         # Make sure we pass only allowed API callers.
         try:
@@ -286,14 +302,14 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         return _method_args
 
-    def start_job(self, name, target_method, args={}, opt_args={},
-        command_args={}, thread=True, process=False):
+    def start_job(self, name, target_method, args={}, _args={}, opt_args={},
+        _opt_args={}, _dargs={}, command_args={}, thread=True, process=False):
         """ Start command as child process. """
         if len(self.running_jobs) >= self.max_jobs:
             job_reply = "Max jobs reached (%s)" % self.max_jobs
             return False, job_reply
         # Get method args from command_args
-        _method_args = self.get_method_args(command_args, args, opt_args)
+        _method_args = self.get_method_args(command_args, args, _args, opt_args, _opt_args, _dargs)
         _caller = _method_args['_caller']
 
         # Get timeout arg.
@@ -778,6 +794,70 @@ class OTPmeMgmtP1(OTPmeServer1):
                 moved_objects[x_src_oid.full_oid] = {}
                 moved_objects[x_src_oid.full_oid]['uuid'] = move_object.uuid
                 moved_objects[x_src_oid.full_oid]['dst'] = move_object.oid.full_oid
+            elif x_src_oid.object_type == "group":
+                try:
+                    x_path = objects[x_src_oid]['path']
+                except KeyError:
+                    message = "Missing group path."
+                    status = False
+                    return self.build_response(status, message)
+                path_data = oid.resolve_path(object_path=x_path,
+                                            object_type="unit")
+                unit_rel_path = path_data['rel_path']
+                result = backend.search(object_type="unit",
+                                        attribute="rel_path",
+                                        value=unit_rel_path,
+                                        return_type="instance",
+                                        realm=config.realm,
+                                        site=config.site)
+                if not result:
+                    message = "Unknown unit: %s" % unit_rel_path
+                    status = False
+                    return self.build_response(status, message)
+                dst_unit = result[0]
+                if not dst_unit.verify_acl("add:group"):
+                    message = "Permission denied: %s" % dst_unit.path
+                    status = False
+                    return self.build_response(status, message)
+                try:
+                    backend.delete_object(x_src_oid)
+                except UnknownObject:
+                    pass
+                except Exception as e:
+                    message = "Failed to delete object: %s: %s" % (x_src_oid, e)
+                    status = False
+                    return self.build_response(status, message)
+                try:
+                    move_object = backend.get_instance_from_oid(x_src_oid, x_oc)
+                except Exception as e:
+                    message = "Failed to load object: %s: %s" % (x_src_oid, e)
+                    status = False
+                    return self.build_response(status, message)
+                x_dst_oid = "%s|%s/%s/%s/%s" % (x_src_oid.object_type,
+                                            config.realm,
+                                            config.site,
+                                            unit_rel_path,
+                                            x_src_oid.name)
+                x_dst_oid = oid.get(x_dst_oid)
+                move_object.realm = config.realm
+                move_object.site = config.site
+                move_object.realm_uuid = config.realm_uuid
+                move_object.site_uuid = config.site_uuid
+                move_object.set_oid(new_oid=x_dst_oid)
+                move_object.unit_uuid = dst_unit.uuid
+                move_object.set_unit()
+                move_object.update_after_move()
+                move_object.update_extensions("site_move")
+                for policy_name in x_policies:
+                    policy_oid = "policy|hboss.intern/koeln/%s" % policy_name
+                    policy_oid = oid.get(policy_oid)
+                    if not backend.object_exists(policy_oid):
+                        continue
+                    move_object.add_policy(policy_name, verify_acls=False)
+                move_object._write()
+                moved_objects[x_src_oid.full_oid] = {}
+                moved_objects[x_src_oid.full_oid]['uuid'] = move_object.uuid
+                moved_objects[x_src_oid.full_oid]['dst'] = move_object.oid.full_oid
             else:
                 message = "Unknown object type to move: %s" % x_src_oid.object_type
                 status = False
@@ -1218,7 +1298,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 response = "Error running search: %s" % e
                 status = False
             except Exception as e:
-                config.raise_exception()
+                #config.raise_exception()
                 response = "Internal server error."
                 msg = "Unhandled exception running search: %s" % e
                 logger.critical(msg)
@@ -1623,13 +1703,12 @@ class OTPmeMgmtP1(OTPmeServer1):
                     status = False
                     response = str(e)
                 if object_id:
-                    args = {'object_id' : object_id}
                     try:
                         status, \
                         response = self.start_job(name="delete_object",
                                             target_method=delete_object,
-                                            args=args, opt_args={},
                                             command_args=command_args,
+                                            _args=['object_id'],
                                             process=True,
                                             thread=False)
                     except Exception as e:
@@ -1976,42 +2055,27 @@ class OTPmeMgmtP1(OTPmeServer1):
                     if object_identifier:
                         opt_args['search_regex'] = object_identifier
 
-            # Get default args.
-            try:
-                _dargs = command_map[x_type][object_status][subcommand]['dargs']
-            except KeyError:
-                try:
-                    _dargs = command_map[object_type][object_status][subcommand]['dargs']
-                except KeyError:
-                    _dargs = []
-            for i in _dargs:
-                if i in args:
-                    continue
-                # Try to get default value.
-                try:
-                    args[i] = command_map[x_type][object_status][subcommand]['dargs'][i]
-                except KeyError:
-                    args[i] = None
-            # Merge method args from dict.
+            # Get required args.
             try:
                 _args = command_map[x_type][object_status][subcommand]['args']
             except KeyError:
                 try:
                     _args = command_map[object_type][object_status][subcommand]['args']
                 except KeyError:
-                    _args = []
-            for i in _args:
-                if i in args:
-                    continue
-                # Try to get default value.
-                try:
-                    args[i] = command_map[x_type][object_status][subcommand]['dargs'][i]
-                except KeyError:
-                    try:
-                        args[i] = command_map[object_type][object_status][subcommand]['dargs'][i]
-                    except KeyError:
-                        args[i] = None
+                    _args = {}
+            #for i in _args:
+            #    if i in args:
+            #        continue
+            #    # Try to get default value.
+            #    try:
+            #        args[i] = command_map[x_type][object_status][subcommand]['dargs'][i]
+            #    except KeyError:
+            #        try:
+            #            args[i] = command_map[object_type][object_status][subcommand]['dargs'][i]
+            #        except KeyError:
+            #            args[i] = None
 
+            # Get optional args.
             try:
                 _opt_args = command_map[x_type][object_status][subcommand]['oargs']
             except:
@@ -2019,17 +2083,34 @@ class OTPmeMgmtP1(OTPmeServer1):
                     _opt_args = command_map[object_type][object_status][subcommand]['oargs']
                 except KeyError:
                     _opt_args = []
-            for i in _opt_args:
-                if i in opt_args:
-                    continue
-                # Try to get default value.
+            #for i in _opt_args:
+            #    if i in opt_args:
+            #        continue
+            #    # Try to get default value.
+            #    try:
+            #        opt_args[i] = command_map[x_type][object_status][subcommand]['dargs'][i]
+            #    except:
+            #        try:
+            #            opt_args[i] = command_map[object_type][object_status][subcommand]['dargs'][i]
+            #        except:
+            #            opt_args[i] = None
+
+            # Get default args.
+            try:
+                _dargs = command_map[x_type][object_status][subcommand]['dargs']
+            except KeyError:
                 try:
-                    opt_args[i] = command_map[x_type][object_status][subcommand]['dargs'][i]
-                except:
-                    try:
-                        opt_args[i] = command_map[object_type][object_status][subcommand]['dargs'][i]
-                    except:
-                        opt_args[i] = None
+                    _dargs = command_map[object_type][object_status][subcommand]['dargs']
+                except KeyError:
+                    _dargs = {}
+            #for i in _dargs:
+            #    if i in args:
+            #        continue
+            #    # Try to get default value.
+            #    try:
+            #        args[i] = command_map[x_type][object_status][subcommand]['dargs'][i]
+            #    except KeyError:
+            #        args[i] = None
 
             try:
                 job_type = command_map[x_type][object_status][subcommand]['job_type']
@@ -2062,7 +2143,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 job_name = "%s %s" % (job_name, object_name)
 
             if job_type is None:
-                _method_args = self.get_method_args(command_args, args, opt_args)
+                _method_args = self.get_method_args(command_args, args, _args, opt_args, _opt_args, _dargs)
                 try:
                     response = command_method(**_method_args)
                     status = True
@@ -2075,7 +2156,10 @@ class OTPmeMgmtP1(OTPmeServer1):
                     status, \
                     response = self.start_job(name=job_name,
                                         target_method=command_method,
-                                        args=args, opt_args=opt_args,
+                                        args=args, _args=_args,
+                                        opt_args=opt_args,
+                                        _opt_args=_opt_args,
+                                        _dargs=_dargs,
                                         command_args=command_args,
                                         process=job_process,
                                         thread=job_thread)

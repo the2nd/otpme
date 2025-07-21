@@ -859,6 +859,7 @@ class OTPmeSyncP1(OTPmeClient1):
 
         # Merge all updates.
         object_counter = 0
+        update_realm_ca_data = False
         site_oid = oid.get(object_type="site", realm=realm, name=site)
         for object_type in add_order:
             # Get object list.
@@ -1107,19 +1108,13 @@ class OTPmeSyncP1(OTPmeClient1):
                         if site == own_site:
                             if config.master_node:
                                 cluster = True
-                index_journal = new_object.index_journal_archive.copy()
-                ldif_journal = new_object.ldif_journal_archive.copy()
-                acl_journal = new_object.acl_journal_archive.copy()
                 try:
                     backend.write_config(object_id,
                                     instance=new_object,
-                                    index_auto_update=True,
-                                    index_journal=index_journal,
-                                    ldif_auto_update=True,
-                                    ldif_journal=ldif_journal,
-                                    acl_auto_update=True,
-                                    acl_journal=acl_journal,
                                     full_data_update=True,
+                                    full_index_update=True,
+                                    full_ldif_update=True,
+                                    full_acl_update=True,
                                     cluster=cluster)
                     self.synced_objects.append(object_id)
                 except Exception as e:
@@ -1157,6 +1152,18 @@ class OTPmeSyncP1(OTPmeClient1):
                             except Exception as e:
                                 msg = "Unable to add signer cache: %s: %s" % (object_id, e)
                                 self.logger.critical(msg)
+
+                if new_object.type == "ca":
+                    update_realm_ca_data = True
+
+            # Update realm CA data if the master node  received a changed CA.
+            if update_realm_ca_data:
+                if config.realm_master_node:
+                    msg = "Updating realm CA data..."
+                    self.logger.info(msg)
+                    realm = backend.get_object(uuid=config.realm_uuid)
+                    realm.update_ca_data(verify_acls=False)
+
 
     def remove_deleted_objects(self, realm, site, local_sync_list,
         remote_sync_list, sync_params):

@@ -252,11 +252,12 @@ def write_config(
     index_journal: Union[List,None]=[],
     ldif_journal: Union[List,None]=[],
     acl_journal: Union[List,None]=[],
-    index_auto_update: bool=False,
-    ldif_auto_update: bool=False,
-    acl_auto_update: bool=False,
+    use_index_journal: bool=False,
+    use_ldif_journal: bool=False,
+    use_acl_journal: bool=False,
     no_transaction: bool=False,
-    encrypt: bool=True
+    encrypt: bool=True,
+    **kwargs
     ):
     """ Write object config to backend and update config cache. """
     # Get logger.
@@ -268,20 +269,11 @@ def write_config(
     if full_index_update and index_journal:
         msg = "You can use only one of <full_index_update> or <index_journal>."
         raise OTPmeException(msg)
-    if full_index_update and index_auto_update:
-        msg = "You can use only one of <full_index_update> or <index_auto_update>."
-        raise OTPmeException(msg)
     if full_acl_update and acl_journal:
         msg = "You can use only one of <full_acl_update> or <acl_journal>."
         raise OTPmeException(msg)
-    if full_acl_update and acl_auto_update:
-        msg = "You can use only one of <full_acl_update> or <acl_auto_update>."
-        raise OTPmeException(msg)
     if full_ldif_update and ldif_journal:
         msg = "You can use only one of <full_ldif_update> or <ldif_journal>."
-        raise OTPmeException(msg)
-    if full_ldif_update and ldif_auto_update:
-        msg = "You can use only one of <full_ldif_update> or <ldif_auto_update>."
         raise OTPmeException(msg)
 
     # Replay any leftover transaction.
@@ -309,12 +301,13 @@ def write_config(
                     full_data_update=full_data_update,
                     full_ldif_update=full_ldif_update,
                     full_acl_update=full_acl_update,
-                    index_auto_update=index_auto_update,
-                    ldif_auto_update=ldif_auto_update,
-                    acl_auto_update=acl_auto_update,
+                    use_index_journal=use_index_journal,
+                    use_ldif_journal=use_ldif_journal,
+                    use_acl_journal=use_acl_journal,
                     no_transaction=no_transaction,
                     wait_for_cluster_writes=wait_for_cluster_writes,
-                    cluster=cluster)
+                    cluster=cluster,
+                    **kwargs)
     # Update config cache.
     if write_status:
         # With an active transaction the object gets outdated
@@ -764,7 +757,7 @@ def get_sync_list(
         if not result:
             continue
         user_oid = result[0]
-        if not user_oid in _skip_list:
+        if user_oid not in _skip_list:
             _skip_list.append(user_oid)
         if "token" in object_types:
             search_regex = "%s/*" % user_name

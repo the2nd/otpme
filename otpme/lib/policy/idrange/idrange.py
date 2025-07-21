@@ -83,7 +83,6 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'args'              : ['policy_name'],
                     'job_type'          : 'process',
                     },
                 },
@@ -570,9 +569,9 @@ class IdrangePolicy(Policy):
                     x_range_end = int(x_range_split.split("-")[1])
                     found_overlap = False
                     if x_range_start in test_range:
-                        found_overlap = False
+                        found_overlap = True
                     if x_range_end in test_range:
-                        found_overlap = False
+                        found_overlap = True
                     if found_overlap:
                         overlap_range = x
                         overlap_policy = x_policy
@@ -677,7 +676,7 @@ class IdrangePolicy(Policy):
     def set_last_assigned(self, idrange, attribute, id,
         callback=default_callback, **kwargs):
         """ Set last assigend ID. """
-        if not attribute in self.id_ranges:
+        if attribute not in self.id_ranges:
             msg = (_("No range configured for attribute: %s")
                 % attribute)
             return callback.error(msg, exception=self.policy_exception)
@@ -686,8 +685,8 @@ class IdrangePolicy(Policy):
                                         id_type=attribute,
                                         last_assigned_id=id,
                                         realm=self.realm,
-                                        site=self.site,
-                                        no_transaction=True)
+                                        site=self.site)
+                                        #no_transaction=True)
         if last_assigned_id.exists():
             return True
         # Write last assigend ID object to backend.
@@ -700,6 +699,7 @@ class IdrangePolicy(Policy):
             add_result = False
         return add_result
 
+    @backend.transaction
     def get_last_assigned(self, idrange, attribute,
         callback=default_callback, **kwargs):
         """ Get last assigend ID. """

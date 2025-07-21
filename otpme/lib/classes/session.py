@@ -365,7 +365,7 @@ class Session(OTPmeLockObject):
 
     def build_index(self):
         # Add index.
-        self.index = []
+        self.index = {}
         self.add_index("session_id", self.session_id)
         self.add_index("user_uuid", self.user_uuid)
         self.add_index("token_uuid", self.auth_token)
@@ -381,25 +381,42 @@ class Session(OTPmeLockObject):
                                 site=self.site,
                                 name=self.name)
 
-    def add_index(self, key: str, value: Union[str,int,float]):
+    def add_index(
+        self,
+        key: Union[str,int,float],
+        value: Union[str,int,float,None],
+        ):
         """ Add attribute to session index. """
-        if [key, value] in self.index:
+        try:
+            values = self.index[key]
+        except KeyError:
+            self.index[key] = []
+            values = self.index[key]
+        if value in values:
             return
-        self.index.append([key, value])
+        values.append(value)
 
-    def del_index(self, key: str, value: Union[str,int,float,None]=None):
-        """ Remove attribute from object index. """
+    def del_index(
+        self,
+        key: Union[str,int,float],
+        value: Union[str,int,float,None]=None,
+        ):
+        """ Remove attribute from session index. """
+        try:
+            values = self.index[key]
+        except KeyError:
+            self.index[key] = []
+            values = self.index[key]
         if value is not None:
             try:
-                self.index.remove([key, value])
-            except:
+                values.remove(value)
+            except ValueError:
                 pass
             return
-        for x in list(self.index):
-            x_key = x[0]
-            if x_key != key:
-                continue
-            self.index.remove(x)
+        try:
+            self.index.pop(key)
+        except KeyError:
+            pass
 
     def gen_session_id(self):
         """ Gen session ID. """

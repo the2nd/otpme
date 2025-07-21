@@ -6,6 +6,8 @@ import time
 import socket
 import psutil
 import setproctitle
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -491,7 +493,27 @@ class ListenSocket(object):
 
         # FIXME: DOES this work withouth SSL context?
         if self.use_ssl:
-            peer_cert = client_conn.getpeercert()
+            peer_cert = client_conn.getpeercert(binary_form=True)
+            if peer_cert:
+                cert = x509.load_der_x509_certificate(peer_cert, default_backend())
+                cert_cn = cert.subject.rfc4514_string()
+                for x in cert_cn.split(","):
+                    if not x.startswith("CN="):
+                        continue
+                    cert_cn = x.split("=")[1]
+                    break
+                cert_issuer = cert.issuer.rfc4514_string()
+                for x in cert_issuer.split(","):
+                    if not x.startswith("CN="):
+                        continue
+                    cert_issuer = x.split("=")[1]
+                    break
+                cert_serial_number = cert.serial_number
+                peer_cert = {
+                            'cn'            : cert_cn,
+                            'issuer'        : cert_issuer,
+                            'serial_number' : cert_serial_number,
+                            }
 
         #print(repr(self.client_conn.getpeername()))
         #print(self.client_conn.getpeercert()['subject'])

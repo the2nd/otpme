@@ -400,6 +400,9 @@ class JobCallback(object):
                         challenge=challenge)
         # Send query.
         jwt = self._send_query(query_id, query, timeout=timeout)
+        if jwt is None:
+            msg = "No JWT received."
+            raise OTPmeException(msg)
         user_site = backend.get_object(uuid=user.site_uuid)
         site_cert = SSLCert(cert=user_site.cert)
         try:
@@ -413,6 +416,7 @@ class JobCallback(object):
                                    key=jwt_key,
                                    algorithm='RS256')
         except Exception as e:
+            config.raise_exception()
             msg = "JWT decoding failed."
             raise OTPmeException(msg)
         # We do not allow SOTP generated JWTs. A login with a real

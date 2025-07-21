@@ -138,8 +138,9 @@ def check_crl(crl, sn):
     _crl = x509.load_pem_x509_crl(crl, default_backend())
     # Check if cert serial number is found.
     for x in _crl:
-        if x.serial_number == sn:
-            return True
+        if x.serial_number != sn:
+            continue
+        return True
     return False
 
 def verify_cn(cn, cert=None, csr=None):
@@ -491,8 +492,8 @@ def create_certificate(cn, sn, cert_req=None, self_signed=False,
 
     # Sign the cert.
     cert = builder.sign(private_key=_sign_key,
-                                algorithm=_sign_algo,
-                                backend=default_backend())
+                        algorithm=_sign_algo,
+                        backend=default_backend())
 
     # Get cert in PEM format.
     cert_pem = cert.public_bytes(encoding=serialization.Encoding.PEM)
@@ -617,9 +618,9 @@ def revoke_certificate(ca_cert, ca_key, cert=None, sn=None,
             if crl_update:
                 if x.serial_number == sn:
                     continue
-                builder.add_revoked_certificate(x)
+                builder = builder.add_revoked_certificate(x)
             else:
-                builder.add_revoked_certificate(x)
+                builder = builder.add_revoked_certificate(x)
                 # Make sure we do not add an already revoked cert.
                 if x.serial_number != sn:
                     continue

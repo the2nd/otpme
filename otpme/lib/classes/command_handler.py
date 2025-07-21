@@ -318,6 +318,9 @@ class CommandHandler(object):
         # Can hold function to get default object if none was given.
         self.get_default_object = None
 
+        msg = "Processing command: %s: %s" % (command, command_line)
+        self.logger.debug(msg)
+
         try:
             need_command = self.command_map[command][config.cli_object_type]['_need_command']
         except KeyError:
@@ -365,12 +368,6 @@ class CommandHandler(object):
             self.user_password = config.stdin_pass
         else:
             self.user_password = None
-
-        # Get login user needed for some commnads.
-        if not config.login_user:
-            config.login_user = self.get_login_user()
-            ## Make sure user config file is loaded.
-            #config.reload()
 
         # Init realm.
         if command == "realm" and subcommand == "init":
@@ -2099,9 +2096,9 @@ class CommandHandler(object):
         return result
 
     def handle_sign_command(self, command, subcommand, command_line):
-        #from otpme.lib.register import register_modules
-        ## Register modules.
-        #register_modules()
+        # Register required object types.
+        register_module('otpme.lib.classes.user')
+        register_module('otpme.lib.classes.role')
         # Examples
         # we want users to access this node to be in the role "verwaltung"
         # we trust the user root that she only adds users that are allowed to the role "verwaltung"
@@ -3107,18 +3104,6 @@ class CommandHandler(object):
             sync_conn.close()
         return sync_status
 
-    def get_login_user(self):
-        """ Get login user. """
-        # Else use already logged in user from agent.
-        try:
-            agent_user = stuff.get_agent_user()
-        except:
-            agent_user = None
-        if agent_user:
-            return agent_user
-        # Set login user to system user as last resort.
-        return config.system_user()
-
     def get_login_status(self):
         """ Get user login status. """
         try:
@@ -3405,7 +3390,7 @@ class CommandHandler(object):
                             command_line=[myhost.name],
                             command_args=command_args)
         except Exception as e:
-            msg = (_("Failed to send auth key to server: %s") % e)
+            msg = (_("Failed to send renew cert command to server: %s") % e)
             raise OTPmeException(msg)
 
         command_args = {}
@@ -3416,7 +3401,7 @@ class CommandHandler(object):
                                         command_args=command_args,
                                         client_type="RAPI")
         except Exception as e:
-            msg = (_("Failed to send auth key to server: %s") % e)
+            msg = (_("Failed to send dump cert command to server: %s") % e)
             raise OTPmeException(msg)
 
         # Update host cert in files.
@@ -5310,7 +5295,12 @@ class CommandHandler(object):
         except KeyError:
             diff_data = False
 
-        def get_node_data(node, data_dict):
+        try:
+            full_data_diff = command_args['full_data_diff']
+        except KeyError:
+            full_data_diff = False
+
+        def get_node_data(node, data_dict, full=False):
             msg = "Reading cluster data from node: %s" % node.name
             print(msg)
             master_node = None
@@ -5320,7 +5310,8 @@ class CommandHandler(object):
             try:
                 clusterd_conn = connections.get(daemon="clusterd",
                                                 socket_uri=socket_uri,
-                                                interactive=False)
+                                                interactive=False,
+                                                timeout=600)
             except Exception as e:
                 config.raise_exception()
                 msg = ("Failed to get cluster connection: %s: %s"
@@ -5360,16 +5351,22 @@ class CommandHandler(object):
                 return
             try:
                 # Get cluster checksums.
-                node_checksums[node.name] = clusterd_conn.get_checksums()
+                if full:
+                    node_checksums[node.name] = clusterd_conn.get_full_checksums()
+                else:
+                    node_checksums[node.name] = clusterd_conn.get_checksums()
             except Exception as e:
+                msg = "Checksum request failed: %s" % e
+                self.logger.warning(msg)
                 node_checksums[node.name] = {}
                 node_checksums[node.name]['objects_checksum'] = "Request failed: %s" % e
                 node_checksums[node.name]['data_checksum'] = "Request failed: %s" % e
                 node_checksums[node.name]['sessions_checksum'] = "Request failed: %s" % e
                 try:
-                    node_status[node.name]['status'] = "Offline"
+                    node_status[node.name]['status'] = "Error"
                 except:
-                    node_status[node.name] = {'status':"Offline"}
+                    node_status[node.name] = {'status':"Error"}
+                return
             finally:
                 clusterd_conn.close()
             try:
@@ -5395,9 +5392,13 @@ class CommandHandler(object):
                 data_dict['node_status'][node.name] = {}
                 data_dict['node_status'][node.name]['status'] = False
                 continue
+            full = False
+            if full_data_diff:
+                full = True
             node_data_thread = multiprocessing.start_thread(name=node.name,
                                                         target=get_node_data,
                                                         target_args=(node, data_dict),
+                                                        target_kwargs={'full':full},
                                                         daemon=True)
             node_threads[node.name] = node_data_thread
 
@@ -5491,6 +5492,9 @@ class CommandHandler(object):
                 x_node_quorum = "Unknown"
             if x_node_status == "Offline":
                 x_status_line = "%s (Offline)" % x_node
+                x_status_line = colored(x_status_line, "red")
+            elif x_node_status == "Error":
+                x_status_line = "%s (Error)" % x_node
                 x_status_line = colored(x_status_line, "red")
             else:
                 try:
@@ -5590,7 +5594,8 @@ class CommandHandler(object):
                             continue
                         n_diffed_objects.append(m_object)
                         already_diffed_objects[x_node] = n_diffed_objects
-                        msg = "Object %s differs on node %s." % (m_object, x_node)
+                        msg = ("Object %s differs on node %s: %s <> %s" %
+                                (m_object, x_node, m_checksum, n_checksum))
                         msg = colored(msg, 'yellow')
                         diff_objects.append(msg)
 
@@ -5626,7 +5631,7 @@ class CommandHandler(object):
                                 continue
                             n_missing_datas.append(m_data)
                             already_missed_datas[x_node] = n_missing_datas
-                            msg = "Object %s missing on node %s." % (m_data, x_node)
+                            msg = "Data object %s missing on node %s." % (m_data, x_node)
                             msg = colored(msg, 'red')
                             missing_objects.append(msg)
                             continue
@@ -5640,7 +5645,8 @@ class CommandHandler(object):
                             continue
                         n_diffed_datas.append(m_data)
                         already_diffed_datas[x_node] = n_diffed_datas
-                        msg = "Object %s differs on node %s." % (m_data, x_node)
+                        msg = ("Object %s differs on node %s: %s <> %s"
+                                % (m_data, x_node, m_checksum, n_checksum))
                         msg = colored(msg, 'yellow')
                         diff_objects.append(msg)
 
@@ -5656,7 +5662,7 @@ class CommandHandler(object):
                                 continue
                             m_missing_datas.append(n_data)
                             already_missed_datas[master_node] = m_missing_datas
-                            msg = "Object %s missing on node %s." % (n_data, master_node)
+                            msg = "Data object %s missing on node %s." % (n_data, master_node)
                             msg = colored(msg, 'red')
                             missing_objects.append(msg)
                             continue
@@ -5690,7 +5696,8 @@ class CommandHandler(object):
                             continue
                         n_diffed_sessions.append(m_session)
                         already_diffed_sessions[x_node] = n_diffed_sessions
-                        msg = "Session %s differs on node %s." % (m_session, x_node)
+                        msg = ("Session %s differs on node %s: %s <> %s"
+                                % (m_session, x_node, m_checksum, n_checksum))
                         msg = colored(msg, 'yellow')
                         diff_objects.append(msg)
 

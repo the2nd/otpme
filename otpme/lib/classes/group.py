@@ -12,11 +12,14 @@ except:
 
 from otpme.lib import oid
 from otpme.lib import cli
+from otpme.lib import jwt
+from otpme.lib import json
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
+from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.register import register_module
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.utils import register_commands
@@ -35,6 +38,8 @@ from otpme.lib.classes.otpme_object import \
 from otpme.lib.exceptions import *
 
 default_callback = config.get_callback()
+
+logger = config.logger
 
 read_acls = []
 write_acls = []
@@ -73,7 +78,6 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'args'              : ['add_default_token', 'default_token'],
                     'oargs'             : ['unit'],
                     'job_type'          : 'process',
                     },
@@ -506,7 +510,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'get_ldif',
-                    'args'              : ['attributes'],
+                    'oargs'             : ['attributes'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -891,6 +895,16 @@ class Group(OTPmeObject):
         **kwargs,
         ):
         """ Add a group. """
+        # Check if group exist on any site.
+        result = backend.search(object_type="group",
+                                attribute="name",
+                                value=self.name,
+                                return_type="oid")
+        if result:
+            group_oid = result[0]
+            msg = "Group already exists: %s" % group_oid
+            return callback.error(msg)
+
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(callback=callback, **kwargs)
         if result is False:
@@ -920,6 +934,178 @@ class Group(OTPmeObject):
         # Add object using parent class.
         return OTPmeObject.add(self, default_attributes=default_attributes,
                             verbose_level=verbose_level, callback=callback, **kwargs)
+
+    def move(self,
+        *args,
+        _caller: str="API",
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Move user to other unit. """
+        internal_groups = config.get_internal_objects("group")
+        if self.name in internal_groups:
+            msg = "Moving internal group is not allowed."
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("move",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
+
+        new_unit = kwargs['new_unit']
+        if new_unit.startswith("/"):
+            path_data = oid.resolve_path(new_unit, object_type="group")
+            new_site = path_data['site']
+            if new_site != self.site:
+                return self.cross_site_move(*args, path=new_unit,
+                                            callback=callback,
+                                            **kwargs)
+
+        move_result = super(Group, self).move(*args, callback=callback, **kwargs)
+        return move_result
+
+    def cross_site_move(
+        self,
+        path: str,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Do cross site move of group. """
+        if config.use_api:
+            msg = "Cannot do cross-site move in API mode."
+            return callback.error(msg)
+
+        path_data = oid.resolve_path(object_path=path,
+                                    object_type="unit")
+        dst_realm = path_data['realm']
+        dst_site = path_data['site']
+
+        object_ids = [(self.oid.full_oid, self.uuid)]
+        group_policies = self.get_policies(ignore_hooks=True,
+                                        return_type="name")
+        for policy_name in group_policies:
+            self.remove_policy(policy_name=policy_name,
+                                verify_acls=False)
+        self.update_object_config()
+        object_config = self.object_config.copy()
+        objects = {
+                    self.oid.full_oid   : {
+                                            'path'          : path,
+                                            'object_config' : object_config,
+                                            'policies'      : group_policies,
+                                        },
+                }
+
+        # Get destination site cert to encrypt objects and
+        # verify reply JWT.
+        _dst_site = backend.get_object(object_type="site",
+                                        realm=dst_realm,
+                                        name=dst_site)
+        # Generate encryption key.
+        enc_mod = config.get_encryption_module("FERNET")
+        enc_key = enc_mod.gen_key()
+        # Encrypt objects.
+        objects_encrypted = json.encode(objects,
+                                    encoding="base64",
+                                    encryption=enc_mod,
+                                    enc_key=enc_key)
+
+        # Encrypt encryption key with destination site public key.
+        try:
+            dst_site_public_key = RSAKey(key=_dst_site._cert.public_key())
+        except Exception as e:
+            msg = (_("Unable to get public key of site "
+                    "certificate: %s: %s") % (dst_site, e))
+            logger.warning(msg)
+            return callback.error(msg)
+        enc_key_encrypted = dst_site_public_key.encrypt(enc_key, encoding="hex")
+
+        # Load JWT signing key.
+        our_site = backend.get_object(uuid=config.site_uuid)
+        sign_key = our_site._key
+        # Build JWT.
+        jwt_data = {
+                'src_realm'     : config.realm,
+                'src_site'      : config.site,
+                'dst_path'      : path,
+                'dst_realm'     : dst_realm,
+                'dst_site'      : dst_site,
+                'object_ids'    : object_ids,
+                'enc_key'       : enc_key_encrypted,
+                'reason'        : "OBJECT_MOVE",
+                }
+        # Sign object move data.
+        _jwt = jwt.encode(payload=jwt_data, key=sign_key, algorithm='RS256')
+
+        object_data = {
+                    'path'          : path,
+                    'src_realm'     : config.realm,
+                    'src_site'      : config.site,
+                    'dst_realm'     : dst_realm,
+                    'dst_site'      : dst_site,
+                    'objects'       : objects_encrypted,
+                    'jwt'           : _jwt,
+                    }
+
+        # Actually move objects to other site.
+        response = callback.move_objects(object_data)
+
+        status = response['status']
+        reply = response['reply']
+
+        if not status:
+            msg = "Object move failed: %s" % reply
+            return callback.error(msg)
+
+        # Decode reply JWT.
+        try:
+            jwt_data = jwt.decode(jwt=reply,
+                                key=dst_site_public_key,
+                                algorithm='RS256')
+        except Exception as e:
+            msg = "JWT verification failed: %s" % e
+            logger.warning(msg)
+            return callback.error(msg)
+
+        # Make sure we only delete objects if all were written on
+        # destination site.
+        for x_oid in objects:
+            x_oc = objects[x_oid]['object_config']
+            x_uuid = x_oc['UUID']
+            try:
+                y_uuid = jwt_data[x_oid]['uuid']
+            except KeyError:
+                msg = "Failed to find object in reply: %s" % x_oid
+                return callback.error(msg)
+            if x_uuid != y_uuid:
+                msg = ("UUID missmatch in reply: %s: %s <> %s"
+                        % (x_oid, x_uuid, y_uuid))
+                return callback.error(msg)
+
+        # Actually delete objects from backend.
+        for object_type in reversed(config.object_add_order):
+            for x_oid in objects:
+                x_oid = oid.get(x_oid)
+                if x_oid.object_type != object_type:
+                    continue
+                try:
+                    backend.delete_object(x_oid, cluster=True)
+                except UnknownObject:
+                    pass
+                except Exception as e:
+                    msg = ("Failed to delete object on source site: %s"
+                            % x_oid)
+                    callback.error(msg)
+
+        return callback.ok()
 
     @object_lock(full_lock=True)
     @backend.transaction

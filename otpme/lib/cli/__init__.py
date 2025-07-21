@@ -1172,6 +1172,7 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
                             table=table,
                             acl_checker=get_acl_checker,
                             output_fields=output_fields,
+                            callback=callback,
                             **kwargs)
     for x in rows:
         x_row = x['row']

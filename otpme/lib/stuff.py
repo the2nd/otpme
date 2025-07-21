@@ -1555,7 +1555,8 @@ def verify_key_script(username, key_script=None,
         signing.verify_signatures(signer_type="key_script",
                                 signers=script_signers,
                                 signatures=signatures,
-                                sign_data=key_script)
+                                sign_data=key_script,
+                                stop_on_fist_match=True)
     except OTPmeException as e:
         config.raise_exception()
         msg = (_("No valid key script signatures found: %s") % e)

@@ -270,10 +270,6 @@ class ObjectConfig(object):
             pass
         # Remove incremental stuff before generating new checksum.
         try:
-            temp_oc.pop('INCREMENT_ID')
-        except:
-            pass
-        try:
             temp_oc.pop('INCREMENT_IDS')
         except:
             pass
@@ -287,18 +283,6 @@ class ObjectConfig(object):
             pass
         try:
             temp_oc.pop('INDEX_JOURNAL')
-        except:
-            pass
-        try:
-            temp_oc.pop('INDEX_JOURNAL_ARCHIVE')
-        except:
-            pass
-        try:
-            temp_oc.pop('LDIF_JOURNAL_ARCHIVE')
-        except:
-            pass
-        try:
-            temp_oc.pop('ACL_JOURNAL_ARCHIVE')
         except:
             pass
 
@@ -322,6 +306,11 @@ class ObjectConfig(object):
         if self.object_id.site == config.site:
             if config.host_data['type'] == "node":
                 handle_sync_checksum = True
+        if self.object_id.object_type == "realm":
+            if self.object_id.name == config.realm:
+                if config.host_data['type'] == "node":
+                    if config.realm_master_node:
+                        handle_sync_checksum = True
         if config.realm_init:
             handle_sync_checksum = True
         if config.site_init:
@@ -737,24 +726,22 @@ class ObjectConfig(object):
             keep_attribues = [
                                 "SALT",
                                 "UUID",
-                                "LDIF",
-                                "ACLS",
-                                "INDEX",
+                                #"LDIF",
+                                #"ACLS",
+                                #"INDEX",
                                 "TEMPLATE",
                                 "CHECKSUM",
                                 "SYNC_CHECKSUM",
+                                "ACL_JOURNAL",
+                                "LDIF_JOURNAL",
                                 "INDEX_JOURNAL",
                                 "LAST_MODIFIED",
-                                "INCREMENT_ID",
                                 "INCREMENT_IDS",
                                 "DICT_ATTRIBUTES",
                                 "LIST_ATTRIBUTES",
                                 "MODIFIED_ATTRIBUTES",
                                 "DELETED_ATTRIBUTES",
                                 "INCREMENTAL_UPDATES",
-                                "INDEX_JOURNAL_ARCHIVE",
-                                "LDIF_JOURNAL_ARCHIVE",
-                                "ACL_JOURNAL_ARCHIVE",
                             ]
 
         for x in dict(reduced_config):

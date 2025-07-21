@@ -80,7 +80,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'args'              : [
+                    'oargs'             : [
                                             'unit',
                                             'country',
                                             'state',
@@ -117,6 +117,8 @@ commands = {
                                         'show_all',
                                         'output_fields',
                                         'max_policies',
+                                        'max_tokens',
+                                        'max_roles',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',
@@ -198,7 +200,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'get_ldif',
-                    'args'              : ['attributes'],
+                    'oargs'             : ['attributes'],
                     'job_type'          : 'thread',
                     },
                 },

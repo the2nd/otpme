@@ -45,6 +45,7 @@ cmd_help = {
 
     'delete_object'    : {
                     '_cmd_usage_help' : 'Usage: otpme-tool delete_object [object_id]',
+                    'cmd'   :   '<object_id>',
                     '_help' :   {
                                     'cmd'                   : 'Delete object.',
                                 },

@@ -532,7 +532,7 @@ class OTPmeLDIFHandler(object):
             if value in current_attr_ext_values:
                 msg = ("Attribute value already exists: %s=%s"
                         % (attribute, value))
-                raise OTPmeException(msg)
+                raise AlreadyExists(msg)
 
         # For single value attributes we override the current value.
         if config.ldap_attribute_types[attribute].single_value:

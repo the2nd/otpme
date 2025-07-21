@@ -29,7 +29,7 @@ from otpme.lib import nsscache
 from otpme.lib import filetools
 from otpme.lib import sign_key_cache
 from otpme.lib import multiprocessing
-from otpme.lib.classes.object_config import ObjectConfig
+from otpme.lib.daemon.clusterd import cluster_sync_object
 
 from otpme.lib.exceptions import *
 
@@ -439,12 +439,19 @@ class BaseTransaction(object):
         self._lock = None
         self._replay = False
         self.lock_type = lock_type
+        self.spool_dir = os.path.join(FILE_TRANSACTIONS_DIR, self.id)
         self.journal = []
         self.journal_entries = {}
         # We do not use 0 as start because sorting files by name will end in
         # wrong order (e.g. 0 10 11 12 ...).
         self.journal_counter = 1000
         self.journal_file_extension = "action"
+
+        self.cluster_journal = []
+        self.cluster_journal_entries = {}
+        self.cluster_journal_counter = 1000
+        self.journal_file_extension = "action"
+        self.cluster_journal_dir = os.path.join(self.spool_dir, "cluster_journal")
         # If no disk writes is enabled we will not do any changes on
         # disk but add/del objects to/from index DB (without commit).
         self.no_disk_writes = no_disk_writes
@@ -510,6 +517,157 @@ class BaseTransaction(object):
             logger.critical(msg)
             config.raise_exception()
 
+    def cluster_write(self, object_uuid, object_id, index_journal,
+        ldif_journal, acl_journal, object_checksum, wait_for_write=True):
+        """ Cluster write action. """
+        action = "cluster_write"
+        journal_file = self.get_journal_file(action)
+        journal_entry = {
+                        'action'            : action,
+                        'object_uuid'       : object_uuid,
+                        'object_id'         : object_id.full_oid,
+                        'checksum'          : object_checksum,
+                        'acl_journal'       : list(acl_journal),
+                        'ldif_journal'      : list(ldif_journal),
+                        'index_journal'     : list(index_journal),
+                        'wait_for_write'    : wait_for_write,
+                        'journal_file'      : journal_file,
+                        }
+        self.cluster_journal.append(self.journal_counter)
+        self.cluster_journal_entries[str(self.journal_counter)] = journal_entry
+        self.cluster_journal_counter += 1
+
+    def cluster_delete(self, object_uuid, object_id):
+        """ Cluster delete action. """
+        action = "cluster_delete"
+        journal_file = self.get_journal_file(action)
+        journal_entry = {
+                        'action'        : action,
+                        'object_uuid'   : object_uuid,
+                        'object_id'     : object_id.full_oid,
+                        'journal_file'  : journal_file,
+                        }
+        self.cluster_journal.append(self.journal_counter)
+        self.cluster_journal_entries[str(self.journal_counter)] = journal_entry
+        self.cluster_journal_counter += 1
+
+    def cluster_rename(self, object_uuid, object_id, new_object_id):
+        """ Cluster rename action. """
+        action = "cluster_rename"
+        journal_file = self.get_journal_file(action)
+        journal_entry = {
+                        'action'        : action,
+                        'object_id'     : object_id.full_oid,
+                        'object_uuid'   : object_uuid,
+                        'new_object_id' : new_object_id.full_oid,
+                        'journal_file'  : journal_file,
+                        }
+        self.cluster_journal.append(self.journal_counter)
+        self.cluster_journal_entries[str(self.journal_counter)] = journal_entry
+        self.cluster_journal_counter += 1
+
+    def handle_cluster_write(self, journal_entry):
+        object_id = journal_entry['object_id']
+        object_uuid = journal_entry['object_uuid']
+        object_checksum = journal_entry['checksum']
+        acl_journal = journal_entry['acl_journal']
+        ldif_journal = journal_entry['ldif_journal']
+        index_journal = journal_entry['index_journal']
+        wait_for_write = journal_entry['wait_for_write']
+        object_id = oid.get(object_id)
+        if self._replay:
+            wait_for_write = False
+        cluster_event = cluster_sync_object(action="write",
+                                        object_uuid=object_uuid,
+                                        object_id=object_id,
+                                        acl_journal=acl_journal,
+                                        ldif_journal=ldif_journal,
+                                        index_journal=index_journal,
+                                        checksum=object_checksum,
+                                        wait_for_write=wait_for_write)
+        return cluster_event
+
+    def handle_cluster_delete(self, journal_entry):
+        object_uuid = journal_entry['object_uuid']
+        object_id = journal_entry['object_id']
+        object_id = oid.get(object_id)
+        wait_for_write = True
+        if self._replay:
+            wait_for_write = False
+        cluster_event = cluster_sync_object(action="delete",
+                                            object_uuid=object_uuid,
+                                            object_id=object_id,
+                                            wait_for_write=wait_for_write)
+        return cluster_event
+
+    def handle_cluster_rename(self, journal_entry):
+        object_id = journal_entry['object_id']
+        object_id = oid.get(object_id)
+        object_uuid = journal_entry['object_uuid']
+        new_object_id = journal_entry['new_object_id']
+        new_object_id = oid.get(new_object_id)
+        wait_for_write = True
+        if self._replay:
+            wait_for_write = False
+        cluster_event = cluster_sync_object(action="rename",
+                                            object_uuid=object_uuid,
+                                            object_id=object_id,
+                                            new_object_id=new_object_id,
+                                            wait_for_write=wait_for_write)
+        return cluster_event
+
+    def handle_cluster_journal(self):
+        cluster_events = {}
+        for x in self.cluster_journal:
+            journal_entry = self.cluster_journal_entries[str(x)]
+            action = journal_entry['action']
+            journal_file = journal_entry['journal_file']
+
+            if config.debug_level(DEBUG_SLOT) > 4:
+                msg = "Applying action: %s: %s" % (action, self.log_name)
+                logger.debug(msg)
+
+            if action == "cluster_write":
+                if not self.no_disk_writes:
+                    cluster_event = self.handle_cluster_write(journal_entry)
+                    if cluster_event:
+                        object_id = journal_entry['object_id']
+                        cluster_events[cluster_event] = object_id
+            elif action == "cluster_delete":
+                if not self.no_disk_writes:
+                    cluster_event = self.handle_cluster_delete(journal_entry)
+                    if cluster_event:
+                        object_id = journal_entry['object_id']
+                        cluster_events[cluster_event] = object_id
+            elif action == "cluster_rename":
+                if not self.no_disk_writes:
+                    cluster_event = self.handle_cluster_rename(journal_entry)
+                    if cluster_event:
+                        object_id = journal_entry['object_id']
+                        cluster_events[cluster_event] = object_id
+            else:
+                msg = "Unknown transaction action: %s" % action
+                raise OTPmeException(msg)
+
+            if not self.no_disk_writes:
+                self._remove_file(journal_file)
+
+        if not cluster_events:
+            return
+
+        msg = "Waiting for cluster events..."
+        logger.debug(msg)
+        for x in cluster_events:
+            object_id = cluster_events[x]
+            msg = "Waiting for cluster event: %s" % object_id
+            logger.debug(msg)
+            x.wait()
+            x.unlink()
+            msg = "Got cluster event: %s" % object_id
+            logger.debug(msg)
+        msg = "Finished waiting for cluster events..."
+        logger.debug(msg)
+
     def exists(self):
         """ Check if transaction exists. """
         if os.path.exists(self.status_file):
@@ -542,12 +700,12 @@ class BaseTransaction(object):
         """ Write object data to file. """
         # Try to write object file.
         try:
-            filetools.write_data_file(filename=config_file,
-                                    object_config=object_config,
-                                    full_data_update=full_data_update,
-                                    user=config.user,
-                                    group=config.group,
-                                    mode=0o770)
+            return filetools.write_data_file(filename=config_file,
+                                        object_config=object_config,
+                                        full_data_update=full_data_update,
+                                        user=config.user,
+                                        group=config.group,
+                                        mode=0o770)
         except Exception as e:
             msg = ("Error writing config file: %s: %s" % (config_file, e))
             logger.critical(msg)
@@ -668,6 +826,32 @@ class BaseTransaction(object):
             self.journal_entries[str(self.journal_counter)] = journal_entry
             self.journal_counter += 1
 
+        # Read transaction cluster journal.
+        journal_files = []
+        files_sorted = filetools.list_dir(self.cluster_journal_dir)
+        for x in sorted(files_sorted):
+            journal_file = os.path.join(self.cluster_journal_dir, x)
+            journal_files.append(journal_file)
+
+        for x in journal_files:
+            if config.debug_level(DEBUG_SLOT) > 3:
+                msg = "Reading transaction cluster data from disk: %s" % x
+                logger.debug(msg)
+            try:
+                file_content = filetools.read_file(path=x,
+                                                read_mode="rb",
+                                                compression=self.compression)
+            except Exception as e:
+                config.raise_exception()
+                msg = ("Error reading transaction: %s: %s" % (x, e))
+                raise OTPmeException(msg)
+
+            journal_entry = json.loads(file_content)
+
+            self.cluster_journal.append(self.journal_counter)
+            self.cluster_journal_entries[str(self.cluster_journal_counter)] = journal_entry
+            self.cluster_journal_counter += 1
+
     def _write_journal(self):
         """ Write transaction journal to disk. """
         # No need to write empty transaction to disk.
@@ -698,6 +882,31 @@ class BaseTransaction(object):
 
             if config.debug_level(DEBUG_SLOT) > 3:
                 msg = ("Writing transaction data to disk: %s (%s)"
+                        % (journal_file, self.name))
+                logger.debug(msg)
+
+            # Write object to spool file.
+            filetools.create_file(path=journal_file,
+                                content=file_content,
+                                user=config.user,
+                                group=config.group,
+                                mode=0o660,
+                                compression=self.compression)
+
+        if not os.path.exists(self.cluster_journal_dir):
+            self._create_dir(self.cluster_journal_dir)
+
+        # Write transaction.
+        for x in self.cluster_journal:
+            # Get journal entry.
+            journal_entry = self.cluster_journal_entries[str(x)]
+            # Encode data.
+            file_content = json.dumps(journal_entry)
+            # Get spool file.
+            journal_file = journal_entry['journal_file']
+
+            if config.debug_level(DEBUG_SLOT) > 3:
+                msg = ("Writing transaction cluster data to disk: %s (%s)"
                         % (journal_file, self.name))
                 logger.debug(msg)
 
@@ -763,7 +972,6 @@ class FileTransaction(BaseTransaction):
     def __init__(self, name=None, id=None, commit_files=None, **kwargs):
         super(FileTransaction, self).__init__("file", name=name, id=id,
                             lock_type=F_TRANSACTION_LOCK_TYPE, **kwargs)
-        self.spool_dir = os.path.join(FILE_TRANSACTIONS_DIR, self.id)
         self.journal_dir = os.path.join(self.spool_dir, "journal")
         self.commits_dir = os.path.join(self.spool_dir, "parents")
         self.status_file = os.path.join(self.spool_dir, "transaction.status")
@@ -805,61 +1013,15 @@ class FileTransaction(BaseTransaction):
         # Call parent class write method to finalize write.
         return super(FileTransaction, self)._write()
 
-    def cluster_write(self, object_uuid, object_id, index_journal,
-        ldif_journal, acl_journal, object_config, wait_for_write=True):
-        """ Cluster write action. """
-        action = "cluster_write"
-        journal_file = self.get_journal_file(action)
-        journal_entry = {
-                        'action'            : action,
-                        'object_uuid'       : object_uuid,
-                        'object_id'         : object_id.full_oid,
-                        'acl_journal'       : acl_journal,
-                        'ldif_journal'      : ldif_journal,
-                        'index_journal'     : index_journal,
-                        'object_config'     : object_config,
-                        'wait_for_write'    : wait_for_write,
-                        'journal_file'      : journal_file,
-                        }
-        self.journal.append(self.journal_counter)
-        self.journal_entries[str(self.journal_counter)] = journal_entry
-        self.journal_counter += 1
-
-    def cluster_delete(self, object_uuid, object_id):
-        """ Cluster delete action. """
-        action = "cluster_delete"
-        journal_file = self.get_journal_file(action)
-        journal_entry = {
-                        'action'        : action,
-                        'object_uuid'   : object_uuid,
-                        'object_id'     : object_id.full_oid,
-                        'journal_file'  : journal_file,
-                        }
-        self.journal.append(self.journal_counter)
-        self.journal_entries[str(self.journal_counter)] = journal_entry
-        self.journal_counter += 1
-
-    def cluster_rename(self, object_uuid, object_id, new_object_id):
-        """ Cluster rename action. """
-        action = "cluster_rename"
-        journal_file = self.get_journal_file(action)
-        journal_entry = {
-                        'action'        : action,
-                        'object_id'     : object_id.full_oid,
-                        'object_uuid'   : object_uuid,
-                        'new_object_id' : new_object_id.full_oid,
-                        'journal_file'  : journal_file,
-                        }
-        self.journal.append(self.journal_counter)
-        self.journal_entries[str(self.journal_counter)] = journal_entry
-        self.journal_counter += 1
-
-    def write_object_file(self, config_file, object_config, full_data_update=None):
+    def write_object_file(self, object_id, config_file,
+        object_config, full_data_update=None):
         """ Write object config file. """
         action = "write_object_file"
         journal_file = self.get_journal_file(action)
+        object_config = stuff.copy_object(object_config)
         journal_entry = {
                         'action'            : action,
+                        'object_id'         : object_id.read_oid,
                         'config_file'       : config_file,
                         'object_config'     : object_config,
                         'journal_file'      : journal_file,
@@ -978,6 +1140,7 @@ class FileTransaction(BaseTransaction):
 
     def commit(self, **kwargs):
         """ Commit write and commit journal. """
+        config.active_transactions.append(self)
         if not self.no_disk_writes:
             if self.status != "written":
                 self._write()
@@ -987,11 +1150,11 @@ class FileTransaction(BaseTransaction):
             msg = "Failed to commit transaction: %s: %s" % (self.log_name, e)
             config.raise_exception()
             raise OTPmeException(msg)
+        config.active_transactions.remove(self)
         return result
 
     def _commit(self):
         """ Commit journal. """
-        from otpme.lib.daemon.clusterd import cluster_sync_object
         # Remove incomplete (written to disk) transaction.
         if self._remove_incomplete_transaction():
             return
@@ -1000,7 +1163,6 @@ class FileTransaction(BaseTransaction):
             msg = "Commiting transaction: %s" % self.log_name
             logger.debug(msg)
 
-        cluster_events = {}
         for x in self.journal:
             journal_entry = self.journal_entries[str(x)]
             action = journal_entry['action']
@@ -1036,11 +1198,12 @@ class FileTransaction(BaseTransaction):
                     self._create_dir(directory)
             elif action == "write_object_file":
                 if not self.no_disk_writes:
+                    object_id = journal_entry['object_id']
                     config_file = journal_entry['config_file']
                     object_config = journal_entry['object_config']
                     full_data_update = journal_entry['full_data_update']
                     self._write_object_file(config_file, object_config,
-                                        full_data_update=full_data_update)
+                                            full_data_update=full_data_update)
             elif action == "move":
                 if not self.no_disk_writes:
                     src_dir = journal_entry['src_dir']
@@ -1061,64 +1224,6 @@ class FileTransaction(BaseTransaction):
                     object_id = oid.get(object_id)
                     nsscache_action = journal_entry['nsscache_action']
                     self._update_nsscache(object_id, nsscache_action)
-            elif action == "cluster_write":
-                if not self.no_disk_writes:
-                    wait_for_write = journal_entry['wait_for_write']
-                    object_config = journal_entry['object_config']
-                    acl_journal = journal_entry['acl_journal']
-                    ldif_journal = journal_entry['ldif_journal']
-                    index_journal = journal_entry['index_journal']
-                    object_uuid = journal_entry['object_uuid']
-                    object_id = journal_entry['object_id']
-                    object_id = oid.get(object_id)
-                    object_config = ObjectConfig(object_id, object_config)
-                    # Decrypt object config.
-                    object_config = object_config.decrypt(config.master_key)
-                    object_checksum = object_config['CHECKSUM']
-                    if self._replay:
-                        wait_for_write = False
-                    cluster_event = cluster_sync_object(action="write",
-                                                    object_uuid=object_uuid,
-                                                    object_id=object_id,
-                                                    object_data=object_config,
-                                                    checksum=object_checksum,
-                                                    acl_journal=acl_journal,
-                                                    ldif_journal=ldif_journal,
-                                                    index_journal=index_journal,
-                                                    wait_for_write=wait_for_write)
-                    if cluster_event:
-                        cluster_events[cluster_event] = object_id
-            elif action == "cluster_delete":
-                if not self.no_disk_writes:
-                    object_uuid = journal_entry['object_uuid']
-                    object_id = journal_entry['object_id']
-                    object_id = oid.get(object_id)
-                    wait_for_write = True
-                    if self._replay:
-                        wait_for_write = False
-                    cluster_event = cluster_sync_object(action="delete",
-                                                        object_uuid=object_uuid,
-                                                        object_id=object_id,
-                                                        wait_for_write=wait_for_write)
-                    if cluster_event:
-                        cluster_events[cluster_event] = object_id
-            elif action == "cluster_rename":
-                if not self.no_disk_writes:
-                    object_id = journal_entry['object_id']
-                    object_id = oid.get(object_id)
-                    object_uuid = journal_entry['object_uuid']
-                    new_object_id = journal_entry['new_object_id']
-                    new_object_id = oid.get(new_object_id)
-                    wait_for_write = True
-                    if self._replay:
-                        wait_for_write = False
-                    cluster_event = cluster_sync_object(action="rename",
-                                                        object_uuid=object_uuid,
-                                                        object_id=object_id,
-                                                        new_object_id=new_object_id,
-                                                        wait_for_write=wait_for_write)
-                    if cluster_event:
-                        cluster_events[cluster_event] = object_id
             else:
                 msg = "Unknown transaction action: %s" % action
                 raise OTPmeException(msg)
@@ -1126,19 +1231,8 @@ class FileTransaction(BaseTransaction):
             if not self.no_disk_writes:
                 self._remove_file(journal_file)
 
-        if cluster_events:
-            msg = "Waiting for cluster events..."
-            logger.debug(msg)
-            for x in cluster_events:
-                object_id = cluster_events[x]
-                msg = "Waiting for cluster event: %s" % object_id
-                logger.debug(msg)
-                x.wait()
-                x.unlink()
-                msg = "Got cluster event: %s" % object_id
-                logger.debug(msg)
-            msg = "Finished waiting for cluster events..."
-            logger.debug(msg)
+        # Handle cluster actions.
+        self.handle_cluster_journal()
 
         if not self.no_disk_writes:
             # Remove commit files we got from object transaction.
@@ -1370,9 +1464,6 @@ class ObjectTransaction(BaseTransaction):
             object_configs = self.journal_objects[read_oid]
         except KeyError:
             object_configs = []
-        # Make sure we use a copy to prevent changing of object config
-        # while its cached.
-        object_config = stuff.copy_object(object_config)
         object_configs.append(object_config)
         self.journal_objects[read_oid] = object_configs
         # Handle UUID/OID mapping.
@@ -1419,6 +1510,9 @@ class ObjectTransaction(BaseTransaction):
             logger.debug(msg)
         # Get spool file.
         journal_file = self.get_journal_file(action)
+        # Make sure we use a copy to prevent changing of object config
+        # while its cached.
+        object_config = stuff.copy_object(object_config)
         # Add object.
         self._add_object(object_id, object_config)
         # Add journal entry.
@@ -1467,6 +1561,9 @@ class ObjectTransaction(BaseTransaction):
         object_uuid = object_config['UUID']
         # Remove old object data from transaction.
         self.dismiss_object(object_id)
+        # Make sure we use a copy to prevent changing of object config
+        # while its cached.
+        object_config = stuff.copy_object(object_config)
         # Ad new object to transaction.
         self._add_object(new_object_id, object_config)
         # Get spool file.
@@ -1523,18 +1620,18 @@ class ObjectTransaction(BaseTransaction):
             return True
         return False
 
-    def read_object(self, object_file):
-        """ Read object from disk. """
-        try:
-            object_config_json = filetools.read_file(object_file)
-        except Exception as e:
-            msg = ("Error reading journal file: %(object_file)s: "
-                "%(error)s" % {"object_file":object_file, "error":e})
-            logger.critical(msg)
-            config.raise_exception()
-        # Decode object config.
-        object_config = json.loads(object_config_json)
-        return object_config
+    #def read_object(self, object_file):
+    #    """ Read object from disk. """
+    #    try:
+    #        object_config_json = filetools.read_file(object_file)
+    #    except Exception as e:
+    #        msg = ("Error reading journal file: %(object_file)s: "
+    #            "%(error)s" % {"object_file":object_file, "error":e})
+    #        logger.critical(msg)
+    #        config.raise_exception()
+    #    # Decode object config.
+    #    object_config = json.loads(object_config_json)
+    #    return object_config
 
     def _write(self):
         """ Write object transaction to disk. """
@@ -1560,6 +1657,7 @@ class ObjectTransaction(BaseTransaction):
     def commit(self, no_index_writes=True):
         """ Commit write and commit journal. """
         from otpme.lib.backend import outdate_object
+        config.active_transactions.append(self)
         if self.status != "written":
             self._write()
         if config.debug_level(DEBUG_SLOT) > 3:
@@ -1583,6 +1681,9 @@ class ObjectTransaction(BaseTransaction):
             # Close DB session.
             self.session.close()
 
+        # Handle cluster actions after local objects written.
+        self.handle_cluster_journal()
+
         # Remove status file to indicate finished transaction.
         self._remove_file(self.status_file)
 
@@ -1598,6 +1699,7 @@ class ObjectTransaction(BaseTransaction):
                 cache_type = "all"
             outdate_object(x, cache_type=cache_type)
 
+        config.active_transactions.remove(self)
         if config.debug_level(DEBUG_SLOT) > 3:
             msg = ("Transaction commited successful: %s" % self.log_name)
             logger.debug(msg)
@@ -1649,6 +1751,8 @@ class ObjectTransaction(BaseTransaction):
                     msg = ("Applying object transaction (write): %s: %s"
                             % (object_id, self.log_name))
                     logger.debug(msg)
+                # Do not cluster write again.
+                kwargs['cluster'] = False
                 write(object_id, object_config,
                         parent_dir_check=False,
                         commit_files=commit_files,

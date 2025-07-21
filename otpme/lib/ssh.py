@@ -474,9 +474,10 @@ def update_authorized_keys():
             sign_data  = verify_token.get_sign_data(verify_acls=False)
             try:
                 verify_signatures(signer_type="token",
-                                    signers=signers,
-                                    signatures=signatures,
-                                    sign_data=sign_data)
+                                signers=signers,
+                                signatures=signatures,
+                                sign_data=sign_data,
+                                stop_on_fist_match=True)
             except:
                 continue
 

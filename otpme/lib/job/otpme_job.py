@@ -154,6 +154,11 @@ class OTPmeJob(object):
                 from otpme.lib import config
                 # Get logger.
                 logger = config.logger
+                if config.active_transactions:
+                    msg = "Job not stoppable at this stage."
+                    self.callback.error(msg)
+                    logger.warning(msg)
+                    return
                 if _signal == 15:
                     msg = "Received SIGTERM."
                     logger.info(msg)

@@ -421,7 +421,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'change_auth_script',
-                    'args'              : ['auth_script', 'script_options'],
+                    'oargs'             : ['auth_script', 'script_options'],
                     'job_type'          : 'process',
                     },
                 },
@@ -812,7 +812,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'get_ldif',
-                    'args'              : ['attributes'],
+                    'oargs'             : ['attributes'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -2870,7 +2870,7 @@ class User(OTPmeObject):
             return callback.error(msg)
         # Try to encrypt data.
         try:
-            cipher = encode(key.encrypt(data=data), "base64")
+            cipher = encode(key.encrypt(cleartext=data), "base64")
         except Exception as e:
             msg = (_("Error encrypting data: %s") % e)
             return callback.error(msg)
@@ -3882,6 +3882,7 @@ class User(OTPmeObject):
             default_token_name = self.get_config_parameter('default_token_name')
             if new_token.name == default_token_name:
                 self.default_token = new_token.uuid
+                self.update_index('default_token', self.default_token)
                 ## Allow realm logins via default token.
                 #result = backend.search(object_type="role",
                 #                        attribute="name",
@@ -3943,6 +3944,7 @@ class User(OTPmeObject):
                         msg = ("Cannot remove default token. Please set a new default "
                                 "token first.")
                         return callback.error(msg)
+                    self.del_index('default_token', self.default_token)
                     self.default_token = None
 
         check_login_token = False
@@ -5300,6 +5302,16 @@ class User(OTPmeObject):
         last_modified = datetime.datetime.fromtimestamp(last_modified)
         last_modified = last_modified.strftime('%d.%m.%Y %H:%M:%S')
         lines.append("\tmodified:\t\t%s\n" % last_modified)
+
+        modifier = None
+        if self.last_modified_by:
+            if stuff.is_uuid(self.last_modified_by):
+                modifier = backend.get_object(uuid=self.last_modified_by)
+                if not modifier:
+                    modifier = self.last_modified_by_cache
+        if not modifier:
+            modifier = self.last_modified_by
+        lines.append("\tmodified_by:\t\t%s\n" % modifier)
 
         if self.last_used == 0:
             last_used = "Never"

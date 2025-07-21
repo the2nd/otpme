@@ -18,7 +18,7 @@ from otpme.lib.exceptions import *
 logger = config.logger
 
 def run(script_uuid, options, username, otp, phone_number=None,
-    script_type=None, user=None, group=None, groups=None):
+    script_type=None, user=None, group=None, groups=None, **kwargs):
     """ Run push script to deliver OTP to user. """
     # Create dictionary with variables that will be passed to delivery script.
     variables = {}

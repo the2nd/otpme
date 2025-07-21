@@ -34,7 +34,6 @@ from otpme.lib import connections
 from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.clusterd import calc_node_vote
-from otpme.lib.classes.object_config import ObjectConfig
 from otpme.lib.protocols.otpme_server import OTPmeServer1
 from otpme.lib.freeradius import reload as freeradius_reload
 
@@ -165,6 +164,7 @@ class OTPmeClusterP1(OTPmeServer1):
                             "acquire_lock",
                             "release_lock",
                             "get_checksums",
+                            "get_full_checksums",
                             "object_exists",
                             "get_node_vote",
                             "set_node_sync",
@@ -314,7 +314,7 @@ class OTPmeClusterP1(OTPmeServer1):
 
         elif command == "get_checksums":
             status = True
-            object_types = config.tree_object_types
+            object_types = list(config.tree_object_types)
             data_types = list(config.flat_object_types)
             data_types.remove("session")
             session_types = ['session']
@@ -327,6 +327,73 @@ class OTPmeClusterP1(OTPmeServer1):
             session_checksums, sessions_checksum = backend.get_sync_list(realm=config.realm,
                                                                         site=config.site,
                                                                         object_types=session_types)
+            message = {
+                        'object_checksums'  : object_checksums,
+                        'objects_checksum'  : objects_checksum,
+                        'data_checksum'     : data_checksum,
+                        'data_checksums'    : data_checksums,
+                        'sessions_checksum' : sessions_checksum,
+                        'session_checksums' : session_checksums,
+                        }
+
+        elif command == "get_full_checksums":
+            status = True
+            object_types = list(config.tree_object_types)
+            data_types = list(config.flat_object_types)
+            data_types.remove("session")
+            session_types = ['session']
+
+            object_checksums = {}
+            for object_type in object_types:
+                result = backend.search(object_type=object_type,
+                                        realm=config.realm,
+                                        site=config.site,
+                                        attribute="uuid",
+                                        value="*",
+                                        return_type="oid")
+                for x_oid in result:
+                    oc = backend.read_config(x_oid)
+                    if not oc:
+                        continue
+                    oc.update_checksums(force=True)
+                    object_checksums[x_oid.full_oid] = oc.checksum
+            objects_checksum = json.dumps(object_checksums, sort_keys=True)
+            objects_checksum = stuff.gen_md5(objects_checksum)
+
+            data_checksums = {}
+            for object_type in data_types:
+                result = backend.search(object_type=object_type,
+                                        realm=config.realm,
+                                        site=config.site,
+                                        attribute="uuid",
+                                        value="*",
+                                        return_type="oid")
+                for x_oid in result:
+                    oc = backend.read_config(x_oid)
+                    if not oc:
+                        continue
+                    oc.update_checksums(force=True)
+                    data_checksums[x_oid.full_oid] = oc.checksum
+            data_checksum = json.dumps(data_checksums, sort_keys=True)
+            data_checksum = stuff.gen_md5(data_checksum)
+
+            session_checksums = {}
+            for object_type in session_types:
+                result = backend.search(object_type=object_type,
+                                        realm=config.realm,
+                                        site=config.site,
+                                        attribute="uuid",
+                                        value="*",
+                                        return_type="oid")
+                for x_oid in result:
+                    oc = backend.read_config(x_oid)
+                    if not oc:
+                        continue
+                    oc.update_checksums(force=True)
+                    session_checksums[x_oid.full_oid] = oc.checksum
+            sessions_checksum = json.dumps(session_checksums, sort_keys=True)
+            sessions_checksum = stuff.gen_md5(sessions_checksum)
+
             message = {
                         'object_checksums'  : object_checksums,
                         'objects_checksum'  : objects_checksum,
@@ -463,19 +530,14 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = "Missing index journal."
                 status = False
             try:
-                acl_auto_update = command_args['acl_auto_update']
+                use_acl_journal = command_args['use_acl_journal']
             except:
-                message = "Missing acl_auto_update."
+                message = "Missing use_acl_journal."
                 status = False
             try:
-                ldif_auto_update = command_args['ldif_auto_update']
+                use_index_journal = command_args['use_index_journal']
             except:
-                message = "Missing ldif_auto_update."
-                status = False
-            try:
-                index_auto_update = command_args['index_auto_update']
-            except:
-                message = "Missing index_auto_update."
+                message = "Missing use_index_journal."
                 status = False
             try:
                 full_data_update = command_args['full_data_update']
@@ -497,46 +559,52 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = "Daemon shutdown."
                 status = False
             if status:
-                object_checksum = object_config['CHECKSUM']
-                msg = ("Writing object: %s (%s)" % (object_id, object_checksum))
+                object_id = oid.get(object_id)
+                checksum = object_config['CHECKSUM']
+                msg = ("Writing object: %s (%s)" % (object_id, checksum))
                 logger.debug(msg)
                 message = "done"
-                while True:
-                    entry_time = str(time.time_ns())
-                    cluster_journal_file = os.path.join(config.cluster_in_journal_dir, entry_time)
-                    if os.path.exists(cluster_journal_file):
-                        continue
-                    break
-                object_config = ObjectConfig(object_id, object_config, encrypted=False)
-                object_config = object_config.encrypt(config.master_key,
-                                                    update_checksums=False)
-                object_data = {
-                                'action'            : 'write',
-                                'object_id'         : object_id,
-                                'object_config'     : object_config,
-                                'acl_journal'       : acl_journal,
-                                'ldif_journal'      : ldif_journal,
-                                'index_journal'     : index_journal,
-                                'acl_auto_update'   : acl_auto_update,
-                                'ldif_auto_update'  : ldif_auto_update,
-                                'index_auto_update' : index_auto_update,
-                                'full_acl_update'   : full_acl_update,
-                                'full_ldif_update'  : full_ldif_update,
-                                'full_data_update'  : full_data_update,
-                                'full_index_update' : full_index_update,
-                            }
-                file_content = json.dumps(object_data)
                 try:
-                    filetools.create_file(path=cluster_journal_file,
-                                            content=file_content,
-                                            compression="lz4")
+                    backend.write_config(object_id=object_id,
+                                        cluster=False,
+                                        full_data_update=full_data_update,
+                                        full_index_update=full_index_update,
+                                        full_ldif_update=full_ldif_update,
+                                        full_acl_update=full_acl_update,
+                                        index_journal=index_journal,
+                                        use_index_journal=use_index_journal,
+                                        ldif_journal=ldif_journal,
+                                        acl_journal=acl_journal,
+                                        use_acl_journal=use_acl_journal,
+                                        object_config=object_config)
                 except Exception as e:
-                    message = ("Failed to write cluster journal: %s: %s: %s"
-                                % (object_id, cluster_journal_file, e))
                     status = False
-                else:
-                    multiprocessing.cluster_in_event.set()
-                    message = "done"
+                    message = "Failed to write object: %s: %s" % (object_id, e)
+                    self.logger.warning(message)
+
+                if status:
+                    while True:
+                        entry_time = str(time.time_ns())
+                        cluster_journal_file = os.path.join(config.cluster_in_journal_dir, entry_time)
+                        if os.path.exists(cluster_journal_file):
+                            continue
+                        break
+                    object_data = {
+                                    'action'            : 'write',
+                                    'object_id'         : object_id.read_oid,
+                                }
+                    file_content = json.dumps(object_data)
+                    try:
+                        filetools.create_file(path=cluster_journal_file,
+                                                content=file_content,
+                                                compression="lz4")
+                    except Exception as e:
+                        message = ("Failed to write cluster journal: %s: %s: %s"
+                                    % (object_id, cluster_journal_file, e))
+                        status = False
+                    else:
+                        multiprocessing.cluster_in_event.set()
+                        message = "done"
 
         elif command == "rename":
             status = True
@@ -555,29 +623,23 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = "Daemon shutdown."
                 status = False
             if status:
-                while True:
-                    entry_time = str(time.time_ns())
-                    cluster_journal_file = os.path.join(config.cluster_in_journal_dir, entry_time)
-                    if os.path.exists(cluster_journal_file):
-                        continue
-                    break
-                object_data = {
-                                'action'            : 'rename',
-                                'object_id'         : object_id,
-                                'new_object_id'     : new_object_id,
-                            }
-                file_content = json.dumps(object_data)
-                try:
-                    filetools.create_file(path=cluster_journal_file,
-                                            content=file_content,
-                                            compression="lz4")
-                except Exception as e:
-                    message = ("Failed to write cluster journal: %s: %s: %s"
-                                % (object_id, cluster_journal_file, e))
-                    status = False
-                else:
-                    multiprocessing.cluster_in_event.set()
-                    message = "done"
+                object_id = oid.get(object_id)
+                new_object_id = oid.get(new_object_id)
+                our_object = backend.get_object(object_id)
+                if our_object.oid.full_oid == object_id.full_oid:
+                    msg = "Renaming object: %s: %s" % (object_id, new_object_id)
+                    self.logger.debug(msg)
+                    try:
+                        backend.rename_object(object_id,
+                                            new_object_id,
+                                            cluster=False)
+                    except Exception as e:
+                        status = False
+                        message = "Failed to rename object: %s" % object_id
+                        msg = "Failed to rename object: %s: %s" % (object_id, e)
+                        self.logger.warning(msg)
+                    else:
+                        message = "done"
 
         elif command == "delete":
             status = True
@@ -596,6 +658,21 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = "Daemon shutdown."
                 status = False
             if status:
+                object_id = oid.get(object_id)
+                try:
+                    backend.delete_object(object_id=object_id)
+                except UnknownObject:
+                    pass
+                except Exception as e:
+                    status = False
+                    message = "Failed to delete object: %s" % object_id
+                    msg = "Failed to delete object: %s: %s" % (object_id, e)
+                    self.logger.warning(msg)
+                else:
+                    message = "done"
+                    msg = "Removed object: %s" % object_id
+                    self.logger.debug(msg)
+
                 while True:
                     entry_time = str(time.time_ns())
                     cluster_journal_file = os.path.join(config.cluster_in_journal_dir, entry_time)
@@ -604,7 +681,7 @@ class OTPmeClusterP1(OTPmeServer1):
                     break
                 object_data = {
                                 'action'        : 'delete',
-                                'object_id'     : object_id,
+                                'object_id'     : object_id.read_oid,
                                 'object_uuid'   : object_uuid,
                             }
                 file_content = json.dumps(object_data)

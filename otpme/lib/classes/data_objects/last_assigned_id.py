@@ -182,6 +182,7 @@ class LastAssignedID(OTPmeDataObject):
                                 policy_uuid=self.policy_uuid,
                                 last_assigned_id=self.last_assigned_id)
 
+    @backend.transaction
     def add(self, callback: JobCallback=default_callback):
         """ Add the object. """
         # Add policy UUID to index.

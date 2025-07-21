@@ -24,6 +24,7 @@ from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import encode
 from otpme.lib.encryption.rsa import RSAKey
+from otpme.lib.host import update_ssl_files
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.register import register_module
 from otpme.lib.classes.otpme_object import OTPmeObject
@@ -93,6 +94,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'   : {
                     'method'            : 'init',
+                    'args'              : [ 'realm_master', 'site_address', 'site_fqdn', ],
                     'oargs'             : [
                                             'ca_country',
                                             'ca_state',
@@ -465,7 +467,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'get_ldif',
-                    'args'              : ['attributes'],
+                    'oargs'             : ['attributes'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -1173,7 +1175,7 @@ class Realm(OTPmeObject):
                                     return_type="instance",
                                     realm=self.name)
         for site in site_list:
-            # Skip sites which do not have a CA yet.
+            # Skip sites that do not have a CA yet.
             if not site.ca:
                 continue
             site_ca = backend.get_object(object_type="ca", uuid=site.ca)
@@ -1190,6 +1192,9 @@ class Realm(OTPmeObject):
 
         # Set new ca_data.
         self.ca_data = ca_data
+
+        # Update CA data in ssl files.
+        update_ssl_files(ca_data=ca_data)
 
         return self._write(callback=callback)
 

@@ -19,8 +19,8 @@ cmd_help = {
     '_usage_help'               : "Usage: otpme-host {command} [host]",
 
     'show'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-host show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-t] [-a] [host]',
-                    'cmd'   :   '--policy-limit :max_policies: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    '_cmd_usage_help' : 'Usage: otpme-host show [--policy-limit <limit>] [--token-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-t] [-a] [host]',
+                    'cmd'   :   '--policy-limit :max_policies: --token-limit :max_tokens: --role-limit :max_roles: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: -t :show_templates=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
                     '_help' :   {
                                     'cmd'                   : 'show host(s)',
                                     '-a'                    : 'Show all hosts.',
@@ -28,6 +28,8 @@ cmd_help = {
                                     '-z <limit>'            : 'limit output size',
                                     '--fields f1,f2,f3'     : 'output only given fields',
                                     '--policy-limit <limit>': 'Output max policies.',
+                                    '--token-limit <limit>' : 'Output <limit> tokens.',
+                                    '--role-limit <limit>'  : 'Output max roles.',
                                     '--reverse'             : 'Reverse the output order.',
                                     '--sort-by <attribute>' : 'Sort output by <attribute>.',
                                     '--raw'                 : 'Output table without any headers/borders.',

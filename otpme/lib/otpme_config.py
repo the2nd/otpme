@@ -178,6 +178,8 @@ class OTPmeConfig(object):
         self.register_config_var("locking_enabled", bool, True)
         # Job timeout.
         self.register_config_var("job_timeout", int, 60)
+        # Active (committing) transactions prevent jobs from being stopped.
+        self.register_config_var("active_transactions", list, [])
 
         self.register_config_var("command_handler", None, None)
         self.register_config_var("command_line_opts", list, [])
@@ -318,8 +320,6 @@ class OTPmeConfig(object):
         # Base CA paths.
         #self.register_config_var("realm_ca_path", str, None)
         #self.register_config_var("site_ca_path", str, None)
-        # OTPme username that was/will be used to login
-        self.register_config_var("login_user", str, None)
         # Users (instance) of the authenticated user.
         self.register_config_var("auth_user", None, None)
         # Users token (instance) that was used to authenticate the user of the current
@@ -547,6 +547,8 @@ class OTPmeConfig(object):
                                     ]
         self.register_config_var("valid_private_signer_types", list, valid_private_signer_types)
 
+        self.register_config_var("_login_user", str, None)
+
         self.register_config_var("deny_login_users", [None, list], None,
                                 config_file_parameter="DENY_LOGIN_USERS")
         self.register_config_var("valid_login_users", [None, list], None,
@@ -676,6 +678,8 @@ class OTPmeConfig(object):
         if name in self.methods:
             return object.__setattr__(self, name, value)
         if name in self.properties:
+            return object.__setattr__(self, name, value)
+        if hasattr(self, name):
             return object.__setattr__(self, name, value)
         if hasattr(self, "config_var_types") and value is not None:
             try:
@@ -1618,8 +1622,7 @@ class OTPmeConfig(object):
         enc_mod = self.supported_encryption_types[enc_type]['enc_mod']
         return enc_mod
 
-    def register_encryption_type(self, enc_type, enc_mod,
-        before=None, after=None):
+    def register_encryption_type(self, enc_type, enc_mod, before=[], after=[]):
         """ Register hash type. """
         if enc_type in self.supported_encryption_types:
             msg = "Encryption type already registered: %s" % enc_type
@@ -1666,7 +1669,7 @@ class OTPmeConfig(object):
         ecdh_curves = stuff.order_data_by_deps(order_data)
         return ecdh_curves
 
-    def register_ecdh_curve(self, ecdh_curve, before=None, after=None):
+    def register_ecdh_curve(self, ecdh_curve, before=[], after=[]):
         """ Register ECDH curve. """
         if ecdh_curve in self.supported_ecdh_curves:
             msg = "ECDH curve already registered: %s" % hash_type
@@ -1706,8 +1709,8 @@ class OTPmeConfig(object):
         config_opts = self.supported_hash_types[hash_type]['config_opts']
         return config_opts
 
-    def register_hash_type(self, hash_type, hash_func,
-        default_opts=None, config_opts=None, before=None, after=None):
+    def register_hash_type(self, hash_type, hash_func, default_opts=None,
+        config_opts=None, before=[], after=[]):
         """ Register hash type. """
         if hash_type in self.supported_hash_types:
             msg = "Hash algorithm already registered: %s" % hash_type
@@ -1853,6 +1856,28 @@ class OTPmeConfig(object):
         pid = os.getpid()
         pid_group = stuff.get_pid_group(pid)
         return pid_group
+
+    @property
+    def login_user(self):
+        if self._login_user:
+            return self._login_user
+        # Get login user from agent.
+        login_user = self.get_login_user()
+        return login_user
+
+    @login_user.setter
+    def login_user(self, login_user):
+        self._login_user = login_user
+
+    def get_login_user(self):
+        """ Get login user. """
+        from otpme.lib import stuff
+        # Else use already logged in user from agent.
+        try:
+            agent_user = stuff.get_agent_user()
+        except:
+            agent_user = None
+        return agent_user
 
     def get_user_locks_dir(self, username):
         user_locks_dir = "%s/otpme-%s/locks/" % (self.tmp_dir, username)
@@ -2411,7 +2436,6 @@ class OTPmeConfig(object):
 
     @property
     def realm_master_node(self):
-        """ Set node status. """
         if not self.uuid:
             return
         if not self.site_uuid:

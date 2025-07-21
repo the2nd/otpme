@@ -245,6 +245,7 @@ class LinkToken(Token):
         """ Add a token. """
         # Set link destination.
         self.destination_token = destination_token_uuid
+        self.update_index('destination_token_uuid', self.destination_token)
         return callback.ok()
 
     def show_config(self, callback=default_callback, **kwargs):

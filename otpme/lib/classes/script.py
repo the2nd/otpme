@@ -628,7 +628,7 @@ class Script(OTPmeObject):
     def get_sign_data(self, callback: JobCallback=default_callback, **kwargs):
         """ Return script to be signed by parent class method. """
         # Get script, this also checks ACLs.
-        script = self.dump(**kwargs)
+        script = self.dump(run_policies=False, callback=callback)
         return callback.ok(script)
 
     @check_acls(['view:script', 'dump'])
@@ -649,7 +649,8 @@ class Script(OTPmeObject):
             try:
                 self.run_policies("dump", callback=callback, _caller=_caller)
             except Exception as e:
-                return callback.error()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
         decoded_script = decode(self.script, "base64")
         if _caller == "API":
             return decoded_script

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import time
+#import time
 #import pprint
 import collections
 
@@ -25,6 +25,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import filetools
 from otpme.lib import otpme_acl
+from otpme.lib import multiprocessing
 #from otpme.lib.locking import oid_lock
 from otpme.lib.cache import index_cache
 from otpme.lib.cache import index_acl_cache
@@ -257,7 +258,7 @@ def register_object_type(object_type, path_getter, oid_getter,
     object_settings[object_type]['oid_getter'] = oid_getter
     object_settings[object_type]['path_getter'] = path_getter
     if index_rebuild_func:
-        if not "index_rebuild" in object_settings[object_type]:
+        if "index_rebuild" not in object_settings[object_type]:
             object_settings[object_type]['index_rebuild'] = {}
         if tree_object:
             object_settings[object_type]['index_rebuild']['tree'] = index_rebuild_func
@@ -428,10 +429,11 @@ def read(object_id, parameters=None, no_lock=False, use_index=True):
 
 #@oid_lock(args_oid_pos=[0], write=True)
 def write(object_id, object_config, index_journal=None, ldif_journal=None,
-    acl_journal=None, full_index_update=False, index_auto_update=False,
-    full_ldif_update=False, ldif_auto_update=False, full_acl_update=False,
-    acl_auto_update=False, no_lock=False, commit_files=None, full_data_update=None,
-    cluster=False, wait_for_cluster_writes=True, no_index_writes=False,
+    acl_journal=None, full_index_update=False, use_acl_journal=True,
+    full_ldif_update=False, use_ldif_journal=True, full_acl_update=False,
+    use_index_journal=True, checksum=None, sync_checksum=None, no_lock=False,
+    commit_files=None, full_data_update=None, cluster=False,
+    wait_for_cluster_writes=True, no_index_writes=False,
     parent_dir_check=True, no_transaction=False, transaction_replay=False):
     """ Write object config and update config cache. """
     from otpme.lib.backend import outdate_object
@@ -440,6 +442,10 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
         raise OTPmeException(msg)
 
     if config.host_type != "node":
+        cluster = False
+    if not multiprocessing.cluster_out_event:
+        cluster = False
+    if config.one_node_setup:
         cluster = False
 
     # Get object type.
@@ -475,6 +481,7 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
     if _transaction:
         # Transaction to handle index actions.
         index_handler = _transaction
+        cluster_handler = _transaction
         # Add object to transaction.
         _transaction.add_object(object_id=object_id,
                                 object_config=object_config,
@@ -482,11 +489,11 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
                                 ldif_journal=ldif_journal,
                                 full_ldif_update=full_ldif_update,
                                 full_acl_update=full_acl_update,
-                                acl_auto_update=acl_auto_update,
-                                ldif_auto_update=ldif_auto_update,
+                                use_acl_journal=use_acl_journal,
+                                use_ldif_journal=use_ldif_journal,
                                 index_journal=index_journal,
                                 full_index_update=full_index_update,
-                                index_auto_update=index_auto_update,
+                                use_index_journal=use_index_journal,
                                 cluster=cluster)
         # Get write transaction.
         write_transaction = FileTransaction(transaction_name,
@@ -514,6 +521,7 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
 
         # Transaction to handle index actions.
         index_handler = write_transaction
+        cluster_handler = write_transaction
         # Check if objects config dir path has changed and we have to move it,
         if uuid:
             old_oid, \
@@ -523,8 +531,6 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
             if old_config_file and old_config_file != new_config_file:
                 # We need to do a full index update if OID changed...
                 full_index_update = True
-                # ...and not index auto update.
-                index_auto_update = False
                 # Remove old OID from index.
                 index_handler.index_del(object_id=old_oid,
                                     no_transaction=no_transaction)
@@ -547,7 +553,8 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
         # Create config dir if needed.
         write_transaction.create_dir(config_dir)
         # Try to write config file.
-        write_transaction.write_object_file(config_file, object_config,
+        write_transaction.write_object_file(object_id,
+                                        config_file, object_config,
                                         full_data_update=full_data_update)
 
         # Update nsscache.
@@ -560,35 +567,21 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
             if not template:
                 write_transaction.update_nsscache(object_id, "update")
 
-    ## Cannot add objects without UUID to index.
-    #if not uuid:
-    #    if cluster:
-    #        write_transaction.cluster_write(uuid, object_id, object_config)
-    #    if transaction_replay:
-    #        write_transaction.replay()
-    #    else:
-    #        write_transaction.commit()
-    #    # With an running object transaction the file transaction
-    #    # gets deleted by it.
-    #    object_transaction = get_transaction(active=None)
-    #    if not object_transaction:
-    #        write_transaction.remove()
-    #    write_transaction.release_lock()
-    #    return True
-
     # Add object to index.
     index_handler.index_add(object_id,
                 object_paths=object_paths,
                 object_config=object_config,
                 acl_journal=acl_journal,
                 full_acl_update=full_acl_update,
-                acl_auto_update=acl_auto_update,
+                use_acl_journal=use_acl_journal,
                 ldif_journal=ldif_journal,
                 full_ldif_update=full_ldif_update,
-                ldif_auto_update=ldif_auto_update,
+                use_ldif_journal=use_ldif_journal,
                 index_journal=index_journal,
                 full_index_update=full_index_update,
-                index_auto_update=index_auto_update,
+                use_index_journal=use_index_journal,
+                checksum=checksum,
+                sync_checksum=sync_checksum,
                 no_transaction=no_transaction)
 
     # If we got child objects to modify we have to check if there is a active
@@ -629,12 +622,12 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
                                 cluster=cluster)
 
     if cluster:
-        write_transaction.cluster_write(object_uuid=uuid,
+        cluster_handler.cluster_write(object_uuid=uuid,
                                     object_id=object_id,
+                                    object_checksum=checksum,
                                     acl_journal=acl_journal,
                                     ldif_journal=ldif_journal,
                                     index_journal=index_journal,
-                                    object_config=object_config,
                                     wait_for_write=wait_for_cluster_writes)
 
     # Commit and remove write transaction.
@@ -695,6 +688,10 @@ def rename(object_id, new_object_id, no_lock=False,
 
     if config.host_type != "node":
         cluster = False
+    if not multiprocessing.cluster_out_event:
+        cluster = False
+    if config.one_node_setup:
+        cluster = False
 
     # Name of the file transaction.
     transaction_name = "rename:%s:%s" % (object_id, new_object_id)
@@ -705,6 +702,7 @@ def rename(object_id, new_object_id, no_lock=False,
     if _transaction:
         # Transaction to handle index actions.
         index_handler = _transaction
+        cluster_handler = _transaction
         rename_transaction = FileTransaction(transaction_name,
                                             no_disk_writes=True,
                                             no_index_writes=no_index_writes,
@@ -719,6 +717,7 @@ def rename(object_id, new_object_id, no_lock=False,
         rename_transaction.begin()
         # Transaction to handle index actions.
         index_handler = rename_transaction
+        cluster_handler = rename_transaction
         # Check if objects config dir path has changed and we have to move it,
         old_oid, \
         old_config_file, \
@@ -813,7 +812,7 @@ def rename(object_id, new_object_id, no_lock=False,
             rename_transaction.update_nsscache(new_object_id, "update")
 
     if cluster:
-        rename_transaction.cluster_rename(object_uuid,
+        cluster_handler.cluster_rename(object_uuid,
                                         object_id,
                                         new_object_id)
 
@@ -852,6 +851,10 @@ def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
 
     if config.host_type != "node":
         cluster = False
+    if not multiprocessing.cluster_out_event:
+        cluster = False
+    if config.one_node_setup:
+        cluster = False
 
     # Get object type.
     object_type = object_id.object_type
@@ -885,6 +888,7 @@ def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
                                 cluster=cluster)
         # Transaction to handle index actions.
         index_handler = _transaction
+        cluster_handler = _transaction
         # File transaction.
         del_transaction = FileTransaction(transaction_name,
                                         no_disk_writes=True,
@@ -899,6 +903,7 @@ def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
         del_transaction.begin()
         # Transaction to handle index actions.
         index_handler = del_transaction
+        cluster_handler = del_transaction
 
         try:
             remove_files = config_paths['remove_on_delete']
@@ -938,7 +943,7 @@ def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
 
     if cluster:
         if object_uuid:
-            del_transaction.cluster_delete(object_uuid, object_id)
+            cluster_handler.cluster_delete(object_uuid, object_id)
 
     # Commit and delete transaction.
     if transaction_replay:
@@ -1045,17 +1050,17 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     if size_limit > 0 and max_results > 0:
         if size_limit > max_results:
             msg = "<max_results> must be lower than <size_limit>"
-            raise OTPmeException(msg)
+            raise SearchException(msg)
 
     if not return_type:
         if not return_attributes:
             msg = "Need <return_type> or <return_attributes>."
-            raise OTPmeException(msg)
+            raise SearchException(msg)
 
     if value is None and values is None and less_than is None \
     and greater_than is None and not attributes:
         msg = "Need <value>, <values>, <greater_than>, <less_than> or <attributes>."
-        raise OTPmeException(msg)
+        raise SearchException(msg)
 
     # Search for object types if none was given.
     if object_type is None:
@@ -1092,11 +1097,11 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             x_greater_than = None
         if x_attr.lower() not in map(str.lower, config.index_attributes):
             msg = "Cannot search for attribute %s: Not in index" % x_attr
-            raise OTPmeException(msg)
+            raise SearchException(msg)
         if x_value is None and x_values is None and x_less_than is None \
         and x_greater_than is None and values is None:
             msg = ("Need <value>, <values>, <less_than> or <greater_than>.")
-            raise OTPmeException(msg)
+            raise SearchException(msg)
 
     # Make sure objects UUID is the at first position in query result.
     if return_attributes:
@@ -1175,7 +1180,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     if values is not None and len(values) > max_q_values:
         if order_by is not None:
             msg = "Cannot order results if <values> >= %s" % max_q_values
-            raise OTPmeException(msg)
+            raise SearchException(msg)
         v_result = None
         v_query_count = 0
         values = stuff.split_list(values, max_q_values)
@@ -1229,7 +1234,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         IndexObjectACL = get_class(object_type)
     except UnknownClass:
         msg = "Unknown object class: %s" % object_type
-        raise OTPmeException(msg)
+        raise SearchException(msg)
 
     # Set "order by" attribute.
     order_by_attribute = None
@@ -1279,17 +1284,17 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     if join_search_attr:
         if not join_object_type:
             msg = "Missing <join_object_type>."
-            raise OTPmeException(msg)
+            raise SearchException(msg)
         if not join_search_val:
             msg = "Missing <join_search_val>."
-            raise OTPmeException(msg)
+            raise SearchException(msg)
         try:
             JoinIndexObject, \
             JoinIndexObjectAttribute, \
             JoinIndexObjectACL = get_class(join_object_type)
         except UnknownClass:
             msg = "Unknown join object class: %s" % object_type
-            raise OTPmeException(msg)
+            raise SearchException(msg)
         # Alias tables to join (e.g. prevent "ERROR:  table name <table> specified more than once").
         JoinIndexObject = aliased(JoinIndexObject)
         JoinIndexObjectAttribute = aliased(JoinIndexObjectAttribute)
@@ -1339,7 +1344,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
 
         if values is not None and len(values) > max_q_values:
             msg = "Too many <values> for attribute '%s'." % attr
-            raise OTPmeException(msg)
+            raise SearchException(msg)
 
         # Search objects with the given ACL.
         if attr == "acl":
@@ -1628,7 +1633,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             return_value = json.loads(return_value)
         else:
             msg = "Unknown return type: %s" % return_type
-            raise OTPmeException(msg)
+            raise SearchException(msg)
         # Add return value to result.
         result.append(return_value)
 
@@ -1899,34 +1904,27 @@ def index_restore(index_data, session=None, **kwargs):
 
 @handle_transaction
 #@oid_lock(args_oid_pos=[0], write=True)
-def index_add(object_id, object_paths=None, object_config=None, uuid=None,
-    checksum=None, sync_checksum=None, index_journal=[], index_auto_update=False,
-    full_index_update=False, ldif_journal=[], full_ldif_update=False,
-    ldif_auto_update=False, acl_journal=[], acl_auto_update=False,
-    full_acl_update=False, autocommit=True, no_lock=False, session=None, **kwargs):
+def index_add(object_id, object_paths=None, object_config=None,
+    uuid=None, checksum=None, sync_checksum=None, index_journal=[],
+    use_index_journal=False, full_index_update=False, ldif_journal=[],
+    full_ldif_update=False, use_ldif_journal=False, acl_journal=[],
+    use_acl_journal=False, full_acl_update=False, autocommit=True,
+    no_lock=False, session=None, **kwargs):
     """ Add object to search index. """
-    #from sqlalchemy.sql import select
-    from sqlalchemy.sql import delete
+    from sqlalchemy.sql import select
+    #from sqlalchemy.sql import delete
+    from sqlalchemy.sql import tuple_
     if object_id.full_oid is None:
         msg = ("Object ID is missing full OID: %s" % object_id)
         raise OTPmeException(msg)
     if full_index_update and not object_config:
         msg = "Need <object_config> on full_index_update=True."
         raise OTPmeException(msg)
-    if full_index_update and index_auto_update:
-        msg = "Cannot use <full_index_update> with <index_auto_update>."
-        raise OTPmeException(msg)
     if full_ldif_update and not object_config:
         msg = "Need <object_config> on full_ldif_update=True."
         raise OTPmeException(msg)
-    if full_ldif_update and ldif_auto_update:
-        msg = "Cannot use <full_ldif_update> with <ldif_auto_update>."
-        raise OTPmeException(msg)
     if full_acl_update and not object_config:
         msg = "Need <object_config> on full_acl_update=True."
-        raise OTPmeException(msg)
-    if full_acl_update and acl_auto_update:
-        msg = "Cannot use <full_acl_update> with <acl_auto_update>."
         raise OTPmeException(msg)
 
     # Gen read OID of object.
@@ -1982,15 +1980,17 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
         except:
             uuid = None
         # Get object checksum.
-        try:
-            checksum = object_config['CHECKSUM']
-        except:
-            checksum = None
+        if checksum is None:
+            try:
+                checksum = object_config['CHECKSUM']
+            except:
+                checksum = None
         # Get object sync checksum.
-        try:
-            sync_checksum = object_config['SYNC_CHECKSUM']
-        except:
-            sync_checksum = None
+        if sync_checksum is None:
+            try:
+                sync_checksum = object_config['SYNC_CHECKSUM']
+            except:
+                sync_checksum = None
         # Get object template status.
         try:
             template = object_config['TEMPLATE']
@@ -2000,7 +2000,7 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
         try:
             object_ldif = object_config['LDIF']
         except:
-            object_ldif = None
+            object_ldif = {}
 
     # Check if the object already exists in the index DB.
     q = session.query(IndexObject)
@@ -2033,29 +2033,10 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
 
     if not index_object:
         full_acl_update = True
-        acl_auto_update = False
         full_ldif_update = True
-        ldif_auto_update = False
         full_index_update = True
-        index_auto_update = False
 
-    # Handle index auto update.
-    if index_auto_update and index_object:
-        if index_journal:
-            last_index_id = None
-            if index_object.last_index_id:
-                last_index_id = json.loads(index_object.last_index_id)
-            if last_index_id and last_index_id in index_journal:
-                index_auto_update_start_pos = index_journal.index(last_index_id) + 1
-                index_journal = index_journal.copy()
-                index_journal = index_journal[index_auto_update_start_pos:]
-            else:
-                if last_index_id:
-                    msg = "Index journal out of sync. Will do a full index update: %s" % object_id
-                    logger.info(msg)
-                full_index_update = True
-
-    # Get object attributes from index DB.
+    attributes = []
     if full_index_update:
         # Get object index.
         try:
@@ -2064,72 +2045,57 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
             msg = "Unable to update object index: %s: Missing 'INDEX'" % object_id
             raise OTPmeException(msg)
 
-    # Add/del attributes of existing object (update index).
-    if full_index_update and index_object and object_index:
-        # Get current attributes.
-        # https://github.com/sqlalchemy/sqlalchemy/issues/6300
-        #sql_stmt = select(IndexObjectAttribute)
-        sql_stmt = delete(IndexObjectAttribute)
-        #sql_stmt = sql_stmt.distinct()
-        sql_stmt = sql_stmt.where(IndexObjectAttribute.ioid == index_object.id)
-        #result = session.execute(sql_stmt)
-        session.execute(sql_stmt)
-        #object_attributes = []
-        #for x in result:
-        #    try:
-        #        x_name = x[3]
-        #    except IndexError:
-        #        continue
-        #    try:
-        #        x_value = x[4]
-        #    except IndexError:
-        #        continue
-        #    print("XX", x_name, x_value)
-        #    object_attributes.append([x_name, x_value])
-        ## Delete orphan attributes.
-        #for x in object_attributes:
-        #    if x in object_index:
-        #        continue
-        #    # Del attribute.
-        #    n = x[0]
-        #    v = x[1]
-        #    q = session.query(IndexObjectAttribute)
-        #    q = q.filter(IndexObjectAttribute.ioid == index_object.id)
-        #    q = q.filter(IndexObjectAttribute.name == n)
-        #    q = q.filter(IndexObjectAttribute.value == v)
-        #    a = q.first()
-        #    session.delete(a)
-        #    #local_object = session.merge(x)
-        #    #session.delete(local_object)
-        #if autocommit:
-        #    session.commit()
-        # Add new attributes.
-        for x in object_index:
-            #if x in object_attributes:
-            #    continue
-            # Add attribute.
-            n = x[0]
-            v = x[1]
-            a = IndexObjectAttribute(realm=object_realm,
-                                    site=object_site,
-                                    object_type=object_type,
-                                    name=n, value=v)
-            # Reference attribute to existing index object.
-            a.ioid = index_object.id
-            session.add(a)
-            #local_object = session.merge(a)
-            #session.add(local_object)
-        #if autocommit:
-        #    session.commit()
-    elif full_index_update:
-        index_journal = []
-        for attr, value in object_index:
-            now = time.time_ns()
-            index_journal.append((now, "add", attr, value))
+        if index_object:
+            existing_pairs = session.query(IndexObjectAttribute.name, IndexObjectAttribute.value)
+            existing_pairs = existing_pairs.where(IndexObjectAttribute.ioid == index_object.id)
+            existing_pairs = existing_pairs.all()
+            existing_pairs = {(row.name, row.value) for row in existing_pairs}
+            new_pairs = {(name, value) for name, values in object_index.items() for value in values}
+            pairs_to_delete = existing_pairs - new_pairs
+            pairs_to_add = new_pairs - existing_pairs
+            if pairs_to_delete:
+                del_q = session.query(IndexObjectAttribute)
+                del_q = del_q.filter(IndexObjectAttribute.ioid == index_object.id)
+                del_q = del_q.filter(tuple_(IndexObjectAttribute.name, IndexObjectAttribute.value).in_(pairs_to_delete))
+                del_q.delete(synchronize_session=False)
+            if pairs_to_add:
+                for x in pairs_to_add:
+                    x_name = x[0]
+                    x_val = x[1]
+                    a = IndexObjectAttribute(realm=object_realm,
+                                            site=object_site,
+                                            object_type=object_type,
+                                            name=x_name, value=x_val)
+                    # Reference attribute to existing index object.
+                    a.ioid = index_object.id
+                    session.add(a)
+        else:
+            # Add new attributes.
+            for n in object_index:
+                # Add attribute.
+                values = object_index[n]
+                for v in values:
+                    a = IndexObjectAttribute(realm=object_realm,
+                                            site=object_site,
+                                            object_type=object_type,
+                                            name=n, value=v)
+                    # Add attribute to list of attributes for the new index object.
+                    attributes.append(a)
+                    #local_object = session.merge(a)
+                    #session.add(local_object)
 
-    # Handle index journal.
-    attributes = []
-    if index_journal:
+        if autocommit:
+            session.commit()
+
+    elif use_index_journal and index_journal:
+        # Get existing attributes.
+        existing_attrs = []
+        if index_object:
+            sql_stmt = select(IndexObjectAttribute.name, IndexObjectAttribute.value)
+            sql_stmt = sql_stmt.where(IndexObjectAttribute.ioid == index_object.id)
+            existing_attrs = session.execute(sql_stmt)
+            existing_attrs = existing_attrs.all()
+        # Handle index journal.
         for x_entry in index_journal:
             x_entry_type = x_entry[1]
             x_attribute = x_entry[2]
@@ -2137,6 +2103,8 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
 
             # Add attributes.
             if x_entry_type == "add":
+                if (x_attribute, x_value) in existing_attrs:
+                    continue
                 a = IndexObjectAttribute(realm=object_realm,
                                         site=object_site,
                                         object_type=object_type,
@@ -2161,29 +2129,6 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
                 result = q.all()
                 for a in result:
                     session.delete(a)
-    if index_object:
-        if index_journal:
-            last_index_id = json.dumps(index_journal[-1])
-            index_object.last_index_id = last_index_id
-        elif full_index_update:
-            last_index_id = json.dumps("FULL")
-            index_object.last_index_id = last_index_id
-
-    # Handle ACL auto update.
-    if acl_auto_update and index_object:
-        if acl_journal:
-            last_acl_id = None
-            if index_object.last_acl_id:
-                last_acl_id = json.loads(index_object.last_acl_id)
-            if last_acl_id and last_acl_id in acl_journal:
-                acl_auto_update_start_pos = acl_journal.index(last_acl_id) + 1
-                acl_journal = acl_journal.copy()
-                acl_journal = acl_journal[acl_auto_update_start_pos:]
-            else:
-                if last_acl_id:
-                    msg = "ACL journal out of sync. Will do a full ACL update: %s" % object_id
-                    logger.info(msg)
-                full_acl_update = True
 
     # Get object ACLs from index DB.
     if full_acl_update:
@@ -2203,34 +2148,51 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
             object_acls.remove(x)
 
     # Add/del ACLs of existing object (update index).
-    if full_acl_update and index_object and object_acls:
-        # Delete current attributes.
-        # https://github.com/sqlalchemy/sqlalchemy/issues/6300
-        sql_stmt = delete(IndexObjectACL)
-        sql_stmt = sql_stmt.where(IndexObjectACL.ioid == index_object.id)
-        session.execute(sql_stmt)
-        # Add new ACLs.
-        for raw_acl in object_acls:
-            # Add ACL.
-            a = IndexObjectACL(realm=object_realm,
-                            site=object_site,
-                            object_type=object_type,
-                            value=raw_acl)
-            # Reference ACL to existing index object.
-            a.ioid = index_object.id
-            session.add(a)
-    elif full_acl_update:
-        acl_journal = []
-        for raw_acl in object_acls:
-            now = time.time_ns()
-            acl_journal.append([now, "add", raw_acl])
-
-    # Handle ACL journal.
     acls = []
     clear_acl_cache = False
-    if acl_journal:
+    if full_acl_update and object_acls:
+        clear_acl_cache = True
+        if index_object:
+            existing_acls = session.query(IndexObjectACL.value)
+            existing_acls = existing_acls.where(IndexObjectACL.ioid == index_object.id)
+            existing_acls = existing_acls.all()
+            existing_acls = {row.value for row in existing_acls}
+            new_acls = set(object_acls)
+            acls_to_delete = existing_acls - new_acls
+            acls_to_add = new_acls - existing_acls
+            if acls_to_delete:
+                del_q = session.query(IndexObjectACL)
+                del_q = del_q.filter(IndexObjectACL.ioid == index_object.id)
+                del_q = del_q.filter(IndexObjectACL.value.in_(acls_to_delete))
+                del_q.delete(synchronize_session=False)
+            if acls_to_add:
+                for raw_acl in acls_to_add:
+                    a = IndexObjectACL(realm=object_realm,
+                                    site=object_site,
+                                    object_type=object_type,
+                                    value=raw_acl)
+                    # Reference ACL to existing index object.
+                    a.ioid = index_object.id
+                    session.add(a)
+        else:
+            # Add new attributes.
+            for raw_acl in object_acls:
+                a = IndexObjectACL(realm=object_realm,
+                                site=object_site,
+                                object_type=object_type,
+                                value=raw_acl)
+                # Add ACL to list of ACLs for the new index object.
+                acls.append(a)
+                #local_object = session.merge(a)
+                #session.add(local_object)
+
+        if autocommit:
+            session.commit()
+
+    elif use_acl_journal and acl_journal:
+        # Handle ACL journal.
+        clear_acl_cache = True
         for x_entry in acl_journal:
-            clear_acl_cache = True
             x_entry_type = x_entry[1]
             x_raw_acl = x_entry[2]
 
@@ -2259,35 +2221,18 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
                 result = q.all()
                 for a in result:
                     session.delete(a)
-    if index_object:
-        if acl_journal:
-            last_acl_id = json.dumps(acl_journal[-1])
-            index_object.last_acl_id = last_acl_id
-        elif full_acl_update:
-            last_acl_id = json.dumps("FULL")
-            index_object.last_acl_id = last_acl_id
-
-    # Handle LDIF auto update.
-    if ldif_auto_update and index_object:
-        if ldif_journal:
-            last_ldif_id = None
-            if index_object.last_ldif_id:
-                last_ldif_id = json.loads(index_object.last_ldif_id)
-            if last_ldif_id and last_ldif_id in ldif_journal:
-                ldif_auto_update_start_pos = ldif_journal.index(last_ldif_id) + 1
-                ldif_journal = ldif_journal.copy()
-                ldif_journal = ldif_journal[ldif_auto_update_start_pos:]
-            else:
-                if last_ldif_id:
-                    msg = "LDIF journal out of sync. Will do a full LDIF update: %s" % object_id
-                    logger.info(msg)
-                full_ldif_update = True
+        if autocommit:
+            session.commit()
 
     # Get object LDIF from index DB.
+    update_object_ldif = False
     if full_ldif_update:
-        if not object_ldif:
+        if object_ldif:
+            update_object_ldif = True
+        else:
             full_ldif_update = False
-    elif ldif_auto_update and index_object:
+    elif use_ldif_journal and index_object and ldif_journal:
+        update_object_ldif = True
         object_ldif = json.loads(index_object.ldif)
         for x in ldif_journal:
             x_entry_action = x[1]
@@ -2319,13 +2264,8 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
                 msg = "Unknown action for ldif journal: %s" % x_entry_action
                 raise OTPmeException(msg)
 
-    if index_object:
-        if ldif_journal:
-            last_ldif_id = json.dumps(ldif_journal[-1])
-            index_object.last_ldif_id = last_ldif_id
-        elif full_ldif_update:
-            last_ldif_id = json.dumps("FULL")
-            index_object.last_ldif_id = last_ldif_id
+    if full_ldif_update:
+        update_object_ldif = True
 
     # Get object data (e.g. OTPme attributes and fs paths).
     object_name = object_id.name
@@ -2361,8 +2301,9 @@ def index_add(object_id, object_paths=None, object_config=None, uuid=None,
             index_object.sync_checksum = sync_checksum
         if index_object.template != template:
             index_object.template = template
-        if index_object.ldif != object_ldif:
-            index_object.ldif = object_ldif
+        if update_object_ldif:
+            if index_object.ldif != object_ldif:
+                index_object.ldif = object_ldif
     else:
         index_object = IndexObject(uuid=uuid,
                                 realm=object_realm,
@@ -2504,7 +2445,11 @@ def rebuild_object_index(object_type, objects, after=[]):
         config_file = x[1]
         log_current_object.message = "Processing %s" % object_id.object_type
         log_current_object(config_file)
-        index_add(object_id, object_config="auto", full_index_update=True)
+        index_add(object_id=object_id,
+                object_config="auto",
+                full_index_update=True,
+                full_ldif_update=True,
+                full_acl_update=True)
     objects.pop(object_type)
 
 def index_rebuild():
@@ -2715,3 +2660,23 @@ def get_last_used_times(object_types):
                 continue
             last_used_data[object_type][x_uuid] = x_last_used
     return last_used_data
+
+@handle_transaction
+def set_checksum(object_id, checksum=None, sync_checksum=None, session=None, **kwargs):
+    index_object = index_get_object(object_id=object_id)
+    if not index_object:
+        return
+    object_changed = False
+    if checksum:
+        if index_object.checksum != checksum:
+            object_changed = True
+            index_object.checksum = checksum
+    if sync_checksum:
+        if index_object.sync_checksum != sync_checksum:
+            object_changed = True
+            index_object.sync_checksum = sync_checksum
+    if not object_changed:
+        return
+    index_object = session.merge(index_object)
+    session.add(index_object)
+    session.commit()

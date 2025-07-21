@@ -834,30 +834,6 @@ class JsonFile(object):
             modified_attributes.remove("INCREMENTAL_UPDATES")
         except ValueError:
             pass
-        try:
-            object_config.pop('INDEX_JOURNAL')
-        except KeyError:
-            pass
-        try:
-            modified_attributes.remove("INDEX_JOURNAL")
-        except ValueError:
-            pass
-        try:
-            object_config.pop('LDIF_JOURNAL')
-        except KeyError:
-            pass
-        try:
-            modified_attributes.remove("LDIF_JOURNAL")
-        except ValueError:
-            pass
-        try:
-            object_config.pop('ACL_JOURNAL')
-        except KeyError:
-            pass
-        try:
-            modified_attributes.remove("ACL_JOURNAL")
-        except ValueError:
-            pass
 
         new_db = False
         if not os.path.exists(self.file_path):
@@ -889,7 +865,7 @@ class JsonFile(object):
 
             if full_data_update is True:
                 self.write_file(object_config)
-                return
+                return object_config
 
             _modified_attributes = modified_attributes.copy()
             for x in incremental_updates:
@@ -991,10 +967,11 @@ class JsonFile(object):
                     continue
                 increment_ids.append(x)
             increment_ids.append([time.time(), new_incr_id])
-            increment_ids = sorted(increment_ids)[-5:]
+            increment_ids = sorted(increment_ids)[-500:]
             current_oc['INCREMENT_IDS'] = increment_ids
         # Make sure data is written.
         self.write_file(current_oc)
+        return current_oc
 
 class SQLiteFile(object):
     def __init__(self, object_id, object_uuid):
@@ -1060,30 +1037,6 @@ class SQLiteFile(object):
             incremental_updates = []
         try:
             modified_attributes.remove("INCREMENTAL_UPDATES")
-        except ValueError:
-            pass
-        try:
-            object_config.pop('INDEX_JOURNAL')
-        except KeyError:
-            pass
-        try:
-            modified_attributes.remove("INDEX_JOURNAL")
-        except ValueError:
-            pass
-        try:
-            object_config.pop('LDIF_JOURNAL')
-        except KeyError:
-            pass
-        try:
-            modified_attributes.remove("LDIF_JOURNAL")
-        except ValueError:
-            pass
-        try:
-            object_config.pop('ACL_JOURNAL')
-        except KeyError:
-            pass
-        try:
-            modified_attributes.remove("ACL_JOURNAL")
         except ValueError:
             pass
 

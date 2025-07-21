@@ -94,6 +94,8 @@ class OTPmeSyncP1(OTPmeServer1):
         self.require_master_node = False
         # Sync must be possible while master node failover.
         self.require_cluster_status = False
+        # Sync parameters of peer.
+        self.peer_sync_params = {}
         # Call parent class init.
         OTPmeServer1.__init__(self, **kwargs)
 
@@ -909,9 +911,19 @@ class OTPmeSyncP1(OTPmeServer1):
                 return self.build_response(status, response)
 
         # Get sync parameters of peer syncing with us.
-        sync_params = self.peer.get_sync_parameters(sync_realm,
-                                                    sync_site,
-                                                    self.peer.uuid)
+        try:
+            sync_params = self.peer_sync_params[self.peer.uuid][sync_realm][sync_site]
+        except KeyError:
+            # Cache sync parameters for peer to speedup processing.
+            sync_params = self.peer.get_sync_parameters(sync_realm,
+                                                        sync_site,
+                                                        self.peer.uuid)
+            if self.peer.uuid not in self.peer_sync_params:
+                self.peer_sync_params[self.peer.uuid] = {}
+            if sync_realm not in self.peer_sync_params[self.peer.uuid]:
+                self.peer_sync_params[self.peer.uuid][sync_realm] = {}
+            self.peer_sync_params[self.peer.uuid][sync_realm][sync_site] = sync_params
+
         skip_admin = sync_params['skip_admin']
         skip_users = sync_params['skip_users']
         skip_list = sync_params['skip_list']

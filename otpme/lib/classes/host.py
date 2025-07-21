@@ -82,7 +82,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'args'              : [
+                    'oargs'             : [
                                             'unit',
                                             'country',
                                             'state',
@@ -119,6 +119,8 @@ commands = {
                                         'show_all',
                                         'output_fields',
                                         'max_policies',
+                                        'max_tokens',
+                                        'max_roles',
                                         'search_regex',
                                         'sort_by',
                                         'reverse',
@@ -201,7 +203,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'get_ldif',
-                    'args'              : ['attributes'],
+                    'oargs'             : ['attributes'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -1031,8 +1033,8 @@ class Host(OTPmeHost):
                                             return_type="uuid")
             # Get tokens to sync from host.
             token_uuids += self.get_tokens(include_roles=True,
-                                            skip_disabled=False,
-                                            return_type="uuid")
+                                        skip_disabled=False,
+                                        return_type="uuid")
 
         # Sync users by sync groups.
         if self.sync_groups_enabled:
@@ -1086,21 +1088,27 @@ class Host(OTPmeHost):
                 if admin_token.uuid not in token_uuids:
                     token_uuids.append(admin_token.uuid)
 
+        return_attributes = ['default_token']
         for user_uuid in user_uuids:
-            user = backend.get_object(uuid=user_uuid)
-            if not user:
+            result = backend.search(object_type="user",
+                                    attribute="uuid",
+                                    value=user_uuid,
+                                    return_attributes=return_attributes)
+            if not result:
                 continue
-            if not user.default_token:
-                continue
-            token_uuids.append(user.default_token)
+            default_token_uuid = result[0]
+            token_uuids.append(default_token_uuid)
 
+        return_attributes = ['destination_token']
         for token_uuid in list(token_uuids):
-            token = backend.get_object(uuid=token_uuid)
-            if token.token_type != "link":
+            result = backend.search(object_type="user",
+                                    attribute="uuid",
+                                    value=user_uuid,
+                                    return_attributes=return_attributes)
+            if not result:
                 continue
-            if token.destination_token is None:
-                continue
-            token_uuids.append(token.destination_token)
+            destination_token_uuid = result[0]
+            token_uuids.append(destination_token_uuid)
 
         if user_uuids:
             include_uuids['user'] = list(set(user_uuids))

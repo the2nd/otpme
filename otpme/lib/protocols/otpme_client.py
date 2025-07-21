@@ -929,7 +929,7 @@ class OTPmeClient(OTPmeClientBase):
 
         #if config.debug_enabled:
         #    if not encrypt_request:
-        #        print("SENDING_UNENCRYPTED", request)
+        #        print("SENDING_UNENCRYPTED", self.daemon, command, command_args)
 
         response = None
         # Set default timeout.
@@ -2474,52 +2474,15 @@ class OTPmeClient1(OTPmeClientBase):
         # Get inner preauth reply.
         preauth_reply = response['preauth_reply']
 
-        if self.connection.encrypt_session:
-            _enc_mod = None
-            _reply_key = None
-            try:
-                reply_key = response['enc_key']
-            except:
-                reply_key = None
-            try:
-                host_key = config.host_data['auth_key']
-            except:
-                host_key = None
-            if host_key:
-                _enc_mod = enc_mod
-                if not reply_key:
-                    msg = (_("Preauth reply misses <enc_key>."))
-                    raise OTPmeException(msg)
-                # Load host private key.
-                try:
-                    host_key = RSAKey(key=host_key)
-                except:
-                    msg = (_("Failed to load host auth key."))
-                    self.logger.warning(msg)
-                    config.raise_exception()
-                    raise OTPmeException(msg)
-                # Decrypt reply key.
-                try:
-                    _reply_key = decode(reply_key, "hex")
-                    _reply_key = host_key.decrypt(ciphertext=_reply_key,
-                                                algorithm="SHA256",
-                                                cipher='PKCS1_OAEP')
-                except Exception as e:
-                    msg = (_("Failed to decrypt preauth reply key: %s" % e))
-                    self.logger.warning(msg)
-                    config.raise_exception()
-                    raise OTPmeException(msg)
-            # Decrypt preauth reply.
-            try:
-                preauth_reply = json.decode(preauth_reply,
-                                            encoding="base64",
-                                            encryption=_enc_mod,
-                                            enc_key=_reply_key)
-            except Exception as e:
-                msg = (_("Failed to decrypt preauth reply: %s" % e))
-                self.cleanup()
-                config.raise_exception()
-                raise OTPmeException(msg)
+        # Decode inner preauth reply.
+        try:
+            preauth_reply = json.decode(preauth_reply,
+                                        encoding="base64")
+        except Exception as e:
+            msg = (_("Failed to decrypt preauth reply: %s" % e))
+            self.cleanup()
+            config.raise_exception()
+            raise OTPmeException(msg)
 
         # Set preauth reply.
         self.preauth_reply = preauth_reply

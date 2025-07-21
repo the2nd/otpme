@@ -22,7 +22,6 @@ from otpme.lib import backend
 from otpme.lib import multiprocessing
 from otpme.lib.pki.utils import check_crl
 from otpme.lib.encryption.ec import ECKey
-from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.protocols import status_codes
 #from otpme.lib.protocols.utils import scauth
@@ -226,39 +225,33 @@ class OTPmeServer1(object):
         # Check client certificate.
         if self.peer_cert:
             # Get certs common name.
-            for i in self.peer_cert['subject']:
-                if i[0][0] == 'commonName':
-                    self.client_cn = i[0][1]
-                    self.client_name = self.client_cn
-                    break
+            self.client_cn = self.peer_cert['cn']
+            self.client_name = self.client_cn
             # Verify certificate.
-            cert_issuers = self.peer_cert['issuer']
-            cert_serial = self.peer_cert['serialNumber']
-            for i in cert_issuers:
-                if i[0][0] == 'commonName':
-                    issuer_cn = i[0][1]
-                    result = backend.search(object_type="ca",
-                                                attribute="path",
-                                                value=issuer_cn,
-                                                return_type="instance")
-                    if not result:
-                        msg = (_("Client certificated issued by "
-                                "unknown CA: %s: %s")
-                                % (issuer_cn, self.client_cn))
-                        raise CertVerifyFailed(msg)
+            cert_issuer = self.peer_cert['issuer']
+            cert_serial = self.peer_cert['serial_number']
+            result = backend.search(object_type="ca",
+                                    attribute="path",
+                                    value=cert_issuer,
+                                    return_type="instance")
+            if not result:
+                msg = (_("Client certificated issued by "
+                        "unknown CA: %s: %s")
+                        % (cert_issuer, self.client_cn))
+                raise CertVerifyFailed(msg)
 
-                    issuer_ca = result[0]
-                    try:
-                        cert_revoked = check_crl(issuer_ca.crl, cert_serial)
-                    except Exception as e:
-                        msg = "Error checking CRL %s: %s" % (issuer_ca, e)
-                        self.logger.critical(msg, exc_info=True)
-                        raise
-                    if cert_revoked:
-                        msg = (_("Certificate revoked by "
-                                "CA: %s: %s")
-                                % (issuer_cn, self.client_cn))
-                        raise CertVerifyFailed(msg)
+            issuer_ca = result[0]
+            try:
+                cert_revoked = check_crl(issuer_ca.crl, cert_serial)
+            except Exception as e:
+                msg = "Error checking CRL %s: %s" % (issuer_ca, e)
+                self.logger.critical(msg, exc_info=True)
+                raise
+            if cert_revoked:
+                msg = (_("Certificate revoked by "
+                        "CA: %s: %s")
+                        % (cert_issuer, self.client_cn))
+                raise CertVerifyFailed(msg)
 
             if not self.client.startswith("socket://") \
             and not self.client_cn \
@@ -739,8 +732,6 @@ class OTPmeServer1(object):
         try:
             response = self._process(command, command_args)
         except Exception as e:
-            raise
-            config.raise_exception()
             msg = ("Error in OTPmeServer1._process(): %s" % e)
             self.logger.critical(msg)
             message = "Internal server error."
@@ -751,9 +742,6 @@ class OTPmeServer1(object):
     def handle_preauth(self, preauth_request, enc_key=None):
         """ Handle preauth request. """
         enc_mod = None
-        pa_enc_mod = None
-        pa_enc_key = None
-        pa_reply_key = None
         if self.encrypt_session:
             if enc_key is None:
                 status = False
@@ -761,34 +749,6 @@ class OTPmeServer1(object):
                 return self.build_response(status, message, encrypt=False)
             # Set encryption mod for reply.
             enc_mod = self.session_enc_mod
-            if self.peer:
-                if self.peer.public_key is None:
-                    status = False
-                    message = (_("Client misses auth key needed to verify "
-                                "client identity: %s") % self.peer.fqdn)
-                    return self.build_response(status, message, encrypt=False)
-                # Encrpytion
-                pa_enc_mod = self.session_enc_mod
-                # Generate new key for preauth reply.
-                pa_enc_key = self.session_enc_mod.gen_key()
-                # Load host key.
-                try:
-                    host_key = self.peer._public_key
-                except Exception as e:
-                    config.raise_exception()
-                    msg = (_("Failed to load host auth key."))
-                    raise OTPmeException(msg)
-                # Encrypt reply key with host key.
-                try:
-                    pa_reply_key = host_key.encrypt(cleartext=pa_enc_key,
-                                                    algorithm="SHA256",
-                                                    cipher='PKCS1_OAEP')
-                    pa_reply_key = encode(pa_reply_key, "hex")
-                except Exception as e:
-                    config.raise_exception()
-                    msg = (_("Failed to encrypt session server DH "
-                                "public key."))
-                    raise OTPmeException(msg)
         msg = "Decrypting preauth request key..."
         if config.debug_level() > 3:
             self.logger.debug(msg)
@@ -967,9 +927,7 @@ class OTPmeServer1(object):
             # Encrypt preauth reply.
             try:
                 preauth_reply = json.encode(preauth_reply,
-                                            encoding="base64",
-                                            encryption=pa_enc_mod,
-                                            enc_key=pa_enc_key)
+                                            encoding="base64")
             except Exception as e:
                 config.raise_exception()
                 msg = (_("Failed to encrypt preauth reply."))
@@ -978,7 +936,6 @@ class OTPmeServer1(object):
         # Build reply.
         reply = {
                 'type'          : 'preauth',
-                'enc_key'       : pa_reply_key,
                 'preauth_reply' : preauth_reply,
                 }
 

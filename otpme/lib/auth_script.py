@@ -19,7 +19,7 @@ def run(script_uuid, options, auth_type, auth_user, auth_token, auth_group=None,
     auth_client=None, auth_client_ip=None, auth_pass=None, auth_otp=None,
     auth_challenge=None, auth_response=None, auth_nt_key=None,
     auth_trust_pass=None, auth_trust_pass_otp=None, script_type="auth_script",
-    user=None, group=None, groups=None):
+    user=None, group=None, groups=None, **kwargs):
     """ Run auth script. """
     # Create dictionary with variables that will be passed to auth script.
     variables = {}
@@ -64,9 +64,6 @@ def run(script_uuid, options, auth_type, auth_user, auth_token, auth_group=None,
                             signatures=script_signatures,
                             user=user, group=group, groups=groups,
                             call=False)
-    # Make sure script output is string.
-    script_stdout = script_stdout.decode()
-    script_stderr = script_stderr.decode()
     # Check request type.
     if auth_type == "mschap":
         # Check script exit status.

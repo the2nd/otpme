@@ -862,6 +862,9 @@ class OTPmeHost(OTPmeClientObject):
 
         self._cache(callback=callback)
 
+        if _caller == "CLIENT":
+            return callback.ok()
+
         return key, cert
 
     def gen_jotp(self):

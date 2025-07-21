@@ -154,23 +154,23 @@ def get_signers(signer_type, username=None):
 
     return signers
 
-def verify_signatures(signer_type, signers, signatures, sign_data):
+def verify_signatures(signer_type, signers, signatures, sign_data,
+    stop_on_fist_match=False):
     """
     Verify given signatures/data with the signers configured for this host.
     """
     found_valid_signature = False
     for signer_uuid in signatures:
+        if found_valid_signature:
+            if stop_on_fist_match:
+                break
         for sign_id in signatures[signer_uuid]:
             signature = signatures[signer_uuid][sign_id]['signature']
             sig = OTPmeSignature(signature=signature)
+            if found_valid_signature:
+                if stop_on_fist_match:
+                    break
             for signer in signers:
-                signer_outdated = signer.check_outdated()
-                if signer_outdated:
-                    msg = ("Ignoring %s signer: %s"
-                        % (signer_outdated, signer.object_oid))
-                    logger.warning(msg)
-                    continue
-
                 # Only verify signers/signatures that match.
                 if sig.signer_uuid not in signer.signers:
                     continue
@@ -197,7 +197,8 @@ def verify_signatures(signer_type, signers, signatures, sign_data):
                     logger.warning(msg)
                     continue
                 found_valid_signature = True
-                break
+                if stop_on_fist_match:
+                    break
 
     if not found_valid_signature:
         msg = "No valid signature found."
@@ -332,7 +333,7 @@ class OTPmeSigner(object):
 
         # Check object type.
         object_type = object_id.object_type
-        if not object_type in self.supported_signers:
+        if object_type not in self.supported_signers:
             msg = (_("Got unknown signer type: %s") % object_type)
             raise OTPmeException(msg)
 

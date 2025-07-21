@@ -125,7 +125,8 @@ def run(script_type, script_path, realm=None, site=None, options=None,
             signing.verify_signatures(signer_type=script_type,
                                     signatures=signatures,
                                     sign_data=script,
-                                    signers=signers)
+                                    signers=signers,
+                                    stop_on_fist_match=True)
         except OTPmeException as e:
             config.raise_exception()
             msg = (_("Failed to verify script signatures: %s") % e)

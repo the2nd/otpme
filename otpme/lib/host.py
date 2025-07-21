@@ -50,7 +50,7 @@ def get_file_owner_group():
             config.ssl_key_file         : file_mode,
             config.ssl_ca_file          : file_mode,
             config.ssl_site_cert_file   : file_mode,
-            config.host_key_file        : file_mode,
+            config.host_key_file        : 0o600,
             }
     # File owner.
     file_owner = config.user

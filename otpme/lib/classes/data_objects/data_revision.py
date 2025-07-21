@@ -157,11 +157,6 @@ class DataRevision(OTPmeDataObject):
                                                         'force_type': True,
                                                         'required'  : True,
                                                     },
-                        'INDEX_JOURNAL_ARCHIVE'      : {
-                                                        'var_name'      : 'index_journal_archive',
-                                                        'type'          : list,
-                                                        'required'      : False,
-                                                    },
                         }
 
         return object_config

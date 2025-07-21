@@ -894,7 +894,7 @@ class OTPmeJoinP1(OTPmeServer1):
         if command == "join" and host:
             if host.site != self.request_site.name:
                 message = (_("Cannot join %s from site %s."
-                            % (host_type, self.request_site.name)))
+                            % (host_type, host.site)))
                 status = False
                 self.logger.warning(message)
                 return self.build_response(status, message)

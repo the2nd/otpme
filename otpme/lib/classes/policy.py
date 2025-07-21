@@ -63,7 +63,6 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'args'              : ['policy_type'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {

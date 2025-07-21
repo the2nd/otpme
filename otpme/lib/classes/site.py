@@ -163,9 +163,9 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'args'              : ['node_name', 'site_address'],
+                    'args'              : ['node_name', 'site_fqdn'],
                     'oargs'             : [
-                                            'site_fqdn',
+                                            'site_address',
                                             'dictionaries',
                                             'id_ranges',
                                             'ca_country',
@@ -184,8 +184,11 @@ commands = {
                     },
                 'exists'    : {
                     'method'            : 'add',
-                    'args'              : ['node_name', 'site_address'],
+                    'args'              : ['node_name', 'site_fqdn'],
                     'oargs'             : [
+                                            'site_address',
+                                            'dictionaries',
+                                            'id_ranges',
                                             'ca_country',
                                             'ca_state',
                                             'ca_locality',
@@ -197,8 +200,6 @@ commands = {
                                             'site_key_len',
                                             'site_valid',
                                             'no_dicts',
-                                            'dictionaries',
-                                            'id_ranges',
                                         ],
                     'job_type'          : 'process',
                     },
@@ -449,7 +450,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'get_cert_key',
-                    'args'              : ['passphrase'],
+                    'oargs'              : ['passphrase'],
                     'job_type'          : 'process',
                     },
                 },
@@ -735,7 +736,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'get_ldif',
-                    'args'              : ['attributes'],
+                    'oargs'             : ['attributes'],
                     'job_type'          : 'thread',
                     },
                 },

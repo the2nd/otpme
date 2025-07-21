@@ -332,6 +332,7 @@ def register_backend():
     config.register_index_attribute('object_uuid')
     config.register_index_attribute('create_time')
     config.register_index_attribute('last_modified')
+    config.register_index_attribute('last_modified_by')
     config.register_index_attribute('resolver')
     config.register_index_attribute('resolver_key')
     config.register_index_attribute('resolver_checksum')
@@ -600,6 +601,8 @@ class OTPmeBaseObject(OTPmeLockObject):
         self.offline = False
         self.create_time = int(time.time())
         self.last_modified = 0
+        self.last_modified_by = "API"
+        self.last_modified_by_cache = "API"
         self.track_last_used = False
         self._modified = False
         self._cached = False
@@ -609,11 +612,8 @@ class OTPmeBaseObject(OTPmeLockObject):
         self._sub_sync_fields = {}
         self.object_config = {}
         self.index_journal = []
-        self.index_journal_archive = []
         self.acl_journal = []
-        self.acl_journal_archive = []
         self.ldif_journal = []
-        self.ldif_journal_archive = []
         self.no_transaction = no_transaction
         self.kwargs_object_config = object_config
         # Object version.
@@ -1478,22 +1478,36 @@ class OTPmeBaseObject(OTPmeLockObject):
             # Update object config attribute.
             self._config_attribute(attribute=i, conf=conf, update=True)
 
-    def update_last_modified(self):
+    def update_last_modified(
+        self,
+        update_last_modified_by: bool=True):
         """ Update last modified times. """
         # Set last modified timestamp.
         self.last_modified = int(time.time())
         # Update index.
         self.update_index('last_modified', self.last_modified)
+        # Set last last_modified_by.
+        if update_last_modified_by:
+            modifier = "API"
+            modifier_cache = "API"
+            if config.auth_token:
+                modifier = config.auth_token.uuid
+                modifier_cache = config.auth_token.rel_path
+            self.last_modified_by = modifier
+            self.last_modified_by_cache = modifier_cache
+        # Update index.
+        self.update_index('last_modified_by', self.last_modified_by)
 
     @object_lock()
     def touch(self, callback: JobCallback=default_callback, **kwargs):
-        return self._write(callback=callback)
+        return self._write(update_last_modified_by=False, callback=callback)
 
     @object_lock()
     def _write(self,
         cluster: bool=True,
         wait_for_cluster_writes: bool=True,
         update_last_modified: bool=True,
+        update_last_modified_by: bool=True,
         callback: JobCallback=default_callback,
         ):
         """ Write object config to backend. """
@@ -1510,108 +1524,30 @@ class OTPmeBaseObject(OTPmeLockObject):
 
         if update_last_modified:
             # Update last modified timestamp.
-            self.update_last_modified()
+            self.update_last_modified(update_last_modified_by=update_last_modified_by)
 
         # Process index journal.
         index_journal = []
         if self.index_journal:
             index_journal = copy.deepcopy(self.index_journal)
         self.index_journal = []
-        try:
-            last_archive_entry = self.index_journal_archive[-1]
-        except IndexError:
-            last_archive_entry = None
-        if last_archive_entry:
-            index_journal.insert(0, last_archive_entry)
-        # Add index journal in loop to prevent more incremental updates than needed.
-        for x in index_journal:
-            self.index_journal_archive.append(x)
-        # Remove old index journal archive entries.
-        try:
-            last_journal_entry = index_journal[-1]
-        except IndexError:
-            last_journal_entry = None
-        max_journal_archive_entries = 250
-        if last_journal_entry:
-            journal_id_pos = self.index_journal_archive.index(last_journal_entry)
-            journal_archive_del_pos = len(self.index_journal_archive) - max_journal_archive_entries
-            if journal_id_pos <= journal_archive_del_pos:
-                max_journal_archive_entries = len(self.index_journal_archive) - journal_id_pos
-        new_index_journal_archive = list(self.index_journal_archive[-max_journal_archive_entries:])
-        for x in self.index_journal_archive:
-            if x in new_index_journal_archive:
-                continue
-            self.index_journal_archive.remove(x)
 
         # Process ACL journal.
         acl_journal = []
         if self.acl_journal:
             acl_journal = copy.deepcopy(self.acl_journal)
         self.acl_journal = []
-        try:
-            last_archive_entry = self.acl_journal_archive[-1]
-        except IndexError:
-            last_archive_entry = None
-        if last_archive_entry:
-            acl_journal.insert(0, last_archive_entry)
-        # Add ACL journal in loop to prevent more incremental updates than needed.
-        for x in acl_journal:
-            self.acl_journal_archive.append(x)
-        # Remove old ACL journal archive entries.
-        try:
-            last_journal_entry = acl_journal[-1]
-        except IndexError:
-            last_journal_entry = None
-        max_journal_archive_entries = 250
-        if last_journal_entry:
-            journal_id_pos = self.acl_journal_archive.index(last_journal_entry)
-            journal_archive_del_pos = len(self.acl_journal_archive) - max_journal_archive_entries
-            if journal_id_pos <= journal_archive_del_pos:
-                max_journal_archive_entries = len(self.acl_journal_archive) - journal_id_pos
-        new_acl_journal_archive = list(self.acl_journal_archive[-max_journal_archive_entries:])
-        for x in self.acl_journal_archive:
-            if x in new_acl_journal_archive:
-                continue
-            self.acl_journal_archive.remove(x)
 
         # Process LDIF journal.
         ldif_journal = []
         if self.ldif_journal:
             ldif_journal = copy.deepcopy(self.ldif_journal)
         self.ldif_journal = []
-        try:
-            last_archive_entry = self.ldif_journal_archive[-1]
-        except IndexError:
-            last_archive_entry = None
-        if last_archive_entry:
-            ldif_journal.insert(0, last_archive_entry)
-        # Add ACL journal in loop to prevent more incremental updates than needed.
-        for x in ldif_journal:
-            self.ldif_journal_archive.append(x)
-        # Remove old ACL journal archive entries.
-        try:
-            last_journal_entry = ldif_journal[-1]
-        except IndexError:
-            last_journal_entry = None
-        max_journal_archive_entries = 250
-        if last_journal_entry:
-            journal_id_pos = self.ldif_journal_archive.index(last_journal_entry)
-            journal_archive_del_pos = len(self.ldif_journal_archive) - max_journal_archive_entries
-            if journal_id_pos <= journal_archive_del_pos:
-                max_journal_archive_entries = len(self.ldif_journal_archive) - journal_id_pos
-        new_ldif_journal_archive = list(self.ldif_journal_archive[-max_journal_archive_entries:])
-        for x in self.ldif_journal_archive:
-            if x in new_ldif_journal_archive:
-                continue
-            self.ldif_journal_archive.remove(x)
 
         # Update object config from variables.
         self.update_object_config()
 
         # Add incremental update stuff.
-        self.object_config['ACL_JOURNAL'] = acl_journal
-        self.object_config['LDIF_JOURNAL'] = ldif_journal
-        self.object_config['INDEX_JOURNAL'] = index_journal
         self.object_config['LIST_ATTRIBUTES'] = self.list_attributes
         self.object_config['DICT_ATTRIBUTES'] = self.dict_attributes
         self.object_config['INCREMENTAL_UPDATES'] = list(self.incremental_updates)
@@ -1644,9 +1580,9 @@ class OTPmeBaseObject(OTPmeLockObject):
                         cluster=cluster,
                         wait_for_cluster_writes=wait_for_cluster_writes,
                         no_transaction=self.no_transaction,
-                        index_auto_update=True,
-                        ldif_auto_update=True,
-                        acl_auto_update=True,
+                        use_index_journal=True,
+                        use_ldif_journal=True,
+                        use_acl_journal=True,
                         index_journal=index_journal,
                         ldif_journal=ldif_journal,
                         acl_journal=acl_journal)
@@ -1681,9 +1617,14 @@ class OTPmeBaseObject(OTPmeLockObject):
         value: Union[str,int,float,None],
         ):
         """ Add attribute to object index. """
-        if [key, value] in self.index:
+        try:
+            values = self.index[key]
+        except KeyError:
+            self.index[key] = []
+            values = self.index[key]
+        if value in values:
             return
-        self.index.append([key, value])
+        values.append(value)
         now = time.time_ns()
         self.index_journal.append([now, 'add', key, value])
 
@@ -1693,22 +1634,26 @@ class OTPmeBaseObject(OTPmeLockObject):
         value: Union[str,int,float,None]=None,
         ):
         """ Remove attribute from object index. """
+        try:
+            values = self.index[key]
+        except KeyError:
+            self.index[key] = []
+            values = self.index[key]
         if value is not None:
             try:
-                self.index.remove([key, value])
+                values.remove(value)
             except ValueError:
                 pass
             now = time.time_ns()
             self.index_journal.append([now, 'del', key, value])
             return
-        for x in list(self.index):
-            x_key = x[0]
-            if x_key != key:
-                continue
-            self.index.remove(x)
-            x_val = x[1]
+        for x_val in values:
             now = time.time_ns()
-            self.index_journal.append([now, 'del', x_key, x_val])
+            self.index_journal.append([now, 'del', key, x_val])
+        try:
+            self.index.pop(key)
+        except KeyError:
+            pass
 
     def add(
         self,
@@ -1738,6 +1683,7 @@ class OTPmeBaseObject(OTPmeLockObject):
             return self._write(callback=callback)
         return self._cache(callback=callback)
 
+    @backend.transaction
     def delete(
         self,
         force: bool=False,
@@ -1879,8 +1825,6 @@ class OTPmeObject(OTPmeBaseObject):
                             "LDIF",
                             "LDIF_ATTRIBUTES",
                             "EXTENSION_ATTRIBUTES",
-                            "INDEX_JOURNAL_ARCHIVE",
-                            "ACL_JOURNAL_ARCHIVE",
                             "POLICIES",
                             "POLICY_OPTIONS",
                             "CONFIG_PARAMS",
@@ -1891,6 +1835,8 @@ class OTPmeObject(OTPmeBaseObject):
                             "CREATOR",
                             "CREATE_TIME",
                             "LAST_MODIFIED",
+                            "LAST_MODIFIED_BY",
+                            "LAST_MODIFIED_BY_CACHE",
                             "TEMPLATE",
                             "ORIGIN",
                             ],
@@ -1910,8 +1856,6 @@ class OTPmeObject(OTPmeBaseObject):
                             "LDIF",
                             "LDIF_ATTRIBUTES",
                             "EXTENSION_ATTRIBUTES",
-                            "INDEX_JOURNAL_ARCHIVE",
-                            "ACL_JOURNAL_ARCHIVE",
                             "ENABLED",
                             "UNUSED_DISABLE",
                             "AUTO_DISABLE",
@@ -1926,6 +1870,8 @@ class OTPmeObject(OTPmeBaseObject):
                             "CREATOR",
                             "CREATE_TIME",
                             "LAST_MODIFIED",
+                            "LAST_MODIFIED_BY",
+                            "LAST_MODIFIED_BY_CACHE",
                             "TEMPLATE",
                             "ORIGIN",
                             ],
@@ -2329,24 +2275,6 @@ class OTPmeObject(OTPmeBaseObject):
                                             'required'      : False,
                                         },
 
-            'INDEX_JOURNAL_ARCHIVE'      : {
-                                            'var_name'      : 'index_journal_archive',
-                                            'type'          : list,
-                                            'required'      : False,
-                                        },
-
-            'LDIF_JOURNAL_ARCHIVE'       : {
-                                            'var_name'      : 'ldif_journal_archive',
-                                            'type'          : list,
-                                            'required'      : False,
-                                        },
-
-            'ACL_JOURNAL_ARCHIVE'       : {
-                                            'var_name'      : 'acl_journal_archive',
-                                            'type'          : list,
-                                            'required'      : False,
-                                        },
-
             'ACL_INHERITANCE_ENABLED'   : {
                                             'var_name'      : 'acl_inheritance_enabled',
                                             'type'          : bool,
@@ -2477,15 +2405,24 @@ class OTPmeObject(OTPmeBaseObject):
                                             'type'          : int,
                                             'required'      : True,
                                         },
-
             'LAST_MODIFIED'             : {
                                             'var_name'      : 'last_modified',
                                             'type'          : int,
                                             'required'      : True,
                                         },
+            'LAST_MODIFIED_BY_CACHE'    : {
+                                            'var_name'      : 'last_modified_by_cache',
+                                            'type'          : str,
+                                            'required'      : False,
+                                        },
+            'LAST_MODIFIED_BY'          : {
+                                            'var_name'      : 'last_modified_by',
+                                            'type'          : str,
+                                            'required'      : False,
+                                        },
             'INDEX'                     : {
                                             'var_name'      : 'index',
-                                            'type'          : list,
+                                            'type'          : dict,
                                             'required'      : False,
                                         },
             'ORIGIN'                    : {
@@ -2650,6 +2587,7 @@ class OTPmeObject(OTPmeBaseObject):
     def _write(
         self,
         update_last_modified: bool=True,
+        update_last_modified_by: bool=True,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -2673,13 +2611,14 @@ class OTPmeObject(OTPmeBaseObject):
 
         if update_last_modified:
             # Update last modified timestamp.
-            self.update_last_modified()
+            self.update_last_modified(update_last_modified_by=update_last_modified_by)
             # Update extensions.
             self.update_extensions("update_modified_timestamp",
                                     callback=callback)
 
         # Call base class write method.
         super(OTPmeObject, self)._write(update_last_modified=False,
+                                        update_last_modified_by=False,
                                         callback=callback,
                                         **kwargs)
 
@@ -7077,7 +7016,7 @@ class OTPmeObject(OTPmeBaseObject):
         user_uuid: Union[str,None]=None,
         tags: Union[List,str,None]=None,
         verify_acls: bool=True,
-        verbose_level: int=0,
+        verbose_level: int=1,
         _caller: str="API",
         callback: JobCallback=default_callback,
         **kwargs,
@@ -7197,7 +7136,7 @@ class OTPmeObject(OTPmeBaseObject):
                     verify_status = False
                     continue
                 except Exception as e:
-                    config.raise_exception()
+                    #config.raise_exception()
                     msg = "%s: Invalid signature (%s)" % (user.name, sign_info)
                     callback.send(msg)
                     verify_status = False
@@ -8324,6 +8263,24 @@ class OTPmeObject(OTPmeBaseObject):
                 last_modified = datetime.datetime.fromtimestamp(self.last_modified)
         lines.append('LAST_MODIFIED="%s"' % last_modified)
 
+        last_modified_by = ""
+        if self.last_modified_by:
+            if self.verify_acl("view:last_modified_by"):
+                if stuff.is_uuid(self.last_modified_by):
+                    for x in config.tree_object_types:
+                        modifier = backend.get_oid(object_type=x,
+                                                uuid=self.last_modified_by)
+                        if modifier:
+                            break
+                    if not modifier:
+                        if self.last_modified_by_cache:
+                            modifier = self.last_modified_by_cache
+                        else:
+                            modifier = "Unknown"
+                else:
+                    last_modified_by = self.last_modified_by
+        lines.append('LAST_MODIFIED_BY="%s"' % last_modified_by)
+
         if self.track_last_used:
             last_used = ""
             if self.verify_acl("view:last_used"):
@@ -8770,7 +8727,7 @@ class OTPmeDataObject(OTPmeBaseObject):
 
             'INDEX'                     : {
                                             'var_name'      : 'index',
-                                            'type'          : list,
+                                            'type'          : dict,
                                             'required'      : False,
                                         },
             'CREATE_TIME'               : {

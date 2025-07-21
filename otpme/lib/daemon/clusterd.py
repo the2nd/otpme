@@ -35,7 +35,7 @@ from otpme.lib import multiprocessing
 from otpme.lib.pidfile import is_running
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
-from otpme.lib.classes.object_config import ObjectConfig
+#from otpme.lib.classes.object_config import ObjectConfig
 from otpme.lib.freeradius import reload as freeradius_reload
 
 from otpme.lib.exceptions import *
@@ -57,7 +57,6 @@ MEMBER_CANDIDATE_DIR = os.path.join(config.spool_dir, MEMBER_CANDIDATE_DIR_NAME)
 def register():
     """ Register OTPme daemon. """
     config.register_otpme_daemon("clusterd")
-    multiprocessing.register_shared_dict("sync_nodes")
     multiprocessing.register_shared_dict("ready_nodes")
     multiprocessing.register_shared_dict("master_node")
     multiprocessing.register_shared_dict("online_nodes")
@@ -1852,16 +1851,22 @@ class ClusterDaemon(OTPmeDaemon):
             self.handle_node_connections()
             # Handle nsscache sync.
             if self.nsscache_sync.value:
-                self.nsscache_sync.value = False
-                try:
-                    command_handler = CommandHandler()
-                    command_handler.start_sync(sync_type="nsscache")
-                except Exception as e:
-                    msg = "Failed to trigger nsscache sync: %s" % e
-                    self.logger.warning(msg)
-                else:
-                    msg = "Triggered nsscache sync."
-                    self.logger.info(msg)
+                # Skip nsscache sync if last object creation was within the last 30 seconds.
+                min_seconds = 10
+                now = time.time()
+                data_revision = config.get_data_revision()
+                age = now - data_revision
+                if age > min_seconds:
+                    try:
+                        command_handler = CommandHandler()
+                        command_handler.start_sync(sync_type="nsscache")
+                    except Exception as e:
+                        msg = "Failed to trigger nsscache sync: %s" % e
+                        self.logger.warning(msg)
+                    else:
+                        msg = "Triggered nsscache sync."
+                        self.logger.info(msg)
+                        self.nsscache_sync.value = False
 
             if self.host_name not in multiprocessing.master_sync_done:
                 try:
@@ -2128,49 +2133,6 @@ class ClusterDaemon(OTPmeDaemon):
             if action == "write":
                 object_id = object_data['object_id']
                 object_id = oid.get(object_id)
-                full_data_update = object_data['full_data_update']
-                full_index_update = object_data['full_index_update']
-                full_ldif_update = object_data['full_ldif_update']
-                full_acl_update = object_data['full_acl_update']
-                index_journal = object_data['index_journal']
-                ldif_journal = object_data['ldif_journal']
-                acl_journal = object_data['acl_journal']
-                index_auto_update = object_data['index_auto_update']
-                ldif_auto_update = object_data['ldif_auto_update']
-                acl_auto_update = object_data['acl_auto_update']
-                object_config = object_data['object_config']
-                object_config = ObjectConfig(object_id, object_config)
-                object_config = object_config.decrypt(config.master_key)
-                object_uuid = object_config['UUID']
-
-                x_object = backend.get_object(object_id)
-                if x_object:
-                    x_object.acquire_lock(lock_caller="cluster")
-                try:
-                    try:
-                        backend.write_config(object_id=object_id,
-                                            cluster=False,
-                                            full_data_update=full_data_update,
-                                            full_index_update=full_index_update,
-                                            full_ldif_update=full_ldif_update,
-                                            full_acl_update=full_acl_update,
-                                            index_auto_update=index_auto_update,
-                                            ldif_auto_update=ldif_auto_update,
-                                            acl_auto_update=acl_auto_update,
-                                            index_journal=index_journal,
-                                            ldif_journal=ldif_journal,
-                                            acl_journal=acl_journal,
-                                            object_config=object_config)
-                    except Exception as e:
-                        msg = "Failed to write object: %s: %s" % (object_id, e)
-                        self.logger.warning(msg)
-                        #config.raise_exception()
-                        continue
-                finally:
-                    if x_object:
-                        x_object.release_lock(lock_caller="cluster")
-
-                # Update signers cache.
                 if object_id.object_type != "user":
                     try:
                         os.remove(journal_file)
@@ -2210,23 +2172,6 @@ class ClusterDaemon(OTPmeDaemon):
                         msg = "Unable to add signer cache: %s: %s" % (object_id, e)
                         self.logger.critical(msg)
 
-            if action == "rename":
-                object_id = object_data['object_id']
-                object_id = oid.get(object_id)
-                new_object_id = object_data['new_object_id']
-                new_object_id = oid.get(new_object_id)
-                our_object = backend.get_object(object_id)
-                if our_object.oid.full_oid == object_id.full_oid:
-                    msg = "Renaming object: %s: %s" % (object_id, new_object_id)
-                    self.logger.debug(msg)
-                    try:
-                        backend.rename_object(object_id,
-                                            new_object_id,
-                                            cluster=False)
-                    except Exception as e:
-                        msg = "Failed to rename object: %s: %s" % (object_id, e)
-                        self.logger.warning(msg)
-
             if action == "delete":
                 object_id = object_data['object_id']
                 object_id = oid.get(object_id)
@@ -2246,17 +2191,6 @@ class ClusterDaemon(OTPmeDaemon):
                             except Exception as e:
                                 msg = "Unable to add signer cache: %s: %s" % (object_id, e)
                                 self.logger.critical(msg)
-                    try:
-                        backend.delete_object(object_id=object_id)
-                    except UnknownObject:
-                        pass
-                    except Exception as e:
-                        msg = "Failed to delete object: %s: %s" % (object_id, e)
-                        self.logger.warning(msg)
-                    else:
-                        msg = "Removed object: %s" % object_id
-                        self.logger.debug(msg)
-
             try:
                 os.remove(journal_file)
             except Exception as e:
@@ -2591,7 +2525,6 @@ class ClusterDaemon(OTPmeDaemon):
             msg = "Handling cluster out journal: %s" % node_name
             self.logger.debug(msg)
         written_entries = []
-        full_written_objects = {}
         unsync_status_set = False
         for cluster_journal_entry in entries_to_process:
             node_conn = self.node_conn
@@ -2621,95 +2554,31 @@ class ClusterDaemon(OTPmeDaemon):
                                     raise ProcessingFailed()
                 # Write object to peer.
                 if action == "write":
-                    object_config = cluster_journal_entry.object_data
+                    #object_config = cluster_journal_entry.object_data
+                    object_config = backend.read_config(object_id)
                     # Remove outdated cluster journal entry.
                     if not object_config:
                         cluster_journal_entry.add_node(node_name)
                         if self.check_member_nodes(cluster_journal_entry):
                             self.check_online_nodes(cluster_journal_entry)
                         continue
-                    full_data_update = False
-                    acl_auto_update = True
-                    full_acl_update = False
-                    ldif_auto_update = True
-                    full_ldif_update = False
-                    index_auto_update = True
-                    full_index_update = False
-                    full_object_update = False
-                    strip_object_config = True
-                    if self.member_candidate:
-                        oc = None
-                        if object_id in full_written_objects:
-                            oc = backend.read_config(object_id)
-                            if oc:
-                                sync_checksum = oc['SYNC_CHECKSUM']
-                                cached_sync_checksum = full_written_objects[object_id]
-                                if sync_checksum == cached_sync_checksum:
-                                    cluster_journal_entry.add_node(node_name)
-                                    if self.check_member_nodes(cluster_journal_entry):
-                                        self.check_online_nodes(cluster_journal_entry)
-                                    continue
-                        if not oc:
-                            oc = backend.read_config(object_id)
-                        if oc:
-                            full_data_update = True
-                            full_acl_update = True
-                            acl_auto_update = False
-                            full_ldif_update = True
-                            ldif_auto_update = False
-                            full_index_update = True
-                            index_auto_update = False
-                            full_object_update = True
-                            strip_object_config = False
-                            object_config = oc.copy()
-                    acl_journal = []
-                    if not full_acl_update:
-                        acl_journal = cluster_journal_entry.acl_journal
-                    ldif_journal = []
-                    if not full_ldif_update:
-                        ldif_journal = cluster_journal_entry.ldif_journal
-                    index_journal = []
-                    if not full_index_update:
-                        index_journal = cluster_journal_entry.index_journal
-                    if strip_object_config:
-                        try:
-                            object_exists = node_conn.object_exists(object_id.full_oid)
-                        except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                            #self.node_leave(node_name)
-                            self.node_disconnect(node_name)
-                            msg = ("Failed to send object exists request: %s: %s: %s"
-                                    % (node_name, object_id, e))
-                            self.logger.warning(msg)
-                            self.check_member_nodes(cluster_journal_entry)
-                            raise ProcessingFailed(msg)
-                        except NoClusterService:
-                            self.node_disconnect(node_name)
-                            self.check_member_nodes(cluster_journal_entry)
-                            raise ProcessingFailed(msg)
-                        except Exception as e:
-                            #self.node_leave(node_name)
-                            self.node_disconnect(node_name)
-                            msg = ("Error sending object exists request: %s: %s: %s"
-                                    % (node_name, object_id, e))
-                            self.logger.warning(msg)
-                            self.check_member_nodes(cluster_journal_entry)
-                            raise ProcessingFailed(msg)
-                        if object_exists:
-                            object_config = ObjectConfig(object_id, object_config, encrypted=False)
-                            object_config = object_config.reduce()
+                    object_config = object_config.decrypt(config.master_key)
+                    acl_journal = cluster_journal_entry.acl_journal
+                    ldif_journal = cluster_journal_entry.ldif_journal
+                    index_journal = cluster_journal_entry.index_journal
                     try:
                         write_status = node_conn.write(object_id.full_oid,
                                                         object_config,
                                                         acl_journal=acl_journal,
                                                         ldif_journal=ldif_journal,
                                                         index_journal=index_journal,
-                                                        acl_auto_update=acl_auto_update,
-                                                        ldif_auto_update=ldif_auto_update,
-                                                        index_auto_update=index_auto_update,
-                                                        full_acl_update=full_acl_update,
-                                                        full_ldif_update=full_ldif_update,
-                                                        full_data_update=full_data_update,
-                                                        full_index_update=full_index_update)
+                                                        use_acl_journal=True,
+                                                        use_ldif_journal=True,
+                                                        use_index_journal=True,
+                                                        full_acl_update=False,
+                                                        full_ldif_update=False,
+                                                        full_index_update=False,
+                                                        full_data_update=True)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
                         #self.node_leave(node_name)
                         self.node_disconnect(node_name)
@@ -2725,6 +2594,7 @@ class ClusterDaemon(OTPmeDaemon):
                                 % (node_name, object_id, e))
                         self.logger.warning(msg)
                         self.check_member_nodes(cluster_journal_entry)
+                        #config.raise_exception()
                         raise ProcessingFailed(msg)
                     if write_status != "done":
                         continue
@@ -2733,9 +2603,6 @@ class ClusterDaemon(OTPmeDaemon):
                     self.logger.debug(msg)
                     cluster_journal_entry.add_node(node_name)
                     written_entries.append(object_id)
-                    if full_object_update:
-                        sync_checksum = object_config['SYNC_CHECKSUM']
-                        full_written_objects[object_id] = sync_checksum
                 # Rename object on peer.
                 if action == "rename":
                     new_object_id = cluster_journal_entry.new_object_id
@@ -2792,10 +2659,6 @@ class ClusterDaemon(OTPmeDaemon):
                         msg = ("Deleted object on node: %s: %s"
                                 % (node_name, object_id))
                         self.logger.debug(msg)
-                        try:
-                            full_written_objects.pop(object_id)
-                        except KeyError:
-                            pass
                     cluster_journal_entry.add_node(node_name)
                 # Write trash object to peer.
                 if action == "trash_write":
@@ -3291,7 +3154,6 @@ class ClusterDaemon(OTPmeDaemon):
         # Initially we dont have quorum.
         config.cluster_quorum = False
         multiprocessing.cluster_quorum.clear()
-        multiprocessing.sync_nodes.clear()
         # On daemon reload we have to keep master node status.
         if reload:
             if master_node:

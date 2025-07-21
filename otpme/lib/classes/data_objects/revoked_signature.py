@@ -121,7 +121,6 @@ def register_backend():
                             % (path_id, counter, files_count, x_file))
                         logger.debug(msg)
                         x_oid = oid_getter(x_path)
-                        print("IIIIIII", x_oid)
                         backend.index_add(object_id=x_oid,
                                         object_config="auto",
                                         full_index_update=True)

@@ -8,6 +8,7 @@ try:
 except:
     pass
 
+from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.classes import signing
 from otpme.lib.cli import register_cli
@@ -16,6 +17,8 @@ from otpme.lib.classes.group import get_acls
 from otpme.lib.classes.group import get_value_acls
 
 from otpme.lib.exceptions import *
+
+default_callback = config.get_callback()
 
 search_attribute="rel_path"
 table_headers = [
@@ -61,7 +64,8 @@ def register():
                 max_len=30)
 
 def row_getter(realm, site, script_order, script_data, acls,
-    acl_checker=None, output_fields=[], max_policies=5, **kwargs):
+    acl_checker=None, output_fields=[], max_policies=5,
+    callback=default_callback, **kwargs):
     """ Build table rows for scripts. """
     _result = []
     for script_uuid in script_order:
@@ -115,6 +119,7 @@ def row_getter(realm, site, script_order, script_data, acls,
             if check_acl("view:signature") \
             or check_acl("add:signature") \
             or check_acl("delete:signature"):
+                callback.disable()
                 script_signatures = []
                 script = backend.get_object(uuid=script_uuid)
                 for user_uuid in script.signatures:
@@ -122,7 +127,8 @@ def row_getter(realm, site, script_order, script_data, acls,
                         sign_tags = script.signatures[user_uuid][sign_id]['tags']
                         try:
                             sign_valid = script.verify_sign(user_uuid=user_uuid,
-                                                            tags=sign_tags)
+                                                            tags=sign_tags,
+                                                            callback=callback)
                         except:
                             sign_valid = False
                         if sign_valid:
@@ -148,6 +154,7 @@ def row_getter(realm, site, script_order, script_data, acls,
                                             signature_status_string)
                         script_signatures.append(signature_string)
                 row.append("\n".join(script_signatures))
+                callback.enable()
             else:
                 row.append("-")
         # Policies.

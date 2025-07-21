@@ -145,12 +145,20 @@ class OTPmeExtension(OTPmeLDIFHandler):
             raise OTPmeExtension(msg)
 
         # Get new free ID.
+        lock_caller = "posix"
         idrange_policy = policies[0]
-        new_id = idrange_policy.handle_hook(hook_name="get_next_free_id",
-                                            object_type=o.type,
-                                            hook_object=o,
-                                            attribute=attribute,
-                                            callback=callback)
+        idrange_policy.acquire_lock(lock_caller=lock_caller,
+                                    write=True,
+                                    full=True,
+                                    callback=callback)
+        try:
+            new_id = idrange_policy.handle_hook(hook_name="get_next_free_id",
+                                                object_type=o.type,
+                                                hook_object=o,
+                                                attribute=attribute,
+                                                callback=callback)
+        finally:
+            idrange_policy.release_lock(lock_caller=lock_caller)
         return new_id
 
     def check_free_id(self, object_type, attribute, value, callback=default_callback):

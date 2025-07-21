@@ -100,6 +100,7 @@ def run_script(script_type, script_uuid, script_parms,
 
 def handle_script_request(request):
     """ Run script and return status. """
+    logger = config.logger
     sender = request['sender']
     script_request = request['script_request']
     # Load request data.
@@ -137,6 +138,8 @@ def handle_script_request(request):
             script_result = None
             script_exception = str(e)
             #config.raise_exception()
+            msg = "Failed to run script: %s" % e
+            logger.warning(msg)
     else:
         script_result = None
         script_exception = "Invalid script type: %s" % script_type

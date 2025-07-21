@@ -86,7 +86,6 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'args'              : ['policy_name'],
                     'job_type'          : 'process',
                     },
                 },
@@ -489,6 +488,7 @@ class AuthonactionPolicy(Policy):
                     config.first_reauth.pop(config.auth_token.uuid)
                 if config.auth_token.uuid in config.last_reauth:
                     config.last_reauth.pop(config.auth_token.uuid)
+                #config.raise_exception()
                 raise self.policy_exception("Authentication failed.")
 
         # Set first re-auth time.

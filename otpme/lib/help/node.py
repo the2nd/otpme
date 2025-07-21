@@ -20,13 +20,15 @@ cmd_help = {
 
     'show'      : {
                     '_cmd_usage_help' : 'Usage: otpme-node show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [node]',
-                    'cmd'   :   '--policy-limit :max_policies: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
+                    'cmd'   :   '--policy-limit :max_policies: --role-limit :max_roles: --token-limit :max_tokens: --fields :output_fields: -z :max_len: --sort-by :sort_by: --reverse :reverse=True: -a :show_all=True: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: [|object|]',
                     '_help' :   {
                                     'cmd'                   : 'show node(s)',
                                     '-a'                    : 'Show all nodes.',
                                     '-z <limit>'            : 'limit output size',
                                     '--fields f1,f2,f3'     : 'output only given fields',
+                                    '--token-limit <limit>' : 'Output <limit> tokens.',
                                     '--policy-limit <limit>': 'Output max policies.',
+                                    '--role-limit <limit>'  : 'Output max roles.',
                                     '--reverse'             : 'Reverse the output order.',
                                     '--sort-by <attribute>' : 'Sort output by <attribute>.',
                                     '--raw'                 : 'Output table without any headers/borders.',

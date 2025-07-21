@@ -45,8 +45,8 @@ class OTPmeClusterP1(OTPmeClient1):
     def write(self, object_id, object_config, index_journal=None,
         ldif_journal=None, acl_journal=None, full_acl_update=False,
         full_ldif_update=False, full_index_update=False,
-        index_auto_update=True, ldif_auto_update=True,
-        acl_auto_update=True, full_data_update=False):
+        full_data_update=False, use_index_journal=True,
+        use_acl_journal=True, use_ldif_journal=True):
         """ Send object to peer. """
         command = "write"
         command_args = {}
@@ -55,9 +55,9 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args['acl_journal'] = acl_journal
         command_args['ldif_journal'] = ldif_journal
         command_args['index_journal'] = index_journal
-        command_args['acl_auto_update'] = acl_auto_update
-        command_args['ldif_auto_update'] = ldif_auto_update
-        command_args['index_auto_update'] = index_auto_update
+        command_args['use_acl_journal'] = use_acl_journal
+        command_args['use_ldif_journal'] = use_ldif_journal
+        command_args['use_index_journal'] = use_index_journal
         command_args['full_acl_update'] = full_acl_update
         command_args['full_ldif_update'] = full_ldif_update
         command_args['full_data_update'] = full_data_update
@@ -160,6 +160,18 @@ class OTPmeClusterP1(OTPmeClient1):
     def get_checksums(self):
         """ Get cluster checksums. """
         command = "get_checksums"
+        command_args = {}
+        status, \
+        status_code, \
+        reply = self.connection.send(command, command_args, timeout=None)
+        if not status:
+            msg = "Failed to get cluster checksums: %s" % reply
+            raise OTPmeException(msg)
+        return reply
+
+    def get_full_checksums(self):
+        """ Get cluster checksums. """
+        command = "get_full_checksums"
         command_args = {}
         status, \
         status_code, \
@@ -277,6 +289,9 @@ class OTPmeClusterP1(OTPmeClient1):
             x_uuid = x_config['UUID']
             backend.write_config(x_oid, object_config=x_config, cluster=False)
             synced_objects.append(x_oid)
+        msg = ("Synced %s objects from peer: %s"
+                % (len(synced_objects), self.peer.name))
+        self.logger.info(msg)
         if skip_deletions:
             return reply
         # Remove deleted objects.
@@ -288,9 +303,6 @@ class OTPmeClusterP1(OTPmeClient1):
                 backend.delete_object(x_oid, cluster=False)
             except UnknownObject:
                 pass
-        msg = ("Synced %s objects from peer: %s"
-                % (len(synced_objects), self.peer.name))
-        self.logger.info(msg)
         return reply
 
     def sync_trash(self):

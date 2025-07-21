@@ -1436,7 +1436,7 @@ class AuthHandler(object):
                 self.logger.warning(msg)
                 self.auth_message = "USER_AUTH_SCRIPT_ERROR"
                 self.auth_failed = True
-                config.raise_exception()
+                #config.raise_exception()
                 return False
 
             # Check auth script return code.

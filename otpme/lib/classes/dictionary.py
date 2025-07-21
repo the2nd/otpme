@@ -63,13 +63,11 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'args'              : ['dict_name'],
                     'oargs'             : ['dict_type'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
                     'method'            : 'add',
-                    'args'              : ['dict_name'],
                     'job_type'          : 'process',
                     },
                 },
