@@ -26,6 +26,7 @@ from otpme.lib.protocols.utils import send_msg
 from otpme.lib.protocols.utils import dump_data
 from otpme.lib.protocols.utils import move_objects
 from otpme.lib.protocols.utils import gen_user_keys
+from otpme.lib.protocols.utils import send_keepalive
 from otpme.lib.protocols.utils import change_user_default_group
 
 from otpme.lib.exceptions import *
@@ -57,6 +58,8 @@ class JobCallback(object):
                 self.api_mode = api_mode
             self.api_exception = "Cannot callback in API mode!"
             self.job = FakeJob(uuid=uuid, api_mode=self.api_mode)
+        # Only send error messages. Used e.g. in mass_object_add.
+        self.only_errors = False
         # Indicates that there was a exception in the callback chain that
         # needs to stop the job.
         self._exception = None
@@ -68,6 +71,8 @@ class JobCallback(object):
         self.modified_objects = []
         # Will hold all locked objects.
         self.locked_objects = []
+        # Indicates that a job should stop.
+        self.stop_job = False
         # Get logger.
         self.logger = config.logger
         # Time the callback was last used.
@@ -197,12 +202,23 @@ class JobCallback(object):
 
         return answer
 
+    def keepalive(self, timeout=1):
+        """ Send message to user. """
+        if self.api_mode:
+            return
+        query = send_keepalive(job_id=self.job.uuid)
+        self._send(query, timeout=timeout)
+        return True
+
     def send(self, message='\0OTPME_NULL\0', error=False,
         command=None, timeout=1, ignore_escaping=False):
         """ Send message to user. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
             return message
+        if self.only_errors:
+            if not error:
+                return
         # In API mode we have to print the given message.
         if self.api_mode:
             print(message)

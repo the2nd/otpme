@@ -3,7 +3,6 @@
 import os
 from typing import List
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -19,6 +18,7 @@ from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.register import register_module
+from otpme.lib.typing import match_class_typing
 from otpme.lib.cache import assigned_role_cache
 from otpme.lib.cache import assigned_token_cache
 from otpme.lib.classes.otpme_object import OTPmeObject
@@ -82,11 +82,12 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'oargs'             : ['unit'],
+                    'oargs'             : ['unit', 'groups', 'roles'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
                     'method'            : 'add',
+                    'oargs'             : ['unit', 'groups', 'roles'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1041,18 +1042,75 @@ class Role(OTPmeObject):
     @run_pre_post_add_policies()
     def add(
         self,
+        groups: Union[list,None]=None,
+        roles: Union[list,None]=None,
+        verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Add a role. """
+        _groups = []
+        if groups is not None:
+            for group_name in groups:
+                result = backend.search(object_type="group",
+                                        attribute="name",
+                                        value=group_name,
+                                        realm=self.realm,
+                                        site=self.site,
+                                        return_type="instance")
+                if not result:
+                    msg = "Unknown group: %s" % group_name
+                    return callback.error(msg)
+                _group = result[0]
+                if verify_acls:
+                    if not _group.verify_acl("add:role"):
+                        msg = "Group: %s: Permission denied" % group_name
+                        return callback.error(msg)
+                # Acquire lock.
+                #_group._cache(callback=callback)
+                _groups.append(_group)
+
+        _roles = []
+        if roles is not None:
+            for role_name in roles:
+                result = backend.search(object_type="role",
+                                        attribute="name",
+                                        value=role_name,
+                                        realm=self.realm,
+                                        site=self.site,
+                                        return_type="instance")
+                if not result:
+                    msg = "Unknown role: %s" % role_name
+                    return callback.error(msg)
+                _role = result[0]
+                if verify_acls:
+                    if not _role.verify_acl("add:role"):
+                        msg = "Role: %s: Permission denied" % role_name
+                        return callback.error(msg)
+                _roles.append(_role)
+
         # Run parent class stuff e.g. verify ACLs.
         result = self._prepare_add(callback=callback, **kwargs)
         if result is False:
             return callback.error()
+
         # Add object using parent class.
-        return OTPmeObject.add(self, verbose_level=verbose_level,
+        add_result = OTPmeObject.add(self, verbose_level=verbose_level,
                                 callback=callback, **kwargs)
+
+        # Add role to given groups.
+        for _group in _groups:
+            _group.add_role(role_name=self.name,
+                            verify_acls=verify_acls,
+                            callback=callback)
+        # Add role to given roles.
+        for _role in _roles:
+            _role.add_role(role_name=self.name,
+                        verify_acls=verify_acls,
+                        callback=callback)
+        return add_result
+
 
     @object_lock(full_lock=True)
     @backend.transaction

@@ -5,7 +5,6 @@ import time
 import datetime
 from typing import List
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -26,6 +25,7 @@ from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.job.callback import JobCallback
+from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeClientObject
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 

@@ -35,7 +35,7 @@ from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.clusterd import calc_node_vote
 from otpme.lib.protocols.otpme_server import OTPmeServer1
-from otpme.lib.freeradius import reload as freeradius_reload
+from otpme.lib.freeradius.utils import reload as freeradius_reload
 
 from otpme.lib.exceptions import *
 
@@ -734,7 +734,10 @@ class OTPmeClusterP1(OTPmeServer1):
                 msg = ("Writing trash object: %s (%s)" % (object_id, trash_id))
                 logger.debug(msg)
                 try:
-                    trash.write_entry(trash_id, object_id, object_data, deleted_by)
+                    trash.write_entry(trash_id,
+                                    object_id,
+                                    object_data,
+                                    deleted_by)
                 except Exception as e:
                     message = ("Failed to add trash entry: %s: %s: %s"
                                 % (object_id, trash_id, e))
@@ -756,7 +759,7 @@ class OTPmeClusterP1(OTPmeServer1):
                 msg = ("Deleting trash object: %s" % trash_id)
                 logger.debug(msg)
                 try:
-                    trash.delete(trash_id=trash_id)
+                    trash.delete(trash_id=trash_id, cluster=False)
                 except Exception as e:
                     message = ("Failed to delete trash entry: %s: %s"
                                 % (trash_id, e))

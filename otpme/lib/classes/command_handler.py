@@ -12,6 +12,14 @@ from prettytable import NONE
 from prettytable import PrettyTable
 
 try:
+    import simdjson as json
+except:
+    try:
+        import ujson as json
+    except:
+        import json
+
+try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
         print(_("Loading module: %s" % __name__))
 except:
@@ -19,7 +27,6 @@ except:
 
 from otpme.lib import cli
 from otpme.lib import oid
-from otpme.lib import json
 from otpme.lib import stuff
 from otpme.lib import cache
 from otpme.lib import config
@@ -137,11 +144,11 @@ class CommandHandler(object):
             command_syntax = self.command_map[command][mod_name][subcommand]['cmd']
         return command_syntax
 
-    def send_command(self, daemon="mgmtd", socket_uri=None,
-        realm=config.realm, site=config.site, command=None, subcommand=None,
-        command_line=None, command_args=None, username=None, password=None,
-        aes_pass=None, parse_command_syntax=True,
-        interactive=None, client_type="CLIENT"):
+    def send_command(self, daemon="mgmtd", socket_uri=None, realm=config.realm,
+        site=config.site, command=None, subcommand=None, command_line=None,
+        command_args=None, username=None, password=None, aes_pass=None,
+        parse_command_syntax=True, object_list=[], interactive=None,
+        client_type="CLIENT"):
         """ Send the given command to the given daemon. """
         if interactive is None:
             interactive = self.interactive
@@ -174,7 +181,6 @@ class CommandHandler(object):
         except:
             pass
 
-        object_list = []
         if parse_command_syntax:
             if not command in self.command_map:
                 raise OTPmeException(_("Unknown command: %s") % command)
@@ -261,10 +267,7 @@ class CommandHandler(object):
             log_method = self.logger.warning
             if status:
                 log_method = self.logger.debug
-            try:
-                auth_message = reply['message']
-            except:
-                auth_message = reply
+            auth_message = reply['message']
             msg = "Received authentication reply: %s" % auth_message
             log_method(msg)
 
@@ -333,8 +336,7 @@ class CommandHandler(object):
         if need_command:
             # Try to get command name from command line.
             try:
-                subcommand = command_line[0]
-                command_line.pop(0)
+                subcommand = command_line.pop(0)
             except:
                 pass
 
@@ -667,7 +669,7 @@ class CommandHandler(object):
         # to be backward compatible with OTPme commands before v0.3 handling
         # this in mgmtd would make things much more complicated.
         if command == "token" and (subcommand == "add" or subcommand == "del"):
-            self.handle_token_add_del_command(command, subcommand)
+            return self.handle_token_add_del_command(command, subcommand)
 
         # Send command.
         try:
@@ -844,13 +846,6 @@ class CommandHandler(object):
                 filetools.create_file(path=backup_file, content=backup_data)
 
     def full_restore(self, restore_dir):
-        try:
-            import simdjson as json
-        except:
-            try:
-                import ujson as json
-            except:
-                import json
         from otpme.lib import filetools
         _index = config.get_index_module()
         if not _index.is_available():
@@ -903,13 +898,6 @@ class CommandHandler(object):
             print(x)
 
     def restore_object(self, restore_file):
-        try:
-            import simdjson as json
-        except:
-            try:
-                import ujson as json
-            except:
-                import json
         from otpme.lib import filetools
         backend.init()
         self.init()
@@ -1067,6 +1055,9 @@ class CommandHandler(object):
 
         if subcommand == "dump_index":
             return self.handle_dump_index_command(command_line)
+
+        if subcommand == "mass_object_add":
+            return self.handle_mass_object_add(command, subcommand)
 
         if subcommand == "import":
             return self.handle_import_command(command, subcommand)
@@ -1323,13 +1314,6 @@ class CommandHandler(object):
 
     def handle_index_backup(self):
         """ Handle index backup command. """
-        try:
-            import simdjson as json
-        except:
-            try:
-                import ujson as json
-            except:
-                import json
         from otpme.lib.index import do_index_backup
         from otpme.lib.register import register_modules
         # Register modules.
@@ -1347,13 +1331,6 @@ class CommandHandler(object):
 
     def handle_index_restore(self, restore_file):
         """ Handle index restore command. """
-        try:
-            import simdjson as json
-        except:
-            try:
-                import ujson as json
-            except:
-                import json
         from otpme.lib import filetools
         from otpme.lib.index import do_index_restore
         from otpme.lib.register import register_modules
@@ -1386,9 +1363,9 @@ class CommandHandler(object):
 
     def handle_radius_command(self, command_line):
         """ Handle radius command. """
-        from otpme.lib.freeradius import stop
-        from otpme.lib.freeradius import start
-        from otpme.lib.freeradius import status
+        from otpme.lib.freeradius.utils import stop
+        from otpme.lib.freeradius.utils import start
+        from otpme.lib.freeradius.utils import status
         from otpme.lib.register import register_modules
         if len(command_line) < 1:
             return self.get_help()
@@ -1759,6 +1736,46 @@ class CommandHandler(object):
         result = self.daemon_dump(dump_type)
         return result
 
+    def handle_mass_object_add(self, command, subcommand):
+        """ Handle dump index command. """
+        import csv
+        # Get command syntax.
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except:
+            return self.get_help(_("Unknown command: %s") % subcommand)
+
+        # Parse command line.
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(command_syntax=command_syntax,
+                                        command_line=self.command_line,
+                                        command_args=self.command_args)
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            elif str(e) != "":
+                return self.get_help(str(e))
+        csv_file = command_args.pop('csv_file')
+        with open(csv_file, newline='', encoding='utf-8') as csvfile:
+            reader = csv.reader(csvfile, delimiter=';')
+            #header = next(reader)
+            #print("Got header from csv file:", header)
+            csv_data = list(reader)
+        self.init()
+        mgmt_client = self.get_mgmt_client()
+        mgmt_cmd = "mass_object_add"
+        command_args['csv_data'] = csv_data
+        status, \
+        reply = mgmt_client.send(command=mgmt_cmd,
+                                command_args=command_args,
+                                client_type="CLIENT")
+        if status == False:
+            raise OTPmeException(reply)
+        return reply
+
     def handle_dump_index_command(self, command_line):
         """ Handle dump index command. """
         if len(command_line) < 1:
@@ -1927,13 +1944,6 @@ class CommandHandler(object):
 
     def handle_import_command(self, command, subcommand):
         """ Handle import command. """
-        try:
-            import simdjson as json
-        except:
-            try:
-                import ujson as json
-            except:
-                import json
         from otpme.lib import filetools
         try:
             command_syntax = self.get_command_syntax(command, subcommand)
@@ -3149,6 +3159,7 @@ class CommandHandler(object):
 
     def get_login_sessions(self):
         """ Get login sessions from agent. """
+        from otpme.lib import json
         from otpme.lib import connections
 
         # Create otpme-agent instance
@@ -3454,6 +3465,7 @@ class CommandHandler(object):
 
     def import_object(self, object_config, object_id, password=None):
         """ Import object. """
+        from otpme.lib import json
         self.init()
         # Encode object config.
         object_config = json.encode(object_config, encoding="base64")
@@ -3679,6 +3691,7 @@ class CommandHandler(object):
 
     def get_sync_status(self):
         """ Get sync status from hostd. """
+        from otpme.lib import json
         cmd = "get_sync_status"
         reply = self.send_command(daemon="hostd", command=cmd)
         sync_status = json.decode(reply)
@@ -4338,67 +4351,41 @@ class CommandHandler(object):
 
     def handle_token_add_del_command(self, command, subcommand):
         """ Handle token add/del command. """
-        self.command = "user"
-        self.help_command = "token"
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except Exception as e:
+            help_text = self.get_help(_("Unknown command: %s") % subcommand)
+            raise OTPmeException(help_text)
+
+        # Parse command line.
+        object_cmd, \
+        object_required, \
+        object_identifier, \
+        command_args = cli.get_opts(command_syntax=command_syntax,
+                                    command_line=self.command_line,
+                                    command_args=self.command_args)
+
+        command = "user"
         if subcommand == "add":
-            self.subcommand = "add_token"
+            subcommand = "add_token"
         else:
-            self.subcommand = "del_token"
-        command_line = []
-        # Add command options from argv to command line.
-        while True:
-            # Make sure we got enough parameters.
-            if len(self.command_line) < 1:
-                break
-            if self.command_line[0].startswith("-"):
-                command_line.append(self.command_line[0])
-                self.command_line.pop(0)
-            else:
-                break
-        # Build command line to be used with "user" command.
-        if subcommand == "add":
-            try:
-                token_path = self.command_line[0]
-                token_user = token_path.split("/")[0]
-                command_line.append(token_user)
-                token_name = token_path.split("/")[1]
-                token_name_opt = "--name"
-                command_line.append(token_name_opt)
-                command_line.append(token_name)
-                token_type_pos = 1
-                dst_token_pos = 2
-            except:
-                token_type_pos = 1
-                dst_token_pos = 2
+            subcommand = "del_token"
 
-            try:
-                token_type = self.command_line[token_type_pos]
-                token_type_opt = "--type"
-                command_line.append(token_type_opt)
-                command_line.append(token_type)
-            except:
-                pass
+        token_path = object_identifier
+        token_user = token_path.split("/")[0]
+        token_name = token_path.split("/")[1]
 
-            try:
-                destination_token = self.command_line[dst_token_pos]
-                dst_token_opt = "--destination"
-                command_line.append(dst_token_opt)
-                command_line.append(destination_token)
-            except:
-                pass
+        object_list = [token_user]
+        command_args['token_name'] = token_name
 
-        if subcommand == "del":
-            try:
-                token_path = self.command_line[0]
-                token_user = token_path.split("/")[0]
-                command_line.append(token_user)
-                token_name = token_path.split("/")[1]
-                command_line.append(token_name)
-            except:
-                pass
-
-        # Update command line.
-        self.command_line = command_line
+        result = self.send_command(daemon="mgmtd",
+                                command="user",
+                                subcommand=subcommand,
+                                command_args=command_args,
+                                object_list=object_list,
+                                parse_command_syntax=False,
+                                interactive=True)
+        return result
 
     def handle_dictionary_word_learning_command(self, command, subcommand):
         """ Handle dictionary word learning command. """
@@ -5001,6 +4988,7 @@ class CommandHandler(object):
 
     def handle_token_deploy_command(self):
         """ Handle token deploy command. """
+        from otpme.lib import json
         from otpme.lib.help import command_map
         # FIXME: make this a config.register_token_deploy(token_type)!!!  
         supported_token_types = config.get_supported_smartcards()
@@ -6184,10 +6172,6 @@ class CommandHandler(object):
         command_args = cli.get_opts(command_syntax=command_syntax,
                                     command_line=command_line,
                                     command_args=self.command_args)
-
-        if "client" not in command_args:
-            command_args['host'] = config.host_data['name']
-            command_args['host_type'] = config.host_data['type']
 
         try:
             use_socket = command_args.pop('use_socket')

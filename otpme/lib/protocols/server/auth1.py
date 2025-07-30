@@ -186,9 +186,9 @@ class OTPmeAuthP1(OTPmeServer1):
                                 run_policies=True,
                                 _no_func_cache=True)
         if not user:
-            message = "AUTH_FAILED"
             status = False
             command_error = "AUTH_UNKOWN_USER"
+            auth_reply = {'message':'AUTH_FAILED', 'status':False}
             msg = ("%s: user=%s token=%s access_group=%s client=%s client_ip=%s "
                     "auth_mode=%s auth_type=%s session=%s"
                             % (command_error,
@@ -201,7 +201,7 @@ class OTPmeAuthP1(OTPmeServer1):
                             log_auth_type,
                             log_session_id))
             self.logger.warning(msg)
-            return self.build_response(status, message)
+            return self.build_response(status, auth_reply)
 
         redirect_connection = False
         if user.realm != config.realm:

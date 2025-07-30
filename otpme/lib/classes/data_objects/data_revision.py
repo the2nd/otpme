@@ -2,7 +2,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -13,6 +12,7 @@ except:
 from otpme.lib import oid
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeDataObject
 
 logger = config.logger

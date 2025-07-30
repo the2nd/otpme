@@ -47,7 +47,7 @@ class AuthDaemon(OTPmeDaemon):
         self.protocols = config.get_otpme_protocols(self.name, server=True)
         # FIXME: where to configure max_conn?
         # Set max client connections.
-        self.max_conn = 100
+        self.max_conn = 256
         # FIXME: where to configure socket banner?
         # set socket banner.
         self.socket_banner = ("%s %s %s"

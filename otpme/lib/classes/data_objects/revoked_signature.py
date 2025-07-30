@@ -3,7 +3,6 @@
 import os
 from typing import List
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -16,6 +15,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import filetools
+from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeDataObject
 
 logger = config.logger

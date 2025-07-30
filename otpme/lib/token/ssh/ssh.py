@@ -3,7 +3,6 @@
 import os
 import time
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -23,6 +22,7 @@ from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.job.callback import JobCallback
+from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.token \
             import get_acls \

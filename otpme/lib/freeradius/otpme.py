@@ -9,6 +9,14 @@ import sys
 # automatically created.
 #from otpme.lib.freeradius import radiusd
 
+import otpme.lib
+from otpme.lib import init_otpme
+from otpme.lib.otpme_config import OTPmeConfig
+config = OTPmeConfig(tool_name="radius_module")
+otpme.lib.config = config
+# Init OTPme.
+init_otpme()
+
 # Import radius module that is created by rlm_python when loading the otpme
 # module.
 import radiusd
@@ -24,15 +32,16 @@ otpme_dir = os.path.dirname(otpme_dir)
 otpme_dir = os.path.dirname(otpme_dir)
 sys.path.insert(0, otpme_dir)
 
-from otpme.lib import stuff
-from otpme.lib import config
 from otpme.lib import mschap
-from otpme.lib.classes.user import User
+from otpme.lib import connections
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
+from otpme.lib.register import register_module
 
 # Get logger.
 logger = config.logger
+
+register_module("otpme.lib.protocols.otpme_client")
 
 def log(level, s):
   """Log function."""
@@ -55,31 +64,12 @@ def instantiate(p):
 def authorize(authData):
     """ Authorization """
     #log(radiusd.L_INFO, str(authData))
-    #logger.info("authorize: %s" % str(authDatab))
+    #logger.info("authorize: %s" % str(authData))
     return radiusd.RLM_MODULE_OK
 
 
 def authenticate(authData):
     """ Authentication """
-    # Only for debugging.
-    #log(radiusd.L_INFO, str(authData))
-    #logger.info(authData)
-
-    # Reload OTPme config if needed.
-    if stuff.check_config_reload():
-        config.reload()
-
-    # Helper variables that will be used to build final log entry.
-    log_username = ""
-    log_token_name = ""
-    log_access_group = ""
-    log_client = ""
-    log_client_ip = ""
-    log_session_id = ""
-    log_auth_type = ""
-    log_auth_mode = ""
-    log_auth_message = ""
-
     # Variables for stuff we get from rlm_python (e.g. via authData).
     username = None
     password = None
@@ -112,6 +102,10 @@ def authenticate(authData):
             password = t[1]
         elif t[0] == 'NAS-Identifier':
             nasid = t[1]
+        elif t[0] == 'NAS-IP-Address':
+            client_ip = t[1]
+        elif t[0] == 'Client-IP-Address':
+            client_ip = t[1]
         elif t[0] == 'Tmp-Octets-0':
             client_ip = re.sub('^0x', '', t[1])
             client_ip = decode(client_ip, "hex")
@@ -138,8 +132,6 @@ def authenticate(authData):
         # Remove surrounding " from username.
         username = re.sub('^"', '', username)
         username = re.sub('"$', '', username)
-        # Set log variable.
-        log_username = username
 
     if password:
         # Remove surrounding " from password.
@@ -150,16 +142,11 @@ def authenticate(authData):
         # Remove surrounding " from nasid.
         nasid = re.sub('^"', '', nasid)
         nasid = re.sub('"$', '', nasid)
-        # Set log variable.
-        log_client = nasid
 
     if client_ip:
         # Remove surrounding " from client_ip.
         client_ip = re.sub('^"', '', client_ip)
         client_ip = re.sub('"$', '', client_ip)
-        # Set log variable.
-        log_client_ip = client_ip
-
 
     # FIXME: clear-text requests do not have eap_type set nor do they have any
     #        other value we can get the request type from.
@@ -168,8 +155,6 @@ def authenticate(authData):
         if username and mschapv2_response and auth_challenge:
             # Set auth type.
             auth_type = "mschap"
-            # Set log variable.
-            log_auth_type = auth_type
         else:
             if not username:
                 logger.warning("Invalid request. Request is missing "
@@ -181,8 +166,6 @@ def authenticate(authData):
                 logger.warning("Invalid request. Request is missing "
                                 "'MS-CHAP-Challenge'.")
 
-            log_auth_message = "AUTH_INVALID_REQUEST"
-
             # Set request failed.
             request_failed = True
             # Set return code.
@@ -190,7 +173,6 @@ def authenticate(authData):
 
     # FIXME: We only support eap_type mschapv2. So we have to fail for any other request?
     elif auth_type:
-        log_auth_message = "AUTH_TYPE_UNKNOWN"
         # Set request_failed.
         request_failed = True
         # Set return code.
@@ -202,15 +184,14 @@ def authenticate(authData):
         if username and password:
             # Set auth type.
             auth_type = "clear-text"
-            # Set log variable.
-            log_auth_type = auth_type
         else:
             if not username:
                 logger.warning("Invalid request. Request is missing 'User-Name'.")
             if not password:
                 logger.warning("Invalid request. Request is missing 'User-Password'.")
+            if not nasid and not client_ip:
+                logger.warning("Invalid request. Request is missing NAS-Identifier and NAS-IP-Address.")
 
-            log_auth_message = "AUTH_INVALID_REQUEST"
             # Set request_failed.
             request_failed = True
             # Set return code.
@@ -218,236 +199,225 @@ def authenticate(authData):
 
     # If this is a valid request try to authenticate the user.
     if not request_failed:
-        # Check if user exists.
-        user = User(name=username)
-        if user.exists():
-            # Try to authenticate the user using clear-text password.
-            if auth_type == "clear-text":
-                # Try to authenticate user.
-                auth_status, \
-                auth_message = user.authenticate(auth_mode="auto",
-                                                auth_type=auth_type,
-                                                password=password,
-                                                client=nasid,
-                                                client_ip=client_ip)
+        msg = ("Got valid %s radius request: user=%s,client=%s,client_ip=%s"
+                % (auth_type, username, nasid, client_ip))
+        logger.info(msg)
 
-                # Check if user was authenticated successful.
-                if auth_status:
-                    # Build replyTuple for rlm_python.
-                    reply_tuple = (
+        # Command args for authd request.
+        command_args = {
+                        'username': username,
+                        'password': password,
+                        }
+
+        if nasid:
+            command_args['client'] = nasid
+        if client_ip:
+            command_args['client_ip'] = client_ip
+
+        # Connection kwargs.
+        socket_uri = config.authd_socket_path
+        conn_kwargs = {}
+        conn_kwargs['use_ssl'] = False
+        conn_kwargs['auto_auth'] = False
+        conn_kwargs['auto_preauth'] = False
+        conn_kwargs['local_socket'] = True
+        conn_kwargs['handle_host_auth'] = False
+        conn_kwargs['handle_user_auth'] = False
+        conn_kwargs['encrypt_session'] = False
+        conn_kwargs['timeout'] = 60
+
+        # Try to authenticate the user using clear-text password.
+        if auth_type == "clear-text":
+            # Try to authenticate user.
+            daemon_conn = connections.get("authd",
+                                        realm=config.realm,
+                                        site=config.site,
+                                        socket_uri=socket_uri,
+                                        interactive=False,
+                                        **conn_kwargs)
+            # Send auth request.
+            logger.debug("Sending authentication request...")
+            auth_status, \
+            status_code, \
+            auth_reply = daemon_conn.send("verify", command_args)
+            auth_message = auth_reply['message']
+
+            # Check if user was authenticated successful.
+            if auth_status:
+                # Build replyTuple for rlm_python.
+                reply_tuple = (
+                            ('Reply-Message', "Authentication successful"),
+                            #('Session-Timeout', "30"),
+                            #('Idle-Timeout', "15"),
+                            #('Tunnel-Password', "otp"),
+                            )
+
+                # Build configTuple for rlm_python.
+                config_tuple = (
+                                ('Auth-Type', 'python_otpme'),
+                            )
+
+                msg = ("Radius %s request successful: user=%s,client=%s,client_ip=%s"
+                        % (auth_type, username, nasid, client_ip))
+                logger.info(msg)
+
+                # Set return code.
+                return_code = radiusd.RLM_MODULE_OK
+            else:
+                # Build replyTuple for rlm_python.
+                reply_tuple = (
+                                ('Reply-Message', "Authentication failed"),
+                            )
+
+                # Build configTuple for rlm_python.
+                config_tuple = (
+                                ('Auth-Type', 'python_otpme'),
+                            )
+
+                msg = ("Radius %s request failed: user=%s,client=%s,client_ip=%s: %s"
+                        % (auth_type, username, nasid, client_ip, auth_message))
+                logger.info(msg)
+
+                # Set return code.
+                return_code = radiusd.RLM_MODULE_REJECT
+
+        # Try to authenticate the user using MSCHAPv2 response from the
+        # request.
+        elif auth_type == "mschap":
+            # Decode auth_challenge we got from MS-CHAP-Challenge attribute.
+            auth_challenge_bin = decode(auth_challenge, "hex")
+
+            # Get peer challenge from MSCHAPv2 response.
+            peer_challenge = mschapv2_response[4:36]
+            peer_challenge_bin = decode(peer_challenge, "hex")
+
+            # Get peer nt response from MSCHAPv2 response.
+            peer_nt_response = mschapv2_response[52:100]
+            peer_nt_response_bin = decode(peer_nt_response, "hex")
+
+            # Generate MSCHAPv1 challenge from auth_challenge and peer_challenge.
+            mschapv1_challenge_bin = mschap.challenge_hash(peer_challenge_bin,
+                                                            auth_challenge_bin,
+                                                            username)
+            mschapv1_challenge = encode(mschapv1_challenge_bin, "hex")
+
+            command_args['mschap_response'] = peer_nt_response
+            command_args['mschap_challenge'] = mschapv1_challenge
+
+            daemon_conn = connections.get("authd",
+                                        realm=config.realm,
+                                        site=config.site,
+                                        socket_uri=socket_uri,
+                                        interactive=False,
+                                        **conn_kwargs)
+            # Send auth request.
+            logger.debug("Sending MSCHAP authentication request...")
+            auth_status, \
+            status_code, \
+            auth_reply = daemon_conn.send("verify_mschap", command_args)
+            auth_message = auth_reply['message']
+
+            # Get password hash.
+            password_hash = auth_reply['password_hash']
+
+            # Check if user authenticated successful.
+            if auth_status:
+                # Encode password_hash we got from User().authenticate()
+                password_hash_bin = decode(password_hash, "hex")
+
+                # Generate authenticator response.
+                auth_response = mschap.generate_authenticator_response(peer_nt_response_bin,
+                                                                        peer_challenge_bin,
+                                                                        auth_challenge_bin,
+                                                                        username,
+                                                                        password_hash=password_hash_bin)
+                # Generate mppe send and receive keys.
+                master_key = mschap.get_master_key(password_hash_bin,
+                                                    peer_nt_response_bin)
+                master_send_key_bin = mschap.get_asymetric_start_key(master_key=master_key,
+                                                                    session_key_len=16,
+                                                                    is_send=False,
+                                                                    is_server=True)
+                master_recv_key_bin = mschap.get_asymetric_start_key(master_key=master_key,
+                                                                    session_key_len=16,
+                                                                    is_send=True,
+                                                                    is_server=True)
+
+                # Encode master send key.
+                master_send_key = encode(master_send_key_bin, "hex")
+                # Encode master recv key
+                master_recv_key = encode(master_recv_key_bin, "hex")
+
+                # Create success packet.
+                # http://tools.ietf.org/html/rfc2759#section-5
+                # https://www.ietf.org/rfc/rfc1994.txt
+                #  If the Value received in a Response is equal to the expected
+                #  value, then the implementation MUST transmit a CHAP packet with
+                #  the Code field set to 3 (Success).
+                success_response = "3%s" % auth_response
+                success_response_hex = encode(success_response, "hex")
+
+                # Debug output.
+                log(radiusd.L_DBG, "adding MS-CHAP2-Success: '%s'" % success_response)
+                log(radiusd.L_DBG, "adding MS-MPPE-Send-Key: '%s'" % master_send_key)
+                log(radiusd.L_DBG, "adding MS-MPPE-Recv-Key: '%s'" % master_recv_key)
+                log(radiusd.L_DBG, "adding MS-MPPE-Encryption-Policy: '0x00000001'")
+                log(radiusd.L_DBG, "adding MS-MPPE-Encryption-Types: '0x00000006'")
+
+                # Build replyTuple for rlm_python.
+                reply_tuple = (
                                 ('Reply-Message', "Authentication successful"),
-                                #('Session-Timeout', "30"),
-                                #('Idle-Timeout', "15"),
                                 #('Tunnel-Password', "otp"),
+                                ('MS-CHAP2-Success', "0x%s" % success_response_hex),
+                                ('MS-MPPE-Encryption-Policy', "0x00000001"),
+                                ('MS-MPPE-Encryption-Types', "0x00000006"),
+                                ('MS-MPPE-Send-Key', "0x%s" % master_send_key),
+                                ('MS-MPPE-Recv-Key', "0x%s" % master_recv_key),
+                            )
+
+                log(radiusd.L_DBG, "adding Auth-Type: 'MS-CHAP'")
+
+                # Build configTuple for rlm_python.
+                config_tuple =  (
+                                    ('Auth-Type', 'MS-CHAP'),
                                 )
 
-                    # Build configTuple for rlm_python.
-                    config_tuple = (
-                                    ('Auth-Type', 'OTPme'),
-                                )
+                msg = ("Radius %s request successful: user=%s,client=%s,client_ip=%s"
+                        % (auth_type, username, nasid, client_ip))
+                logger.info(msg)
 
-                    # Set return code.
-                    return_code = radiusd.RLM_MODULE_OK
-                else:
-                    # Build replyTuple for rlm_python.
-                    reply_tuple = (
-                                    ('Reply-Message', "Authentication failed"),
-                                )
+                # Set return code.
+                return_code = radiusd.RLM_MODULE_OK
 
-                    # Build configTuple for rlm_python.
-                    config_tuple = (
-                                    ('Auth-Type', 'OTPme'),
-                                )
-
-                    # Set return code.
-                    return_code = radiusd.RLM_MODULE_REJECT
-
-            # Try to authenticate the user using MSCHAPv2 response from the
-            # request.
-            elif auth_type == "mschap":
-                # Decode auth_challenge we got from MS-CHAP-Challenge attribute.
-                auth_challenge_bin = decode(auth_challenge, "hex")
-
-                # Get peer challenge from MSCHAPv2 response.
-                peer_challenge = mschapv2_response[4:36]
-                peer_challenge_bin = decode(peer_challenge, "hex")
-
-                # Get peer nt response from MSCHAPv2 response.
-                peer_nt_response = mschapv2_response[52:100]
-                peer_nt_response_bin = decode(peer_nt_response, "hex")
-
-                # Generate MSCHAPv1 challenge from auth_challenge and peer_challenge.
-                mschapv1_challenge_bin = mschap.challenge_hash(peer_challenge_bin,
-                                                                auth_challenge_bin,
-                                                                username)
-                mschapv1_challenge = encode(mschapv1_challenge_bin, "hex")
-
-                # Try to authenticate the user.
-                # Verify peer's nt_response with the generated mschapv1_challenge.
-                auth_status, password_hash, \
-                nt_key, \
-                auth_message = user.authenticate(auth_mode="auto",
-                                                auth_type=auth_type,
-                                                challenge=mschapv1_challenge,
-                                                response=peer_nt_response,
-                                                client=nasid,
-                                                client_ip=client_ip)
-
-                # Check if user authenticated successful.
-                if auth_status:
-                    # Encode password_hash we got from User().authenticate()
-                    password_hash_bin = decode(password_hash, "hex")
-
-                    # Generate authenticator response.
-                    auth_response = mschap.generate_authenticator_response(peer_nt_response_bin,
-                                                                            peer_challenge_bin,
-                                                                            auth_challenge_bin,
-                                                                            username,
-                                                                            password_hash=password_hash_bin)
-                    # Generate mppe send and receive keys.
-                    master_key = mschap.get_master_key(password_hash_bin,
-                                                        peer_nt_response_bin)
-                    master_send_key_bin = mschap.get_asymetric_start_key(master_key=master_key,
-                                                                        session_key_len=16,
-                                                                        is_send=False,
-                                                                        is_server=True)
-                    master_recv_key_bin = mschap.get_asymetric_start_key(master_key=master_key,
-                                                                        session_key_len=16,
-                                                                        is_send=True,
-                                                                        is_server=True)
-
-                    # Encode master send key.
-                    master_send_key = encode(master_send_key_bin, "hex")
-                    # Encode master recv key
-                    master_recv_key = encode(master_recv_key_bin, "hex")
-
-                    # Create success packet.
-                    # http://tools.ietf.org/html/rfc2759#section-5
-                    # https://www.ietf.org/rfc/rfc1994.txt
-                    #  If the Value received in a Response is equal to the expected
-                    #  value, then the implementation MUST transmit a CHAP packet with
-                    #  the Code field set to 3 (Success).
-                    success_response = "3%s" % auth_response
-                    success_response_hex = encode(success_response, "hex")
-
-                    # Debug output.
-                    log(radiusd.L_DBG, "adding MS-CHAP2-Success: '%s'" % success_response)
-                    log(radiusd.L_DBG, "adding MS-MPPE-Send-Key: '%s'" % master_send_key)
-                    log(radiusd.L_DBG, "adding MS-MPPE-Recv-Key: '%s'" % master_recv_key)
-                    log(radiusd.L_DBG, "adding MS-MPPE-Encryption-Policy: '0x00000001'")
-                    log(radiusd.L_DBG, "adding MS-MPPE-Encryption-Types: '0x00000006'")
-
-                    # Build replyTuple for rlm_python.
-                    reply_tuple = (
-                                    ('Reply-Message', "Authentication successful"),
-                                    #('Tunnel-Password', "otp"),
-                                    ('MS-CHAP2-Success', "0x%s" % success_response_hex),
-                                    ('MS-MPPE-Encryption-Policy', "0x00000001"),
-                                    ('MS-MPPE-Encryption-Types', "0x00000006"),
-                                    ('MS-MPPE-Send-Key', "0x%s" % master_send_key),
-                                    ('MS-MPPE-Recv-Key', "0x%s" % master_recv_key),
-                                )
-
-                    log(radiusd.L_DBG, "adding Auth-Type: 'MS-CHAP'")
-
-                    # Build configTuple for rlm_python.
-                    config_tuple =  (
-                                        ('Auth-Type', 'MS-CHAP'),
-                                    )
-
-                    # Set return code.
-                    return_code = radiusd.RLM_MODULE_OK
-
-                # Below is, when authentication has failed.
-                else:
-                    # Create failure packet.
-                    # http://tools.ietf.org/html/rfc2759#section-6
-                    # https://www.ietf.org/rfc/rfc1994.txt
-                    failure_response = str("E=691 R=0")
-
-                    log(radiusd.L_DBG, "adding MS-CHAP-Error: '%s'"
-                        % failure_response)
-
-                    # Build replyTuple for rlm_python.
-                    reply_tuple = (
-                                    ('Reply-Message', "Authentication failed"),
-                                    ('MS-CHAP-Error', failure_response),
-                                )
-
-                    log(radiusd.L_DBG, "adding Auth-Type: 'MS-CHAP'")
-
-                    # Build configTuple for rlm_python.
-                    config_tuple =  (
-                                        ('Auth-Type', 'MS-CHAP'),
-                                    )
-
-                    # Set return code.
-                    return_code = radiusd.RLM_MODULE_REJECT
-
-        # Below is when user does not exists.
-        else:
-            if auth_type == "mschap":
+            # Below is, when authentication has failed.
+            else:
                 # Create failure packet.
                 # http://tools.ietf.org/html/rfc2759#section-6
                 # https://www.ietf.org/rfc/rfc1994.txt
                 failure_response = str("E=691 R=0")
-
-                # Set request failed.
-                request_failed = True
 
                 log(radiusd.L_DBG, "adding MS-CHAP-Error: '%s'"
                     % failure_response)
 
                 # Build replyTuple for rlm_python.
                 reply_tuple = (
-                                ('Reply-Message', "Unknown user"),
+                                ('Reply-Message', "Authentication failed"),
                                 ('MS-CHAP-Error', failure_response),
                             )
 
                 log(radiusd.L_DBG, "adding Auth-Type: 'MS-CHAP'")
 
                 # Build configTuple for rlm_python.
-                config_tuple = (
-                                ('Auth-Type', 'MS-CHAP'),
-                            )
+                config_tuple =  (
+                                    ('Auth-Type', 'MS-CHAP'),
+                                )
+
+                msg = ("Radius %s request failed: user=%s,client=%s,client_ip=%s: %s"
+                        % (auth_type, username, nasid, client_ip, auth_message))
+                logger.info(msg)
 
                 # Set return code.
                 return_code = radiusd.RLM_MODULE_REJECT
-
-            else:
-                # Set log message.
-                log_auth_message = "AUTH_USER_UNKNOWN"
-                # Set request failed.
-                request_failed = True
-
-                # Build replyTuple for rlm_python.
-                reply_tuple = (
-                                ('Reply-Message', "Unknown user"),
-                            )
-
-                # Build configTuple for rlm_python.
-                config_tuple = (
-                                ('Auth-Type', 'OTPme'),
-                            )
-
-                # Set return code.
-                return_code = radiusd.RLM_MODULE_NOTFOUND
-
-
-    # We only need to log a message if there was an error within this module.
-    # All other errors are logged by User().authenticate().
-    if request_failed:
-        logger.error("%s: user=%s token=%s access_group=%s client=%s "
-                    "client_ip=%s auth_mode=%s auth_type=%s session=%s"
-                    % (log_auth_message,
-                    log_username,
-                    log_token_name,
-                    log_access_group,
-                    log_client,
-                    log_client_ip,
-                    log_auth_mode,
-                    log_auth_type,
-                    log_session_id))
 
     # Finally return from authenticate().
     return (return_code, reply_tuple, config_tuple)
@@ -455,8 +425,7 @@ def authenticate(authData):
 
 def detach():
     """ Detach and clean up."""
-    # TODO: May be used when daemon mode is implemented and we can cluster OTPme.
-    #log(radiusd.L_DBG, 'closing cluster connnection.')
+    #log(radiusd.L_DBG, 'Closing authd connections...')
     return radiusd.RLM_MODULE_OK
 
 

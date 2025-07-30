@@ -85,6 +85,8 @@ class IndexObject(object):
     checksum = Column(String(128), unique=False, nullable=False, index=False)
     # Objects sync checksum.
     sync_checksum = Column(String(128), unique=False, nullable=False, index=False)
+    # Last modified timestamp of index object.
+    last_modified = Column(Integer, index=False)
     # Last used timestamp of index object.
     last_used = Column(Integer, index=False)
     # Indicates this is a template object.
@@ -157,7 +159,6 @@ class IndexObjectACL(object):
                 self.site,
                 self.value,
                 self.object_type))
-
         return _repr_
 
     def __str__(self):

@@ -574,7 +574,8 @@ def wait_pid(pid, timeout=10, recursive=False, message_method=None):
     return pid_status
 
 def kill_pid(pid, signal=15, timeout=None, kill_timeout=None,
-    recursive=False, message_method=None, print_messages=False):
+    recursive=False, dont_kill_start_pid=False,
+    message_method=None, print_messages=False):
     """ Kill process by PID. """
     import time
     import psutil
@@ -625,12 +626,13 @@ def kill_pid(pid, signal=15, timeout=None, kill_timeout=None,
                             % (child.pid, child_name, e))
                     message_method(msg)
 
-    if signal == 15:
-        proc.terminate()
-    elif signal == 9:
-        proc.kill()
-    else:
-        proc.send_signal(signal)
+    if not dont_kill_start_pid:
+        if signal == 15:
+            proc.terminate()
+        elif signal == 9:
+            proc.kill()
+        else:
+            proc.send_signal(signal)
 
     # Set kill timeout if given.
     if kill_timeout is not None:

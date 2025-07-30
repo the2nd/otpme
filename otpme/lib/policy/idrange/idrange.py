@@ -20,7 +20,6 @@ from otpme.lib.classes.policy import Policy
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.unit import register_subtype_add_acl
 from otpme.lib.classes.unit import register_subtype_del_acl
-from otpme.lib.classes.data_objects.last_assigned_id import LastAssignedID
 
 from otpme.lib.classes.policy \
             import get_acls \
@@ -44,7 +43,7 @@ default_callback = config.get_callback()
 POLICY_TYPE = "idrange"
 BASE_POLICY_NAME = "id_range"
 REGISTER_BEFORE = ['otpme.lib.policy.defaultpolicies.defaultpolicies']
-REGISTER_AFTER = ['otpme.lib.classes.data_objects.last_assigned_id']
+REGISTER_AFTER = []
 
 read_acls =  []
 write_acls =  []
@@ -237,6 +236,8 @@ class IdrangePolicy(Policy):
         self.verify_new_id = True
         # Check already used ID ranges for free numbers. May slow down finding of free IDs.
         self.recheck_id_ranges = False
+        # Last assigned IDs.
+        self.last_assigned_ids = {}
 
         # Set default values.
         self.hooks = {
@@ -383,9 +384,94 @@ class IdrangePolicy(Policy):
         return wrapper
 
     @_lock_idrange_attribute
+    def get_free_ids(self, object_type, attribute,
+        count=3, callback=default_callback, **kwargs):
+        """ Return free IDs for given attribute """
+        if not attribute in self.id_ranges:
+            msg = (_("No range configured for attribute: %s")
+                % attribute)
+            return callback.error(msg, exception=self.policy_exception)
+
+        free_ids = []
+        last_assigned_id = None
+        id_ranges = self.id_ranges[attribute]
+        for x in id_ranges:
+            try:
+                r = x.split(":")[1]
+                range_type = x.split(":")[0]
+                range_start = int(r.split("-")[0])
+                range_end = int(r.split("-")[1])
+            except:
+                msg = ("Invalid ID range: %s: %s" % (self.name, x))
+                logger.warning(msg)
+                continue
+
+            random_range = False
+            if range_type == "r":
+                random_range = True
+
+            # Get all used IDs.
+            ldif_attribute = "ldif:%s" % attribute
+            used_ids = backend.search(object_type=object_type,
+                                        attribute=ldif_attribute,
+                                        greater_than=-1,
+                                        return_attributes=[ldif_attribute])
+            used_ids += backend.search(object_type=object_type,
+                                        attribute=ldif_attribute,
+                                        greater_than=-1,
+                                        return_attributes=[ldif_attribute],
+                                        template=True)
+            # Make sure IDs are int.
+            used_ids = [int(x) for x in used_ids]
+            # Get IDs of range.
+            x_range = list(range(range_start, range_end+1))
+            unused_ids = list(set(x_range) - set(used_ids))
+
+            if random_range:
+                while True:
+                    if len(x_range) == 0:
+                        break
+                    free_id = _random.choice(x_range)
+                    try:
+                        x_range.remove(free_id)
+                    except ValueError:
+                        pass
+                    free_ids.append(free_id)
+                    if len(free_ids) == count:
+                        break
+            else:
+                need_ids = count - len(free_ids)
+                free_ids += unused_ids[0:need_ids]
+                try:
+                    x_last_id = sorted(free_ids)[-1]
+                except IndexError:
+                    x_last_id = None
+                if x_last_id:
+                    if last_assigned_id:
+                        if x_last_id > last_assigned_id:
+                            last_assigned_id = x_last_id
+                    else:
+                        last_assigned_id = x_last_id
+
+            if len(free_ids) == count:
+                break
+
+        if len(free_ids) != count:
+            msg = "Unable to find %s free IDs: %s" % (count, attribute)
+            raise OTPmeException(msg)
+
+        # For sequential ID ranges we need to remember the last
+        # assigned ID.
+        if last_assigned_id:
+            self.last_assigned_ids[attribute] = last_assigned_id
+            self._write(no_transaction=True, callback=callback)
+
+        return free_ids
+
+    @_lock_idrange_attribute
     def get_next_free_id(self, object_type, attribute,
         callback=default_callback, **kwargs):
-        """ Return ID range for given attribute """
+        """ Return free ID for given attribute """
         if not attribute in self.id_ranges:
             msg = (_("No range configured for attribute: %s")
                 % attribute)
@@ -482,10 +568,8 @@ class IdrangePolicy(Policy):
         # For non-random ID range we need to remember the last
         # assigned ID.
         if last_assigend != new_id:
-            self.set_last_assigned(idrange=x,
-                                attribute=attribute,
-                                id=new_id,
-                                callback=callback)
+            self.last_assigned_ids[attribute] = new_id
+            self._write(no_transaction=True, callback=callback)
 
         msg = "Using %s: %s" % (attribute, new_id)
         callback.send(msg)
@@ -496,21 +580,21 @@ class IdrangePolicy(Policy):
         range_end=999999, start_id=None, restart_on_end=False, random=False):
         """ Find free number (e.g. uid/gid) for the given attribute. """
         # Get all used numbers.
-        used_numbers = backend.search(object_type=object_type,
+        used_ids = backend.search(object_type=object_type,
                                     attribute=attribute,
                                     greater_than=-1,
                                     return_attributes=[attribute])
-        used_numbers += backend.search(object_type=object_type,
+        used_ids += backend.search(object_type=object_type,
                                     attribute=attribute,
                                     greater_than=-1,
                                     return_attributes=[attribute],
                                     template=True)
-        used_numbers = [int(x) for x in used_numbers]
+        used_ids = [int(x) for x in used_ids]
 
         free_number = None
         if random:
             random_range = list(range(range_end, range_start+1))
-            for x in used_numbers:
+            for x in used_ids:
                 try:
                     random_range.remove(x)
                 except ValueError:
@@ -536,7 +620,7 @@ class IdrangePolicy(Policy):
                 if end_reached:
                     break
 
-                if number not in used_numbers:
+                if number not in used_ids:
                     free_number = number
                     break
 
@@ -671,81 +755,22 @@ class IdrangePolicy(Policy):
 
         return self._cache(callback=callback)
 
-    @object_lock()
-    @backend.transaction
-    def set_last_assigned(self, idrange, attribute, id,
-        callback=default_callback, **kwargs):
-        """ Set last assigend ID. """
-        if attribute not in self.id_ranges:
-            msg = (_("No range configured for attribute: %s")
-                % attribute)
-            return callback.error(msg, exception=self.policy_exception)
-        # Update last assigend ID objects.
-        last_assigned_id = LastAssignedID(policy_uuid=self.uuid,
-                                        id_type=attribute,
-                                        last_assigned_id=id,
-                                        realm=self.realm,
-                                        site=self.site)
-                                        #no_transaction=True)
-        if last_assigned_id.exists():
-            return True
-        # Write last assigend ID object to backend.
-        try:
-            add_result = last_assigned_id.add(callback=callback)
-        except Exception as e:
-            msg = ("Failed to save last assigned ID object: %s: %s"
-                    % (last_assigned_id.oid, e))
-            logger.warning(msg)
-            add_result = False
-        return add_result
-
     @backend.transaction
     def get_last_assigned(self, idrange, attribute,
         callback=default_callback, **kwargs):
         """ Get last assigend ID. """
-        if not attribute in self.id_ranges:
+        if attribute not in self.id_ranges:
             msg = (_("No range configured for attribute: %s")
                 % attribute)
             return callback.error(msg, exception=self.policy_exception)
-        # Get range start.
-        r = idrange.split(":")[1]
-        range_start = int(r.split("-")[0])
-        # By default we start with the first ID.
-        last_id = range_start
-        # Check if the range was used before.
-        search_attributes = {
-                            'id_type'       : {'value':attribute},
-                            'policy_uuid'   : {'value':self.uuid},
-                            }
-        result = backend.search(object_type="last_assigned_id",
-                                attributes=search_attributes,
-                                return_type="oid")
-        if not result:
-            return last_id
-        # Get highest used ID.
-        x_sort = lambda x: x.last_assigned_id
-        sorted_result = sorted(result, key=x_sort)
-        last_id = int(sorted_result[-1].last_assigned_id)
-        # Remove outdated "last assigned ID" objects.
-        for x in result:
-            x_id = int(x.last_assigned_id)
-            if x_id == last_id:
-                continue
-            # We will not delete outdated ID objects from other sites.
-            if x.realm != config.realm:
-                continue
-            if x.site != config.site:
-                continue
-            x_object = backend.get_object(x)
-            if not x_object:
-                continue
-            try:
-                x_object.delete(force=True)
-            except Exception as e:
-                msg = ("Failed to delete old last assigend ID object: "
-                        "%s: %s" % (x, e))
-                logger.critical(msg)
-                config.raise_exception()
+        try:
+            last_id = self.last_assigned_ids[attribute]
+        except KeyError:
+            # Get range start.
+            r = idrange.split(":")[1]
+            range_start = int(r.split("-")[0])
+            # By default we start with the first ID.
+            last_id = range_start
         return last_id
 
     @object_lock(full_lock=True)

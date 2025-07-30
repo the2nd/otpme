@@ -41,6 +41,24 @@ BLACKLIST_METHODS = [
                     'otpme.lib.log.ContextFilter.filter',
                     ]
 
+#import objgraph
+#objgraph.show_growth()  # Erster Aufruf - Baseline setzen
+# <your code here>
+#objgraph.show_growth()  # Zweiter Aufruf - zeigt was gewachsen ist
+
+#import tracemalloc
+#tracemalloc.start()
+# <your code here>
+#current, peak = tracemalloc.get_traced_memory()
+#print(f"Current memory usage: {current / 1024 / 1024:.1f} MB")
+#print(f"Peak memory usage: {peak / 1024 / 1024:.1f} MB")
+
+## Top 10 memory consumers anzeigen
+#snapshot = tracemalloc.take_snapshot()
+#top_stats = snapshot.statistics('lineno')
+#for stat in top_stats[:10]:
+#    print(stat)
+
 start_times = {}
 def start_timing():
     global start_times
@@ -537,3 +555,47 @@ def add_decorator(module):
                 continue
             f_decorator = decorator(f)
             setattr(module, x, f_decorator)
+
+def show_objects_with_reference():
+    import gc
+    import tracemalloc
+    from collections import defaultdict
+
+    # tracemalloc muss vor der Objekterstellung gestartet werden
+    tracemalloc.start()
+
+    counter = defaultdict(int)
+    origins = defaultdict(list)
+
+    for obj in gc.get_objects():
+        obj_type = type(obj).__name__
+        counter[obj_type] += 1
+
+        # Traceback für dieses Objekt finden
+        try:
+            tb = tracemalloc.get_object_traceback(obj)
+            if tb:
+                # Nur die erste (relevanteste) Frame nehmen
+                frame = tb[0]
+                origin = f"{frame.filename}:{frame.lineno}"
+                origins[obj_type].append(origin)
+        except:
+            pass
+
+    print("\n=== Objects with Origins ===")
+    for obj_type, count in sorted(counter.items(), key=lambda x: x[1], reverse=True)[:10]:
+        print(f"\n{obj_type}: {count} instances")
+        if obj_type in origins:
+            # Die häufigsten Ursprungsorte zeigen
+            origin_counter = defaultdict(int)
+            for origin in origins[obj_type]:
+                origin_counter[origin] += 1
+
+            for origin, origin_count in sorted(origin_counter.items(), key=lambda x: x[1], reverse=True)[:5]:
+                print(f"  {origin_count:3d}x from {origin}")
+
+def show_object_sizes():
+    from pympler import muppy, summary
+    all_objects = muppy.get_objects()
+    sum1 = summary.summarize(all_objects)
+    summary.print_(sum1)

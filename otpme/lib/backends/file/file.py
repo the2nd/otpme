@@ -26,7 +26,7 @@ from otpme.lib import config
 from otpme.lib import filetools
 from otpme.lib import otpme_acl
 from otpme.lib import multiprocessing
-#from otpme.lib.locking import oid_lock
+from otpme.lib.locking import oid_lock
 from otpme.lib.cache import index_cache
 from otpme.lib.cache import index_acl_cache
 from otpme.lib.cache import object_list_cache
@@ -289,7 +289,6 @@ def clear_index_caches(object_id):
     dogpile_region = _cache.get_dogpile_region(cache_region)
     dogpile_region.invalidate(hard=True)
 
-#@oid_lock(args_oid_pos=[0])
 #def get_index_data(object_id, no_lock=False):
 #    """ Get index data from object. """
 #    # Get object config.
@@ -386,7 +385,6 @@ def get_moved_child_objects(old_config_dir, new_config_dir):
             result[x_uuid] = x_objects[x_uuid]
     return result
 
-#@oid_lock(args_oid_pos=[0])
 def read(object_id, parameters=None, no_lock=False, use_index=True):
     """ Read object config. """
     # Try to get object from transaction.
@@ -427,7 +425,6 @@ def read(object_id, parameters=None, no_lock=False, use_index=True):
     # Return object config.
     return object_config
 
-#@oid_lock(args_oid_pos=[0], write=True)
 def write(object_id, object_config, index_journal=None, ldif_journal=None,
     acl_journal=None, full_index_update=False, use_acl_journal=True,
     full_ldif_update=False, use_ldif_journal=True, full_acl_update=False,
@@ -460,6 +457,10 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
     if not uuid:
         msg = ("Object does not have a UUID: %s" % object_id)
         raise OTPmeException(msg)
+
+    # Get checksum
+    if checksum is None:
+        checksum = object_config['CHECKSUM']
 
     # Get config file path from index.
     object_paths = get_config_paths(object_id, use_index=False)
@@ -624,9 +625,7 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
     if cluster:
         cluster_handler.cluster_write(object_uuid=uuid,
                                     object_id=object_id,
-                                    object_checksum=checksum,
                                     acl_journal=acl_journal,
-                                    ldif_journal=ldif_journal,
                                     index_journal=index_journal,
                                     wait_for_write=wait_for_cluster_writes)
 
@@ -645,7 +644,6 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
     return True
 
 @index_cache.cache_function()
-#@oid_lock(args_oid_pos=[0])
 def object_exists(object_id, realm=False, site=False, no_lock=False):
     """ Check if object exists. """
     # Check if object exists in transaction.
@@ -665,7 +663,6 @@ def object_exists(object_id, realm=False, site=False, no_lock=False):
         return False
     return True
 
-#@oid_lock(args_oid_pos=[0, 1], write=True)
 def rename(object_id, new_object_id, no_lock=False,
     cluster=False, object_uuid=None, commit_files=None,
     no_index_writes=False, no_transaction=False,
@@ -830,7 +827,6 @@ def rename(object_id, new_object_id, no_lock=False,
 
     return True
 
-#@oid_lock(args_oid_pos=[0], write=True)
 def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
     no_index_writes=False, config_paths=None, no_exists_check=False,
     cluster=False, no_transaction=False, transaction_replay=False):
@@ -999,7 +995,6 @@ def config_path_getter(object_id, dir_extension):
     config_paths['rmdir_on_delete'] = [config_dir]
     return config_paths
 
-#@oid_lock(args_oid_pos=[0])
 def get_config_paths(object_id, use_index=True, no_lock=False):
     """ Get object config directories and files. """
     # Try to get config paths via index.
@@ -1032,7 +1027,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     join_search_val=None, join_attribute=None, return_type="uuid",
     return_attributes=None, case_sensitive=True, object_type=None,
     object_types=None, verify_acls=None, return_acls=None,
-    return_raw_acls=False, max_results=0, size_limit=0,
+    return_raw_acls=False, max_results=0, size_limit=0, template=None,
     return_query_count=False, session=None, _debug=False, **kwargs):
     """ Search index. """
     # Import modules here to speedup import time.
@@ -1308,6 +1303,10 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             q = q.filter(JoinIndexObjectAttribute.name==join_attribute)
     else:
         q = session.query(IndexObject)
+
+    # Check for template.
+    if template:
+        q = q.filter(IndexObject.template == template)
 
     if query_args:
         q = q.filter_by(**query_args)
@@ -1903,7 +1902,7 @@ def index_restore(index_data, session=None, **kwargs):
     session.commit()
 
 @handle_transaction
-#@oid_lock(args_oid_pos=[0], write=True)
+@oid_lock(write=True)
 def index_add(object_id, object_paths=None, object_config=None,
     uuid=None, checksum=None, sync_checksum=None, index_journal=[],
     use_index_journal=False, full_index_update=False, ldif_journal=[],
@@ -1973,12 +1972,14 @@ def index_add(object_id, object_paths=None, object_config=None,
             raise OTPmeException(msg)
 
     # Get object data.
+    last_modified = None
     if object_config:
         # Get object UUID.
-        try:
-            uuid = object_config['UUID']
-        except:
-            uuid = None
+        if uuid is None:
+            try:
+                uuid = object_config['UUID']
+            except:
+                uuid = None
         # Get object checksum.
         if checksum is None:
             try:
@@ -2001,6 +2002,11 @@ def index_add(object_id, object_paths=None, object_config=None,
             object_ldif = object_config['LDIF']
         except:
             object_ldif = {}
+        # Get last modified timestamp.
+        try:
+            last_modified = object_config['LAST_MODIFIED']
+        except:
+            last_modified = None
 
     # Check if the object already exists in the index DB.
     q = session.query(IndexObject)
@@ -2099,10 +2105,27 @@ def index_add(object_id, object_paths=None, object_config=None,
         for x_entry in index_journal:
             x_entry_type = x_entry[1]
             x_attribute = x_entry[2]
-            x_value = x_entry[3]
+
+            # Del attribute.
+            if x_entry_type == "del":
+                if not index_object:
+                    continue
+                try:
+                    x_value = x_entry[3]
+                except IndexError:
+                    x_value = None
+                q = session.query(IndexObjectAttribute)
+                q = q.filter(IndexObjectAttribute.ioid == index_object.id)
+                q = q.filter(IndexObjectAttribute.name == x_attribute)
+                if x_value:
+                    q = q.filter(IndexObjectAttribute.value == x_value)
+                result = q.all()
+                for a in result:
+                    session.delete(a)
 
             # Add attributes.
             if x_entry_type == "add":
+                x_value = x_entry[3]
                 if (x_attribute, x_value) in existing_attrs:
                     continue
                 a = IndexObjectAttribute(realm=object_realm,
@@ -2118,17 +2141,6 @@ def index_add(object_id, object_paths=None, object_config=None,
                 else:
                     # Add attribute to list of attributes for the new index object.
                     attributes.append(a)
-
-            if x_entry_type == "del":
-                if not index_object:
-                    continue
-                q = session.query(IndexObjectAttribute)
-                q = q.filter(IndexObjectAttribute.ioid == index_object.id)
-                q = q.filter(IndexObjectAttribute.name == x_attribute)
-                q = q.filter(IndexObjectAttribute.value == x_value)
-                result = q.all()
-                for a in result:
-                    session.delete(a)
 
     # Get object ACLs from index DB.
     if full_acl_update:
@@ -2196,6 +2208,16 @@ def index_add(object_id, object_paths=None, object_config=None,
             x_entry_type = x_entry[1]
             x_raw_acl = x_entry[2]
 
+            if x_entry_type == "del":
+                if not index_object:
+                    continue
+                q = session.query(IndexObjectACL)
+                q = q.filter(IndexObjectACL.ioid == index_object.id)
+                q = q.filter(IndexObjectACL.value == x_raw_acl)
+                result = q.all()
+                for a in result:
+                    session.delete(a)
+
             # Add attributes.
             if x_entry_type == "add":
                 a = IndexObjectACL(realm=object_realm,
@@ -2212,15 +2234,6 @@ def index_add(object_id, object_paths=None, object_config=None,
                     # Add attribute to list of ACLs for the new index object.
                     acls.append(a)
 
-            if x_entry_type == "del":
-                if not index_object:
-                    continue
-                q = session.query(IndexObjectACL)
-                q = q.filter(IndexObjectACL.ioid == index_object.id)
-                q = q.filter(IndexObjectACL.value == x_raw_acl)
-                result = q.all()
-                for a in result:
-                    session.delete(a)
         if autocommit:
             session.commit()
 
@@ -2237,7 +2250,26 @@ def index_add(object_id, object_paths=None, object_config=None,
         for x in ldif_journal:
             x_entry_action = x[1]
             x_entry_data = x[2]
-            if x_entry_action == "add":
+            if x_entry_action == "del":
+                for x_data in x_entry_data:
+                    x_attr = x_data[0]
+                    try:
+                        x_val = x_data[1]
+                    except IndexError:
+                        try:
+                            object_ldif.pop(x_attr)
+                        except KeyError:
+                            pass
+                    else:
+                        try:
+                            cur_vals = object_ldif[x_attr]
+                        except KeyError:
+                            continue
+                        try:
+                            cur_vals.remove(x_val)
+                        except ValueError:
+                            pass
+            elif x_entry_action == "add":
                 x_entry_position = x[3]
                 for x_data in x_entry_data:
                     x_attr = x_data[0]
@@ -2248,20 +2280,8 @@ def index_add(object_id, object_paths=None, object_config=None,
                         cur_vals = []
                         object_ldif[x_attr] = cur_vals
                     cur_vals.insert(x_entry_position, x_val)
-            elif x_entry_action == "del":
-                for x_data in x_entry_data:
-                    x_attr = x_data[0]
-                    x_val = x_data[1]
-                    try:
-                        cur_vals = object_ldif[x_attr]
-                    except KeyError:
-                        continue
-                    try:
-                        cur_vals.remove(x_val)
-                    except ValueError:
-                        pass
             else:
-                msg = "Unknown action for ldif journal: %s" % x_entry_action
+                msg = "Unknown action for LDIF journal: %s" % x_entry_action
                 raise OTPmeException(msg)
 
     if full_ldif_update:
@@ -2301,6 +2321,8 @@ def index_add(object_id, object_paths=None, object_config=None,
             index_object.sync_checksum = sync_checksum
         if index_object.template != template:
             index_object.template = template
+        if last_modified:
+            index_object.last_modified = last_modified
         if update_object_ldif:
             if index_object.ldif != object_ldif:
                 index_object.ldif = object_ldif
@@ -2320,6 +2342,7 @@ def index_add(object_id, object_paths=None, object_config=None,
                                 checksum=checksum,
                                 sync_checksum=sync_checksum,
                                 ldif=object_ldif,
+                                last_modified=last_modified,
                                 template=template)
         # Add object to index.
         session.add(index_object)
@@ -2337,7 +2360,6 @@ def index_add(object_id, object_paths=None, object_config=None,
             index_acl_cache.invalidate(index_object.uuid)
 
 @handle_transaction
-#@oid_lock(args_oid_pos=[0], write=True)
 def index_del(object_id, no_lock=False,
     autocommit=True, session=None, **kwargs):
     """ Delete object from index. """
@@ -2357,7 +2379,6 @@ def index_del(object_id, no_lock=False,
     clear_index_caches(object_id)
 
 @index_cache.cache_function()
-#@oid_lock(args_oid_pos=[0])
 def index_get(object_id, no_lock=False):
     """ Get object config file path. """
     index_object = index_get_object(object_id)
@@ -2554,7 +2575,7 @@ def index_rebuild():
             last_used = index_rebuild_data[x_uuid]['last_used']
             msg = "Setting last used time: %s: %s" % (x_uuid, last_used)
             logger.debug(msg)
-            set_last_used(uuid=x_uuid, timestamp=last_used)
+            set_last_used(uuid=x_uuid, timestamp=last_used, cluster=False)
 
     # Remove last used data file.
     if os.path.exists(index_rebuild_data_file):
@@ -2621,11 +2642,36 @@ def get_last_used(uuid, session=None, **kwargs):
     return last_used
 
 @handle_transaction
+def set_last_used_times(object_type, updates, session=None, **kwargs):
+    from sqlalchemy import case
+    from sqlalchemy import update
+    try:
+        IndexObject, \
+        IndexObjectAttribute, \
+        IndexObjectACL = get_class(object_type)
+    except UnknownClass:
+        msg = "Unknown object class: %s" % object_type
+        raise SearchException(msg)
+
+    when_conditions = [
+        (IndexObject.uuid == uuid, last_used)
+        for uuid, last_used in updates.items()
+    ]
+
+    stmt = update(IndexObject)
+    stmt = stmt.where(IndexObject.uuid.in_(updates.keys()))
+    stmt = stmt.values(last_used=case(*when_conditions))
+
+    session.execute(stmt)
+    session.commit()
+
+@handle_transaction
 def set_last_used(uuid, timestamp, session=None, cluster=True, **kwargs):
     from otpme.lib.daemon.clusterd import cluster_sync_object
     index_object = index_get_object(uuid=uuid)
     if not index_object:
         return
+    old_last_used = index_object.last_used
     index_object.last_used = timestamp
     index_object = session.merge(index_object)
     session.add(index_object)
@@ -2634,6 +2680,10 @@ def set_last_used(uuid, timestamp, session=None, cluster=True, **kwargs):
         return
     if config.host_type != "node":
         return
+    if old_last_used:
+        last_used_age = timestamp - old_last_used
+        if last_used_age < 60:
+            return
     object_id = get_oid(uuid, instance=True)
     cluster_sync_object(action="last_used_write",
                         object_uuid=uuid,

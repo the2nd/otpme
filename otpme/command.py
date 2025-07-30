@@ -72,9 +72,10 @@ def otpme_commands(no_debug=False):
     #    from otpme.lib.extensions import utils
     #    utils.load_schemas()
 
+    command_line = list(sys.argv)
     try:
         result = command_handler.handle_command(command,
-                                command_line=list(sys.argv))
+                                command_line=command_line)
         exit_code = 0
     except OTPmeException as e:
         config.raise_exception()
@@ -182,7 +183,7 @@ if "--type" in sys.argv:
     type_pos = opt_pos + 1
     try:
         object_type = sys.argv[type_pos]
-        sys.argv.pop(opt_pos)
+        sys.argv.pop(type_pos)
         sys.argv.pop(opt_pos)
     except IndexError:
         help_message = "Missing object type: --type"
@@ -346,16 +347,6 @@ if command == "controld":
     # Change dir to otpme base directory on daemon start.
     if os.path.exists(config.base_dir):
         os.chdir(config.base_dir)
-
-## Import freeradius stuff if we got called as a module.
-#if __name__ == 'otpme':
-#    from otpme.lib import init
-#    from otpme.lib.freeradius.otpme import instantiate
-#    from otpme.lib.freeradius.otpme import authenticate
-#    from otpme.lib.freeradius.otpme import authorize
-#    from otpme.lib.freeradius.otpme import detach
-#
-#elif __name__ == '__main__':
 
 # Workaround used for OTPme development.
 if __name__ == "__main__":

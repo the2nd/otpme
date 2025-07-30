@@ -426,9 +426,7 @@ class AuthonactionPolicy(Policy):
                 logger.debug("Using callback from previous call to do reauth.")
 
         if callback.api_mode:
-            msg = (_("Cannot reauth in API mode."))
-            exception = OTPmeException(msg)
-            callback.exception(exception)
+            return
 
         config.reauth_callback = callback
 

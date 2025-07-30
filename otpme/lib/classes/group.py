@@ -2,7 +2,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -22,6 +21,7 @@ from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.register import register_module
 from otpme.lib.job.callback import JobCallback
+from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
@@ -78,11 +78,12 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'oargs'             : ['unit'],
+                    'oargs'             : ['unit', 'ldif_attributes'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
                     'method'            : 'add',
+                    'oargs'             : ['unit', 'ldif_attributes'],
                     'job_type'          : 'process',
                     },
                 },
@@ -918,7 +919,7 @@ class Group(OTPmeObject):
                 default_extensions = []
             for ext in default_extensions:
                 ext_attrs = config.get_ldif_attributes(ext, self.type)
-                for x in ldif_attributes.split(","):
+                for x in ldif_attributes:
                     try:
                         attr = x.split("=")[0]
                         value = x.split("=")[1]
@@ -929,11 +930,15 @@ class Group(OTPmeObject):
                         continue
                     if ext not in default_attributes:
                         default_attributes[ext] = {}
+                    if attr == "gidNumber":
+                        value = int(value)
                     default_attributes[ext][attr] = value
 
         # Add object using parent class.
-        return OTPmeObject.add(self, default_attributes=default_attributes,
+        add_result = OTPmeObject.add(self, default_attributes=default_attributes,
                             verbose_level=verbose_level, callback=callback, **kwargs)
+
+        return add_result
 
     def move(self,
         *args,

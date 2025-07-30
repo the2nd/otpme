@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import re
 import time
 import glob
 import shutil
@@ -36,7 +37,7 @@ from otpme.lib.pidfile import is_running
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
 #from otpme.lib.classes.object_config import ObjectConfig
-from otpme.lib.freeradius import reload as freeradius_reload
+from otpme.lib.freeradius.utils import reload as freeradius_reload
 
 from otpme.lib.exceptions import *
 
@@ -51,12 +52,15 @@ CLUSTER_IN_JOURNAL_NAME = "cluster_in_journal"
 CLUSTER_IN_JOURNAL_DIR = os.path.join(config.spool_dir, CLUSTER_IN_JOURNAL_NAME)
 CLUSTER_OUT_JOURNAL_NAME = "cluster_out_journal"
 CLUSTER_OUT_JOURNAL_DIR = os.path.join(config.spool_dir, CLUSTER_OUT_JOURNAL_NAME)
-MEMBER_CANDIDATE_DIR_NAME = "member_candidate"
-MEMBER_CANDIDATE_DIR = os.path.join(config.spool_dir, MEMBER_CANDIDATE_DIR_NAME)
+
+TRASH_JOURNAL_DIR = os.path.join(CLUSTER_OUT_JOURNAL_DIR, "trash")
+OBJECTS_JOURNAL_DIR = os.path.join(CLUSTER_OUT_JOURNAL_DIR, "objects")
+LAST_USED_JOURNAL_DIR = os.path.join(CLUSTER_OUT_JOURNAL_DIR, "last_used")
 
 def register():
     """ Register OTPme daemon. """
     config.register_otpme_daemon("clusterd")
+    multiprocessing.register_shared_dict("node_vote")
     multiprocessing.register_shared_dict("ready_nodes")
     multiprocessing.register_shared_dict("master_node")
     multiprocessing.register_shared_dict("online_nodes")
@@ -64,7 +68,6 @@ def register():
     multiprocessing.register_shared_list("pause_writes")
     multiprocessing.register_shared_dict("running_jobs")
     multiprocessing.register_shared_dict("cluster_quorum")
-    multiprocessing.register_shared_dict("cluster_journal")
     multiprocessing.register_shared_dict("node_connections")
     multiprocessing.register_shared_list("master_sync_done")
     multiprocessing.register_shared_dict("member_candidates")
@@ -79,7 +82,6 @@ def register_cluster_journal():
     locking.register_lock_type(JOURNAL_LOCK_TYPE, module=__file__)
     config.register_config_var("cluster_in_journal_dir", str, CLUSTER_IN_JOURNAL_DIR)
     config.register_config_var("cluster_out_journal_dir", str, CLUSTER_OUT_JOURNAL_DIR)
-    config.register_config_var("member_candidate_dir", str, MEMBER_CANDIDATE_DIR)
     backend.register_data_dir(name=CLUSTER_IN_JOURNAL_NAME,
                             path=CLUSTER_IN_JOURNAL_DIR,
                             drop=True,
@@ -88,15 +90,6 @@ def register_cluster_journal():
                             path=CLUSTER_OUT_JOURNAL_DIR,
                             drop=True,
                             perms=0o770)
-    backend.register_data_dir(name=MEMBER_CANDIDATE_DIR_NAME,
-                            path=MEMBER_CANDIDATE_DIR,
-                            drop=True,
-                            perms=0o770)
-
-def get_object_event(timestamp):
-    object_event_name = "/cluster_journal_%s" % timestamp
-    object_event = multiprocessing.Event(object_event_name)
-    return object_event
 
 def check_cluster_status():
     if config.master_failover:
@@ -162,9 +155,9 @@ def cluster_daemon_reload():
     multiprocessing.cluster_out_event.set()
 
 def cluster_sync_object(action, object_id=None, object_uuid=None,
-    object_data=None, new_object_id=None, checksum=None,
-    index_journal=None, ldif_journal=None, acl_journal=None,
-    trash_id=None, deleted_by=None, wait_for_write=True):
+    object_type=None, object_data=None, new_object_id=None,
+    index_journal=None, acl_journal=None, trash_id=None,
+    deleted_by=None, wait_for_write=True):
     if config.host_type != "node":
         return
     if not multiprocessing.cluster_out_event:
@@ -179,25 +172,72 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
             wait_for_write = False
     while len(multiprocessing.pause_writes) > 0:
         time.sleep(0.1)
+
+    timestamp = time.time_ns()
+    if action == "write":
+        journal_id = object_uuid
+        journal_dir = OBJECTS_JOURNAL_DIR
+    if action == "delete":
+        journal_id = object_uuid
+        journal_dir = OBJECTS_JOURNAL_DIR
+    if action == "rename":
+        journal_id = object_uuid
+        journal_dir = OBJECTS_JOURNAL_DIR
+    if action == "last_used_write":
+        journal_id = object_uuid
+        journal_dir = LAST_USED_JOURNAL_DIR
+    if action == "trash_write":
+        journal_id = timestamp
+        journal_dir = TRASH_JOURNAL_DIR
+    if action == "trash_delete":
+        journal_id = timestamp
+        journal_dir = TRASH_JOURNAL_DIR
+    if action == "trash_empty":
+        journal_id = timestamp
+        journal_dir = TRASH_JOURNAL_DIR
+
     while True:
         try:
-            cluster_journal_entry = ClusterJournalEntry(timestamp=time.time_ns(),
-                                                    action=action,
-                                                    object_uuid=object_uuid,
-                                                    object_id=object_id,
-                                                    trash_id=trash_id,
-                                                    deleted_by=deleted_by,
-                                                    checksum=checksum,
-                                                    acl_journal=acl_journal,
-                                                    ldif_journal=ldif_journal,
-                                                    index_journal=index_journal,
-                                                    object_data=object_data,
-                                                    new_object_id=new_object_id)
-        except AlreadyExists:
+            cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,
+                                                        journal_dir=journal_dir,
+                                                        timestamp=timestamp,
+                                                        action=action,
+                                                        object_uuid=object_uuid)
+            cluster_journal_entry.lock(write=True)
+        except ObjectDeleted:
             continue
-        else:
-            break
-    if not wait_for_write:
+        break
+
+    try:
+        if object_id:
+            cluster_journal_entry.object_id = object_id
+        if object_type:
+            cluster_journal_entry.object_type = object_type
+        if trash_id:
+            cluster_journal_entry.trash_id = trash_id
+        if deleted_by:
+            cluster_journal_entry.deleted_by = deleted_by
+        if object_data:
+            cluster_journal_entry.object_data = object_data
+        if new_object_id:
+            cluster_journal_entry.new_object_id = new_object_id
+
+        if acl_journal:
+            cluster_journal_entry.add_acl_journal(acl_journal)
+        if index_journal:
+            cluster_journal_entry.add_index_journal(index_journal)
+        if not wait_for_write:
+            try:
+                cluster_journal_entry.commit()
+            except Exception as e:
+                msg = ("Failed to commit cluster journal entry: %s: %s"
+                        % (object_id, e))
+                config.logger.critical(msg)
+                return
+            multiprocessing.cluster_out_event.set()
+            return
+        object_event = cluster_journal_entry.add_object_event(timestamp)
+        object_event.open()
         try:
             cluster_journal_entry.commit()
         except Exception as e:
@@ -205,17 +245,9 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
                     % (object_id, e))
             config.logger.critical(msg)
             return
-        multiprocessing.cluster_out_event.set()
-        return
-    object_event = get_object_event(cluster_journal_entry.timestamp)
-    object_event.open()
-    try:
-        cluster_journal_entry.commit()
-    except Exception as e:
-        msg = ("Failed to commit cluster journal entry: %s: %s"
-                % (object_id, e))
-        config.logger.critical(msg)
-        return
+    finally:
+        cluster_journal_entry.release()
+
     multiprocessing.cluster_out_event.set()
     return object_event
 
@@ -254,20 +286,17 @@ def entry_lock(write=True, timeout=None):
 
 class ClusterEntry(object):
     """ Cluster entry base class. """
-    def __init__(self, journal_dir, timestamp, _lock_type, action=None, **kwargs):
+    def __init__(self, journal_dir, journal_id,
+        _lock_type=None, action=None, **kwargs):
         self._lock = None
         self._lock_type = _lock_type
+        self.journal_id = str(journal_id)
         self.logger = config.logger
-        self.timestamp = timestamp
-        self.entry_dir = os.path.join(journal_dir, str(self.timestamp))
+        self.entry_dir = os.path.join(journal_dir, self.journal_id)
         self.nodes_dir = os.path.join(self.entry_dir, "nodes")
         self.action_file = os.path.join(self.entry_dir, "action")
         self.commit_file = os.path.join(self.entry_dir, "ready")
         self.failed_nodes_dir = os.path.join(self.entry_dir, "failed_nodes")
-        if action:
-            if os.path.exists(self.entry_dir):
-                msg = "Entry already exists: %s" % self.entry_dir
-                raise AlreadyExists(msg)
         if action is not None:
             try:
                 filetools.create_dir(self.entry_dir)
@@ -288,10 +317,10 @@ class ClusterEntry(object):
         if self._lock:
             return
         self._lock = locking.acquire_lock(lock_type=self._lock_type,
-                                            lock_id=self.timestamp,
-                                            write=write)
+                                        lock_id=self.journal_id,
+                                        write=write)
         if not os.path.exists(self.entry_dir):
-            msg = "Entry deleted while waiting for lock: %s" % self.timestamp
+            msg = "Entry deleted while waiting for lock: %s" % self.journal_id
             self.release()
             raise ObjectDeleted(msg)
 
@@ -302,7 +331,7 @@ class ClusterEntry(object):
         self._lock = None
 
     @property
-    @entry_lock(write=False)
+    #@entry_lock(write=False)
     def action(self):
         try:
             action = filetools.read_file(self.action_file)
@@ -315,18 +344,19 @@ class ClusterEntry(object):
         return action
 
     @action.setter
-    #@entry_lock(write=True)
     def action(self, action):
         try:
             filetools.create_file(path=self.action_file,
                                     content=action)
+        except FileNotFoundError:
+            raise ObjectDeleted()
         except Exception as e:
             msg = ("Failed to add action to cluster entry: %s: %s"
-                    % (self.timestamp, e))
+                    % (self.journal_id, e))
             self.logger.critical(msg)
 
     @property
-    @entry_lock(write=True)
+    #@entry_lock(write=True)
     def pid(self):
         try:
             pid = filetools.read_file(self.commit_file)
@@ -337,23 +367,23 @@ class ClusterEntry(object):
         return pid
 
     @property
-    @entry_lock(write=False)
+    #@entry_lock(write=False)
     def committed(self):
         if os.path.exists(path=self.commit_file):
             return True
         return False
 
-    @entry_lock(write=True)
+    #@entry_lock(write=True)
     def commit(self):
         try:
             filetools.create_file(path=self.commit_file,
                                 content=str(os.getpid()))
         except Exception as e:
             msg = ("Failed to commit cluster entry: %s: %s"
-                    % (self.timestamp, e))
+                    % (self.journal_id, e))
             self.logger.critical(msg)
 
-    @entry_lock(write=True)
+    #@entry_lock(write=True)
     def add_node(self, node_name):
         node_file = os.path.join(self.nodes_dir, node_name)
         try:
@@ -363,15 +393,56 @@ class ClusterEntry(object):
                     % (node_name, e))
             self.logger.critical(msg)
 
-    @entry_lock(write=False)
+    #@entry_lock(write=False)
     def get_nodes(self):
         nodes = []
         for node_file in sorted(glob.glob(self.nodes_dir + "/*")):
             node_name = os.path.basename(node_file)
             nodes.append(node_name)
-        return nodes
+        file_glob = "%s*" % self.index_journal_file
+        index_journal_files = sorted(glob.glob(file_glob))
+        journal_file_re = re.compile('^%s.[0-9]*$' % self.index_journal_file)
+        done_nodes = list(nodes)
+        processed_nodes = []
+        for x_file in index_journal_files:
+            if len(processed_nodes) == len(nodes):
+                break
+            if not journal_file_re.match(x_file):
+                continue
+            for node in nodes:
+                x_node_file = "%s.%s" % (x_file, node)
+                if os.path.exists(x_node_file):
+                    continue
+                try:
+                    done_nodes.remove(node)
+                except ValueError:
+                    pass
+                if node in processed_nodes:
+                    continue
+                processed_nodes.append(node)
+        file_glob = "%s*" % self.acl_journal_file
+        acl_journal_files = sorted(glob.glob(file_glob))
+        journal_file_re = re.compile('^%s.[0-9]*$' % self.acl_journal_file)
+        processed_nodes = []
+        for x_file in acl_journal_files:
+            if len(processed_nodes) == len(nodes):
+                break
+            if not journal_file_re.match(x_file):
+                continue
+            for node in nodes:
+                x_node_file = "%s.%s" % (x_file, node)
+                if os.path.exists(x_node_file):
+                    continue
+                try:
+                    done_nodes.remove(node)
+                except ValueError:
+                    pass
+                if node in processed_nodes:
+                    continue
+                processed_nodes.append(node)
+        return done_nodes
 
-    @entry_lock(write=True)
+    #@entry_lock(write=True)
     def add_failed_node(self, node_name):
         node_file = os.path.join(self.failed_nodes_dir, node_name)
         try:
@@ -381,7 +452,7 @@ class ClusterEntry(object):
                     % (node_name, e))
             self.logger.critical(msg)
 
-    @entry_lock(write=False)
+    #@entry_lock(write=False)
     def get_failed_nodes(self):
         nodes = []
         for node_file in sorted(glob.glob(self.failed_nodes_dir + "/*")):
@@ -389,7 +460,7 @@ class ClusterEntry(object):
             nodes.append(node_name)
         return nodes
 
-    @entry_lock(write=True)
+    #@entry_lock(write=True)
     def delete(self):
         object_id = self.object_id
         entry_del_dir = "%s.deleting" % self.entry_dir
@@ -414,40 +485,40 @@ class ClusterEntry(object):
 
 class ClusterJournalEntry(ClusterEntry):
     """ Cluster journal entry. """
-    def __init__(self, timestamp, object_uuid=None, action=None,
-        object_id=None, checksum=None, object_data=None, index_journal=None,
-        ldif_journal=None, acl_journal=None, new_object_id=None, trash_id=None,
-        deleted_by=None):
-        journal_dir = config.cluster_out_journal_dir
+    def __init__(self, journal_id, journal_dir, timestamp=None,
+        object_uuid=None, action=None, object_id=None, object_type=None,
+        object_data=None, index_journal=None, acl_journal=None,
+        new_object_id=None, trash_id=None, deleted_by=None):
         super(ClusterJournalEntry, self).__init__(journal_dir=journal_dir,
-                                                    _lock_type=JOURNAL_LOCK_TYPE,
-                                                    timestamp=timestamp,
-                                                    action=action)
+                                                journal_id=journal_id,
+                                                _lock_type=JOURNAL_LOCK_TYPE,
+                                                action=action)
+        self.timestamp_file = os.path.join(self.entry_dir, "timestamp")
         self.object_id_file = os.path.join(self.entry_dir, "object_id")
+        self.object_type_file = os.path.join(self.entry_dir, "object_type")
         self.object_uuid_file = os.path.join(self.entry_dir, "object_uuid")
         self.new_object_id_file = os.path.join(self.entry_dir, "new_object_id")
-        self.object_checksum_file = os.path.join(self.entry_dir, "object_checksum")
         self.index_journal_file = os.path.join(self.entry_dir, "index_journal")
-        self.ldif_journal_file = os.path.join(self.entry_dir, "ldif_journal")
         self.acl_journal_file = os.path.join(self.entry_dir, "acl_journal")
         self.trash_id_file = os.path.join(self.entry_dir, "trash_id")
         self.deleted_by_file = os.path.join(self.entry_dir, "deleted_by")
+        self.object_data_file = os.path.join(self.entry_dir, "object_data")
+        if timestamp is not None:
+            self.timestamp = timestamp
         if action is not None:
             self.action = action
         if object_id is not None:
             self.object_id = object_id
+        if object_type is not None:
+            self.object_type = object_type
         if object_uuid is not None:
             self.object_uuid = object_uuid
         if object_data is not None:
             self.object_data = object_data
         if acl_journal is not None:
-            self.acl_journal = acl_journal
-        if ldif_journal is not None:
-            self.ldif_journal = ldif_journal
+            self.add_acl_journal(acl_journal)
         if index_journal is not None:
-            self.index_journal = index_journal
-        if checksum is not None:
-            self.object_checksum = checksum
+            self.add_index_journal(index_journal)
         if new_object_id is not None:
             self.new_object_id = new_object_id
         if trash_id is not None:
@@ -456,7 +527,9 @@ class ClusterJournalEntry(ClusterEntry):
             self.deleted_by = deleted_by
 
     def __str__(self):
-        return self.timestamp
+        #x = os.path.getmtime(self.commit_file)
+        #return x
+        return self.journal_id
 
     def __repr__(self):
         # We need a string when object is used as dict key!
@@ -481,8 +554,58 @@ class ClusterJournalEntry(ClusterEntry):
     def __gt__(self, other):
         return self.__str__() > other.__str__()
 
+    def add_object_event(self, timestamp):
+        object_event_name = "/cluster_journal_%s" % timestamp
+        object_event = multiprocessing.Event(object_event_name)
+        event_file = "%s/%s.event" % (self.entry_dir, timestamp)
+        try:
+            filetools.create_file(path=event_file,
+                                content=str(timestamp))
+        except Exception as e:
+            msg = ("Failed to add index event to cluster entry: %s: %s"
+                    % (timestamp, e))
+            self.logger.critical(msg)
+        return object_event
+
+    def get_object_events(self):
+        events = []
+        event_files = sorted(glob.glob(self.entry_dir + "/[0-9]*.event"))
+        for x_file in event_files:
+            event_id = os.path.basename(x_file)
+            event_id = event_id.split(".")[0]
+            object_event_name = "/cluster_journal_%s" % event_id
+            object_event = multiprocessing.Event(object_event_name)
+            events.append(object_event)
+        return events
+
     @property
-    @entry_lock(write=False)
+    #@entry_lock(write=False)
+    def timestamp(self):
+        try:
+            timestamp = filetools.read_file(self.timestamp_file)
+        except FileNotFoundError:
+            timestamp = 0
+        except Exception as e:
+            timestamp = 0
+            msg = ("Failed to read timestamp from cluster entry: %s: %s"
+                    % (self.journal_id, e))
+            self.logger.critical(msg)
+        return int(timestamp)
+
+    @timestamp.setter
+    def timestamp(self, timestamp):
+        try:
+            filetools.create_file(path=self.timestamp_file,
+                                    content=str(timestamp))
+        except FileNotFoundError:
+            raise ObjectDeleted()
+        except Exception as e:
+            msg = ("Failed to add timestamp to cluster entry: %s: %s"
+                    % (self.journal_id, e))
+            self.logger.critical(msg)
+
+    @property
+    #@entry_lock(write=False)
     def object_id(self):
         try:
             object_id = filetools.read_file(self.object_id_file)
@@ -491,23 +614,46 @@ class ClusterJournalEntry(ClusterEntry):
         except Exception as e:
             object_id = None
             msg = ("Failed to read object ID from cluster entry: %s: %s"
-                    % (self.timestamp, e))
+                    % (self.journal_id, e))
             self.logger.critical(msg)
         return object_id
 
     @object_id.setter
-    #@entry_lock(write=True)
     def object_id(self, object_id):
         try:
             filetools.create_file(path=self.object_id_file,
                                     content=object_id.full_oid)
         except Exception as e:
             msg = ("Failed to add object ID to cluster entry: %s: %s"
-                    % (self.timestamp, e))
+                    % (self.journal_id, e))
             self.logger.critical(msg)
 
     @property
-    @entry_lock(write=False)
+    #@entry_lock(write=False)
+    def object_type(self):
+        try:
+            object_type = filetools.read_file(self.object_type_file)
+        except FileNotFoundError:
+            object_type = None
+        except Exception as e:
+            object_type = None
+            msg = ("Failed to read object type from cluster entry: %s: %s"
+                    % (self.journal_id, e))
+            self.logger.critical(msg)
+        return object_type
+
+    @object_type.setter
+    def object_type(self, object_type):
+        try:
+            filetools.create_file(path=self.object_type_file,
+                                    content=object_type)
+        except Exception as e:
+            msg = ("Failed to add object type to cluster entry: %s: %s"
+                    % (self.journal_id, e))
+            self.logger.critical(msg)
+
+    @property
+    #@entry_lock(write=False)
     def new_object_id(self):
         try:
             new_object_id = filetools.read_file(self.new_object_id_file)
@@ -516,23 +662,22 @@ class ClusterJournalEntry(ClusterEntry):
         except Exception as e:
             new_object_id = None
             msg = ("Failed to read new object ID from cluster entry: %s: %s"
-                    % (self.timestamp, e))
+                    % (self.journal_id, e))
             self.logger.critical(msg)
         return new_object_id
 
     @new_object_id.setter
-    #@entry_lock(write=True)
     def new_object_id(self, new_object_id):
         try:
             filetools.create_file(path=self.new_object_id_file,
                                     content=new_object_id.full_oid)
         except Exception as e:
             msg = ("Failed to add new object ID to cluster entry: %s: %s"
-                    % (self.timestamp, e))
+                    % (self.journal_id, e))
             self.logger.critical(msg)
 
     @property
-    @entry_lock(write=False)
+    #@entry_lock(write=False)
     def object_uuid(self):
         try:
             object_uuid = filetools.read_file(self.object_uuid_file)
@@ -541,129 +686,110 @@ class ClusterJournalEntry(ClusterEntry):
         except Exception as e:
             object_uuid = None
             msg = ("Failed to read object UUID from cluster entry: %s: %s"
-                    % (self.timestamp, e))
+                    % (self.journal_id, e))
             self.logger.critical(msg)
         return object_uuid
 
     @object_uuid.setter
-    #@entry_lock(write=True)
     def object_uuid(self, object_uuid):
         try:
             filetools.create_file(path=self.object_uuid_file,
                                     content=object_uuid)
+        except FileNotFoundError:
+            raise ObjectDeleted()
         except Exception as e:
             msg = ("Failed to add object UUID to cluster entry: %s: %s"
-                    % (self.timestamp, e))
+                    % (self.journal_id, e))
             self.logger.critical(msg)
 
-    @property
-    @entry_lock(write=False)
-    def object_checksum(self):
-        try:
-            object_checksum = filetools.read_file(self.object_checksum_file)
-        except FileNotFoundError:
-            object_checksum = None
-        except Exception as e:
-            object_checksum = None
-            msg = ("Failed to read object checksum from cluster entry: %s: %s"
-                    % (self.timestamp, e))
-            self.logger.critical(msg)
-        return object_checksum
+    def get_index_journal(self, node_name):
+        commit_files = []
+        index_journal = []
+        file_glob = "%s*" % self.index_journal_file
+        index_journal_files = sorted(glob.glob(file_glob))
+        journal_file_re = re.compile('^%s.[0-9]*$' % self.index_journal_file)
+        for x_file in index_journal_files:
+            if not journal_file_re.match(x_file):
+                continue
+            x_node_file = "%s.%s" % (x_file, node_name)
+            if os.path.exists(x_node_file):
+                continue
+            try:
+                x_journal = filetools.read_file(x_file)
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                msg = ("Failed to read index journal from cluster entry: %s: %s"
+                        % (self.journal_id, e))
+                self.logger.critical(msg)
+                continue
+            x_journal = json.loads(x_journal)
+            index_journal += x_journal
+            commit_files.append(x_node_file)
+        def journal_committer():
+            for x in commit_files:
+                x_dir = os.path.dirname(x)
+                if not os.path.exists(x_dir):
+                    raise ObjectDeleted()
+                filetools.touch(x)
+        return journal_committer, index_journal
 
-    @object_checksum.setter
-    #@entry_lock(write=True)
-    def object_checksum(self, object_checksum):
-        try:
-            filetools.create_file(path=self.object_checksum_file,
-                                    content=object_checksum)
-        except Exception as e:
-            msg = ("Failed to add object checksum to cluster entry: %s: %s"
-                    % (self.timestamp, e))
-            self.logger.critical(msg)
-
-    @property
-    @entry_lock(write=False)
-    def index_journal(self):
-        try:
-            index_journal = filetools.read_file(self.index_journal_file)
-        except FileNotFoundError:
-            index_journal = None
-        except Exception as e:
-            index_journal = None
-            msg = ("Failed to read index journal from cluster entry: %s: %s"
-                    % (self.timestamp, e))
-            self.logger.critical(msg)
-        index_journal = json.loads(index_journal)
-        return index_journal
-
-    @index_journal.setter
-    #@entry_lock(write=True)
-    def index_journal(self, index_journal):
+    def add_index_journal(self, index_journal):
         index_journal = json.dumps(index_journal)
+        index_journal_file = "%s.%s" % (self.index_journal_file, time.time_ns())
         try:
-            filetools.create_file(path=self.index_journal_file,
-                                    content=index_journal)
+            filetools.create_file(path=index_journal_file,
+                                content=index_journal)
         except Exception as e:
             msg = ("Failed to add index journal to cluster entry: %s: %s"
-                    % (self.timestamp, e))
+                    % (self.journal_id, e))
             self.logger.critical(msg)
 
-    @property
-    @entry_lock(write=False)
-    def acl_journal(self):
-        try:
-            acl_journal = filetools.read_file(self.acl_journal_file)
-        except FileNotFoundError:
-            acl_journal = None
-        except Exception as e:
-            acl_journal = None
-            msg = ("Failed to read ACL journal from cluster entry: %s: %s"
-                    % (self.timestamp, e))
-            self.logger.critical(msg)
-        acl_journal = json.loads(acl_journal)
-        return acl_journal
+    def get_acl_journal(self, node_name):
+        commit_files = []
+        acl_journal = []
+        file_glob = "%s*" % self.acl_journal_file
+        acl_journal_files = sorted(glob.glob(file_glob))
+        journal_file_re = re.compile('^%s.[0-9]*$' % self.acl_journal_file)
+        for x_file in acl_journal_files:
+            if not journal_file_re.match(x_file):
+                continue
+            x_node_file = "%s.%s" % (x_file, node_name)
+            if os.path.exists(x_node_file):
+                continue
+            try:
+                x_journal = filetools.read_file(x_file)
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                msg = ("Failed to read ACL journal from cluster entry: %s: %s"
+                        % (self.journal_id, e))
+                self.logger.critical(msg)
+                continue
+            x_journal = json.loads(x_journal)
+            acl_journal += x_journal
+            commit_files.append(x_node_file)
+        def journal_committer():
+            for x in commit_files:
+                x_dir = os.path.dirname(x)
+                if not os.path.exists(x_dir):
+                    raise ObjectDeleted()
+                filetools.touch(x)
+        return journal_committer, acl_journal
 
-    @acl_journal.setter
-    #@entry_lock(write=True)
-    def acl_journal(self, acl_journal):
+    def add_acl_journal(self, acl_journal):
         acl_journal = json.dumps(acl_journal)
+        acl_journal_file = "%s.%s" % (self.acl_journal_file, time.time_ns())
         try:
-            filetools.create_file(path=self.acl_journal_file,
-                                    content=acl_journal)
+            filetools.create_file(path=acl_journal_file,
+                                content=acl_journal)
         except Exception as e:
             msg = ("Failed to add ACL journal to cluster entry: %s: %s"
-                    % (self.timestamp, e))
+                    % (self.journal_id, e))
             self.logger.critical(msg)
 
     @property
-    @entry_lock(write=False)
-    def ldif_journal(self):
-        try:
-            ldif_journal = filetools.read_file(self.ldif_journal_file)
-        except FileNotFoundError:
-            ldif_journal = None
-        except Exception as e:
-            ldif_journal = None
-            msg = ("Failed to read LDIF journal from cluster entry: %s: %s"
-                    % (self.timestamp, e))
-            self.logger.critical(msg)
-        ldif_journal = json.loads(ldif_journal)
-        return ldif_journal
-
-    @ldif_journal.setter
-    #@entry_lock(write=True)
-    def ldif_journal(self, ldif_journal):
-        ldif_journal = json.dumps(ldif_journal)
-        try:
-            filetools.create_file(path=self.ldif_journal_file,
-                                    content=ldif_journal)
-        except Exception as e:
-            msg = ("Failed to add ACL journal to cluster entry: %s: %s"
-                    % (self.timestamp, e))
-            self.logger.critical(msg)
-
-    @property
-    @entry_lock(write=False)
+    #@entry_lock(write=False)
     def trash_id(self):
         try:
             trash_id = filetools.read_file(self.trash_id_file)
@@ -672,23 +798,21 @@ class ClusterJournalEntry(ClusterEntry):
         except Exception as e:
             trash_id = None
             msg = ("Failed to read trash ID from cluster entry: %s: %s"
-                    % (self.timestamp, e))
+                    % (self.journal_id, e))
             self.logger.critical(msg)
         return trash_id
 
     @trash_id.setter
-    #@entry_lock(write=True)
     def trash_id(self, trash_id):
         try:
             filetools.create_file(path=self.trash_id_file,
                                     content=trash_id)
         except Exception as e:
             msg = ("Failed to add trash ID to cluster entry: %s: %s"
-                    % (self.timestamp, e))
+                    % (self.journal_id, e))
             self.logger.critical(msg)
 
     @property
-    @entry_lock(write=False)
     def deleted_by(self):
         try:
             deleted_by = filetools.read_file(self.deleted_by_file)
@@ -696,43 +820,44 @@ class ClusterJournalEntry(ClusterEntry):
             deleted_by = None
         except Exception as e:
             deleted_by = None
-            msg = ("Failed to read trash ID from cluster entry: %s: %s"
-                    % (self.timestamp, e))
+            msg = ("Failed to read trash deleted by from cluster entry: %s: %s"
+                    % (self.journal_id, e))
             self.logger.critical(msg)
         return deleted_by
 
     @deleted_by.setter
-    #@entry_lock(write=True)
     def deleted_by(self, deleted_by):
         try:
             filetools.create_file(path=self.deleted_by_file,
                                     content=deleted_by)
         except Exception as e:
-            msg = ("Failed to add trash ID to cluster entry: %s: %s"
-                    % (self.timestamp, e))
+            msg = ("Failed to add trash deleted by to cluster entry: %s: %s"
+                    % (self.journal_id, e))
             self.logger.critical(msg)
 
     @property
-    @entry_lock(write=False)
+    #@entry_lock(write=False)
     def object_data(self):
         try:
-            object_data = multiprocessing.cluster_journal[self.timestamp]
-        except KeyError:
+            object_data = filetools.read_file(self.object_data_file)
+        except FileNotFoundError:
             object_data = None
+        except Exception as e:
+            object_data = None
+            msg = ("Failed to read object data from cluster entry: %s: %s"
+                    % (self.journal_id, e))
+            self.logger.critical(msg)
         return object_data
 
     @object_data.setter
-    #@entry_lock(write=True)
     def object_data(self, object_data):
-        multiprocessing.cluster_journal[self.timestamp] = object_data
-
-    @entry_lock(write=True)
-    def delete(self):
         try:
-            multiprocessing.cluster_journal.pop(self.timestamp)
-        except KeyError:
-            pass
-        super(ClusterJournalEntry, self).delete()
+            filetools.create_file(path=self.object_data_file,
+                                    content=str(object_data))
+        except Exception as e:
+            msg = ("Failed to add object data to cluster entry: %s: %s"
+                    % (self.journal_id, e))
+            self.logger.critical(msg)
 
 class ClusterDaemon(OTPmeDaemon):
     """ ClusterDaemon. """
@@ -749,7 +874,6 @@ class ClusterDaemon(OTPmeDaemon):
         self.interprocess_comm_child = None
         self.cluster_in_journal_child = None
         self.node_disabled_child = None
-        self._processed_journal_entries = []
         self.all_nodes = []
         self.member_nodes = []
         self.online_nodes = []
@@ -778,38 +902,6 @@ class ClusterDaemon(OTPmeDaemon):
             msg = "Failed to close shared bool: %s" % e
             self.logger.warning(msg)
         return super(ClusterDaemon, self).signal_handler(_signal, frame)
-
-    def clear_processed_journal_entries(self):
-        all_nodes = backend.search(object_type="node",
-                            attribute="uuid",
-                            value="*",
-                            realm=config.realm,
-                            site=config.site,
-                            return_type="name")
-        if self.all_nodes != sorted(all_nodes):
-            self.all_nodes = sorted(all_nodes)
-            self._processed_journal_entries.clear()
-
-        if self.online_nodes != sorted(multiprocessing.online_nodes.keys()):
-            self.online_nodes = sorted(multiprocessing.online_nodes.keys())
-            self._processed_journal_entries.clear()
-
-        if self.member_nodes != sorted(multiprocessing.member_nodes.keys()):
-            self.member_nodes = sorted(multiprocessing.member_nodes.keys())
-            self._processed_journal_entries.clear()
-
-        if self.member_candidate:
-            self._processed_journal_entries.clear()
-
-    @property
-    def processed_journal_entries(self):
-        self.clear_processed_journal_entries()
-        return self._processed_journal_entries
-
-    @processed_journal_entries.setter
-    def processed_journal_entries(self, _list):
-        self._processed_journal_entries = _list
-        self.clear_processed_journal_entries()
 
     @property
     def member_candidate(self):
@@ -1033,25 +1125,72 @@ class ClusterDaemon(OTPmeDaemon):
             return False
         return True
 
+    def get_cluster_out_journal_trash(self):
+        journal_dir = TRASH_JOURNAL_DIR
+        journal_dirs = sorted(glob.glob(journal_dir + "/*"))
+        journal_dirs = [d for d in journal_dirs if not d.endswith(".delete")]
+        journal_entries = []
+        for x_dir in journal_dirs:
+            journal_id = os.path.basename(x_dir)
+            cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,
+                                                        journal_dir=journal_dir)
+            journal_entries.append(cluster_journal_entry)
+        return journal_entries
+
+    def get_cluster_out_journal_last_used(self):
+        journal_dir = LAST_USED_JOURNAL_DIR
+        journal_dirs = sorted(glob.glob(journal_dir + "/*"))
+        journal_dirs = [d for d in journal_dirs if not d.endswith(".delete")]
+        journal_entries = []
+        for x_dir in journal_dirs:
+            journal_id = os.path.basename(x_dir)
+            cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,
+                                                    journal_dir=journal_dir)
+            journal_entries.append(cluster_journal_entry)
+        return journal_entries
+
     def get_cluster_out_journal(self):
-        journal_dirs = sorted(glob.glob(CLUSTER_OUT_JOURNAL_DIR + "/[0-9]*[!.deleting]"))
-        return journal_dirs
+        journal_dir = OBJECTS_JOURNAL_DIR
+        journal_dirs = glob.glob(journal_dir + "/*")
+        journal_dirs = [d for d in journal_dirs if not d.endswith(".delete")]
+        journal_entries = {}
+        journal_entries_sorted = []
+        for x_dir in journal_dirs:
+            journal_id = os.path.basename(x_dir)
+            cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,
+                                                        journal_dir=journal_dir)
+            try:
+                object_type = cluster_journal_entry.object_type
+            except ObjectDeleted:
+                continue
+            if not object_type:
+                continue
+            try:
+                object_list = journal_entries[object_type]
+            except KeyError:
+                object_list = []
+                journal_entries[object_type] = object_list
+            object_list.append(cluster_journal_entry)
+        for object_type in config.object_add_order:
+            try:
+                object_list = journal_entries[object_type]
+            except KeyError:
+                object_list = []
+            journal_entries_sorted += object_list
+        journal_entries_sorted += self.get_cluster_out_journal_last_used()
+        journal_entries_sorted += self.get_cluster_out_journal_trash()
+        return journal_entries_sorted
 
     def get_cluster_in_journal(self):
         journal_files = sorted(glob.glob(CLUSTER_IN_JOURNAL_DIR + "/[0-9]*"))
         return journal_files
 
-    def get_member_candidate_journal(self):
-        journal_files = sorted(glob.glob(self.member_candidate_dir + "/[0-9]*"))
-        return journal_files
-
     def clean_cluster_out_journal(self):
-        for journal_entry in self.get_cluster_out_journal():
-            entry_timestamp = os.path.basename(journal_entry)
-            cluster_journal_entry = ClusterJournalEntry(timestamp=entry_timestamp)
-            object_event = get_object_event(cluster_journal_entry.timestamp)
-            object_event.set()
-            object_event.unlink()
+        for cluster_journal_entry in self.get_cluster_out_journal():
+            events = cluster_journal_entry.get_object_events()
+            for object_event in events:
+                object_event.set()
+                object_event.unlink()
             try:
                 cluster_journal_entry.delete()
             except ObjectDeleted:
@@ -1064,9 +1203,16 @@ class ClusterDaemon(OTPmeDaemon):
     def node_leave(self, node_name):
         self.node_disconnect(node_name)
         try:
+            multiprocessing.online_nodes.pop(node_name)
+        except KeyError:
+            pass
+        try:
             multiprocessing.member_nodes.pop(node_name)
         except KeyError:
             pass
+        if self.node_conn:
+            self.node_conn.close()
+            self.node_conn = None
         self.calc_quorum()
         # Wakeup cluster out event handler to re-process cluster journal entries.
         if not multiprocessing.cluster_out_event:
@@ -1076,10 +1222,6 @@ class ClusterDaemon(OTPmeDaemon):
     def node_disconnect(self, node_name):
         try:
             multiprocessing.ready_nodes.pop(node_name)
-        except KeyError:
-            pass
-        try:
-            multiprocessing.online_nodes.pop(node_name)
         except KeyError:
             pass
         try:
@@ -1347,7 +1489,7 @@ class ClusterDaemon(OTPmeDaemon):
         current_votes = 0
         node_vote_data = calc_node_vote()
         node_vote = node_vote_data['vote']
-        if node_vote > 0:
+        if node_vote != 0:
             current_votes = 1
         for node_name in multiprocessing.online_nodes:
             try:
@@ -1755,7 +1897,7 @@ class ClusterDaemon(OTPmeDaemon):
                                                     site=config.site,
                                                     max_tries=10,
                                                     sync_last_used=sync_last_used,
-                                                    #ignore_changed_objects=True,
+                                                    ignore_changed_objects=True,
                                                     skip_object_deletion=skip_deletions,
                                                     socket_uri=socket_uri)
             except Exception as e:
@@ -1907,7 +2049,7 @@ class ClusterDaemon(OTPmeDaemon):
                             cluster_journal_files = self.get_cluster_in_journal()
                             if cluster_journal_files:
                                 multiprocessing.cluster_in_event.set()
-                                time.sleep(1)
+                                time.sleep(0.1)
                                 continue
                             break
                         self.do_master_node_sync(master_node)
@@ -2026,10 +2168,7 @@ class ClusterDaemon(OTPmeDaemon):
         if len(multiprocessing.member_nodes) > 0:
             return
         all_entries = self.get_cluster_out_journal()
-        cluster_journal_dirs = list(set(all_entries) - set(self.processed_journal_entries))
-        for journal_entry in cluster_journal_dirs:
-            entry_timestamp = os.path.basename(journal_entry)
-            cluster_journal_entry = ClusterJournalEntry(timestamp=entry_timestamp)
+        for cluster_journal_entry in all_entries:
             try:
                 if not cluster_journal_entry.committed:
                     continue
@@ -2040,8 +2179,6 @@ class ClusterDaemon(OTPmeDaemon):
                 pass
             except ProcessingFailed:
                 return
-        outdated_entries = set(self.processed_journal_entries) - set(all_entries)
-        self.processed_journal_entries = list(set(self.processed_journal_entries) - outdated_entries)
 
     def set_node_online(self, node_name):
         """ Set node online. """
@@ -2219,7 +2356,7 @@ class ClusterDaemon(OTPmeDaemon):
         except Exception as e:
             msg = "Error in two node handler: %s" % e
             self.logger.critical(msg)
-            #config.raise_exception()
+            config.raise_exception()
 
     def _start_two_node_handler(self):
         """ Start two node handler. """
@@ -2358,11 +2495,6 @@ class ClusterDaemon(OTPmeDaemon):
         signal.signal(signal.SIGINT, signal_handler)
 
         self.node_name = node_name
-        self.member_candidate_dir = os.path.join(config.member_candidate_dir,
-                                                node_name)
-        if not os.path.exists(self.member_candidate_dir):
-            filetools.create_dir(self.member_candidate_dir)
-
         # Update logger with new PID and daemon name.
         self.pid = os.getpid()
         log_banner = "%s:" % self.full_name
@@ -2387,12 +2519,12 @@ class ClusterDaemon(OTPmeDaemon):
             if self.node_disabled:
                 self.exit_child()
 
+            start_over= False
             if self.node_conn is None:
                 node_conn = self.get_node_connection(node_name)
                 if not node_conn:
                     continue
 
-            start_over= False
             if node_name not in multiprocessing.ready_nodes:
                 start_over = True
                 continue
@@ -2498,10 +2630,7 @@ class ClusterDaemon(OTPmeDaemon):
     def get_journal_entries_to_process(self, node_name):
         entries_to_process = []
         all_entries = self.get_cluster_out_journal()
-        cluster_journal_dirs = list(set(all_entries) - set(self.processed_journal_entries))
-        for journal_dir in cluster_journal_dirs:
-            entry_timestamp = os.path.basename(journal_dir)
-            cluster_journal_entry = ClusterJournalEntry(timestamp=entry_timestamp)
+        for cluster_journal_entry in all_entries:
             try:
                 if not cluster_journal_entry.committed:
                     break
@@ -2514,9 +2643,7 @@ class ClusterDaemon(OTPmeDaemon):
                 entries_to_process.append(cluster_journal_entry)
             except ObjectDeleted:
                 pass
-        outdated_entries = set(self.processed_journal_entries) - set(all_entries)
-        self.processed_journal_entries = list(set(self.processed_journal_entries) - outdated_entries)
-        return sorted(entries_to_process)
+        return entries_to_process
 
     def process_cluster_journal(self, node_name):
         """ Process cluster journal. """
@@ -2536,7 +2663,6 @@ class ClusterDaemon(OTPmeDaemon):
                 if object_id:
                     object_id = oid.get(object_id)
                 object_uuid = cluster_journal_entry.object_uuid
-                object_checksum = cluster_journal_entry.object_checksum
                 # We need to read action last because it will throw
                 # ObjectDeleted exception if the cluster entry was deleted.
                 action = cluster_journal_entry.action
@@ -2554,30 +2680,33 @@ class ClusterDaemon(OTPmeDaemon):
                                     raise ProcessingFailed()
                 # Write object to peer.
                 if action == "write":
-                    #object_config = cluster_journal_entry.object_data
                     object_config = backend.read_config(object_id)
                     # Remove outdated cluster journal entry.
                     if not object_config:
-                        cluster_journal_entry.add_node(node_name)
+                        try:
+                            cluster_journal_entry.add_node(node_name)
+                        except ObjectDeleted:
+                            pass
                         if self.check_member_nodes(cluster_journal_entry):
                             self.check_online_nodes(cluster_journal_entry)
                         continue
                     object_config = object_config.decrypt(config.master_key)
-                    acl_journal = cluster_journal_entry.acl_journal
-                    ldif_journal = cluster_journal_entry.ldif_journal
-                    index_journal = cluster_journal_entry.index_journal
+                    object_checksum = backend.get_checksum(object_id)
+                    acl_journal_committer, \
+                    acl_journal = cluster_journal_entry.get_acl_journal(node_name)
+                    index_journal_committer, \
+                    index_journal = cluster_journal_entry.get_index_journal(node_name)
                     try:
                         write_status = node_conn.write(object_id.full_oid,
                                                         object_config,
                                                         acl_journal=acl_journal,
-                                                        ldif_journal=ldif_journal,
                                                         index_journal=index_journal,
                                                         use_acl_journal=True,
-                                                        use_ldif_journal=True,
                                                         use_index_journal=True,
+                                                        use_ldif_journal=False,
                                                         full_acl_update=False,
-                                                        full_ldif_update=False,
                                                         full_index_update=False,
+                                                        full_ldif_update=True,
                                                         full_data_update=True)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
                         #self.node_leave(node_name)
@@ -2600,8 +2729,19 @@ class ClusterDaemon(OTPmeDaemon):
                         continue
                     msg = ("Written object to node: %s: %s (%s)"
                             % (node_name, object_id, object_checksum))
+                    try:
+                        index_journal_committer()
+                    except ObjectDeleted:
+                        pass
+                    try:
+                        acl_journal_committer()
+                    except ObjectDeleted:
+                        pass
                     self.logger.debug(msg)
-                    cluster_journal_entry.add_node(node_name)
+                    try:
+                        cluster_journal_entry.add_node(node_name)
+                    except ObjectDeleted:
+                        pass
                     written_entries.append(object_id)
                 # Rename object on peer.
                 if action == "rename":
@@ -2631,7 +2771,10 @@ class ClusterDaemon(OTPmeDaemon):
                     msg = ("Renamed object on node: %s: %s: %s"
                             % (node_name, object_id, new_object_id))
                     self.logger.debug(msg)
-                    cluster_journal_entry.add_node(node_name)
+                    try:
+                        cluster_journal_entry.add_node(node_name)
+                    except ObjectDeleted:
+                        pass
                 # Delete object on peer.
                 if action == "delete":
                     object_exists = backend.object_exists(object_id)
@@ -2659,13 +2802,19 @@ class ClusterDaemon(OTPmeDaemon):
                         msg = ("Deleted object on node: %s: %s"
                                 % (node_name, object_id))
                         self.logger.debug(msg)
-                    cluster_journal_entry.add_node(node_name)
+                    try:
+                        cluster_journal_entry.add_node(node_name)
+                    except ObjectDeleted:
+                        pass
                 # Write trash object to peer.
                 if action == "trash_write":
                     object_data = cluster_journal_entry.object_data
                     # Remove outdated cluster journal entry.
                     if not object_data:
-                        cluster_journal_entry.add_node(node_name)
+                        try:
+                            cluster_journal_entry.add_node(node_name)
+                        except ObjectDeleted:
+                            pass
                         if self.check_member_nodes(cluster_journal_entry):
                             self.check_online_nodes(cluster_journal_entry)
                         continue
@@ -2697,7 +2846,10 @@ class ClusterDaemon(OTPmeDaemon):
                     msg = ("Written trash object to node: %s: %s: %s"
                             % (node_name, trash_id, object_id))
                     self.logger.debug(msg)
-                    cluster_journal_entry.add_node(node_name)
+                    try:
+                        cluster_journal_entry.add_node(node_name)
+                    except ObjectDeleted:
+                        pass
                     written_entries.append(object_id)
                 # Delete trash object on peer.
                 if action == "trash_delete":
@@ -2719,13 +2871,17 @@ class ClusterDaemon(OTPmeDaemon):
                                 % (node_name, trash_id, e))
                         self.logger.warning(msg)
                         self.check_member_nodes(cluster_journal_entry)
+                        config.raise_exception()
                         raise ProcessingFailed(msg)
                     if trash_del_status != "done":
                         continue
                     msg = ("Deleted trash object on node: %s (%s)"
                             % (node_name, trash_id))
                     self.logger.debug(msg)
-                    cluster_journal_entry.add_node(node_name)
+                    try:
+                        cluster_journal_entry.add_node(node_name)
+                    except ObjectDeleted:
+                        pass
 
                 # Send trash empty request to peer.
                 if action == "trash_empty":
@@ -2751,13 +2907,22 @@ class ClusterDaemon(OTPmeDaemon):
                         continue
                     msg = ("Trash emptied on node: %s" % (node_name))
                     self.logger.debug(msg)
-                    cluster_journal_entry.add_node(node_name)
+                    try:
+                        cluster_journal_entry.add_node(node_name)
+                    except ObjectDeleted:
+                        pass
                 # Write last used timestamp to peer.
                 if action == "last_used_write":
-                    last_used = cluster_journal_entry.object_data
+                    try:
+                        last_used = float(cluster_journal_entry.object_data)
+                    except TypeError:
+                        last_used = None
                     # Remove outdated cluster journal entry.
                     if not last_used:
-                        cluster_journal_entry.add_node(node_name)
+                        try:
+                            cluster_journal_entry.add_node(node_name)
+                        except ObjectDeleted:
+                            pass
                         if self.check_member_nodes(cluster_journal_entry):
                             self.check_online_nodes(cluster_journal_entry)
                         continue
@@ -2787,7 +2952,10 @@ class ClusterDaemon(OTPmeDaemon):
                     msg = ("Sent last used timestamp to node: %s: %s:"
                             % (node_name, object_id))
                     self.logger.debug(msg)
-                    cluster_journal_entry.add_node(node_name)
+                    try:
+                        cluster_journal_entry.add_node(node_name)
+                    except ObjectDeleted:
+                        pass
 
                 # Check if object was written to member nodes.
                 if self.check_member_nodes(cluster_journal_entry):
@@ -2840,55 +3008,78 @@ class ClusterDaemon(OTPmeDaemon):
             raise
 
     def check_online_nodes(self, cluster_journal_entry):
-        entry_nodes = cluster_journal_entry.get_nodes()
-        online_nodes = sorted(multiprocessing.online_nodes)
-        online_nodes_in_sync = True
-        for node_name in online_nodes:
-            if node_name in entry_nodes:
-                continue
-            online_nodes_in_sync = False
-        if not online_nodes_in_sync:
-            return
-        # Delete journal entries must be synced to all enabled nodes
-        # even offline ones.
-        all_nodes_in_sync = True
-        if cluster_journal_entry.action == "delete" \
-        or cluster_journal_entry.action == "trash_delete":
-            enabled_nodes = list(self.get_enabled_nodes())
-            for node_name in enabled_nodes:
-                if node_name == self.host_name:
-                    continue
+        org_timestamp = cluster_journal_entry.timestamp
+        while True:
+            try:
+                cluster_journal_entry.lock(write=True)
+            except ObjectDeleted:
+                return
+            break
+        try:
+            entry_nodes = cluster_journal_entry.get_nodes()
+            online_nodes = sorted(multiprocessing.online_nodes)
+            online_nodes_in_sync = True
+            for node_name in online_nodes:
                 if node_name in entry_nodes:
                     continue
-                all_nodes_in_sync = False
-        if not all_nodes_in_sync:
-            return
-        object_event = get_object_event(cluster_journal_entry.timestamp)
-        object_event.set()
-        object_event.unlink()
-        cluster_journal_entry.delete()
+                online_nodes_in_sync = False
+            if not online_nodes_in_sync:
+                return
+            # Delete journal entries must be synced to all enabled nodes
+            # even offline ones.
+            all_nodes_in_sync = True
+            if cluster_journal_entry.action == "delete" \
+            or cluster_journal_entry.action == "trash_delete":
+                enabled_nodes = list(self.get_enabled_nodes())
+                for node_name in enabled_nodes:
+                    if node_name == self.host_name:
+                        continue
+                    if node_name in entry_nodes:
+                        continue
+                    all_nodes_in_sync = False
+            if not all_nodes_in_sync:
+                return
+            events = cluster_journal_entry.get_object_events()
+            for object_event in events:
+                object_event.set()
+                object_event.unlink()
+            if org_timestamp != cluster_journal_entry.timestamp:
+                return
+            try:
+                cluster_journal_entry.delete()
+            except ObjectDeleted:
+                pass
+        finally:
+            cluster_journal_entry.release()
 
     def check_member_nodes(self, cluster_journal_entry):
-        entry_nodes = sorted(cluster_journal_entry.get_nodes())
-        member_nodes = sorted(multiprocessing.member_nodes)
-        written_nodes = 0
-        min_written_nodes = 2
-        member_nodes_in_sync = True
-        for node_name in member_nodes:
-            if node_name in entry_nodes:
-                written_nodes += 1
-                continue
-            member_nodes_in_sync = False
-        if config.two_node_setup:
+        try:
+            cluster_journal_entry.lock(write=True)
+        except ObjectDeleted:
+            return
+        try:
+            entry_nodes = sorted(cluster_journal_entry.get_nodes())
+            member_nodes = sorted(multiprocessing.member_nodes)
+            written_nodes = 0
             min_written_nodes = 1
-        if written_nodes >= min_written_nodes:
             member_nodes_in_sync = True
-        if not member_nodes_in_sync:
-            return False
-        object_event = get_object_event(cluster_journal_entry.timestamp)
-        object_event.set()
-        object_event.unlink()
-        self.processed_journal_entries.append(cluster_journal_entry.entry_dir)
+            for node_name in member_nodes:
+                if node_name in entry_nodes:
+                    written_nodes += 1
+                    continue
+                member_nodes_in_sync = False
+            if config.two_node_setup:
+                min_written_nodes = 0
+            if written_nodes >= min_written_nodes:
+                member_nodes_in_sync = True
+            if not member_nodes_in_sync:
+                return False
+            events = cluster_journal_entry.get_object_events()
+            for object_event in events:
+                object_event.set()
+                object_event.unlink()
+        finally:
+            cluster_journal_entry.release()
         return True
 
     def handle_nsscache_sync(self, node_name):
@@ -3070,8 +3261,8 @@ class ClusterDaemon(OTPmeDaemon):
                 multiprocessing.daemon_reload_queue.release()
 
     def start_freeradius(self):
-        from otpme.lib.freeradius import start
-        from otpme.lib.freeradius import status
+        from otpme.lib.freeradius.utils import start
+        from otpme.lib.freeradius.utils import status
         try:
             status()
             freeradius_running = True
@@ -3089,8 +3280,8 @@ class ClusterDaemon(OTPmeDaemon):
             self.logger.info(msg)
 
     def stop_freeradius(self):
-        from otpme.lib.freeradius import stop
-        from otpme.lib.freeradius import status
+        from otpme.lib.freeradius.utils import stop
+        from otpme.lib.freeradius.utils import status
         try:
             status()
             freeradius_running = True
@@ -3151,6 +3342,10 @@ class ClusterDaemon(OTPmeDaemon):
         signal.signal(signal.SIGINT, self.signal_handler)
         # Set logger.
         self.logger = config.logger
+        # Set node vote to (1 - daemon start time) (e.g.first started
+        # node gets master node if all nodes have the same data
+        # revision.
+        config.node_vote = 1 - time.time()
         # Initially we dont have quorum.
         config.cluster_quorum = False
         multiprocessing.cluster_quorum.clear()
@@ -3162,7 +3357,6 @@ class ClusterDaemon(OTPmeDaemon):
             else:
                 config.remove_node_sync_file()
         else:
-            # On daemon startup we will decide by data revision which node gets master.
             config.remove_node_sync_file()
         # Configure ourselves (e.g. certificates etc.).
         try:

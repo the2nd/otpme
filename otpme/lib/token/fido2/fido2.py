@@ -2,15 +2,13 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 from datetime import datetime
+from cryptography import x509
 from fido2.utils import sha256
 from fido2.ctap1 import SignatureData
 from fido2.ctap1 import RegistrationData
+from cryptography.hazmat.primitives.asymmetric import padding
 
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
-
-from cryptography import x509
-from cryptography.hazmat.primitives.asymmetric import padding
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -27,6 +25,7 @@ from otpme.lib.locking import object_lock
 from otpme.lib.encoding.base import encode
 from otpme.lib.encoding.base import decode
 from otpme.lib.job.callback import JobCallback
+from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
 
 from otpme.lib.classes.token \

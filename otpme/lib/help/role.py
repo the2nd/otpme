@@ -50,10 +50,12 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-role add {role}',
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : 'Usage: otpme-role add [--groups <group1,group2>] [--roles <role1,role2>] {role}',
+                    'cmd'   :   '--groups :[groups]: --roles :[roles]: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'add new role',
+                                    'cmd'                           : 'add new role',
+                                    '--groups <group1,group2>'      : 'Groups to add role to.',
+                                    '--roles <role1,role2>'         : 'Roles to add role to.',
                                 },
                 },
 

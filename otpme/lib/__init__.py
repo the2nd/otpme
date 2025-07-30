@@ -247,10 +247,12 @@ def init_otpme(use_backend=None):
         config.posix_msgsize_max = config._posix_msgsize_max
 
     # Set posix message queue size limit.
-    if config.system_user() == "root":
+    try:
         resource.setrlimit(resource.RLIMIT_MSGQUEUE,
                         (config.rlimit_msgqueue,
                         config.rlimit_msgqueue))
+    except ValueError:
+        pass
 
     # Always need to use the backed in API mode but not on realm init.
     if config.use_api and not config.realm_init:

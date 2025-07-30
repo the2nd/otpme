@@ -42,7 +42,7 @@ class Cache(object):
     """ Cache class. """
     def __init__(self, name, cache_type="lru", maxsize=256, ignore_args=[],
         ignore_classes=[], cache_name_var=None, cache_name_func=None,
-        caches=None, default_cache=None, shared=False, copy_cache=False):
+        default_cache=None, caches=None, shared=False, copy_cache=False):
         self.name = name
         self._stats = {}
         self._caches = {}
@@ -167,6 +167,7 @@ class Cache(object):
             if cache_name is not None:
                 if self.shared:
                     check_shared_cache = True
+                    use_shared_cache = True
                 try:
                     ignore_args = self.caches[cache_name]['ignore_args']
                 except:

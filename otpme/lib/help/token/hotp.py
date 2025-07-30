@@ -17,7 +17,7 @@ cmd_help = {
     '_need_command'             : True,
     'add'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token add [-r] [--no-qrcode] {token}',
-                    'cmd'   :   '-r :replace=True: --no-qrcode :gen_qrcode=False: <|object|>:',
+                    'cmd'   :   '-r :replace=True: --no-qrcode :gen_qrcode=False: <|object|>',
                     '_help' :   {
                                     'cmd'                   : 'add new token',
                                     '-r'                    : 'replace existing token and keep its UUID',

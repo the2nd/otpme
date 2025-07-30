@@ -200,6 +200,7 @@ def cleanup():
     global Session
     if Session:
         Session.remove()
+    Session = None
 
 def atfork():
     global engine
@@ -634,4 +635,17 @@ def get_db_connection():
     if Session is None:
         get_db_engine()
     session = Session()
+    #class TestSession:
+    #    def __init__(self, x):
+    #        self.session = x
+    #        #print("IIIII", id(self.session))
+    #    def close(self, *args, **kwargs):
+    #        print("CCCCC", id(self.session))
+    #        from otpme.lib import debug
+    #        debug.trace()
+    #        return self.session.close(*args, **kwargs)
+    #    def __getattr__(self, name):
+    #        attr = self.session.__getattribute__(name)
+    #        return attr
+    #session = TestSession(session)
     return session

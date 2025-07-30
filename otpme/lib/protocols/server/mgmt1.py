@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import sys
 import time
 import signal
 import pprint
 import hashlib
+import datetime
 import threading
+import setproctitle
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -16,11 +19,13 @@ except:
 from otpme.lib import re
 from otpme.lib import oid
 from otpme.lib import json
+from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backup
 from otpme.lib import backend
 from otpme.lib import encryption
 from otpme.lib import jwt as _jwt
+from otpme.lib.humanize import units
 from otpme.lib import multiprocessing
 from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
@@ -32,6 +37,7 @@ from otpme.lib.protocols.otpme_server import OTPmeServer1
 from otpme.lib.exceptions import *
 
 logger = config.logger
+default_callback = config.get_callback()
 
 sub_types = {}
 command_map = {}
@@ -42,6 +48,7 @@ valid_commands = [
                 'backend',
                 'stop_job',
                 'move_object',
+                'mass_object_add',
                 'change_user_default_group',
                 'dump_index',
                 'dump_object',
@@ -88,6 +95,8 @@ class OTPmeMgmtP1(OTPmeServer1):
         self.job_callbacks = {}
         # Max jobs per client.
         self.max_jobs = 3
+        # Mass add procs.
+        self.mass_add_procs = {}
         # Our PID.
         self.pid = None
         # Event to handle jobs.
@@ -546,6 +555,579 @@ class OTPmeMgmtP1(OTPmeServer1):
                     config.auth_user = x
 
         return job_status, job_reply
+
+    def get_default_unit(self, object_type):
+        object_unit = None
+        if config.auth_user:
+            result = config.auth_user.get_policies(policy_type="defaultunits",
+                                                    ignore_hooks=True,
+                                                    return_type="instance")
+            if result:
+                default_units_policy = result[0]
+                try:
+                    object_unit = default_units_policy.get_default_unit(object_type)
+                except NoUnitFound:
+                    pass
+        if not object_unit:
+            object_unit = config.get_default_unit(object_type)
+        return object_unit
+
+    def add_object(self, object_type, object_name,
+        unit=None, callback=default_callback, **kwargs):
+        def signal_handler(_signal, frame):
+            """ Handle signals. """
+            if config.active_transactions:
+                return
+            multiprocessing.cleanup()
+            if _signal == 15:
+                os._exit(1)
+            if _signal == 2:
+                os._exit(1)
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        proctitle = setproctitle.getproctitle()
+        proctitle = ("%s: Mass object add %s: %s"
+                    % (proctitle, object_type, object_name))
+        setproctitle.setproctitle(proctitle)
+
+        multiprocessing.atfork()
+
+        # Get logger.
+        logger = config.logger
+        # Suppress normal messages.
+        callback.only_errors = True
+        # Class getter for new object.
+        class_getter, \
+        getter_args = backend.get_class_getter(object_type)
+        # Instantiate class.
+        try:
+            oc = class_getter()
+        except Exception as e:
+            msg = "Error loading object class: %s: %s" % (object_type, e)
+            logger.warning(msg)
+            callback.error(msg)
+            sys.exit(1)
+        try:
+            o = oc(path=None,
+                    name=object_name,
+                    unit=unit,
+                    realm=config.realm,
+                    site=config.site,
+                    template=False)
+        except Exception as e:
+            msg = "Error loading object: %s: %s" % (object_name, e)
+            logger.warning(msg)
+            callback.error(msg)
+            sys.exit(1)
+        # Add object.
+        try:
+            add_result = o.add(callback=callback, **kwargs)
+        except Exception as e:
+            msg = "Failed to add object: %s: %s" % (object_name, e)
+            logger.warning(msg)
+            callback.error(msg)
+            sys.exit(1)
+        finally:
+            callback.only_errors = False
+            multiprocessing.cleanup()
+        if add_result:
+            callback.write_modified_objects()
+            sys.exit(0)
+        msg = "Error adding object: %s (See previous errors)" % object_name
+        logger.warning(msg)
+        callback.error(msg)
+        sys.exit(1)
+
+    def mass_object_add(self, csv_data, procs=None, verify_csv=False,
+        callback=default_callback, **kwargs):
+        """ Handle mass object add. """
+        org_termin_signal_handler = signal.getsignal(signal.SIGTERM)
+        org_int_signal_handler = signal.getsignal(signal.SIGINT)
+        def signal_handler(_signal, frame):
+            """ Handle signals. """
+            if self.mass_add_procs:
+                msg = "Waiting for %s add jobs to finish." % len(self.mass_add_procs)
+                callback.send(msg)
+            # Kill add processes.
+            stuff.kill_pid(pid=os.getpid(),
+                        recursive=True,
+                        dont_kill_start_pid=True)
+            # Wait for add processes to finish.
+            while True:
+                childs_running = False
+                for x_oid in list(self.mass_add_procs):
+                    child = self.mass_add_procs[x_oid]
+                    if child.is_alive():
+                        childs_running = True
+                        continue
+                    child.join()
+                    try:
+                        self.mass_add_procs.pop(x_oid)
+                    except KeyError:
+                        pass
+                    time.sleep(0.1)
+                if not childs_running:
+                    break
+            # Update data revision.
+            config.update_data_revision()
+            if _signal == 15:
+                if org_termin_signal_handler:
+                    return org_termin_signal_handler(_signal, frame)
+            if _signal == 2:
+                if org_int_signal_handler:
+                    return org_int_signal_handler(_signal, frame)
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        if procs is None:
+            procs = int(os.cpu_count() / 2)
+
+        def parse_csv_entry(csv_entry):
+            #print(csv_entry)
+            object_type = csv_entry[0]
+            if object_type == "user":
+                name = csv_entry[1]
+                unit = csv_entry[2]
+                group = csv_entry[3]
+                groups = csv_entry[4]
+                if groups:
+                    groups = groups.split(",")
+                default_role = csv_entry[5]
+                roles = csv_entry[6]
+                if roles:
+                    roles = roles.split(",")
+                default_token_type = csv_entry[7]
+                default_token_password = csv_entry[8]
+                ldif_attributes = csv_entry[9]
+                if not name:
+                    msg = "Cannot add user without name"
+                    raise OTPmeException(msg)
+                method_kwargs = {}
+                if unit:
+                    method_kwargs['unit'] = unit
+                if group:
+                    method_kwargs['group'] = group
+                if groups:
+                    method_kwargs['groups'] = groups
+                if default_role:
+                    method_kwargs['default_role'] = default_role
+                if roles:
+                    method_kwargs['default_roles'] = roles
+                if default_token_type:
+                    method_kwargs['default_token_type'] = default_token_type
+                if default_token_password:
+                    method_kwargs['password'] = default_token_password
+                if ldif_attributes:
+                    method_kwargs['ldif_attributes'] = ldif_attributes.split(",")
+
+            elif object_type == "group":
+                name = csv_entry[1]
+                unit = csv_entry[2]
+                ldif_attributes = csv_entry[3]
+                if not name:
+                    msg = "Cannot add group without name"
+                    raise OTPmeException(msg)
+                method_kwargs = {}
+                if unit:
+                    method_kwargs['unit'] = unit
+                if ldif_attributes:
+                    method_kwargs['ldif_attributes'] = ldif_attributes.split(",")
+
+            elif object_type == "role":
+                name = csv_entry[1]
+                unit = csv_entry[2]
+                groups = csv_entry[3]
+                roles = csv_entry[4]
+                ldif_attributes = csv_entry[5]
+                if groups:
+                    groups = groups.split(",")
+                if roles:
+                    roles = roles.split(",")
+                if not name:
+                    msg = "Cannot add role without name"
+                    raise OTPmeException(msg)
+                method_kwargs = {}
+                if unit:
+                    method_kwargs['unit'] = unit
+                if groups:
+                    method_kwargs['groups'] = groups
+                if roles:
+                    method_kwargs['roles'] = roles
+                if ldif_attributes:
+                    method_kwargs['ldif_attributes'] = ldif_attributes.split(",")
+
+            else:
+                msg = "Unsupported object type: %s" % object_type
+                raise OTPmeException(msg)
+            return object_type, name, unit, method_kwargs
+
+        msg = "Verifying CSV data..."
+        callback.send(msg)
+
+        all_users = backend.search(object_type="user",
+                                attribute="name",
+                                value="*",
+                                return_type="name")
+        all_groups = backend.search(object_type="group",
+                                attribute="name",
+                                value="*",
+                                return_type="name")
+        all_roles= backend.search(object_type="role",
+                                attribute="name",
+                                value="*",
+                                return_type="name")
+        line = 0
+        objects_to_add = []
+        id_range_cache = {}
+        objects_by_unit = {}
+        for entry in csv_data:
+            line += 1
+            if not entry:
+                continue
+            try:
+                object_type, \
+                object_name, \
+                object_unit, \
+                method_kwargs = parse_csv_entry(entry)
+            except Exception as e:
+                msg = "Error on line: %s: %s" % (line, e)
+                callback.error(msg)
+                continue
+            # Check if object exists.
+            if object_type == "user":
+                if object_name in all_users:
+                    msg = "%s already exists: %s" % (object_type, object_name)
+                    callback.error(msg)
+                    continue
+            elif object_type == "group":
+                if object_name in all_groups:
+                    msg = "%s already exists: %s" % (object_type, object_name)
+                    callback.error(msg)
+                    continue
+            elif object_type == "role":
+                if object_name in all_roles:
+                    msg = "%s already exists: %s" % (object_type, object_name)
+                    callback.error(msg)
+                    continue
+            else:
+                msg = "Invalid object type: %s: %s" % (object_type, object_name)
+                return callback.error(msg)
+
+            if not object_unit:
+                object_unit = self.get_default_unit(object_type)
+
+            idrange_policy = None
+            if object_type == "user":
+                try:
+                    ldif_attributes = method_kwargs['ldif_attributes']
+                except KeyError:
+                    ldif_attributes = []
+                if not any(entry.startswith("uidNumber=") for entry in ldif_attributes):
+                    try:
+                        idrange_policy = id_range_cache[object_unit]
+                    except KeyError:
+                        unit_oid = oid.get(object_type="unit",
+                                            rel_path=object_unit,
+                                            realm=config.realm,
+                                            site=config.site)
+                        unit = backend.get_object(unit_oid)
+                        policies = unit.get_policies(policy_type="idrange",
+                                                    return_type="instance")
+                        if not policies:
+                            site = backend.get_object(object_type="site", uuid=config.site_uuid)
+                            policies = site.get_policies(policy_type="idrange",
+                                                        return_type="instance")
+                        if not policies:
+                            realm = backend.get_object(object_type="realm", uuid=config.realm_uuid)
+                            policies = realm.get_policies(policy_type="idrange",
+                                                        return_type="instance")
+                        if not policies:
+                            msg = ("No IDRange policy found for %s %s." % (object_type, object_name))
+                            return callback.error(msg)
+                        idrange_policy = policies[0]
+                        id_range_cache[object_unit] = idrange_policy
+
+                    try:
+                        by_unit_objects = objects_by_unit[object_unit]['objects'][object_type]
+                    except KeyError:
+                        by_unit_objects = []
+                        objects_by_unit[object_unit] = {}
+                        objects_by_unit[object_unit]['policy'] = idrange_policy
+                        objects_by_unit[object_unit]['objects'] = {}
+                        objects_by_unit[object_unit]['objects'][object_type] = by_unit_objects
+                    by_unit_objects.append((object_type, object_name))
+            if object_type == "group":
+                try:
+                    ldif_attributes = method_kwargs['ldif_attributes']
+                except KeyError:
+                    ldif_attributes = []
+                if not any(entry.startswith("gidNumber=") for entry in ldif_attributes):
+                    try:
+                        idrange_policy = id_range_cache[object_unit]
+                    except KeyError:
+                        unit_oid = oid.get(object_type="unit",
+                                            rel_path=object_unit,
+                                            realm=config.realm,
+                                            site=config.site)
+                        unit = backend.get_object(unit_oid)
+                        policies = unit.get_policies(policy_type="idrange",
+                                                    return_type="instance")
+                        if not policies:
+                            site = backend.get_object(object_type="site", uuid=config.site_uuid)
+                            policies = site.get_policies(policy_type="idrange",
+                                                        return_type="instance")
+                        if not policies:
+                            realm = backend.get_object(object_type="realm", uuid=config.realm_uuid)
+                            policies = realm.get_policies(policy_type="idrange",
+                                                        return_type="instance")
+                        if not policies:
+                            msg = ("No IDRange policy found for %s %s." % (object_type, object_name))
+                            return callback.error(msg)
+                        idrange_policy = policies[0]
+                        id_range_cache[object_unit] = idrange_policy
+
+                    try:
+                        by_unit_objects = objects_by_unit[object_unit]['objects'][object_type]
+                    except KeyError:
+                        by_unit_objects = []
+                        objects_by_unit[object_unit] = {}
+                        objects_by_unit[object_unit]['policy'] = idrange_policy
+                        objects_by_unit[object_unit]['objects'] = {}
+                        objects_by_unit[object_unit]['objects'][object_type] = by_unit_objects
+                    by_unit_objects.append((object_type, object_name))
+            objects_to_add.append((object_type, object_name, object_unit, method_kwargs, idrange_policy))
+
+        if verify_csv:
+            return callback.ok()
+
+        msg = "Selecting object IDs..."
+        callback.send(msg)
+
+        policy_object_count = {}
+        for object_unit in objects_by_unit:
+            idrange_policy = objects_by_unit[object_unit]['policy']
+            try:
+                object_counters = policy_object_count[idrange_policy]
+            except KeyError:
+                object_counters = {}
+                policy_object_count[idrange_policy] = object_counters
+            try:
+                unit_users = objects_by_unit[object_unit]['objects']['user']
+            except KeyError:
+                unit_users = []
+            try:
+                user_counter = object_counters['user']
+            except KeyError:
+                user_counter = 0
+            user_counter += len(unit_users)
+            object_counters['user'] = user_counter
+            try:
+                unit_groups = objects_by_unit[object_unit]['objects']['group']
+            except KeyError:
+                unit_groups = []
+            try:
+                group_counter = object_counters['group']
+            except KeyError:
+                group_counter = 0
+            group_counter += len(unit_groups)
+            object_counters['group'] = group_counter
+
+        ldif_ids = {}
+        for idrange_policy in policy_object_count:
+            try:
+                user_count = policy_object_count[idrange_policy]['user']
+            except KeyError:
+                user_count = 0
+            try:
+                group_count = policy_object_count[idrange_policy]['group']
+            except KeyError:
+                group_count = 0
+            # Get new free ID.
+            lock_caller = "mass_object_add"
+            idrange_policy.acquire_lock(lock_caller=lock_caller,
+                                        write=True,
+                                        full=True,
+                                        callback=callback)
+            uidnumbers = []
+            gidnumbers = []
+            callback.only_errors = True
+            try:
+                if user_count:
+                    try:
+                        uidnumbers = idrange_policy.get_free_ids(object_type="user",
+                                                                attribute="uidNumber",
+                                                                count=user_count,
+                                                                callback=callback)
+                    except OTPmeException as e:
+                        msg = "Failed to get uidNumbers: %s" % e
+                        return callback.error(msg)
+                if group_count:
+                    try:
+                        gidnumbers = idrange_policy.get_free_ids(object_type="group",
+                                                                attribute="gidNumber",
+                                                                count=group_count,
+                                                                callback=callback)
+                    except OTPmeException as e:
+                        msg = "Failed to get gidNumbers: %s" % e
+                        return callback.error(msg)
+            finally:
+                callback.only_errors = False
+                idrange_policy.release_lock(lock_caller=lock_caller)
+            ldif_ids[idrange_policy] = {}
+            ldif_ids[idrange_policy]['user'] = uidnumbers
+            ldif_ids[idrange_policy]['group'] = gidnumbers
+
+        def build_add_message(x_oid, start_time, counter, objects_remaining):
+            now = time.time()
+            used_time = int(now - start_time)
+            per_object_time = used_time / counter
+            est_time = now + (per_object_time * objects_remaining)
+            duration = est_time - now
+            duration = units.int2time(duration, time_unit="s", exact_only=False)
+            duration = ":".join(duration)
+            est_time = datetime.datetime.fromtimestamp(est_time)
+            est_time = est_time.strftime('%H:%M:%S')
+            msg = ("Added %s %s (%s/%s) (%.2f): (eta: %s (%s))"
+                    % (x_oid.object_type,
+                    x_oid.name,
+                    counter,
+                    objects_count,
+                    per_object_time,
+                    est_time,
+                    duration))
+            return msg
+
+        msg = "Processing objects..."
+        callback.send(msg)
+
+        prev_object_type = None
+        start_time = time.time()
+        objects_add_counter = 0
+        objects_count = len(objects_to_add)
+        for x in objects_to_add:
+            object_type = x[0]
+            object_name = x[1]
+            unit = x[2]
+            method_kwargs = x[3]
+            idrange_policy = x[4]
+            if prev_object_type is None:
+                prev_object_type = object_type
+            if object_type == "user":
+                if idrange_policy:
+                    try:
+                        ldif_attributes = method_kwargs['ldif_attributes']
+                    except KeyError:
+                        ldif_attributes = []
+                    if not any(entry.startswith("uidNumber=") for entry in ldif_attributes):
+                        try:
+                            uidnumbers = ldif_ids[idrange_policy]['user']
+                        except KeyError:
+                            msg = ("Unable to get uidNumber for %s: %s"
+                                    % (object_type, object_name))
+                            callback.error(msg)
+                            continue
+                        uidnumber = uidnumbers.pop(0)
+                        ldif_attributes.append('uidNumber=%s' % uidnumber)
+                        method_kwargs['ldif_attributes'] = ldif_attributes
+            if object_type == "group":
+                if idrange_policy:
+                    try:
+                        ldif_attributes = method_kwargs['ldif_attributes']
+                    except KeyError:
+                        ldif_attributes = []
+                    if not any(entry.startswith("gidNumber=") for entry in ldif_attributes):
+                        try:
+                            gidnumbers = ldif_ids[idrange_policy]['group']
+                        except KeyError:
+                            msg = ("Unable to get uidNumber for %s: %s"
+                                    % (object_type, object_name))
+                            callback.error(msg)
+                            continue
+                        gidnumber = gidnumbers.pop(0)
+                        ldif_attributes.append('gidNumber=%s' % gidnumber)
+                        method_kwargs['ldif_attributes'] = ldif_attributes
+
+            last_keepalive = time.time()
+            while True:
+                for x_oid in list(self.mass_add_procs):
+                    child = self.mass_add_procs[x_oid]
+                    if child.is_alive():
+                        keepalive_age = time.time() - last_keepalive
+                        if keepalive_age >= 1:
+                            last_keepalive = time.time()
+                            callback.keepalive()
+                        continue
+                    child.join()
+                    self.mass_add_procs.pop(x_oid)
+                    if child.exitcode == 0:
+                        objects_add_counter += 1
+                        objects_remaining = objects_count - objects_add_counter
+                        add_msg = build_add_message(x_oid,
+                                                start_time,
+                                                objects_add_counter,
+                                                objects_remaining)
+                        callback.send(add_msg)
+                time.sleep(0.01)
+                if prev_object_type != object_type:
+                    if len(self.mass_add_procs) > 0:
+                        continue
+                    prev_object_type = object_type
+                if len(self.mass_add_procs) < procs:
+                    break
+
+            if callback.stop_job:
+                break
+            # Send keepalive message.
+            method_kwargs['gen_qrcode'] = False
+            method_kwargs['verify_acls'] = False
+            method_kwargs['callback'] = callback
+            add_child = multiprocessing.start_process(name="add_object",
+                                    target=self.add_object,
+                                    target_args=(object_type,
+                                                object_name,),
+                                    target_kwargs=method_kwargs,
+                                    start=False,
+                                    daemon=True)
+            object_id = ("%s|%s/%s/%s"
+                        % (object_type,
+                        config.realm,
+                        config.site,
+                        object_name))
+            object_id = oid.get(object_id)
+            add_child.start()
+            self.mass_add_procs[object_id] = add_child
+        # Wait for childs to finish.
+        last_keepalive = time.time()
+        while True:
+            childs_running = False
+            for x_oid in list(self.mass_add_procs):
+                child = self.mass_add_procs[x_oid]
+                if child.is_alive():
+                    keepalive_age = time.time() - last_keepalive
+                    if keepalive_age >= 1:
+                        last_keepalive = time.time()
+                        callback.keepalive()
+                    childs_running = True
+                    continue
+                child.join()
+                self.mass_add_procs.pop(x_oid)
+                if child.exitcode == 0:
+                    objects_add_counter += 1
+                    objects_remaining = objects_count - objects_add_counter
+                    add_msg = build_add_message(x_oid,
+                                            start_time,
+                                            objects_add_counter,
+                                            objects_remaining)
+                    callback.send(add_msg)
+            if childs_running:
+                continue
+            break
+
+        # Update data revision.
+        config.update_data_revision()
+        msg = "Added %s objects." % objects_add_counter
+        return callback.ok(msg)
 
     def verify_cross_site_jwt(self, src_realm, src_site, jwt):
         _src_site = backend.get_object(object_type="site",
@@ -1020,7 +1602,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                 status = False
                 return self.build_response(status, message)
 
-        default_callback = config.get_callback()
         if action == "add":
             status = False
             try:
@@ -1331,29 +1912,15 @@ class OTPmeMgmtP1(OTPmeServer1):
             message = "Unknown command: %s" % trash_command
             return self.build_response(status, message)
 
-        args = {}
         try:
             _args = command_map['trash']['exists'][trash_command]['args']
         except KeyError:
             _args = []
-        for i in _args:
-            # Try to get default value.
-            try:
-                args[i] = command_map['trash']['exists'][trash_command]['dargs'][i]
-            except KeyError:
-                args[i] = None
 
-        opt_args = {}
         try:
             _opt_args = command_map['trash']['exists'][trash_command]['oargs']
         except KeyError:
             _opt_args = []
-        for i in _opt_args:
-            # Try to get default value.
-            try:
-                opt_args[i] = command_map['trash']['exists'][trash_command]['dargs'][i]
-            except KeyError:
-                opt_args[i] = None
 
         try:
             job_type = command_map['trash']['exists'][trash_command]['job_type']
@@ -1382,7 +1949,8 @@ class OTPmeMgmtP1(OTPmeServer1):
                 status, \
                 response = self.start_job(name="trash_show",
                                     target_method=show_trash,
-                                    args=args, opt_args=opt_args,
+                                    args={}, _args=_args,
+                                    _opt_args=_opt_args,
                                     command_args=command_args,
                                     process=job_process,
                                     thread=job_thread)
@@ -1409,7 +1977,8 @@ class OTPmeMgmtP1(OTPmeServer1):
                 status, \
                 response = self.start_job(name="trash_restore",
                                     target_method=restore,
-                                    args=args, opt_args=opt_args,
+                                    args={}, _args=_args,
+                                    _opt_args=_opt_args,
                                     command_args=command_args,
                                     process=job_process,
                                     thread=job_thread)
@@ -1436,7 +2005,8 @@ class OTPmeMgmtP1(OTPmeServer1):
                 status, \
                 response = self.start_job(name="trash_delete",
                                     target_method=delete,
-                                    args=args, opt_args=opt_args,
+                                    args={}, _args=_args,
+                                    _opt_args=_opt_args,
                                     command_args=command_args,
                                     process=job_process,
                                     thread=job_thread)
@@ -1455,7 +2025,8 @@ class OTPmeMgmtP1(OTPmeServer1):
                 status, \
                 response = self.start_job(name="trash_empty",
                                     target_method=empty,
-                                    args=args, opt_args=opt_args,
+                                    args={}, _args=_args,
+                                    _opt_args=_opt_args,
                                     command_args=command_args,
                                     process=job_process,
                                     thread=job_thread)
@@ -1508,9 +2079,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             for i in dict(command_args):
                 if not i.startswith("callback:"):
                     continue
-                callbacks[i] = command_args[i]
-                # Remove callback from command_args
-                command_args.pop(i)
+                callbacks[i] = command_args.pop(i)
 
             if command == "stop_job":
                 stop = True
@@ -1600,11 +2169,11 @@ class OTPmeMgmtP1(OTPmeServer1):
                 pass
             return self.build_response(True, None)
 
-        # Handle backend commands.
+        # Handle change user defafult group command.
         if command == "change_user_default_group":
             return self.change_user_default_group(command_args)
 
-        # Handle backend commands.
+        # Handle move objects command.
         if command == "move_object":
             return self.move_object(command_args)
 
@@ -1676,7 +2245,6 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         # Handle delete_object command.
         if command == "delete_object":
-            default_callback = config.get_callback()
             def delete_object(object_id, force=False, verbose_level=0,
                 callback=default_callback, **kwargs):
                 object_id = oid.get(object_id=object_id)
@@ -1720,7 +2288,32 @@ class OTPmeMgmtP1(OTPmeServer1):
                 response = "Permission denied."
                 status = False
 
-            return self.build_response(status, response)
+        # Handle mass object add command.
+        if command == "mass_object_add":
+            status = True
+            if not self.is_admin:
+                response = "Permission denied."
+                status = False
+            if status:
+                if "csv_data" not in command_args:
+                    status = False
+                    response = "Missing csv data."
+                if status:
+                    try:
+                        status, \
+                        response = self.start_job(name="mass_object_add",
+                                            target_method=self.mass_object_add,
+                                            command_args=command_args,
+                                            _args=['csv_data'],
+                                            _opt_args=['verify_csv', 'procs'],
+                                            process=True,
+                                            thread=False)
+                    except Exception as e:
+                        config.raise_exception()
+                        response = ("Error running command: %s: %s"
+                                % (command, e))
+                        status = False
+                    return self.build_response(status, response)
 
         # Handle dump_index command.
         if command == "dump_index":
@@ -1808,24 +2401,10 @@ class OTPmeMgmtP1(OTPmeServer1):
                                 except:
                                     pass
                             else:
-                                get_default_unit = True
-                                if config.auth_user:
-                                    result = config.auth_user.get_policies(policy_type="defaultunits",
-                                                                            ignore_hooks=True,
-                                                                            return_type="instance")
-                                    if result:
-                                        default_units_policy = result[0]
-                                        try:
-                                            object_unit = default_units_policy.get_default_unit(object_type)
-                                            get_default_unit = False
-                                        except NoUnitFound:
-                                            get_default_unit = True
-
-                                if get_default_unit:
-                                    try:
-                                        object_unit = config.get_default_unit(object_type)
-                                    except:
-                                        pass
+                                try:
+                                    object_unit = self.get_default_unit(object_type)
+                                except:
+                                    pass
 
                     # Check if object name does contain invalid chars.
                     if oid.check_name(object_type, object_name):
@@ -2063,18 +2642,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                     _args = command_map[object_type][object_status][subcommand]['args']
                 except KeyError:
                     _args = {}
-            #for i in _args:
-            #    if i in args:
-            #        continue
-            #    # Try to get default value.
-            #    try:
-            #        args[i] = command_map[x_type][object_status][subcommand]['dargs'][i]
-            #    except KeyError:
-            #        try:
-            #            args[i] = command_map[object_type][object_status][subcommand]['dargs'][i]
-            #        except KeyError:
-            #            args[i] = None
-
             # Get optional args.
             try:
                 _opt_args = command_map[x_type][object_status][subcommand]['oargs']
@@ -2083,18 +2650,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                     _opt_args = command_map[object_type][object_status][subcommand]['oargs']
                 except KeyError:
                     _opt_args = []
-            #for i in _opt_args:
-            #    if i in opt_args:
-            #        continue
-            #    # Try to get default value.
-            #    try:
-            #        opt_args[i] = command_map[x_type][object_status][subcommand]['dargs'][i]
-            #    except:
-            #        try:
-            #            opt_args[i] = command_map[object_type][object_status][subcommand]['dargs'][i]
-            #        except:
-            #            opt_args[i] = None
-
             # Get default args.
             try:
                 _dargs = command_map[x_type][object_status][subcommand]['dargs']
@@ -2103,15 +2658,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                     _dargs = command_map[object_type][object_status][subcommand]['dargs']
                 except KeyError:
                     _dargs = {}
-            #for i in _dargs:
-            #    if i in args:
-            #        continue
-            #    # Try to get default value.
-            #    try:
-            #        args[i] = command_map[x_type][object_status][subcommand]['dargs'][i]
-            #    except KeyError:
-            #        args[i] = None
-
             try:
                 job_type = command_map[x_type][object_status][subcommand]['job_type']
             except:

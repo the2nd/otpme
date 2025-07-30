@@ -7,7 +7,6 @@ import pprint
 from typing import List
 from typing import Union
 from functools import wraps
-from strongtyping.strong_typing import match_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -25,6 +24,7 @@ from otpme.lib import multiprocessing
 from otpme.lib.cache import ldif_cache
 #from otpme.lib.locking import oid_lock
 from otpme.lib.cache import search_cache
+from otpme.lib.typing import match_typing
 from otpme.lib.cache import ldap_search_cache
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.classes.object_config import ObjectConfig
@@ -60,6 +60,7 @@ from otpme.lib.backends.file.file import index_search
 from otpme.lib.backends.file.file import object_exists
 from otpme.lib.backends.file.file import get_last_used
 from otpme.lib.backends.file.file import set_last_used
+from otpme.lib.backends.file.file import set_last_used_times
 from otpme.lib.backends.file.file import get_last_used_times
 from otpme.lib.backends.file.file import clear_index_caches
 from otpme.lib.backends.file.file import register_object_type as _register_object_type

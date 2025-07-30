@@ -5,8 +5,7 @@ import time
 import atexit
 #import datetime
 from functools import wraps
-#from functools import update_wrapper
-#import multiprocessing as _multiprocessing
+from functools import update_wrapper
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -23,6 +22,7 @@ current_thread_fds = {}
 current_thread_locks = {}
 
 registered_lock_types = {
+                        'oid'                   : 'locking',
                         'node_sync'             : 'config',
                         'sync_status'           : 'config',
                         'data_revision_update'  : 'config',
@@ -47,104 +47,42 @@ def register_lock_type(lock_type, module):
         raise AlreadyExists(msg)
     registered_lock_types[lock_type] = module
 
-#def oid_lock(kwargs_oid_args=["object_id"],
-#    oid_args_fallback=True, args_oid_pos=None, write=False):
-#    """ Decorator to handle OID locking. """
-#    def wrapper(func):
-#        @wraps(func)
-#        def wrapped(*args, **kwargs):
-#            lock_oids = []
-#            func_name = func.__name__
-#            # Get no lock argument.
-#            try:
-#                no_lock = kwargs['no_lock']
-#            except:
-#                no_lock = False
-#
-#            if not config.oid_locking_enabled:
-#                no_lock = True
-#
-#            if no_lock:
-#                # Run original function.
-#                result = func(*args, **kwargs)
-#                return result
-#
-#            # Try to get OID from kwargs.
-#            oid_found = False
-#            if kwargs_oid_args:
-#                for x in kwargs_oid_args:
-#                    try:
-#                        lock_oid = kwargs[x]
-#                    except:
-#                        continue
-#                    lock_oids.append(lock_oid)
-#                    oid_found = True
-#
-#            if not oid_found and not oid_args_fallback:
-#                msg = ("Unable to get OID from kwargs: %s: %s"
-#                    % (func_name, ",".join(kwargs_oid_arg)))
-#                raise OTPmeException(msg)
-#
-#            if not oid_found and not args_oid_pos:
-#                msg = ("Unable to get OID. Got no args_oid_pos argument: %s"
-#                        % func_name)
-#                raise OTPmeException(msg)
-#
-#            # Fallback to args.
-#            if not oid_found:
-#                for x in args_oid_pos:
-#                    try:
-#                        lock_oid = args[x]
-#                    except:
-#                        continue
-#                    lock_oids.append(lock_oid)
-#                    oid_found = True
-#
-#            if not oid_found:
-#                oid_pos_str = [str(x) for x in args_oid_pos]
-#                msg = ("Unable to get OID from args: %s: %s"
-#                    % (func_name, ",".join(oid_pos_str)))
-#                raise OTPmeException(msg)
-#
-#            if not lock_oids:
-#                msg = "Unable to lock object: No object ID found"
-#                raise OTPmeException(msg)
-#
-#            # List with all locks we added.
-#            locks = []
-#            lock_caller = func_name
-#            for x in lock_oids:
-#                lock_id = x.read_oid
-#                try:
-#                    lock = acquire_lock(lock_type="oid",
-#                                        lock_id=lock_id,
-#                                        lock_caller=lock_caller,
-#                                        write=write)
-#                    # Remember locks we acquired.
-#                    locks.append(lock)
-#                except Exception as e:
-#                    config.raise_exception()
-#                    msg = "Failed to acquire backend lock: %s: %s" % (lock_id, e)
-#                    config.logger.critical(msg, exc_info=True)
-#                    continue
-#
-#            # Run original function.
-#            try:
-#                result = func(*args, **kwargs)
-#            finally:
-#                # Release locks we acquired.
-#                for x in locks:
-#                    x.release_lock(lock_caller=lock_caller)
-#            return result
-#
-#        # Update func/method.
-#        update_wrapper(wrapped, func)
-#        if not hasattr(wrapped, '__wrapped__'):
-#            # Python 2.7
-#            wrapped.__wrapped__ = func
-#        return wrapped
-#
-#    return wrapper
+def oid_lock(write=False):
+    """ Decorator to handle OID locking. """
+    from otpme.lib import config
+    def wrapper(func):
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            func_name = func.__name__
+            try:
+                object_id = args[0]
+            except IndexError:
+                object_id = kwargs['object_id']
+            lock_id = object_id.read_oid
+            # List with all locks we added.
+            lock_caller = func_name
+            try:
+                lock = acquire_lock(lock_type="oid",
+                                    lock_id=lock_id,
+                                    lock_caller=lock_caller,
+                                    write=write)
+            except Exception as e:
+                msg = "Failed to acquire backend lock: %s: %s" % (lock_id, e)
+                config.logger.critical(msg, exc_info=True)
+                config.raise_exception()
+
+            # Run original function.
+            try:
+                result = func(*args, **kwargs)
+            finally:
+                # Release locks we acquired.
+                lock.release_lock(lock_caller=lock_caller)
+            return result
+
+        # Update func/method.
+        update_wrapper(wrapped, func)
+        return wrapped
+    return wrapper
 
 def object_lock(write=True, recursive=False, timeout=None,
     reload_on_change=True, full_lock=False):

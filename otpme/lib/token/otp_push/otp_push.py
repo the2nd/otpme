@@ -2,7 +2,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -20,6 +19,7 @@ from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.daemon.scriptd import run_script
+from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
 
 from otpme.lib.classes.token \

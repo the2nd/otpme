@@ -5,7 +5,6 @@ import time
 from cryptography import x509
 from typing import List
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -29,6 +28,7 @@ from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import encode
 from otpme.lib.register import register_module
 from otpme.lib.job.callback import JobCallback
+from otpme.lib.typing import match_class_typing
 from otpme.lib.pki.utils import check_ssl_cert_key
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands

@@ -4,7 +4,6 @@ import os
 #import pyotp
 import hashlib
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -21,6 +20,7 @@ from otpme.lib.encoding.base import decode
 from otpme.lib.encoding.base import encode
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
+from otpme.lib.typing import match_class_typing
 
 from otpme.lib.exceptions import *
 

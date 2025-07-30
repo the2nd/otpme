@@ -1663,6 +1663,18 @@ class OTPmeClient(OTPmeClientBase):
                     config.raise_exception()
                     raise ConnectionError(_("Communication error: %s") % e)
 
+            elif client_command == "KEEPALIVE":
+                # Send (keepalive) request to server.
+                try:
+                    status_code, response = self._send(command=command,
+                                                    command_args=self.job,
+                                                    blocking=blocking,
+                                                    timeout=timeout)
+                except Exception as e:
+                    config.raise_exception()
+                    raise ConnectionError(_("Communication error: %s") % e)
+
+
             elif client_command == "MSG":
                 # Print message to users terminal.
                 self.print_response(response)
@@ -1673,7 +1685,7 @@ class OTPmeClient(OTPmeClientBase):
                     command = "stop_job"
                     command_args = x_job_uuid
 
-                # Send (keepalive) request to server.
+                # Send request to server.
                 try:
                     status_code, response = self._send(command=command,
                                                     command_args=self.job,

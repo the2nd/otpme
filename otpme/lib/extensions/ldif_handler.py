@@ -64,21 +64,13 @@ class OTPmeLDIFHandler(object):
                             % self.name)
                     raise OTPmeException(msg)
 
-        # Get non default attributes.
-        non_default_attributes = dict(default_attributes)
-        for at in self.get_default_attributes(o.type):
-            try:
-                non_default_attributes.pop(at)
-            except KeyError:
-                pass
-
         # Add non default attributes.
-        for at in dict(non_default_attributes):
-            v = non_default_attributes.pop(at)
+        for at in dict(default_attributes):
+            v = default_attributes.pop(at)
             add_result = self.add_attribute(o=o,
                                     a=at,
                                     v=v,
-                                    auto_value=True,
+                                    auto_value=False,
                                     ignore_ro=True,
                                     verify=True,
                                     verbose_level=verbose_level,
@@ -677,13 +669,13 @@ class OTPmeLDIFHandler(object):
                 msg = (_("Attribute '%s' is readonly.") % a)
                 return callback.error(msg)
 
-        if not o.type in self.object_types:
+        if o.type not in self.object_types:
             msg = (_("Object type not supported by this extension: %s")
                     % o.type)
             return callback.error(msg)
 
         x_attrs = config.get_ldif_attributes(self.name, o.type)
-        if not a in x_attrs:
+        if a not in x_attrs:
             msg = (_("Cannot add unknown attribute: %s: %s") % (self.name, a))
             return callback.error(msg)
 
@@ -726,7 +718,7 @@ class OTPmeLDIFHandler(object):
                                     callback=callback)
             except Exception as e:
                 #config.raise_exception()
-                msg = (_("Unable to add attribute: %s: %s") % (a, e))
+                msg = (_("Unable to add attribute: %s: %s: %s") % (o.name, a, e))
                 raise OTPmeException(msg)
 
             if attribute_mappings and v:

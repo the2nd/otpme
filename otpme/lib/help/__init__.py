@@ -123,6 +123,7 @@ register_global_opt("--lock-timeout <int>", "Lock timeout in seconds when starti
 register_global_opt("--lock-wait-timeout <int>", "Lock wait timeout in seconds when starting jobs.")
 register_global_opt("--lock-ignore-changed-objects", "Ignore if an object changed while waiting for lock.")
 register_global_opt("--job-timeout <int>", "Job timeout.")
+register_global_opt("--enable-typing", "Enable python type checking.")
 register_global_opt("--disable-locking", "Disable locking in API mode (use with caution!).")
 register_global_opt("--debug-daemons <authd,mgmtd>", "Enable debug stuff only for the given daemons.")
 register_global_opt("--debug-profile-sort <cumtime,ncalls,tottime>", "Statistic output sorting.")
@@ -649,6 +650,9 @@ def get_main_opts(clear_cache=False, mod_name=None):
         elif sys.argv[0] == "--disable-locking":
             sys.argv.pop(0)
             main_opts['locking_enabled'] = False
+        elif sys.argv[0] == "--enable-typing":
+            sys.argv.pop(0)
+            main_opts['typing_enabled'] = True
         elif sys.argv[0] == "-u":
             sys.argv.pop(0)
             main_opts['login_user'] = str(sys.argv[0])

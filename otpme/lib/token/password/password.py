@@ -2,7 +2,6 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -19,6 +18,7 @@ from otpme.lib.locking import object_lock
 from otpme.lib.classes.token import Token
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
+from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
 
 from otpme.lib.classes.token \
@@ -683,6 +683,7 @@ class PasswordToken(Token):
     @backend.transaction
     def _add(
         self,
+        password: Union[str,None]=None,
         enable_mschap: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
@@ -692,12 +693,15 @@ class PasswordToken(Token):
             self.enable_mschap(force=True, quiet=True, callback=callback)
 
         pass_len = self.get_config_parameter("default_static_pass_len")
-        new_pass = stuff.gen_password(pass_len)
+        if password is None:
+            new_pass = stuff.gen_password(pass_len)
+        else:
+            new_pass = password
 
         self.change_password(password=new_pass,
-                                verify_acls=False,
-                                force=True,
-                                callback=callback)
+                            verify_acls=False,
+                            force=True,
+                            callback=callback)
 
         return_message = ""
         if not enable_mschap:

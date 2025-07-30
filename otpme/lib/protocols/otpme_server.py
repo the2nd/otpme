@@ -732,6 +732,7 @@ class OTPmeServer1(object):
         try:
             response = self._process(command, command_args)
         except Exception as e:
+            config.raise_exception()
             msg = ("Error in OTPmeServer1._process(): %s" % e)
             self.logger.critical(msg)
             message = "Internal server error."

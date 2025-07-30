@@ -133,6 +133,7 @@ def handle_transaction(func):
                         **kwargs)
         except:
             session.rollback()
+            session.close()
             raise
         finally:
             if close_session:
@@ -211,7 +212,7 @@ def begin_transaction(name=None, callback=default_callback):
         logger.debug(msg)
     return _transaction
 
-def end_transaction():
+def end_transaction(write=True):
     """ End transaction. """
     # Remove transaction from list.
     _transaction = get_transaction(active=None)
@@ -222,21 +223,22 @@ def end_transaction():
 
     try:
         # Make sure cached objects are written to this transaction.
-        modified_objects = _transaction.write_cached_objects()
+        _transaction.write_cached_objects()
         # Mark transaction as not active anymore.
         _transaction.active = False
         # Spool transaction.
-        try:
-            _transaction._write()
-        except Exception as e:
-            msg = "Failed to save transaction: %s: %s" % (_transaction.id, e)
-            logger.critical(msg)
-            config.raise_exception()
-            return False
+        if write:
+            try:
+                _transaction._write()
+            except Exception as e:
+                msg = "Failed to save transaction: %s: %s" % (_transaction.id, e)
+                logger.critical(msg)
+                config.raise_exception()
+                return False
         # Commit transaction. For running transactions we dont need to modify
         # index DB anymore because of a currently active DB transaction.
         try:
-            _transaction.commit()
+            _transaction.commit(write=write)
         except Exception as e:
             msg = "Failed to end transaction: %s: %s" % (_transaction.id, e)
             logger.critical(msg, exc_info=True)
@@ -246,13 +248,6 @@ def end_transaction():
         remove_transaction()
         # Delete transaction.
         _transaction.remove()
-        # Reset modified flag.
-        for o in modified_objects:
-            o.reset_modified()
-            cache.add_instance(o)
-        # Release object locks.
-        for o in _transaction.locked_objects:
-            o.release_lock(lock_caller=_transaction.lock_caller)
     finally:
         _transaction.release_lock()
 
@@ -305,6 +300,8 @@ def replay_transactions():
         try:
             _transaction.acquire_lock(timeout=0.01)
         except ObjectLocked:
+            continue
+        except LockWaitTimeout:
             continue
         try:
             # Remove finished or incomplete transaction.
@@ -518,17 +515,16 @@ class BaseTransaction(object):
             config.raise_exception()
 
     def cluster_write(self, object_uuid, object_id, index_journal,
-        ldif_journal, acl_journal, object_checksum, wait_for_write=True):
+        acl_journal, wait_for_write=True):
         """ Cluster write action. """
         action = "cluster_write"
-        journal_file = self.get_journal_file(action)
+        journal_file = self.get_cluster_journal_file(action)
         journal_entry = {
                         'action'            : action,
                         'object_uuid'       : object_uuid,
                         'object_id'         : object_id.full_oid,
-                        'checksum'          : object_checksum,
+                        'object_type'       : object_id.object_type,
                         'acl_journal'       : list(acl_journal),
-                        'ldif_journal'      : list(ldif_journal),
                         'index_journal'     : list(index_journal),
                         'wait_for_write'    : wait_for_write,
                         'journal_file'      : journal_file,
@@ -540,7 +536,7 @@ class BaseTransaction(object):
     def cluster_delete(self, object_uuid, object_id):
         """ Cluster delete action. """
         action = "cluster_delete"
-        journal_file = self.get_journal_file(action)
+        journal_file = self.get_cluster_journal_file(action)
         journal_entry = {
                         'action'        : action,
                         'object_uuid'   : object_uuid,
@@ -554,7 +550,7 @@ class BaseTransaction(object):
     def cluster_rename(self, object_uuid, object_id, new_object_id):
         """ Cluster rename action. """
         action = "cluster_rename"
-        journal_file = self.get_journal_file(action)
+        journal_file = self.get_cluster_journal_file(action)
         journal_entry = {
                         'action'        : action,
                         'object_id'     : object_id.full_oid,
@@ -569,21 +565,21 @@ class BaseTransaction(object):
     def handle_cluster_write(self, journal_entry):
         object_id = journal_entry['object_id']
         object_uuid = journal_entry['object_uuid']
-        object_checksum = journal_entry['checksum']
+        object_type = journal_entry['object_type']
         acl_journal = journal_entry['acl_journal']
-        ldif_journal = journal_entry['ldif_journal']
         index_journal = journal_entry['index_journal']
         wait_for_write = journal_entry['wait_for_write']
         object_id = oid.get(object_id)
         if self._replay:
             wait_for_write = False
+        if not config.wait_for_cluster_writes:
+            wait_for_write = False
         cluster_event = cluster_sync_object(action="write",
                                         object_uuid=object_uuid,
                                         object_id=object_id,
+                                        object_type=object_type,
                                         acl_journal=acl_journal,
-                                        ldif_journal=ldif_journal,
                                         index_journal=index_journal,
-                                        checksum=object_checksum,
                                         wait_for_write=wait_for_write)
         return cluster_event
 
@@ -591,12 +587,16 @@ class BaseTransaction(object):
         object_uuid = journal_entry['object_uuid']
         object_id = journal_entry['object_id']
         object_id = oid.get(object_id)
+        object_type = object_id.object_type
         wait_for_write = True
         if self._replay:
+            wait_for_write = False
+        if not config.wait_for_cluster_writes:
             wait_for_write = False
         cluster_event = cluster_sync_object(action="delete",
                                             object_uuid=object_uuid,
                                             object_id=object_id,
+                                            object_type=object_type,
                                             wait_for_write=wait_for_write)
         return cluster_event
 
@@ -606,12 +606,16 @@ class BaseTransaction(object):
         object_uuid = journal_entry['object_uuid']
         new_object_id = journal_entry['new_object_id']
         new_object_id = oid.get(new_object_id)
+        object_type = object_id.object_type
         wait_for_write = True
         if self._replay:
+            wait_for_write = False
+        if not config.wait_for_cluster_writes:
             wait_for_write = False
         cluster_event = cluster_sync_object(action="rename",
                                             object_uuid=object_uuid,
                                             object_id=object_id,
+                                            object_type=object_type,
                                             new_object_id=new_object_id,
                                             wait_for_write=wait_for_write)
         return cluster_event
@@ -630,6 +634,7 @@ class BaseTransaction(object):
             if action == "cluster_write":
                 if not self.no_disk_writes:
                     cluster_event = self.handle_cluster_write(journal_entry)
+                    object_id = journal_entry['object_id']
                     if cluster_event:
                         object_id = journal_entry['object_id']
                         cluster_events[cluster_event] = object_id
@@ -658,10 +663,13 @@ class BaseTransaction(object):
         msg = "Waiting for cluster events..."
         logger.debug(msg)
         for x in cluster_events:
-            object_id = cluster_events[x]
             msg = "Waiting for cluster event: %s" % object_id
             logger.debug(msg)
-            x.wait()
+            try:
+                x.wait(timeout=30)
+            except TimeoutReached:
+                msg = "Timeout waiting for cluster write: %s" % object_id
+                self.logger.warning(msg)
             x.unlink()
             msg = "Got cluster event: %s" % object_id
             logger.debug(msg)
@@ -716,6 +724,13 @@ class BaseTransaction(object):
         filename = ("%s-%s.%s" % (self.journal_counter, action,
                                 self.journal_file_extension))
         journal_file = os.path.join(self.journal_dir, filename)
+        return journal_file
+
+    def get_cluster_journal_file(self, action):
+        """ Build journal spool file path. """
+        filename = ("%s-%s.%s" % (self.cluster_journal_counter, action,
+                                self.journal_file_extension))
+        journal_file = os.path.join(self.cluster_journal_dir, filename)
         return journal_file
 
     def _remove_incomplete_transaction(self, ignore_status=False, quiet=False):
@@ -1293,6 +1308,7 @@ class ObjectTransaction(BaseTransaction):
         self.modified_objects = []
         self.locked_objects = []
         self.lock_caller = "transaction"
+        self.reset_modified_objects = []
         self.callback = callback
         # Sign cache.
         self.sign_cache = {}
@@ -1407,7 +1423,6 @@ class ObjectTransaction(BaseTransaction):
         for object_id in list(self.modified_objects):
             o = cache.get_modified_object(object_id)
             cache.remove_modified_object(object_id)
-            #self.modified_objects.remove(object_id)
             if not o or not o._modified:
                 continue
             cached_objects.append(o)
@@ -1435,7 +1450,8 @@ class ObjectTransaction(BaseTransaction):
                 msg = ("Written %s cached objects: %s"
                     % (len(modified_objects), self.log_name))
                 logger.debug(msg)
-        return set(cached_objects)
+        self.reset_modified_objects += set(cached_objects)
+        #return set(cached_objects)
 
     def get_oid(self, uuid, full=True, instance=False):
         """ Get OID of object. """
@@ -1654,12 +1670,14 @@ class ObjectTransaction(BaseTransaction):
         # Start nested transaction.
         self.session.begin_nested()
 
-    def commit(self, no_index_writes=True):
+    def commit(self, write=True, no_index_writes=True):
         """ Commit write and commit journal. """
         from otpme.lib.backend import outdate_object
         config.active_transactions.append(self)
-        if self.status != "written":
-            self._write()
+        if write:
+            if self.status != "written":
+                self._write()
+
         if config.debug_level(DEBUG_SLOT) > 3:
             msg = ("Commiting transaction: %s" % self.log_name)
             logger.debug(msg)
@@ -1681,11 +1699,13 @@ class ObjectTransaction(BaseTransaction):
             # Close DB session.
             self.session.close()
 
-        # Handle cluster actions after local objects written.
-        self.handle_cluster_journal()
-
-        # Remove status file to indicate finished transaction.
-        self._remove_file(self.status_file)
+        # Reset modified flag.
+        for o in self.reset_modified_objects:
+            o.reset_modified()
+            cache.add_instance(o)
+        # Release object locks.
+        for o in self.locked_objects:
+            o.release_lock(lock_caller=self.lock_caller)
 
         # Outdate objects in caches.
         for x in deleted_objects:
@@ -1698,6 +1718,12 @@ class ObjectTransaction(BaseTransaction):
             if self._replay:
                 cache_type = "all"
             outdate_object(x, cache_type=cache_type)
+
+        # Handle cluster actions after local objects written.
+        self.handle_cluster_journal()
+
+        # Remove status file to indicate finished transaction.
+        self._remove_file(self.status_file)
 
         config.active_transactions.remove(self)
         if config.debug_level(DEBUG_SLOT) > 3:

@@ -39,15 +39,6 @@ cmd_help = {
                                 },
                 },
 
-    'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token add [-r] {token} [token_type]',
-                    'cmd'   :   '-r :replace=True: <|object|> [token_type]',
-                    '_help' :   {
-                                    'cmd'                   : 'add new token',
-                                    '-r'                    : 'replace existing token and keep its UUID',
-                                },
-                },
-
     'del'    : {
                     '_cmd_usage_help' : 'Usage: otpme-token del {token}',
                     'cmd'   :   '<|object|>',

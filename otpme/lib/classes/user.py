@@ -7,7 +7,6 @@ import base64
 import datetime
 from typing import List
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -34,6 +33,7 @@ from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.register import register_module
 from otpme.lib.encryption import hash_password
+from otpme.lib.typing import match_class_typing
 from otpme.lib.policy import one_time_policy_run
 from otpme.lib.otpme_acl import check_special_user
 from otpme.lib.classes.otpme_object import OTPmeObject
@@ -149,7 +149,7 @@ commands = {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : [],
-                    'oargs'             : ['add_default_token', 'default_token', 'default_token_type', 'default_role', 'default_roles', 'groups', 'unit', 'group', 'template_object', 'template_name', 'gen_qrcode', 'no_token_infos', 'ldif_attributes'],
+                    'oargs'             : ['add_default_token', 'default_token', 'default_token_type', 'default_role', 'default_roles', 'groups', 'unit', 'group', 'template_object', 'template_name', 'gen_qrcode', 'no_token_infos', 'password', 'ldif_attributes'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
@@ -456,7 +456,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_name'],
-                    'oargs'             : ['token_type', 'destination_token', 'replace', 'gen_qrcode', 'enable_mschap'],
+                    'oargs'             : ['token_type', 'destination_token', 'replace', 'gen_qrcode', 'enable_mschap', 'password'],
                     'job_type'          : 'process',
                     },
                 },
@@ -927,7 +927,6 @@ def register():
     register_module("otpme.lib.classes.session")
     register_module("otpme.lib.classes.data_objects.used_sotp")
     register_module("otpme.lib.classes.data_objects.failed_pass")
-    register_module("otpme.lib.classes.data_objects.last_assigned_id")
     register_module("otpme.lib.classes.data_objects.revoked_signature")
     multiprocessing.register_shared_dict("otp_hashes")
 
@@ -3025,8 +3024,8 @@ class User(OTPmeObject):
         start_time = time.time()
         auth_status = auth_handler.authenticate(user=self, **kwargs)
         end_time = time.time()
-        age = float(end_time - start_time)
-        logger.debug("Authentication took %s seconds." % age)
+        duration = float(end_time - start_time)
+        logger.debug("Authentication took %s seconds." % duration)
         return auth_status
 
     def token(self, token_name: str):
@@ -3700,6 +3699,7 @@ class User(OTPmeObject):
         token_uuid: Union[str,None]=None,
         new_token: Union[OTPmeObject,None]=None,
         destination_token: Union[str,None]=None,
+        password: Union[str,None]=None,
         replace: bool=False,
         gen_qrcode: bool=True,
         no_token_infos: bool=False,
@@ -3813,7 +3813,13 @@ class User(OTPmeObject):
                 msg = (_("Token already exists: %s") % cur_token.rel_path)
                 return callback.error(msg)
 
-        if not new_token:
+        if new_token:
+            if password is not None:
+                new_token.change_password(password=password,
+                                    verify_acls=False,
+                                    force=True,
+                                    callback=callback)
+        else:
             # Try to create new token instance.
             try:
                 from otpme.lib.token import get_class
@@ -3834,6 +3840,7 @@ class User(OTPmeObject):
             add_status = new_token.add(uuid=token_uuid,
                                     owner_uuid=self.uuid,
                                     gen_qrcode=gen_qrcode,
+                                    password=password,
                                     enable_mschap=enable_mschap,
                                     run_policies=run_policies,
                                     verify_acls=verify_acls,
@@ -4435,6 +4442,7 @@ class User(OTPmeObject):
         template_object: Union[str,None]=None,
         gen_qrcode: bool=True,
         no_token_infos: bool=False,
+        password: Union[str,None]=None,
         run_policies: bool=True,
         force: bool=False,
         verify_acls: bool=True,
@@ -4562,6 +4570,17 @@ class User(OTPmeObject):
                     msg = "Unknown token: %s" % default_token_path
                     return callback.error(msg)
                 _default_token = result[0]
+                if password is not None:
+                    if _default_token.token_type != "password":
+                        msg = ("Unable to set password for token type: %s"
+                                % _default_token.token_type)
+                        return callback.error(msg)
+
+            if default_token_type != "password":
+                if password is not None:
+                    msg = ("Unable to set password for token type: %s"
+                            % default_token_type)
+                    return callback.error(msg)
 
         # Get template.
         template = None
@@ -4690,10 +4709,12 @@ class User(OTPmeObject):
                 default_extensions = []
             for ext in default_extensions:
                 ext_attrs = config.get_ldif_attributes(ext, self.type)
-                for x in ldif_attributes.split(","):
+                for x in ldif_attributes:
                     try:
                         attr = x.split("=")[0]
                         value = x.split("=")[1]
+                        value = value.replace("'", "")
+                        value = value.replace('"', '')
                     except:
                         msg = "Invalid attribute: %s" % x
                         return callback.error(msg)
@@ -4701,6 +4722,8 @@ class User(OTPmeObject):
                         continue
                     if ext not in default_attributes:
                         default_attributes[ext] = {}
+                    if attr == "uidNumber":
+                        value = int(value)
                     default_attributes[ext][attr] = value
 
         # Add object using parent class BEFORE adding any token etc.
@@ -4842,16 +4865,23 @@ class User(OTPmeObject):
                 _default_token.move(new_token_path,
                                     verify_acls=verify_acls,
                                     callback=callback)
+                # Set default token password
+                if password is not None:
+                    _default_token.change_password(password=password,
+                                        verify_acls=False,
+                                        force=True,
+                                        callback=callback)
             else:
                 self.add_token(token_name=default_token_name,
                                 token_type=default_token_type,
                                 no_token_infos=no_token_infos,
                                 gen_qrcode=gen_qrcode,
+                                password=password,
                                 verify_acls=False,
                                 force=force,
                                 callback=callback)
+                _default_token = self.token(default_token_name)
             # Add default token to default roles.
-            _default_token = self.token(default_token_name)
             for role in _default_roles:
                 role.add_token(token_path=_default_token.rel_path,
                                 verify_acls=verify_acls,

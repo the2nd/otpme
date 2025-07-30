@@ -702,6 +702,10 @@ class AuthHandler(object):
         # If we got a host set client infos from it.
         if self.host and not self.client:
             self.client = self.host
+            if not self.client:
+                self.auth_failed = True
+                self.auth_message = "AUTH_CLIENT_MISSING"
+                return
             if self.host_ip:
                 self.client_ip = self.host_ip
             # Search for host/node.
@@ -762,6 +766,10 @@ class AuthHandler(object):
 
         # Try to get client by IP address.
         if not self.client:
+            if not self.client_ip:
+                self.auth_failed = True
+                self.auth_message = "AUTH_CLIENT_IP_MISSING"
+                return
             client_result = backend.search(object_type="client",
                                         attribute="address",
                                         value=self.client_ip,
@@ -1301,7 +1309,7 @@ class AuthHandler(object):
             elif self.verify_token.password_hash:
                 if not self.verify_token.second_factor_token_enabled:
                     self.password_hash = self.verify_token.password_hash
-                    self.pass_hash_params= self.verify_token.password_hash_params
+                    self.pass_hash_params = self.verify_token.password_hash_params
             if not self.password_hash:
                 self.gen_pass_hash()
 

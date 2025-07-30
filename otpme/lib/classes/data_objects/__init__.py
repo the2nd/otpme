@@ -7,7 +7,6 @@ REGISTER_AFTER = []
 # Protocol modules to register.
 modules = [
 	'otpme.lib.classes.data_objects.failed_pass',
-	'otpme.lib.classes.data_objects.last_assigned_id',
 	'otpme.lib.classes.data_objects.revoked_signature',
 	'otpme.lib.classes.data_objects.token_counter',
 	'otpme.lib.classes.data_objects.data_revision',

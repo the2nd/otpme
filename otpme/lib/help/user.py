@@ -47,8 +47,8 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user add [--no-default-token] [--default-token <default_token>] [--default-token-type <token_type>] [--group <group>] [--groups <group1,group2>] [--role <default_role>] [--roles <role1,role2>] [--attributes <attr1=val1,attr2=val2...> [-t] [--template <template_name>] [--no-qrcode] {user}',
-                    'cmd'   :   '--group :group: --groups :[groups]: --role :default_role: --roles :[default_roles]: --no-default-token :add_default_token=False: --default-token :default_token: --default-token-type :default_token_type: --attributes :ldif_attributes: -t :template_object=True: --template :template_name: --no-qrcode :gen_qrcode=False: <|object|>',
+                    '_cmd_usage_help' : 'Usage: otpme-user add [--no-default-token] [--default-token <default_token>] [--default-token-type <token_type>] [--password <password>] [--group <group>] [--groups <group1,group2>] [--role <default_role>] [--roles <role1,role2>] [--attributes <attr1=val1,attr2=val2...> [-t] [--template <template_name>] [--no-qrcode] {user}',
+                    'cmd'   :   '--group :group: --groups :[groups]: --role :default_role: --roles :[default_roles]: --no-default-token :add_default_token=False: --default-token :default_token: --default-token-type :default_token_type: --password :password: --attributes :[ldif_attributes]: -t :template_object=True: --template :template_name: --no-qrcode :gen_qrcode=False: <|object|>',
                     '_help' :   {
                                     'cmd'                                   : 'Add new user.',
                                     '--group <group>'                       : 'Users default group.',
@@ -59,6 +59,7 @@ cmd_help = {
                                     '--no-qrcode'                           : 'Do not gen default token qrcode.',
                                     '--default-token <token_name>'          : 'Get default token from TOKENSTORE.',
                                     '--default-token-type <token_type>'     : 'Add default token of type <token_type>.',
+                                    '--password <password>'                 : 'Set password for default token (must be password token).',
                                     '--attributes <attr1=val1,attr2=val2>'  : 'Add LDIF attributes to user.',
                                     '--template'                            : 'Add user from template.',
                                     '-t'                                    : 'Add user template.',
@@ -184,12 +185,13 @@ cmd_help = {
                 },
 
     'add_token'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user add_token [-r] [--no-qrcode] [--enable-mschap] [--type <token_type>] [--name <token_name>] [--destination <dst_token>] {user}',
-                    'cmd'   :   '-r :replace=True: --no-qrcode :gen_qrcode=False: --enable-mschap :enable_mschap=True: --name :token_name: --type :token_type: --destination :destination_token: <|object|>',
+                    '_cmd_usage_help' : 'Usage: otpme-user add_token [-r] [--no-qrcode] [--enable-mschap] [--token-type <token_type>] [--name <token_name>] [--destination <dst_token>] [--password <password>] {user}',
+                    'cmd'   :   '-r :replace=True: --no-qrcode :gen_qrcode=False: --enable-mschap :enable_mschap=True: --name :token_name: --token-type :token_type: --destination :destination_token: --password :password: <|object|>',
                     '_help' :   {
                                     'cmd'                   : 'Add new token.',
                                     '--name'                : 'Token name.',
-                                    '--type'                : 'Token type.',
+                                    '--token-type'          : 'Token type.',
+                                    '--password <password>' : 'Set token password (for password tokens).',
                                     '-r'                    : 'Replace existing token and keep its UUID.',
                                 },
                 },

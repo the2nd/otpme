@@ -66,7 +66,9 @@ search_cache = FuncCache(name="search_cache",
                         copy_cache=True)
 pass_hash_cache = FuncCache(name="pass_hash_cache",
                             default_cache="default",
-                            copy_cache=True)
+                            copy_cache=True,
+                            maxsize=40960,
+                            shared=True)
 ldap_schema_cache = FuncCache(name="ldap_schema_files",
                             default_cache="default")
 oid_from_path_cache = FuncCache(name="oid_from_path_cache",
@@ -469,7 +471,7 @@ def get_instance(object_id, cache_type=None):
         # it back/again in the multiprocessing cache.
         skip_shared_cache = True
 
-    if object_id.full_oid != instance.oid.full_oid:
+    if object_id.read_oid != instance.oid.read_oid:
         return None
 
     # Update instance caches with object we got from other cache.

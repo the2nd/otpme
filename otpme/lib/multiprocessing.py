@@ -170,6 +170,8 @@ def atfork(keep_locks=False, quiet=True,
         raise OTPmeException(msg)
     # Make sure we use new DB connections.
     backend.atfork()
+    _index = config.get_index_module()
+    _index.atfork()
     # Set signal handler to handle process exit on signal.
     if exit_on_signal:
         if signal_method is None:
@@ -209,6 +211,8 @@ def cleanup(keep_queues=False):
     logger = config.logger
     # Get ID.
     pid = os.getpid()
+    _index = config.get_index_module()
+    _index.cleanup()
     try:
         connections.cleanup()
     except Exception as e:
@@ -566,6 +570,9 @@ class Event(object):
             event_name = "/%s" % stuff.gen_uuid()
         self.name = event_name
         self._semaphore = None
+
+    def __str__(self):
+        return self.name
 
     def open_semaphore(self):
         global posix_semaphores

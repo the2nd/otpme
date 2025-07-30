@@ -154,6 +154,7 @@ class OTPmeJob(object):
                 from otpme.lib import config
                 # Get logger.
                 logger = config.logger
+                self.callback.stop_job = True
                 if config.active_transactions:
                     msg = "Job not stoppable at this stage."
                     self.callback.error(msg)

@@ -80,6 +80,14 @@ def send_msg(job_id, message=None):
             }
     return request
 
+def send_keepalive(job_id, message=None):
+    """ Sends keepalive message to client. """
+    request = {
+            'query_id'  : job_id,
+            'command'   : 'OTPME_KEEPALIVE',
+            }
+    return request
+
 def dump_data(job_id, message=None):
     """ Dumps data to client. """
     request = {

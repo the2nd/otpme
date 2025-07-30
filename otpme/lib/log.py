@@ -68,7 +68,7 @@ def get_logger(log_name, level, logger=None, pid=None, banner=None,
         log_formatter = ColoredFormatter
 
     # Catch unknown loglevels
-    if not level in valid_log_levels:
+    if level not in valid_log_levels:
         unknown_loglevel = level
         level = "INFO"
 
@@ -110,7 +110,7 @@ def get_logger(log_name, level, logger=None, pid=None, banner=None,
         LOG_FORMAT_DATE = '%(log_color)s' + LOG_FORMAT_DATE + '%(reset)s'
 
     # Add log formatters.
-    log_format_date = log_formatter(LOG_FORMAT_DATE)
+    log_format_date = log_formatter(LOG_FORMAT_DATE, datefmt='%Y-%m-%d %H:%M:%S')
     log_format_without_date = log_formatter(LOG_FORMAT)
 
     if timestamps is True:

@@ -268,3 +268,7 @@ class NoSmartcardFound(OTPmeException):
 
 class LoginInterfaceException(PolicyException):
     pass
+
+class LockWaitAbortObjectDeleted(LockWaitAbort):
+    pass
+

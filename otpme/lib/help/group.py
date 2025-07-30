@@ -48,10 +48,11 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-group add {group}',
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : 'Usage: otpme-group add [--attributes <attr1=val1,attr2=val2> {group}',
+                    'cmd'   :   '--attributes :[ldif_attributes]: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'add new group',
+                                    'cmd'                                   : 'add new group',
+                                    '--attributes <attr1=val1,attr2=val2>'  : 'Add LDIF attributes to user.',
                                 },
                 },
 

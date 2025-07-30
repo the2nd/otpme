@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import random
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -19,6 +17,7 @@ from otpme.lib import otpme_acl
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
+from otpme.lib.typing import match_class_typing
 from otpme.lib.daemon.scriptd import run_script
 from otpme.lib.classes.otpme_host import OTPmeHost
 from otpme.lib.protocols.utils import register_commands
@@ -897,7 +896,8 @@ class Node(OTPmeHost):
         try:
             node_vote = os.path.getmtime(config.node_sync_file)
         except FileNotFoundError:
-            node_vote = random.random()
+            # Get node vote (daemon start time).
+            node_vote = config.node_vote
 
         revision_vote = config.get_data_revision()
         node_vote = {'revision':revision_vote, 'vote':node_vote}

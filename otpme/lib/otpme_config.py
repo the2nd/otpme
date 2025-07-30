@@ -9,9 +9,9 @@ import datetime
 import importlib
 import collections
 
-if not "OTPME_DEBUG_MODULE_LOADING" in os.environ:
+if "OTPME_DEBUG_MODULE_LOADING" not in os.environ:
     os.environ['OTPME_DEBUG_MODULE_LOADING'] = "False"
-if not "OTPME_DEBUG_NEED_DECORATOR" in os.environ:
+if "OTPME_DEBUG_NEED_DECORATOR" not in os.environ:
     os.environ['OTPME_DEBUG_NEED_DECORATOR'] = "False"
 if "OTPME_DEBUG_FILE_READ" not in os.environ:
     os.environ['OTPME_DEBUG_FILE_READ'] = "False"
@@ -176,6 +176,8 @@ class OTPmeConfig(object):
         self.register_config_var("cache_enabled", bool, False)
         # Indicates if locking is enabled.
         self.register_config_var("locking_enabled", bool, True)
+        # Indicates typing is enabled.
+        self.register_config_var("typing_enabled", bool, False)
         # Job timeout.
         self.register_config_var("job_timeout", int, 60)
         # Active (committing) transactions prevent jobs from being stopped.
@@ -313,6 +315,8 @@ class OTPmeConfig(object):
         self.register_config_var("password_hash_salt", str, None)
         # Cluster key used to secure cluster communication.
         self.register_config_var("cluster_key", str, None)
+        # Wait for objects to be written to cluster nodes.
+        self.register_config_var("wait_for_cluster_writes", bool, True)
 
         # Realm/site we connect to (-r/-s)
         self.register_config_var("connect_realm", str, None)
@@ -651,6 +655,11 @@ class OTPmeConfig(object):
 
         self.register_config_var("sync_object_types", dict, {})
         self.register_config_var("cluster_object_types", list, [])
+
+        self.register_config_var("use_radius_mod", bool, True,
+                            config_file_parameter="USE_RADIUS_MOD")
+        self.register_config_var("radius_mod_logfile", str, "/var/log/otpme/radius-module.log",
+                            config_file_parameter="RADIUS_MOD_LOGFILE")
         self.register_config_var("start_freeradius", bool, True,
                             config_file_parameter="START_FREERADIUS")
         self.register_config_var("freeradius_bin", str, "/usr/sbin/freeradius",
@@ -2360,6 +2369,20 @@ class OTPmeConfig(object):
         self.site_auth_fqdn = auth_fqdn
         self.site_mgmt_fqdn = mgmt_fqdn
 
+    @property
+    def node_vote(self):
+        from otpme.lib import multiprocessing
+        try:
+            node_vote = multiprocessing.get_dict(name="node_vote")['node_vote']
+        except KeyError:
+            node_vote = 0
+        return node_vote
+
+    @node_vote.setter
+    def node_vote(self, new_vote):
+        from otpme.lib import multiprocessing
+        multiprocessing.get_dict(name="node_vote")['node_vote'] = new_vote
+
     def get_master_node(self):
         from otpme.lib import multiprocessing
         try:
@@ -2530,6 +2553,10 @@ class OTPmeConfig(object):
                     logger_syslog = True
                 elif self.pam_use_systemd:
                     logger_systemd = True
+            elif self.tool_name == "radius_module":
+                logger_logfile = self.radius_mod_logfile
+                if timestamps is None:
+                    timestamps = True
             elif not self.file_logging:
                 # If we are not in debug mode and logging is not enabled throw away
                 # log messages.

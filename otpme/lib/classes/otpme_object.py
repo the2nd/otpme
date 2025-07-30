@@ -12,7 +12,6 @@ import importlib
 from typing import List
 from typing import Union
 from functools import wraps
-from strongtyping.strong_typing import match_class_typing
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -44,6 +43,7 @@ from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import encode
 from otpme.lib.cache import ldap_search_cache
 from otpme.lib.job.callback import JobCallback
+from otpme.lib.typing import match_class_typing
 from otpme.lib.cache import assigned_role_cache
 from otpme.lib.cache import assigned_token_cache
 from otpme.lib.policy import one_time_policy_run
@@ -494,7 +494,7 @@ class OTPmeLockObject(object):
                 if not backend.object_exists(self.oid):
                     msg = "Object deleted while waiting for lock: %s" % self
                     self._object_lock.release_lock(lock_caller=lock_caller)
-                    raise LockWaitAbort(msg)
+                    raise LockWaitAbortObjectDeleted(msg)
                 if self.uuid:
                     object_id = backend.get_oid(self.uuid,
                                                 instance=True,
@@ -1505,6 +1505,7 @@ class OTPmeBaseObject(OTPmeLockObject):
     @object_lock()
     def _write(self,
         cluster: bool=True,
+        no_transaction: bool=None,
         wait_for_cluster_writes: bool=True,
         update_last_modified: bool=True,
         update_last_modified_by: bool=True,
@@ -1521,6 +1522,9 @@ class OTPmeBaseObject(OTPmeLockObject):
             if self.name is None:
                 msg = ("Object misses name: %s" % self.oid)
                 raise OTPmeException(msg)
+
+        if no_transaction is None:
+            no_transaction = self.no_transaction
 
         if update_last_modified:
             # Update last modified timestamp.
@@ -1579,7 +1583,7 @@ class OTPmeBaseObject(OTPmeLockObject):
                         instance=self,
                         cluster=cluster,
                         wait_for_cluster_writes=wait_for_cluster_writes,
-                        no_transaction=self.no_transaction,
+                        no_transaction=no_transaction,
                         use_index_journal=True,
                         use_ldif_journal=True,
                         use_acl_journal=True,
@@ -1647,9 +1651,8 @@ class OTPmeBaseObject(OTPmeLockObject):
             now = time.time_ns()
             self.index_journal.append([now, 'del', key, value])
             return
-        for x_val in values:
-            now = time.time_ns()
-            self.index_journal.append([now, 'del', key, x_val])
+        now = time.time_ns()
+        self.index_journal.append([now, 'del', key])
         try:
             self.index.pop(key)
         except KeyError:
@@ -2586,6 +2589,7 @@ class OTPmeObject(OTPmeBaseObject):
     @object_lock()
     def _write(
         self,
+        no_transaction: bool=False,
         update_last_modified: bool=True,
         update_last_modified_by: bool=True,
         callback: JobCallback=default_callback,
@@ -2619,6 +2623,7 @@ class OTPmeObject(OTPmeBaseObject):
         # Call base class write method.
         super(OTPmeObject, self)._write(update_last_modified=False,
                                         update_last_modified_by=False,
+                                        no_transaction=no_transaction,
                                         callback=callback,
                                         **kwargs)
 
@@ -2644,6 +2649,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Handle modified flags.
         if self._modified:
+            # Reset modified.
+            self._modified = False
             # With an activate transaction we must keep the modified state
             # because the transaction does the final write.
             if transaction:
@@ -2652,8 +2659,6 @@ class OTPmeObject(OTPmeBaseObject):
             else:
                 # Remove object from cache (used on cache.flush()).
                 cache.remove_modified_object(self.oid)
-                # Reset modified.
-                self._modified = False
                 # Reset write status.
                 self._transaction_written = False
         return callback.ok()
@@ -4985,8 +4990,9 @@ class OTPmeObject(OTPmeBaseObject):
                 else:
                     self.ldif[a].insert(position, v)
                 # Update index.
-                ldif_attr = "ldif:%s" % a
-                self.add_index(ldif_attr, v)
+                if a != "modifyTimestamp":
+                    ldif_attr = "ldif:%s" % a
+                    self.add_index(ldif_attr, v)
 
         self.add_ldif_attributes(ldif)
 
@@ -5011,15 +5017,15 @@ class OTPmeObject(OTPmeBaseObject):
             except:
                 pass
             # Update index.
-            ldif_attr = "ldif:%s" % a
-            self.del_index(ldif_attr, v)
+            now = time.time_ns()
+            if a == "modifyTimestamp":
+                self.ldif_journal.append([now, "del", [[a]]])
+            else:
+                self.ldif_journal.append([now, "del", [[a, v]]])
             if not attr_values:
                 self.ldif.pop(a)
 
         self.del_ldif_attributes(ldif)
-
-        now = time.time_ns()
-        self.ldif_journal.append([now, "del", ldif])
 
         ldif_cache.invalidate()
         ldap_search_cache.invalidate()

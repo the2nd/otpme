@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import sys
 import time
+import setproctitle
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -16,6 +18,7 @@ from otpme.lib import backend
 from otpme.lib import locking
 from otpme.lib import nsscache
 from otpme.lib import sign_key_cache
+from otpme.lib import multiprocessing
 from otpme.lib.sync_cache import SyncCache
 from otpme.lib.protocols import status_codes
 from otpme.lib.progress import ProgressCounter
@@ -96,12 +99,14 @@ class OTPmeSyncP1(OTPmeClient1):
         self.logger = config.logger
         # Get host type we run on.
         self.host_type = config.host_data['type']
+        # Mass add childs.
+        self.mass_add_procs = {}
         # Sync progress.
         self.sync_progress = {}
-        self.failed_objects = []
-        self.synced_objects = []
-        self.removed_objects = []
-        self.blacklisted_users = []
+        self.failed_objects = multiprocessing.get_list()
+        self.synced_objects = multiprocessing.get_list()
+        self.removed_objects = multiprocessing.get_list()
+        self.blacklisted_users = multiprocessing.get_list()
         self.last_sync_status_update = 0.0
         super(OTPmeSyncP1, self).__init__(self.daemon, **kwargs)
 
@@ -275,6 +280,7 @@ class OTPmeSyncP1(OTPmeClient1):
                 msg = "Got not requested object type from peer: %s" % x_type
                 self.logger.warning(msg)
                 continue
+            updates = {}
             for x_uuid in remote_last_used[x_type]:
                 try:
                     timestamp = remote_last_used[x_type][x_uuid]
@@ -314,8 +320,10 @@ class OTPmeSyncP1(OTPmeClient1):
                             % (x_site, x_uuid))
                     self.logger.warning(msg)
                     continue
-                # Finally set last used time.
-                backend.set_last_used(x_uuid, timestamp)
+                updates[x_uuid] = timestamp
+            # Finally set last used times.
+            if updates:
+                backend.set_last_used_times(x_type, updates)
         return True
 
     def sync_objects(self, realm, site, resync=False, max_tries=5,
@@ -857,11 +865,35 @@ class OTPmeSyncP1(OTPmeClient1):
             add_list[object_type].append(object_id)
             object_count += 1
 
+        def log_progress(x_oid, child, object_counter, object_count):
+            if config.debug_level() > 2:
+                if child.exitcode == 0:
+                    msg = ("Added object (%s/%s): %s"
+                            % (object_counter, object_count, x_oid))
+                else:
+                    msg = ("Updated object (%s/%s): %s"
+                            % (object_counter, object_count, x_oid))
+                self.logger.debug(msg)
+            else:
+                print_processed_msg = False
+                x_count = object_counter / 10
+                if not x_count % 1:
+                    print_processed_msg = True
+                if object_counter == object_count:
+                    print_processed_msg = True
+                if print_processed_msg:
+                    msg = "Processed %s/%s objects..." % (object_counter, object_count)
+                    self.logger.info(msg)
+
         # Merge all updates.
         object_counter = 0
+        prev_object_type = None
         update_realm_ca_data = False
-        site_oid = oid.get(object_type="site", realm=realm, name=site)
+        #procs = int(os.cpu_count() / 2)
+        procs = os.cpu_count()
         for object_type in add_order:
+            if prev_object_type is None:
+                prev_object_type = object_type
             # Get object list.
             try:
                 object_list = sorted(add_list[object_type])
@@ -889,8 +921,6 @@ class OTPmeSyncP1(OTPmeClient1):
             x_sort = lambda x: x_add_order[x]['path_len']
             x_add_order_sorted = sorted(x_add_order, key=x_sort)
             for object_id in x_add_order_sorted:
-                # Count.
-                object_counter += 1
                 # Increase progress.
                 self.update_sync_progress(realm=realm,
                                         site=site,
@@ -901,268 +931,316 @@ class OTPmeSyncP1(OTPmeClient1):
                 if not object_config:
                     continue
 
-                # Make sure parent object exists on our site.
-                if object_id.object_type in config.tree_object_types:
-                    try:
-                        parent_object_uuid = object_config.pop('SYNC_PARENT_OBJECT_UUID')
-                    except Exception as e:
-                        msg = "Failed to get parent object UUID: %s: %s" % (object_id, e)
-                        self.logger.critical(msg)
-                        continue
-                    parent_object = backend.get_object(uuid=parent_object_uuid)
-                    if not parent_object:
-                        msg = ("Unable to sync object with missing parent object: "
-                                "%s: %s" % (object_id, parent_object_uuid))
-                        self.logger.warning(msg)
-                        continue
-
-                # Load instance.
-                try:
-                    new_object = backend.get_instance_from_oid(object_id,
-                                                            object_config)
-                except Exception as e:
-                    self.failed_objects.append(object_id)
-                    msg = "Failed to load new object: %s: %s" % (object_id, e)
-                    self.logger.critical(msg)
-                    continue
-
-                if object_type == "user":
-                    user_site = object_id.site
-                    if user_site != own_site:
-                        # Prevent sync of users that exist on our site.
-                        user_name = object_id.name
-                        local_oid = oid.get(object_type="user",
-                                            realm=own_realm,
-                                            site=own_site,
-                                            name=user_name)
-                        if not new_object.template_object:
-                            if backend.object_exists(local_oid):
-                                self.blacklisted_users.append(user_name)
-                                msg = ("User already exists on our site: %s"
-                                        % object_id)
-                                self.logger.warning(msg)
-                                continue
-                        # Prevent sync of user with duplicate uidNumber.
-                        found_duplicate = False
-                        user_uidnumber = new_object.get_attribute("uidNumber")
-                        for x_uidnumber in user_uidnumber:
-                            result = backend.search(object_type="user",
-                                                    attribute="ldif:uidNumber",
-                                                    value=x_uidnumber,
-                                                    return_type="oid")
-                            if not result:
-                                continue
-                            x_oid = result[0]
-                            if x_oid == new_object.oid:
-                                continue
-                            msg = ("Cannot sync user with duplicate uidNumber: %s: %s <> %s"
-                                    % (x_uidnumber, new_object, x_oid))
-                            found_duplicate = True
-                            break
-                        if found_duplicate:
-                            self.logger.warning(msg)
+                while True:
+                    for x_oid in list(self.mass_add_procs):
+                        child = self.mass_add_procs[x_oid]
+                        if child.is_alive():
                             continue
-
-                if object_type == "group":
-                    group_site = object_id.site
-                    if group_site != own_site:
-                        # Prevent sync of groups that exist on our site.
-                        group_name = object_id.name
-                        local_oid = oid.get(object_type="group",
-                                            realm=own_realm,
-                                            site=own_site,
-                                            name=group_name)
-                        if not new_object.template_object:
-                            if backend.object_exists(local_oid):
-                                msg = ("Group already exists on our site: %s"
-                                        % object_id)
-                                self.logger.warning(msg)
-                                continue
-                        # Prevent sync of group with duplicate gidNumber.
-                        found_duplicate = False
-                        group_gidnumber = new_object.get_attribute("gidNumber")
-                        for x_gidnumber in group_gidnumber:
-                            result = backend.search(object_type="group",
-                                                    attribute="ldif:gidNumber",
-                                                    value=x_gidnumber,
-                                                    return_type="oid")
-                            if not result:
-                                continue
-                            x_oid = result[0]
-                            if x_oid == new_object.oid:
-                                continue
-                            msg = ("Cannot sync group with duplicate gidNumber: %s: %s <> %s"
-                                    % (x_gidnumber, new_object, x_oid))
-                            found_duplicate = True
-                            break
-                        if found_duplicate:
+                        child.join()
+                        self.mass_add_procs.pop(x_oid)
+                        if child.exitcode == 0 or child.exitcode == 100:
+                            object_counter += 1
+                            log_progress(x_oid, child, object_counter, object_count)
+                        else:
+                            msg = "Failed to process object: %s" % x_oid
                             self.logger.warning(msg)
+                    time.sleep(0.01)
+                    if prev_object_type != object_type:
+                        if len(self.mass_add_procs) > 0:
                             continue
+                        prev_object_type = object_type
+                    if len(self.mass_add_procs) < procs:
+                        break
 
-                if object_type == "token":
-                    # Skip blacklisted user tokens.
-                    user_name = object_id.rel_path.split("/")[0]
-                    if user_name in self.blacklisted_users:
-                        continue
-                    # Make sure we update LDIF/nsscache.
-                    x_groups = new_object.get_groups(return_type="full_oid")
-                    for full_oid in x_groups:
-                        full_oid = oid.get(full_oid)
-                        nsscache.update_object(full_oid, "update")
-                    x_roles = new_object.get_roles(return_type="full_oid", recursive=True)
-                    for full_oid in x_roles:
-                        full_oid = oid.get(full_oid)
-                        nsscache.update_object(full_oid, "update")
+                proc_child = multiprocessing.start_process(name="process_object",
+                                        target=self.process_object,
+                                        target_args=(object_id,
+                                                    object_config,
+                                                    realm,
+                                                    site,
+                                                    own_realm,
+                                                    own_site,
+                                                    sync_older_objects,
+                                                    local_sync_list,),
+                                        start=False,
+                                        daemon=True)
+                proc_child.start()
+                self.mass_add_procs[object_id] = proc_child
 
-                # Make sure the object is valid.
-                try:
-                    validate_received_object(site_oid, new_object)
-                except Exception as e:
-                    self.failed_objects.append(object_id)
-                    msg = "Received invalid object: %s" % e
-                    self.logger.critical(msg)
-                    continue
-
-                # We must prevent syncing of duplicate UUIDs between sites.
-                # Within a normal sync the UUID may already exist at the same
-                # site (e.g. a object rename) but should never exist on a
-                # different site because this may be used to do some privilege
-                # escalation (e.g. add a token with the same UUID as the realm
-                # admin token).
-                x_object = backend.get_object(uuid=new_object.uuid)
-                # Check if the object is from an other site.
-                if x_object:
-                    if x_object.site != new_object.site:
-                        msg = ("Ignoring duplicate UUID: %s: %s <> %s"
-                                % (new_object.uuid, x_object.oid, object_id))
-                        self.logger.warning(msg)
-                        continue
-
-                # Load current object.
-                current_object = backend.get_object(uuid=new_object.uuid)
-
-                # Skip new object that is older than the current one.
-                if current_object is not None:
-                    if config.host_data['type'] == "node":
-                        # Allow older object if its the own node. This is required
-                        # because clusterd en-/disables the own node object.
-                        if not sync_older_objects:
-                            if realm == own_realm and site == own_site:
-                                if current_object.uuid != config.uuid:
-                                    if current_object.last_modified > new_object.last_modified:
-                                        msg = "Ignoring older object from peer: %s" % object_id
-                                        self.logger.warning(msg)
-                                        continue
-
-                # Removed old object with different OID (e.g. object was
-                # moved).
-                if current_object is not None:
-                    if new_object.oid.full_oid != current_object.oid.full_oid:
-                        try:
-                            local_sync_list.pop(current_object.oid.full_oid)
-                        except KeyError:
-                            pass
-                        backend.delete_object(current_object.oid)
-
-                # Load current object UUID.
-                try:
-                    current_uuid = backend.get_uuid(object_id)
-                except:
-                    current_uuid = None
-                # Removed old object with different UUID (e.g. object was
-                # re-created).
-                if current_uuid is not None:
-                    if new_object.uuid != current_uuid:
-                        try:
-                            local_sync_list.pop(object_id.full_oid)
-                        except KeyError:
-                            pass
-                        try:
-                            backend.delete_object(object_id)
-                        except UnknownObject:
-                            pass
-
-                if current_object is None:
-                    msg = ("Adding object (%s/%s): %s"
-                            % (object_counter, object_count, object_id))
-                else:
-                    msg = ("Updating object (%s/%s): %s"
-                            % (object_counter, object_count, object_id))
-                if config.debug_level() > 2:
-                    self.logger.debug(msg)
-                else:
-                    print_processed_msg = False
-                    x_count = object_counter / 10
-                    if not x_count % 1:
-                        print_processed_msg = True
-                    if object_counter == object_count:
-                        print_processed_msg = True
-                    if print_processed_msg:
-                        msg = "Processed %s/%s objects..." % (object_counter, object_count)
-                        self.logger.info(msg)
-
-                # Write object to backend.
-                cluster = False
-                if self.host_type == "node":
-                    if realm == own_realm:
-                        if site == own_site:
-                            if config.master_node:
-                                cluster = True
-                try:
-                    backend.write_config(object_id,
-                                    instance=new_object,
-                                    full_data_update=True,
-                                    full_index_update=True,
-                                    full_ldif_update=True,
-                                    full_acl_update=True,
-                                    cluster=cluster)
-                    self.synced_objects.append(object_id)
-                except Exception as e:
-                    self.failed_objects.append(object_id)
-                    msg = ("Error writing object %s to backend: %s"
-                            % (object_id, e))
-                    self.logger.critical(msg)
-                    config.raise_exception()
-
-                # Update signers cache.
-                if new_object.type == "user":
-                    if new_object.public_key:
-                        try:
-                            public_key = sign_key_cache.get_cache(object_id)
-                        except Exception as e:
-                            msg = "Unable to read signer cache: %s: %s" % (object_id, e)
-                            self.logger.critical(msg)
-                            public_key = None
-                        if new_object.public_key != public_key:
-                            try:
-                                sign_key_cache.add_cache(object_id, new_object.public_key)
-                            except Exception as e:
-                                msg = "Unable to add signer cache: %s: %s" % (object_id, e)
-                                self.logger.critical(msg)
-                    else:
-                        try:
-                            public_key = sign_key_cache.get_cache(object_id)
-                        except Exception as e:
-                            msg = "Unable to read signer cache: %s: %s" % (object_id, e)
-                            self.logger.critical(msg)
-                            public_key = None
-                        if public_key:
-                            try:
-                                sign_key_cache.del_cache(object_id)
-                            except Exception as e:
-                                msg = "Unable to add signer cache: %s: %s" % (object_id, e)
-                                self.logger.critical(msg)
-
-                if new_object.type == "ca":
+                if object_id.object_type == "ca":
                     update_realm_ca_data = True
 
-            # Update realm CA data if the master node  received a changed CA.
-            if update_realm_ca_data:
-                if config.realm_master_node:
-                    msg = "Updating realm CA data..."
-                    self.logger.info(msg)
-                    realm = backend.get_object(uuid=config.realm_uuid)
-                    realm.update_ca_data(verify_acls=False)
+
+        while True:
+            for x_oid in list(self.mass_add_procs):
+                child = self.mass_add_procs[x_oid]
+                if child.is_alive():
+                    continue
+                child.join()
+                self.mass_add_procs.pop(x_oid)
+                if child.exitcode == 0 or child.exitcode == 100:
+                    object_counter += 1
+                    log_progress(x_oid, child, object_counter, object_count)
+                else:
+                    msg = "Failed to process object: %s" % x_oid
+                    self.logger.warning(msg)
+            time.sleep(0.01)
+            if len(self.mass_add_procs) > 0:
+                continue
+            break
+
+        # Update realm CA data if the master node  received a changed CA.
+        if update_realm_ca_data:
+            if config.realm_master_node:
+                msg = "Updating realm CA data..."
+                self.logger.info(msg)
+                realm = backend.get_object(uuid=config.realm_uuid)
+                realm.update_ca_data(verify_acls=False)
+
+    def process_object(self, object_id, object_config, realm, site,
+        own_realm, own_site, sync_older_objects, local_sync_list):
+        proctitle = setproctitle.getproctitle()
+        proctitle = ("%s: Sync object %s:" % (proctitle, object_id))
+        setproctitle.setproctitle(proctitle)
+
+        multiprocessing.atfork()
+        def exit_child(exit_code):
+            multiprocessing.cleanup()
+            sys.exit(exit_code)
+        # Make sure parent object exists on our site.
+        if object_id.object_type in config.tree_object_types:
+            try:
+                parent_object_uuid = object_config.pop('SYNC_PARENT_OBJECT_UUID')
+            except Exception as e:
+                msg = "Failed to get parent object UUID: %s: %s" % (object_id, e)
+                self.logger.critical(msg)
+                exit_child(1)
+            parent_object = backend.get_object(uuid=parent_object_uuid)
+            if not parent_object:
+                msg = ("Unable to sync object with missing parent object: "
+                        "%s: %s" % (object_id, parent_object_uuid))
+                self.logger.warning(msg)
+                exit_child(1)
+
+        # Load instance.
+        try:
+            new_object = backend.get_instance_from_oid(object_id,
+                                                    object_config)
+        except Exception as e:
+            self.failed_objects.append(object_id)
+            msg = "Failed to load new object: %s: %s" % (object_id, e)
+            self.logger.critical(msg)
+            exit_child(1)
+
+        if object_id.object_type == "user":
+            user_site = object_id.site
+            if user_site != own_site:
+                # Prevent sync of users that exist on our site.
+                user_name = object_id.name
+                local_oid = oid.get(object_type="user",
+                                    realm=own_realm,
+                                    site=own_site,
+                                    name=user_name)
+                if not new_object.template_object:
+                    if backend.object_exists(local_oid):
+                        self.blacklisted_users.append(user_name)
+                        msg = ("User already exists on our site: %s"
+                                % object_id)
+                        self.logger.warning(msg)
+                        exit_child(1)
+                # Prevent sync of user with duplicate uidNumber.
+                found_duplicate = False
+                user_uidnumber = new_object.get_attribute("uidNumber")
+                for x_uidnumber in user_uidnumber:
+                    result = backend.search(object_type="user",
+                                            attribute="ldif:uidNumber",
+                                            value=x_uidnumber,
+                                            return_type="oid")
+                    if not result:
+                        continue
+                    x_oid = result[0]
+                    if x_oid == new_object.oid:
+                        continue
+                    msg = ("Cannot sync user with duplicate uidNumber: %s: %s <> %s"
+                            % (x_uidnumber, new_object, x_oid))
+                    found_duplicate = True
+                    break
+                if found_duplicate:
+                    self.logger.warning(msg)
+                    exit_child(1)
+
+        if object_id.object_type == "group":
+            group_site = object_id.site
+            if group_site != own_site:
+                # Prevent sync of groups that exist on our site.
+                group_name = object_id.name
+                local_oid = oid.get(object_type="group",
+                                    realm=own_realm,
+                                    site=own_site,
+                                    name=group_name)
+                if not new_object.template_object:
+                    if backend.object_exists(local_oid):
+                        msg = ("Group already exists on our site: %s"
+                                % object_id)
+                        self.logger.warning(msg)
+                        exit_child(1)
+                # Prevent sync of group with duplicate gidNumber.
+                found_duplicate = False
+                group_gidnumber = new_object.get_attribute("gidNumber")
+                for x_gidnumber in group_gidnumber:
+                    result = backend.search(object_type="group",
+                                            attribute="ldif:gidNumber",
+                                            value=x_gidnumber,
+                                            return_type="oid")
+                    if not result:
+                        continue
+                    x_oid = result[0]
+                    if x_oid == new_object.oid:
+                        continue
+                    msg = ("Cannot sync group with duplicate gidNumber: %s: %s <> %s"
+                            % (x_gidnumber, new_object, x_oid))
+                    found_duplicate = True
+                    break
+                if found_duplicate:
+                    self.logger.warning(msg)
+                    exit_child(1)
+
+        if object_id.object_type == "token":
+            # Skip blacklisted user tokens.
+            user_name = object_id.rel_path.split("/")[0]
+            if user_name in self.blacklisted_users:
+                exit_child(200)
+            # Make sure we update LDIF/nsscache.
+            x_groups = new_object.get_groups(return_type="full_oid")
+            for full_oid in x_groups:
+                full_oid = oid.get(full_oid)
+                nsscache.update_object(full_oid, "update")
+            x_roles = new_object.get_roles(return_type="full_oid", recursive=True)
+            for full_oid in x_roles:
+                full_oid = oid.get(full_oid)
+                nsscache.update_object(full_oid, "update")
+
+        # Make sure the object is valid.
+        site_oid = oid.get(object_type="site", realm=realm, name=site)
+        try:
+            validate_received_object(site_oid, new_object)
+        except Exception as e:
+            self.failed_objects.append(object_id)
+            msg = "Received invalid object: %s" % e
+            self.logger.critical(msg)
+            exit_child(1)
+
+        # We must prevent syncing of duplicate UUIDs between sites.
+        # Within a normal sync the UUID may already exist at the same
+        # site (e.g. a object rename) but should never exist on a
+        # different site because this may be used to do some privilege
+        # escalation (e.g. add a token with the same UUID as the realm
+        # admin token).
+        current_object = backend.get_object(uuid=new_object.uuid)
+        # Check if the object is from an other site.
+        if current_object:
+            if current_object.site != new_object.site:
+                msg = ("Ignoring duplicate UUID: %s: %s <> %s"
+                        % (new_object.uuid, current_object.oid, object_id))
+                self.logger.warning(msg)
+                exit_child(1)
+
+        # Skip new object that is older than the current one.
+        if current_object is not None:
+            if config.host_data['type'] == "node":
+                # Allow older object if its the own node. This is required
+                # because clusterd en-/disables the own node object.
+                if not sync_older_objects:
+                    if realm == own_realm and site == own_site:
+                        if current_object.uuid != config.uuid:
+                            if current_object.last_modified > new_object.last_modified:
+                                msg = "Ignoring older object from peer: %s" % object_id
+                                self.logger.warning(msg)
+                                exit_child(1)
+
+        # Removed old object with different OID (e.g. object was
+        # moved).
+        if current_object is not None:
+            if new_object.oid.full_oid != current_object.oid.full_oid:
+                try:
+                    local_sync_list.pop(current_object.oid.full_oid)
+                except KeyError:
+                    pass
+                backend.delete_object(current_object.oid)
+
+        # Load current object UUID.
+        try:
+            current_uuid = backend.get_uuid(object_id)
+        except:
+            current_uuid = None
+        # Removed old object with different UUID (e.g. object was
+        # re-created).
+        if current_uuid is not None:
+            if new_object.uuid != current_uuid:
+                try:
+                    local_sync_list.pop(object_id.full_oid)
+                except KeyError:
+                    pass
+                try:
+                    backend.delete_object(object_id)
+                except UnknownObject:
+                    pass
+
+        # Write object to backend.
+        cluster = False
+        if self.host_type == "node":
+            if realm == own_realm:
+                if site == own_site:
+                    if config.master_node:
+                        cluster = True
+        try:
+            backend.write_config(object_id,
+                            instance=new_object,
+                            full_data_update=True,
+                            full_index_update=True,
+                            full_ldif_update=True,
+                            full_acl_update=True,
+                            cluster=cluster)
+            self.synced_objects.append(object_id.read_oid)
+        except Exception as e:
+            self.failed_objects.append(object_id)
+            msg = ("Error writing object %s to backend: %s"
+                    % (object_id, e))
+            self.logger.critical(msg)
+            config.raise_exception()
+
+        # Update signers cache.
+        if new_object.type == "user":
+            if new_object.public_key:
+                try:
+                    public_key = sign_key_cache.get_cache(object_id)
+                except Exception as e:
+                    msg = "Unable to read signer cache: %s: %s" % (object_id, e)
+                    self.logger.critical(msg)
+                    public_key = None
+                if new_object.public_key != public_key:
+                    try:
+                        sign_key_cache.add_cache(object_id, new_object.public_key)
+                    except Exception as e:
+                        msg = "Unable to add signer cache: %s: %s" % (object_id, e)
+                        self.logger.critical(msg)
+            else:
+                try:
+                    public_key = sign_key_cache.get_cache(object_id)
+                except Exception as e:
+                    msg = "Unable to read signer cache: %s: %s" % (object_id, e)
+                    self.logger.critical(msg)
+                    public_key = None
+                if public_key:
+                    try:
+                        sign_key_cache.del_cache(object_id)
+                    except Exception as e:
+                        msg = "Unable to add signer cache: %s: %s" % (object_id, e)
+                        self.logger.critical(msg)
+        if current_object is None:
+            exit_child(0)
+        else:
+            exit_child(100)
 
 
     def remove_deleted_objects(self, realm, site, local_sync_list,
@@ -1264,6 +1342,7 @@ class OTPmeSyncP1(OTPmeClient1):
                 except Exception as e:
                     msg = "Failed to delete object: %s: %s" % (object_id, e)
                     self.logger.critical(msg)
+                    self.removed_objects.append(object_id.read_oid)
 
     def get_token_data(self, data_type, local_objects,
         token_oid=None, session_uuid=None, offline=False):
@@ -1469,14 +1548,14 @@ class OTPmeSyncP1(OTPmeClient1):
                     if offline_token.write_config(object_id=x_oid,
                                             object_config=x_config,
                                             encrypt=False):
-                        self.synced_objects.append(x_oid)
+                        self.synced_objects.append(x_oid.read_oid)
 
                 # Remove outdated objects.
                 for x_oid in remote_objects['outdated_objects']:
                     if offline_token.delete_object(x_oid):
                         msg = ("Removed %s: %s" % (data_type, x_oid))
                         self.logger.debug(msg)
-                        self.removed_objects.append(x_oid)
+                        self.removed_objects.append(x_oid.read_oid)
 
                 new_object_count = len(self.synced_objects)
                 self.logger.debug("Added %s new %ss: %s"
@@ -1542,14 +1621,14 @@ class OTPmeSyncP1(OTPmeClient1):
                                     full_index_update=True,
                                     full_data_update=True,
                                     full_acl_update=True):
-                self.synced_objects.append(x_oid)
+                self.synced_objects.append(x_oid.read_oid)
 
         # Remove outdated objects.
         for x_oid in remote_objects['outdated_objects']:
             if backend.delete_object(x_oid):
                 msg = ("Removed %s: %s" % (data_type, x_oid))
                 self.logger.debug(msg)
-                self.removed_objects.append(x_oid)
+                self.removed_objects.append(x_oid.read_oid)
             continue
 
         new_object_count = len(self.synced_objects)

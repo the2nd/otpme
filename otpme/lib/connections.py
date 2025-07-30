@@ -354,6 +354,11 @@ def get(daemon, **kwargs):
     # Set username.
     conn_kwargs['username'] = username
 
+    if config.use_api:
+        # Get daemon connection.
+        daemon_conn = get_connection(**conn_kwargs)
+        return daemon_conn
+
     if daemon == "hostd":
         conn_kwargs['use_ssl'] = False
         conn_kwargs['auto_auth'] = False

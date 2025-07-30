@@ -151,6 +151,15 @@ cmd_help = {
                                 },
                 },
 
+    'mass_object_add'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-tool mass_object_add [--verify-only] [--procs <16>] {csv_file}',
+                    'cmd'   :   '--verify-only :verify_csv=True: --procs :procs: <csv_file>',
+                    '_help' :   {
+                                    'cmd'                   : 'Add objects from csv file.',
+                                    '--verify-only'         : 'Only verify csv file.',
+                                    '--procs <int>'         : 'Start n jobs in parallel.',
+                                },
+                },
 
     'sync'    : {
                     '_cmd_usage_help' : 'Usage: otpme-tool sync [sites|objects|token_data|ssh_authorized_keys|nsscache]',

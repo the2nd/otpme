@@ -6,7 +6,6 @@ from datetime import datetime
 from datetime import timedelta
 from typing import List
 from typing import Union
-from strongtyping.strong_typing import match_class_typing
 
 try:
     import simdjson as json
@@ -35,6 +34,7 @@ from otpme.lib import otpme_pass
 from otpme.lib import mschap_util
 from otpme.lib.locking import object_lock
 from otpme.lib.job.callback import JobCallback
+from otpme.lib.typing import match_class_typing
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.object_config import ObjectConfig
 from otpme.lib.classes.otpme_object import OTPmeLockObject
