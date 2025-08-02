@@ -1160,7 +1160,7 @@ def register_backend():
                             uniq_name=True,
                             add_after=["group"],
                             sync_before=["token"],
-                            object_cache=1024,
+                            object_cache=10240,
                             cache_region="tree_object",
                             backup_attributes=['realm', 'name'])
     # Register object to backend.
@@ -3044,7 +3044,6 @@ class User(OTPmeObject):
         client: Union[OTPmeObject,None]=None,
         host: Union[OTPmeObject,None]=None,
         access_group: Union[OTPmeObject,None]=None,
-        check_parent_groups: bool=False,
         resolv_token_links: bool=True,
         check_sf_tokens: bool=False,
         token_type: Union[str,None]=None,
@@ -3059,9 +3058,7 @@ class User(OTPmeObject):
         **kwargs,
         ):
         """
-        Return a list with tokens of this user, selected by access_group (and
-        its parents if check_parent_groups=True) or all. If access_group (with
-        or without check_parent_groups) is set only enabled groups are processed.
+        Return a list with tokens of this user, selected by access_group or all.
         """
         # List to hold tokens.
         tokens = []

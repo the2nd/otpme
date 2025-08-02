@@ -1134,7 +1134,12 @@ class ClusterDaemon(OTPmeDaemon):
             journal_id = os.path.basename(x_dir)
             cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,
                                                         journal_dir=journal_dir)
+            try:
+                cluster_journal_entry.lock(write=False)
+            except ObjectDeleted:
+                continue
             journal_entries.append(cluster_journal_entry)
+            cluster_journal_entry.release()
         return journal_entries
 
     def get_cluster_out_journal_last_used(self):
@@ -1146,7 +1151,14 @@ class ClusterDaemon(OTPmeDaemon):
             journal_id = os.path.basename(x_dir)
             cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,
                                                     journal_dir=journal_dir)
+            if not cluster_journal_entry.committed:
+                continue
+            try:
+                cluster_journal_entry.lock(write=False)
+            except ObjectDeleted:
+                continue
             journal_entries.append(cluster_journal_entry)
+            cluster_journal_entry.release()
         return journal_entries
 
     def get_cluster_out_journal(self):
@@ -1159,17 +1171,26 @@ class ClusterDaemon(OTPmeDaemon):
             journal_id = os.path.basename(x_dir)
             cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,
                                                         journal_dir=journal_dir)
+            if not cluster_journal_entry.committed:
+                continue
             try:
-                object_type = cluster_journal_entry.object_type
+                cluster_journal_entry.lock(write=False)
             except ObjectDeleted:
                 continue
-            if not object_type:
-                continue
             try:
-                object_list = journal_entries[object_type]
-            except KeyError:
-                object_list = []
-                journal_entries[object_type] = object_list
+                try:
+                    object_type = cluster_journal_entry.object_type
+                except ObjectDeleted:
+                    continue
+                if not object_type:
+                    continue
+                try:
+                    object_list = journal_entries[object_type]
+                except KeyError:
+                    object_list = []
+                    journal_entries[object_type] = object_list
+            finally:
+                cluster_journal_entry.release()
             object_list.append(cluster_journal_entry)
         for object_type in config.object_add_order:
             try:
@@ -1177,7 +1198,6 @@ class ClusterDaemon(OTPmeDaemon):
             except KeyError:
                 object_list = []
             journal_entries_sorted += object_list
-        journal_entries_sorted += self.get_cluster_out_journal_last_used()
         journal_entries_sorted += self.get_cluster_out_journal_trash()
         return journal_entries_sorted
 
@@ -1186,7 +1206,9 @@ class ClusterDaemon(OTPmeDaemon):
         return journal_files
 
     def clean_cluster_out_journal(self):
-        for cluster_journal_entry in self.get_cluster_out_journal():
+        journal_entries = self.get_cluster_out_journal()
+        journal_entries += self.get_cluster_out_journal_last_used()
+        for cluster_journal_entry in journal_entries:
             events = cluster_journal_entry.get_object_events()
             for object_event in events:
                 object_event.set()
@@ -1340,6 +1362,11 @@ class ClusterDaemon(OTPmeDaemon):
                 if node_name == self.host_name:
                     node_vote = calc_node_vote()
                     node_votes[self.host_name] = node_vote
+                    if config.debug_level() > 2:
+                        if not quiet:
+                            msg = ("Got cluster vote from node: %s: %s"
+                                    % (node_name, node_vote))
+                            self.logger.debug(msg)
                     continue
                 try:
                     clusterd_conn = self.get_clusterd_connection(node_name)
@@ -2168,6 +2195,7 @@ class ClusterDaemon(OTPmeDaemon):
         if len(multiprocessing.member_nodes) > 0:
             return
         all_entries = self.get_cluster_out_journal()
+        all_entries += self.get_cluster_out_journal_last_used()
         for cluster_journal_entry in all_entries:
             try:
                 if not cluster_journal_entry.committed:
@@ -2620,26 +2648,29 @@ class ClusterDaemon(OTPmeDaemon):
             msg = "Node joined the cluster: %s" % node_name
             self.logger.info(msg)
 
-        try:
-            entries_to_process = self.get_journal_entries_to_process(node_name)
-        except ProcessingFailed:
-            return True
-        if entries_to_process:
-            return True
-
-    def get_journal_entries_to_process(self, node_name):
+    def get_journal_entries_to_process(self, node_name, last_used=False):
         entries_to_process = []
-        all_entries = self.get_cluster_out_journal()
+        if last_used:
+            all_entries = self.get_cluster_out_journal_last_used()
+        else:
+            all_entries = self.get_cluster_out_journal()
         for cluster_journal_entry in all_entries:
             try:
                 if not cluster_journal_entry.committed:
                     break
-                if node_name in cluster_journal_entry.get_nodes():
-                    # Check if object was written to member nodes.
-                    if self.check_member_nodes(cluster_journal_entry):
-                        # Check if object was written to all online nodes.
-                        self.check_online_nodes(cluster_journal_entry)
+                try:
+                    cluster_journal_entry.lock(write=False)
+                except ObjectDeleted:
                     continue
+                try:
+                    if node_name in cluster_journal_entry.get_nodes():
+                        # Check if object was written to member nodes.
+                        if self.check_member_nodes(cluster_journal_entry):
+                            # Check if object was written to all online nodes.
+                            self.check_online_nodes(cluster_journal_entry)
+                        continue
+                finally:
+                    cluster_journal_entry.release()
                 entries_to_process.append(cluster_journal_entry)
             except ObjectDeleted:
                 pass
@@ -2647,10 +2678,30 @@ class ClusterDaemon(OTPmeDaemon):
 
     def process_cluster_journal(self, node_name):
         """ Process cluster journal. """
-        entries_to_process = self.get_journal_entries_to_process(node_name)
-        if entries_to_process:
-            msg = "Handling cluster out journal: %s" % node_name
-            self.logger.debug(msg)
+        written_entries = []
+        while True:
+            entries_to_process = self.get_journal_entries_to_process(node_name)
+            if not entries_to_process:
+                break
+            written_entries = self.process_cluster_out_journal(node_name, entries_to_process)
+
+        self.process_last_used(node_name)
+
+        if config.master_node:
+            if not config.master_failover:
+                sync_time = time.time()
+                config.touch_node_sync_file(sync_time)
+                # Mark node as in sync (tree objects).
+                try:
+                    self.set_node_sync(node_name, sync_time-300)
+                except:
+                    raise ProcessingFailed()
+        return written_entries
+
+    def process_cluster_out_journal(self, node_name, entries_to_process):
+        """ Process cluster journal. """
+        msg = "Handling cluster out journal: %s" % node_name
+        self.logger.debug(msg)
         written_entries = []
         unsync_status_set = False
         for cluster_journal_entry in entries_to_process:
@@ -2692,22 +2743,25 @@ class ClusterDaemon(OTPmeDaemon):
                         continue
                     object_config = object_config.decrypt(config.master_key)
                     object_checksum = backend.get_checksum(object_id)
+                    object_last_used = backend.get_last_used(object_uuid)
                     acl_journal_committer, \
                     acl_journal = cluster_journal_entry.get_acl_journal(node_name)
                     index_journal_committer, \
                     index_journal = cluster_journal_entry.get_index_journal(node_name)
                     try:
                         write_status = node_conn.write(object_id.full_oid,
-                                                        object_config,
-                                                        acl_journal=acl_journal,
-                                                        index_journal=index_journal,
-                                                        use_acl_journal=True,
-                                                        use_index_journal=True,
-                                                        use_ldif_journal=False,
-                                                        full_acl_update=False,
-                                                        full_index_update=False,
-                                                        full_ldif_update=True,
-                                                        full_data_update=True)
+                                                    object_config,
+                                                    acl_journal=acl_journal,
+                                                    index_journal=index_journal,
+                                                    use_acl_journal=True,
+                                                    use_index_journal=True,
+                                                    use_ldif_journal=False,
+                                                    full_acl_update=False,
+                                                    full_index_update=False,
+                                                    full_ldif_update=True,
+                                                    full_data_update=True,
+                                                    object_uuid=object_uuid,
+                                                    last_used=object_last_used)
                     except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
                         #self.node_leave(node_name)
                         self.node_disconnect(node_name)
@@ -2911,52 +2965,6 @@ class ClusterDaemon(OTPmeDaemon):
                         cluster_journal_entry.add_node(node_name)
                     except ObjectDeleted:
                         pass
-                # Write last used timestamp to peer.
-                if action == "last_used_write":
-                    try:
-                        last_used = float(cluster_journal_entry.object_data)
-                    except TypeError:
-                        last_used = None
-                    # Remove outdated cluster journal entry.
-                    if not last_used:
-                        try:
-                            cluster_journal_entry.add_node(node_name)
-                        except ObjectDeleted:
-                            pass
-                        if self.check_member_nodes(cluster_journal_entry):
-                            self.check_online_nodes(cluster_journal_entry)
-                        continue
-                    object_id = cluster_journal_entry.object_id
-                    object_uuid = cluster_journal_entry.object_uuid
-                    try:
-                        last_used_write_status = node_conn.last_used_write(object_uuid,
-                                                                            object_id,
-                                                                            last_used)
-                    except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
-                        self.node_disconnect(node_name)
-                        msg = ("Failed to send last used timestamp: %s: %s: %s"
-                                % (node_name, object_id, e))
-                        self.logger.warning(msg)
-                        self.check_member_nodes(cluster_journal_entry)
-                        raise ProcessingFailed(msg)
-                    except Exception as e:
-                        #self.node_leave(node_name)
-                        self.node_disconnect(node_name)
-                        msg = ("Error sending last used timestamp: %s: %s: %s"
-                                % (node_name, object_id, e))
-                        self.logger.warning(msg)
-                        self.check_member_nodes(cluster_journal_entry)
-                        raise ProcessingFailed(msg)
-                    if last_used_write_status != "done":
-                        continue
-                    msg = ("Sent last used timestamp to node: %s: %s:"
-                            % (node_name, object_id))
-                    self.logger.debug(msg)
-                    try:
-                        cluster_journal_entry.add_node(node_name)
-                    except ObjectDeleted:
-                        pass
-
                 # Check if object was written to member nodes.
                 if self.check_member_nodes(cluster_journal_entry):
                     # Check if object was written to all online nodes.
@@ -2964,16 +2972,79 @@ class ClusterDaemon(OTPmeDaemon):
             except ObjectDeleted:
                 pass
 
-        if config.master_node:
-            if not config.master_failover:
-                sync_time = time.time()
-                config.touch_node_sync_file(sync_time)
-                # Mark node as in sync (tree objects).
-                try:
-                    self.set_node_sync(node_name, sync_time-300)
-                except:
-                    raise ProcessingFailed()
         return written_entries
+
+    def process_last_used(self, node_name):
+        """ Process cluster journal. """
+        last_used_times = {}
+        last_used_journal_entries = self.get_journal_entries_to_process(node_name, last_used=True)
+        for cluster_journal_entry in last_used_journal_entries:
+            node_conn = self.node_conn
+            if node_conn is None:
+                msg = "No node connection."
+                raise ProcessingFailed(msg)
+            try:
+                object_id = cluster_journal_entry.object_id
+                object_id = oid.get(object_id)
+                object_type = object_id.object_type
+                object_uuid = cluster_journal_entry.object_uuid
+                # We need to read action last because it will throw
+                # ObjectDeleted exception if the cluster entry was deleted.
+                action = cluster_journal_entry.action
+
+                if action != "last_used_write":
+                    msg = "Unknown last used command: %s" % action
+                    self.logger.warning(msg)
+                    try:
+                        cluster_journal_entry.add_node(node_name)
+                    except ObjectDeleted:
+                        pass
+                    if self.check_member_nodes(cluster_journal_entry):
+                        self.check_online_nodes(cluster_journal_entry)
+                    continue
+                last_used = float(cluster_journal_entry.object_data)
+                try:
+                    last_used_objects = last_used_times[object_type]
+                except KeyError:
+                    last_used_objects = {}
+                    last_used_times[object_type] = last_used_objects
+                last_used_objects[object_uuid] = last_used
+
+                try:
+                    cluster_journal_entry.add_node(node_name)
+                except ObjectDeleted:
+                    continue
+                # Check if object was written to member nodes.
+                if self.check_member_nodes(cluster_journal_entry):
+                    # Check if object was written to all online nodes.
+                    self.check_online_nodes(cluster_journal_entry)
+            except ObjectDeleted:
+                pass
+
+        for object_type in last_used_times:
+            last_used_objects= last_used_times[object_type]
+            try:
+                last_used_write_status = node_conn.last_used_write(object_type, last_used_objects)
+            except (ConnectionTimeout, ConnectionError, ConnectionQuit) as e:
+                self.node_disconnect(node_name)
+                msg = ("Failed to send last used times: %s: %s: %s"
+                        % (node_name, object_type, e))
+                self.logger.warning(msg)
+                self.check_member_nodes(cluster_journal_entry)
+                raise ProcessingFailed(msg)
+            except Exception as e:
+                #self.node_leave(node_name)
+                self.node_disconnect(node_name)
+                msg = ("Error sending last used times: %s: %s: %s"
+                        % (node_name, object_type, e))
+                self.logger.warning(msg)
+                self.check_member_nodes(cluster_journal_entry)
+                raise ProcessingFailed(msg)
+            if last_used_write_status != "done":
+                continue
+            msg = ("Sent last used times to node: %s: %s"
+                    % (node_name, object_type))
+            self.logger.debug(msg)
 
     def set_node_sync(self, node_name, sync_time):
         try:

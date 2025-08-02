@@ -163,6 +163,8 @@ def register_backend():
     config.register_index_attribute('client')
     config.register_index_attribute('session_id')
     config.register_index_attribute('session_type')
+    # Already registerd by accessgroup.
+    #config.register_index_attribute('child_session')
     config.register_index_attribute('creation_time')
     def oid_getter(session_file):
         session_name = ".".join(session_file.split(".")[:-1])
@@ -194,6 +196,43 @@ def register_backend():
                                 class_getter=class_getter,
                                 index_rebuild_func=index_rebuild,
                                 path_getter=path_getter)
+
+def calc_expire_time(creation_time, timeout):
+    creation_time = datetime.fromtimestamp(float(creation_time))
+    timeout = timedelta(seconds=float(timeout))
+    session_expire_timestring = creation_time + timeout
+    session_expire = time.mktime(session_expire_timestring.timetuple())
+    return session_expire
+
+def calc_unused_expire_time(expire_time, last_used, unused_timeout):
+    if last_used == 0:
+        return
+    session_expire = expire_time
+    # Calculate unused session expiration timestamp.
+    last_used = datetime.fromtimestamp(float(last_used))
+    unused_timeout = timedelta(seconds=float(unused_timeout))
+    unused_session_expire_timestring = last_used + unused_timeout
+    unused_session_expire = time.mktime(unused_session_expire_timestring.timetuple())
+    # Set unused expiry time to session expiry time if it would be after
+    # session expiry
+    if unused_session_expire > session_expire:
+        unused_session_expire = session_expire
+    return unused_session_expire
+
+def get_child_sessions(session_uuid, tree_level=0):
+    return_attributes = ['child_session']
+    result = backend.search(object_type="session",
+                            attribute="uuid",
+                            value=session_uuid,
+                            return_attributes=return_attributes)
+    child_sessions = {}
+    for child_uuid in result:
+        tree_level += 1
+        child_sessions[child_uuid] = str(tree_level)
+        x_childs = get_child_sessions(child_uuid, tree_level)
+        for x_uuid in x_childs:
+            child_sessions[x_uuid] = x_childs[x_uuid]
+    return child_sessions
 
 @match_class_typing
 class Session(OTPmeLockObject):
@@ -244,6 +283,7 @@ class Session(OTPmeLockObject):
         self.cache_expire = 300
         self._lock = None
 
+        self.index = {}
         # Set our object type.
         self.type = "session"
 
@@ -259,8 +299,6 @@ class Session(OTPmeLockObject):
             # Load object.
             self._load()
             self._load_object()
-            # Build search index.
-            self.build_index()
             return
 
         # Set session type.
@@ -333,9 +371,6 @@ class Session(OTPmeLockObject):
         # Set our OID.
         self.set_oid()
 
-        # Build search index.
-        self.build_index()
-
     @property
     def checksum(self):
         """ Get object checksum from backend. """
@@ -362,17 +397,6 @@ class Session(OTPmeLockObject):
     @property
     def cache_expire_time(self):
         return self.cache_expire
-
-    def build_index(self):
-        # Add index.
-        self.index = {}
-        self.add_index("session_id", self.session_id)
-        self.add_index("user_uuid", self.user_uuid)
-        self.add_index("token_uuid", self.auth_token)
-        self.add_index("session_type", self.session_type)
-        self.add_index("accessgroup", self.access_group_uuid)
-        self.add_index("client", self.client)
-        self.add_index('origin', self.origin)
 
     def set_oid(self):
         """ Set session OID. """
@@ -595,8 +619,8 @@ class Session(OTPmeLockObject):
         try:
             backend.write_config(object_id=self.oid,
                                 instance=self,
-                                cluster=True,
-                                full_index_update=True)
+                                full_index_update=True,
+                                cluster=True)
         except Exception as e:
             msg = "Failed to write session: %s: %s" % (self.oid, e)
             logger.warning(msg)
@@ -720,27 +744,21 @@ class Session(OTPmeLockObject):
 
     def expire_time(self):
         """ Return session expiration timestamp. """
-        # calculate session expiration timestamp
-        creation_time = datetime.fromtimestamp(float(self.creation_time))
-        timeout = timedelta(seconds=float(self.timeout))
-        session_expire_timestring = creation_time + timeout
-        session_expire = time.mktime(session_expire_timestring.timetuple())
+        # Calculate session expiration timestamp.
+        timeout = self.timeout
+        creation_time = self.creation_time
+        session_expire = calc_expire_time(creation_time, timeout)
         return session_expire
 
     def unused_expire_time(self):
         """ Return expiration timestamp when session is unused. """
-        if self.last_used == 0:
-            return
-        session_expire = self.expire_time()
-        # Calculate unused session expiration timestamp.
-        last_used = datetime.fromtimestamp(float(self.last_used))
-        unused_timeout = timedelta(seconds=float(self.unused_timeout))
-        unused_session_expire_timestring = last_used + unused_timeout
-        unused_session_expire = time.mktime(unused_session_expire_timestring.timetuple())
-        # Set unused expiry time to session expiry time if it would be after
-        # session expiry
-        if unused_session_expire > session_expire:
-            unused_session_expire = session_expire
+        # Calculate session unused expiration timestamp.
+        expire_time = self.expire_time()
+        last_used = self.last_used
+        unused_timeout = self.unused_timeout
+        unused_session_expire = calc_unused_expire_time(expire_time,
+                                                        last_used,
+                                                        unused_timeout)
         return unused_session_expire
 
     @object_lock()
@@ -1086,12 +1104,13 @@ class Session(OTPmeLockObject):
         return verify_reply
 
     @object_lock()
-    def add_child_session(self, session_id: str):
+    def add_child_session(self, session_uuid: str):
         """ Add session ID to child sessions. """
         # Add child session if its not already there.
-        if session_id in self.child_sessions:
+        if session_uuid in self.child_sessions:
             return True
-        self.child_sessions.append(session_id)
+        self.child_sessions.append(session_uuid)
+        self.add_index("child_session", session_uuid)
         return self.write_config()
 
     # FIXME: create_child_sessions() creates all child sessions regardless if
@@ -1185,7 +1204,7 @@ class Session(OTPmeLockObject):
                 # Write changes.
                 child_session.write_config()
                 # Add session to child sessions.
-                self.child_sessions.append(child_session.session_id)
+                self.add_child_session(child_session.uuid)
 
             # Write config.
             self.write_config()
@@ -1202,43 +1221,11 @@ class Session(OTPmeLockObject):
                                                 start_group=start_group, access_group=c)
         return True
 
-    def get_child_sessions(
-        self,
-        child_sessions: bool=False,
-        tree_level: int=0,
-        ):
-        """
-        Return dictionary with all child sessions and their tree level recursive.
-        """
-        # If we got no child_sessions we where not called from ourselves.
-        if not child_sessions:
-            child_sessions = {}
-
-        # Walk through child sessions.
-        for session_id in self.child_sessions:
-            # Get child session instance by ID.
-            result = backend.get_sessions(session_id=session_id,
-                                        return_type="instance")
-            # Skip child sessions that do not exist anymore.
-            if not result:
-                continue
-            child = result[0]
-            # Skip already processed child sessions.
-            if child.session_id in list(child_sessions):
-                continue
-            # Append child session to list.
-            child_sessions[str(child.session_id)] = str(tree_level)
-            # Get child session childs.
-            child_sessions = child.get_child_sessions(child_sessions=child_sessions,
-                                                    tree_level=tree_level + 1)
-        return child_sessions
-
     @object_lock()
     def add(self, offline_data_key: Union[str,None]=None):
         """ Add a session. """
         # Set session creation time.
         self.creation_time = time.time()
-        self.add_index('creation_time', self.creation_time)
         self.offline_data_key = offline_data_key
 
         # Check which timeout values we must use for this session.
@@ -1247,7 +1234,7 @@ class Session(OTPmeLockObject):
             self.timeout = config.static_pass_timeout
             self.unused_timeout = config.static_pass_unused_timeout
         else:
-            # Create accessgroup instance to get timeout values from.
+            # Get accessgroup instance to get timeout values from.
             ag = backend.get_object(object_type="accessgroup",
                                 name=self.access_group,
                                 realm=self.realm,
@@ -1261,6 +1248,20 @@ class Session(OTPmeLockObject):
             # Set timeouts from accessgroup
             self.timeout = ag.session_timeout
             self.unused_timeout = ag.unused_session_timeout
+
+        self.add_index('creation_time', self.creation_time)
+        self.add_index("session_id", self.session_id)
+        self.add_index("user_uuid", self.user_uuid)
+        self.add_index("token_uuid", self.auth_token)
+        self.add_index("session_type", self.session_type)
+        self.add_index("accessgroup", self.access_group_uuid)
+        self.add_index("timeout", self.timeout)
+        self.add_index("unused_timeout", self.unused_timeout)
+        self.add_index('origin', self.origin)
+        if self.client:
+            self.add_index("client", self.client)
+        if self.client_ip:
+            self.add_index("client_ip", self.client_ip)
 
         # Write session.
         result = self.write_config()

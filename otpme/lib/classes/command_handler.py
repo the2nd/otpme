@@ -148,7 +148,7 @@ class CommandHandler(object):
         site=config.site, command=None, subcommand=None, command_line=None,
         command_args=None, username=None, password=None, aes_pass=None,
         parse_command_syntax=True, object_list=[], interactive=None,
-        client_type="CLIENT"):
+        timeout=30, client_type="CLIENT"):
         """ Send the given command to the given daemon. """
         if interactive is None:
             interactive = self.interactive
@@ -243,6 +243,7 @@ class CommandHandler(object):
                 conn_kwargs = {}
                 conn_kwargs['use_ssl'] = False
                 conn_kwargs['auto_auth'] = False
+                conn_kwargs['timeout'] = timeout
                 conn_kwargs['auto_preauth'] = False
                 conn_kwargs['local_socket'] = True
                 conn_kwargs['handle_host_auth'] = False
@@ -6188,6 +6189,7 @@ class CommandHandler(object):
                                 command_args=command_args,
                                 parse_command_syntax=False,
                                 socket_uri=socket_uri,
+                                timeout=120,
                                 interactive=False)
         return result
 

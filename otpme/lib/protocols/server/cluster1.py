@@ -510,6 +510,11 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = "Missing object ID."
                 status = False
             try:
+                object_uuid = command_args['object_uuid']
+            except:
+                message = "Missing object UUID."
+                status = False
+            try:
                 object_config = command_args['object_config']
             except:
                 message = "Missing object config."
@@ -555,6 +560,10 @@ class OTPmeClusterP1(OTPmeServer1):
                 full_acl_update = command_args['full_acl_update']
             except:
                 full_acl_update = False
+            try:
+                last_used = command_args['last_used']
+            except:
+                last_used = None
             if config.daemon_shutdown:
                 message = "Daemon shutdown."
                 status = False
@@ -581,6 +590,10 @@ class OTPmeClusterP1(OTPmeServer1):
                     status = False
                     message = "Failed to write object: %s: %s" % (object_id, e)
                     self.logger.warning(message)
+
+                if status:
+                    if last_used:
+                        backend.set_last_used(object_uuid, last_used)
 
                 if status:
                     while True:
@@ -785,32 +798,24 @@ class OTPmeClusterP1(OTPmeServer1):
             status = True
             message = None
             try:
-                object_uuid = command_args['object_uuid']
+                object_type = command_args['object_type']
             except:
-                message = "Missing object UUID."
+                message = "Missing object type."
                 status = False
             try:
-                object_id = command_args['object_id']
+                objects = command_args['objects']
             except:
-                message = "Missing object ID."
-                status = False
-            try:
-                last_used = command_args['last_used']
-            except:
-                message = "Missing last_used."
+                message = "Missing objects."
                 status = False
             if config.daemon_shutdown:
                 message = "Daemon shutdown."
                 status = False
             if status:
                 message = "done"
-                msg = "Setting last used timestamp: %s" % object_id
-                logger.debug(msg)
                 try:
-                    backend.set_last_used(object_uuid, last_used, cluster=False)
+                    backend.set_last_used_times(object_type, objects)
                 except Exception as e:
-                    message = ("Failed to set last used: %s: %s"
-                                % (object_id, e))
+                    message = ("Failed to set last used times: %s" % e)
                     status = False
 
         elif command == "acquire_lock":

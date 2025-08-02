@@ -669,7 +669,7 @@ class BaseTransaction(object):
                 x.wait(timeout=30)
             except TimeoutReached:
                 msg = "Timeout waiting for cluster write: %s" % object_id
-                self.logger.warning(msg)
+                logger.warning(msg)
             x.unlink()
             msg = "Got cluster event: %s" % object_id
             logger.debug(msg)

@@ -2499,16 +2499,26 @@ def index_rebuild():
             index_rebuild_data = filetools.read_file(index_rebuild_data_file)
             index_rebuild_data = json.loads(index_rebuild_data)
         else:
-            index_rebuild_data = index_search(attribute="uuid",
+            last_used_data = index_search(attribute="uuid",
                                             value="*",
-                                            return_attributes=["uuid", "last_used"])
-            for x_uuid in dict(index_rebuild_data):
-                x_last_used = index_rebuild_data[x_uuid]['last_used']
-                if x_last_used is not None:
+                                            return_attributes=["uuid",
+                                                            'object_type',
+                                                            "last_used"])
+            index_rebuild_data = {}
+            for x_uuid in dict(last_used_data):
+                x_last_used = last_used_data[x_uuid]['last_used']
+                if x_last_used is None:
                     continue
-                index_rebuild_data.pop(x_uuid)
+                x_object_type = last_used_data[x_uuid]['object_type']
+                try:
+                    x_objects = index_rebuild_data[x_object_type]
+                except KeyError:
+                    x_objects = {}
+                    index_rebuild_data[x_object_type] = x_objects
+                x_objects[x_uuid] = x_last_used
             file_content = json.dumps(index_rebuild_data)
             filetools.create_file(index_rebuild_data_file, file_content)
+
         # Stop index DB. This also clears current connections.
         _index.stop()
 
@@ -2571,11 +2581,9 @@ def index_rebuild():
 
     # Set last used timestamps.
     if index_rebuild_data:
-        for x_uuid in index_rebuild_data:
-            last_used = index_rebuild_data[x_uuid]['last_used']
-            msg = "Setting last used time: %s: %s" % (x_uuid, last_used)
-            logger.debug(msg)
-            set_last_used(uuid=x_uuid, timestamp=last_used, cluster=False)
+        for object_type in index_rebuild_data:
+            last_used_data = index_rebuild_data[object_type]
+            set_last_used_times(object_type, last_used_data)
 
     # Remove last used data file.
     if os.path.exists(index_rebuild_data_file):
@@ -2632,7 +2640,7 @@ def get_sites(realm, search_regex=None):
     site_list.sort()
     return site_list
 
-def get_last_used(uuid, session=None, **kwargs):
+def get_last_used(uuid, **kwargs):
     index_object = index_get_object(uuid=uuid)
     if not index_object:
         return
@@ -2671,7 +2679,6 @@ def set_last_used(uuid, timestamp, session=None, cluster=True, **kwargs):
     index_object = index_get_object(uuid=uuid)
     if not index_object:
         return
-    old_last_used = index_object.last_used
     index_object.last_used = timestamp
     index_object = session.merge(index_object)
     session.add(index_object)
@@ -2680,10 +2687,6 @@ def set_last_used(uuid, timestamp, session=None, cluster=True, **kwargs):
         return
     if config.host_type != "node":
         return
-    if old_last_used:
-        last_used_age = timestamp - old_last_used
-        if last_used_age < 60:
-            return
     object_id = get_oid(uuid, instance=True)
     cluster_sync_object(action="last_used_write",
                         object_uuid=uuid,

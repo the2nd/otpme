@@ -758,9 +758,6 @@ class AuthHandler(object):
                     self.count_fails = False
                     self.auth_message = "AUTH_INTERNAL_SERVER_ERROR"
                     return
-                # Indicates if we should create sessions for static password tokens to
-                # speedup recurring auth requests.
-                self.cache_static_passwords = self.auth_host.get_config_parameter("auto_sign")
             # Nothing more to do for host requests.
             return
 
@@ -1052,14 +1049,12 @@ class AuthHandler(object):
                                                 pass_type="static",
                                                 token_types=self.require_token_types,
                                                 access_group=self.auth_group,
-                                                #check_parent_groups=True,
                                                 host=self.auth_host,
                                                 client=self.auth_client,
                                                 return_type="instance", quiet=False)
                 self.valid_user_tokens_script_static += self.user.get_tokens(
                                                 pass_type="script_static",
                                                 access_group=self.auth_group,
-                                                #check_parent_groups=True,
                                                 token_types=self.require_token_types,
                                                 host=self.auth_host,
                                                 client=self.auth_client,
@@ -1069,7 +1064,6 @@ class AuthHandler(object):
                 self.valid_user_tokens_otp += self.user.get_tokens(
                                                 pass_type="otp",
                                                 access_group=self.auth_group,
-                                                #check_parent_groups=True,
                                                 token_types=self.require_token_types,
                                                 host=self.auth_host,
                                                 client=self.auth_client,
@@ -1077,7 +1071,6 @@ class AuthHandler(object):
                 self.valid_user_tokens_script_otp += self.user.get_tokens(
                                                 pass_type="script_otp",
                                                 access_group=self.auth_group,
-                                                #check_parent_groups=True,
                                                 token_types=self.require_token_types,
                                                 host=self.auth_host,
                                                 client=self.auth_client,
@@ -1085,7 +1078,6 @@ class AuthHandler(object):
                 self.valid_user_tokens_otp_push += self.user.get_tokens(
                                                 pass_type="otp_push",
                                                 access_group=self.auth_group,
-                                                #check_parent_groups=True,
                                                 token_types=self.require_token_types,
                                                 host=self.auth_host,
                                                 client=self.auth_client,
@@ -1095,7 +1087,6 @@ class AuthHandler(object):
                 self.valid_user_tokens_ssh += self.user.get_tokens(
                                             pass_type="ssh_key",
                                             access_group=self.auth_group,
-                                            #check_parent_groups=True,
                                             token_types=self.require_token_types,
                                             host=self.auth_host,
                                             client=self.auth_client,
@@ -1853,36 +1844,6 @@ class AuthHandler(object):
 
     def create_user_sessions(self):
         """ Create sessions. """
-        # If session creation is disabled we still have to check if we have to
-        # create a cache session for static passwords.
-        if not self.create_sessions and self.cache_static_passwords:
-            if self.auth_mode != "static":
-                return
-            self.logger.debug("Creating static password session because "
-                        "CACHE_STATIC_PASSWORDS is enabled...")
-            session = Session(self.auth_type, self.user.name,
-                                pass_hash=self.password_hash,
-                                pass_hash_params=self.pass_hash_params,
-                                token=self.auth_token.uuid,
-                                access_group=self.access_group,
-                                client=self.client,
-                                client_ip=self.client_ip,
-                                cache=True)
-            # Create cache session.
-            if session.add():
-                # FIXME: do we need to call exists()????
-                # Call exists() to fill in all session variables.
-                session.exists()
-                # Set log_session_id to new created session_id with
-                # info tag that its new.
-                self.log_session_id = "new_cache:%s" % session.session_id
-
-            # Set session created for this request.
-            self.auth_session = session
-            self.request_cacheable = True
-            # Nothing more to do here.
-            return
-
         # If session creation is disabled we are done.
         if not self.create_sessions:
             return
@@ -1921,14 +1882,20 @@ class AuthHandler(object):
                     self.gen_pass_hash()
                 session_logout_pass = slp.gen(self.one_iter_hash)
             # Create parent session instance.
+            client_uuid = None
+            if self.auth_client:
+                client_uuid = self.auth_client.uuid
+            if self.auth_host:
+                client_uuid = self.auth_host.uuid
             session = Session(self.auth_type, self.user.name,
-                                pass_hash=self.password_hash,
-                                pass_hash_params=self.pass_hash_params,
-                                slp=session_logout_pass,
-                                token=self.auth_token.uuid,
-                                uuid=self.new_session_uuid,
-                                access_group=self.session_start_group,
-                                client=self.client, client_ip=self.client_ip)
+                            pass_hash=self.password_hash,
+                            pass_hash_params=self.pass_hash_params,
+                            slp=session_logout_pass,
+                            token=self.auth_token.uuid,
+                            uuid=self.new_session_uuid,
+                            access_group=self.session_start_group,
+                            client=client_uuid,
+                            client_ip=self.client_ip)
             # Invoke method to create child sessions which also creates
             # parent session so we need no session.add() here. Child
             # sessions are always created regardless if sessions are
@@ -1945,7 +1912,7 @@ class AuthHandler(object):
                 if self.found_sotp:
                    self.logger.info("Adding session '%s' as child session of '%s."
                                 % (session.name, self.auth_session.name))
-                   self.auth_session.add_child_session(session_id=session.session_id)
+                   self.auth_session.add_child_session(session.uuid)
 
             # Set session created for this request.
             self.auth_session = session
@@ -2214,9 +2181,6 @@ class AuthHandler(object):
         self.verify_sessions = True
         # Indicates if we should create sessions.
         self.create_sessions = True
-        # Indicates if we should create sessions for static password tokens to
-        # speedup recurring auth requests.
-        self.cache_static_passwords = False
         # Will hold the accessgroup that will be used as start point on session
         # creation.
         self.session_start_group = None
@@ -2357,7 +2321,6 @@ class AuthHandler(object):
                     self.auth_message = "AUTH_DISABLED"
 
         # Check if we got a valid client/host.
-        # We also get self.cache_static_passwords in this method.
         self.get_client()
         # Check user status.
         self.check_user()
@@ -2371,11 +2334,6 @@ class AuthHandler(object):
         if self.access_group == config.realm_access_group \
         and not (self.realm_login or self.realm_logout):
             self.create_sessions = False
-            self.cache_static_passwords = False
-
-        # Do not create cache sessions for JOIN accessgroup.
-        if self.access_group == config.join_access_group:
-            self.cache_static_passwords = False
 
         if not self.auth_failed and self.auth_status is False:
             # Generate hash to be used for REALM sessions and to check for used
@@ -2663,49 +2621,50 @@ class AuthHandler(object):
                 login_token_uuid = self.auth_token.uuid
             auth_reply['login_token_uuid'] = login_token_uuid
 
-            # Get users login script.
-            login_script = None
-            login_script_uuid = None
-            login_script_path = None
-            login_script_opts = None
-            login_script_signs = None
-            if self.user.login_script and self.user.login_script_enabled:
-                x = backend.get_object(object_type="script",
-                                uuid=self.user.login_script)
-                if x:
-                    login_script = decode(x.script, "base64")
-                    login_script_uuid = x.uuid
-                    login_script_path = x.rel_path
-                    login_script_opts = self.user.login_script_options
-                    login_script_signs = x.signatures.copy()
+            if self.realm_login:
+                # Get users login script.
+                login_script = None
+                login_script_uuid = None
+                login_script_path = None
+                login_script_opts = None
+                login_script_signs = None
+                if self.user.login_script and self.user.login_script_enabled:
+                    x = backend.get_object(object_type="script",
+                                    uuid=self.user.login_script)
+                    if x:
+                        login_script = decode(x.script, "base64")
+                        login_script_uuid = x.uuid
+                        login_script_path = x.rel_path
+                        login_script_opts = self.user.login_script_options
+                        login_script_signs = x.signatures.copy()
 
-            auth_reply['login_script'] = login_script
-            auth_reply['login_script_uuid'] = login_script_uuid
-            auth_reply['login_script_path'] = login_script_path
-            auth_reply['login_script_opts'] = login_script_opts
-            auth_reply['login_script_signs'] = login_script_signs
+                auth_reply['login_script'] = login_script
+                auth_reply['login_script_uuid'] = login_script_uuid
+                auth_reply['login_script_path'] = login_script_path
+                auth_reply['login_script_opts'] = login_script_opts
+                auth_reply['login_script_signs'] = login_script_signs
 
-            # Get users key script.
-            key_script = None
-            key_script_uuid = None
-            key_script_path = None
-            key_script_opts = None
-            key_script_signs = None
-            if self.user.key_script:
-                x = backend.get_object(object_type="script",
-                                    uuid=self.user.key_script)
-                if x:
-                    key_script = decode(x.script, "base64")
-                    key_script_uuid = x.uuid
-                    key_script_path = x.rel_path
-                    key_script_opts = self.user.key_script_options.copy()
-                    key_script_signs = x.signatures.copy()
+                # Get users key script.
+                key_script = None
+                key_script_uuid = None
+                key_script_path = None
+                key_script_opts = None
+                key_script_signs = None
+                if self.user.key_script:
+                    x = backend.get_object(object_type="script",
+                                        uuid=self.user.key_script)
+                    if x:
+                        key_script = decode(x.script, "base64")
+                        key_script_uuid = x.uuid
+                        key_script_path = x.rel_path
+                        key_script_opts = self.user.key_script_options.copy()
+                        key_script_signs = x.signatures.copy()
 
-            auth_reply['key_script'] = key_script
-            auth_reply['key_script_uuid'] = key_script_uuid
-            auth_reply['key_script_path'] = key_script_path
-            auth_reply['key_script_opts'] = key_script_opts
-            auth_reply['key_script_signs'] = key_script_signs
+                auth_reply['key_script'] = key_script
+                auth_reply['key_script_uuid'] = key_script_uuid
+                auth_reply['key_script_path'] = key_script_path
+                auth_reply['key_script_opts'] = key_script_opts
+                auth_reply['key_script_signs'] = key_script_signs
 
             # Get SSH private key from token.
             ssh_private_key = None

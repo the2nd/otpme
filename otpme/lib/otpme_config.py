@@ -658,6 +658,19 @@ class OTPmeConfig(object):
 
         self.register_config_var("use_radius_mod", bool, True,
                             config_file_parameter="USE_RADIUS_MOD")
+
+        self.register_config_var("radius_cache_time", int, 60,
+                            config_file_parameter="RADIUS_CACHE_TIME")
+
+        self.register_config_var("radius_start_servers", int, 32,
+                            config_file_parameter="RADIUS_START_SERVERS")
+        self.register_config_var("radius_max_servers", int, 64,
+                            config_file_parameter="RADIUS_MAX_SERVERS")
+        self.register_config_var("radius_min_spare_servers", int, 8,
+                            config_file_parameter="RADIUS_MIN_SPARE_SERVERS")
+        self.register_config_var("radius_max_spare_servers", int, 16,
+                            config_file_parameter="RADIUS_MAX_SPARE_SERVERS")
+
         self.register_config_var("radius_mod_logfile", str, "/var/log/otpme/radius-module.log",
                             config_file_parameter="RADIUS_MOD_LOGFILE")
         self.register_config_var("start_freeradius", bool, True,

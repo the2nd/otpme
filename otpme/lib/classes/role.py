@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-from typing import List
 from typing import Union
 
 try:
@@ -19,8 +18,8 @@ from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.register import register_module
 from otpme.lib.typing import match_class_typing
-from otpme.lib.cache import assigned_role_cache
-from otpme.lib.cache import assigned_token_cache
+#from otpme.lib.cache import assigned_role_cache
+#from otpme.lib.cache import assigned_token_cache
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
@@ -896,58 +895,52 @@ class Role(OTPmeObject):
         else:
             self.name = name.lower()
 
-    @assigned_token_cache.cache_method()
-    def is_assigned_token(
-        self,
-        token_uuid: str,
-        check_parent_roles: bool=True,
-        skip_disabled_roles: bool=True,
-        processed_roles: List=[]
-        ):
-        if token_uuid in self.tokens:
-            return True
-        if not check_parent_roles:
-            return False
-        child_roles = self.get_roles(return_type="instance",
-                            skip_disabled=skip_disabled_roles,
-                            recursive=False)
-        for role in child_roles:
-            if skip_disabled_roles:
-                if not role.enabled:
-                    continue
-            if role.uuid in processed_roles:
-                continue
-            processed_roles.append(role.uuid)
-            if role.is_assigned_token(token_uuid):
-                return True
-        return False
+    #@assigned_token_cache.cache_method()
+    #def is_assigned_token(
+    #    self,
+    #    token_uuid: str,
+    #    skip_disabled_roles: bool=True,
+    #    ):
+    #    if token_uuid in self.tokens:
+    #        return True
+    #    child_roles = self.get_roles(return_type="instance",
+    #                        skip_disabled=skip_disabled_roles,
+    #                        recursive=False)
+    #    processed_roles = []
+    #    for role in child_roles:
+    #        if skip_disabled_roles:
+    #            if not role.enabled:
+    #                continue
+    #        if role.uuid in processed_roles:
+    #            continue
+    #        processed_roles.append(role.uuid)
+    #        if role.is_assigned_token(token_uuid):
+    #            return True
+    #    return False
 
-    @assigned_role_cache.cache_method()
-    def is_assigned_role(
-        self,
-        role_uuid: str,
-        check_parent_roles: bool=True,
-        skip_disabled_roles: bool=True,
-        processed_roles: List=[]
-        ):
-        if role_uuid in self.roles:
-            return True
-        if not check_parent_roles:
-            return False
-        parent_roles = self.get_roles(parent=True,
-                            return_type="instance",
-                            skip_disabled=skip_disabled_roles,
-                            recursive=False)
-        for role in parent_roles:
-            if skip_disabled_roles:
-                if not role.enabled:
-                    continue
-            if role.uuid in processed_roles:
-                continue
-            processed_roles.append(role.uuid)
-            if role.is_assigned_role(role_uuid, processed_roles=processed_roles):
-                return True
-        return False
+    #@assigned_role_cache.cache_method()
+    #def is_assigned_role(
+    #    self,
+    #    role_uuid: str,
+    #    skip_disabled_roles: bool=True,
+    #    ):
+    #    if role_uuid in self.roles:
+    #        return True
+    #    parent_roles = self.get_roles(parent=True,
+    #                        return_type="instance",
+    #                        skip_disabled=skip_disabled_roles,
+    #                        recursive=False)
+    #    processed_roles = []
+    #    for role in parent_roles:
+    #        if skip_disabled_roles:
+    #            if not role.enabled:
+    #                continue
+    #        if role.uuid in processed_roles:
+    #            continue
+    #        processed_roles.append(role.uuid)
+    #        if role.is_assigned_role(role_uuid):
+    #            return True
+    #    return False
 
     @cli.check_rapi_opts()
     def get_roles(

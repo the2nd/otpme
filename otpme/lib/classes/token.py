@@ -831,7 +831,7 @@ def register_backend():
                             uniq_name=False,
                             add_after=["user"],
                             sync_after=["user"],
-                            object_cache=2048,
+                            object_cache=10240,
                             cache_region="tree_object",
                             backup_attributes=['realm', 'user', 'name'])
     # Register index attributes.

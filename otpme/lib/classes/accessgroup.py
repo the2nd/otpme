@@ -992,7 +992,6 @@ class AccessGroup(OTPmeObject):
         check_parent_groups: bool=False,
         ):
         """ Check if token is assigned to this acccessgroup. """
-        from otpme.lib.classes.role import get_roles
         if token_uuid in self.tokens:
             return True
         for role_uuid in self.roles:
@@ -1004,18 +1003,6 @@ class AccessGroup(OTPmeObject):
                     continue
             if role.is_assigned_token(token_uuid):
                 return role
-            role_roles = get_roles(role_uuid=role_uuid,
-                                    parent=True,
-                                    recursive=True,
-                                    return_type="instance")
-            for role in role_roles:
-                if not role:
-                    continue
-                if skip_disabled_roles:
-                    if not role.enabled:
-                        continue
-                if role.is_assigned_token(token_uuid):
-                    return role
         if not check_parent_groups:
             return False
         parent_groups = self.parents(recursive=False,

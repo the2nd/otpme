@@ -86,12 +86,6 @@ class OTPmeServer1(object):
         except:
             self.access_group = None
 
-        # Configures if we should inherit tokens from parent accessgroups?
-        try:
-            self.check_parent_groups
-        except:
-            self.check_parent_groups = False
-
         # Indicates that we need to negotiate session key via DH.
         try:
             self.encrypt_session
@@ -1444,7 +1438,6 @@ class OTPmeServer1(object):
                                         pass_type=pass_type,
                                         access_group=auth_group,
                                         check_sf_tokens=check_sf_tokens,
-                                        check_parent_groups=self.check_parent_groups,
                                         host=self.peer,
                                         return_type="instance",
                                         quiet=True)

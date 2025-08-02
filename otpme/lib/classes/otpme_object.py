@@ -4522,20 +4522,16 @@ class OTPmeObject(OTPmeBaseObject):
     def is_assigned_token(
         self,
         token_uuid: str,
-        processed_roles: List=[],
         ):
         if token_uuid in self.tokens:
             return True
-        for role_uuid in self.roles:
-            role = backend.get_object(object_type="role", uuid=role_uuid)
+        for x_uuid in self.roles:
+            role = backend.get_object(object_type="role", uuid=x_uuid)
             if not role:
                 continue
             if not role.enabled:
                 continue
-            if role.uuid in processed_roles:
-                continue
-            processed_roles.append(role.uuid)
-            if role.is_assigned_token(token_uuid, processed_roles=processed_roles):
+            if role.is_assigned_token(token_uuid):
                 return True
         return False
 

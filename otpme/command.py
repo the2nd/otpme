@@ -91,7 +91,7 @@ def otpme_commands(no_debug=False):
     if command == "auth":
         if subcommand == "verify":
             if exit_code == 0:
-                if cache_seconds is not None:
+                if cache_seconds > 0:
                     try:
                         request_cacheable = result['request_cacheable']
                     except KeyError:
@@ -277,8 +277,8 @@ if not help_needed:
             try:
                 cache_seconds = command_args['cache_seconds']
             except:
-                cache_seconds = None
-            if cache_seconds is not None:
+                cache_seconds = 0
+            if cache_seconds > 0:
                 client = command_args['client']
                 try:
                     client_ip = command_args['client_ip']

@@ -297,8 +297,8 @@ def authenticate(authData):
 
             # Generate MSCHAPv1 challenge from auth_challenge and peer_challenge.
             mschapv1_challenge_bin = mschap.challenge_hash(peer_challenge_bin,
-                                                            auth_challenge_bin,
-                                                            username)
+                                                        auth_challenge_bin,
+                                                        username)
             mschapv1_challenge = encode(mschapv1_challenge_bin, "hex")
 
             command_args['mschap_response'] = peer_nt_response

@@ -46,7 +46,8 @@ class OTPmeClusterP1(OTPmeClient1):
         ldif_journal=None, acl_journal=None, full_acl_update=False,
         full_ldif_update=False, full_index_update=False,
         full_data_update=False, use_index_journal=True,
-        use_acl_journal=True, use_ldif_journal=True):
+        use_acl_journal=True, use_ldif_journal=True,
+        object_uuid=None, last_used=None):
         """ Send object to peer. """
         command = "write"
         command_args = {}
@@ -62,6 +63,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args['full_ldif_update'] = full_ldif_update
         command_args['full_data_update'] = full_data_update
         command_args['full_index_update'] = full_index_update
+        command_args['object_uuid'] = object_uuid
+        command_args['last_used'] = last_used
         status, \
         status_code, \
         reply = self.connection.send(command, command_args)
@@ -222,18 +225,17 @@ class OTPmeClusterP1(OTPmeClient1):
             raise OTPmeException(msg)
         return reply
 
-    def last_used_write(self, object_uuid, object_id, last_used):
-        """ Send last used timestamp to peer. """
+    def last_used_write(self, object_type, objects):
+        """ Send last used times to peer. """
         command = "last_used_write"
         command_args = {}
-        command_args['object_uuid'] = object_uuid
-        command_args['object_id'] = object_id
-        command_args['last_used'] = last_used
+        command_args['object_type'] = object_type
+        command_args['objects'] = objects
         status, \
         status_code, \
         reply = self.connection.send(command, command_args)
         if not status:
-            msg = "Failed to send last used timestamp: %s: %s" % (object_id, reply)
+            msg = "Failed to send last used times: %s" % reply
             raise OTPmeException(msg)
         return reply
 

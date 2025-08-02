@@ -1126,7 +1126,6 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
         for x in dict(result):
             found_edit_acl = False
             for acl in object_acls[x]:
-                #print("pppp", acl)
                 if acl in write_acls:
                     found_edit_acl = True
                     break
@@ -1346,6 +1345,9 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
     """
     from datetime import datetime
     from otpme.lib import backend
+    from otpme.lib.classes.session import calc_expire_time
+    from otpme.lib.classes.session import get_child_sessions
+    from otpme.lib.classes.session import calc_unused_expire_time
     fields = []
     border = True
 
@@ -1423,7 +1425,19 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
         search_attrs['uuid'] = {'value':"*"}
         if config.auth_token:
             search_attrs['user_uuid'] = {'value':config.auth_token.owner_uuid}
-    return_attributes = ['session_id', 'user_uuid']
+    return_attributes = [
+                        'name',
+                        'session_id',
+                        'session_type',
+                        'user_uuid',
+                        'token_uuid',
+                        'accessgroup',
+                        'client',
+                        'creation_time',
+                        'timeout',
+                        'unused_timeout',
+                        'last_used',
+                        ]
     session_list = backend.search(object_type="session",
                                 sort_by="user_uuid",
                                 attributes=search_attrs,
@@ -1432,7 +1446,10 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
     # Check if we got sessions for more than one user.
     user_uuids = []
     for x in session_list:
-        user_uuid = session_list[x]['user_uuid']
+        try:
+            user_uuid = session_list[x]['user_uuid']
+        except KeyError:
+            continue
         if user_uuid in user_uuids:
             continue
         user_uuids.append(user_uuid)
@@ -1487,84 +1504,131 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
     if csv:
         csv_list = []
 
-    # Dict with all session objects.
-    all_sessions = {}
     # List that will hold all parent sessions.
     parent_session_list = []
-    # List that will hold all child sessions.
+    # Will hold all child sessions.
+    child_sessions = {}
     child_session_list = []
     # Walk through sessions to create a list with all child sessions.
     for session_uuid in session_list:
-        session_id = session_list[session_uuid]['session_id'][0]
-        session = backend.get_object(uuid=session_uuid)
-        if session is None:
-            continue
-        all_sessions[session_id] = session
-        # Walk through child sessions.
-        for session_id in session.child_sessions:
-            child_session_list.append(session_id)
-
-    # Walk through child sessions to add child session object to all_sessions.
-    for session_id in child_session_list:
-        result = backend.get_sessions(session_id=session_id,
-                                    return_type="instance")
-        if not result:
-            continue
-        child_session = result[0]
-        all_sessions[session_id] = child_session
+        x_childs = get_child_sessions(session_uuid)
+        child_sessions[session_uuid] = x_childs
+        child_session_list += x_childs.keys()
 
     # Create list with parent sessions.
     for session_uuid in session_list:
-        session_id = session_list[session_uuid]['session_id'][0]
-        if session_id in parent_session_list:
+        if session_uuid in parent_session_list:
             continue
-        if session_id in child_session_list:
+        if session_uuid in child_session_list:
             continue
-        if session_id not in all_sessions:
-            continue
-        parent_session_list.append(session_id)
+        parent_session_list.append(session_uuid)
 
     # Make sure we do not process more sessions than max_len.
     if len(parent_session_list) >= max_len:
         parent_session_list = parent_session_list[:max_len]
 
     # Dictionary to hold all session instances grouped by parent session.
-    session_list = []
     session_count = 0
+    session_entries = []
     session_add_count = 0
+    all_session_count = len(session_list)
 
-    for session_id in parent_session_list:
-        # Get session from list in dictionary.
-        parent_session = all_sessions[session_id]
+    for parent_session in parent_session_list:
         # List that will hold all session instances in the correct order.
         slist = [ parent_session ]
         # Dictionary used to sort child sessions.
         cdict = {}
-        # Get all child session IDs.
-        child_list = parent_session.get_child_sessions()
+        try:
+            child_list = child_sessions[parent_session]
+        except KeyError:
+            child_list = {}
         # Walk trough all child sessions.
-        for child_session_id in child_list:
+        for child_uuid in child_list:
+            if child_uuid not in session_list:
+                continue
             # Set tree level for normal or reverse order.
-            tree_level = int(child_list[child_session_id]) \
+            tree_level = int(child_list[child_uuid]) \
                         * tree_level_multiplier
-            # Get child session instance.
-            child_session = all_sessions[child_session_id]
             # Set sort key based sort_by.
             if sort_by == "user":
-                sort_key = str(child_session.username)
+                try:
+                    user_uuid = session_list[child_uuid]['user_uuid'][0]
+                except KeyError:
+                    continue
+                result = backend.search(object_type="user",
+                                        attribute="uuid",
+                                        value=user_uuid,
+                                        return_type="name")
+                if result:
+                    user_name = result[0]
+                else:
+                    user_name = "N/A"
+                sort_key = str(user_name)
             elif sort_by == "creation_time":
-                sort_key = str(child_session.creation_time)
+                try:
+                    creation_time = session_list[child_uuid]['creation_time'][0]
+                except KeyError:
+                    continue
+                sort_key = str(creation_time)
             elif sort_by == "expiration_time":
-                sort_key = str(child_session.expire_time())
+                try:
+                    timeout = session_list[child_uuid]['timeout'][0]
+                    creation_time = session_list[child_uuid]['creation_time'][0]
+                except KeyError:
+                    continue
+                session_expire = calc_expire_time(creation_time, timeout)
+                sort_key = str(session_expire)
             elif sort_by == "unused_expiration_time":
-                sort_key = str(child_session.unused_expire_time())
+                try:
+                    last_used = session_list[child_uuid]['last_used']
+                except KeyError:
+                    continue
+                unused_session_expire = 0
+                if last_used:
+                    try:
+                        timeout = session_list[child_uuid]['timeout'][0]
+                        creation_time = session_list[child_uuid]['creation_time'][0]
+                        unused_timeout = session_list[child_uuid]['unused_timeout'][0]
+                    except KeyError:
+                        continue
+                    expire_time = calc_expire_time(creation_time, timeout)
+                    unused_session_expire = calc_unused_expire_time(expire_time,
+                                                                    last_used,
+                                                                    unused_timeout)
+                sort_key = str(unused_session_expire)
             elif sort_by == "last_login":
-                sort_key = str(child_session.last_used)
+                try:
+                    last_used = session_list[child_uuid]['last_used']
+                except KeyError:
+                    continue
+                if last_used is None:
+                    last_used = 0
+                sort_key = str(last_used)
             else:
-                sort_key = str(child_session.expire_time())
+                try:
+                    last_used = session_list[child_uuid]['last_used']
+                except KeyError:
+                    continue
+                unused_session_expire = 0
+                if last_used:
+                    try:
+                        timeout = session_list[child_uuid]['timeout'][0]
+                        creation_time = session_list[child_uuid]['creation_time'][0]
+                        unused_timeout = session_list[child_uuid]['unused_timeout'][0]
+                    except KeyError:
+                        continue
+                    expire_time = calc_expire_time(creation_time, timeout)
+                    unused_session_expire = calc_unused_expire_time(expire_time,
+                                                                    last_used,
+                                                                    unused_timeout)
+                sort_key = str(unused_session_expire)
 
-            cdict_key = "%s %s %s" % (tree_level, sort_key, child_session.name)
-            cdict[cdict_key] = child_session
+            try:
+                child_session_name = session_list[child_uuid]['name'][0]
+            except KeyError:
+                continue
+            cdict_key = "%s %s %s" % (tree_level, sort_key, child_session_name)
+            cdict[cdict_key] = child_uuid
 
         # Put child sessions sorted into slist.
         for dict_key in sorted(cdict, reverse=reverse_sort):
@@ -1572,88 +1636,212 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
             slist.append(child_session)
 
         if sort_by == "user":
-            sort_key = str(parent_session.username)
+            try:
+                user_uuid = session_list[parent_session]['user_uuid'][0]
+            except KeyError:
+                continue
+            result = backend.search(object_type="user",
+                                    attribute="uuid",
+                                    value=user_uuid,
+                                    return_type="name")
+            if result:
+                user_name = result[0]
+            else:
+                user_name = "N/A"
+            sort_key = str(user_name)
         elif sort_by == "creation_time":
-            sort_key = str(parent_session.creation_time)
+            try:
+                parent_session_creation_time = session_list[parent_session]['creation_time'][0]
+            except KeyError:
+                continue
+            sort_key = str(parent_session_creation_time)
         elif sort_by == "expiration_time":
-            sort_key = str(parent_session.expire_time())
+            try:
+                timeout = session_list[parent_session]['timeout'][0]
+                creation_time = session_list[parent_session]['creation_time'][0]
+            except KeyError:
+                continue
+            session_expire = calc_expire_time(creation_time, timeout)
+            sort_key = str(session_expire)
         elif sort_by == "unused_expiration_time":
-            sort_key = str(parent_session.unused_expire_time())
+            try:
+                last_used = session_list[parent_session]['last_used']
+            except KeyError:
+                continue
+            unused_session_expire = 0
+            if last_used:
+                try:
+                    timeout = session_list[parent_session]['timeout'][0]
+                    creation_time = session_list[parent_session]['creation_time'][0]
+                    unused_timeout = session_list[parent_session]['unused_timeout'][0]
+                except KeyError:
+                    continue
+                expire_time = calc_expire_time(creation_time, timeout)
+                unused_session_expire = calc_unused_expire_time(expire_time,
+                                                                last_used,
+                                                                unused_timeout)
+            sort_key = str(unused_session_expire)
         elif sort_by == "last_login":
-            sort_key = str(parent_session.last_used)
+            try:
+                last_used = session_list[parent_session]['last_used']
+            except KeyError:
+                continue
+            sort_key = str(last_used)
         else:
-            sort_key = str(child_session.expire_time())
+            try:
+                timeout = session_list[parent_session]['timeout'][0]
+                creation_time = session_list[parent_session]['creation_time'][0]
+            except KeyError:
+                continue
+            session_expire = calc_expire_time(creation_time, timeout)
+            sort_key = str(session_expire)
 
         # Make sure we do not process more sessions than max_len.
         session_count += len(slist)
         if session_count <= max_len:
             # Append session entry to session list..
             session_entry = SessionEntry(slist, sort_key)
-            session_list.append(session_entry)
+            session_entries.append(session_entry)
             session_add_count = session_count
 
-    if session_count > max_len:
+    if all_session_count > max_len:
         footer = (_("Size limit exceeded. Listed %s sessions out of %s.")
-                    % (session_add_count, session_count))
+                    % (session_add_count, all_session_count))
     else:
         footer = (_("Total %s sessions.") % session_add_count)
 
     # Walk through sorted list of sessions grouped by parent/child relation.
-    for session_entry in sorted(session_list, reverse=reverse_sort):
+    for session_entry in sorted(session_entries, reverse=reverse_sort):
         # Get list of child sessions for this sessions.
         sessions = session_entry.sessions
         # Helper variable to check if current session is the parent session.
         count = 0
         # Walk through list of child sessions.
-        for s in sessions:
+        for session_uuid in sessions:
             x_row = []
-            ## get last_used time
-            #try:
-            #  last_used = datetime.fromtimestamp(s.last_used)
-            #except:
-            #  pass
-            # Get last_login time.
             try:
-                last_login = datetime.fromtimestamp(float(s.last_used))
+                last_used = session_list[session_uuid]['last_used']
+                last_login = datetime.fromtimestamp(float(last_used))
             except:
                 pass
             # Get expire time.
-            expire = s.expire_time()
-            if expire:
-                expire = datetime.fromtimestamp(expire)
+            try:
+                timeout = session_list[session_uuid]['timeout'][0]
+                creation_time = session_list[session_uuid]['creation_time'][0]
+            except KeyError:
+                continue
+            session_expire = calc_expire_time(creation_time, timeout)
+            if session_expire:
+                expire = datetime.fromtimestamp(session_expire)
             # Get unsued expire time.
-            unused_expire = s.unused_expire_time()
-            if unused_expire:
-                unused_expire = datetime.fromtimestamp(unused_expire)
+            try:
+                last_used = session_list[session_uuid]['last_used']
+            except KeyError:
+                continue
+            unused_session_expire = 0
+            if last_used:
+                try:
+                    timeout = session_list[session_uuid]['timeout'][0]
+                    creation_time = session_list[session_uuid]['creation_time'][0]
+                    unused_timeout = session_list[session_uuid]['unused_timeout'][0]
+                except KeyError:
+                    continue
+                expire_time = calc_expire_time(creation_time, timeout)
+                unused_session_expire = calc_unused_expire_time(expire_time,
+                                                                last_used,
+                                                                unused_timeout)
+            unused_expire = None
+            if unused_session_expire:
+                unused_expire = datetime.fromtimestamp(unused_session_expire)
 
             # Add tailing "*" for parent session IDs
+            try:
+                session_id = session_list[session_uuid]['session_id'][0]
+            except KeyError:
+                continue
             if count == 0:
-                x_row.append("%s*" % s.session_id)
+                x_row.append("%s*" % session_id)
             else:
-                x_row.append(s.session_id)
+                x_row.append(session_id)
 
             if show_username:
-                x_row.append(s.username)
+                try:
+                    user_uuid = session_list[session_uuid]['user_uuid'][0]
+                except KeyError:
+                    user_uuid = None
+                user_name = "N/A"
+                if user_uuid:
+                    result = backend.search(object_type="user",
+                                            attribute="uuid",
+                                            value=user_uuid,
+                                            return_type="name")
+                    if result:
+                        user_name = result[0]
+                x_row.append(user_name)
 
-            t = backend.get_object(object_type="token", uuid=s.auth_token)
-            if t:
-                x_row.append(t.name)
-            else:
-                x_row.append('unknown')
+            try:
+                token_uuid = session_list[session_uuid]['token_uuid'][0]
+            except KeyError:
+                token_uuid = None
+            token_path = "N/A"
+            if token_uuid:
+                result = backend.search(object_type="token",
+                                        attribute="uuid",
+                                        value=token_uuid,
+                                        return_type="rel_path")
+                if result:
+                    token_path = result[0]
+            x_row.append(token_path)
 
-            x_row.append(s.session_type)
+            try:
+                session_type = session_list[session_uuid]['session_type'][0]
+            except KeyError:
+                session_type = "N/A"
+            x_row.append(session_type)
 
             # Indent child sessions.
+            try:
+                session_ag_uuid = session_list[session_uuid]['accessgroup'][0]
+            except KeyError:
+                session_ag_uuid = None
+            session_ag_name = "N/A"
+            if session_ag_uuid:
+                result = backend.search(object_type="accessgroup",
+                                        attribute="uuid",
+                                        value=session_ag_uuid,
+                                        return_type="name")
+                if result:
+                    session_ag_name = result[0]
             if count > 0:
-                access_group_string = " %s" % s.access_group
+                access_group_string = " %s" % session_ag_name
             else:
-                access_group_string = str(s.access_group)
-
+                access_group_string = str(session_ag_name)
             x_row.append(access_group_string)
-            x_row.append(s.client)
-            x_row.append(s.client_ip)
 
-            if s.last_used:
+            try:
+                session_client_uuid = session_list[session_uuid]['client'][0]
+            except KeyError:
+                session_client_uuid = None
+            session_client_name = "N/A"
+            if session_client_uuid:
+                result = backend.search(attribute="uuid",
+                                        value=session_client_uuid,
+                                        return_type="name")
+                if result:
+                    session_client_name = result[0]
+            x_row.append(session_client_name)
+
+            try:
+                session_client_ip = session_list[session_uuid]['client_ip'][0]
+            except KeyError:
+                session_client_ip = "N/A"
+            x_row.append(session_client_ip)
+
+            try:
+                last_used = session_list[session_uuid]['last_used']
+            except KeyError:
+                last_used = None
+            if last_used:
                 last_login_string = last_login.strftime('%H:%M:%S %d.%m.')
             else:
                 last_login_string = " " * 15

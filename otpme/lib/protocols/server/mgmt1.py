@@ -83,8 +83,6 @@ class OTPmeMgmtP1(OTPmeServer1):
         self.require_preauth = True
         # The accessgroup we authenticate users against.
         self.access_group = config.mgmt_access_group
-        # Inherit tokens from parent accessgroups?
-        self.check_parent_groups = False
         # Indicates parent class to require a client certificate.
         self.require_client_cert = True
         # Will hold all running jobs

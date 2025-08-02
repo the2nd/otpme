@@ -48,9 +48,6 @@ class OTPmeJoinP1(OTPmeServer1):
         self.encrypt_session = True
         # The accessgroup we authenticate users against.
         self.access_group = config.join_access_group
-        # Indicates that the JOIN accessgroup should inherith tokens from the
-        # REALM accessgroup.
-        self.check_parent_groups = True
         # Indicates parent class to require a client certificate.
         self.require_client_cert = False
         # Host types we support.

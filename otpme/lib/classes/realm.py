@@ -659,11 +659,6 @@ def register_config():
                     'host',
                     'node',
                     ]
-    # Cache static passwords by default.
-    config.register_config_parameter(name="cache_static_passwords",
-                                    ctype=bool,
-                                    default_value=True,
-                                    object_types=object_types)
     config.register_config_parameter(name="static_pass_timeout",
                                     ctype=int,
                                     default_value=15,
