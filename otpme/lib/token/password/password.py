@@ -410,6 +410,8 @@ class PasswordToken(Token):
             # Set 2f_token.
             self.second_factor_token = sftoken.uuid
 
+        self.update_index('second_factor_token', self.second_factor_token)
+
         return self._cache(callback=callback)
 
     @check_acls(['enable:2ftoken'])
@@ -455,6 +457,7 @@ class PasswordToken(Token):
                     return callback.abort()
 
         self.second_factor_token_enabled = True
+        self.update_index('second_factor_token_enabled', True)
         return self._cache(callback=callback)
 
     @check_acls(['disable:2ftoken'])
@@ -490,6 +493,7 @@ class PasswordToken(Token):
                     return callback.abort()
 
         self.second_factor_token_enabled = False
+        self.update_index('second_factor_token_enabled', False)
         return self._cache(callback=callback)
 
     @object_lock(full_lock=True)

@@ -2875,7 +2875,11 @@ class OTPmeClient1(OTPmeClientBase):
         # agent usage is requested.
         need_agent_conn = False
         if self.endpoint:
-            if self.login or self.use_agent:
+            if self.add_agent_session:
+                need_agent_conn = True
+            if self.login and self.check_login_status:
+                need_agent_conn = True
+            if self.use_agent:
                 need_agent_conn = True
             if self.logout:
                 need_agent_conn = True
@@ -2909,7 +2913,7 @@ class OTPmeClient1(OTPmeClientBase):
                 msg = (_("Error getting agent connection: %s") % e)
                 raise OTPmeException(msg)
 
-            # Try to connect to agent
+            # Try to connect to agent.
             try:
                 self.agent_conn.connect()
             except UnknownLoginSession as e:

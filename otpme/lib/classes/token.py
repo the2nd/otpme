@@ -3301,7 +3301,7 @@ class Token(OTPmeObject):
             old_token_uuid = x_token.uuid
             # Delete object from backend instead of calling del_token()
             # to preserve token roles etc.
-            del_status = backend.delete_object(x_token.oid)
+            del_status = backend.delete_object(x_token.oid, cluster=True)
             if not del_status:
                 return del_status
 

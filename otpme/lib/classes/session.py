@@ -392,7 +392,7 @@ class Session(OTPmeLockObject):
     @last_used.setter
     def last_used(self, timestamp):
         """ Set last used timestamp. """
-        backend.set_last_used(self.uuid, timestamp)
+        backend.set_last_used(self.type, self.uuid, timestamp)
 
     @property
     def cache_expire_time(self):

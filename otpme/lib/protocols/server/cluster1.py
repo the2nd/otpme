@@ -593,7 +593,9 @@ class OTPmeClusterP1(OTPmeServer1):
 
                 if status:
                     if last_used:
-                        backend.set_last_used(object_uuid, last_used)
+                        backend.set_last_used(object_id.object_type,
+                                            object_uuid,
+                                            last_used, cluster=False)
 
                 if status:
                     while True:

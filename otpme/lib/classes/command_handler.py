@@ -891,7 +891,7 @@ class CommandHandler(object):
                     print(msg)
                     failed_restores.append(msg)
                 else:
-                    backend.set_last_used(x_uuid, x_last_used)
+                    backend.set_last_used(x_oid.object_type, x_uuid, x_last_used)
         msg = "Creating DB indexes..."
         print(msg)
         _index.command("create_db_indices")
@@ -1056,6 +1056,9 @@ class CommandHandler(object):
 
         if subcommand == "dump_index":
             return self.handle_dump_index_command(command_line)
+
+        if subcommand == "login_benchmark":
+            return self.handle_login_benchmark(command, subcommand)
 
         if subcommand == "mass_object_add":
             return self.handle_mass_object_add(command, subcommand)
@@ -1737,8 +1740,105 @@ class CommandHandler(object):
         result = self.daemon_dump(dump_type)
         return result
 
+    def handle_login_benchmark(self, command, subcommand):
+        """ Handle login benchmark command. """
+        import csv
+        from otpme.lib import multiprocessing
+        # Get command syntax.
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except:
+            return self.get_help(_("Unknown command: %s") % subcommand)
+
+        # Parse command line.
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(command_syntax=command_syntax,
+                                        command_line=self.command_line,
+                                        command_args=self.command_args)
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            elif str(e) != "":
+                return self.get_help(str(e))
+        try:
+            node = command_args.pop('node')
+        except KeyError:
+            node = None
+        try:
+            procs = command_args.pop('procs')
+        except KeyError:
+            procs = None
+        if procs is None:
+            procs = int(os.cpu_count() / 2)
+        csv_file = command_args.pop('csv_file')
+        with open(csv_file, newline='', encoding='utf-8') as csvfile:
+            reader = csv.reader(csvfile, delimiter=',')
+            #header = next(reader)
+            #print("Got header from csv file:", header)
+            csv_data = list(reader)
+        login_procs = {}
+        login_counter = 0
+        start_time = time.time()
+        for line in csv_data:
+            username = line[0]
+            password = line[1]
+            while True:
+                for x_user in list(login_procs):
+                    child = login_procs[x_user]
+                    if child.is_alive():
+                        continue
+                    child.join()
+                    login_procs.pop(x_user)
+                    login_counter += 1
+                    now = time.time()
+                    duration = now - start_time
+                    per_login_time = duration / login_counter
+                    print("Login finished: %s (%.2f)" % (x_user, per_login_time))
+                time.sleep(0.01)
+                if len(login_procs) >= procs:
+                    continue
+                break
+            method_kwargs = {}
+            method_kwargs['username'] = username
+            method_kwargs['password'] = password
+            method_kwargs['check_login_status'] = False
+            method_kwargs['add_agent_session'] = False
+            method_kwargs['add_login_session'] = False
+            method_kwargs['start_otpme_agent'] = False
+            method_kwargs['node'] = node
+            login_child = multiprocessing.start_process(name="login",
+                                                target=self.login,
+                                                target_kwargs=method_kwargs,
+                                                start=False,
+                                                daemon=True)
+            login_child.start()
+            login_procs[username] = login_child
+        while True:
+            for x_user in list(login_procs):
+                child = login_procs[x_user]
+                if child.is_alive():
+                    continue
+                child.join()
+                login_procs.pop(x_user)
+                login_counter += 1
+                now = time.time()
+                duration = now - start_time
+                per_login_time = duration / login_counter
+                print("Login finished: %s (%.2f)" % (x_user, per_login_time))
+            time.sleep(0.01)
+            if len(login_procs) > 0:
+                continue
+            break
+        now = time.time()
+        duration = now - start_time
+        logins_per_second = login_counter / duration
+        print("Requests/Second: %.2f" % logins_per_second)
+
     def handle_mass_object_add(self, command, subcommand):
-        """ Handle dump index command. """
+        """ Handle mass object add command. """
         import csv
         # Get command syntax.
         try:
@@ -4156,18 +4256,26 @@ class CommandHandler(object):
                     config.ignore_policy_tags.remove("interactive")
         return result
 
-    def login(self, username=None, password=None, node=None):
+    def login(self, username=None, password=None, node=None,
+        start_otpme_agent=True, **kwargs):
         """ Do realm login. """
         from otpme.lib.classes.login_handler import LoginHandler
         #init_otpme(use_backend=False)
         self.init(use_backend=False)
-        try:
-            stuff.start_otpme_agent(user=config.system_user(),
-                                    wait_for_socket=False,
-                                    quiet=False)
-        except Exception as e:
-            config.raise_exception()
-            raise OTPmeException(_("Unable to start otpme-agent: %s") % e)
+        if start_otpme_agent:
+            try:
+                stuff.start_otpme_agent(user=config.system_user(),
+                                        wait_for_socket=False,
+                                        quiet=False)
+            except Exception as e:
+                config.raise_exception()
+                raise OTPmeException(_("Unable to start otpme-agent: %s") % e)
+        if password is None:
+            if config.stdin_pass:
+                password = config.stdin_pass
+        login_use_dns = config.login_use_dns
+        if node:
+            login_use_dns = False
         login_handler = LoginHandler()
         try:
             login_handler.login(username=username,
@@ -4177,9 +4285,10 @@ class CommandHandler(object):
                                 use_dns=config.use_dns,
                                 #cache_login_tokens=True,
                                 start_otpme_agent=False,
-                                login_use_dns=config.login_use_dns,
+                                login_use_dns=login_use_dns,
                                 use_ssh_agent=config.use_ssh_agent,
-                                use_smartcard=config.use_smartcard)
+                                use_smartcard=config.use_smartcard,
+                                **kwargs)
         except Exception as e:
             raise OTPmeException(str(e))
         login_message = login_handler.login_reply['login_message']

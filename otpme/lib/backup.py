@@ -201,5 +201,5 @@ def restore_object(object_data, callback=default_callback, **kwargs):
     # Set last used time.
     last_used = object_data['last_used']
     if last_used is not None:
-        backend.set_last_used(object_uuid, last_used)
+        backend.set_last_used(object_id.object_type, object_uuid, last_used)
     return callback.ok()

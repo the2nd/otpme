@@ -1433,6 +1433,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
                         'token_uuid',
                         'accessgroup',
                         'client',
+                        'client_ip',
                         'creation_time',
                         'timeout',
                         'unused_timeout',
@@ -1727,29 +1728,34 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
             # Get expire time.
             try:
                 timeout = session_list[session_uuid]['timeout'][0]
+            except KeyError:
+                timeout = None
+            try:
                 creation_time = session_list[session_uuid]['creation_time'][0]
             except KeyError:
-                continue
-            session_expire = calc_expire_time(creation_time, timeout)
+                creation_time = None
+            session_expire = None
+            if creation_time and timeout:
+                session_expire = calc_expire_time(creation_time, timeout)
+            expire = None
             if session_expire:
                 expire = datetime.fromtimestamp(session_expire)
             # Get unsued expire time.
             try:
                 last_used = session_list[session_uuid]['last_used']
             except KeyError:
-                continue
+                last_used = None
             unused_session_expire = 0
             if last_used:
                 try:
-                    timeout = session_list[session_uuid]['timeout'][0]
-                    creation_time = session_list[session_uuid]['creation_time'][0]
                     unused_timeout = session_list[session_uuid]['unused_timeout'][0]
                 except KeyError:
-                    continue
-                expire_time = calc_expire_time(creation_time, timeout)
-                unused_session_expire = calc_unused_expire_time(expire_time,
-                                                                last_used,
-                                                                unused_timeout)
+                    unused_timeout = None
+                if unused_timeout:
+                    expire_time = calc_expire_time(creation_time, timeout)
+                    unused_session_expire = calc_unused_expire_time(expire_time,
+                                                                    last_used,
+                                                                    unused_timeout)
             unused_expire = None
             if unused_session_expire:
                 unused_expire = datetime.fromtimestamp(unused_session_expire)

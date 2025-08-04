@@ -2403,8 +2403,10 @@ def index_get_object(object_id=None, object_type=None,
     if uuid and not object_id:
         object_id = get_oid(uuid, instance=True)
 
-    if object_id:
-        object_type = object_id.object_type
+    if not object_id:
+        return
+
+    object_type = object_id.object_type
 
     try:
         IndexObject, \
@@ -2674,14 +2676,23 @@ def set_last_used_times(object_type, updates, session=None, **kwargs):
     session.commit()
 
 @handle_transaction
-def set_last_used(uuid, timestamp, session=None, cluster=True, **kwargs):
+def set_last_used(object_type, uuid, timestamp,
+    session=None, cluster=True, **kwargs):
+    from sqlalchemy import update
     from otpme.lib.daemon.clusterd import cluster_sync_object
-    index_object = index_get_object(uuid=uuid)
-    if not index_object:
-        return
-    index_object.last_used = timestamp
-    index_object = session.merge(index_object)
-    session.add(index_object)
+    try:
+        IndexObject, \
+        IndexObjectAttribute, \
+        IndexObjectACL = get_class(object_type)
+    except UnknownClass:
+        msg = "Unknown object class: %s" % object_type
+        raise SearchException(msg)
+    # Update last used timestamp.
+    stmt = update(IndexObject)
+    stmt = stmt.where(IndexObject.uuid == uuid)
+    stmt = stmt.values(last_used=timestamp)
+    session.execute(stmt)
+    # Commit change.
     session.commit()
     if not cluster:
         return

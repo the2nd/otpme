@@ -26,7 +26,7 @@ def register():
 class AuthDaemon(OTPmeDaemon):
     """ AuthDaemon """
     def __init__(self, *args, **kwargs):
-        self.last_session_outdate = 0
+        self.last_session_outdate = time.time()
         super(AuthDaemon, self).__init__(*args, **kwargs)
 
     def outdate_sessions(self):

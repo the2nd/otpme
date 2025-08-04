@@ -1443,6 +1443,9 @@ class ClusterDaemon(OTPmeDaemon):
 
         x_sort = lambda x: _node_votes[x]['vote']
         node_scores_sorted = sorted(_node_votes, key=x_sort, reverse=True)
+        if len(node_scores_sorted) == 0:
+            msg = "Cannot get master node: No node votes."
+            raise MasterNodeElectionFailed(msg)
         new_master_node = node_scores_sorted[0]
 
         return new_master_node, node_votes
@@ -3080,12 +3083,10 @@ class ClusterDaemon(OTPmeDaemon):
 
     def check_online_nodes(self, cluster_journal_entry):
         org_timestamp = cluster_journal_entry.timestamp
-        while True:
-            try:
-                cluster_journal_entry.lock(write=True)
-            except ObjectDeleted:
-                return
-            break
+        try:
+            cluster_journal_entry.lock(write=True)
+        except ObjectDeleted:
+            return
         try:
             entry_nodes = cluster_journal_entry.get_nodes()
             online_nodes = sorted(multiprocessing.online_nodes)
@@ -3124,10 +3125,11 @@ class ClusterDaemon(OTPmeDaemon):
             cluster_journal_entry.release()
 
     def check_member_nodes(self, cluster_journal_entry):
+        org_timestamp = cluster_journal_entry.timestamp
         try:
             cluster_journal_entry.lock(write=True)
         except ObjectDeleted:
-            return
+            return True
         try:
             entry_nodes = sorted(cluster_journal_entry.get_nodes())
             member_nodes = sorted(multiprocessing.member_nodes)
@@ -3149,6 +3151,8 @@ class ClusterDaemon(OTPmeDaemon):
             for object_event in events:
                 object_event.set()
                 object_event.unlink()
+            if org_timestamp != cluster_journal_entry.timestamp:
+                return False
         finally:
             cluster_journal_entry.release()
         return True

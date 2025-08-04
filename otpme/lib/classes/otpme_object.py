@@ -844,7 +844,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         """ Set last used timestamp. """
         if not self.track_last_used:
             return
-        backend.set_last_used(self.uuid, timestamp)
+        backend.set_last_used(self.type, self.uuid, timestamp)
 
     @property
     def cache_expire_time(self):

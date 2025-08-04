@@ -3062,7 +3062,6 @@ class User(OTPmeObject):
         """
         # List to hold tokens.
         tokens = []
-
         # If we got no token types list but a token type add it to list.
         if token_types is None:
             if token_type != None:
@@ -3073,22 +3072,30 @@ class User(OTPmeObject):
             if pass_type is not None:
                 pass_types = [pass_type]
 
-        def check_token_types(token, token_types=None, pass_types=None):
+        def check_token_types(token_uuid, token_data, token_types=None, pass_types=None):
             """ Check if token type matches. """
             token_type_matches = False
             token_pass_type_matches = False
             if token_types:
-                _token_type = token.token_type
+                _token_type = token_data[token_uuid]['token_type'][0]
                 # Make sure we check linked token if needed.
                 if resolv_token_links:
-                    if token.destination_token:
-                        _token_type = token.dst_token.token_type
+                    try:
+                        destination_token = token_data[token_uuid]['destination_token'][0]
+                    except KeyError:
+                        destination_token = None
+                    if destination_token:
+                        _token_type = token_data[destination_token]['token_type'][0]
             if pass_types:
-                _token_pass_type = token.pass_type
+                _token_pass_type = token_data[token_uuid]['pass_type'][0]
                 # Make sure we check linked token if needed.
                 if resolv_token_links:
-                    if token.destination_token:
-                        _token_pass_type = token.dst_token.pass_type
+                    try:
+                        destination_token = token_data[token_uuid]['destination_token'][0]
+                    except KeyError:
+                        destination_token = None
+                    if destination_token:
+                        _token_pass_type = token_data[destination_token]['pass_type'][0]
             if token_types:
                 if _token_type in token_types:
                     token_type_matches = True
@@ -3106,35 +3113,62 @@ class User(OTPmeObject):
                     return True
             return False
 
+        return_attrs = [
+                        'name',
+                        'read_oid',
+                        'full_oid',
+                        'rel_path',
+                        'enabled',
+                        'token_type',
+                        'pass_type',
+                        'destination_token',
+                        'second_factor_token',
+                        'second_factor_token_enabled',
+                        ]
+        token_data = backend.search(object_type="token",
+                                    attribute="uuid",
+                                    values=self.tokens,
+                                    return_attributes=return_attrs)
+
         # Walk through all tokens of the user.
-        for uuid in self.tokens:
+        for uuid in token_data:
             add_token = False
-            # Get token.
-            t = backend.get_object(object_type="token",
-                                    uuid=uuid)
-            if not t:
-                continue
+
+            token_name = token_data[uuid]['name']
+            token_enabled = token_data[uuid]['enabled']
 
             if skip_disabled:
-                if not t.enabled:
+                if not token_enabled:
                     continue
 
             # Make sure we resolve token links.
             if resolv_token_links:
+                try:
+                    destination_token = token_data[uuid]['destination_token'][0]
+                except KeyError:
+                    destination_token = None
                 # Make sure we load destination tokens.
-                if t.destination_token:
-                    t.dst_token = t.get_destination_token()
-                    if not t.dst_token:
-                        continue
+                if destination_token:
                     if skip_disabled:
-                        if not t.dst_token.enabled:
+                        dst_token_result = backend.search(object_type="token",
+                                                attribute="uuid",
+                                                value=destination_token,
+                                                return_attributes=return_attrs)
+                        if not dst_token_result:
+                            continue
+                        token_data[destination_token] = dst_token_result[destination_token]
+                        try:
+                            destination_token_enabled = dst_token_result[destination_token]['enabled']
+                        except KeyError:
+                            continue
+                        if not destination_token_enabled:
                             continue
 
             # Make sure we resolv token links.
-            if resolv_token_links and t.destination_token:
-                token_uuid = t.dst_token.uuid
+            if resolv_token_links and destination_token:
+                token_uuid = dst_token_result[destination_token]
             else:
-                token_uuid = t.uuid
+                token_uuid = uuid
 
             # Check if token is valid.
             token_valid = False
@@ -3156,17 +3190,23 @@ class User(OTPmeObject):
             # If token type or pass type is set add only
             # matching tokens.
             if token_types or pass_types:
-                if check_token_types(token=t,
+                if check_token_types(token_uuid=token_uuid,
+                                    token_data=token_data,
                                     token_types=token_types,
                                     pass_types=pass_types):
                     add_token = True
                 # Check second factor token if requested.
-                if check_sf_tokens and t.second_factor_token_enabled:
+                try:
+                    second_factor_token_enabled = token_data[token_uuid]['second_factor_token_enabled'][0]
+                except KeyError:
+                    second_factor_token_enabled = False
+                if check_sf_tokens and second_factor_token_enabled:
                     try:
-                        sftoken = t.get_sftoken()
-                    except Exception as e:
+                        second_factor_token = token_data[token_uuid]['second_factor_token'][0]
+                    except KeyError:
                         continue
-                    if check_token_types(token=sftoken,
+                    if check_token_types(token_uuid=second_factor_token,
+                                        token_data=token_data,
                                         token_types=token_types,
                                         pass_types=pass_types):
                         add_token = True
@@ -3176,30 +3216,37 @@ class User(OTPmeObject):
             if not add_token:
                 continue
 
-            if t in tokens:
+            if token_uuid in tokens:
                 continue
 
             # Append token to list if not already added.
             if not quiet:
                 msg = ("Selecting token '%s' based on "
-                    "accessgroup '%s'." % (t.name, access_group.name))
+                    "accessgroup '%s'." % (token_name, access_group.name))
                 logger.debug(msg)
-            tokens.append(t)
+            tokens.append(token_uuid)
 
         result = []
-        for t in tokens:
+        for token_uuid in tokens:
             if return_type == "instance":
-                result.append(t)
+                token = backend.get_object(uuid=token_uuid)
+                if not token:
+                    continue
+                result.append(token)
             elif return_type == "uuid":
-                result.append(t.uuid)
+                result.append(token_uuid)
             elif return_type == "read_oid":
-                result.append(t.oid.read_oid)
+                read_oid = token_data[token_uuid]['read_oid']
+                result.append(read_oid)
             elif return_type == "full_oid":
-                result.append(t.oid.full_oid)
+                full_oid = token_data[token_uuid]['full_oid']
+                result.append(full_oid)
             elif return_type == "name":
-                result.append(t.name)
+                token_name = token_data[token_uuid]['name']
+                result.append(token_name)
             elif return_type == "rel_path":
-                result.append(t.rel_path)
+                rel_path = token_data[token_uuid]['rel_path']
+                result.append(rel_path)
 
         if _caller == "RAPI":
             result = ",".join(result)
@@ -3338,11 +3385,9 @@ class User(OTPmeObject):
             if time.time() > used_expiry:
                 msg = ("Removing expired used SOTP from backend: %s" % self.name)
                 logger.debug(msg)
-                used_object = backend.get_object(uuid=uuid)
-                if not used_object:
-                    continue
+                used_oid = backend.get_oid(uuid=uuid, instance=True)
                 try:
-                    used_object.delete(force=True)
+                    backend.delete_object(used_oid, cluster=True)
                 except UnknownObject:
                     pass
                 try:
@@ -3800,7 +3845,7 @@ class User(OTPmeObject):
             # Remove token object from backend WITHOUT removing its UUID from
             # any role etc.
             try:
-                backend.delete_object(cur_token.oid)
+                backend.delete_object(cur_token.oid, cluster=True)
             except Exception as e:
                 config.raise_exception()
                 msg = (_("Error removing token '%s': %s") % (cur_token.name, e))
@@ -5060,7 +5105,7 @@ class User(OTPmeObject):
             used_oid = backend.get_oid(uuid)
             used_oid = oid.get(used_oid)
             try:
-                backend.delete_object(used_oid)
+                backend.delete_object(used_oid, cluster=True)
             except Exception as e:
                 msg = ("Error removing used SOTP '%s' from backend: %s"
                         % (used_object, e))

@@ -230,7 +230,7 @@ class OTPmeConfig(object):
                             config_file_parameter="SYNC_MEM_CACHE")
 
         # Use DNS to get OTPme login realm/site and socket URI.
-        self.register_config_var("login_use_dns", bool, False,
+        self.register_config_var("login_use_dns", bool, True,
                                 config_file_parameter="LOGIN_USE_DNS")
         # Use DNS to get OTPme site address.
         self.register_config_var("use_dns", bool, False,

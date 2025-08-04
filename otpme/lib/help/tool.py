@@ -161,6 +161,16 @@ cmd_help = {
                                 },
                 },
 
+    'login_benchmark'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-tool login_benchmark [--procs <16>] [--node <node>] {csv_file}',
+                    'cmd'   :   '--procs :procs: --node :node: <csv_file>',
+                    '_help' :   {
+                                    'cmd'                   : 'Run login benchmark.',
+                                    '--node <node>'         : 'Send login request to this node.',
+                                    '--procs <int>'         : 'Start n jobs in parallel.',
+                                },
+                },
+
     'sync'    : {
                     '_cmd_usage_help' : 'Usage: otpme-tool sync [sites|objects|token_data|ssh_authorized_keys|nsscache]',
                     'cmd'   :   '--realm :realm: --site :site: [sync_type]',

@@ -1299,7 +1299,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                     status = False
                     return self.build_response(status, message)
                 try:
-                    backend.delete_object(x_src_oid)
+                    backend.delete_object(x_src_oid, cluster=True)
                 except UnknownObject:
                     pass
                 except Exception as e:
@@ -1339,7 +1339,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 moved_objects[x_src_oid.full_oid]['dst'] = move_object.oid.full_oid
             elif x_src_oid.object_type == "token":
                 try:
-                    backend.delete_object(x_src_oid)
+                    backend.delete_object(x_src_oid, cluster=True)
                 except UnknownObject:
                     pass
                 except Exception as e:
@@ -1400,7 +1400,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                     status = False
                     return self.build_response(status, message)
                 try:
-                    backend.delete_object(x_src_oid)
+                    backend.delete_object(x_src_oid, cluster=True)
                 except UnknownObject:
                     pass
                 except Exception as e:
@@ -2254,7 +2254,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                     if str(ask).lower() != "y":
                         return callback.abort()
                 try:
-                    backend.delete_object(object_id)
+                    backend.delete_object(object_id, cluster=True)
                 except Exception as e:
                     msg = "Error deleting object: %s" % e
                     return callback.error(msg)

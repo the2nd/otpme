@@ -344,11 +344,11 @@ class AuthHandler(object):
         """ Make sure session token is valid for this request. """
         # Create token instance.
         token = backend.get_object(object_type="token",
-                                    uuid=session.auth_token,
-                                    realm=self.user.realm,
-                                    site=self.user.site,
-                                    run_policies=True,
-                                    _no_func_cache=True)
+                                uuid=session.auth_token,
+                                realm=self.user.realm,
+                                site=self.user.site,
+                                run_policies=True,
+                                _no_func_cache=True)
         if not token:
             msg = ("WARNING: Token '%s' does not exists anymore. Maybe it was "
                     "deleted while this sessions exists?" % session.auth_token)
@@ -1029,17 +1029,17 @@ class AuthHandler(object):
             # Make sure we honor self.require_pass_types when selecting tokens.
             if self.auth_mode == "static" or self.auth_mode == "auto":
                 if self.require_pass_types \
-                and not "static" in self.require_pass_types:
+                and "static" not in self.require_pass_types:
                     select_static_tokens = False
 
             if self.auth_mode == "otp" or self.auth_mode == "auto":
                 if self.require_pass_types \
-                and not "otp" in self.require_pass_types:
+                and "otp" not in self.require_pass_types:
                     select_otp_tokens = False
 
             if self.auth_type == "ssh":
                 if self.require_pass_types \
-                and not "ssh_key" in self.require_pass_types:
+                and "ssh_key" not in self.require_pass_types:
                     select_ssh_tokens = False
 
             # Select user tokens by pass type and self.require_token_types if
@@ -1817,6 +1817,8 @@ class AuthHandler(object):
                 # used timestamp.
                 for dict_key in sorted(user_sessions, reverse=False):
                     session_x = user_sessions[dict_key]
+                    if not session_x.last_used:
+                        continue
                     session_age = time.time() - session_x.last_used
                     if session_age < self.auth_group.relogin_timeout:
                         continue
