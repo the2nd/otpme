@@ -26,6 +26,7 @@ except:
     pass
 
 from otpme.lib import stuff
+from otpme.lib import config
 from otpme.lib import filetools
 
 from otpme.lib.exceptions import *
@@ -413,7 +414,7 @@ def mgr_init():
     # http://jtushman.github.io/blog/2014/01/14/python-|-multiprocessing-and-interrupts/
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-def drop_privileges(user=None, group=None):
+def drop_privileges(user=None, group=None, groups=None):
     """ Drop privileges. """
     from otpme.lib import config
     # Get logger.
@@ -426,6 +427,18 @@ def drop_privileges(user=None, group=None):
     # Remove group privileges.
     if user or group:
         os.setgroups([])
+
+    group_ids = []
+    # Get group IDs.
+    if groups:
+        for g in groups:
+            try:
+                x = grp.getgrnam(g).gr_gid
+            except Exception as e:
+                msg = "Failed to resolve group: %s" % g
+                raise OTPmeException(msg)
+            group_ids.append(x)
+        os.setgroups(group_ids)
 
     # Drop group privileges.
     if group:
@@ -449,11 +462,13 @@ def drop_privileges(user=None, group=None):
         if config.debug_level() > 3:
             logger.debug("Changed user to: %s" % user)
         # Change to users home directory to prevent any chdir() problems.
-        try:
-            os.chdir(os.path.expanduser("~%s" % user))
-        except Exception as e:
-            msg = "Failed to change cwd: %s" % e
-            raise OTPmeException(msg)
+        user_home_dir = os.path.expanduser("~%s" % user)
+        if os.path.exists(user_home_dir):
+            try:
+                os.chdir(user_home_dir)
+            except Exception as e:
+                msg = "Failed to change cwd: %s" % e
+                raise OTPmeException(msg)
 
 def start_process(name, target, target_args=None,
     target_kwargs=None, daemon=False,
@@ -578,7 +593,14 @@ class Event(object):
         global posix_semaphores
         semaphore = posix_ipc.Semaphore(name=self.name,
                                         flags=posix_ipc.O_CREAT,
-                                        mode=0o600)
+                                        mode=0o660)
+        sem_path = f"/dev/shm/sem.{self.name.lstrip('/')}"
+        uid = pwd.getpwnam(config.user).pw_uid
+        gid = grp.getgrnam(config.group).gr_gid
+        try:
+            os.chown(sem_path, uid, gid)
+        except FileNotFoundError:
+            pass
         if semaphore.name not in posix_semaphores:
             posix_semaphores[semaphore.name] = semaphore
         return semaphore

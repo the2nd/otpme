@@ -89,6 +89,9 @@ class ConnectSocket(object):
                 msg = (_("Failed to create socket. Error code: %s, Error "
                         "message: %s") % (msg[0], msg[1]))
                 raise OTPmeException(msg)
+            # Set send/recv buffer.
+            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1024 * 102400)
+            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024 * 102400)
 
             # Create SSL socket if requested.
             if self.use_ssl and cert and key:

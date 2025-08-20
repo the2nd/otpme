@@ -10,6 +10,7 @@ except:
 
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib.protocols.response import decode_response
 from otpme.lib.protocols.otpme_client import OTPmeClient1
 
 from otpme.lib.exceptions import *
@@ -41,7 +42,8 @@ class OTPmeHostP1(OTPmeClient1):
                         }
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if status:
             object_id = reply
         return object_id
@@ -55,7 +57,8 @@ class OTPmeHostP1(OTPmeClient1):
                         }
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if status:
             object_uuid = reply
         return object_uuid
@@ -69,7 +72,8 @@ class OTPmeHostP1(OTPmeClient1):
                         }
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if status:
             object_exists = reply
         return object_exists
@@ -81,7 +85,8 @@ class OTPmeHostP1(OTPmeClient1):
         command_args = {'username':username}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if status:
             user_uuid = reply
         return user_uuid
@@ -93,7 +98,8 @@ class OTPmeHostP1(OTPmeClient1):
         command_args = {'username':username}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if status:
             user_site = reply
         return user_site
@@ -127,7 +133,8 @@ class OTPmeHostP1(OTPmeClient1):
                             }
             status, \
             status_code, \
-            reply =  self.connection.send(command, command_args)
+            reply, \
+            binary_data = self.connection.send(command, command_args)
             if not status:
                 msg = (_("Unable to get site certificate: %s") % reply)
                 raise OTPmeException(msg)
@@ -142,7 +149,8 @@ class OTPmeHostP1(OTPmeClient1):
         command = "get_host_status"
         status, \
         status_code, \
-        reply = self.connection.send(command)
+        reply, \
+        binary_data = self.connection.send(command)
         return status, reply
 
     def authorize_token(self, token_uuid, login_interface):
@@ -154,7 +162,8 @@ class OTPmeHostP1(OTPmeClient1):
                         }
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         return status, reply
 
     def get_daemon_socket(self, daemon, node_name):
@@ -165,7 +174,8 @@ class OTPmeHostP1(OTPmeClient1):
         command_args['node_name'] = node_name
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             raise OTPmeException(reply)
         socket_uri = reply
@@ -178,7 +188,8 @@ class OTPmeHostP1(OTPmeClient1):
         command_args['token'] = token
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             raise OTPmeException(reply)
         socket_uri = reply
@@ -190,7 +201,8 @@ class OTPmeHostP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             raise OTPmeException(reply)
         socket_uri = reply
@@ -204,7 +216,8 @@ class OTPmeHostP1(OTPmeClient1):
         command_args['policy_name'] = policy_name
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             raise OTPmeException(reply)
         socket_uri = reply
@@ -217,3 +230,6 @@ class OTPmeHostP1(OTPmeClient1):
         self.connection.send("sync_objects")
         self.connection.send("sync_token_data")
         self.connection.send("sync_ssh_authorized_keys")
+
+    def decode_response(self, *args, **kwargs):
+        return decode_response(*args, **kwargs)

@@ -86,6 +86,7 @@ read_value_acls = {
                         "public_key",
                         "failcount",
                         "session",
+                        "auto_mount",
                         "auto_disable",
                         ],
             "dump"      : [
@@ -127,6 +128,7 @@ write_value_acls = {
                                 "auth_script",
                                 "login_script",
                                 "token"
+                                "auto_mount",
                                 ],
                     "disable"   : [
                                 "disabled_login",
@@ -134,6 +136,7 @@ write_value_acls = {
                                 "auth_script",
                                 "login_script",
                                 "token",
+                                "auto_mount",
                                 ],
         }
 
@@ -304,6 +307,22 @@ commands = {
                     'method'            : 'change_group',
                     'args'              : ['new_group'],
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'enable_auto_mount'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_auto_mount',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_auto_mount'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_auto_mount',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -1292,6 +1311,8 @@ class User(OTPmeObject):
         self._group_uuid = None
         # Indicates that the user is allowed to login even if realm/site/accessgroup/unit is disabled.
         self.allow_disabled_login = False
+        # Indicates that the users shares should be mounted on login.
+        self.auto_mount = True
         # Users keys can be handled by the key script on client side or by this
         # class.
         self.sign_mode = "client"
@@ -1332,6 +1353,7 @@ class User(OTPmeObject):
                             "EXTENSION_ATTRIBUTES",
                             "AUTOSIGN_ENABLED",
                             "ALLOW_DISABLED_LOGIN",
+                            "AUTO_MOUNT",
                             "OBJECT_CLASSES",
                             "homeDirectory",
                             "loginShell",
@@ -1350,6 +1372,7 @@ class User(OTPmeObject):
                             "EXTENSION_ATTRIBUTES",
                             "AUTOSIGN_ENABLED",
                             "ALLOW_DISABLED_LOGIN",
+                            "AUTO_MOUNT",
                             "OBJECT_CLASSES",
                             "USED_PASS_SALT",
                             "ACLS",
@@ -1377,6 +1400,13 @@ class User(OTPmeObject):
                                                         'type'      : 'uuid',
                                                         'required'  : False,
                                                     },
+
+                        'AUTO_MOUNT'                : {
+                                                        'var_name'  : 'auto_mount',
+                                                        'type'      : bool,
+                                                        'required'  : False,
+                                                    },
+
 
                         'ALLOW_DISABLED_LOGIN'      : {
                                                         'var_name'  : 'allow_disabled_login',
@@ -4038,6 +4068,58 @@ class User(OTPmeObject):
 
         return self._cache(callback=callback)
 
+    @check_acls(['enable:auto_mount'])
+    @object_lock()
+    def enable_auto_mount(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Enable user disabled login. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_auto_mount",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
+
+        self.auto_mount = True
+
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:auto_mount'])
+    @object_lock()
+    def disable_auto_mount(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Disable user disabled login. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_auto_mount",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
+
+        self.auto_mount = False
+
+        return self._cache(callback=callback)
+
     @check_acls(['enable:disabled_login'])
     @object_lock()
     def enable_disabled_login(
@@ -5281,6 +5363,12 @@ class User(OTPmeObject):
             lines.append("\tgroup:\t\t\t%s\n" % self.group)
         else:
             lines.append("\tgroup:\t\t\t\n")
+
+        if view_acl or edit_acl:
+            auto_mount = "Disabled"
+            if self.auto_mount:
+                auto_mount = "Enabled"
+            lines.append("\tauto-mount:\t\t%s\n" % auto_mount)
 
         if view_acl or edit_acl:
             autosign = "Disabled"

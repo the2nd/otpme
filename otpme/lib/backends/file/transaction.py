@@ -553,8 +553,8 @@ class BaseTransaction(object):
         journal_file = self.get_cluster_journal_file(action)
         journal_entry = {
                         'action'        : action,
-                        'object_id'     : object_id.full_oid,
                         'object_uuid'   : object_uuid,
+                        'old_object_id' : object_id.full_oid,
                         'new_object_id' : new_object_id.full_oid,
                         'journal_file'  : journal_file,
                         }
@@ -601,12 +601,12 @@ class BaseTransaction(object):
         return cluster_event
 
     def handle_cluster_rename(self, journal_entry):
-        object_id = journal_entry['object_id']
-        object_id = oid.get(object_id)
+        old_object_id = journal_entry['old_object_id']
+        old_object_id = oid.get(old_object_id)
         object_uuid = journal_entry['object_uuid']
         new_object_id = journal_entry['new_object_id']
         new_object_id = oid.get(new_object_id)
-        object_type = object_id.object_type
+        object_type = old_object_id.object_type
         wait_for_write = True
         if self._replay:
             wait_for_write = False
@@ -614,7 +614,7 @@ class BaseTransaction(object):
             wait_for_write = False
         cluster_event = cluster_sync_object(action="rename",
                                             object_uuid=object_uuid,
-                                            object_id=object_id,
+                                            old_object_id=old_object_id,
                                             object_type=object_type,
                                             new_object_id=new_object_id,
                                             wait_for_write=wait_for_write)
@@ -648,8 +648,8 @@ class BaseTransaction(object):
                 if not self.no_disk_writes:
                     cluster_event = self.handle_cluster_rename(journal_entry)
                     if cluster_event:
-                        object_id = journal_entry['object_id']
-                        cluster_events[cluster_event] = object_id
+                        old_object_id = journal_entry['old_object_id']
+                        cluster_events[cluster_event] = old_object_id
             else:
                 msg = "Unknown transaction action: %s" % action
                 raise OTPmeException(msg)
@@ -1791,6 +1791,8 @@ class ObjectTransaction(BaseTransaction):
                 object_id = journal_entry['object_id']
                 object_config = journal_entry['object_config']
                 kwargs = journal_entry['kwargs']
+                # Do not cluster delete again.
+                kwargs['cluster'] = False
                 # Get OID.
                 object_id = oid.get(object_id)
                 # Add commit files to be removed by file transaction.
@@ -1816,6 +1818,8 @@ class ObjectTransaction(BaseTransaction):
                 new_oid = journal_entry['new_oid']
                 new_oid = oid.get(object_id=new_oid)
                 kwargs = journal_entry['kwargs']
+                # Do not cluster rename again.
+                kwargs['cluster'] = False
                 if config.debug_level(DEBUG_SLOT) > 0:
                     msg = ("Applying object transaction (rename): %s > %s: %s"
                             % (old_oid, new_oid, self.log_name))

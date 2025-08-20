@@ -309,7 +309,8 @@ class OTPmeDaemon(object):
             except Exception as e:
                 self.logger.critical("Unable to listen on socket: %s" % e)
 
-    def default_startup(self, use_ssl=True, ssl_verify_client=True, handler_args={}):
+    def default_startup(self, use_ssl=True, ssl_verify_client=True,
+        handler_args={}, dont_drop_privileges=False):
         """ Do default daemon startup stuff. """
         # Set connection handler.
         try:
@@ -325,11 +326,12 @@ class OTPmeDaemon(object):
             self.logger.critical(msg)
         # We can drop privileges AFTER sockets are created. This is needed when
         # listening to well known ports (<1024), which requires root privileges.
-        try:
-            self.drop_privileges()
-        except Exception as e:
-            msg = "Failed to drop privileges: %s" % e
-            self.logger.critical(msg)
+        if not dont_drop_privileges:
+            try:
+                self.drop_privileges()
+            except Exception as e:
+                msg = "Failed to drop privileges: %s" % e
+                self.logger.critical(msg)
         # Start listening on sockets.
         try:
             self.listen()

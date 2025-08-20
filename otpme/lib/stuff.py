@@ -1113,6 +1113,27 @@ def convert_listdict(o, keep_unicode_iterkeys=False, keep_unicode_values=False):
     else:
         return string_to_type(o)
 
+def get_users_groups(username):
+    import pwd
+    import grp
+    user_info = pwd.getpwnam(username)
+    user_gid = user_info.pw_gid
+    groups = []
+    for g in grp.getgrall():
+        if g.gr_gid == user_gid:
+            groups.append(g.gr_name)
+        elif username in g.gr_mem:
+            groups.append(g.gr_name)
+    return groups
+
+def get_users_default_group(username):
+    import pwd
+    import grp
+    pw_record = pwd.getpwnam(username)
+    gid = pw_record.pw_gid
+    group_name = grp.getgrgid(gid).gr_name
+    return group_name
+
 def user_exists(username):
     """ Check if given system user exists. """
     import pwd
@@ -1680,14 +1701,16 @@ def get_agent_user():
     agent_user = None
     agent_conn = None
     # Try to get agent connection
+    agent_conn = connections.get("agent")
     try:
-        agent_conn = connections.get("agent")
         # Try to get logged in user from otpme-agent
         if agent_conn.get_status():
             agent_user = agent_conn.get_user()
-        return agent_user
     except Exception as e:
         raise Exception(_("Error getting agent connection: %s") % e)
+    finally:
+        agent_conn.close()
+    return agent_user
 
 def get_user_uuid(username):
     """ Resolve username to UUID. """
@@ -1708,7 +1731,8 @@ def get_user_uuid(username):
         command_args = {'username':username}
         status, \
         status_code, \
-        reply = hostd_conn.send(command, command_args)
+        reply, \
+        binary_data = hostd_conn.send(command, command_args)
         if not status:
             return
         user_uuid = reply
@@ -1733,7 +1757,8 @@ def get_username_by_uuid(uuid):
         command = "get_user_name"
         status, \
         status_code, \
-        reply = hostd_conn.send(command, command_args)
+        reply, \
+        binary_data = hostd_conn.send(command, command_args)
         user_name = reply
         if not status:
             return None
@@ -1766,7 +1791,8 @@ def get_site_address(realm, site):
                     }
         status, \
         status_code, \
-        reply = hostd_conn.send(daemon_command, command_args)
+        reply, \
+        binary_data = hostd_conn.send(daemon_command, command_args)
         if not status:
             msg = (_("Error getting site address from hostd: %s") % reply)
             raise ConnectionError(msg)
@@ -1806,7 +1832,8 @@ def get_site_fqdn(realm, site, mgmt=False):
                     }
         status, \
         status_code, \
-        reply = hostd_conn.send(daemon_command, command_args)
+        reply, \
+        binary_data = hostd_conn.send(daemon_command, command_args)
         if not status:
             msg = (_("Error getting site address from hostd: %s") % reply)
             raise ConnectionError(msg)
@@ -1882,7 +1909,8 @@ def get_site_trust_status(realm, site):
                 }
     status, \
     status_code, \
-    reply = hostd_conn.send(command=hostd_command,
+    reply, \
+    binary_data = hostd_conn.send(command=hostd_command,
                         command_args=command_args)
     if not status:
         raise Exception(_("Unable to get site trust status: %s")

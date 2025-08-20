@@ -442,6 +442,13 @@ cmd_help = {
                                 },
                 },
 
+    'get_login_session_id'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-tool get_login_session_id',
+                    '_help' :   {
+                                    'cmd'                   : 'Get otpme-agent login session ID.',
+                                },
+                },
+
     'get_login_token'    : {
                     '_cmd_usage_help' : 'Usage: otpme-tool get_login_token',
                     '_help' :   {

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import ujson
+import struct
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -13,8 +15,8 @@ from otpme.lib.protocols import status_codes
 
 from otpme.lib.exceptions import *
 
-def build_response(status, data, encryption=None,
-    enc_key=None, compress=True):
+def build_response(status, data, encryption=None, encoding="base64",
+    enc_key=None, compress=True, binary_data=None):
     """ Build response. """
     response = {'data':data}
     # Build response.
@@ -30,16 +32,42 @@ def build_response(status, data, encryption=None,
     response = json.encode(response,
                     compress=compress,
                     compress_level=1,
-                    encoding="base64",
+                    encoding=encoding,
                     encryption=encryption,
                     enc_key=enc_key)
+    response = response.encode()
+
+    if binary_data is None:
+        binary_data = b''
+
+    header = {
+        'text_length': len(response),
+        'binary_length': len(binary_data)
+    }
+    header_bytes = ujson.dumps(header).encode('utf-8')
+    header_len = struct.pack('>I', len(header_bytes))
+
+    response = header_len + header_bytes + response + binary_data
+
     return response
 
-def decode_response(response, encryption=None, enc_key=None):
+def decode_response(response, encryption=None, encoding="base64", enc_key=None):
     """ Decode OTPme response. """
+    if isinstance(response, str):
+        response = response.decode()
+    header_len = struct.unpack('>I', response[:4])[0]
+    header_start = 4
+    header_end = header_start + header_len
+    header = ujson.loads(response[header_start:header_end].decode('utf-8'))
+    text_start = header_end
+    text_end = text_start + header['text_length']
+    binary_start = text_end
+    binary_end = binary_start + header['binary_length']
+    binary_data = response[binary_start:binary_end]
+    response = response[text_start:text_end].decode('utf-8')
     try:
         response = json.decode(response,
-                        encoding="base64",
+                        encoding=encoding,
                         encryption=encryption,
                         enc_key=enc_key)
     except Exception as e:
@@ -55,4 +83,4 @@ def decode_response(response, encryption=None, enc_key=None):
     except:
         msg = "Invalid response: Status code missing"
         raise OTPmeException(msg)
-    return status_code, data
+    return status_code, data, binary_data

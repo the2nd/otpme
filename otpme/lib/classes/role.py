@@ -1295,7 +1295,7 @@ class Role(OTPmeObject):
 
         token_list = []
         if self.tokens:
-            if self.verify_acl("view:token."):
+            if self.verify_acl("view:token"):
                 return_attrs = ['rel_path']
                 token_list = backend.search(object_type="token",
                                             join_object_type="role",
@@ -1309,7 +1309,7 @@ class Role(OTPmeObject):
 
         role_list = []
         if self.roles:
-            if self.verify_acl("view:role."):
+            if self.verify_acl("view:role"):
                 return_attrs = ['site', 'name']
                 roles_result = backend.search(object_type="role",
                                             join_object_type="role",

@@ -800,7 +800,7 @@ class OTPmeSyncP1(OTPmeServer1):
 
         return status, response
 
-    def _process(self, command, command_args):
+    def _process(self, command, command_args, **kwargs):
         """ Handle sync data received from sync_handler. """
         # All valid commands.
         valid_commands = [

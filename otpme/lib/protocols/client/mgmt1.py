@@ -10,6 +10,7 @@ except:
 
 from otpme.lib import config
 from otpme.lib.encoding.base import encode
+from otpme.lib.protocols.response import decode_response
 from otpme.lib.protocols.otpme_client import OTPmeClient1
 
 from otpme.lib.exceptions import *
@@ -57,7 +58,8 @@ class OTPmeMgmtP1(OTPmeClient1):
         try:
             status, \
             status_code, \
-            reply = self.connection.send(command=command, command_args=args)
+            reply, \
+            binary_data = self.connection.send(command=command, command_args=args)
         except Exception as e:
             config.raise_exception()
             status = False
@@ -268,3 +270,6 @@ class OTPmeMgmtP1(OTPmeClient1):
         except Exception as e:
             msg = (_("Unable to set users %s key: %s") % (key_type, e))
             raise OTPmeException(msg)
+
+    def decode_response(self, *args, **kwargs):
+        return decode_response(*args, **kwargs)

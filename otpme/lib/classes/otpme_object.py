@@ -1782,6 +1782,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         self.roles = None
         self.tokens = None
+        self.nodes = None
         self.dynamic_groups = None
 
         # Make sure we have at least empty ACL variables.
@@ -3811,6 +3812,174 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @object_lock()
+    def add_node(
+        self,
+        node_name: str,
+        force: bool=False,
+        run_policies: bool=True,
+        verify_acls: bool=True,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Adds a node to objects node list. """
+        if self.nodes is None:
+            msg = (_("Object does not support nodes."))
+            raise OTPmeException(msg)
+
+        if verify_acls:
+            if not self.verify_acl("add:node"):
+                msg = ("Permission denied: %s" % self)
+                return callback.error(msg, exception=PermissionDenied)
+
+        node = backend.get_object(object_type="node",
+                                    realm=config.realm,
+                                    site=config.site,
+                                    name=node_name)
+        if not node:
+            msg = (_("Unknown node: %s") % node_name)
+            return callback.error(msg)
+
+        if node.uuid in self.nodes:
+            exception = AlreadyExists
+            msg = (_("Node is already assigned to %s '%s'.")
+                    % (self.type, self.name))
+            return callback.error(msg, exception=exception)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                force=force,
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_node",
+                                force=force,
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        msg = "Adding node %s to %s %s." % (node.name, self.type, self.name)
+        callback.send(msg)
+        self.nodes.append(node.uuid)
+        # Update index.
+        self.add_index('node', node.uuid)
+        return self._cache(callback=callback)
+
+    @object_lock()
+    def remove_node(
+        self,
+        node_name: str,
+        force: bool=False,
+        verify_acls: bool=True,
+        run_policies: bool=True,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Removes a node from objects nodes list. """
+        if self.nodes is None:
+            msg = (_("Object does not support nodes."))
+            raise OTPmeException(msg)
+
+        if verify_acls:
+            if not self.verify_acl("remove:node"):
+                msg = ("Permission denied: %s" % self)
+                return callback.error(msg, exception=PermissionDenied)
+
+        node = backend.get_object(object_type="node",
+                                    realm=config.realm,
+                                    site=config.site,
+                                    name=node_name)
+        if not node:
+            msg = (_("Unknown node: %s") % node_name)
+            return callback.error(msg)
+
+        if node.uuid not in self.nodes:
+            msg = (_("Node is not assigned to %s '%s'.")
+                    % (self.type, self.name))
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("remove_node",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
+
+        # Remove node from object.
+        self.nodes.remove(node.uuid)
+        # Update index.
+        self.del_index('node', node.uuid)
+        return self._cache(callback=callback)
+
+    @cli.check_rapi_opts()
+    def get_nodes(
+        self,
+        return_type: str="name",
+        skip_disabled: bool=True,
+        include_pools: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Get all nodes assigned to this object. """
+        exception = None
+        if not return_type in [ 'instance', 'uuid', 'oid', 'name', 'read_oid', 'full_oid' ]:
+            exception = "Unknown return type: %s" % return_type
+        if _caller != "API" and return_type == "instance":
+            exception = "Unknown return type: %s" % return_type
+        if exception:
+            return callback.error(exception)
+
+        result = []
+        if self.nodes:
+            search_attr = {}
+            if skip_disabled:
+                search_attr['enabled'] = {}
+                search_attr['enabled']['value'] = True
+            result = backend.search(object_type="node",
+                                    attribute="uuid",
+                                    values=self.nodes,
+                                    attributes=search_attr,
+                                    return_type="uuid")
+        if include_pools and self.pools:
+            return_attrs = ['node', 'enabled']
+            pools_result = backend.search(object_type="pool",
+                                        attribute="uuid",
+                                        values=self.pools,
+                                        return_attributes=return_attrs)
+            for pool_uuid in pools_result:
+                pool_enabled = pools_result[pool_uuid]['enabled'][0]
+                if skip_disabled:
+                    if not pool_enabled:
+                        continue
+                try:
+                    pool_nodes = pools_result[pool_uuid]['node']
+                except KeyError:
+                    pool_nodes = []
+                result += pool_nodes
+
+        result = backend.search(object_type="node",
+                                attribute="uuid",
+                                values=result,
+                                return_type=return_type)
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+
+        return callback.ok(result)
+
+    @object_lock()
     @check_acls(['add:dynamic_groups'])
     def add_dynamic_group(
         self,
@@ -5018,6 +5187,8 @@ class OTPmeObject(OTPmeBaseObject):
                 self.ldif_journal.append([now, "del", [[a]]])
             else:
                 self.ldif_journal.append([now, "del", [[a, v]]])
+                ldif_attr = "ldif:%s" % a
+                self.del_index(ldif_attr, v)
             if not attr_values:
                 self.ldif.pop(a)
 

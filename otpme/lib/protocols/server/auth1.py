@@ -66,7 +66,7 @@ class OTPmeAuthP1(OTPmeServer1):
                                         existing_logger=config.logger,
                                         pid=True)
 
-    def _process(self, command, command_args):
+    def _process(self, command, command_args, **kwargs):
         """ Handle authentication data received from auth_handler. """
         # All valid commands.
         valid_commands = [
@@ -345,8 +345,9 @@ class OTPmeAuthP1(OTPmeServer1):
             try:
                 status, \
                 status_code, \
-                auth_reply = authd_conn.send(command="verify",
-                                    command_args=command_args)
+                auth_reply, \
+                binary_data = authd_conn.send(command="verify",
+                                        command_args=command_args)
             except Exception as e:
                 message = "Failed to authenticate user"
                 msg = "%s: %s" % (message, e)

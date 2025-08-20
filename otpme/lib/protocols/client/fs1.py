@@ -16,19 +16,19 @@ from otpme.lib.exceptions import *
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
-PROTOCOL_VERSION = "OTPme-join-1.0"
+PROTOCOL_VERSION = "OTPme-fs-1.0"
 
 def register():
-    config.register_otpme_protocol("joind", PROTOCOL_VERSION)
+    config.register_otpme_protocol("fsd", PROTOCOL_VERSION)
 
-class OTPmeJoinP1(OTPmeClient1):
-    """ Class that implements management client for protocol OTPme-join-1.0. """
+class OTPmeFsP1(OTPmeClient1):
+    """ Class that implements management client for protocol OTPme-fs-1.0. """
     def __init__(self, **kwargs):
-        self.daemon = "joind"
+        self.daemon = "fsd"
         self.name = PROTOCOL_VERSION
         # Get logger
         self.logger = config.logger
-        super(OTPmeJoinP1, self).__init__(self.daemon, **kwargs)
+        super(OTPmeFsP1, self).__init__(self.daemon, **kwargs)
 
     def decode_response(self, *args, **kwargs):
         return decode_response(*args, **kwargs)

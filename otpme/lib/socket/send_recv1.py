@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import struct
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -12,55 +13,30 @@ from otpme.lib.exceptions import *
 
 def send(socket_handler, data):
     """ Function to handle data sending through socket connection. """
-    # Get length of data to send.
-    data_len = len(data)
-    # Send length of data to peer.
-    request = "req_len:" + str(data_len)
-    sent = socket_handler.raw_send(request)
-    # Check if command was sent successful.
-    if sent != len(request):
-        msg = ("Error while data len negotiation.")
-        raise OTPmeException(msg)
-    # Get response.
-    response = socket_handler.raw_recv(1024)
-    # Check if we got ACK from peer.
-    if response != "ack_len:%s" % data_len:
-        msg = (_("Unknown acknowledge message from peer: %s") % response)
-        raise OTPmeException(msg)
-    # Now send data.
-    totalsent = socket_handler.raw_send(data)
+    # Build header with data length to send.
+    header = struct.pack(">I", len(data))
+    totalsent = socket_handler.raw_sendall(header + data)
     return totalsent
 
 def sendall(socket_handler, data):
     """ Actually send all data. """
     try:
-        socket_handler.raw_sendall(request)
+        socket_handler.raw_sendall(data)
     except Exception as e:
         msg = "Broken connection while sending data: %s" % e
         raise OTPmeException(msg)
 
 def recv(socket_handler, recv_buffer=4096):
     """ Function to handle data receiving through socket connection. """
-    # Get data from peer.
-    data = socket_handler.raw_recv(recv_buffer)
-    # Try to get data length from peer.
-    try:
-        data_len = int(data.split(":")[1])
-    except Exception as e:
-        response = (_("Error: Unable to get data len from request: %s") % data)
-        socket_handler.raw_send(response)
-        raise OTPmeException(response)
-    # Build ACK response message.
-    response = "ack_len:" + str(data_len)
-    # Try to send ACK.
-    try:
-        socket_handler.raw_send(response)
-    except Exception as e:
-        msg = (_("Error while data len negotiation: %s") % e)
-        raise OTPmeException(msg)
+    # Get header with data length from peer.
+    header = socket_handler.raw_recv(4)
+    if not header:
+        return b""
+    # Get data length.
+    data_len = struct.unpack(">I", header)[0]
     # Set receive buffer depending on data length.
     if data_len > 16384:
-        recv_buffer = 16384
+        recv_buffer = data_len
     elif data_len > 8192:
         recv_buffer = 8192
     elif data_len > 4096:
@@ -74,11 +50,11 @@ def recv(socket_handler, recv_buffer=4096):
     while bytes_recvd < data_len:
         _recv_buff = min(data_len - bytes_recvd, recv_buffer)
         chunk = socket_handler.raw_recv(_recv_buff)
-        if chunk == '':
+        if not chunk:
             msg = ("Broken connection while receiving data.")
             raise OTPmeException(msg)
         chunks.append(chunk)
         bytes_recvd = bytes_recvd + len(chunk)
-    # Relace tailing newline.
-    received = ''.join(chunks).replace("\n", "")
+    # Join chunks.
+    received = b''.join(chunks)
     return received

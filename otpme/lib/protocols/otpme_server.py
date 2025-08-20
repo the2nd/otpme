@@ -112,6 +112,11 @@ class OTPmeServer1(object):
         except:
             self.require_cluster_status = True
 
+        try:
+            self.allow_sotp_reuse
+        except:
+            self.allow_sotp_reuse = False
+
         self.session_reneg = False
 
         # Client infos.
@@ -425,7 +430,7 @@ class OTPmeServer1(object):
         #    message = "Bye bye..."
         #    raise ClientQuit(message)
         if not config.use_api:
-            if config.host_data['type'] == "node":
+            if config.host_type == "node":
                 if self.new_connection:
                     if self.require_master_node:
                         try:
@@ -443,10 +448,24 @@ class OTPmeServer1(object):
                             message = str(e)
                             status = status_codes.CLUSTER_NOT_READY
                             return self.build_response(status, message, encrypt=False)
+                    # Check if host is enabled.
+                    result = backend.search(object_type="node",
+                                            attribute="uuid",
+                                            value=config.uuid,
+                                            return_attributes=['uuid', 'enabled'])
+                    enabled = result[config.uuid]['enabled'][0]
+                    if not enabled:
+                        status = status_codes.NO_CLUSTER_SERVICE
+                        message = "No cluster serivce on this node."
+                        return self.build_response(status, message, encrypt=False)
                     self.new_connection = False
 
-        # Remove newline and carriage return.
-        request = data.replace('\n', '').replace('\r', '')
+        # Make sure peer is not disabled.
+        if self.peer and not self.peer.enabled:
+            status = status_codes.HOST_DISABLED
+            message = "%s is disabled: %s" % (self.peer.type, self.peer.fqdn)
+            #self.logger.warning(message)
+            return self.build_response(status, message, encrypt=False)
 
         enc_key = None
         enc_mod = None
@@ -461,10 +480,13 @@ class OTPmeServer1(object):
 
         # Decode request.
         try:
-            command, command_args = decode_request(request,
-                                            encryption=enc_mod,
-                                            enc_key=enc_key)
+            command, \
+            command_args, \
+            binary_data = decode_request(data,
+                                        encryption=enc_mod,
+                                        enc_key=enc_key)
         except Exception as e:
+            config.raise_exception()
             msg = "Received invalid request: %s" % e
             self.logger.warning(msg)
             raise ServerQuit(msg)
@@ -486,25 +508,11 @@ class OTPmeServer1(object):
             msg = ("Found valid peer %s: %s" % (self.peer.type, self.peer.name))
             if config.debug_level() > 3:
                 self.logger.debug(msg)
+
         # Allow "quit" also for disabled hosts.
         if command == "quit":
             msg = "Bye bye..."
             raise ClientQuit(msg)
-
-        if not config.use_api:
-            own_host = backend.get_object(uuid=config.uuid)
-            if own_host.type == "node":
-                if not own_host.enabled:
-                    status = status_codes.NO_CLUSTER_SERVICE
-                    message = "No cluster serivce on this node."
-                    return self.build_response(status, message, encrypt=False)
-
-        # Make sure peer is not disabled.
-        if self.peer and not self.peer.enabled:
-            status = status_codes.HOST_DISABLED
-            message = "%s is disabled: %s" % (self.peer.type, self.peer.fqdn)
-            #self.logger.warning(message)
-            return self.build_response(status, message, encrypt=False)
 
         if command == 'get_proto':
             message = "Using protocol: %s" % self.protocol
@@ -724,7 +732,9 @@ class OTPmeServer1(object):
 
         # If we found no command to handle pass it on to our child class.
         try:
-            response = self._process(command, command_args)
+            response = self._process(command=command,
+                                    command_args=command_args,
+                                    binary_data=binary_data)
         except Exception as e:
             config.raise_exception()
             msg = ("Error in OTPmeServer1._process(): %s" % e)
@@ -765,26 +775,20 @@ class OTPmeServer1(object):
         if config.debug_level() > 3:
             self.logger.debug(msg)
         try:
-            decoded_request = json.decode(preauth_request,
-                                        encoding="base64",
-                                        encryption=enc_mod,
-                                        enc_key=enc_key)
+            request = json.decode(preauth_request,
+                                encryption=enc_mod,
+                                enc_key=enc_key)
         except Exception as e:
             config.raise_exception()
             message = "Unable to decode preauth request: %s" % e
             status = False
             self.logger.warning(message)
             return self.build_response(status, message, encrypt=False)
-
-        # Get preauth request.
         try:
-            preauth_args = decoded_request['command_args']
+            preauth_args = request['command_args']
         except:
-            config.raise_exception()
-            message = (_("Invalid preauth request: Missing preauth args."))
-            status = False
-            self.logger.warning(message)
-            return self.build_response(status, message, encrypt=False)
+            msg = "Received invalid request: Preauth args missing"
+            raise OTPmeException(msg)
 
         # Do preauth check of protocol handler.
         try:
@@ -1844,6 +1848,7 @@ class OTPmeServer1(object):
                                             redirect_response=redirect_response,
                                             rsp_ecdh_client_pub=rsp_ecdh_client_pub,
                                             rsp_hash_type=rsp_hash_type,
+                                            allow_sotp_reuse=self.allow_sotp_reuse,
                                             reneg=reneg,
                                             client_offline_enc_type=client_offline_enc_type,
                                             replace_sessions=replace_sessions,
@@ -1887,6 +1892,7 @@ class OTPmeServer1(object):
                                             rsp_ecdh_client_pub=rsp_ecdh_client_pub,
                                             rsp_hash_type=rsp_hash_type,
                                             reneg=reneg,
+                                            allow_sotp_reuse=self.allow_sotp_reuse,
                                             reneg_salt=reneg_salt,
                                             client_offline_enc_type=client_offline_enc_type,
                                             replace_sessions=replace_sessions,
@@ -1981,7 +1987,8 @@ class OTPmeServer1(object):
 
         return auth_reply
 
-    def build_response(self, status, message, encrypt=None):
+    def build_response(self, status, message, binary_data=None, encrypt=None,
+        compress=None, encoding="base64"):
         """ Build response. """
         enc_key = None
         enc_mod = None
@@ -2001,10 +2008,15 @@ class OTPmeServer1(object):
             enc_key = self.session_key
             enc_mod = self.session_enc_mod
 
+        if compress is None:
+            compress = self.compresss_response
+
         response = build_response(status, message,
+                            binary_data=binary_data,
+                            encoding=encoding,
+                            compress=compress,
                             encryption=enc_mod,
-                            enc_key=enc_key,
-                            compress=self.compresss_response)
+                            enc_key=enc_key)
         if config.use_api:
             self.last_response = response
 

@@ -757,7 +757,7 @@ class OfflineToken(object):
 
     def save_rsp(self, session_id, realm, site, rsp, slp, session_key=None,
         login_time=None, session_timeout=None, session_unused_timeout=None,
-        session_uuid=None, offline_session=None, update=False):
+        session_uuid=None, offline_session=None, shares=None, update=False):
         """ Save RSP to file encrypted with session public key. """
         session_config = {}
         session_file = self.get_session_file(realm, site, session_id)
@@ -835,19 +835,21 @@ class OfflineToken(object):
         session_config['SLP'] = slp
         session_config['REALM'] = realm
         session_config['SITE'] = site
-        if login_time != None:
+        if login_time is not None:
             session_config['LOGIN'] = login_time
-        if session_uuid != None:
+        if session_uuid is not None:
             session_config['SESSION_UUID'] = session_uuid
-        if offline_session != None:
+        if offline_session is not None:
             if offline_session:
                 self.logger.info("Offline session keeping is enabled.")
             else:
                 self.logger.info("Offline session keeping is disabled.")
             session_config['OFFLINE'] = offline_session
-        if session_timeout != None:
+        if shares is not None:
+            session_config['SHARES'] = shares
+        if session_timeout is not None:
             session_config['TIMEOUT'] = session_timeout
-        if session_unused_timeout != None:
+        if session_unused_timeout is not None:
             session_config['UNUSED_TIMEOUT'] = session_unused_timeout
         # Try to write session file.
         try:
@@ -914,6 +916,7 @@ class OfflineToken(object):
             realm = session_config['REALM']
             site = session_config['SITE']
             login_time = session_config['LOGIN']
+            shares = session_config['SHARES']
             session_timeout = session_config['TIMEOUT']
             session_unused_timeout = session_config['UNUSED_TIMEOUT']
             session_key = decode(session_config['KEY'], "hex")
@@ -927,9 +930,9 @@ class OfflineToken(object):
             # Sign RSP to be verified by otpme-agent.
             rsp_signature = key.sign(rsp, encoding="hex")
 
-            if not realm in server_sessions:
+            if realm not in server_sessions:
                 server_sessions[realm] = {}
-            if not site in server_sessions[realm]:
+            if site not in server_sessions[realm]:
                 server_sessions[realm][site] = {}
             # Add session.
             server_sessions[realm][site]['rsp'] = rsp
@@ -937,6 +940,7 @@ class OfflineToken(object):
             server_sessions[realm][site]['rsp_signature'] = rsp_signature
             server_sessions[realm][site]['session_key'] = session_key
             server_sessions[realm][site]['login_time'] = login_time
+            server_sessions[realm][site]['shares'] = shares
             server_sessions[realm][site]['offline_allowed'] = offline_allowed
             server_sessions[realm][site]['session_timeout'] = session_timeout
             server_sessions[realm][site]['session_unused_timeout'] = session_unused_timeout

@@ -48,7 +48,7 @@ class LoginHandler(object):
         sync_token_data=False, auth_only=False, start_otpme_agent=True, jwt_auth=False,
         jwt_method=None, message_method=None, error_message_method=None, connect_timeout=3,
         timeout=30, node=None, offline_key_derivation_func=None, offline_token=None,
-        offline_key_func_opts={}, check_offline_pass_strength=False,
+        mount_shares=True, offline_key_func_opts={}, check_offline_pass_strength=False,
         offline_iterations_by_score={}, offline_session_key=None,
         login_session_id=None, add_agent_acl=False, cleanup_method=None,
         socket_uri=None, login_use_dns=False, use_dns=False):
@@ -61,6 +61,7 @@ class LoginHandler(object):
         if auth_only:
             login = False
             add_login_session = False
+            mount_shares = False
             # If we have no login session ID instruct OTPmeClient() to add a
             # new login session to otpme-agent.
             if not login_session_id:
@@ -127,6 +128,7 @@ class LoginHandler(object):
                                     login_session_id=login_session_id,
                                     check_login_status=check_login_status,
                                     interactive=interactive, endpoint=endpoint,
+                                    mount_shares=mount_shares,
                                     offline_token=offline_token,
                                     offline_key_derivation_func=offline_key_derivation_func,
                                     offline_key_func_opts=offline_key_func_opts,
@@ -220,6 +222,11 @@ class LoginHandler(object):
             if username != agent_username:
                 msg = (_("You are not logged in as user '%s'.") % username)
                 raise NotLoggedIn(msg)
+            # Umount shares.
+            try:
+                agent_conn.umount_shares()
+            except Exception as e:
+                raise Exception(_("Error unmounting shares: %s") % e)
             # Logout user via agent command.
             try:
                 logout_message = agent_conn.del_session()
@@ -288,7 +295,8 @@ class LoginHandler(object):
             try:
                 status, \
                 status_code, \
-                status_message = mgmt_conn.send("status", command_args)
+                status_message, \
+                binary_data = mgmt_conn.send("status", command_args)
                 status_message = (_("%s (online)") % agent_username)
             except AuthFailed as e:
                 msg = (_("Authentication failed: %s") % e)

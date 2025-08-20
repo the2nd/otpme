@@ -19,10 +19,13 @@ from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import otpme_pass
 from otpme.lib import multiprocessing
+from otpme.lib.fuse import get_mount_point
+from otpme.lib.fuse import mount_share_proc
 #from otpme.lib.encoding.base import encode
 #from otpme.lib.encoding.base import decode
 from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.protocols import status_codes
+from otpme.lib.fuse import prepare_mount_point
 from otpme.lib.protocols.request import decode_request
 from otpme.lib.protocols.response import build_response
 
@@ -73,7 +76,7 @@ class OTPmeAgentP1(object):
         self.login_sessions = handler_args['login_sessions']
 
         # Daemons the agent can proxy commands to.
-        self.supported_daemons = [ 'mgmtd', 'authd' ]
+        self.supported_daemons = [ 'mgmtd', 'authd', 'fsd' ]
 
         # Init some variables.
         self.session_id = None
@@ -242,6 +245,7 @@ class OTPmeAgentP1(object):
                             "add_session",
                             "del_session",
                             "get_sessions",
+                            "get_session_id",
                             "add_ssh_key_pass",
                             "check_ssh_key_pass",
                             "get_ssh_key_pass",
@@ -251,6 +255,8 @@ class OTPmeAgentP1(object):
                             "del_acl",
                             "set_login_token",
                             "proxy_command",
+                            "mount_shares",
+                            "umount_shares",
                             "get_offline",
                             "get_realm",
                             "get_site",
@@ -269,6 +275,7 @@ class OTPmeAgentP1(object):
                         "del_acl",
                         "del_session",
                         "get_sessions",
+                        "get_session_id",
                         "add_ssh_key_pass",
                         "check_ssh_key_pass",
                         "get_ssh_key_pass",
@@ -276,6 +283,8 @@ class OTPmeAgentP1(object):
                         "add_rsp",
                         "set_login_token",
                         "proxy_command",
+                        "mount_shares",
+                        "umount_shares",
                         "get_offline",
                         "get_sotp",
                         "get_srp",
@@ -283,7 +292,7 @@ class OTPmeAgentP1(object):
                         "reneg",
                         ]
 
-        command, command_args = decode_request(data)
+        command, command_args, binary_data = decode_request(data)
 
         # Get DNS option.
         try:
@@ -292,7 +301,7 @@ class OTPmeAgentP1(object):
             use_dns = config.use_dns
 
         # Check if we got a valid command.
-        if not command in valid_commands:
+        if command not in valid_commands:
             message = "Unknown command: %s\n" % command
             status = False
             return self.build_response(status, message)
@@ -476,6 +485,96 @@ class OTPmeAgentP1(object):
                         message = str(e)
                         status = False
 
+        elif command == "mount_shares":
+            status = True
+            try:
+                shares = command_args['shares']
+            except KeyError:
+                message = "Missing shares"
+                status = False
+            if status:
+                messages = []
+                new_mounts = {}
+                for share in shares:
+                    share_site = shares[share]['site']
+                    share_nodes = shares[share]['nodes']
+                    try:
+                        mount_point = prepare_mount_point(share_site, share)
+                    except Exception as e:
+                        msg = "Failed to prepare mountpoint: %s" % e
+                        logger.warning(msg)
+                        continue
+                    if os.path.ismount(mount_point):
+                        status = False
+                        msg = "Share already mounted: %s: %s" % (share, mount_point)
+                        logger.info(msg)
+                        messages.append(msg)
+                    else:
+                        os.environ['OTPME_LOGIN_SESSION'] = self.session_id
+                        mount_proc = multiprocessing.start_process(name="mount",
+                                                                target=mount_share_proc,
+                                                                target_args=(share, mount_point, share_nodes),
+                                                                target_kwargs={
+                                                                                'foreground':False,
+                                                                            },
+                                                                daemon=False)
+                        mount_proc.join()
+                        if mount_proc.exitcode != 0:
+                            msg = "Failed to mount share: %s" % share
+                            logger.info(msg)
+                            messages.append(msg)
+                            continue
+                        new_mounts[share] = shares[share]
+                        try:
+                            os.system(f"sudo -n setreadahead {mount_point}")
+                        except Exception as e:
+                            status = False
+                            msg = "Failed to run setreadahead: %s: %s" % (mount_point, e)
+                            messages.append(msg)
+                            logger.info(msg)
+                try:
+                    mounted_shares = self.session['mounted_shares']
+                except KeyError:
+                    mounted_shares = {}
+                for share in new_mounts:
+                    mounted_shares[share] = new_mounts[share]
+                self.session['mounted_shares'] = mounted_shares
+                self.login_sessions[self.login_pid] = self.session
+                msg = "Shares mounted: %s" % new_mounts
+                messages.append(msg)
+                message = "\n".join(messages)
+
+        elif command == "umount_shares":
+            status = True
+            try:
+                shares = self.session['mounted_shares']
+            except KeyError:
+                shares = {}
+            if not shares:
+                message = "No shares mounted."
+            if shares:
+                messages = []
+                umounted_shares = []
+                for share in shares:
+                    share_site = shares[share]['site']
+                    mount_point = get_mount_point(share_site, share)
+                    try:
+                        os.system(f"fusermount -u {mount_point}")
+                    except Exception as e:
+                        msg = "Failed to unmount share: %s: %s" % (mount_point, e)
+                        messages.append(msg)
+                        logger.warning(msg)
+                    try:
+                        os.rmdir(mount_point)
+                    except Exception as e:
+                        msg = "Failed to rmdir mountpoint: %s: %s" % (mount_point, e)
+                        logger.warning(msg)
+                    umounted_shares.append(share)
+                msg = "Shares unmounted: %s" % umounted_shares
+                messages.append(msg)
+                message = "\n".join(messages)
+                print(message)
+
         elif command == "debug_session":
             try:
                 debug_session = command_args['debug_session']
@@ -550,6 +649,10 @@ class OTPmeAgentP1(object):
                                 self.client_proc,
                                 self.client_pid,
                                 self.client_user))
+
+        elif command == "get_session_id":
+            message = self.session_id
+            status = True
 
         elif command == "get_sessions":
             login_sessions = {}
@@ -1065,7 +1168,7 @@ class OTPmeAgentP1(object):
             epoch_time = int(str(int(time.time()))[:-1])
             rsp_hash = otpme_pass.gen_one_iter_hash(self.login_user, self.rsp)
             otp = sotp.gen(epoch_time=epoch_time, password_hash=rsp_hash)
-            message = "username: %s sotp: %s" % (self.login_user, otp)
+            message = {'username':self.login_user, 'sotp':otp}
             status = True
 
         elif command == "get_slp":

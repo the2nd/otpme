@@ -239,7 +239,8 @@ def authenticate(authData):
             logger.debug("Sending authentication request...")
             auth_status, \
             status_code, \
-            auth_reply = daemon_conn.send("verify", command_args)
+            auth_reply, \
+            binary_data = daemon_conn.send("verify", command_args)
             auth_message = auth_reply['message']
 
             # Check if user was authenticated successful.
@@ -314,7 +315,8 @@ def authenticate(authData):
             logger.debug("Sending MSCHAP authentication request...")
             auth_status, \
             status_code, \
-            auth_reply = daemon_conn.send("verify_mschap", command_args)
+            auth_reply, \
+            binary_data = daemon_conn.send("verify_mschap", command_args)
             auth_message = auth_reply['message']
 
             # Get password hash.

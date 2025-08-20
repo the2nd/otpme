@@ -9,6 +9,7 @@ except:
     pass
 
 from otpme.lib import config
+from otpme.lib.protocols.response import decode_response
 from otpme.lib.protocols.otpme_client import OTPmeClient1
 
 from otpme.lib.exceptions import *
@@ -28,3 +29,6 @@ class OTPmeAuthP1(OTPmeClient1):
         # Get logger
         self.logger = config.logger
         super(OTPmeAuthP1, self).__init__(self.daemon, **kwargs)
+
+    def decode_response(self, *args, **kwargs):
+        return decode_response(*args, **kwargs)

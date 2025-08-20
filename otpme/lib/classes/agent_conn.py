@@ -133,14 +133,12 @@ class AgentConn(object):
     def get_sotp(self):
         """ Get SOTP from otpme-agent. """
         username = None
-        otp = None
+        sotp = None
         status, status_code, reply = self.send("get_sotp")
         if status_code == status_codes.OK:
-            username = re.sub('^username: ([^:]*) sotp: (.*)$', r'\1',
-                            reply)
-            otp = re.sub('^username: ([^:]*) sotp: (.*)$', r'\2',
-                        reply)
-        return username, otp
+            username = reply['username']
+            sotp = reply['sotp']
+        return username, sotp
 
     def get_srp(self):
         """ Get SRP from otpme-agent. """
@@ -173,6 +171,33 @@ class AgentConn(object):
         status, status_code, reply = self.send("get_sessions")
         if status_code != status_codes.OK:
             raise Exception(_("Error getting session list from agent: %s")
+                            % reply)
+        return reply
+
+    def get_login_session_id(self):
+        """ Get otpme-agent session ID."""
+        status, status_code, reply = self.send("get_session_id")
+        if status_code != status_codes.OK:
+            raise Exception(_("Error getting session ID from agent: %s")
+                            % reply)
+        return reply
+
+    def mount_shares(self, shares):
+        """ Send share mount request to otpme-agent. """
+        command_args = {
+                        'shares' : shares,
+                    }
+        status, status_code, reply = self.send("mount_shares", **command_args)
+        if status_code != status_codes.OK:
+            raise Exception(_("Failed to mount shares: %s")
+                            % reply)
+        return reply
+
+    def umount_shares(self):
+        """ Send share umount request to otpme-agent. """
+        status, status_code, reply = self.send("umount_shares")
+        if status_code != status_codes.OK:
+            raise Exception(_("Failed to umount shares: %s")
                             % reply)
         return reply
 
@@ -379,7 +404,7 @@ class AgentConn(object):
             config.raise_exception()
             raise Exception(_("Error while receiving: %s") % e)
 
-        status_code, response = decode_response(response)
+        status_code, response, binary_data = decode_response(response)
 
         # Handle status code.
         if status_code == status_codes.OK:

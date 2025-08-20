@@ -110,7 +110,7 @@ def compress(data, compression, level=None):
 
     return compressed_data
 
-def decompress(data, compression):
+def decompress(data, compression, return_str=True):
     """ Decompress given data. """
     if compression == "gzip":
         decompressed_data = gzip.decompress(data)
@@ -123,9 +123,10 @@ def decompress(data, compression):
     else:
         msg = (_("Unknown compression: %s") % compression)
         raise OTPmeException(msg)
-    # Try to return string.
-    try:
-        decompressed_data = decompressed_data.decode()
-    except ValueError:
-        pass
+    if return_str:
+        # Try to return string.
+        try:
+            decompressed_data = decompressed_data.decode()
+        except ValueError:
+            pass
     return decompressed_data

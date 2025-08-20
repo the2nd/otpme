@@ -788,7 +788,7 @@ class OTPmeJoinP1(OTPmeServer1):
                         "%s: %s") % (message, host.type, host.jotp))
         return self.build_response(status, message)
 
-    def _process(self, command, command_args):
+    def _process(self, command, command_args, **kwargs):
         """ Handle join data received from join_handler """
         # All valid commands.
         valid_commands = [

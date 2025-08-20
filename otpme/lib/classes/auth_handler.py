@@ -541,6 +541,13 @@ class AuthHandler(object):
         if not verify_sessions:
             self.logger.debug("No session found for this request.")
 
+        # We use just one iteration for SOTPs because of performance
+        # reasons (e.g. login and session renegotiation). This should
+        # not be a problem because everyone with access to the OTPme
+        # server can still do bad stuff and the RSP itself changes on
+        # each login or renegotiation.
+        password_hash = self.one_iter_hash
+
         # Check users sessions.
         processed_sessions = []
         for session in verify_sessions:
@@ -553,17 +560,13 @@ class AuthHandler(object):
                 check_for_used_sotp = True
             if session.session_id in session_master_session_ids:
                 check_for_used_sotp = True
+            if self.allow_sotp_reuse:
+                check_for_used_sotp = False
 
             if check_for_used_sotp:
                 # For clear-text sessions we can check for an already used
                 # SOTP before verifying the session.
                 if self.auth_type == "clear-text":
-                    # We use just one iteration for SOTPs because of performance
-                    # reasons (e.g. login and session renegotiation). This should
-                    # not be a problem because everyone with access to the OTPme
-                    # server can still do bad stuff and the RSP itself changes on
-                    # each login or renegotiation.
-                    password_hash = self.one_iter_hash
                     # If we found an already used SOTP there is no need to
                     # check tis REALM session again. But we have to check if
                     # the child session this OTP created still exists and
@@ -689,13 +692,14 @@ class AuthHandler(object):
 
         # This check is needed because we dont want to count recurring SOTP
         # requests as failed logins.
-        if self.user.is_used_sotp(hash=self.one_iter_hash):
-            self.logger.warning("Request contains an already used SOTP. "
-                                "Authentication will fail.")
-            # If the password from this request is an already used SOTP
-            # authentication must fail.
-            self.auth_failed = True
-            self.auth_message = "AUTH_ALREADY_USED_SOTP"
+        if not self.allow_sotp_reuse:
+            if self.user.is_used_sotp(hash=self.one_iter_hash):
+                self.logger.warning("Request contains an already used SOTP. "
+                                    "Authentication will fail.")
+                # If the password from this request is an already used SOTP
+                # authentication must fail.
+                self.auth_failed = True
+                self.auth_message = "AUTH_ALREADY_USED_SOTP"
 
     def get_client(self):
         """ Try to get client of this request. """
@@ -1988,8 +1992,8 @@ class AuthHandler(object):
         user_token=None, count_fails=None, host_type=None, host=None,
         host_ip=None, replace_sessions=None, require_token_types=None,
         require_pass_types=None, redirect_challenge=None,
-        redirect_response=None, gen_jwt=None, jwt_challenge=None,
-        rsp_ecdh_client_pub=None, verify_host=True,
+        allow_sotp_reuse=False, redirect_response=None, gen_jwt=None,
+        jwt_challenge=None, rsp_ecdh_client_pub=None, verify_host=True,
         client_offline_enc_type=None):
         """
         Try to authenticate user:
@@ -2192,6 +2196,8 @@ class AuthHandler(object):
         self.session_refresh = False
         # Supported RSP hash types.
         self.rsp_hash_types = ['PBKDF2']
+        # Allow reuse of SOTPs.
+        self.allow_sotp_reuse = allow_sotp_reuse
         if rsp_hash_type:
             if rsp_hash_type not in self.rsp_hash_types:
                 msg = "Unsupported RSP hash type: %s" % rsp_hash_type
@@ -2347,7 +2353,8 @@ class AuthHandler(object):
             if not self.auth_failed and not self.auth_status:
                 if self.access_group == config.realm_access_group:
                     if not self.session_logout and not self.realm_logout:
-                        self.check_used()
+                        if not self.allow_sotp_reuse:
+                            self.check_used()
 
         # Try to verify request against existing session if enabled.
         if not self.auth_failed and self.verify_sessions:
@@ -2667,6 +2674,43 @@ class AuthHandler(object):
                 auth_reply['key_script_path'] = key_script_path
                 auth_reply['key_script_opts'] = key_script_opts
                 auth_reply['key_script_signs'] = key_script_signs
+                # Get shares to mount on client.
+                if self.user.auto_mount:
+                    search_attrs = {
+                                    'token' : {'value':self.auth_token.uuid},
+                                }
+                    user_shares = backend.search(object_type="share",
+                                                attributes=search_attrs,
+                                                return_type="instance")
+                    token_roles = self.auth_token.get_roles(return_type="uuid", recursive=True)
+                    if token_roles:
+                        search_attrs = {
+                                        'role' : {'values':token_roles},
+                                    }
+                        user_shares += backend.search(object_type="share",
+                                                    attributes=search_attrs,
+                                                    return_type="instance")
+                    shares = {}
+                    for share in user_shares:
+                        if not share.enabled:
+                            continue
+                        share_nodes = share.get_nodes(include_pools=True,
+                                                    return_type="instance")
+                        if not share_nodes:
+                            share_nodes = backend.search(object_type="node",
+                                                        attribute="uuid",
+                                                        value="*",
+                                                        realm=share.realm,
+                                                        site=share.site,
+                                                        return_type="instance")
+                        if share_nodes:
+                            node_fqdns = []
+                            for node in share_nodes:
+                                node_fqdns.append(node.fqdn)
+                            shares[share.name] = {}
+                            shares[share.name]['site'] = share.site
+                            shares[share.name]['nodes'] = node_fqdns
+                    auth_reply['shares'] = shares
 
             # Get SSH private key from token.
             ssh_private_key = None

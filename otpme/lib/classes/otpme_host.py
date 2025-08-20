@@ -286,6 +286,14 @@ class OTPmeHost(OTPmeClientObject):
         # Make sure name is a string and lowercase.
         self.name = str(name).lower()
 
+    @property
+    def enabled(self):
+        return self._enabled
+
+    @enabled.setter
+    def enabled(self, enabled: bool):
+        self._enabled = enabled
+
     def get_sync_parameters(self, realm: str, site: str, peer_uuid: str):
         """ Get data to build sync list. """
         # Get peer.

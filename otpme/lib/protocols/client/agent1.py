@@ -8,8 +8,9 @@ try:
 except:
     pass
 
-from otpme.lib import json
 from otpme.lib import config
+from otpme.lib.protocols.request import build_request
+from otpme.lib.protocols.response import decode_response
 
 from otpme.lib.exceptions import *
 
@@ -30,7 +31,7 @@ class OTPmeAgentP1(object):
         super(OTPmeAgentP1, self).__init__(**kwargs)
 
     def build_request(self, daemon, command, realm, site, use_dns=True,
-        command_args=None, encode_request=True, encrypt_request=True):
+        command_args=None, encode_request=True, encrypt_request=True, **kwargs):
         """ Build agent request. """
         # Original request parameters.
         proxy_request = {
@@ -47,11 +48,9 @@ class OTPmeAgentP1(object):
                         'use_dns'           : use_dns,
                         'proxy_request'     : proxy_request,
                         }
-        # Build request.
-        request = {
-                    'command'       : "proxy_command",
-                    'command_args'  : request_args,
-                    }
-
-        request = json.encode(request, encoding="base64")
+        request = build_request(command="proxy_command",
+                                command_args=request_args)
         return request
+
+    def decode_response(self, *args, **kwargs):
+        return decode_response(*args, **kwargs)

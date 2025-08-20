@@ -66,7 +66,7 @@ def encrypt(enc_key, data, encoding=None):
         return encrypted_data
     return encode(encrypted_data, encoding)
 
-def decrypt(enc_key, data, encoding=None):
+def decrypt(enc_key, data, encoding=None, return_str=True):
     """ Decrypt data with given AES key. """
     if data == "":
         return ""
@@ -88,9 +88,10 @@ def decrypt(enc_key, data, encoding=None):
         decrypted_data = cipher_suite.decrypt(data)
     except Exception as e:
         raise DecryptException("Failed to decrypt data: %s" % e)
-    # Try to return string.
-    try:
-        decrypted_data = decrypted_data.decode()
-    except ValueError:
-        pass
+    if return_str:
+        # Try to return string.
+        try:
+            decrypted_data = decrypted_data.decode()
+        except ValueError:
+            pass
     return decrypted_data

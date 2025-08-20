@@ -13,6 +13,7 @@ from otpme.lib import trash
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.protocols import status_codes
+from otpme.lib.protocols.response import decode_response
 from otpme.lib.protocols.otpme_client import OTPmeClient1
 
 from otpme.lib.exceptions import *
@@ -39,7 +40,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         return reply
 
     def write(self, object_id, object_config, index_journal=None,
@@ -67,7 +69,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args['last_used'] = last_used
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             msg = "Failed to send object: %s: %s" % (object_id, reply)
             raise OTPmeException(msg)
@@ -80,7 +83,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args['object_id'] = object_id
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             msg = "Failed to check if object exists: %s: %s" % (object_id, reply)
             if status_code == status_codes.NO_CLUSTER_SERVICE:
@@ -96,7 +100,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args['object_uuid'] = object_uuid
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             msg = "Failed to delete object: %s: %s" % (object_id, reply)
             if status_code == status_codes.NO_CLUSTER_SERVICE:
@@ -112,7 +117,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args['new_object_id'] = new_object_id
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             msg = "Failed to rename object: %s: %s" % (object_id, reply)
             raise OTPmeException(msg)
@@ -127,7 +133,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args['write'] = write
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             msg = "Failed to send lock request: %s: %s" % (lock_id, reply)
             raise LockWaitAbort(msg)
@@ -141,7 +148,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args['write'] = write
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             msg = ("Failed to send lock release request: %s: %s"
                     % (lock_id, reply))
@@ -154,7 +162,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if not status:
             msg = "Failed to get data revision: %s" % reply
             raise OTPmeException(msg)
@@ -166,7 +175,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if not status:
             msg = "Failed to get cluster checksums: %s" % reply
             raise OTPmeException(msg)
@@ -178,7 +188,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if not status:
             msg = "Failed to get cluster checksums: %s" % reply
             raise OTPmeException(msg)
@@ -194,7 +205,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args['deleted_by'] = deleted_by
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             msg = "Failed to send trash object: %s: %s" % (object_id, reply)
             raise OTPmeException(msg)
@@ -207,7 +219,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args['trash_id'] = trash_id
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             msg = "Failed to send trash delete request: %s: %s" % (trash_id, reply)
             raise OTPmeException(msg)
@@ -219,7 +232,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             msg = "Failed to send trash empty request: %s" % reply
             raise OTPmeException(msg)
@@ -233,7 +247,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args['objects'] = objects
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args)
+        reply, \
+        binary_data = self.connection.send(command, command_args)
         if not status:
             msg = "Failed to send last used times: %s" % reply
             raise OTPmeException(msg)
@@ -258,7 +273,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {'remote_objects':local_objects}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if status_code == status_codes.NO_CLUSTER_QUORUM:
             raise OTPmeException(reply)
         if not status:
@@ -314,7 +330,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {'remote_objects':local_objects}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if status_code == status_codes.NO_CLUSTER_QUORUM:
             raise OTPmeException(reply)
         if not status:
@@ -360,7 +377,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if not status:
             msg = "Failed to send deconfigure floating IP request: %s" % reply
             raise OTPmeException(msg)
@@ -372,7 +390,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         return status
 
     def set_node_sync(self, sync_time):
@@ -381,7 +400,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {'sync_time':sync_time}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         return status
 
     def unset_node_sync(self):
@@ -390,7 +410,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         return status
 
     def do_nsscache_sync(self):
@@ -399,7 +420,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         return status
 
     def do_radius_reload(self):
@@ -408,7 +430,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         return status
 
     def do_daemon_reload(self):
@@ -417,7 +440,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         return status
 
     def get_master_sync_status(self):
@@ -426,7 +450,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         return status
 
     def get_node_sync_status(self):
@@ -435,7 +460,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         return status
 
     def get_cluster_status(self):
@@ -444,7 +470,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if not status:
             msg = "Failed to get cluster status: %s" % reply
             raise OTPmeException(msg)
@@ -456,7 +483,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if not status:
             msg = "Failed to get cluster quorum: %s" % reply
             raise OTPmeException(msg)
@@ -468,7 +496,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if not status:
             msg = "Failed to get node vote: %s" % reply
             raise OTPmeException(msg)
@@ -480,7 +509,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if not status:
             msg = "Failed to get cluster nodes: %s" % reply
             raise OTPmeException(msg)
@@ -492,7 +522,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if not status:
             msg = "Failed to get master node."
             raise UnknownMasterNode(msg)
@@ -504,7 +535,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {'required_votes':required_votes}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if not status:
             msg = "Failed to set required cluster votes: %s" % reply
             raise OTPmeException(msg)
@@ -516,7 +548,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if not status:
             msg = "Setting master failover status failed: %s" % reply
             raise OTPmeException(msg)
@@ -528,7 +561,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if not status:
             raise OTPmeException(reply)
         return reply
@@ -539,7 +573,8 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         return status
 
     def do_master_failover(self):
@@ -548,8 +583,12 @@ class OTPmeClusterP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply = self.connection.send(command, command_args, timeout=None)
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
         if not status:
             msg = "Master failover request failed: %s" % reply
             raise OTPmeException(msg)
         return reply
+
+    def decode_response(self, *args, **kwargs):
+        return decode_response(*args, **kwargs)

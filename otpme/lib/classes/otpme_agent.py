@@ -23,8 +23,9 @@ from otpme.lib import otpme_pass
 from otpme.lib import init_otpme
 from otpme.lib import connections
 from otpme.lib import multiprocessing
-#from otpme.lib.messages import error_message
+from otpme.lib.fuse import get_mount_point
 from otpme.lib.protocols import status_codes
+#from otpme.lib.messages import error_message
 from otpme.lib.register import register_module
 from otpme.lib.socket.listen import ListenSocket
 from otpme.lib.offline_token import OfflineToken
@@ -363,8 +364,8 @@ class OTPmeAgent(UnixDaemon):
         """ Close all user sessions. """
         # Get all server sessions of login_pid.
         try:
-            sessions = dict(self.login_sessions)
-            server_sessions = sessions[login_pid]['server_sessions']
+            agent_sessions = dict(self.login_sessions)
+            server_sessions = agent_sessions[login_pid]['server_sessions']
         except:
             server_sessions = {}
         # Remove realm login sessions.
@@ -404,10 +405,38 @@ class OTPmeAgent(UnixDaemon):
                     self.logger.info(msg)
                     continue
 
-                msg = ("Login process '%s' ended. "
-                        "Removing empty session."
-                            % login_pid)
+        for login_pid in agent_sessions:
+            # Umount shares on agent shutdown.
+            session = agent_sessions[login_pid]
+            try:
+                shares = session['mounted_shares']
+            except KeyError:
+                shares = []
+            messages = []
+            umounted_shares = []
+            for share in shares:
+                share_site = shares[share]['site']
+                mount_point = get_mount_point(share_site, share)
+                try:
+                    os.system(f"fusermount -u {mount_point}")
+                except Exception as e:
+                    msg = "Failed to unmount share: %s: %s" % (mount_point, e)
+                    messages.append(msg)
+                    self.logger.warning(msg)
+                try:
+                    os.rmdir(mount_point)
+                except Exception as e:
+                    msg = "Failed to rmdir mountpoint: %s: %s" % (mount_point, e)
+                    logger.warning(msg)
+                umounted_shares.append(share)
+            if umounted_shares:
+                msg = "Shares unmounted: %s" % umounted_shares
                 self.logger.info(msg)
+
+        msg = ("Login process '%s' ended. "
+                "Removing empty session."
+                    % login_pid)
+        self.logger.info(msg)
 
         # Close daemon connections.
         self.close_user_conns(login_pid)
@@ -628,6 +657,10 @@ class OTPmeAgent(UnixDaemon):
             # we can try to update the login session file.
             if login_user == config.system_user():
                 try:
+                    try:
+                        shares = session['mounted_shares']
+                    except KeyError:
+                        shares = []
                     # Get offline token handler.
                     offline_token = OfflineToken()
                     # Set user.
@@ -640,6 +673,7 @@ class OTPmeAgent(UnixDaemon):
                                             site=site,
                                             rsp=rsp,
                                             slp=slp,
+                                            shares=shares,
                                             update=new_rsp) is None:
                         self.logger.debug("No offline session to update found.")
                 except Exception as e:
@@ -896,7 +930,8 @@ class OTPmeAgent(UnixDaemon):
         try:
             status, \
             status_code, \
-            reply = authd_conn.send(command, command_args)
+            reply, \
+            binary_data = authd_conn.send(command, command_args)
         except Exception as e:
             msg = (_("Error requesting JWT: %s") % e)
             raise OTPmeException(msg)
@@ -1028,6 +1063,10 @@ class OTPmeAgent(UnixDaemon):
             session_uuid = auth_reply['session']
             session_id = self.login_sessions[login_pid]['session_id']
             try:
+                try:
+                    shares = session['mounted_shares']
+                except KeyError:
+                    shares = []
                 # Get offline token handler.
                 offline_token = OfflineToken()
                 # Set user.
@@ -1039,6 +1078,7 @@ class OTPmeAgent(UnixDaemon):
                                     realm=realm,
                                     site=site,
                                     rsp=rsp,
+                                    shares=shares,
                                     login_time=login_time,
                                     session_key=session_key,
                                     session_uuid=session_uuid,
@@ -1092,7 +1132,8 @@ class OTPmeAgent(UnixDaemon):
             try:
                 status, \
                 status_code, \
-                reply = daemon_conn.send("ping")
+                reply, \
+                binary_data = daemon_conn.send("ping")
             except Exception as e:
                 reply = None
 
@@ -1412,7 +1453,8 @@ class OTPmeAgent(UnixDaemon):
         try:
             status, \
             status_code, \
-            reply = daemon_conn.send(command=command,
+            reply, \
+            binary_data = daemon_conn.send(command=command,
                                     command_args=command_args,
                                     encode_request=encode_request,
                                     encrypt_request=encrypt_request)
@@ -1475,6 +1517,7 @@ class OTPmeAgent(UnixDaemon):
         """ Run the agent loop. """
         register_module("otpme.lib.classes.realm")
         register_module("otpme.lib.protocols.server.agent1")
+        register_module("otpme.lib.offline_token")
         register_module("otpme.lib.sotp")
         from otpme.lib import connections
         # Set PID.

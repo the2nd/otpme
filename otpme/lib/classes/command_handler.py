@@ -157,7 +157,8 @@ class CommandHandler(object):
             daemon_conn = connections.get("hostd", interactive=interactive)
             status, \
             status_code, \
-            reply = daemon_conn.send(command, command_args=command_args)
+            reply, \
+            binary_data = daemon_conn.send(command, command_args=command_args)
             return reply
 
         if not command:
@@ -263,7 +264,8 @@ class CommandHandler(object):
             self.logger.debug("Sending authentication request...")
             status, \
             status_code, \
-            reply = daemon_conn.send(command, command_args)
+            reply, \
+            binary_data = daemon_conn.send(command, command_args)
 
             log_method = self.logger.warning
             if status:
@@ -282,7 +284,8 @@ class CommandHandler(object):
             self.logger.debug("Sending request to syncd...")
             status, \
             status_code, \
-            reply = daemon_conn.send(command, command_args)
+            reply, \
+            binary_data = daemon_conn.send(command, command_args)
 
             self.logger.debug("Received reply: %s" % reply)
 
@@ -365,6 +368,9 @@ class CommandHandler(object):
 
         if command == "tool" and subcommand == "detect_smartcard":
             return self.handle_smartcard_detection(command, subcommand)
+
+        if command == "mount":
+            return self.handle_mount(command, subcommand)
 
         # Get password from stdin if --stdin-pass was given.
         if config.read_stdin_pass:
@@ -477,6 +483,12 @@ class CommandHandler(object):
             if command == "dictionary":
                 register_module("otpme.lib.classes.dictionary")
                 register_module("otpme.lib.cli.dictionary")
+            if command == "share":
+                register_module('otpme.lib.classes.share')
+                register_module('otpme.lib.cli.share')
+            if command == "pool":
+                register_module('otpme.lib.classes.pool')
+                register_module('otpme.lib.cli.pool')
 
             if subcommand == "show":
                 register_module("otpme.lib.cli")
@@ -1105,6 +1117,9 @@ class CommandHandler(object):
 
         if subcommand == "show_sessions":
             return self.handle_show_sessions_command(command_line)
+
+        if subcommand == "get_login_session_id":
+            return self.get_login_session_id()
 
         if subcommand == "get_jwt":
             return self.handle_get_jwt_command(command_line)
@@ -1804,6 +1819,7 @@ class CommandHandler(object):
             method_kwargs = {}
             method_kwargs['username'] = username
             method_kwargs['password'] = password
+            method_kwargs['mount_shares'] = False
             method_kwargs['check_login_status'] = False
             method_kwargs['add_agent_session'] = False
             method_kwargs['add_login_session'] = False
@@ -2935,7 +2951,6 @@ class CommandHandler(object):
             table.padding_width = 0
             table.right_padding_width = 1
 
-            login_sessions = self.get_login_sessions()
             try:
                 login_token = login_sessions[login_pid]['login_token']
             except:
@@ -3250,7 +3265,8 @@ class CommandHandler(object):
         try:
             status, \
             status_code, \
-            reply = authd_conn.send(command="get_jwt", command_args=command_args)
+            reply, \
+            binary_data = authd_conn.send(command="get_jwt", command_args=command_args)
         except Exception as e:
             msg = "Failed to get JWT: %s" % e
             raise OTPmeException(msg)
@@ -3294,6 +3310,40 @@ class CommandHandler(object):
         session_list = json.decode(json_string, encoding="base64")
 
         return session_list
+
+    def get_login_session_id(self):
+        """ Get login sessions from agent. """
+        from otpme.lib import connections
+
+        # Create otpme-agent instance
+        from otpme.lib.classes.otpme_agent import OTPmeAgent
+        otpme_agent = OTPmeAgent()
+
+        username = None
+        agent_conn = None
+
+        # Check if otpme-agent is running
+        agent_status, pid = otpme_agent.status(quiet=True)
+        if not agent_status:
+            msg = "No running otpme-agent found..."
+            raise OTPmeException(msg)
+
+        # Try to get agent connection
+        try:
+            agent_conn = connections.get("agent")
+        except Exception as e:
+            raise OTPmeException(_("Error getting agent connection: %s") % e)
+
+        # Try to get username for logged in user from otpme-agent
+        username = agent_conn.get_user()
+
+        if not username:
+            raise OTPmeException("Not logged in.")
+
+        # Get session list from agent
+        session_id = agent_conn.get_login_session_id()
+
+        return session_id
 
     def get_sotp(self):
         """ Get SOTP from agent. """
@@ -4276,6 +4326,10 @@ class CommandHandler(object):
         login_use_dns = config.login_use_dns
         if node:
             login_use_dns = False
+        try:
+            login_session_id = os.environ['OTPME_LOGIN_SESSION']
+        except KeyError:
+            login_session_id = None
         login_handler = LoginHandler()
         try:
             login_handler.login(username=username,
@@ -4285,6 +4339,7 @@ class CommandHandler(object):
                                 use_dns=config.use_dns,
                                 #cache_login_tokens=True,
                                 start_otpme_agent=False,
+                                login_session_id=login_session_id,
                                 login_use_dns=login_use_dns,
                                 use_ssh_agent=config.use_ssh_agent,
                                 use_smartcard=config.use_smartcard,
@@ -5061,6 +5116,71 @@ class CommandHandler(object):
                 raise OTPmeException(msg)
 
         return ""
+
+    def handle_mount(self, command, subcommand):
+        import argparse
+        from otpme.lib import multiprocessing
+        from otpme.lib.fuse import mount_share
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--foreground", dest="foreground", action="store_true", help="Run in foreground")
+        parser.add_argument("--list", dest="list_shares", action="store_true", help="List shares")
+        parser.add_argument('--nodes', dest='nodes')
+        parser.add_argument('share', nargs='?')
+        parser.add_argument('mount', nargs='?')
+        args = parser.parse_args(sys.argv)
+        self.init(use_backend=False)
+        nodes = None
+        if args.nodes:
+            nodes = args.nodes.split(",")
+        try:
+            login_session_id = self.get_login_session_id()
+        except Exception as e:
+            msg = "Unable to mount: %s" % e
+            raise OTPmeException(msg)
+        if args.list_shares:
+            reply = self.send_command(daemon="mgmtd",
+                                    command="get_shares",
+                                    parse_command_syntax=False,
+                                    client_type="RAPI")
+            return reply
+        mount_point = args.mount
+        if nodes is None or mount_point is None:
+            command_args = {'share_name':args.share}
+            reply = self.send_command(daemon="mgmtd",
+                                    command="get_share",
+                                    command_args=command_args,
+                                    parse_command_syntax=False,
+                                    client_type="RAPI")
+            if nodes is None:
+                nodes = reply[args.share]['nodes']
+            if mount_point is None:
+                shares = reply
+                try:
+                    agent_conn = connections.get("agent")
+                except Exception as e:
+                    raise OTPmeException(_("Error getting agent connection: %s") % e)
+                mount_reply = agent_conn.mount_shares(shares=shares)
+                return mount_reply
+        if not mount_point:
+            msg = "Missing mountpoint."
+            raise OTPmeException(msg)
+        os.environ['OTPME_LOGIN_SESSION'] = login_session_id
+        if args.foreground:
+            mount_share(args.share, mount_point, nodes, foreground=args.foreground)
+        else:
+            mount_proc = multiprocessing.start_process(name="mount",
+                                                    target=mount_share,
+                                                    target_args=(args.share, mount_point, nodes),
+                                                    target_kwargs={
+                                                                    'foreground':False,
+                                                                },
+                                                    daemon=False)
+            mount_proc.join()
+            if mount_proc.exitcode != 0:
+                msg = "Failed to mount share: %s" % args.share
+                raise OTPmeException(msg)
+        os.system(f"sudo -n setreadahead {mount_point}")
+        return
 
     def handle_smartcard_detection(self, command, subcommand):
         from otpme.lib.smartcard.utils import detect_smartcard

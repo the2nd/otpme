@@ -22,6 +22,8 @@ modules = [
         'otpme.lib.classes.site',
         'otpme.lib.classes.token',
         'otpme.lib.classes.unit',
+        'otpme.lib.classes.share',
+        'otpme.lib.classes.pool',
         ]
 
 def register():

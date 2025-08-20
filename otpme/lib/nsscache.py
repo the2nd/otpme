@@ -35,6 +35,9 @@ NSSCACHE_FILES = [
             'passwd.cache',
             'passwd.cache.ixname',
             'passwd.cache.ixuid',
+            'shadow.cache',
+            'shadow.cache.ixname',
+            'shadow.cache.ixuid',
             ]
 
 # Object types that will be added to nsscache.
@@ -211,6 +214,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
     from otpme.lib import backend
     from otpme.lib.third_party.nss_cache.maps import group
     from otpme.lib.third_party.nss_cache.maps import passwd
+    from otpme.lib.third_party.nss_cache.maps import shadow
     from otpme.lib.third_party.nss_cache.caches import files
     from otpme.lib.daemon.clusterd import cluster_nsscache_sync
     # Get logger.
@@ -230,6 +234,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
 
     nsscache_config = {'dir': config.nsscache_dir}
     user_cache = files.FilesPasswdMapHandler(nsscache_config)
+    shadow_cache = files.FilesShadowMapHandler(nsscache_config)
     group_cache = files.FilesGroupMapHandler(nsscache_config)
     nss_cache_files = filetools.list_dir(config.nsscache_objects_dir)
 
@@ -238,14 +243,16 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
 
     # Nsscache caches we need.
     nsscache_caches = {
-                            'user'  : user_cache,
-                            'group' : group_cache,
+                            'user'      : user_cache,
+                            'group'     : group_cache,
+                            'shadow'    : shadow_cache,
                     }
 
     # Nsscache methods used to create new maps.
     nsscache_map_methods = {
-                            'user'  : passwd.PasswdMap,
-                            'group' : group.GroupMap,
+                            'user'      : passwd.PasswdMap,
+                            'shadow'    : shadow.ShadowMap,
+                            'group'     : group.GroupMap,
                         }
 
     # Will hold current nsscache map entry objects (used to do incremental
@@ -545,6 +552,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             msg = ("Processing nsscache (%s/%s): %s"
                 % (counter, object_count, object_id))
             logger.debug(msg)
+            shadow_map_entry = None
             if object_type == "user":
                 try:
                     cn = object_attrs[uuid]['ldif:cn'][0]
@@ -587,6 +595,17 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                 map_entry.gecos = cn
                 map_entry.dir = homedir
                 map_entry.shell = loginshell
+                # Gen shadow entry.
+                shadow_map_entry = shadow.ShadowMapEntry()
+                shadow_map_entry.name = object_name
+                shadow_map_entry.passwd = "*"
+                #shadow_map_entry.lstchg = int(nss_entry[2])
+                #shadow_map_entry.min = int(nss_entry[3])
+                #shadow_map_entry.max = int(nss_entry[4])
+                #shadow_map_entry.warn = int(nss_entry[5])
+                #shadow_map_entry.inact = int(nss_entry[6])
+                #shadow_map_entry.expire = int(nss_entry[7])
+                #shadow_map_entry.flag = int(nss_entry[8])
 
             if object_type == "group":
                 try:
@@ -607,7 +626,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                 map_entry.gid = gidnumber
                 if group_members is not None:
                     map_entry.members = group_members
-            nsscache_update_entries[object_type][map_entry.name] = map_entry
+            nsscache_update_entries[object_type][map_entry.name] = (map_entry, shadow_map_entry)
 
     # Counters for log message.
     nsscache_adds = 0
@@ -644,7 +663,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
         for object_type in object_types:
             current_map = nsscache_caches[object_type].GetMap()
             for entry in current_map:
-                nsscache_current_entries[object_type][entry.name] = entry
+                nsscache_current_entries[object_type][entry.name] = (entry,)
 
         for object_type in object_types:
             update_needed = False
@@ -665,7 +684,7 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             if config.host_type == "host":
                 if object_type == "group":
                     for group_name in nsscache_update_entries[object_type]:
-                        entry = nsscache_update_entries[object_type][group_name]
+                        entry = nsscache_update_entries[object_type][group_name][0]
                         local_users = backend.search(object_type="user",
                                                     attribute="uuid",
                                                     value="*",
@@ -677,12 +696,13 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
 
             # Handle new/updated entries.
             for name in sorted(nsscache_update_entries[object_type]):
-                entry = nsscache_update_entries[object_type][name]
+                x_entries = nsscache_update_entries[object_type][name]
+                x_entry = x_entries[0]
                 try:
-                    current_entry = nsscache_current_entries[object_type][entry.name]
+                    current_entry = nsscache_current_entries[object_type][x_entry.name][0]
                 except KeyError:
                     current_entry = None
-                if current_entry == entry:
+                if current_entry == x_entry:
                     msg = "No update required for %s: %s" % (object_type, name)
                     logger.debug(msg)
                     continue
@@ -695,13 +715,13 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                     msg = ("Adding %s to nsscache: %s" % (object_type, name))
                     logger.debug(msg)
                     nsscache_adds += 1
-                nsscache_current_entries[object_type][entry.name] = entry
+                nsscache_current_entries[object_type][x_entry.name] = x_entries
 
             if update_needed:
                 # We need merged entries in nsscache_new_entries.
                 for name in nsscache_current_entries[object_type]:
-                    entry = nsscache_current_entries[object_type][name]
-                    nsscache_new_entries[object_type].append(entry)
+                    entry = nsscache_current_entries[object_type][name][0]
+                    nsscache_new_entries[object_type].append((entry,))
 
     # Actually create new/merged maps and write them to nsscache.
     for object_type in object_types:
@@ -719,12 +739,31 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                                 % (cache_file, e))
                         logger.critical(msg)
             continue
+        map_entries = []
+        shadow_entries = []
+        for x in entries:
+            map_entry = x[0]
+            try:
+                shadow_entry = x[1]
+            except IndexError:
+                shadow_entry = None
+            map_entries.append(map_entry)
+            if shadow_entry:
+                shadow_entries.append(shadow_entry)
         map_method = nsscache_map_methods[object_type]
-        new_map = map_method(nsscache_new_entries[object_type])
+        new_map = map_method(map_entries)
         logger.debug("Writing nsscache: %s" % object_type)
         cache.Write(new_map)
         cache.WriteIndex()
         cache._Commit()
+        if shadow_entries:
+            map_method = nsscache_map_methods['shadow']
+            new_map = map_method(shadow_entries)
+            shadow_cache = nsscache_caches['shadow']
+            logger.debug("Writing nsscache (shadow): %s" % object_type)
+            shadow_cache.Write(new_map)
+            shadow_cache.WriteIndex()
+            shadow_cache._Commit()
 
     # Set cache file ownership.
     for x in os.listdir(config.nsscache_dir):

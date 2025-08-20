@@ -90,7 +90,7 @@ class ConnHandler(object):
             else:
                 # Get command from request.
                 try:
-                    command, command_args = decode_request(data)
+                    command, command_args, binary_data = decode_request(data)
                 except OTPmeException as e:
                     raise
 
@@ -197,6 +197,7 @@ class ConnHandler(object):
             except Exception as e:
                 msg = "Failed to send final response: %s" % e
                 self.logger.warning(msg)
+
         # Close connection.
         self.connection.close()
         # FIXME: do we stil need this here? It closes mqueues which results in malfunction of e.g. otpme-agent.

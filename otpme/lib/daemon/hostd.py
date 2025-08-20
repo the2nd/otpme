@@ -337,7 +337,8 @@ class HostDaemon(OTPmeDaemon):
 
         status, \
         status_code, \
-        reply = sync_conn.send("start_sync", command_args=sync_params)
+        reply, \
+        binary_data = sync_conn.send("start_sync", command_args=sync_params)
 
         # Handle disabled sites.
         if status_code == status_codes.SYNC_DISABLED:
@@ -484,7 +485,8 @@ class HostDaemon(OTPmeDaemon):
             # Get sites from master node.
             status, \
             status_code, \
-            reply = sync_conn.send("get_sites", command_args=sync_params)
+            reply, \
+            binary_data = sync_conn.send("get_sites", command_args=sync_params)
 
             if status_code != status_codes.OK:
                 msg = "Error receiving sites list: %s: %s" % (site.oid, reply)
@@ -1098,17 +1100,17 @@ class HostDaemon(OTPmeDaemon):
                         if site == config.site:
                             start_nsscache_sync = False
 
-        # Skip nsscache sync if last object creation was within the last 30 seconds.
-        if start_nsscache_sync:
-            min_seconds = 10
-            now = time.time()
-            data_revision = config.get_data_revision()
-            age = now - data_revision
-            if age < min_seconds:
-                msg = ("Not starting nsscache sync because last object was "
-                        "written within the last %s seconds." % min_seconds)
-                self.logger.info(msg)
-                start_nsscache_sync = False
+        ## Skip nsscache sync if last object creation was within the last 30 seconds.
+        #if start_nsscache_sync:
+        #    min_seconds = 10
+        #    now = time.time()
+        #    data_revision = config.get_data_revision()
+        #    age = now - data_revision
+        #    if age < min_seconds:
+        #        msg = ("Not starting nsscache sync because last object was "
+        #                "written within the last %s seconds." % min_seconds)
+        #        self.logger.info(msg)
+        #        start_nsscache_sync = False
 
         if start_nsscache_sync:
             # Acquire sync lock.

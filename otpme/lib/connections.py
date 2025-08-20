@@ -87,7 +87,8 @@ def get_connection(**kwargs):
         daemon_conn = OTPmeClient(**kwargs)
         status, \
         status_code, \
-        reply = daemon_conn.send("ping", timeout=3)
+        reply, \
+        binary_data = daemon_conn.send("ping", timeout=3)
         exception = None
     except Exception as e:
         daemon_conn = None
@@ -111,6 +112,11 @@ def get(daemon, **kwargs):
     global connections
 
     kwargs['daemon'] = daemon
+    try:
+        node = kwargs['node']
+    except:
+        node = None
+        kwargs['node'] = node
     try:
         realm = kwargs['realm']
     except:
@@ -233,7 +239,8 @@ def get(daemon, **kwargs):
             try:
                 status, \
                 status_code, \
-                reply = conn.send("ping", timeout=3)
+                reply, \
+                binary_data = conn.send("ping", timeout=3)
             except Exception as e:
                 reply = ""
 
@@ -269,9 +276,21 @@ def get(daemon, **kwargs):
     # Connections to hostd work independently of the agent
     if daemon == "hostd":
         use_agent = False
+    # Connections to fsd work independently of the agent
+    if daemon == "fsd":
+        use_agent = False
     # Connections to clusterd work independently of the agent
     if daemon == "clusterd":
         use_agent = False
+
+    if node and not socket_uri:
+        try:
+            port = config.default_ports[daemon]
+        except KeyError:
+            msg = "Unable to get port of daemon: %s" % daemon
+            raise OTPmeException(msg)
+        socket_uri = "tcp://%s:%s" % (node, port)
+        conn_kwargs['socket_uri'] = socket_uri
 
     agent_user = None
     if interactive is None:
@@ -461,7 +480,8 @@ def get(daemon, **kwargs):
         connect_exception = None
         status, \
         status_code, \
-        reply = daemon_conn.send("ping", timeout=3)
+        reply, \
+        binary_data = daemon_conn.send("ping", timeout=3)
         break
 
     if connect_exception:

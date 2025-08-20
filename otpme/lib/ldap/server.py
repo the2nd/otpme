@@ -365,7 +365,8 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         try:
             status, \
             status_code, \
-            auth_reply = authd_conn.send(command="verify",
+            auth_reply, \
+            binary_data = authd_conn.send(command="verify",
                                 command_args=command_args)
         except Exception as e:
             msg = "Failed to authenticate user: %s" % e

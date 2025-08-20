@@ -569,6 +569,7 @@ class OTPmeConfig(object):
                     'joind'     : '2024',
                     'clusterd'  : '2025',
                     'ldapd'     : '2026',
+                    'fsd'       : '2027',
                     }
         self.register_config_var("default_ports", dict, default_ports)
 
@@ -580,6 +581,7 @@ class OTPmeConfig(object):
                     'joind'     : '2024',
                     'clusterd'  : '2025',
                     'ldapd'     : '2026',
+                    'fsd'       : '2027',
                     }
         self.register_config_var("default_listen_ports", dict, default_listen_ports)
 
@@ -2516,13 +2518,13 @@ class OTPmeConfig(object):
         return self._logger
 
     def setup_logger(self, banner=None, existing_logger=None,
-        log_file=False, timestamps=None, pid=None, **kwargs):
+        log_file=False, logger_syslog=False, logger_systemd=False,
+        timestamps=None, pid=None, logger_color_logs=None, **kwargs):
         """ Configure logger. """
-        logger_syslog = False
-        logger_systemd = False
         logger_logfile = log_file
         logger_loglevel = self.loglevel
-        logger_color_logs = self.color_logs
+        if logger_color_logs is None:
+            logger_color_logs = self.color_logs
 
         # By default we want get_logger() to use the log name as banner.
         if banner is None:
@@ -2570,6 +2572,10 @@ class OTPmeConfig(object):
                 logger_logfile = self.radius_mod_logfile
                 if timestamps is None:
                     timestamps = True
+            elif self.tool_name == "otpme-mount":
+                #logger_syslog = True
+                logger_systemd = True
+                #logger_logfile = "/tmp/mount.log"
             elif not self.file_logging:
                 # If we are not in debug mode and logging is not enabled throw away
                 # log messages.

@@ -59,8 +59,8 @@ class SocketProtoHandler(object):
         # https://docs.python.org/2/howto/sockets.html
         totalsent = 0
         first_loop = True
-        data_len = len(data)
         data = self.encode_data_for_sending(data)
+        data_len = len(data)
         while totalsent < data_len:
             try:
                 sent = self.connection.send(data[totalsent:])
@@ -76,7 +76,7 @@ class SocketProtoHandler(object):
             totalsent = totalsent + sent
         return totalsent
 
-    def raw_recv(self, recv_buffer=1024, decode="utf-8"):
+    def raw_recv(self, recv_buffer=1024):
         """ Actually receive data. """
         # Restart data receiving on EINTR.
         # https://stackoverflow.com/questions/14136195/what-is-the-proper-way-to-handle-in-python-ioerror-errno-4-interrupted-syst
@@ -96,14 +96,17 @@ class SocketProtoHandler(object):
             if e.errno != errno.EINTR:
                 raise
             data = self.connection.recv(recv_buffer)
-        # Decode received data.
-        if decode:
-            data = data.decode(decode)
         # Handle socket quit command (see listen.py/connect.py).
-        command = data.strip()
-        if command == "quit":
-            msg = "Remote site closed connection."
-            raise ConnectionQuit(msg)
+        if len(data) == 4:
+            try:
+                command = data.decode()
+            except UnicodeDecodeError:
+                command = None
+            if command:
+                command = command.strip()
+                if command == "quit":
+                    msg = "Remote site closed connection."
+                    raise ConnectionQuit(msg)
         return data
 
     def raw_sendall(self, data):
@@ -126,10 +129,18 @@ class SocketProtoHandler(object):
         except Exception as e:
             msg = ("Error receiving socket protocol negotiation: %s" % e)
             raise OTPmeException(msg)
+        response = response.decode()
         # Handle quit message (e.g. remote site wants to close connection).
-        if response == "quit":
-            msg = (_("Socket protocol negotiation ended by peer."))
-            raise ConnectionQuit(msg)
+        if len(response) == 4:
+            try:
+                command = response.decode()
+            except UnicodeDecodeError:
+                command = None
+            if command:
+                command = command.strip()
+                if command == "quit":
+                    msg = (_("Socket protocol negotiation ended by peer."))
+                    raise ConnectionQuit(msg)
         # Check if we got ACK from peer.
         if not response.startswith("socket_proto:"):
             msg = (_("Unknown socket protocol response from peer: %s") % response)
@@ -152,6 +163,7 @@ class SocketProtoHandler(object):
         except Exception as e:
             msg = ("Failed to receive protocol negotiation.")
             raise OTPmeException(msg)
+        proto_neg_req = proto_neg_req.decode()
         try:
             client_socket_protos = proto_neg_req.split(":")[1].split(",")
         except:

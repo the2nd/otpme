@@ -148,7 +148,7 @@ class OTPmeClusterP1(OTPmeServer1):
             msg = "Peer is disabled: %s" % self.peer.name
             raise HostDisabled(msg)
 
-    def _process(self, command, command_args):
+    def _process(self, command, command_args, **kwargs):
         """ Handle commands received from host_handler. """
         # All valid commands.
         valid_commands = [

@@ -23,6 +23,7 @@ from otpme.lib import multiprocessing
 from otpme.lib.messages import error_message
 from otpme.lib.register import register_modules
 
+from otpme.lib.daemon.fsd import FsDaemon
 from otpme.lib.daemon.authd import AuthDaemon
 from otpme.lib.daemon.mgmtd import MgmtDaemon
 from otpme.lib.daemon.syncd import SyncDaemon
@@ -517,9 +518,11 @@ class ControlDaemon(UnixDaemon):
                     'authd',
                     'clusterd',
                     'httpd',
+                    'fsd',
                     ]
 
             # Set child daemons.
+            child_daemons["fsd"] = {}
             child_daemons["authd"] = {}
             child_daemons["hostd"] = {}
             child_daemons["joind"] = {}
@@ -1013,6 +1016,8 @@ class ControlDaemon(UnixDaemon):
             daemon_class = SyncDaemon
         elif daemon_name == "scriptd":
             daemon_class = ScriptDaemon
+        elif daemon_name == "fsd":
+            daemon_class = FsDaemon
         elif daemon_name == "clusterd":
             daemon_class = ClusterDaemon
         else:

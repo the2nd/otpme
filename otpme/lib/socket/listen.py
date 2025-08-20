@@ -141,6 +141,9 @@ class ListenSocket(object):
                         "Error message: %s" % (e[0], e[1]))
                 self.logger.error(msg)
                 return False
+            # Set send/recv buffer.
+            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1024 * 102400)
+            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024 * 102400)
 
         if not self.blocking:
             self._socket.setblocking(0)

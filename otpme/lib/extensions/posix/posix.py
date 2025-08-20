@@ -330,12 +330,15 @@ class OTPmeExtension(OTPmeLDIFHandler):
                                 attribute='memberUid',
                                 value=old_name,
                                 callback=callback)
-            self.add_attribute_value(o=o,
-                                attribute='memberUid',
-                                value=new_name,
-                                verify=True,
-                                auto_value=True,
-                                callback=callback)
+            try:
+                self.add_attribute_value(o=o,
+                                    attribute='memberUid',
+                                    value=new_name,
+                                    verify=True,
+                                    auto_value=True,
+                                    callback=callback)
+            except AlreadyExists:
+                pass
         else:
             msg = ("Hook <rename_user> not implemented for object type: %s"
                     % o.type)

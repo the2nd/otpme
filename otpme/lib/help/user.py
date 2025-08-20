@@ -213,8 +213,24 @@ cmd_help = {
                                 },
                 },
 
+    'enable_auto_mount'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user auto_mount {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Enable user to login even if e.g. accessgroup is disabled.',
+                                },
+                },
+
+    'disable_auto_mount'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user auto_mount {user}',
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : 'Disable user to login even if e.g. accessgroup is disabled.',
+                                },
+                },
+
     'enable_disabled_login'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user _disabled_loginenable {user}',
+                    '_cmd_usage_help' : 'Usage: otpme-user enable_disabled_login {user}',
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : 'Enable user to login even if e.g. accessgroup is disabled.',
@@ -222,7 +238,7 @@ cmd_help = {
                 },
 
     'disable_disabled_login'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user _disabled_logindisable {user}',
+                    '_cmd_usage_help' : 'Usage: otpme-user disable_disabled_login {user}',
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : 'Disable user to login even if e.g. accessgroup is disabled.',

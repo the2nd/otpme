@@ -725,6 +725,7 @@ def register():
     register_object_unit()
     register_sync_settings()
     register_commands("node", commands)
+    config.register_index_attribute("node")
 
 def register_object_unit():
     """ Register default unit for this object type. """

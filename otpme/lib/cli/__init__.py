@@ -55,6 +55,8 @@ modules = [
             'otpme.lib.cli.token',
             'otpme.lib.cli.unit',
             'otpme.lib.cli.user',
+            'otpme.lib.cli.share',
+            'otpme.lib.cli.pool',
             'otpme.lib.classes',
         ]
 

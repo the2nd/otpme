@@ -377,13 +377,16 @@ class PamHandler(object):
     def cleanup(self):
         """ Close connections etc. """
         agent_conn = self.get_agent_connection()
-        if agent_conn.check_ssh_key_pass():
-            self.logger.debug("Removing SSH key passphrase from agent...")
-            try:
-                agent_conn.del_ssh_key_pass()
-            except Exception as e:
-                msg = ("Error removing SSH key passphrase from agent: %s" % e)
-                self.logger.warning(msg)
+        try:
+            if agent_conn.check_ssh_key_pass():
+                self.logger.debug("Removing SSH key passphrase from agent...")
+                try:
+                    agent_conn.del_ssh_key_pass()
+                except Exception as e:
+                    msg = ("Error removing SSH key passphrase from agent: %s" % e)
+                    self.logger.warning(msg)
+        finally:
+            agent_conn.close()
         if self.ssh_agent_conn:
             self.ssh_agent_conn.close()
         # Close all connections.
@@ -900,14 +903,17 @@ class PamHandler(object):
                 # When using a hardware token like the yubikey the encryption
                 # passphrase is derived via ssh-agent signing.
                 agent_conn = self.get_agent_connection()
-                if not agent_conn.check_ssh_key_pass():
-                    self.logger.debug("Adding SSH key passphrase to otpme-agent...")
-                    try:
-                        agent_conn.add_ssh_key_pass(ssh_agent_pid=ssh_agent_pid,
-                                                    ssh_key_pass=ssh_key_pass)
-                    except Exception as e:
-                        msg = (_("Unable to add SSH key passphrase to otpme-agent"))
-                        raise OTPmeException(msg)
+                try:
+                    if not agent_conn.check_ssh_key_pass():
+                        self.logger.debug("Adding SSH key passphrase to otpme-agent...")
+                        try:
+                            agent_conn.add_ssh_key_pass(ssh_agent_pid=ssh_agent_pid,
+                                                        ssh_key_pass=ssh_key_pass)
+                        except Exception as e:
+                            msg = (_("Unable to add SSH key passphrase to otpme-agent"))
+                            raise OTPmeException(msg)
+                finally:
+                    agent_conn.close()
 
                 # Try to derive passphrase for offline token decryption via ssh-agent.
                 if need_encryption:
@@ -1036,6 +1042,7 @@ class PamHandler(object):
         # doing login.
         self.activate_gpg_agent_autoconfirm()
 
+        agent_conn = None
         if login:
             # Get agent connection.
             agent_conn = self.get_agent_connection()
@@ -1149,7 +1156,6 @@ class PamHandler(object):
             # Set offline login token.
             self.login_token = self.offline_login_token.rel_path
 
-            agent_conn = self.get_agent_connection()
             # Set login token to otpme-agent.
             try:
                 agent_conn.set_login_token(self.offline_login_token.rel_path,
@@ -1176,6 +1182,14 @@ class PamHandler(object):
                         except Exception as e:
                             self.logger.warning("Unable to add RSP to otpme-agent: "
                                                 "%s" % e)
+                        # Mount shares.
+                        try:
+                            shares = session['shares']
+                        except KeyError:
+                            shares = []
+                        if shares:
+                            mount_reply = agent_conn.mount_shares(shares=shares)
+                            self.logger.info(mount_reply)
             else:
                 self.logger.debug("No offline session found. Relogin required "
                                 "when servers are available again...")
@@ -1189,6 +1203,8 @@ class PamHandler(object):
         else:
             auth_message = (_("Offline authentication succeeded with token: %s")
                             % self.offline_login_token.rel_path)
+        if agent_conn:
+            agent_conn.close()
 
         return auth_message
 
@@ -1211,11 +1227,14 @@ class PamHandler(object):
             # Get agent connection.
             agent_conn = self.get_agent_connection()
             # Add login session to otpme-agent.
-            if not self.login_session_id:
-                self.login_session_id = agent_conn.add_session(self.username)
+            try:
                 if not self.login_session_id:
-                    msg = (_("Unable to add login session to otpme-agent."))
-                    raise OTPmeException(msg)
+                    self.login_session_id = agent_conn.add_session(self.username)
+                    if not self.login_session_id:
+                        msg = (_("Unable to add login session to otpme-agent."))
+                        raise OTPmeException(msg)
+            finally:
+                agent_conn.close()
             # Acquire offline token lock.
             self.offline_token.lock()
             # Verify offline token.

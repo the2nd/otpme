@@ -77,7 +77,8 @@ class JoinHandler(object):
         # Send request.
         status, \
         status_code, \
-        reply = joind_conn.send(command, command_args)
+        reply, \
+        binary_data = joind_conn.send(command, command_args)
         # Decode/decrypt reply.
         if reply.startswith("JSON"):
             reply = json.decode(reply,

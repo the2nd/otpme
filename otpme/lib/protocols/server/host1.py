@@ -129,7 +129,7 @@ class OTPmeHostP1(OTPmeServer1):
         # Check token role/group policies.
         myhost.authorize_token(token, login_interface=login_interface)
 
-    def _process(self, command, command_args):
+    def _process(self, command, command_args, **kwargs):
         """ Handle commands received from host_handler. """
         # all valid commands
         valid_commands = [

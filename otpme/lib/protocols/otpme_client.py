@@ -556,7 +556,8 @@ class OTPmeClient(OTPmeClientBase):
         try:
             status, \
             status_code, \
-            response = self.send(command=helo_command,
+            response, \
+            binary_data = self.send(command=helo_command,
                             command_args=helo_args,
                             encrypt_request=False,
                             encode_request=True,
@@ -599,7 +600,8 @@ class OTPmeClient(OTPmeClientBase):
                             }
                 auth_status, \
                 auth_status_code, \
-                auth_response = self.send(command="auth",
+                auth_response, \
+                binary_data = self.send(command="auth",
                                 command_args=command_args,
                                 encrypt_request=False,
                                 encode_request=True,
@@ -616,7 +618,8 @@ class OTPmeClient(OTPmeClientBase):
                     # Retry agent auth without session ID.
                     auth_status, \
                     auth_status_code, \
-                    auth_response = self.send(command="auth",
+                    auth_response, \
+                    binary_data = self.send(command="auth",
                                     encrypt_request=False,
                                     encode_request=True,
                                     handle_response=False,
@@ -653,7 +656,8 @@ class OTPmeClient(OTPmeClientBase):
             try:
                 status, \
                 status_code, \
-                response = self.send('get_proto',
+                response, \
+                binary_data = self.send('get_proto',
                                 use_agent=True,
                                 handle_response=False,
                                 encode_request=True,
@@ -752,11 +756,12 @@ class OTPmeClient(OTPmeClientBase):
         try:
             status, \
             status_code, \
-            response = self.send(command=command,
-                            command_args=command_args,
-                            encrypt_request=False,
-                            handle_response=False,
-                            handle_auth=False)
+            response, \
+            binary_data = self.send(command=command,
+                                    command_args=command_args,
+                                    encrypt_request=False,
+                                    handle_response=False,
+                                    handle_auth=False)
         except Exception as e:
             config.raise_exception()
             msg = (_("Error sending ident command: %s") % e)
@@ -803,11 +808,13 @@ class OTPmeClient(OTPmeClientBase):
         if handle_response is None:
             handle_response = self.handle_response
         # Send command.
-        status_code, response = self._send(command=command,
-                                        command_args=command_args,
-                                        blocking=blocking,
-                                        timeout=timeout,
-                                        **kwargs)
+        status_code, \
+        response, \
+        binary_data = self._send(command=command,
+                                command_args=command_args,
+                                blocking=blocking,
+                                timeout=timeout,
+                                **kwargs)
 
         if handle_auth and self.auto_auth:
             if status_code == status_codes.NEED_USER_AUTH \
@@ -815,7 +822,8 @@ class OTPmeClient(OTPmeClientBase):
                 self.authenticate()
                 # Resend command.
                 status_code, \
-                response = self._send(command=command,
+                response, \
+                binary_data = self._send(command=command,
                                 command_args=command_args,
                                 blocking=blocking,
                                 timeout=timeout,
@@ -830,9 +838,6 @@ class OTPmeClient(OTPmeClientBase):
                                 blocking=blocking,
                                 timeout=timeout)
 
-        # At this point a probably job has finished.
-        self.job = None
-
         # Connection redirects are handled by otpme-agent.
         if status_code == status_codes.CONNECTION_REDIRECT:
             raise ConnectionRedirect(response)
@@ -845,10 +850,11 @@ class OTPmeClient(OTPmeClientBase):
         else:
             status = False
 
-        return status, status_code, response
+        return status, status_code, response, binary_data
 
-    def _send(self, command, command_args={}, use_agent=None,
-        encode_request=True, encrypt_request=None, blocking=None, timeout=None):
+    def _send(self, command, command_args={}, binary_data=None, use_agent=None,
+        encode_request=True, encrypt_request=None, compress_request=None,
+        blocking=None, timeout=None):
         """ Convert command args and actually send command to daemon. """
         if self.proto_handler:
             if self.proto_handler.redirect_connection:
@@ -879,9 +885,12 @@ class OTPmeClient(OTPmeClientBase):
             encrypt_request = False
 
         # Set encryption type and key used for en- and decryption.
-        if self.session_key:
+        if encrypt_request and self.session_key:
             enc_mod = self.session_enc_mod
             enc_key = self.session_key
+
+        if compress_request is None:
+            compress_request = self.compress_request
 
         # Build proxy request when using otpme-agent.
         if use_agent:
@@ -896,36 +905,38 @@ class OTPmeClient(OTPmeClientBase):
                 site = self.site
             # Build agent proxy request.
             request = self.agent_proto_handler.build_request(self.daemon,
-                                        command, command_args=command_args,
+                                        command=command,
+                                        command_args=command_args,
+                                        binary_data=binary_data,
                                         realm=realm, site=site,
                                         encode_request=encode_request,
                                         encrypt_request=encrypt_request,
                                         use_dns=config.use_dns)
         else:
             # Build request.
+            encoding = None
             if encode_request:
+                encoding = "base64"
                 if encrypt_request:
                     if self.session_key is None:
                         msg = (_("Cannot encrypt request without session key."))
                         raise OTPmeException(msg)
-                try:
-                    request = build_request(command=command,
-                                            command_args=command_args,
-                                            encryption=enc_mod,
-                                            enc_key=enc_key,
-                                            compress=self.compress_request)
-                except Exception as e:
-                    msg = (_("Faild to build request: %s") % e)
-                    raise OTPmeException(msg)
             else:
                 if encrypt_request:
                     msg = (_("Need <encode_request=True> with <encrypt_request>."))
                     raise OTPmeException(msg)
-                if command_args:
-                    msg = (_("Cannot send unencoded request with "
-                            "<command_args>."))
-                    raise OTPmeException(msg)
-                request = command
+
+            try:
+                request = build_request(command=command,
+                                        command_args=command_args,
+                                        binary_data=binary_data,
+                                        compress=compress_request,
+                                        encoding=encoding,
+                                        encryption=enc_mod,
+                                        enc_key=enc_key)
+            except Exception as e:
+                msg = (_("Faild to build request: %s") % e)
+                raise OTPmeException(msg)
 
         #if config.debug_enabled:
         #    if not encrypt_request:
@@ -950,15 +961,20 @@ class OTPmeClient(OTPmeClientBase):
             raise ConnectionError(_("Error while receiving: %s") % e)
 
         # Decode response.
-        status_code, response = decode_response(response,
-                                        encryption=enc_mod,
-                                        enc_key=enc_key)
+        decode_method = decode_response
+        if self.proto_handler:
+            decode_method = self.proto_handler.decode_response
+        status_code, \
+        response, \
+        binary_data = decode_method(response,
+                                encryption=enc_mod,
+                                enc_key=enc_key)
         if status_code == status_codes.SERVER_QUIT:
             self.connected = False
             msg = "Connection closed by server: %s" % response
             raise ConnectionError(msg)
 
-        return status_code, response
+        return status_code, response, binary_data
 
     def ask(self, command_dict):
         """ Ask user for some input. """
@@ -1430,8 +1446,9 @@ class OTPmeClient(OTPmeClientBase):
         try:
             status, \
             status_code, \
-            reply = mgmt_conn.send(command="move_object",
-                                command_args=command_args)
+            reply, \
+            binary_data = mgmt_conn.send(command="move_object",
+                                        command_args=command_args)
         except Exception as e:
             status = False
             reply = str(e)
@@ -1525,8 +1542,9 @@ class OTPmeClient(OTPmeClientBase):
         try:
             status, \
             status_code, \
-            reply = mgmt_conn.send(command="change_user_default_group",
-                                command_args=command_args)
+            reply, \
+            binary_data = mgmt_conn.send(command="change_user_default_group",
+                                        command_args=command_args)
         except Exception as e:
             status = False
             reply = str(e)
@@ -1655,10 +1673,12 @@ class OTPmeClient(OTPmeClientBase):
 
                 # Send (keepalive) request to server.
                 try:
-                    status_code, response = self._send(command=command,
-                                                    command_args=self.job,
-                                                    blocking=blocking,
-                                                    timeout=timeout)
+                    status_code, \
+                    response, \
+                    binary_data = self._send(command=command,
+                                            command_args=self.job,
+                                            blocking=blocking,
+                                            timeout=timeout)
                 except Exception as e:
                     config.raise_exception()
                     raise ConnectionError(_("Communication error: %s") % e)
@@ -1666,10 +1686,12 @@ class OTPmeClient(OTPmeClientBase):
             elif client_command == "KEEPALIVE":
                 # Send (keepalive) request to server.
                 try:
-                    status_code, response = self._send(command=command,
-                                                    command_args=self.job,
-                                                    blocking=blocking,
-                                                    timeout=timeout)
+                    status_code, \
+                    response, \
+                    binary_data = self._send(command=command,
+                                            command_args=self.job,
+                                            blocking=blocking,
+                                            timeout=timeout)
                 except Exception as e:
                     config.raise_exception()
                     raise ConnectionError(_("Communication error: %s") % e)
@@ -1687,10 +1709,12 @@ class OTPmeClient(OTPmeClientBase):
 
                 # Send request to server.
                 try:
-                    status_code, response = self._send(command=command,
-                                                    command_args=self.job,
-                                                    blocking=blocking,
-                                                    timeout=timeout)
+                    status_code, \
+                    response, \
+                    binary_data = self._send(command=command,
+                                            command_args=self.job,
+                                            blocking=blocking,
+                                            timeout=timeout)
                 except Exception as e:
                     config.raise_exception()
                     raise ConnectionError(_("Communication error: %s") % e)
@@ -1701,10 +1725,12 @@ class OTPmeClient(OTPmeClientBase):
                 self.print_response(response, ignore_escape_chars=True)
                 # Send (keepalive) request to server.
                 try:
-                    status_code, response = self._send(command=command,
-                                                    command_args=self.job,
-                                                    blocking=blocking,
-                                                    timeout=timeout)
+                    status_code, \
+                    response, \
+                    binary_data = self._send(command=command,
+                                            command_args=self.job,
+                                            blocking=blocking,
+                                            timeout=timeout)
                 except Exception as e:
                     config.raise_exception()
                     raise ConnectionError(_("Communication error: %s") % e)
@@ -1725,10 +1751,11 @@ class OTPmeClient(OTPmeClientBase):
                 command_args[response_id] = request
                 try:
                     status_code, \
-                    response = self._send(command=command,
-                                    command_args=command_args,
-                                    blocking=blocking,
-                                    timeout=timeout)
+                    response, \
+                    binary_data = self._send(command=command,
+                                            command_args=command_args,
+                                            blocking=blocking,
+                                            timeout=timeout)
                 except Exception as e:
                     config.raise_exception()
                     raise ConnectionError(_("Communication error: %s") % e)
@@ -1754,6 +1781,9 @@ class OTPmeClient(OTPmeClientBase):
                 if not isinstance(response, str):
                     response = [response]
 
+        # At this point a probably job has finished.
+        self.job = None
+
         return status_code, response
 
     def close(self):
@@ -1764,6 +1794,8 @@ class OTPmeClient(OTPmeClientBase):
         # Close connection.
         if self.connection:
             self.connection.close()
+        if self.agent_conn:
+            self.agent_conn.close()
         # Set status.
         self.connected = False
 
@@ -1782,13 +1814,14 @@ class OTPmeClient1(OTPmeClientBase):
         jwt_method=None, rsp=None, srp=None, slp=None, login=False, unlock=False,
         login_interface="tty", logout=False, reneg=False, add_agent_acl=False,
         agent_acls=None, add_agent_session=None, add_login_session=None,
-        offline_token=None, login_session_id=None, cache_login_tokens=False,
-        send_password=True, password_method=None, password=None, cleanup_method=None,
-        check_offline_pass_strength=False, offline_iterations_by_score={},
-        offline_key_derivation_func=None, offline_key_func_opts=None,
-        sync_token_data=False, request_jwt=None, verify_jwt=None, jwt_challenge=None,
-        jwt_key=None, jwt_auth=False, check_login_status=True, allow_untrusted=False,
-        do_preauth=True, check_connected_site=True, offline_session_key=None,
+        mount_shares=False, offline_token=None, login_session_id=None,
+        cache_login_tokens=False, send_password=True, password_method=None,
+        password=None, cleanup_method=None, check_offline_pass_strength=False,
+        offline_iterations_by_score={}, offline_key_derivation_func=None,
+        offline_key_func_opts=None, sync_token_data=False, request_jwt=None,
+        verify_jwt=None, jwt_challenge=None, jwt_key=None, jwt_auth=False,
+        check_login_status=True, allow_untrusted=False, do_preauth=True,
+        check_connected_site=True, offline_session_key=None,
         verify_preauth=None, login_redirect=False, **kwargs):
         # Init parent class.
         super(OTPmeClient1, self).__init__(daemon, **kwargs)
@@ -1866,6 +1899,10 @@ class OTPmeClient1(OTPmeClientBase):
         # Will hold the login session ID we get from OTPme agent on login (if
         # none is given)
         self.login_session_id = login_session_id
+        # Mount shares received from authd.
+        self.mount_shares = mount_shares
+        # Shares to mount.
+        self.shares = []
 
         # Indicates if we should add a empty session to OTPme agent using
         # login_session_id as session ID.
@@ -2413,11 +2450,14 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Build preauth request.
         try:
-            preauth_request = build_request(command="preauth_request",
-                                            command_args=preauth_args,
-                                            encryption=enc_mod,
-                                            enc_key=enc_key,
-                                            compress=self.compress_request)
+            preauth_request = {
+                            'command'       : 'preauth_request',
+                            'command_args'  : preauth_args,
+                            }
+            preauth_request = json.encode(preauth_request,
+                                        compress=self.compress_request,
+                                        encryption=enc_mod,
+                                        enc_key=enc_key)
         except Exception as e:
             msg = (_("Faild to build preauth request: %s") % e)
             raise OTPmeException(msg)
@@ -2439,11 +2479,12 @@ class OTPmeClient1(OTPmeClientBase):
         try:
             status, \
             status_code, \
-            response = self.connection.send(command="preauth_check",
-                                        command_args=command_args,
-                                        encrypt_request=False,
-                                        handle_response=False,
-                                        handle_auth=False)
+            response, \
+            binary_data = self.connection.send(command="preauth_check",
+                                            command_args=command_args,
+                                            encrypt_request=False,
+                                            handle_response=False,
+                                            handle_auth=False)
         except Exception as e:
             msg = (_("Error sending command 'preauth_check': %s") % e)
             config.raise_exception()
@@ -2851,7 +2892,8 @@ class OTPmeClient1(OTPmeClientBase):
         #    try:
         #        status, \
         #        status_code, \
-        #        response = self.connection.send(command="auth",
+        #        response, \
+        #        binary_data = self.connection.send(command="auth",
         #                                    command_args=command_args,
         #                                    encrypt_request=False,
         #                                    handle_response=False,
@@ -2987,7 +3029,8 @@ class OTPmeClient1(OTPmeClientBase):
         try:
             status, \
             status_code, \
-            response = self.connection.send(command=command,
+            response, \
+            binary_data = self.connection.send(command=command,
                                         command_args=command_args,
                                         handle_response=False,
                                         handle_auth=False)
@@ -3308,19 +3351,16 @@ class OTPmeClient1(OTPmeClientBase):
         # Send auth command to daemon.
         status, \
         status_code, \
-        response = self.connection.send(command, command_args, handle_auth=False)
-
-        if self.endpoint and not self.print_messages:
-            try:
-                response = response[0]
-            except:
-                self.cleanup()
-                msg = "Malformed auth response."
-                raise OTPmeException(msg)
+        response, \
+        binary_data = self.connection.send(command, command_args, handle_auth=False)
 
         if not status:
             raise OTPmeException(_("Error: %s") % response)
 
+        try:
+            response = response[0]
+        except KeyError:
+            pass
         try:
             response_type = response['type']
         except:
@@ -3421,6 +3461,17 @@ class OTPmeClient1(OTPmeClientBase):
                                     hash_type=self.rsp_hash_type,
                                     salt=rsp_ecdh_server_pub)
 
+            if self.mount_shares:
+                try:
+                    self.shares = self.auth_reply['shares']
+                except KeyError:
+                    pass
+                else:
+                    msg = "Received the following shares: %s" % self.shares
+                    self.logger.debug(msg)
+                    mount_reply = self.agent_conn.mount_shares(shares=self.shares)
+                    self.message_method(mount_reply)
+
             # If this is a realm login try to get offline tokens etc. from
             # response.
             if self.add_login_session:
@@ -3443,7 +3494,8 @@ class OTPmeClient1(OTPmeClientBase):
                     command_args['password'] = self.new_rsp
                     status, \
                     status_code, \
-                    response = self.connection.send(command=command,
+                    response, \
+                    binary_data = self.connection.send(command=command,
                                                 command_args=command_args,
                                                 handle_response=False,
                                                 handle_auth=False)
@@ -3551,7 +3603,8 @@ class OTPmeClient1(OTPmeClientBase):
 
         status, \
         status_code, \
-        response = self.connection.send(command=command,
+        response, \
+        binary_data = self.connection.send(command=command,
                                 command_args=command_args,
                                 handle_response=False,
                                 handle_auth=False)
@@ -3609,7 +3662,8 @@ class OTPmeClient1(OTPmeClientBase):
         # Send client response.
         status, \
         status_code, \
-        response = self.connection.send(command=command,
+        response, \
+        binary_data = self.connection.send(command=command,
                                     command_args=command_args,
                                     handle_response=False,
                                     handle_auth=False)
@@ -3789,6 +3843,7 @@ class OTPmeClient1(OTPmeClientBase):
                                 site=self.site,
                                 rsp=self.rsp,
                                 slp=slp,
+                                shares=self.shares,
                                 login_time=login_time,
                                 session_uuid=session_uuid,
                                 session_timeout=session_timeout,

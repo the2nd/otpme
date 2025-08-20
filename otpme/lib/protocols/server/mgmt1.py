@@ -54,6 +54,8 @@ valid_commands = [
                 'dump_object',
                 'reset_reauth',
                 'delete_object',
+                'get_share',
+                'get_shares',
                 'get_token_type',
                 'get_policy_type',
                 'check_duplicate_ids',
@@ -2035,7 +2037,7 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         return self.build_response(status, response)
 
-    def _process(self, command, command_args):
+    def _process(self, command, command_args, **kwargs):
         """ Handle management commands received from connection handler. """
         # Default response should be emtpy.
         response = ""
@@ -2116,6 +2118,82 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Check if we got a "object command" (e.g. user, group ...)
         if command in config.tree_object_types or command == "session":
             object_type = command
+
+        # Handle get share command.
+        if command == "get_share":
+            try:
+                share_name = command_args['share_name']
+            except KeyError:
+                status = False
+                response = "Missing <share_name>"
+                return self.build_response(status, response)
+            result = backend.search(object_type="share",
+                                    attribute="name",
+                                    value=share_name,
+                                    realm=config.realm,
+                                    site=config.site,
+                                    return_type="instance")
+            if not result:
+                status = False
+                response = "Unknown share: %s" % share_name
+                return self.build_response(status, response)
+            share = result[0]
+            shares = {}
+            share_nodes = share.get_nodes(include_pools=True,
+                                        return_type="instance")
+            if not share_nodes:
+                share_nodes = backend.search(object_type="node",
+                                            attribute="uuid",
+                                            value="*",
+                                            realm=share.realm,
+                                            site=share.site,
+                                            return_type="instance")
+            if share_nodes:
+                node_fqdns = []
+                for node in share_nodes:
+                    node_fqdns.append(node.fqdn)
+                shares[share.name] = {}
+                shares[share.name]['site'] = share.site
+                shares[share.name]['nodes'] = node_fqdns
+            status = True
+            return self.build_response(status, shares)
+
+        # Handle get share command.
+        if command == "get_shares":
+            search_attrs = {
+                            'token' : {'value':config.auth_token.uuid},
+                        }
+            user_shares = backend.search(object_type="share",
+                                        attributes=search_attrs,
+                                        return_type="instance")
+            token_roles = config.auth_token.get_roles(return_type="uuid", recursive=True)
+            if token_roles:
+                search_attrs = {
+                                'role' : {'values':token_roles},
+                            }
+                user_shares += backend.search(object_type="share",
+                                            attributes=search_attrs,
+                                            return_type="instance")
+            shares = {}
+            for share in user_shares:
+                share_nodes = share.get_nodes(include_pools=True,
+                                            return_type="instance")
+                if not share_nodes:
+                    share_nodes = backend.search(object_type="node",
+                                                attribute="uuid",
+                                                value="*",
+                                                realm=share.realm,
+                                                site=share.site,
+                                                return_type="instance")
+                if share_nodes:
+                    node_fqdns = []
+                    for node in share_nodes:
+                        node_fqdns.append(node.fqdn)
+                    shares[share.name] = {}
+                    shares[share.name]['site'] = share.site
+                    shares[share.name]['nodes'] = node_fqdns
+            status = True
+            return self.build_response(status, shares)
 
         # Handle get token type command.
         if command == "get_token_type":

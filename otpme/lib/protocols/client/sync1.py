@@ -22,6 +22,7 @@ from otpme.lib import multiprocessing
 from otpme.lib.sync_cache import SyncCache
 from otpme.lib.protocols import status_codes
 from otpme.lib.progress import ProgressCounter
+from otpme.lib.protocols.response import decode_response
 from otpme.lib.protocols.otpme_client import OTPmeClient1
 
 from otpme.lib.exceptions import *
@@ -161,7 +162,8 @@ class OTPmeSyncP1(OTPmeClient1):
         while try_count < max_tries:
             status, \
             status_code, \
-            reply = self.connection.send("add_sync_list_checksum", command_args)
+            reply, \
+            binary_data = self.connection.send("add_sync_list_checksum", command_args)
 
             if status_code == status_codes.PERMISSION_DENIED:
                 msg = ("Permission denied: %s/%s" % (realm, site))
@@ -192,7 +194,8 @@ class OTPmeSyncP1(OTPmeClient1):
         while try_count < max_tries:
             status, \
             status_code, \
-            reply = self.connection.send("get_sync_list", command_args)
+            reply, \
+            binary_data = self.connection.send("get_sync_list", command_args)
             if status_code == status_codes.PERMISSION_DENIED:
                 msg = ("Permission denied: %s/%s" % (realm, site))
                 raise PermissionDenied(msg)
@@ -219,7 +222,8 @@ class OTPmeSyncP1(OTPmeClient1):
         while True:
             status, \
             status_code, \
-            reply = self.connection.send("get_last_used", command_args)
+            reply, \
+            binary_data = self.connection.send("get_last_used", command_args)
             if status_code == status_codes.PERMISSION_DENIED:
                 msg = "Permission denied."
                 raise PermissionDenied(msg)
@@ -628,7 +632,8 @@ class OTPmeSyncP1(OTPmeClient1):
 
                     status, \
                     status_code, \
-                    reply = self.connection.send("get_object", command_args)
+                    reply, \
+                    binary_data = self.connection.send("get_object", command_args)
 
                     if not status:
                         msg = ("Error receiving object %s: %s"
@@ -1375,7 +1380,8 @@ class OTPmeSyncP1(OTPmeClient1):
         while try_count < max_tries:
             status, \
             status_code, \
-            reply = self.connection.send(command, command_args)
+            reply, \
+            binary_data = self.connection.send(command, command_args)
             if not status:
                 if status_code == status_codes.UNKNOWN_OBJECT:
                     raise UnknownObject(reply)
@@ -1665,7 +1671,8 @@ class OTPmeSyncP1(OTPmeClient1):
         while try_count < max_tries:
             status, \
             status_code, \
-            reply = self.connection.send("get_ssh_authorized_keys")
+            reply, \
+            binary_data = self.connection.send("get_ssh_authorized_keys")
             if not status:
                 try_count += 1
                 msg = ("Error receiving SSH authorized_keys from peer: %s"
@@ -1775,3 +1782,6 @@ class OTPmeSyncP1(OTPmeClient1):
         #    self.connection.close()
 
         return sync_status
+
+    def decode_response(self, *args, **kwargs):
+        return decode_response(*args, **kwargs)
