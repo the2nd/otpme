@@ -51,10 +51,13 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-share add {share} {mountpoint}',
-                    'cmd'   :   '<|object|> <mount_point>',
+                    '_cmd_usage_help' : 'Usage: otpme-share add [--crypt] [--block-size <block_size>] [--key-len <key_len>] {share} {root_dir}',
+                    'cmd'   :   '--crypt :encrypted=True: --block-size :block_size: --key-len :key_len: <|object|> <root_dir>',
                     '_help' :   {
-                                    'cmd'                           : 'Add new share.',
+                                    'cmd'                       : 'Add new share.',
+                                    '--crypt'                   : 'Add encrpyted share.',
+                                    '--key-len <key_len>'       : 'Generate AES key of length <key_len>.',
+                                    '--block-size <blocksize>'  : 'Encrpyted share block size (default 4096).',
                                 },
                 },
 
@@ -74,11 +77,11 @@ cmd_help = {
                                 },
                 },
 
-    'mount_point'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-share mount_point {share} {/mount/point}',
-                    'cmd'   :   '<|object|> <mount_point>',
+    'root_dir'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-share root_dir {share} {/root/dir}',
+                    'cmd'   :   '<|object|> <root_dir>',
                     '_help' :   {
-                                    'cmd'                   : 'Set share mountpoint.',
+                                    'cmd'                   : 'Set share root dir.',
                                 },
                 },
 

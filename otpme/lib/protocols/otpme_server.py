@@ -175,6 +175,7 @@ class OTPmeServer1(object):
         self.username = None
         self.peer_challenge = None
         self.session_key = None
+        self.can_encrypt = False
         self.ecdh_curve = "SECP384R1"
         # Try to load encryption module.
         try:
@@ -482,7 +483,7 @@ class OTPmeServer1(object):
         try:
             command, \
             command_args, \
-            binary_data = decode_request(data,
+            binary_data = self.decode_request(data,
                                         encryption=enc_mod,
                                         enc_key=enc_key)
         except Exception as e:
@@ -550,6 +551,10 @@ class OTPmeServer1(object):
                     % self.client_name)
             if config.debug_level() > 3:
                 self.logger.debug(msg)
+            try:
+                self.encrypt_session = command_args['encrypt_session']
+            except KeyError:
+                self.encrypt_session = False
             try:
                 enc_key = command_args['enc_key']
             except KeyError:
@@ -754,24 +759,27 @@ class OTPmeServer1(object):
                 return self.build_response(status, message, encrypt=False)
             # Set encryption mod for reply.
             enc_mod = self.session_enc_mod
-        msg = "Decrypting preauth request key..."
-        if config.debug_level() > 3:
-            self.logger.debug(msg)
-        try:
-            enc_key = decode(enc_key, "hex")
-            enc_key = self.site_key.decrypt(ciphertext=enc_key,
-                                            algorithm="SHA256",
-                                            cipher='PKCS1_OAEP')
-        except Exception as e:
-            msg = "Failed to decrypt preauth key: %s: %s" % (self.peer, e)
-            self.logger.critical(msg)
-            status = False
-            message = (_("Failed to decrypt preauth key: %s" % self.peer))
-            config.raise_exception()
-            return self.build_response(status, message, encrypt=False)
+            msg = "Decrypting preauth request key..."
+            if config.debug_level() > 3:
+                self.logger.debug(msg)
+            try:
+                enc_key = decode(enc_key, "hex")
+                enc_key = self.site_key.decrypt(ciphertext=enc_key,
+                                                algorithm="SHA256",
+                                                cipher='PKCS1_OAEP')
+            except Exception as e:
+                msg = "Failed to decrypt preauth key: %s: %s" % (self.peer, e)
+                self.logger.critical(msg)
+                status = False
+                message = (_("Failed to decrypt preauth key: %s" % self.peer))
+                config.raise_exception()
+                return self.build_response(status, message, encrypt=False)
 
         # Decode/decrypt preauth request.
-        msg = "Decrypting preauth request..."
+        if self.encrypt_session:
+            msg = "Decrypting preauth request..."
+        else:
+            msg = "Decoding preauth request..."
         if config.debug_level() > 3:
             self.logger.debug(msg)
         try:
@@ -869,6 +877,8 @@ class OTPmeServer1(object):
                 message = (_("Unable to get host accessgroup: %s" % client))
                 status = False
                 return self.build_response(status, message, encrypt=False)
+        else:
+            self.access_group = config.realm_access_group
 
         # Debug stuff.
         if username and config.debug_enabled:
@@ -922,15 +932,16 @@ class OTPmeServer1(object):
             message = (_("Failed to build preauth reply."))
             return self.build_response(status, message, encrypt=False)
 
-        if self.encrypt_session:
-            # Encrypt preauth reply.
-            try:
-                preauth_reply = json.encode(preauth_reply,
-                                            encoding="base64")
-            except Exception as e:
-                config.raise_exception()
-                msg = (_("Failed to encrypt preauth reply."))
-                raise OTPmeException(msg)
+        # Encode/encrypt preauth reply.
+        try:
+            preauth_reply = json.encode(preauth_reply,
+                                        encryption=enc_mod,
+                                        enc_key=enc_key,
+                                        encoding="base64")
+        except Exception as e:
+            config.raise_exception()
+            msg = (_("Failed to encrypt preauth reply."))
+            raise OTPmeException(msg)
 
         # Build reply.
         reply = {
@@ -980,6 +991,7 @@ class OTPmeServer1(object):
                                                     hash_type=self.session_key_hash_type,
                                                     hash_algo=self.session_key_hash_algo)
                 self.session_key = session_key['key']
+                self.can_encrypt = True
             except Exception as e:
                 config.raise_exception()
                 msg = (_("Failed to generate session key via DH: %s") % e)
@@ -1987,6 +1999,9 @@ class OTPmeServer1(object):
 
         return auth_reply
 
+    def decode_request(self, *args, **kwargs):
+        return decode_request(*args, **kwargs)
+
     def build_response(self, status, message, binary_data=None, encrypt=None,
         compress=None, encoding="base64"):
         """ Build response. """
@@ -2001,7 +2016,7 @@ class OTPmeServer1(object):
         if config.use_api:
             need_encryption = False
 
-        if need_encryption:
+        if need_encryption and self.can_encrypt:
             if not self.session_key:
                 msg = (_("Session key missing."))
                 raise OTPmeException(msg)

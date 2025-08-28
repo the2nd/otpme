@@ -138,6 +138,9 @@ class OTPmeConfig(object):
         self.register_config_var("_posix_msgsize_max", None, 8192,
                             config_file_parameter="POSIX_MSGSIZE_MAX")
         self.register_config_var("posix_msgsize_max", None, 8192)
+        # Socket receive buffer.
+        self.register_config_var("socket_receive_buffer", int, 104857600,
+                            config_file_parameter="SOCKET_RECEIVE_BUFFER")
         # Realm infos.
         self.register_config_var("realm", str, None)
         self.register_config_var("realm_uuid", str, None)
@@ -780,16 +783,16 @@ class OTPmeConfig(object):
         sync_order = stuff.order_data_by_deps(order_data)
         return sync_order
 
-    def reload(self, quiet=False):
+    def reload(self, quiet=False, configure_logger=False):
         """ Reload config. """
         self.config_reload = True
         # Check if user config exists (e.g. this is a config reload).
         if self.user_config:
             self.user_config_reload = True
         # Reload config.
-        self.load(quiet=quiet)
+        self.load(quiet=quiet, configure_logger=configure_logger)
 
-    def load(self, quiet=False):
+    def load(self, quiet=False, configure_logger=None):
         """ Load config. """
         from otpme.lib import filetools
         from otpme.lib.register import register_module
@@ -1023,14 +1026,15 @@ class OTPmeConfig(object):
             self.ensure_logfile(self.log_file)
 
         # Check if logger instance already exists.
-        if self.logger:
-            configure_logger = False
-        else:
-            configure_logger = True
+        if configure_logger is None:
+            if self.logger:
+                configure_logger = False
+            else:
+                configure_logger = True
 
-        # If this is a config reload we have to re-configure the logger.
-        if self.config_reload:
-            configure_logger = True
+            # If this is a config reload we have to re-configure the logger.
+            if self.config_reload:
+                configure_logger = True
 
         # Create or reconfigure logger instance.
         if configure_logger:
@@ -1886,8 +1890,8 @@ class OTPmeConfig(object):
         if self._login_user:
             return self._login_user
         # Get login user from agent.
-        login_user = self.get_login_user()
-        return login_user
+        self._login_user = self.get_login_user()
+        return self._login_user
 
     @login_user.setter
     def login_user(self, login_user):

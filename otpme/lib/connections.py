@@ -237,11 +237,13 @@ def get(daemon, **kwargs):
     if conn is not None:
         if conn.connected:
             try:
-                status, \
-                status_code, \
-                reply, \
-                binary_data = conn.send("ping", timeout=3)
+                # Result will return tuple of 3 with agent and 4 for daemon connection.
+                result = conn.send("ping", timeout=3)
+                status = result[0]
+                status_code = result[1]
+                reply = result[2]
             except Exception as e:
+                status = False
                 reply = ""
 
             if daemon != "agent":
@@ -296,8 +298,6 @@ def get(daemon, **kwargs):
     if interactive is None:
         if config.daemon_mode:
             interactive = False
-        else:
-            interactive = True
     conn_kwargs['interactive'] = interactive
 
     # FIXME: Currently we only use an agent for connections in our own realm.

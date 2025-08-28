@@ -175,7 +175,8 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
         # Try to init GPG.
         try:
             master_key_id, \
-            key_id = gpg.init_gpg(user_real_name=user_real_name,
+            auth_key_id, \
+            enc_key_id = gpg.init_gpg(user_real_name=user_real_name,
                                     user_email=user_email,
                                     passphrase=gpg_passphrase)
         except Exception as e:
@@ -289,14 +290,39 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
         sys.exit(1)
 
     # Try to move key to card.
-    message("Writing key to yubikey...")
+    message("Writing keys to yubikey...")
     try:
-        gpg.key_to_card(key_id, sc_admin_pin=new_password,
+        gpg.key_to_card(auth_key_id,
+                        key_type="auth",
+                        sc_admin_pin=new_password,
                         gpg_passphrase=gpg_passphrase,
                         debug=debug)
     except Exception as e:
         raise
-        error_message(_("Failed to write GPG key to yubikey: %s") % e)
+        error_message(_("Failed to write GPG auth key to yubikey: %s") % e)
+        cleanup()
+        sys.exit(1)
+    # Restart gpg agent to make key_to_card() work because it sends passwords
+    # that are not required when the first key_to_card() was run.
+    gpg.stop_agent()
+    message("Starting gpg-agent...")
+    try:
+        ssh_agent_pid, \
+        ssh_auth_sock, \
+        gpg_agent_info = gpg.start_agent()
+    except Exception as e:
+        error_message(str(e))
+        cleanup()
+        sys.exit(1)
+    try:
+        gpg.key_to_card(enc_key_id,
+                        key_type="encrypt",
+                        sc_admin_pin=new_password,
+                        gpg_passphrase=gpg_passphrase,
+                        debug=debug)
+    except Exception as e:
+        raise
+        error_message(_("Failed to write GPG encryption key to yubikey: %s") % e)
         cleanup()
         sys.exit(1)
 

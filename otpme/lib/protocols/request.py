@@ -13,9 +13,6 @@ except:
 from otpme.lib import json
 from otpme.lib.exceptions import *
 
-def decode_command(command):
-    pass
-
 def build_request(command, command_args={}, encryption=None,
     enc_key=None, compress=True, encoding="base64", binary_data=None):
     """ Build JSON request. """

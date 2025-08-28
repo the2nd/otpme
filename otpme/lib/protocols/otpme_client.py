@@ -587,8 +587,52 @@ class OTPmeClient(OTPmeClientBase):
             self.cleanup()
             raise OTPmeException(msg)
 
-        # Send auth command to otpme-agent.
+        # Get server protocol via agent from peer.
         if self.use_agent:
+            exception = None
+            # Set agent protocol we negotiated.
+            self.agent_protocol = response.split(":")[1].replace(" ", "")
+            if config.debug_level(DEBUG_SLOT) > 3:
+                msg = ("Agent supports protocol version: %s" % self.agent_protocol)
+                self.logger.debug(msg)
+            # Send use_proto command to agent.
+            use_proto_command = "use_proto"
+            use_proto_args = {'client_proto' : self.agent_protocol}
+            try:
+                status, \
+                status_code, \
+                response, \
+                binary_data = self.send(command=use_proto_command,
+                                command_args=use_proto_args,
+                                encrypt_request=False,
+                                encode_request=True,
+                                handle_response=False,
+                                handle_auth=False,
+                                use_agent=False,
+                                timeout=timeout)
+            except Exception as e:
+                msg = (_("Error sending 'use_prot': %s") % e)
+                self.cleanup()
+                config.raise_exception()
+                raise ConnectionError(msg)
+            # Try to get agent protocol class.
+            from otpme.lib import protocols
+            try:
+                proto_class = protocols.client.get_class(self.agent_protocol)
+            except Exception as e:
+                msg = ("Failed to load agent protocol: %s: %s"
+                        % (self.agent_protocol, e))
+                self.logger.critical(msg)
+                raise OTPmeException(msg)
+            # Try to init protocol.
+            try:
+                self.agent_proto_handler = proto_class()
+            except Exception as e:
+                msg = ("Failed to init agent protocol: %s: %s"
+                        % (self.protocol, e))
+                self.logger.critical(msg)
+                raise OTPmeException(msg)
+            # Send auth command to otpme-agent.
             try:
                 login_session_id = os.environ['OTPME_LOGIN_SESSION']
             except KeyError:
@@ -626,32 +670,6 @@ class OTPmeClient(OTPmeClientBase):
                                     handle_auth=False,
                                     use_agent=False,
                                     timeout=timeout)
-
-        # Get server protocol via agent from peer.
-        if self.use_agent:
-            exception = None
-            # Set agent protocol we negotiated.
-            self.agent_protocol = response.split(":")[1].replace(" ", "")
-            if config.debug_level(DEBUG_SLOT) > 3:
-                msg = ("Agent supports protocol version: %s" % self.agent_protocol)
-                self.logger.debug(msg)
-            # Try to get agent protocol class.
-            from otpme.lib import protocols
-            try:
-                proto_class = protocols.client.get_class(self.agent_protocol)
-            except Exception as e:
-                msg = ("Failed to load agent protocol: %s: %s"
-                        % (self.agent_protocol, e))
-                self.logger.critical(msg)
-                raise OTPmeException(msg)
-            # Try to init protocol.
-            try:
-                self.agent_proto_handler = proto_class()
-            except Exception as e:
-                msg = ("Failed to init agent protocol: %s: %s"
-                        % (self.protocol, e))
-                self.logger.critical(msg)
-                raise OTPmeException(msg)
             # Get server protocol via agent.
             try:
                 status, \
@@ -681,8 +699,6 @@ class OTPmeClient(OTPmeClientBase):
                 msg = (_("Failed to connect via agent: %s") % response)
                 raise exception(msg)
 
-        if self.site_ident:
-            self.ident_site()
 
         # Set server protocol we negotiated.
         self.protocol = response.split(":")[1].replace(" ", "")
@@ -690,7 +706,33 @@ class OTPmeClient(OTPmeClientBase):
         if config.debug_level(DEBUG_SLOT) > 3:
             msg = ("Server supports protocol version: %s" % self.protocol)
             self.logger.debug(msg)
+
+        # Send use_proto command.
+        use_proto_command = "use_proto"
+        use_proto_args = {'client_proto' : self.protocol}
+        try:
+            status, \
+            status_code, \
+            response, \
+            binary_data = self.send(command=use_proto_command,
+                            command_args=use_proto_args,
+                            encrypt_request=False,
+                            encode_request=True,
+                            handle_response=False,
+                            handle_auth=False,
+                            use_agent=False,
+                            timeout=timeout)
+        except Exception as e:
+            msg = (_("Error sending 'use_proto': %s") % e)
+            self.cleanup()
+            config.raise_exception()
+            raise ConnectionError(msg)
+
+        # Set protocol handler.
         self.set_proto_handler()
+
+        if self.site_ident:
+            self.ident_site()
 
         if auto_auth:
             try:
@@ -926,8 +968,12 @@ class OTPmeClient(OTPmeClientBase):
                     msg = (_("Need <encode_request=True> with <encrypt_request>."))
                     raise OTPmeException(msg)
 
+            # Decode response.
+            build_method = self.build_request
+            if self.proto_handler:
+                build_method = self.proto_handler.build_request
             try:
-                request = build_request(command=command,
+                request = build_method(command=command,
                                         command_args=command_args,
                                         binary_data=binary_data,
                                         compress=compress_request,
@@ -961,9 +1007,10 @@ class OTPmeClient(OTPmeClientBase):
             raise ConnectionError(_("Error while receiving: %s") % e)
 
         # Decode response.
-        decode_method = decode_response
+        decode_method = self.decode_response
         if self.proto_handler:
             decode_method = self.proto_handler.decode_response
+
         status_code, \
         response, \
         binary_data = decode_method(response,
@@ -1295,7 +1342,8 @@ class OTPmeClient(OTPmeClientBase):
             raise OTPmeException(msg)
 
         # Build key script command to encrypt data.
-        script_command = [ "encrypt" , "--no-rsa", "--no-self-decrypt" ]
+        script_command = [ "encrypt", "--no-self-decrypt" ]
+        #script_command = [ "encrypt", "--no-rsa", "--no-self-decrypt" ]
         script_options = [ "/dev/stdin", "/dev/stdout" ]
 
         if not use_rsa_key:
@@ -1378,6 +1426,53 @@ class OTPmeClient(OTPmeClientBase):
         response = script_stdout
 
         return response
+
+    def gen_share_key(self, command_dict):
+        """ Handle share key re-encryption via users key script. """
+        key_len = command_dict['key_len']
+        sign_mode = command_dict['sign_mode']
+
+        # When not in interactive mode we cannot call key script.
+        if not self.interactive:
+            msg = (_("Cannot call key script in non-interactive mode."))
+            raise OTPmeException(msg)
+
+        # Gen AES key.
+        share_key = os.urandom(key_len)
+        # Get username to run key script for.
+        username = self.username
+        # User to encrypt share key for.
+        share_user = self.username
+        # Encrypt share key with key script.
+        encrypted_share_key = stuff.encrypt_share_key(username,
+                                                    share_user,
+                                                    share_key,
+                                                    sign_mode)
+        return encrypted_share_key
+
+    def reencrypt_share_key(self, command_dict):
+        """ Handle share key re-encryption via users key script. """
+        sign_mode = command_dict['sign_mode']
+        share_user = command_dict['share_user']
+        encrypted_share_key = command_dict['share_key']
+
+        # When not in interactive mode we cannot call key script.
+        if not self.interactive:
+            msg = (_("Cannot call key script in non-interactive mode."))
+            raise OTPmeException(msg)
+
+        # Get username to run key script for.
+        username = self.username
+        # Decrypt share key with key script.
+        decrypted_share_key = stuff.decrypt_share_key(username,
+                                                    encrypted_share_key,
+                                                    sign_mode)
+        # Encrypt share key with key script.
+        encrypted_share_key = stuff.encrypt_share_key(username,
+                                                    share_user,
+                                                    decrypted_share_key,
+                                                    sign_mode)
+        return encrypted_share_key
 
     def move_objects(self, command_dict):
         """ Handle objects move. """
@@ -1663,6 +1758,20 @@ class OTPmeClient(OTPmeClientBase):
                 except Exception as e:
                     exception = e
 
+            elif client_command == "GEN_SHARE_KEY":
+                send_request = True
+                try:
+                    request = self.gen_share_key(response)
+                except Exception as e:
+                    exception = e
+
+            elif client_command == "REENCRYPT_SHARE_KEY":
+                send_request = True
+                try:
+                    request = self.reencrypt_share_key(response)
+                except Exception as e:
+                    exception = e
+
             elif client_command == "JOB":
                 # Set our current job UUID.
                 job_uuid = response['query_id']
@@ -1798,6 +1907,12 @@ class OTPmeClient(OTPmeClientBase):
             self.agent_conn.close()
         # Set status.
         self.connected = False
+
+    def build_request(self, *args, **kwargs):
+        return build_request(*args, **kwargs)
+
+    def decode_response(self, *args, **kwargs):
+        return decode_response(*args, **kwargs)
 
     def cleanup(self):
         """ Prepare a clean exit. """
@@ -2433,6 +2548,7 @@ class OTPmeClient1(OTPmeClientBase):
             except Exception as e:
                 msg = (_("Failed to encode DH for session key: %s") % e)
                 raise OTPmeException(msg)
+            command_args['encrypt_session'] = True
             # Add encrypted AES key.
             command_args['enc_key'] = _enc_key
             # Generating DH parameters.
@@ -2530,6 +2646,8 @@ class OTPmeClient1(OTPmeClientBase):
         # Decode inner preauth reply.
         try:
             preauth_reply = json.decode(preauth_reply,
+                                        encryption=enc_mod,
+                                        enc_key=enc_key,
                                         encoding="base64")
         except Exception as e:
             msg = (_("Failed to decrypt preauth reply: %s" % e))
@@ -2798,6 +2916,8 @@ class OTPmeClient1(OTPmeClientBase):
             except KeyError:
                 pass
             if self.ssh_public_keys:
+                msg = "Received %s SSH public keys from server." % len(self.ssh_public_keys)
+                self.logger.info(msg)
                 if self.use_ssh_agent is None:
                     self.use_ssh_agent = "auto"
                 if self.start_ssh_agent is None:
@@ -2986,9 +3106,14 @@ class OTPmeClient1(OTPmeClientBase):
 
             if self.add_agent_session:
                 # (Re-)add new session.
+                try:
+                    tty = os.ttyname(0)
+                except:
+                    tty = None
                 self.login_session_id = self.agent_conn.add_session(
                                             username=self.username,
-                                            session_id=self.login_session_id)
+                                            session_id=self.login_session_id,
+                                            tty=tty)
                 if not self.login_session_id:
                     self.cleanup()
                     raise OTPmeException("Error adding session to otpme-agent.")
@@ -4142,6 +4267,12 @@ class OTPmeClient1(OTPmeClientBase):
         if self.sync_token_data:
             hostd_conn = self.get_hostd_conn()
             hostd_conn.trigger_token_data_sync()
+
+    def build_request(self, *args, **kwargs):
+        return build_request(*args, **kwargs)
+
+    def decode_response(self, *args, **kwargs):
+        return decode_response(*args, **kwargs)
 
     def cleanup(self):
         """ Prepare a clean exit. """

@@ -50,6 +50,8 @@ from otpme.lib import filetools
 from otpme.lib import system_command
 from otpme.lib.encoding.base import encode
 
+from otpme.lib.exceptions import *
+
 GPG_BIN = "gpg"
 SOCKET_FILE = "/tmp/gpg-pinentry.sock"
 
@@ -104,9 +106,15 @@ def init_gpg(user_email, user_real_name, passphrase):
                             algorithm='rsa4096',
                             usage='auth',
                             expire='-')
+
+    enc_key = gpg.add_subkey(master_key=master_key.fingerprint,
+                            master_passphrase=passphrase,
+                            algorithm='rsa4096',
+                            usage='encrypt',
+                            expire='-')
     stop_agent()
 
-    return str(master_key), str(auth_key)
+    return str(master_key), str(auth_key), str(enc_key)
 
 
 def create_backup(backup_file, passphrase):
@@ -352,10 +360,13 @@ def get_main_key_id():
             key_id = line.split("/")[1][0:8]
     return key_id
 
-def key_to_card(key_id, sc_admin_pin, gpg_passphrase, debug=False):
+def key_to_card(key_id, key_type, sc_admin_pin, gpg_passphrase, debug=False):
     """ Move GPG sub key to card. """
     from otpme.lib import multiprocessing
-
+    if key_type != "auth":
+        if key_type != "encrypt":
+            msg = "Unknown key type: %s" % key_type
+            raise OTPmeException(msg)
     # Start thread to handover token admin PIN to gpg-agent via socket
     passphrases = [ gpg_passphrase, sc_admin_pin, sc_admin_pin ]
     pass_thread = multiprocessing.start_thread(name="keytocard", target=send_passphrases, target_args=("keytocard", passphrases))
@@ -373,11 +384,17 @@ def key_to_card(key_id, sc_admin_pin, gpg_passphrase, debug=False):
     child.expect(gpg_prompt, timeout=3)
     child.sendline('toggle')
     child.expect(gpg_prompt, timeout=3)
-    child.sendline('key 1')
+    if key_type == "auth":
+        child.sendline('key 1')
+    if key_type == "encrypt":
+        child.sendline('key 2')
     child.expect(gpg_prompt, timeout=3)
     child.sendline('keytocard')
     child.expect('Your selection?', timeout=3)
-    child.sendline('3')
+    if key_type == "auth":
+        child.sendline('3')
+    if key_type == "encrypt":
+        child.sendline('2')
 
     i = child.expect([gpg_prompt,
                     gpg_card_error,

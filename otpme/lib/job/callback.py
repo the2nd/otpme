@@ -25,8 +25,10 @@ from otpme.lib.protocols.utils import auth_jwt
 from otpme.lib.protocols.utils import send_msg
 from otpme.lib.protocols.utils import dump_data
 from otpme.lib.protocols.utils import move_objects
+from otpme.lib.protocols.utils import gen_share_key
 from otpme.lib.protocols.utils import gen_user_keys
 from otpme.lib.protocols.utils import send_keepalive
+from otpme.lib.protocols.utils import reencrypt_share_key
 from otpme.lib.protocols.utils import change_user_default_group
 
 from otpme.lib.exceptions import *
@@ -490,6 +492,41 @@ class JobCallback(object):
         return reply
 
     @handle_exception
+    def reencrypt_share_key(self, share_user, share_key, sign_mode=None, timeout=1):
+        """ Send query to client to generate and encrypt share key. """
+        # If the callback is disabled we do not send anything to the client.
+        if not self.enabled:
+            raise OTPmeException(self.api_exception)
+        if self.api_mode:
+            raise OTPmeException(self.api_exception)
+        # Gen query ID.
+        query_id = self._gen_query_id()
+        # Build query string.
+        query = reencrypt_share_key(query_id,
+                            share_user=share_user,
+                            share_key=share_key,
+                            sign_mode=sign_mode)
+        # Send query.
+        reply = self._send_query(query_id, query, timeout=timeout)
+        return reply
+
+    @handle_exception
+    def gen_share_key(self, key_len=2048, sign_mode=None, timeout=1):
+        """ Send query to client to generate and encrypt share key. """
+        # If the callback is disabled we do not send anything to the client.
+        if not self.enabled:
+            raise OTPmeException(self.api_exception)
+        if self.api_mode:
+            raise OTPmeException(self.api_exception)
+        # Gen query ID.
+        query_id = self._gen_query_id()
+        # Build query string.
+        query = gen_share_key(query_id, key_len=key_len, sign_mode=sign_mode)
+        # Send query.
+        reply = self._send_query(query_id, query, timeout=timeout)
+        return reply
+
+    @handle_exception
     def gen_user_keys(self, username,
         key_len=2048, stdin_pass=False, timeout=1):
         """ Send query to client to generate users privat/public keys. """
@@ -587,7 +624,11 @@ class JobCallback(object):
             try:
                 self.job.exit_info['exit_status'] = status
                 if len(message) > 0:
-                    self.job.exit_info['exit_message'] = message
+                    try:
+                        self.job.exit_info['exit_message'] = message
+                    except Exception as e:
+                        msg = "Failed to add exit message: %s" % e
+                        self.logger.critical(msg)
             except:
                 pass
 

@@ -107,6 +107,12 @@ class AddressAlreadyAssigned(OTPmeException):
 class AlreadyRegistered(OTPmeException):
     pass
 
+class NotInitialized(OTPmeException):
+    pass
+
+class AlreadyInitialized(OTPmeException):
+    pass
+
 class NoTagsMatch(OTPmeException):
     pass
 

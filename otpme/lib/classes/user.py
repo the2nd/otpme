@@ -88,6 +88,7 @@ read_value_acls = {
                         "session",
                         "auto_mount",
                         "auto_disable",
+                        "share_key",
                         ],
             "dump"      : [
                         "photo",
@@ -98,11 +99,13 @@ write_value_acls = {
                     "add"       : [
                                 "token",
                                 "photo",
+                                "share_key",
                                 ],
                     "delete"    : [
                                 "token",
                                 "photo",
                                 "session",
+                                "share_key",
                                 ],
                     "rename"    : [
                                 "token",
@@ -485,6 +488,33 @@ commands = {
                 'exists'    : {
                     'method'            : 'del_token',
                     'args'              : ['token_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_share_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_share_key',
+                    'args'              : ['share_name', 'share_key'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_share_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_share_key',
+                    'args'              : ['share_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'get_share_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_share_key',
+                    'args'              : ['share_name'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1401,6 +1431,12 @@ class User(OTPmeObject):
                                                         'required'  : False,
                                                     },
 
+                        'SHARE_KEYS'                : {
+                                                        'var_name'  : 'share_keys',
+                                                        'type'      : dict,
+                                                        'required'  : False,
+                                                    },
+
                         'AUTO_MOUNT'                : {
                                                         'var_name'  : 'auto_mount',
                                                         'type'      : bool,
@@ -2046,6 +2082,127 @@ class User(OTPmeObject):
             token._write(callback=callback)
         return move_result
 
+    @check_acls(['add:share_key'])
+    @object_lock()
+    def add_share_key(
+        self,
+        share_name: str,
+        share_key: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        result = backend.search(object_type="share",
+                                attribute="name",
+                                value=share_name,
+                                return_type="uuid")
+        if not result:
+            msg = "Unknown share: %s" % share_name
+            return callback.error(msg)
+        share_uuid = result[0]
+
+        if share_uuid in self.share_keys:
+            msg = "Share key already exists: %s" % share_name
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_share_key",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
+
+        self.share_keys[share_uuid] = share_key
+
+        return self._write(callback=callback)
+
+    @check_acls(['view:share_key'])
+    @object_lock()
+    def get_share_key(
+        self,
+        share_name: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        result = backend.search(object_type="share",
+                                attribute="name",
+                                value=share_name,
+                                return_type="uuid")
+        if not result:
+            msg = "Unknown share: %s" % share_name
+            return callback.error(msg)
+        share_uuid = result[0]
+
+        if share_uuid not in self.share_keys:
+            msg = "Share key does not exist: %s" % share_name
+            return callback.error(msg)
+
+        if run_policies:
+            config.ignore_policy_tags.append("interactive")
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("get_share_key",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                config.raise_exception()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
+            config.ignore_policy_tags.remove("interactive")
+
+        share_key = self.share_keys[share_uuid]
+
+        return callback.ok(share_key)
+
+    @check_acls(['delete:share_key'])
+    @object_lock()
+    def del_share_key(
+        self,
+        share_name: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        result = backend.search(object_type="share",
+                                attribute="name",
+                                value=share_name,
+                                return_type="uuid")
+        if not result:
+            msg = "Unknown share: %s" % share_name
+            return callback.error(msg)
+        share_uuid = result[0]
+
+        if share_uuid not in self.share_keys:
+            msg = "Share key does not exist: %s" % share_name
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("del_share_key",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
+
+        self.share_keys.pop(share_uuid)
+
+        return self._write(callback=callback)
+
     @check_acls(['add:photo'])
     @object_lock()
     def add_photo(
@@ -2343,6 +2500,8 @@ class User(OTPmeObject):
                     return callback.error(msg)
                 if return_type == "path":
                     script = ks.rel_path
+                elif return_type == "data":
+                    script = ks.dump(run_policies=False)
                 elif return_type == "instance":
                     if _caller != "API":
                         return callback.error("Invalid return type: instance")
@@ -2681,7 +2840,8 @@ class User(OTPmeObject):
             else:
                 private_key = rsa_key
         else:
-            private_key = decode(rsa_key, "base64")
+            #private_key = decode(rsa_key, "base64")
+            private_key = rsa_key
 
         # We must not use callback here to prevent sending private key to the
         # client by accident!

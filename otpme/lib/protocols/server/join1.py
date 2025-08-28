@@ -45,7 +45,7 @@ class OTPmeJoinP1(OTPmeServer1):
         self.require_preauth = True
         # The joining node does not have our site cert that is needed to
         # negotiate the a session key.
-        self.encrypt_session = True
+        self.encrypt_session = False
         # The accessgroup we authenticate users against.
         self.access_group = config.join_access_group
         # Indicates parent class to require a client certificate.

@@ -14,6 +14,7 @@ from otpme.lib import cli
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.locking import object_lock
+from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.classes.otpme_object import OTPmeObject
@@ -50,6 +51,9 @@ read_value_acls = {
                                     "node",
                                     "pool",
                                     "policy",
+                                    "root_dir",
+                                    "encrypted",
+                                    "block_size",
                                     "read_only",
                                     "force_group",
                                     "force_create_mode",
@@ -70,8 +74,14 @@ write_value_acls = {
                                     "node",
                                     "pool",
                                 ],
-                    "edit"    : [
+                    "enable"    : [
                                     "read_only",
+                                ],
+                    "disable"    : [
+                                    "read_only",
+                                ],
+                    "edit"    : [
+                                    "root_dir",
                                     "force_group",
                                     "force_create_mode",
                                     "force_directory_mode",
@@ -87,14 +97,14 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'args'              : ['mount_point'],
-                    'oargs'             : ['unit'],
+                    'args'              : ['root_dir'],
+                    'oargs'             : ['unit', 'encrypted', 'block_size'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
                     'method'            : 'add',
-                    'args'              : ['mount_point'],
-                    'oargs'             : ['unit'],
+                    'args'              : ['root_dir'],
+                    'oargs'             : ['unit', 'encrypted', 'block_size'],
                     'job_type'          : 'process',
                     },
                 },
@@ -139,11 +149,11 @@ commands = {
                     },
                 },
             },
-    'mount_point'   : {
+    'root_dir'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'set_mount_point',
-                    'args'              : ['mount_point'],
+                    'method'            : 'set_root_dir',
+                    'args'              : ['root_dir'],
                     'job_type'          : 'process',
                     },
                 },
@@ -576,7 +586,7 @@ def register():
     register_commands("share", commands)
     # Register index attributes.
     config.register_index_attribute("share")
-    config.register_index_attribute("mountpoint")
+    config.register_index_attribute("root_dir")
 
 def register_object_unit():
     """ Register default unit for this object type. """
@@ -652,8 +662,10 @@ class Share(OTPmeObject):
         **kwargs,
         ):
         self.type = "share"
-        # Share mountpoint
-        self.mount_point = None
+        # Share root dir
+        self.root_dir = None
+        self.encrypted = False
+        self.block_size = 4096
         # Call parent class init.
         super(Share, self).__init__(object_id=object_id, **kwargs)
         # List and dict attributes must be set after calling super because
@@ -676,7 +688,7 @@ class Share(OTPmeObject):
         self._sync_fields = {
                     'host'  : {
                         'trusted'  : [
-                            "MOUNT_POINT",
+                            "ROOT_DIR",
                             "READ_ONLY",
                             "TOKENS",
                             "ROLES",
@@ -685,7 +697,7 @@ class Share(OTPmeObject):
 
                     'node'  : {
                         'untrusted'  : [
-                            "MOUNT_POINT",
+                            "ROOT_DIR",
                             "READ_ONLY",
                             "TOKENS",
                             "ROLES",
@@ -705,9 +717,19 @@ class Share(OTPmeObject):
     def _get_object_config(self):
         """ Get object config dict. """
         object_config = {
-                        'MOUNT_POINT'               : {
-                                                        'var_name'  : 'mount_point',
+                        'ROOT_DIR'                  : {
+                                                        'var_name'  : 'root_dir',
                                                         'type'      : str,
+                                                        'required'  : False,
+                                                    },
+                        'ENCRYPTED'                 : {
+                                                        'var_name'  : 'encrypted',
+                                                        'type'      : bool,
+                                                        'required'  : False,
+                                                    },
+                        'BLOCK_SIZE'                : {
+                                                        'var_name'  : 'block_size',
+                                                        'type'      : int,
                                                         'required'  : False,
                                                     },
                         'READ_ONLY'                : {
@@ -776,7 +798,10 @@ class Share(OTPmeObject):
     @run_pre_post_add_policies()
     def add(
         self,
-        mount_point: str,
+        root_dir: str,
+        encrypted: bool=False,
+        key_len: int=32,
+        block_size: int=4096,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -786,11 +811,27 @@ class Share(OTPmeObject):
         result = self._prepare_add(callback=callback, **kwargs)
         if result is False:
             return callback.error()
-        self.set_mount_point(mount_point, callback=callback)
+        # Check if root dir exists.
+        if not self.set_root_dir(root_dir, callback=callback):
+            return callback.error()
+        self.encrypted = encrypted
+        self.block_size = block_size
+        self.add_index('encrypted', self.encrypted)
+        self.add_index('block_size', self.block_size)
         # Add object using parent class.
         add_result = super(Share, self).add(verify_acls=verify_acls,
-                                verbose_level=verbose_level,
-                                callback=callback, **kwargs)
+                                        verbose_level=verbose_level,
+                                        callback=callback, **kwargs)
+        if self.encrypted and add_result:
+            msg = "Generating AES key for encrypted share..."
+            callback.send(msg)
+            sign_mode = config.auth_user.sign_mode
+            share_key = callback.gen_share_key(key_len=key_len, sign_mode=sign_mode)
+            if not share_key:
+                msg = "Failed to receive share key from client."
+                return callback.error(msg)
+            self.add_token(token_path=config.auth_token.rel_path,
+                            share_key=share_key)
         return add_result
 
     @object_lock(full_lock=True)
@@ -811,22 +852,27 @@ class Share(OTPmeObject):
                         name=new_name)
         return self._rename(new_oid, callback=callback, _caller=_caller, **kwargs)
 
+    @check_acls(['edit:root_dir'])
     @object_lock()
-    def set_mount_point(
+    def set_root_dir(
         self,
-        mount_point,
+        root_dir,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        if self.mount_point == mount_point:
-            msg = "Mountpoint already set to: %s" % self.mount_point
+        if self.root_dir == root_dir:
+            msg = "Root dir already set to: %s" % self.root_dir
             return callback.error(msg)
-        self.mount_point = mount_point
-        self.update_index('mountpoint', self.mount_point)
+        if not os.path.exists(root_dir):
+            msg = "No such file or directory: %s" % root_dir
+            return callback.error(msg)
+        self.root_dir = root_dir
+        self.update_index('root_dir', self.root_dir)
         return self._cache(callback=callback)
 
+    @check_acls(['edit:force_group'])
     @object_lock()
     def force_group(
         self,
@@ -855,6 +901,7 @@ class Share(OTPmeObject):
         self.update_index('force_group_uuid', self.force_group_uuid)
         return self._cache(callback=callback)
 
+    @check_acls(['edit:force_create_mode'])
     @object_lock()
     def force_create_mode(
         self,
@@ -871,6 +918,7 @@ class Share(OTPmeObject):
         self.update_index('create_mode', create_mode)
         return self._cache(callback=callback)
 
+    @check_acls(['edit:force_directory_mode'])
     @object_lock()
     def force_directory_mode(
         self,
@@ -887,6 +935,7 @@ class Share(OTPmeObject):
         self.update_index('directory_mode', create_mode)
         return self._cache(callback=callback)
 
+    @check_acls(['enable:read_only'])
     @object_lock()
     def enable_ro(
         self,
@@ -928,6 +977,7 @@ class Share(OTPmeObject):
 
         return self._cache(callback=callback)
 
+    @check_acls(['enable:read_only'])
     @object_lock()
     def disable_ro(
         self,
@@ -973,6 +1023,7 @@ class Share(OTPmeObject):
     def add_token(
         self,
         token_path: str,
+        share_key: str=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -983,20 +1034,118 @@ class Share(OTPmeObject):
             msg = ("Invalid token path: %s" % token_path)
             return callback.error(msg)
 
+        result = backend.search(object_type="token",
+                                attribute="rel_path",
+                                value=token_path,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="uuid")
+        if not result:
+            msg = "Unknown token: %s" % token_path
+            return callback.error(msg)
+        token_uuid = result[0]
+        if token_uuid in self.tokens:
+            msg = "Token already assigned to share: %s" % token_path
+            return callback.error(msg)
+
+        token_user = token_path.split("/")[0]
+        result = backend.search(object_type="user",
+                                attribute="name",
+                                value=token_user,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="instance")
+        if not result:
+            msg = "Unknown user: %s" % token_user
+            return callback.error(msg)
+        user = result[0]
+
         if self.force_group_uuid is not None:
-            token_user = token_path.split("/")[0]
             group = backend.get_object(uuid=self.force_group_uuid)
             group_users = group.get_token_users(include_roles=True,
                                             skip_disabled=True,
                                             return_type="name")
-            if token_user not in group_users:
+            if user.name not in group_users:
                 msg = ("Force group enabled and user not in group: %s"
                         % group.name)
                 return callback.error(msg)
 
+        if self.encrypted:
+            existing_key = user.get_share_key(share_name=self.name)
+            if not existing_key and not share_key:
+                msg = "Sending request to re-encrypt share key for user: %s" % user.name
+                callback.send(msg)
+                auth_user = backend.get_object(uuid=config.auth_user.uuid)
+                sign_mode = auth_user.sign_mode
+                auth_user_share_key = auth_user.get_share_key(share_name=self.name)
+                if not auth_user_share_key:
+                    msg = "Failed to get share key from user: %s" % auth_user
+                    return callback.error(msg)
+                share_key = callback.reencrypt_share_key(share_user=user.name,
+                                                        share_key=auth_user_share_key,
+                                                        sign_mode=sign_mode)
+                if not share_key:
+                    msg = "Failed to receive share key from client."
+                    return callback.error(msg)
+            if share_key:
+                if not user.add_share_key(share_name=self.name,
+                                    share_key=share_key,
+                                    callback=callback,
+                                    verify_acls=False):
+                    msg = "Failed to add share key to user: %s" % user
+                    return callback.error(msg)
+
         return super(Share, self).add_token(token_path=token_path,
                                         callback=callback, **kwargs)
 
+    @object_lock()
+    def remove_token(
+        self,
+        token_path: str,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Remove token from share. """
+        if not "/" in token_path:
+            msg = ("Invalid token path: %s" % token_path)
+            return callback.error(msg)
+
+        result = backend.search(object_type="token",
+                                attribute="rel_path",
+                                value=token_path,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="uuid")
+        if not result:
+            msg = "Unknown token: %s" % token_path
+            return callback.error(msg)
+        token_uuid = result[0]
+        if token_uuid not in self.tokens:
+            msg = "Token not assigned to share: %s" % token_path
+            return callback.error(msg)
+
+        if self.encrypted:
+            token_user = token_path.split("/")[0]
+            result = backend.search(object_type="user",
+                                    attribute="name",
+                                    value=token_user,
+                                    realm=config.realm,
+                                    site=config.site,
+                                    return_type="instance")
+            if not result:
+                msg = "Unknown user: %s" % token_user
+                return callback.error(msg)
+            user = result[0]
+            user.del_share_key(share_name=self.name,
+                                callback=callback,
+                                verify_acls=False)
+
+        return super(Share, self).remove_token(token_path=token_path,
+                                            callback=callback, **kwargs)
+
+    @check_acls(['add:ppol'])
     @object_lock()
     def add_pool(
         self,
@@ -1050,6 +1199,7 @@ class Share(OTPmeObject):
         self.add_index('pool', pool.uuid)
         return self._cache(callback=callback)
 
+    @check_acls(['remove:ppol'])
     @object_lock()
     def remove_pool(
         self,
@@ -1204,6 +1354,12 @@ class Share(OTPmeObject):
             lines.append('DIRECTORY_MODE="%s"' % self.directory_mode)
         else:
             lines.append('DIRECTORY_MODE=""')
+
+        if self.verify_acl("view:root_dir") \
+        or self.verify_acl("edit:root_dir"):
+            lines.append('ROOT_DIR="%s"' % self.root_dir)
+        else:
+            lines.append('ROOT_DIR=""')
 
         return OTPmeObject.show_config(self,
                                     config_lines=lines,

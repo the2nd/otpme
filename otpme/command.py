@@ -55,7 +55,7 @@ import ctypes
 try:
     ctypes.CDLL("libssl.so").OSSL_PROVIDER_load(None, b"legacy")
     ctypes.CDLL("libssl.so").OSSL_PROVIDER_load(None, b"default")
-except AttributeError:
+except (AttributeError, OSError):
     pass
 
 ## Workaround for https://github.com/pyca/cryptography/issues/7236
@@ -65,7 +65,7 @@ except AttributeError:
 def otpme_commands(no_debug=False):
     """ Handles OTPme command line tools. """
     from otpme.lib.classes.command_handler import CommandHandler
-    command_handler = CommandHandler()
+    command_handler = CommandHandler(interactive=True)
 
     ## Load extension schemas.
     #if config.use_api:

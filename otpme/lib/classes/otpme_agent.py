@@ -427,7 +427,7 @@ class OTPmeAgent(UnixDaemon):
                     os.rmdir(mount_point)
                 except Exception as e:
                     msg = "Failed to rmdir mountpoint: %s: %s" % (mount_point, e)
-                    logger.warning(msg)
+                    self.logger.warning(msg)
                 umounted_shares.append(share)
             if umounted_shares:
                 msg = "Shares unmounted: %s" % umounted_shares

@@ -26,7 +26,7 @@ def sendall(socket_handler, data):
         msg = "Broken connection while sending data: %s" % e
         raise OTPmeException(msg)
 
-def recv(socket_handler, recv_buffer=4096):
+def recv(socket_handler, **kwargs):
     """ Function to handle data receiving through socket connection. """
     # Get header with data length from peer.
     header = socket_handler.raw_recv(4)

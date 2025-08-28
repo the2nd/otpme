@@ -2710,6 +2710,7 @@ class AuthHandler(object):
                             shares[share.name] = {}
                             shares[share.name]['site'] = share.site
                             shares[share.name]['nodes'] = node_fqdns
+                            shares[share.name]['encrypted'] = share.encrypted
                     auth_reply['shares'] = shares
 
             # Get SSH private key from token.

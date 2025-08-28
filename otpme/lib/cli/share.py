@@ -22,7 +22,9 @@ table_headers = [
                 "sharename",
                 "unit",
                 "status",
-                "mountpoint",
+                "root_dir",
+                "encrypted",
+                "block_size",
                 "read_only",
                 "force_group",
                 "fmode",
@@ -45,7 +47,9 @@ def register():
                         'enabled',
                         'unit',
                         'read_only',
-                        'mountpoint',
+                        'root_dir',
+                        'encrypted',
+                        'block_size',
                         'force_group_uuid',
                         'create_mode',
                         'directory_mode',
@@ -80,9 +84,17 @@ def row_getter(realm, site, share_order, share_data, acls, max_roles=5,
         share_name = share_data[share_uuid]['name']
         unit_uuid = share_data[share_uuid]['unit'][0]
         try:
-            mount_point = share_data[share_uuid]['mountpoint'][0]
+            root_dir = share_data[share_uuid]['root_dir'][0]
         except:
-            mount_point = None
+            root_dir = None
+        try:
+            encrypted = share_data[share_uuid]['encrypted'][0]
+        except:
+            encrypted = False
+        try:
+            block_size = share_data[share_uuid]['block_size'][0]
+        except:
+            block_size = "N/A"
         try:
             read_only = share_data[share_uuid]['read_only'][0]
         except:
@@ -140,14 +152,26 @@ def row_getter(realm, site, share_order, share_data, acls, max_roles=5,
                 row.append(enabled_string)
             else:
                 row.append("-")
-        # Mountpoint.
-        if "mountpoint" in output_fields:
-            if check_acl("view:mountpoint"):
-                if mount_point:
-                    mountpoint_string = mount_point
+        # Root dir.
+        if "root_dir" in output_fields:
+            if check_acl("view:root_dir"):
+                if root_dir:
+                    root_dir_string = root_dir
                 else:
-                    mountpoint_string = "Not set"
-                row.append(mountpoint_string)
+                    root_dir_string = "Not set"
+                row.append(root_dir_string)
+            else:
+                row.append("-")
+        # Encrypted.
+        if "encrypted" in output_fields:
+            if check_acl("view:encrypted"):
+                row.append(encrypted)
+            else:
+                row.append("-")
+        # Blocksize.
+        if "block_size" in output_fields:
+            if check_acl("view:block_size"):
+                row.append(block_size)
             else:
                 row.append("-")
         # Force group.

@@ -40,6 +40,7 @@ class AgentConn(object):
 
         self.connected = False
         self.connect_timeout = connect_timeout
+        self.agent_protocol = None
         self.timeout = timeout
         self.logger = config.logger
 
@@ -166,6 +167,15 @@ class AgentConn(object):
                                     reply)
         return username, session_logout_pass
 
+    def get_tty(self):
+        """ Get TTY from otpme-agent. """
+        status, status_code, reply = self.send("get_tty")
+        if status_code != status_codes.OK:
+            raise Exception(_("Error getting TTY from agent: %s")
+                            % reply)
+        tty = reply
+        return tty
+
     def get_sessions(self):
         """ Get otpme-agent sessions."""
         status, status_code, reply = self.send("get_sessions")
@@ -201,11 +211,12 @@ class AgentConn(object):
                             % reply)
         return reply
 
-    def add_session(self, username, session_id=None):
+    def add_session(self, username, session_id=None, tty=None):
         """ Add session to otpme-agent. """
         command_args = {
                         'username'      : username,
                         'session_id'    : session_id,
+                        'tty'           : tty,
                     }
         status, status_code, reply = self.send("add_session", **command_args)
         if status_code != status_codes.OK:
@@ -355,11 +366,25 @@ class AgentConn(object):
             raise OTPmeException(msg)
         helo_args = {'supported_protocols' : supported_protocols}
         # Send helo command to agent.
-        status, status_code, msg = self.send(helo_command, **helo_args)
+        status, status_code, response = self.send(helo_command, **helo_args)
 
         if status_code != status_codes.OK:
             msg = (_("Error sending helo command to otpme-agent: %s") % msg)
             raise OTPmeException(msg)
+
+        # Set agent protocol we negotiated.
+        self.agent_protocol = response.split(":")[1].replace(" ", "")
+        # Send use_proto command to agent connection handler.
+        use_proto_command = "use_proto"
+        use_proto_args = {'client_proto' : self.agent_protocol}
+        try:
+            status, \
+            status_code, \
+            response = self.send(use_proto_command, **use_proto_args)
+        except Exception as e:
+            msg = (_("Error sending 'use_proto': %s") % e)
+            config.raise_exception()
+            raise ConnectionError(msg)
 
         if self.login_session_id:
             command_args = {

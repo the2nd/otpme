@@ -87,8 +87,6 @@ class LoginHandler(object):
             x = net.get_otpme_site(domain)
             realm = x['realm']
             site = x['site']
-            # Try to get daemon socket URI via DNS.
-            socket_uri = net.get_daemon_uri("authd", domain)
 
         if node:
             port = config.default_ports['authd']

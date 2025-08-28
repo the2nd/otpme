@@ -13,7 +13,6 @@ from otpme.lib import trash
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.protocols import status_codes
-from otpme.lib.protocols.response import decode_response
 from otpme.lib.protocols.otpme_client import OTPmeClient1
 
 from otpme.lib.exceptions import *
@@ -589,6 +588,3 @@ class OTPmeClusterP1(OTPmeClient1):
             msg = "Master failover request failed: %s" % reply
             raise OTPmeException(msg)
         return reply
-
-    def decode_response(self, *args, **kwargs):
-        return decode_response(*args, **kwargs)

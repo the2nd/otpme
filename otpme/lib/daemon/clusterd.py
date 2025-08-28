@@ -2102,9 +2102,10 @@ class ClusterDaemon(OTPmeDaemon):
                                 time.sleep(0.1)
                                 continue
                             break
-                        self.do_master_node_sync(master_node)
-                        sync_status = self.do_master_node_sync(master_node,
-                                                            sync_last_used=True)
+                        sync_status = self.do_master_node_sync(master_node)
+                        if sync_status is not None:
+                            sync_status = self.do_master_node_sync(master_node,
+                                                                sync_last_used=True)
                         if sync_status is False:
                             continue
                         if self.host_name not in multiprocessing.master_sync_done:
@@ -3060,7 +3061,22 @@ class ClusterDaemon(OTPmeDaemon):
                         if self.check_member_nodes(cluster_journal_entry):
                             self.check_online_nodes(cluster_journal_entry)
                         continue
-                    last_used = float(cluster_journal_entry.object_data)
+                    try:
+                        last_used = float(cluster_journal_entry.object_data)
+                    except TypeError:
+                        msg = "Broken last used clusterentry: %s" % cluster_journal_entry
+                        self.logger.warning(msg)
+                        try:
+                            cluster_journal_entry.add_node(node_name)
+                        except ObjectDeleted:
+                            pass
+                        try:
+                            action_committer()
+                        except ObjectDeleted:
+                            pass
+                        if self.check_member_nodes(cluster_journal_entry):
+                            self.check_online_nodes(cluster_journal_entry)
+                        continue
                     try:
                         last_used_objects = last_used_times[object_type]
                     except KeyError:

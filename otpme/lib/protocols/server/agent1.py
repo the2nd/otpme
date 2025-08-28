@@ -57,7 +57,6 @@ class OTPmeAgentP1(object):
 
         # Will hold session of the requesting client (PID).
         self.session = {}
-        self.login_sessions = {}
         self.ssh_agent_pid = None
 
         # Get communication handler to talk to agent main process.
@@ -90,6 +89,7 @@ class OTPmeAgentP1(object):
         self.rsp = None
         self.srp = None
         self.slp = None
+        self.tty = None
 
     def init(self):
         """ Init protocol handler (e.g. load client infos). """
@@ -264,6 +264,7 @@ class OTPmeAgentP1(object):
                             "get_sotp",
                             "get_srp",
                             "get_slp",
+                            "get_tty",
                             "reneg",
                             "ping",
                             #"debug_session",
@@ -289,10 +290,11 @@ class OTPmeAgentP1(object):
                         "get_sotp",
                         "get_srp",
                         "get_slp",
+                        "get_tty",
                         "reneg",
                         ]
 
-        command, command_args, binary_data = decode_request(data)
+        command, command_args, binary_data = self.decode_request(data)
 
         # Get DNS option.
         try:
@@ -407,6 +409,10 @@ class OTPmeAgentP1(object):
             except:
                 pass
             try:
+                self.tty = self.session['tty']
+            except:
+                pass
+            try:
                 self.rsp = self.session['server_sessions'][self.realm][self.site]['rsp']
             except:
                 pass
@@ -443,6 +449,11 @@ class OTPmeAgentP1(object):
                 except:
                     pass
 
+                try:
+                    self.tty = command_args['tty']
+                except:
+                    self.tty = None
+
                 if self.login_user:
                     logger.info("Adding session for user '%s' (PID: %s)."
                                 % (self.login_user, self.login_pid))
@@ -466,6 +477,7 @@ class OTPmeAgentP1(object):
                         self.session['system_user'] = self.client_user
                         self.session['login_user'] = self.login_user
                         self.session['session_id'] = self.session_id
+                        self.session['tty'] = self.tty
                         self.login_sessions[self.login_pid] = self.session
                     finally:
                         session_lock.release_lock()
@@ -498,6 +510,7 @@ class OTPmeAgentP1(object):
                 for share in shares:
                     share_site = shares[share]['site']
                     share_nodes = shares[share]['nodes']
+                    share_encrypted = shares[share]['encrypted']
                     try:
                         mount_point = prepare_mount_point(share_site, share)
                     except Exception as e:
@@ -513,8 +526,9 @@ class OTPmeAgentP1(object):
                         os.environ['OTPME_LOGIN_SESSION'] = self.session_id
                         mount_proc = multiprocessing.start_process(name="mount",
                                                                 target=mount_share_proc,
-                                                                target_args=(share, mount_point, share_nodes),
+                                                                target_args=(share, mount_point, share_nodes, share_encrypted),
                                                                 target_kwargs={
+                                                                                'logger'    :logger,
                                                                                 'foreground':False,
                                                                             },
                                                                 daemon=False)
@@ -603,6 +617,14 @@ class OTPmeAgentP1(object):
                 status = True
             else:
                 message = "Access denied."
+                status = False
+
+        elif command == "get_tty":
+            if self.tty:
+                message = self.tty
+                status = True
+            else:
+                message = "no TTY set"
                 status = False
 
         elif command == "quit":
@@ -1105,6 +1127,7 @@ class OTPmeAgentP1(object):
             self.rsp = None
             self.srp = None
             self.slp = None
+            self.tty = None
 
 
         elif not self.rsp:
@@ -1218,6 +1241,9 @@ class OTPmeAgentP1(object):
         # Build response.
         response = build_response(status, message)
         return response
+
+    def decode_request(self, *args, **kwargs):
+        return decode_request(*args, **kwargs)
 
     def cleanup(self):
         """ Is called on client disconnect. """

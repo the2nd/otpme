@@ -76,7 +76,7 @@ class SocketProtoHandler(object):
             totalsent = totalsent + sent
         return totalsent
 
-    def raw_recv(self, recv_buffer=1024):
+    def raw_recv(self, recv_buffer=config.socket_receive_buffer):
         """ Actually receive data. """
         # Restart data receiving on EINTR.
         # https://stackoverflow.com/questions/14136195/what-is-the-proper-way-to-handle-in-python-ioerror-errno-4-interrupted-syst

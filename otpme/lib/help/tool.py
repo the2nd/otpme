@@ -463,6 +463,13 @@ cmd_help = {
                                 },
                 },
 
+    'get_tty'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-tool get_tty',
+                    '_help' :   {
+                                    'cmd'                   : 'get TTY for logged in user',
+                                },
+                },
+
     'get_sotp'    : {
                     '_cmd_usage_help' : 'Usage: otpme-tool get_sotp',
                     '_help' :   {

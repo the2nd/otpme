@@ -10,7 +10,6 @@ except:
 
 from otpme.lib import config
 from otpme.lib import backend
-from otpme.lib.protocols.response import decode_response
 from otpme.lib.protocols.otpme_client import OTPmeClient1
 
 from otpme.lib.exceptions import *
@@ -230,6 +229,3 @@ class OTPmeHostP1(OTPmeClient1):
         self.connection.send("sync_objects")
         self.connection.send("sync_token_data")
         self.connection.send("sync_ssh_authorized_keys")
-
-    def decode_response(self, *args, **kwargs):
-        return decode_response(*args, **kwargs)

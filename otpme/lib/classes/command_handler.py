@@ -132,6 +132,7 @@ class CommandHandler(object):
                                 },
                     }
         self.mgmt_client = OTPmeMgmtClient(login_data=login_data,
+                                        interactive=self.interactive,
                                         aes_pass=self.user_aes_pass)
         return self.mgmt_client
 
@@ -1129,6 +1130,9 @@ class CommandHandler(object):
 
         if subcommand == "get_srp":
             return self.get_srp()
+
+        if subcommand == "get_tty":
+            return self.get_tty()
 
         if subcommand == "reneg":
             return self.handle_reneg_command()
@@ -3345,6 +3349,37 @@ class CommandHandler(object):
 
         return session_id
 
+    def get_tty(self):
+        """ Get TTY from agent. """
+        from otpme.lib import connections
+
+        # Create otpme-agent instance
+        from otpme.lib.classes.otpme_agent import OTPmeAgent
+        otpme_agent = OTPmeAgent()
+
+        agent_conn = None
+
+        # Check if otpme-agent is running
+        agent_status, pid = otpme_agent.status(quiet=True)
+        if not agent_status:
+            msg = "No running otpme-agent found..."
+            raise OTPmeException(msg)
+
+        # Try to get agent connection
+        try:
+            agent_conn = connections.get("agent")
+        except Exception as e:
+            raise OTPmeException(_("Error getting agent connection: %s") % e)
+
+        username = self.whoami()
+        if not username:
+            raise OTPmeException("Not logged in.")
+
+        # Get SOTP from agent
+        tty = agent_conn.get_tty()
+
+        return tty
+
     def get_sotp(self):
         """ Get SOTP from agent. """
         from otpme.lib import connections
@@ -4175,8 +4210,14 @@ class CommandHandler(object):
             current_row.append(x_signer.signer_type)
 
             # Get user/signer OID.
-            signer_oid = x_signer.object_uuid
-            signer_oid = stuff.resolve_uuid(signer_oid)
+            signer_uuid = x_signer.object_uuid
+            try:
+                signer_oid = stuff.resolve_uuid(signer_uuid)
+            except Exception as e:
+                msg = str(e)
+                print(msg)
+                continue
+
             if not signer_oid:
                 current_row.append("Unknown")
                 current_row.append("N/A")
@@ -4237,7 +4278,7 @@ class CommandHandler(object):
         from otpme.lib.join import JoinHandler
         # Disable interactive policies (e.g. reauth).
         disabled_interactive_policies = False
-        if not "interactive" in config.ignore_policy_tags:
+        if "interactive" not in config.ignore_policy_tags:
             disabled_interactive_policies = True
             config.ignore_policy_tags.append("interactive")
 
@@ -4270,7 +4311,7 @@ class CommandHandler(object):
         from otpme.lib.join import JoinHandler
         # Disable interactive policies (e.g. reauth).
         disabled_interactive_policies = False
-        if not "interactive" in config.ignore_policy_tags:
+        if "interactive" not in config.ignore_policy_tags:
             disabled_interactive_policies = True
             config.ignore_policy_tags.append("interactive")
 
@@ -5125,17 +5166,21 @@ class CommandHandler(object):
         parser.add_argument("--foreground", dest="foreground", action="store_true", help="Run in foreground")
         parser.add_argument("--list", dest="list_shares", action="store_true", help="List shares")
         parser.add_argument('--nodes', dest='nodes')
+        parser.add_argument("--encrypted", dest="encrypted", action="store_true", help="Share is encrypted")
         parser.add_argument('share', nargs='?')
         parser.add_argument('mount', nargs='?')
         args = parser.parse_args(sys.argv)
         self.init(use_backend=False)
         nodes = None
+        encrypted = None
         if args.nodes:
             nodes = args.nodes.split(",")
+        if args.encrypted:
+            encrypted = True
         try:
             login_session_id = self.get_login_session_id()
         except Exception as e:
-            msg = "Unable to mount: %s" % e
+            msg = "Unable to get login session ID: %s" % e
             raise OTPmeException(msg)
         if args.list_shares:
             reply = self.send_command(daemon="mgmtd",
@@ -5153,6 +5198,8 @@ class CommandHandler(object):
                                     client_type="RAPI")
             if nodes is None:
                 nodes = reply[args.share]['nodes']
+            if encrypted is None:
+                encrypted = reply[args.share]['encrypted']
             if mount_point is None:
                 shares = reply
                 try:
@@ -5166,11 +5213,11 @@ class CommandHandler(object):
             raise OTPmeException(msg)
         os.environ['OTPME_LOGIN_SESSION'] = login_session_id
         if args.foreground:
-            mount_share(args.share, mount_point, nodes, foreground=args.foreground)
+            mount_share(args.share, mount_point, nodes, encrypted, foreground=args.foreground)
         else:
             mount_proc = multiprocessing.start_process(name="mount",
                                                     target=mount_share,
-                                                    target_args=(args.share, mount_point, nodes),
+                                                    target_args=(args.share, mount_point, nodes, encrypted),
                                                     target_kwargs={
                                                                     'foreground':False,
                                                                 },

@@ -1488,6 +1488,7 @@ def get_key_script(username):
     """ Get users key script from mgmtd. """
     from otpme.lib import config
     from otpme.lib.offline_token import OfflineToken
+    from otpme.lib.classes.command_handler import CommandHandler
 
     key_script = None
     key_script_path = None
@@ -1497,30 +1498,30 @@ def get_key_script(username):
     # Get logger
     logger = config.logger
 
+    command_handler = CommandHandler(interactive=False)
     try:
-        offline_token = OfflineToken()
-        offline_token.set_user(user=username)
         key_script_path, \
         key_script_opts, \
         key_script_uuid, \
         key_script_signs, \
-        key_script = offline_token.get_script(script_id="key")
+        key_script = command_handler.get_user_key_script(username=username)
     except Exception as e:
-        msg = ("Unable to get key script from offline tokens: %s" % e)
+        msg = (_("Error getting user key script from server: %s") % e)
         logger.debug(msg)
+        #raise OTPmeException(msg)
 
     if not key_script:
-        from otpme.lib.classes.command_handler import CommandHandler
-        command_handler = CommandHandler(interactive=False)
         try:
+            offline_token = OfflineToken()
+            offline_token.set_user(user=username)
             key_script_path, \
             key_script_opts, \
             key_script_uuid, \
             key_script_signs, \
-            key_script = command_handler.get_user_key_script(username=username)
+            key_script = offline_token.get_script(script_id="key")
         except Exception as e:
-            config.raise_exception()
-            msg = (_("Error getting user key script: %s") % e)
+            msg = ("Unable to get key script from offline tokens: %s" % e)
+            logger.debug(msg)
             raise OTPmeException(msg)
 
     if not key_script_path:
@@ -1592,7 +1593,7 @@ def verify_key_script(username, key_script=None,
 def run_key_script(username, script_command, script_options=None,
     key_pass=None, key_pass_new=None, private_key=None, aes_pass=None,
     call=True, return_proc=False, key_script=None, key_script_options=None,
-    key_script_uuid=None, user=None, group=None):
+    key_script_uuid=None, user=None, group=None, disable_ctrl_c=True):
     """
     Run users key script with the given options and optionally verify
     script signatures.
@@ -1665,11 +1666,11 @@ def run_key_script(username, script_command, script_options=None,
     if config.use_api:
         if config.api_auth_token:
             auth_token_opt = "--auth-token"
-            if not auth_token_opt in script_options:
+            if auth_token_opt not in script_options:
                 script_options.insert(0, config.api_auth_token)
                 script_options.insert(0, auth_token_opt)
         api_opt = "--api"
-        if not api_opt in script_options:
+        if api_opt not in script_options:
             script_options.insert(0, api_opt)
 
     # Add script options.
@@ -1686,11 +1687,98 @@ def run_key_script(username, script_command, script_options=None,
                         script_env=script_env,
                         verify_signatures=True,
                         signatures=key_script_signs,
-                        disable_ctrl_c=True,
+                        disable_ctrl_c=disable_ctrl_c,
                         user=user,
                         group=group,
                         call=call)
     return return_val
+
+def encrypt_share_key(username, share_user, share_key, sign_mode):
+    # Make sure share key is bytes.
+    if isinstance(share_key, str):
+        share_key = share_key.encode()
+    # Command for key script.
+    script_command = [ "rsa_encrypt" ]
+    # Add sign mode.
+    if sign_mode == "server":
+        script_command.append("--server-key")
+    # Add share user option.
+    script_options = ['-u', share_user]
+    # Run key script.
+    proc = run_key_script(username=username,
+                        call=False,
+                        return_proc=True,
+                        script_command=script_command,
+                        script_options=script_options)
+    proc.stdin.write(share_key)
+    proc.stdin.flush()
+    proc.stdin.close()
+    encrypted_share_key = proc.stdout.read()
+    proc.wait()
+    script_stderr = proc.stderr.read()
+    returncode = proc.returncode
+    if returncode != 0:
+        msg = "Failed to run key script: %s" % script_stderr
+        raise OTPmeException(msg)
+    # Make sure share key is string.
+    if isinstance(encrypted_share_key, bytes):
+        encrypted_share_key = encrypted_share_key.decode()
+    return encrypted_share_key
+
+def decrypt_share_key(username, encrypted_share_key, sign_mode, disable_ctrl_c=False):
+    import base64
+    # Make sure share key is bytes.
+    if isinstance(encrypted_share_key, str):
+        encrypted_share_key = encrypted_share_key.encode()
+    # Command for key script.
+    script_command = [ "rsa_decrypt" ]
+    # Add sign mode.
+    if sign_mode == "server":
+        script_command.append("--server-key")
+    # Run key script.
+    proc = run_key_script(username=username,
+                        call=False,
+                        return_proc=True,
+                        script_command=script_command,
+                        disable_ctrl_c=disable_ctrl_c)
+    proc.stdin.write(encrypted_share_key)
+    proc.stdin.flush()
+    proc.stdin.close()
+    proc.wait()
+    decrypted_share_key = proc.stdout.read()
+    script_stderr = proc.stderr.read()
+    returncode = proc.returncode
+    if returncode != 0:
+        msg = "Failed to run key script: %s" % script_stderr
+        raise OTPmeException(msg)
+    decrypted_share_key = base64.b64encode(decrypted_share_key)
+    # Make sure share key is string.
+    if isinstance(decrypted_share_key, bytes):
+        decrypted_share_key = decrypted_share_key.decode()
+    return decrypted_share_key
+
+def get_share_key(username, share_name, disable_ctrl_c=False):
+    import base64
+    from otpme.lib.classes.command_handler import CommandHandler
+    command_args = {'share_name':share_name}
+    command_handler = CommandHandler()
+    encrypted_share_key = command_handler.send_command(daemon="mgmtd",
+                                                    command="user",
+                                                    subcommand="get_share_key",
+                                                    command_args=command_args,
+                                                    object_list=[username],
+                                                    parse_command_syntax=False,
+                                                    client_type="RAPI")
+    share_key = decrypt_share_key(username,
+                                encrypted_share_key,
+                                sign_mode=None,
+                                disable_ctrl_c=disable_ctrl_c)
+    try:
+        share_key = base64.b64decode(share_key)
+    except Exception as e:
+        msg = "Failed to decode share key: %s" % e
+        raise OTPmeException(msg)
+    return share_key
 
 def get_agent_user():
     """ Try to get logged in user from otpme-agent. """
@@ -1708,8 +1796,6 @@ def get_agent_user():
             agent_user = agent_conn.get_user()
     except Exception as e:
         raise Exception(_("Error getting agent connection: %s") % e)
-    finally:
-        agent_conn.close()
     return agent_user
 
 def get_user_uuid(username):

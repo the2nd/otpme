@@ -474,7 +474,6 @@ class Pool(OTPmeObject):
         self._sync_fields = {
                     'host'  : {
                         'trusted'  : [
-                            "MOUNT_POINT",
                             "TOKENS",
                             "ROLES",
                             ]
@@ -482,7 +481,6 @@ class Pool(OTPmeObject):
 
                     'node'  : {
                         'untrusted'  : [
-                            "MOUNT_POINT",
                             "TOKENS",
                             "ROLES",
                             ]

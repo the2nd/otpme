@@ -185,7 +185,7 @@ class OTPmeHostP1(OTPmeServer1):
             logger.warning(msg)
 
         # check if we got a valid command
-        if not command in valid_commands:
+        if command not in valid_commands:
             message = "Unknown command: %s" % command
             status = False
 

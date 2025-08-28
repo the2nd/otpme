@@ -142,7 +142,7 @@ class JoinHandler(object):
                                     use_ssl=True,
                                     use_agent=False,
                                     start_otpme_agent=False,
-                                    encrypt_session=True,
+                                    encrypt_session=False,
                                     request_jwt=request_jwt,
                                     verify_server=verify_server,
                                     verify_preauth=verify_preauth,

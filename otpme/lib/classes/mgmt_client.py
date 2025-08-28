@@ -17,7 +17,7 @@ from otpme.lib.exceptions import *
 
 class OTPmeMgmtClient(object):
     """ Class that implements OTPme management client. """
-    def __init__(self, login_data={}, aes_pass=None):
+    def __init__(self, login_data={}, interactive=True, aes_pass=None):
         # Get logger.
         self.logger = config.logger
         # May hold username + OTPs/passwords to connect to realms.
@@ -25,6 +25,7 @@ class OTPmeMgmtClient(object):
         # May hold a password to decrypt some AES data (e.g. users private RSA
         # key)
         self.aes_pass = aes_pass
+        self.interactive = interactive
 
     def __getattr__(self, name):
         """ Forward method call to protocol handler. """
@@ -64,6 +65,7 @@ class OTPmeMgmtClient(object):
                                     auto_preauth=False,
                                     username=username,
                                     password=password,
+                                    interactive=self.interactive,
                                     aes_pass=self.aes_pass)
         return daemon_conn
 

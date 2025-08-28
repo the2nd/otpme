@@ -5,6 +5,8 @@ import grp
 import time
 import errno
 import xattr
+import struct
+import orjson
 import setproctitle
 from typing import Any
 from typing import Optional
@@ -19,7 +21,10 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import multiprocessing
+from otpme.lib.fuse import init_cryptfs
+from otpme.lib.fuse import read_cryptfs_settings
 
+from otpme.lib.fscoding import decode_packet
 from otpme.lib.protocols import status_codes
 from otpme.lib.multiprocessing import drop_privileges
 from otpme.lib.protocols.otpme_server import OTPmeServer1
@@ -69,6 +74,10 @@ class OTPmeFsP1(OTPmeServer1):
         self.root = None
         # Share is readonly.
         self.read_only = False
+        # Share is encrypted.
+        self.encrypted = False
+        # Encrypted share blocksize.
+        self.block_size = 4096
         # Get logger.(banner=log_banner,
         self.logger = config.logger
         # Dont compress filesystem data.
@@ -136,7 +145,12 @@ class OTPmeFsP1(OTPmeServer1):
         if self.create_mode:
             mode = self.create_mode
         fh = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
-        filehandlers[path] = fh
+        try:
+            fhs = filehandlers[path]
+        except KeyError:
+            fhs = {}
+            filehandlers[path] = fhs
+        fhs['write'] = fh
         if self.force_group_gid:
             os.chown(path, -1, self.force_group_gid)
         return 0
@@ -230,19 +244,42 @@ class OTPmeFsP1(OTPmeServer1):
     @with_root_path
     def open(self, path: str, flags) -> int:
         global filehandlers
+        if flags & os.O_WRONLY:
+            flag_type = "write"
+        elif flags & os.O_RDWR:
+            flag_type = "write"
+        elif flags & os.O_APPEND:
+            flag_type = "write"
+        else:
+            flag_type = "read"
         try:
-            fh = filehandlers[path]
+            fhs = filehandlers[path]
+        except KeyError:
+            fhs = {}
+            filehandlers[path] = fhs
+        try:
+            fh = fhs[flag_type]
         except KeyError:
             fh = os.open(path, flags)
-            filehandlers[path] = fh
+            fhs[flag_type] = fh
         return 0
 
     @with_root_path
     def read(self, path: str, size: int, offset: int) -> bytes:
-        fh = os.open(path, os.O_RDONLY)
+        global filehandlers
+        try:
+            fhs = filehandlers[path]
+        except KeyError:
+            fhs = {}
+            filehandlers[path] = fhs
+        try:
+            fh = fhs['read']
+        except KeyError:
+            fh = os.open(path, os.O_RDONLY)
+            fhs['read'] = fh
         os.lseek(fh, offset, os.SEEK_SET)
         data = os.read(fh, size)
-        os.close(fh)
+        #os.close(fh)
         return data
 
     @with_root_path
@@ -251,10 +288,15 @@ class OTPmeFsP1(OTPmeServer1):
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
         try:
-            fh = filehandlers[path]
+            fhs = filehandlers[path]
+        except KeyError:
+            fhs = {}
+            filehandlers[path] = fhs
+        try:
+            fh = fhs['write']
         except KeyError:
             fh = os.open(path, os.O_RDWR)
-            filehandlers[path] = fh
+            fhs['write'] = fh
         os.lseek(fh, offset, os.SEEK_SET)
         write_status = os.write(fh, data)
         #os.fsync(fh)
@@ -264,10 +306,21 @@ class OTPmeFsP1(OTPmeServer1):
     def release(self, path: str) -> int:
         global filehandlers
         try:
-            fh = filehandlers.pop(path)
+            fhs = filehandlers.pop(path)
         except KeyError:
             return 0
-        os.close(fh)
+        try:
+            read_fh = fhs['read']
+        except KeyError:
+            read_fh = None
+        if read_fh:
+            os.close(read_fh)
+        try:
+            write_fh = fhs['write']
+        except KeyError:
+            write_fh = None
+        if write_fh:
+            os.close(write_fh)
         return 0
 
     @with_root_path
@@ -289,6 +342,10 @@ class OTPmeFsP1(OTPmeServer1):
     @with_root_path
     def get_mtime(self, path: str) -> int:
         return os.path.getmtime(path)
+
+    @with_root_path
+    def get_ctime(self, path: str) -> int:
+        return os.path.getctime(path)
 
     @with_root_path
     def getxattr(self, path: str, name: str, position: int = 0) -> bytes:
@@ -367,6 +424,7 @@ class OTPmeFsP1(OTPmeServer1):
                             "mount",
                             "exists",
                             "get_mtime",
+                            "get_ctime",
                             'access',
                             'create',
                             'getattr',
@@ -400,6 +458,11 @@ class OTPmeFsP1(OTPmeServer1):
             status = False
             return self.build_response(status, message)
 
+        if config.use_api:
+            if config.auth_token:
+                self.username = config.auth_token.owner
+                self.authenticated = True
+
         if not self.authenticated:
             message = "Please authenticate."
             status = status_codes.NEED_USER_AUTH
@@ -428,10 +491,10 @@ class OTPmeFsP1(OTPmeServer1):
                 message = "Unknown share: %s" % self.share
                 return self.build_response(status, message)
             share = result[0]
-            if not os.path.exists(share.mount_point):
+            if not os.path.exists(share.root_dir):
                 status = status_codes.UNKNOWN_OBJECT
-                message = ("Unknown share mountpoint: %s: %s"
-                        % (self.share, share.mount_point))
+                message = ("Unknown share root dir: %s: %s"
+                        % (self.share, share.root_dir))
                 return self.build_response(status, message)
             if not share.is_assigned_token(token_uuid=config.auth_token.uuid):
                 status = status_codes.PERMISSION_DENIED
@@ -439,7 +502,7 @@ class OTPmeFsP1(OTPmeServer1):
                 self.logger.warning(message)
                 return self.build_response(status, message)
             try:
-                self.root = os.path.realpath(share.mount_point)
+                self.root = os.path.realpath(share.root_dir)
             except Exception as e:
                 message = "Failed to mount share: %s" % share
                 status = status_codes.UNKNOWN_OBJECT
@@ -466,6 +529,40 @@ class OTPmeFsP1(OTPmeServer1):
             if share.create_mode != "0o000":
                 os.umask(0)
                 self.create_mode = int(share.create_mode, 0)
+            self.encrypted = share.encrypted
+            if self.encrypted:
+                block_size = share.block_size
+                try:
+                    init_cryptfs(path=self.root, block_size=block_size)
+                except AlreadyInitialized:
+                    pass
+                except Exception as e:
+                    message = "Failed to initialize cryptfs: %s" % share.name
+                    status = status_codes.UNKNOWN_OBJECT
+                    msg = "%s: %s" % (message, e)
+                    self.logger.warning(msg)
+                    return self.build_response(status, message)
+                try:
+                    fs_data = read_cryptfs_settings(path=self.root)
+                except NotInitialized:
+                    message = "Cryptfs not initialized: %s" % self.root
+                    status = status_codes.UNKNOWN_OBJECT
+                    self.logger.warning(message)
+                    return self.build_response(status, message)
+                except Exception as e:
+                    message = "Failed to read cryptfs settings: %s" % share.name
+                    status = status_codes.UNKNOWN_OBJECT
+                    msg = "%s: %s" % (message, e)
+                    self.logger.warning(msg)
+                    return self.build_response(status, message)
+                try:
+                    self.block_size = fs_data['block_size']
+                except KeyError:
+                    message = "Cryptfs misses block size: %s" % share.name
+                    status = status_codes.UNKNOWN_OBJECT
+                    self.logger.warning(message)
+                    return self.build_response(status, message)
+
             # Get share node FQDNs to reply.
             share_nodes = share.get_nodes(include_pools=True,
                                         return_type="instance")
@@ -522,6 +619,20 @@ class OTPmeFsP1(OTPmeServer1):
                 return self.build_response(status, message)
             try:
                 message = self.get_mtime(path)
+            except Exception as e:
+                status = e.errno
+                message = str(e)
+            return self.build_response(status, message)
+
+        if command == "get_ctime":
+            try:
+                path = command_args['path']
+            except KeyError:
+                status = False
+                message = "Missing path."
+                return self.build_response(status, message)
+            try:
+                message = self.get_ctime(path)
             except Exception as e:
                 status = e.errno
                 message = str(e)
@@ -939,8 +1050,7 @@ class OTPmeFsP1(OTPmeServer1):
             except Exception as e:
                 status = e.errno
                 message = str(e)
-            else:
-                message = "Extended attribute data."
+                binary_data = None
             return self.build_response(status, message, binary_data=binary_data)
 
         elif command == "setxattr":
@@ -957,6 +1067,12 @@ class OTPmeFsP1(OTPmeServer1):
                 message = "Missing name."
                 return self.build_response(status, message)
             try:
+                value = command_args['value']
+            except KeyError:
+                status = False
+                message = "Missing value."
+                return self.build_response(status, message)
+            try:
                 options = command_args['options']
             except KeyError:
                 status = False
@@ -964,7 +1080,7 @@ class OTPmeFsP1(OTPmeServer1):
                 return self.build_response(status, message)
             position = command_args.get('position', 0)
             try:
-                message = self.setxattr(path, name, binary_data, options, position)
+                message = self.setxattr(path, name, value, options, position)
             except Exception as e:
                 status = e.errno
                 message = str(e)
@@ -1010,12 +1126,79 @@ class OTPmeFsP1(OTPmeServer1):
             return self.build_response(status, message)
 
     def build_response(self, status, message, binary_data=None, **kwargs):
-        return super().build_response(status=status,
-                                    message=message,
-                                    binary_data=binary_data,
-                                    encrypt=False,
-                                    compress=False,
-                                    encoding=None)
+        """ Build response using msgpack. """
+        # Convert status to integer status code
+        if status is True:
+            status_code = status_codes.OK
+        elif status is None:
+            status_code = status_codes.ABORT
+        elif status is False:
+            status_code = status_codes.ERR
+        else:
+            status_code = int(status)
+
+        # Create response structure - orjson handles all JSON-compatible types
+        response_data = {
+            'status_code': status_code,
+            'data': message
+        }
+
+        # Pack response with orjson (extremely fast JSON serialization)
+        packed_data = orjson.dumps(response_data)
+
+        if binary_data is None:
+            binary_data = b''
+
+        # Simple binary header (8 bytes total):
+        # - packed_data_length: 4 bytes (>I)
+        # - binary_length: 4 bytes (>I)
+        header_bytes = struct.pack('>II', len(packed_data), len(binary_data))
+
+        response = header_bytes + packed_data + binary_data
+
+        if config.use_api:
+            self.last_response = response
+
+        return response
+
+    def decode_request(self, request, **kwargs):
+        """ Decode OTPme request using msgpack. """
+        # Parse simple binary header (8 bytes total):
+        # - packed_data_length: 4 bytes (>I)
+        # - binary_length: 4 bytes (>I)
+        packed_data_length, binary_length = struct.unpack('>II', request[:8])
+
+        # Extract data sections
+        packed_start = 8
+        packed_end = packed_start + packed_data_length
+        binary_start = packed_end
+        binary_end = binary_start + binary_length
+
+        # Extract packed data and binary data
+        packed_data = request[packed_start:packed_end]
+        binary_data = request[binary_start:binary_end]
+
+        try:
+            command, command_args = decode_packet(data=packed_data)
+        except (TypeError,ValueError) as e:
+            # Unpack request with orjson
+            try:
+                request_data = orjson.loads(packed_data)
+            except Exception as e:
+                msg = "Failed to decode orjson request: %s" % e
+                raise OTPmeException(msg)
+            # Get command and args.
+            try:
+                command = request_data['command']
+            except:
+                msg = "Received invalid request: Command is missing"
+                raise OTPmeException(msg)
+            try:
+                command_args = request_data['command_args']
+            except:
+                msg = "Received invalid request: Command args missing"
+                raise OTPmeException(msg)
+        return command, command_args, binary_data
 
     def _close(self):
         pass

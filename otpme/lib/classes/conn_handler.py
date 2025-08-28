@@ -30,6 +30,7 @@ class ConnHandler(object):
         self.protocol = None
         self.proto_handler = None
         self.protocols = protocols
+        self.proto_neg_finished = False
         # Arguments we will pass on to protocol handler
         self.handler_args = handler_args
         self.logger = config.logger
@@ -66,9 +67,10 @@ class ConnHandler(object):
 
             # If we already have a protocol handler use it
             response = None
+            use_handler = True
             final_response = None
             handler_response = None
-            if self.proto_handler:
+            if self.proto_handler and self.proto_neg_finished:
                 try:
                     handler_response = self.proto_handler.process(data)
                     status = True
@@ -90,7 +92,30 @@ class ConnHandler(object):
             else:
                 # Get command from request.
                 try:
-                    command, command_args, binary_data = decode_request(data)
+                    if self.proto_handler and self.proto_neg_finished:
+                        try:
+                            command, \
+                            command_args, \
+                            binary_data = self.proto_handler.decode_request(data)
+                        except Exception as e:
+                            msg = ("Failed to decode request with protocol handler: %s: %s"
+                                    % (self.proto_handler, e))
+                            self.logger.critical(msg, exc_info=True)
+                            final_response = "Internal server error"
+                            status = status_codes.SERVER_QUIT
+                            config.raise_exception()
+                            break
+                    else:
+                        try:
+                            command, command_args, binary_data = decode_request(data)
+                        except Exception as e:
+                            msg = ("Failed to decode request: %s: %s"
+                                    % (self.proto_handler, e))
+                            self.logger.critical(msg, exc_info=True)
+                            final_response = "Internal server error"
+                            status = status_codes.SERVER_QUIT
+                            config.raise_exception()
+                            break
                 except OTPmeException as e:
                     raise
 
@@ -160,18 +185,40 @@ class ConnHandler(object):
                                 % (self.protocol, client_ip))
                         self.logger.debug(msg)
 
+                elif command == "use_proto":
+                    # Get proto the client uses.
+                    try:
+                        client_proto = command_args['client_proto']
+                    except:
+                        final_response = "Client protocol missing in request."
+                        status = status_codes.SERVER_QUIT
+                        break
+                    if self.protocol != client_proto:
+                        final_response = "Client protocol missmatch."
+                        status = status_codes.SERVER_QUIT
+                        break
+                    use_handler = False
+                    self.proto_neg_finished = True
+                    status = True
+                    response = client_proto
                 elif command == "quit":
                     final_response = "Bye bye..."
                     status = status_codes.CLIENT_QUIT
                     break
+                elif command == "ping":
+                    response = "pong"
+                    status = True
                 else:
-                    response = "%s Unknown command\n" % status_codes.ERR
+                    response = "%s Unknown command: %s\n" % (status_codes.ERR, command)
                     status = False
             # Set response.
             if handler_response is not None:
                 response = handler_response
             else:
-                response = build_response(status, response)
+                if self.proto_handler and self.proto_neg_finished and use_handler:
+                    response = self.proto_handler.build_response(status, response)
+                else:
+                    response = build_response(status, response)
             # Send response to peer.
             try:
                 self.connection.send(response, timeout=config.connection_timeout)
@@ -187,7 +234,10 @@ class ConnHandler(object):
 
         # Send final response to peer.
         if final_response is not None:
-            final_response = build_response(status, final_response)
+            if self.proto_handler:
+                final_response = self.proto_handler.build_response(status, final_response)
+            else:
+                final_response = build_response(status, final_response)
             try:
                 self.connection.send(final_response)
             except ConnectionQuit:

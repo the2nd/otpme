@@ -142,8 +142,8 @@ class ListenSocket(object):
                 self.logger.error(msg)
                 return False
             # Set send/recv buffer.
-            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1024 * 102400)
-            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024 * 102400)
+            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, config.socket_receive_buffer)
+            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, config.socket_receive_buffer)
 
         if not self.blocking:
             self._socket.setblocking(0)
@@ -321,7 +321,8 @@ class ListenSocket(object):
                     # FIXME: Is this all we need to enable PFS with python 2.7??
                     # Enable PFS.
                     # http://jderose.blogspot.de/2014/01/how-to-enable-perfect-forward-secrecy.html
-                    ctx.set_ecdh_curve('prime256v1')
+                    #ctx.set_ecdh_curve('prime256v1')
+                    ctx.set_ecdh_curve('secp384r1')
                     ctx.load_cert_chain(certfile=self.cert_file,
                                         keyfile=self.key_file,
                                         password=passphrase)
@@ -340,7 +341,8 @@ class ListenSocket(object):
                     # FIXME: Is this all we need to enable PFS with python 2.7??
                     # Enable PFS.
                     # http://jderose.blogspot.de/2014/01/how-to-enable-perfect-forward-secrecy.html
-                    ctx.set_ecdh_curve('prime256v1')
+                    #ctx.set_ecdh_curve('prime256v1')
+                    ctx.set_ecdh_curve('secp384r1')
                     ctx.check_hostname = False
                     ctx.load_cert_chain(certfile=self.cert_file,
                                         keyfile=self.key_file,
@@ -773,7 +775,7 @@ class Connection(object):
                     % self.client)
             raise Exception(msg)
 
-    def recv(self, recv_buffer=4096, timeout=None):
+    def recv(self, recv_buffer=config.socket_receive_buffer, timeout=None):
         """ Receive data from connection. """
         _timeout = None
         if timeout is not None:

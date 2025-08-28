@@ -163,7 +163,7 @@ class PamHandler(object):
 
         if "debug" in argv:
             config.debug_enabled = True
-            config.reload()
+            config.reload(configure_logger=True)
             argv.remove("debug")
 
         for x in argv[1:]:
@@ -527,7 +527,7 @@ class PamHandler(object):
 
     def start_ssh_agent(self, session_id=None, script=None,
         script_uuid=None, script_path=None, script_options=None,
-        script_signatures=None, verify_signs=None):
+        script_signatures=None, additional_opts=[], verify_signs=None):
         """ Make sure SSH/GPG agent is running and needed variables are set """
         ssh_auth_sock = None
         ssh_agent_pid = None
@@ -536,9 +536,13 @@ class PamHandler(object):
 
         if script:
             self.ssh_agent_script = script
+        if script_uuid:
             self.ssh_agent_script_uuid = script_uuid
+        if script_path:
             self.ssh_agent_script_path = script_path
+        if script_options:
             self.ssh_agent_script_opts = script_options
+        if script_signatures:
             self.ssh_agent_script_signs = script_signatures
 
         if not self.ssh_agent:
@@ -552,24 +556,13 @@ class PamHandler(object):
                 # if agent scripts signers are configured.
                 verify_signs = "auto"
 
-        if self.login_status:
-            # Send "unlock" command to SSH agent script (e.g. restart scdaemon
-            # make sure yubikey PIN is re-asked) if this is a screen unlock.
-            if self.ensure_ssh_agent:
-                try:
-                    ssh_agent_pid = os.environ['SSH_AGENT_PID']
-                except:
-                    ssh_agent_pid = None
-                if ssh_agent_pid:
-                    if stuff.check_pid(ssh_agent_pid):
-                        self.ssh_agent.unlock(verify_signs=verify_signs)
-        else:
-            self.logger.debug("Staring ssh-agent...")
-            # Start SSH agent.
-            ssh_auth_sock, \
-            ssh_agent_pid, \
-            ssh_agent_name, \
-            gpg_agent_info = self.ssh_agent.start(verify_signs=verify_signs)
+        self.logger.debug("Staring ssh-agent...")
+        # Start SSH agent.
+        ssh_auth_sock, \
+        ssh_agent_pid, \
+        ssh_agent_name, \
+        gpg_agent_info = self.ssh_agent.start(additional_opts=additional_opts,
+                                                verify_signs=verify_signs)
 
         # Set PAM env variables of the SSH agent.
         if gpg_agent_info:
@@ -1058,7 +1051,7 @@ class PamHandler(object):
                     raise OTPmeException(msg)
 
             # Add login session to otpme-agent.
-            self.login_session_id = agent_conn.add_session(self.username)
+            self.login_session_id = agent_conn.add_session(self.username, tty=self.tty)
             if not self.login_session_id:
                 msg = (_("Unable to add login session to otpme-agent."))
                 raise OTPmeException(msg)
@@ -1224,17 +1217,6 @@ class PamHandler(object):
         if self.offline_token.pinned:
             msg = "Trying pinned offline token authentication..."
             self.logger.info(msg)
-            # Get agent connection.
-            agent_conn = self.get_agent_connection()
-            # Add login session to otpme-agent.
-            try:
-                if not self.login_session_id:
-                    self.login_session_id = agent_conn.add_session(self.username)
-                    if not self.login_session_id:
-                        msg = (_("Unable to add login session to otpme-agent."))
-                        raise OTPmeException(msg)
-            finally:
-                agent_conn.close()
             # Acquire offline token lock.
             self.offline_token.lock()
             # Verify offline token.
@@ -1336,8 +1318,8 @@ class PamHandler(object):
         # Get login reply.
         login_reply = login_handler.login_reply
 
-        # Get login session ID.
-        self.login_session_id = login_reply['login_session_id']
+        ## Get login session ID.
+        #self.login_session_id = login_reply['login_session_id']
 
         if self.auth_status is True and login:
             # Get login token.
@@ -1361,9 +1343,12 @@ class PamHandler(object):
         Try to authenticate user against OTPme realm with fallback to (cached)
         offline tokens.
         """
+        # Set HOME (used by key script started from agent on crypfs mount).
+        home_dir = self.get_home_dir(self.username)
+        os.environ['HOME'] = home_dir
+        self.pamh.env['HOME'] = home_dir
         # Make sure we create a home dir if configured.
         if self.create_home_directory:
-            home_dir = self.get_home_dir(self.username)
             if not os.path.exists(home_dir):
                 if self.home_skeleton:
                     # Use skeleton for new home dir.
@@ -1428,6 +1413,16 @@ class PamHandler(object):
             os.environ['DISPLAY'] = self.display
             self.pamh.env['DISPLAY'] = self.display
             self.login_interface = "gui"
+        if self.pamh.tty:
+            self.tty = self.pamh.tty
+        else:
+            try:
+                self.tty = os.ttyname(0)
+            except:
+                self.tty = None
+        if self.tty:
+            os.environ['GPG_TTY'] = self.tty
+            self.pamh.env['GPG_TTY'] = self.tty
 
         self.logger.debug("Got PAM user: %s" % self.username)
 
@@ -1504,7 +1499,7 @@ class PamHandler(object):
 
         # Make sure otpme-agent is running as login user.
         try:
-            stuff.start_otpme_agent(user=self.username, wait_for_socket=False)
+            stuff.start_otpme_agent(user=self.username, wait_for_socket=True)
         except Exception as e:
             self.logger.warning("Unable to start otpme-agent: %s" % e)
             self.cleanup()
@@ -1539,6 +1534,18 @@ class PamHandler(object):
             msg = ("User is already logged in. This is most "
                     "likely a screen unlock request.")
             self.logger.info(msg)
+
+            # Get SSH agent script.
+            ssh_agent_script_file = os.path.join(self.login_session_dir, "ssh-agent-script.json")
+            if os.path.exists(ssh_agent_script_file):
+                agent_script_data = filetools.read_file(ssh_agent_script_file)
+                agent_script_data = json.loads(agent_script_data)
+                self.ssh_agent_script = agent_script_data['ssh_agent_script']
+                self.ssh_agent_script_uuid = agent_script_data['ssh_agent_script_uuid']
+                self.ssh_agent_script_path = agent_script_data['ssh_agent_script_path']
+                self.ssh_agent_script_opts = agent_script_data['ssh_agent_script_opts']
+                self.ssh_agent_script_signs = agent_script_data['ssh_agent_script_signs']
+
             # By default we only try online authentication on screen unlock.
             try_online_auth = True
             try_offline_auth = False
@@ -1568,6 +1575,13 @@ class PamHandler(object):
                             try_online_auth = False
 
             if try_online_auth:
+                # Make sure ssh agent is restarted on screen unlock.
+                if self.ssh_agent_status():
+                    try:
+                        self.stop_ssh_agent(verify_signs=False)
+                    except Exception as e:
+                        self.logger.warning("Failed to run SSH agent script: %s" % e)
+                self.start_ssh_agent()
                 # Try to authenticate user with OTPme servers.
                 self.online_auth(login=False)
                 # If authentication was successful no need to try offline auth.
@@ -1618,6 +1632,51 @@ class PamHandler(object):
                         self.auth_message = ""
 
         else:
+            # Get agent connection.
+            agent_conn = self.get_agent_connection()
+            # Add login session to otpme-agent.
+            try:
+                if not self.login_session_id:
+                    self.login_session_id = agent_conn.add_session(self.username, tty=self.tty)
+                    if not self.login_session_id:
+                        msg = (_("Unable to add login session to otpme-agent."))
+                        raise OTPmeException(msg)
+            finally:
+                agent_conn.close()
+
+            # Add OTPme login session to users environment. We got the session
+            # ID from login_handler.login() or offline_auth().
+            if self.login_session_id:
+                self.login_session_dir = "%s/%s" % (self.env_dir,
+                                                self.login_session_id)
+                if not os.path.exists(self.login_session_dir):
+                    filetools.create_dir(path=self.login_session_dir,
+                                        user=self.username,
+                                        mode=0o700)
+                os.environ['OTPME_LOGIN_SESSION_DIR'] = self.login_session_dir
+                os.environ['OTPME_LOGIN_SESSION'] = self.login_session_id
+                self.pamh.env['OTPME_LOGIN_SESSION_DIR'] = self.login_session_dir
+                self.pamh.env['OTPME_LOGIN_SESSION'] = self.login_session_id
+
+            # Make sure SSH/GPG agent is running.
+            if self.ensure_ssh_agent is True:
+                try:
+                    # FIXME: do we still need this??
+                    ## Make sure there is no SSH agent running for the user if
+                    ## this is a login request. This may be needed if the user
+                    ## logs in with a non-ssh token and there is a ssh agent
+                    ## from an old session still running.
+                    #if not self.login_status and not self.ssh_agent_started:
+                    #    self.logger.debug("Stopping probably running SSH agent.")
+                    #    try:
+                    #        self.stop_ssh_agent()
+                    #    except Exception as e:
+                    #        self.logger.warning("Unable to run SSH agent script: %s" % e)
+                    if not self.ssh_agent_status():
+                        self.start_ssh_agent()
+                except Exception as e:
+                    self.logger.warning("Cannot start SSH agent: %s" % e, exc_info=True)
+
             # Try to auth/login user via OTPme servers.
             self.online_auth(login=self.realm_login)
 
@@ -1655,20 +1714,6 @@ class PamHandler(object):
                 self.logger.info(self.auth_message)
             # Set PAM stuff.
             self.retval = self.pamh.PAM_SUCCESS
-            # Add OTPme login session to users environment. We got the session
-            # ID from login_handler.login() or offline_auth().
-            if self.login_session_id:
-                self.login_session_dir = "%s/%s" % (self.env_dir,
-                                                self.login_session_id)
-                if not os.path.exists(self.login_session_dir):
-                    filetools.create_dir(path=self.login_session_dir,
-                                        user=self.username,
-                                        mode=0o700)
-                #os.environ['OTPME_LOGIN_SESSION_DIR'] = self.login_session_dir
-                #os.environ['OTPME_LOGIN_SESSION'] = self.login_session_id
-                self.pamh.env['OTPME_LOGIN_SESSION_DIR'] = self.login_session_dir
-                self.pamh.env['OTPME_LOGIN_SESSION'] = self.login_session_id
-
             # Remember if this was a offline login.
             self.pamh.env['OTPME_OFFLINE_LOGIN'] = str(self.offline_login)
             #os.environ['OTPME_OFFLINE_LOGIN'] = str(self.offline_login)
@@ -1678,25 +1723,6 @@ class PamHandler(object):
             else:
                 msg = "Uuuh, no login token set. This should not happen."
                 self.logger.warning(msg)
-
-            # Make sure SSH/GPG agent is running.
-            if self.ensure_ssh_agent is True:
-                try:
-                    # FIXME: do we still need this??
-                    ## Make sure there is no SSH agent running for the user if
-                    ## this is a login request. This may be needed if the user
-                    ## logs in with a non-ssh token and there is a ssh agent
-                    ## from an old session still running.
-                    #if not self.login_status and not self.ssh_agent_started:
-                    #    self.logger.debug("Stopping probably running SSH agent.")
-                    #    try:
-                    #        self.stop_ssh_agent()
-                    #    except Exception as e:
-                    #        self.logger.warning("Unable to run SSH agent script: %s" % e)
-                    if not self.ssh_agent_status():
-                        self.start_ssh_agent()
-                except Exception as e:
-                    self.logger.warning("Cannot start SSH agent: %s" % e, exc_info=True)
 
             # Run login script
             if self.login_status is False:
@@ -1786,6 +1812,18 @@ class PamHandler(object):
             except self.pamh.exception:
                 self.cleanup()
                 return self.pamh.PAM_SYSTEM_ERR
+
+        if self.ssh_agent_status():
+            try:
+                self.stop_ssh_agent()
+            except Exception as e:
+                self.logger.warning("Failed to stop SSH agent: %s" % e)
+        if self.ensure_ssh_agent:
+            additional_opts = ['--pinentry', config.pinentry]
+            try:
+                self.start_ssh_agent(additional_opts=additional_opts)
+            except Exception as e:
+                self.logger.warning("Failed to start SSH agent: %s" % e)
 
         # Close connetions etc.
         self.cleanup()

@@ -216,7 +216,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             # If not try to get job exit message.
             try:
                 exit_message = job.exit_info['exit_message']
-            except:
+            except KeyError:
                 exit_message = ""
         # Get job exit code.
         try:
@@ -2155,6 +2155,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                 shares[share.name] = {}
                 shares[share.name]['site'] = share.site
                 shares[share.name]['nodes'] = node_fqdns
+                shares[share.name]['encrypted'] = share.encrypted
             status = True
             return self.build_response(status, shares)
 
@@ -2192,6 +2193,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                     shares[share.name] = {}
                     shares[share.name]['site'] = share.site
                     shares[share.name]['nodes'] = node_fqdns
+                    shares[share.name]['encrypted'] = share.encrypted
             status = True
             return self.build_response(status, shares)
 

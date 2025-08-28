@@ -38,7 +38,7 @@ class SSHAgent(object):
         self.ssh_agent_pid = None
         self.ssh_agent_name = None
 
-    def run_ssh_agent_script(self, command, verify_signs="auto"):
+    def run_ssh_agent_script(self, command, verify_signs="auto", additional_opts=[]):
         """ Run users SSH agent script. """
         if not self.ssh_agent_script:
             raise OTPmeException("Got no SSH agent script.")
@@ -76,6 +76,8 @@ class SSHAgent(object):
         script_options = []
         if self.ssh_agent_script_opts:
             script_options += self.ssh_agent_script_opts
+        if additional_opts:
+            script_options += additional_opts
 
         script_options.append(command)
 
@@ -138,31 +140,39 @@ class SSHAgent(object):
 
         return False
 
-    def start(self, verify_signs=None):
+    def start(self, verify_signs=None, additional_opts=[]):
         """ Make sure SSH/GPG agent is running and needed variables are set """
         self.logger.debug("Starting user SSH agent script...")
         # Start SSH agent script.
-        self.run_ssh_agent_script("start", verify_signs=verify_signs)
+        self.run_ssh_agent_script(command="start",
+                                verify_signs=verify_signs,
+                                additional_opts=additional_opts)
         return self.ssh_auth_sock, \
                 self.ssh_agent_pid, \
                 self.ssh_agent_name, \
                 self.gpg_agent_info
 
 
-    def stop(self, verify_signs=None):
+    def stop(self, verify_signs=None, additional_opts=[]):
         """ Stop SSH/GPG agent """
-        self.run_ssh_agent_script("stop", verify_signs=verify_signs)
+        self.run_ssh_agent_script(command="stop",
+                                verify_signs=verify_signs,
+                                additional_opts=additional_opts)
 
 
-    def unlock(self, verify_signs=None):
+    def unlock(self, verify_signs=None, additional_opts=[]):
         """ Send 'unlock' command to agent script """
-        self.run_ssh_agent_script("unlock", verify_signs=verify_signs)
+        self.run_ssh_agent_script(command="unlock",
+                                verify_signs=verify_signs,
+                                additional_opts=additional_opts)
         return self.ssh_auth_sock, \
                 self.ssh_agent_pid, \
                 self.ssh_agent_name, \
                 self.gpg_agent_info
 
 
-    def status(self, verify_signs=None):
+    def status(self, verify_signs=None, additional_opts=[]):
         """ Check SSH/GPG agent status """
-        return self.run_ssh_agent_script("status", verify_signs=verify_signs)
+        return self.run_ssh_agent_script(command="status",
+                                    verify_signs=verify_signs,
+                                    additional_opts=additional_opts)
