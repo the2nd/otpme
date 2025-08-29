@@ -3168,7 +3168,7 @@ class User(OTPmeObject):
             add_token = False
 
             token_name = token_data[uuid]['name']
-            token_enabled = token_data[uuid]['enabled']
+            token_enabled = token_data[uuid]['enabled'][0]
 
             if skip_disabled:
                 if not token_enabled:

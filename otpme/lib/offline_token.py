@@ -759,6 +759,24 @@ class OfflineToken(object):
         login_time=None, session_timeout=None, session_unused_timeout=None,
         session_uuid=None, offline_session=None, shares=None, update=False):
         """ Save RSP to file encrypted with session public key. """
+        if update and not session_key:
+            msg = "Need session key on update."
+            raise OTPmeException(msg)
+
+        if update:
+            try:
+                cur_session_id = self.get_offline_session()[2]
+            except:
+                cur_session_id = None
+            if cur_session_id != session_id:
+                msg = ("Cannot update session: %s: Wrong session id: %s"
+                        % (cur_session_id, session_id))
+                raise OTPmeException(msg)
+
+        # Set session key if we got one.
+        if session_key:
+            self.session_key_public = session_key
+
         session_config = {}
         session_file = self.get_session_file(realm, site, session_id)
         session_dir = os.path.dirname(session_file)
@@ -777,9 +795,6 @@ class OfflineToken(object):
             # If no session file exists and update is given nothing more to do.
             if update:
                 return None
-            # Set session key if we got one.
-            if session_key:
-                self.session_key_public = session_key
             # Generate new session key if needed.
             if not self.session_key_public:
                 self.gen_session_key()
@@ -803,24 +818,8 @@ class OfflineToken(object):
                                 mode=0o700,
                                 user_acls=self.dir_acls)
 
-        # If this is a update we have to verify if the (encrypted) RSP from the
-        # session file matches the old RSP. This is required to prevent someone
-        # to create a fake session file with a public key that private part the
-        # attacker owns.
-        if update:
-            given_old_rsp = key.encrypt(cleartext=salt+rsp, cipher=self.rsp_cipher)
-            given_old_rsp = encode(given_old_rsp, "hex")
-            old_rsp = session_config['RSP']
-            if given_old_rsp != old_rsp:
-                msg = (_("Given RSP does not match RSP from file. "
-                        "Update failed."))
-                raise OTPmeException(msg)
-            _rsp = update
-        else:
-            _rsp = rsp
-
         # Encrypt RSP.
-        encrypted_rsp = key.encrypt(cleartext=salt+_rsp, cipher=self.rsp_cipher)
+        encrypted_rsp = key.encrypt(cleartext=salt+rsp, cipher=self.rsp_cipher)
         # Encode RSP.
         encrypted_rsp = encode(encrypted_rsp, "hex")
 

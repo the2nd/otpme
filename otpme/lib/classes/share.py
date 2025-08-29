@@ -1319,6 +1319,18 @@ class Share(OTPmeObject):
 
         return super(Share, self).remove_token(token_path=token_path,
                                             callback=callback, **kwargs)
+    @object_lock()
+    def add_role(
+        self,
+        *args,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Check if share is encrypted. """
+        if self.encrypted:
+            msg = "Encrypted shares do not support roles."
+            return callback.error(msg)
+        return super(Share, self).add_role(*args, callback=callback, **kwargs)
 
     @check_acls(['add:share_key'])
     @object_lock()

@@ -198,7 +198,6 @@ class OTPmeFS(fuse.Operations):
                             self.logger.warning(msg)
                             if command != "fsop_write":
                                 raise OSError(errno.EHOSTUNREACH, "Server unreachable")
-                        time.sleep(1)
                         continue
                     tried_nodes.append(node)
                     mount_args = {'share':self.share}
@@ -1732,7 +1731,7 @@ def mount_share(share, mount, nodes, encrypted=False,
     fsname = "OTPmeFS:/%s" % share
     if logger is None:
         logger = config.logger
-    msg = "Got nodes: %s" % nodes
+    msg = "Got nodes: %s: %s" % (share, nodes)
     print(msg)
     logger.info(msg)
     if encrypted:

@@ -607,6 +607,9 @@ class OTPmeAgent(UnixDaemon):
         last_reneg = session['last_reneg']
         reneg_age = time.time() - last_reneg
 
+        # Get session key to encrypt new RSP.
+        session_key = session['session_key']
+
         # Try to update session.
         msg = ("Trying to renegotiate session for user: %s" % login_user)
         self.logger.debug(msg)
@@ -657,10 +660,6 @@ class OTPmeAgent(UnixDaemon):
             # we can try to update the login session file.
             if login_user == config.system_user():
                 try:
-                    try:
-                        shares = session['mounted_shares']
-                    except KeyError:
-                        shares = []
                     # Get offline token handler.
                     offline_token = OfflineToken()
                     # Set user.
@@ -671,10 +670,10 @@ class OTPmeAgent(UnixDaemon):
                     if offline_token.save_rsp(session_id=session_id,
                                             realm=realm,
                                             site=site,
-                                            rsp=rsp,
+                                            rsp=new_rsp,
                                             slp=slp,
-                                            shares=shares,
-                                            update=new_rsp) is None:
+                                            session_key=session_key,
+                                            update=True) is None:
                         self.logger.debug("No offline session to update found.")
                 except Exception as e:
                     msg = "Error updating RSP for use with offline tokens: %s" % e

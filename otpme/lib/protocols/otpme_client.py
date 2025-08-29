@@ -3961,6 +3961,9 @@ class OTPmeClient1(OTPmeClientBase):
             msg = (_("Failed to load offline session key: %s") % e)
             raise OTPmeException(msg)
 
+        # Get public key to add to agent and offline token.
+        offline_session_pubkey = key.public_key_base64
+
         # Sign RSP to be verified by otpme-agent.
         rsp_signature = key.sign(self.rsp, encoding="hex")
 
@@ -3973,7 +3976,7 @@ class OTPmeClient1(OTPmeClientBase):
                             rsp=self.rsp,
                             slp=slp,
                             rsp_signature=rsp_signature,
-                            session_key=self.offline_session_key,
+                            session_key=offline_session_pubkey,
                             login_time=login_time,
                             timeout=session_timeout,
                             unused_timeout=session_unused_timeout,
@@ -3999,7 +4002,7 @@ class OTPmeClient1(OTPmeClientBase):
                                 session_timeout=session_timeout,
                                 session_unused_timeout=session_unused_timeout,
                                 offline_session=keep_offline_session,
-                                session_key=self.offline_session_key)
+                                session_key=offline_session_pubkey)
             except Exception as e:
                 msg = ("Error saving RSP: %s" % e)
                 self.logger.critical(msg)

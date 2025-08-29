@@ -640,7 +640,7 @@ def set_fs_permissions(path, mode, user_acls=[], group_acls=[], recursive=False)
             object_path = os.path.join(root, object)
             os.chmod(object_path, mode)
             if apply_acls:
-                new_acl.applyto(path)
+                new_acl.applyto(object_path)
 
 def ensure_fs_permissions(directories=None, files=None,
     files_create=None, user=None, group=None):
@@ -749,7 +749,8 @@ class JsonFile(object):
             raise
         return object_config
 
-    def write_file(self, object_config):
+    def write_file(self, object_config, user=None,
+        group=None, mode=0o660, user_acls=[], group_acls=[]):
         from otpme.lib import config
         compression = None
         if config.object_json_compression:
@@ -761,7 +762,12 @@ class JsonFile(object):
         try:
             create_file(path=self.file_path,
                         content=file_content,
-                        compression=compression)
+                        compression=compression,
+                        user=user,
+                        group=group,
+                        mode=mode,
+                        user_acls=user_acls,
+                        group_acls=group_acls)
         except Exception as e:
             msg = "Failed to write file: %s: %s" % (self.file_path, e)
             self.logger.critical(msg)
@@ -838,12 +844,12 @@ class JsonFile(object):
         new_db = False
         if not os.path.exists(self.file_path):
             new_db = True
-            touch(self.file_path,
-                    user=user,
-                    group=group,
-                    mode=mode,
-                    user_acls=user_acls,
-                    group_acls=group_acls)
+            #touch(self.file_path,
+            #        user=user,
+            #        group=group,
+            #        mode=mode,
+            #        user_acls=user_acls,
+            #        group_acls=group_acls)
 
         if not new_db:
             current_oc = self.read_file()
@@ -864,7 +870,10 @@ class JsonFile(object):
                         return
 
             if full_data_update is True:
-                self.write_file(object_config)
+                self.write_file(object_config,
+                                user=user,
+                                group=group,
+                                mode=mode)
                 return object_config
 
             _modified_attributes = modified_attributes.copy()
@@ -970,7 +979,12 @@ class JsonFile(object):
             increment_ids = sorted(increment_ids)[-500:]
             current_oc['INCREMENT_IDS'] = increment_ids
         # Make sure data is written.
-        self.write_file(current_oc)
+        self.write_file(current_oc,
+                        user=user,
+                        group=group,
+                        mode=mode,
+                        user_acls=user_acls,
+                        group_acls=group_acls)
         return current_oc
 
 class SQLiteFile(object):
