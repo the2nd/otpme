@@ -126,6 +126,15 @@ cmd_help = {
                                 },
                 },
 
+    'get_share_key'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-share get_share_key {user} {user}',
+                    'cmd'   :   '<|object|> <username>',
+                    '_help' :   {
+                                    'cmd'                   : 'Get encrypted share key from share.',
+                                },
+                },
+
+
 
     'enable'    : {
                     '_cmd_usage_help' : 'Usage: otpme-share enable {share}',
@@ -291,6 +300,22 @@ cmd_help = {
                     'cmd'   :   '<|object|> <policy_name>',
                     '_help' :   {
                                     'cmd'                   : 'Remove policy from share.',
+                                },
+                },
+
+    'add_master_password_token'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-share add_master_password_token {share} {token}',
+                    'cmd'   :   '<|object|> <token_path>',
+                    '_help' :   {
+                                    'cmd'                   : 'Allow token to mount share with master password.',
+                                },
+                },
+
+    'remove_master_password_token'   : {
+                    '_cmd_usage_help' : 'Usage: otpme-share remove_master_password_token {share} {token}',
+                    'cmd'   :   '<|object|> <token_path>',
+                    '_help' :   {
+                                    'cmd'                   : 'Remove master password token from share.',
                                 },
                 },
 

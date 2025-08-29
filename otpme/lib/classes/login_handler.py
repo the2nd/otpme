@@ -48,7 +48,7 @@ class LoginHandler(object):
         sync_token_data=False, auth_only=False, start_otpme_agent=True, jwt_auth=False,
         jwt_method=None, message_method=None, error_message_method=None, connect_timeout=3,
         timeout=30, node=None, offline_key_derivation_func=None, offline_token=None,
-        mount_shares=True, offline_key_func_opts={}, check_offline_pass_strength=False,
+        mount_shares=False, offline_key_func_opts={}, check_offline_pass_strength=False,
         offline_iterations_by_score={}, offline_session_key=None,
         login_session_id=None, add_agent_acl=False, cleanup_method=None,
         socket_uri=None, login_use_dns=False, use_dns=False):
@@ -60,8 +60,8 @@ class LoginHandler(object):
         # the user.
         if auth_only:
             login = False
-            add_login_session = False
             mount_shares = False
+            add_login_session = False
             # If we have no login session ID instruct OTPmeClient() to add a
             # new login session to otpme-agent.
             if not login_session_id:

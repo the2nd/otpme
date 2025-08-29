@@ -47,6 +47,7 @@ from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.messages import error_message
 from otpme.lib.protocols import status_codes
 from otpme.lib.register import register_module
+from otpme.lib.encryption import hash_password
 from otpme.lib.socket.connect import ConnectSocket
 from otpme.lib.protocols.request import build_request
 from otpme.lib.socket.handler import SocketProtoHandler
@@ -1429,6 +1430,7 @@ class OTPmeClient(OTPmeClientBase):
 
     def gen_share_key(self, command_dict):
         """ Handle share key re-encryption via users key script. """
+        register_module("otpme.lib.encryption")
         key_len = command_dict['key_len']
         sign_mode = command_dict['sign_mode']
 
@@ -1437,8 +1439,26 @@ class OTPmeClient(OTPmeClientBase):
             msg = (_("Cannot call key script in non-interactive mode."))
             raise OTPmeException(msg)
 
-        # Gen AES key.
-        share_key = os.urandom(key_len)
+        # Gen AES key from password.
+        while True:
+            password1 = self.get_password(prompt="Password:")
+            password2 = self.get_password(prompt="Reenter password:")
+            if password1 == password2:
+                password = password1
+                break
+            print("Sorry, passwords do not match.")
+
+        hash_args = {
+                        'hash_type': 'Argon2_i',
+                        'iterations': 3,
+                        'min_mem': 65536,
+                        'max_mem': 262144,
+                        'threads': 4,
+                        'key_len': key_len,
+                    }
+        hash_data = hash_password(password, encoding=None, **hash_args)
+        share_key = hash_data.pop("hash")
+
         # Get username to run key script for.
         username = self.username
         # User to encrypt share key for.
@@ -1448,7 +1468,11 @@ class OTPmeClient(OTPmeClientBase):
                                                     share_user,
                                                     share_key,
                                                     sign_mode)
-        return encrypted_share_key
+        share_key_response = {
+                            'share_key'     : encrypted_share_key,
+                            'hash_params'   : hash_data,
+                            }
+        return share_key_response
 
     def reencrypt_share_key(self, command_dict):
         """ Handle share key re-encryption via users key script. """
@@ -1466,7 +1490,8 @@ class OTPmeClient(OTPmeClientBase):
         # Decrypt share key with key script.
         decrypted_share_key = stuff.decrypt_share_key(username,
                                                     encrypted_share_key,
-                                                    sign_mode)
+                                                    sign_mode,
+                                                    encode=False)
         # Encrypt share key with key script.
         encrypted_share_key = stuff.encrypt_share_key(username,
                                                     share_user,

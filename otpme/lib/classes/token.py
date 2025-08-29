@@ -1301,7 +1301,7 @@ class Token(OTPmeObject):
             logger.critical(msg)
             msg = "Internal server error."
             return callback.error(msg)
-        self.password_hash = hash_data['hash']
+        self.password_hash = hash_data.pop('hash')
         self.password_hash_params += hash_data['hash_args']
         return self._cache(callback=callback)
 
@@ -2737,10 +2737,10 @@ class Token(OTPmeObject):
                                     password=password,
                                     hash_args=[hash_args])
         if temp:
-            self.temp_password_hash = x['hash']
+            self.temp_password_hash = x.pop('hash')
             self.temp_password_hash_params = x['hash_args']
         else:
-            self.password_hash = x['hash']
+            self.password_hash = x.pop('hash')
             self.password_hash_params = x['hash_args']
 
         # Create NT hash.

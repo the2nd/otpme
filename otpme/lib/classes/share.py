@@ -53,11 +53,14 @@ read_value_acls = {
                                     "policy",
                                     "root_dir",
                                     "encrypted",
+                                    "share_key",
                                     "block_size",
                                     "read_only",
                                     "force_group",
                                     "force_create_mode",
                                     "force_directory_mode",
+                                    "master_password_token",
+                                    "master_password_hash_params",
                                 ],
             }
 
@@ -67,12 +70,18 @@ write_value_acls = {
                                     "role",
                                     "node",
                                     "pool",
+                                    "share_key",
+                                    "master_password_token",
+                                ],
+                    "delete"       : [
+                                    "share_key",
                                 ],
                     "remove"    : [
                                     "token",
                                     "role",
                                     "node",
                                     "pool",
+                                    "master_password_token",
                                 ],
                     "enable"    : [
                                     "read_only",
@@ -201,6 +210,33 @@ commands = {
                     },
                 },
             },
+    'add_share_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_share_key',
+                    'args'              : ['username', 'share_key'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_share_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_share_key',
+                    'args'              : ['username'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'get_share_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_share_key',
+                    'args'              : ['username'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'list'   : {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
@@ -282,6 +318,24 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable_acl_inheritance',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_master_password_token'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_master_password_token',
+                    'args'              : ['token_path'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_master_password_token'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_master_password_token',
+                    'args'              : ['token_path'],
                     'job_type'          : 'process',
                     },
                 },
@@ -672,10 +726,13 @@ class Share(OTPmeObject):
         # self.incremental_update is only available after calling super.
         self.nodes = []
         self.pools = []
+        self.share_keys = {}
         self.read_only = False
         self.create_mode = "0o000"
         self.directory_mode = "0o000"
         self.force_group_uuid = None
+        self.master_password_tokens = []
+        self.master_password_hash_params = {}
 
         self._acls = get_acls()
         self._value_acls = get_value_acls()
@@ -755,6 +812,21 @@ class Share(OTPmeObject):
                                                         'force_type': True,
                                                         'required'  : False,
                                                     },
+                        'MASTER_PASSWORD_TOKENS'    : {
+                                                        'var_name'  : 'master_password_tokens',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+                        'MASTER_PASSWORD_HASH_PARAMS': {
+                                                        'var_name'  : 'master_password_hash_params',
+                                                        'type'      : dict,
+                                                        'required'  : False,
+                                                    },
+                        'SHARE_KEYS'                : {
+                                                        'var_name'  : 'share_keys',
+                                                        'type'      : dict,
+                                                        'required'  : False,
+                                                    },
                         'POOLS'                     : {
                                                         'var_name'  : 'pools',
                                                         'type'      : list,
@@ -826,13 +898,20 @@ class Share(OTPmeObject):
             msg = "Generating AES key for encrypted share..."
             callback.send(msg)
             sign_mode = config.auth_user.sign_mode
-            share_key = callback.gen_share_key(key_len=key_len, sign_mode=sign_mode)
-            if not share_key:
-                msg = "Failed to receive share key from client."
+            share_key_response = callback.gen_share_key(key_len=key_len, sign_mode=sign_mode)
+            try:
+                share_key = share_key_response['share_key']
+            except KeyError:
+                msg = "Share key response misses share key."
+                return callback.error(msg)
+            try:
+                self.master_password_hash_params = share_key_response['hash_params']
+            except KeyError:
+                msg = "Share key response misses master password hash parameters."
                 return callback.error(msg)
             self.add_token(token_path=config.auth_token.rel_path,
                             share_key=share_key)
-        return add_result
+        return self._write(callback=callback)
 
     @object_lock(full_lock=True)
     @backend.transaction
@@ -1020,6 +1099,112 @@ class Share(OTPmeObject):
         return self._cache(callback=callback)
 
     @object_lock()
+    def is_master_password_token(
+        self,
+        token_path: str,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Add token that is allowed to mount share with master password. """
+        if not "/" in token_path:
+            msg = ("Invalid token path: %s" % token_path)
+            return callback.error(msg)
+
+        if not self.encrypted:
+            msg = "Share not encrypted."
+            return callback.error(msg)
+
+        result = backend.search(object_type="token",
+                                attribute="rel_path",
+                                value=token_path,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="uuid")
+        if not result:
+            msg = "Unknown token: %s" % token_path
+            return callback.error(msg)
+        token_uuid = result[0]
+        if token_uuid in self.master_password_tokens:
+            return True
+        return False
+
+    @check_acls(['add:master_password_token'])
+    @object_lock()
+    def add_master_password_token(
+        self,
+        token_path: str,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Add token that is allowed to mount share with master password. """
+        if not "/" in token_path:
+            msg = ("Invalid token path: %s" % token_path)
+            return callback.error(msg)
+
+        if not self.encrypted:
+            msg = "Share not encrypted."
+            return callback.error(msg)
+
+        result = backend.search(object_type="token",
+                                attribute="rel_path",
+                                value=token_path,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="uuid")
+        if not result:
+            msg = "Unknown token: %s" % token_path
+            return callback.error(msg)
+        token_uuid = result[0]
+        if token_uuid in self.master_password_tokens:
+            msg = "Token already assigned to share: %s" % token_path
+            return callback.error(msg)
+
+        self.master_password_tokens.append(token_uuid)
+
+        return self._write(callback=callback)
+
+    @check_acls(['remove:master_password_token'])
+    @object_lock()
+    def remove_master_password_token(
+        self,
+        token_path: str,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Remove token that is allowed to mount share with master password. """
+        if not "/" in token_path:
+            msg = ("Invalid token path: %s" % token_path)
+            return callback.error(msg)
+
+        if not self.encrypted:
+            msg = "Share not encrypted."
+            return callback.error(msg)
+
+        result = backend.search(object_type="token",
+                                attribute="rel_path",
+                                value=token_path,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="uuid")
+        if not result:
+            msg = "Unknown token: %s" % token_path
+            return callback.error(msg)
+        token_uuid = result[0]
+        if token_uuid not in self.master_password_tokens:
+            msg = "Token not assigned to share: %s" % token_path
+            return callback.error(msg)
+
+        self.master_password_tokens.remove(token_uuid)
+
+        return self._write(callback=callback)
+
+    @object_lock()
     def add_token(
         self,
         token_path: str,
@@ -1029,7 +1214,7 @@ class Share(OTPmeObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        """ Checks if token is valid for this share. """
+        """ Add token to share. """
         if not "/" in token_path:
             msg = ("Invalid token path: %s" % token_path)
             return callback.error(msg)
@@ -1071,15 +1256,15 @@ class Share(OTPmeObject):
                 return callback.error(msg)
 
         if self.encrypted:
-            existing_key = user.get_share_key(share_name=self.name)
+            existing_key = self.get_share_key(username=user.name)
             if not existing_key and not share_key:
                 msg = "Sending request to re-encrypt share key for user: %s" % user.name
                 callback.send(msg)
                 auth_user = backend.get_object(uuid=config.auth_user.uuid)
                 sign_mode = auth_user.sign_mode
-                auth_user_share_key = auth_user.get_share_key(share_name=self.name)
+                auth_user_share_key = self.get_share_key(username=auth_user.name)
                 if not auth_user_share_key:
-                    msg = "Failed to get share key from user: %s" % auth_user
+                    msg = "You dont have a share key for share: %s" % self.name
                     return callback.error(msg)
                 share_key = callback.reencrypt_share_key(share_user=user.name,
                                                         share_key=auth_user_share_key,
@@ -1088,11 +1273,11 @@ class Share(OTPmeObject):
                     msg = "Failed to receive share key from client."
                     return callback.error(msg)
             if share_key:
-                if not user.add_share_key(share_name=self.name,
+                if not self.add_share_key(username=user.name,
                                     share_key=share_key,
                                     callback=callback,
                                     verify_acls=False):
-                    msg = "Failed to add share key to user: %s" % user
+                    msg = "Failed to add share key for user: %s" % user
                     return callback.error(msg)
 
         return super(Share, self).add_token(token_path=token_path,
@@ -1128,22 +1313,133 @@ class Share(OTPmeObject):
 
         if self.encrypted:
             token_user = token_path.split("/")[0]
-            result = backend.search(object_type="user",
-                                    attribute="name",
-                                    value=token_user,
-                                    realm=config.realm,
-                                    site=config.site,
-                                    return_type="instance")
-            if not result:
-                msg = "Unknown user: %s" % token_user
-                return callback.error(msg)
-            user = result[0]
-            user.del_share_key(share_name=self.name,
+            self.del_share_key(username=token_user,
                                 callback=callback,
                                 verify_acls=False)
 
         return super(Share, self).remove_token(token_path=token_path,
                                             callback=callback, **kwargs)
+
+    @check_acls(['add:share_key'])
+    @object_lock()
+    def add_share_key(
+        self,
+        username: str,
+        share_key: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        result = backend.search(object_type="user",
+                                attribute="name",
+                                value=username,
+                                return_type="uuid")
+        if not result:
+            msg = "Unknown user: %s" % username
+            return callback.error(msg)
+        user_uuid = result[0]
+
+        if user_uuid in self.share_keys:
+            msg = "Share key already exists: %s" % username
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_share_key",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
+
+        self.share_keys[user_uuid] = share_key
+
+        return self._write(callback=callback)
+
+    @check_acls(['view:share_key'])
+    @object_lock()
+    def get_share_key(
+        self,
+        username: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        result = backend.search(object_type="user",
+                                attribute="name",
+                                value=username,
+                                return_type="uuid")
+        if not result:
+            msg = "Unknown user: %s" % username
+            return callback.error(msg)
+        user_uuid = result[0]
+
+        if user_uuid not in self.share_keys:
+            msg = "Share key does not exist: %s" % username
+            return callback.error(msg)
+
+        if run_policies:
+            config.ignore_policy_tags.append("interactive")
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("get_share_key",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                config.raise_exception()
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
+            config.ignore_policy_tags.remove("interactive")
+
+        share_key = self.share_keys[user_uuid]
+
+        return callback.ok(share_key)
+
+    @check_acls(['delete:share_key'])
+    @object_lock()
+    def del_share_key(
+        self,
+        username: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        result = backend.search(object_type="user",
+                                attribute="name",
+                                value=username,
+                                return_type="uuid")
+        if not result:
+            msg = "Unknown user: %s" % username
+            return callback.error(msg)
+        user_uuid = result[0]
+
+        if user_uuid not in self.share_keys:
+            msg = "Share key does not exist: %s" % username
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("del_share_key",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = "Error running policies: %s" % e
+                return callback.error(msg)
+
+        self.share_keys.pop(user_uuid)
+
+        return self._write(callback=callback)
 
     @check_acls(['add:ppol'])
     @object_lock()
@@ -1313,6 +1609,15 @@ class Share(OTPmeObject):
                                         return_type="name")
             pool_list.sort()
 
+        master_password_tokens_list = []
+        if self.master_password_tokens:
+            if self.verify_acl("view:master_password_token"):
+                master_password_tokens_list = backend.search(object_type="token",
+                                                            attribute="uuid",
+                                                            values=self.master_password_tokens,
+                                                            return_type="rel_path")
+            master_password_tokens_list.sort()
+
         lines = []
 
         if self.verify_acl("view:role"):
@@ -1360,6 +1665,16 @@ class Share(OTPmeObject):
             lines.append('ROOT_DIR="%s"' % self.root_dir)
         else:
             lines.append('ROOT_DIR=""')
+
+        if self.verify_acl("view:master_password_tokens"):
+            lines.append('MASTER_PASSWORD_TOKENS="%s"' % ",".join(master_password_tokens_list))
+        else:
+            lines.append('MASTER_PASSWORD_TOKENS=""')
+
+        if self.verify_acl("view:master_password_hash_params"):
+            lines.append('MASTER_PASSWORD_HASH_PARAMS="%s"' % self.master_password_hash_params)
+        else:
+            lines.append('MASTER_PASSWORD_HASH_PARAMS=""')
 
         return OTPmeObject.show_config(self,
                                     config_lines=lines,

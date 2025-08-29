@@ -5160,6 +5160,7 @@ class CommandHandler(object):
 
     def handle_mount(self, command, subcommand):
         import argparse
+        from otpme.lib import cli
         from otpme.lib import multiprocessing
         from otpme.lib.fuse import mount_share
         parser = argparse.ArgumentParser()
@@ -5167,6 +5168,7 @@ class CommandHandler(object):
         parser.add_argument("--list", dest="list_shares", action="store_true", help="List shares")
         parser.add_argument('--nodes', dest='nodes')
         parser.add_argument("--encrypted", dest="encrypted", action="store_true", help="Share is encrypted")
+        parser.add_argument("--master-password-mount", dest="master_password_mount", action="store_true", help="Use master password to mount encrypted share.")
         parser.add_argument('share', nargs='?')
         parser.add_argument('mount', nargs='?')
         args = parser.parse_args(sys.argv)
@@ -5177,6 +5179,7 @@ class CommandHandler(object):
             nodes = args.nodes.split(",")
         if args.encrypted:
             encrypted = True
+        master_password_mount = args.master_password_mount
         try:
             login_session_id = self.get_login_session_id()
         except Exception as e:
@@ -5211,15 +5214,28 @@ class CommandHandler(object):
         if not mount_point:
             msg = "Missing mountpoint."
             raise OTPmeException(msg)
+        master_password = None
+        if master_password_mount:
+            try:
+                master_password = cli.read_pass("Master password: ")
+            except Exception as e:
+                msg = (_("Error reading master password from stdin: %s") % e)
+                raise OTPmeException(msg)
         os.environ['OTPME_LOGIN_SESSION'] = login_session_id
         if args.foreground:
-            mount_share(args.share, mount_point, nodes, encrypted, foreground=args.foreground)
+            mount_share(args.share,
+                        mount_point,
+                        nodes,
+                        encrypted,
+                        master_password=master_password,
+                        foreground=args.foreground)
         else:
             mount_proc = multiprocessing.start_process(name="mount",
                                                     target=mount_share,
                                                     target_args=(args.share, mount_point, nodes, encrypted),
                                                     target_kwargs={
-                                                                    'foreground':False,
+                                                                    'master_password'   : master_password,
+                                                                    'foreground'        : False,
                                                                 },
                                                     daemon=False)
             mount_proc.join()

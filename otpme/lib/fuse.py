@@ -6,11 +6,11 @@ import time
 import stat
 import hmac
 import errno
-import base64
-import hashlib
 import random
+import base64
 import struct
 import logging
+import hashlib
 import argparse
 import setproctitle
 import mfusepy as fuse
@@ -24,6 +24,8 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import connections
 from otpme.lib.protocols import status_codes
+from otpme.lib.register import register_module
+from otpme.lib.encryption import hash_password
 from otpme.lib.fscoding import encode_method_call
 
 from otpme.lib.exceptions import *
@@ -36,18 +38,14 @@ no_such_data_cache = {}
 last_create_cache = None
 last_create_cache_time = 0.0
 
-BLOCK_SIZE = 4096  # 4 KB
-NONCE_SIZE = 12
-TAG_SIZE = 16
-METADATA_SIZE = 4 + 4 + NONCE_SIZE + TAG_SIZE
-BLOCK_WITH_METADATA_SIZE = BLOCK_SIZE + METADATA_SIZE  # 4132
-# We use cephfs blocksize which results in good read/write performance.
-PREFERRED_BLOCK_SIZE = 4194304
-
 CONF_FILE = "otpmecryptfs.conf"
 DIRIV_NAME = "otpmecryptfs.diriv"
 LONGNAME_PREFIX = "otpmecryptfs.longname."
-MAX_NAME = 255
+
+# We use cephfs blocksize which results in good read/write performance.
+PREFERRED_BLOCK_SIZE = 4194304
+
+register_module("otpme.lib.encryption")
 
 def gen_diriv():
     iv = os.urandom(16)
@@ -72,12 +70,15 @@ def read_cryptfs_settings(path):
         raise OTPmeException(msg)
     return fs_data
 
-def init_cryptfs(path, block_size):
+def init_cryptfs(path, block_size, hash_params):
     conf_file = os.path.join(path, CONF_FILE)
     if os.path.exists(conf_file):
         msg = "Cryptfs already initialized."
         raise AlreadyInitialized(msg)
-    init_data = {'block_size':block_size}
+    init_data = {
+                'block_size'    : block_size,
+                'hash_params'   : hash_params,
+                }
     init_data = json.dumps(init_data)
     try:
         fd = open(conf_file, "w")
@@ -87,7 +88,7 @@ def init_cryptfs(path, block_size):
         msg = "Failed to init cryptfs: %s" % e
         raise OTPmeException(msg)
     try:
-        os.chmod(conf_file, 0o644)
+        os.chmod(conf_file, 0o600)
     except Exception as e:
         msg = ("Failed to set config file permissions: %s: %s"
                 % (conf_file, e))
@@ -122,6 +123,7 @@ class OTPmeFS(fuse.Operations):
         self.username = None
         self.encrypted = False
         self.logger = logger
+        self.master_password = None
         config.daemon_mode = True
 
     def get_user(self):
@@ -168,7 +170,6 @@ class OTPmeFS(fuse.Operations):
         while True:
             if not self.fsd_conn:
                 tried_nodes = []
-                share_key = None
                 nodes = self.nodes
                 while True:
                     remaining_nodes = list(set(nodes) - set(tried_nodes))
@@ -182,13 +183,6 @@ class OTPmeFS(fuse.Operations):
                         except Exception as e:
                             msg = "Unable to get username from agent: %s" % e
                             raise OSError(errno.EINVAL, msg)
-                    if self.encrypted and not self.key and not share_key:
-                        try:
-                            share_key = stuff.get_share_key(self.username, self.share)
-                        except Exception as e:
-                            msg = "Unable to get share key: %s: %s" % (self.share, e)
-                            self.logger.warning(msg)
-                            raise OSError(errno.EACCES, msg)
                     node = random.choice(remaining_nodes)
                     msg = "Trying connection to node: %s" % node
                     self.logger.info(msg)
@@ -208,6 +202,10 @@ class OTPmeFS(fuse.Operations):
                         continue
                     tried_nodes.append(node)
                     mount_args = {'share':self.share}
+                    master_password_mount = False
+                    if self.master_password:
+                        master_password_mount = True
+                        mount_args['master_password_mount'] = master_password_mount
                     mount_status, \
                     mount_response_code, \
                     mount_response, \
@@ -232,25 +230,76 @@ class OTPmeFS(fuse.Operations):
                                     raise OSError(errno.EINVAL, mount_response)
                         time.sleep(1)
                         continue
-                    if self.encrypted and share_key and not self.key:
+                    try:
+                        self.nodes = mount_response['nodes']
+                    except KeyError:
+                        msg = "Mount response misses nodes: %s: %s" % (self.share, node)
+                        self.logger.info(msg)
+                    if self.encrypted:
                         try:
-                            bin_key = base64.b64decode(share_key)
-                        except Exception as e:
-                            msg = "Failed to decode share key: %s: %s" % (self.share, e)
+                            block_size= mount_response['block_size']
+                        except KeyError:
+                            msg = ("Mount response misses block size: %s: %s"
+                                    % (self.share, node))
                             self.logger.warning(msg)
                             self.fsd_conn.close()
                             self.fsd_conn = None
-                            raise OSError(errno.EINVAL, msg)
-                        try:
-                            self.setup_encryption(bin_key)
-                        except Exception as e:
-                            msg = "Failed to setup encryption: %s: %s" % (self.share, e)
-                            self.logger.warning(msg)
-                            self.fsd_conn.close()
-                            self.fsd_conn = None
-                            raise OSError(errno.EINVAL, msg)
+                            raise OSError(errno.ENOENT, "Missing block size")
+                        # Set block size for encrypted fs.
+                        self.set_block_size(block_size)
+                        if not self.key:
+                            if master_password_mount:
+                                try:
+                                    master_password_hash_params= mount_response['master_password_hash_params']
+                                except KeyError:
+                                    msg = ("Mount response misses master password hash parameters: %s: %s"
+                                            % (self.share, node))
+                                    self.logger.warning(msg)
+                                    self.fsd_conn.close()
+                                    self.fsd_conn = None
+                                    raise OSError(errno.EACCES, "No share key received")
+                                try:
+                                    hash_data = hash_password(self.master_password,
+                                                            encoding=None,
+                                                            **master_password_hash_params)
+                                    share_key = hash_data.pop("hash")
+                                except Exception as e:
+                                    msg = ("Failed to derive share key from master password: %s: %s"
+                                            % (self.share, e))
+                                    self.logger.warning(msg)
+                                    self.fsd_conn.close()
+                                    self.fsd_conn = None
+                                    raise OSError(errno.EACCES, "No share key received")
+                            else:
+                                try:
+                                    share_key= mount_response['share_key']
+                                except KeyError:
+                                    msg = "Mount response misses share key: %s: %s" % (self.share, node)
+                                    self.logger.warning(msg)
+                                    self.fsd_conn.close()
+                                    self.fsd_conn = None
+                                    raise OSError(errno.EACCES, "No share key received")
+                                # Decrypt share key with key script.
+                                try:
+                                    share_key = stuff.decrypt_share_key(self.username,
+                                                                        share_key,
+                                                                        sign_mode=None,
+                                                                        encode=False)
+                                except Exception as e:
+                                    msg = "Failed to decrypt share key: %s: %s" % (self.share, e)
+                                    self.logger.warning(msg)
+                                    self.fsd_conn.close()
+                                    self.fsd_conn = None
+                                    raise OSError(errno.EACCES, "Failed to decrypt share key")
+                            try:
+                                self.setup_encryption(share_key)
+                            except Exception as e:
+                                msg = "Failed to setup encryption: %s: %s" % (self.share, e)
+                                self.logger.warning(msg)
+                                self.fsd_conn.close()
+                                self.fsd_conn = None
+                                raise OSError(errno.EINVAL, msg)
                     msg = "Share mounted: %s (%s)" % (self.share, node)
-                    self.nodes = mount_response
                     self.logger.info(msg)
                     break
 
@@ -769,21 +818,34 @@ class OTPmeFS(fuse.Operations):
 
 
 class EncryptedFS(OTPmeFS):
-    def __init__(self, share, logger, *args, **kwargs):
-        super().__init__(share, logger, *args, **kwargs)
+    def __init__(self, share, logger, nodes, master_password, *args, **kwargs):
+        super().__init__(share, logger, nodes, *args, **kwargs)
         self.key = None
         self.encrypted = True
         self.name_key = None
         self.content_key = None
+        self.master_password = master_password
+        self.block_size = 4096
+        self.nonce_size = 12
+        self.tag_size = 16
+        self.metadata_size = 4 + 4 + self.nonce_size + self.tag_size
+        self.block_with_metadata_size = self.block_size + self.metadata_size
+        self.max_name = 255
+
+    def set_block_size(self, block_size):
+        self.block_size = block_size
+        self.block_with_metadata_size = self.block_size + self.metadata_size
 
     def setup_encryption(self, key):
-        if len(key) not in (16, 24, 32):
+        key_len = len(key)
+        if key_len not in (16, 24, 32):
             raise ValueError("Key must be 16, 24 or 32 bytes.")
         self.key = key
-        hkdf = HKDF(algorithm=hashes.SHA256(), length=64, salt=None, info=b"mfusepy-keys")
+        hkdf_len = key_len * 2
+        hkdf = HKDF(algorithm=hashes.SHA256(), length=hkdf_len, salt=None, info=b"otpmefs-keys")
         okm = hkdf.derive(self.key)
-        self.content_key = okm[:32]
-        self.name_key = okm[32:64]
+        self.content_key = okm[:key_len]
+        self.name_key = okm[key_len:key_len * 2]
         self.aesgcm = AESGCM(self.content_key)
         self.aesgcm_names = AESGCM(self.name_key)
 
@@ -837,7 +899,7 @@ class EncryptedFS(OTPmeFS):
 
     def _name_nonce(self, diriv: bytes, name: str) -> bytes:
         mac = hmac.new(self.name_key, diriv + name.encode('utf-8'), hashlib.sha256).digest()
-        return mac[:NONCE_SIZE]
+        return mac[:self.nonce_size]
 
     def _encrypt_name_blob(self, diriv: bytes, name: str) -> str:
         nonce = self._name_nonce(diriv, name)
@@ -847,7 +909,7 @@ class EncryptedFS(OTPmeFS):
     def _try_decrypt_name_blob(self, blob: str) -> Optional[str]:
         try:
             raw = self._b64d(blob)
-            nonce, ct = raw[:NONCE_SIZE], raw[NONCE_SIZE:]
+            nonce, ct = raw[:self.nonce_size], raw[self.nonce_size:]
             pt = self.aesgcm_names.decrypt(nonce, ct, None)
             return pt.decode('utf-8')
         except Exception:
@@ -860,7 +922,7 @@ class EncryptedFS(OTPmeFS):
         if not diriv:
             diriv = self._load_diriv(enc_dir_path, use_cache=use_diriv_cache)
         ciph = self._encrypt_name_blob(diriv, clear_name)
-        if len(ciph) <= MAX_NAME:
+        if len(ciph) <= self.max_name:
             return ciph
         # Handle long names.
         h = hashlib.sha256(ciph.encode('ascii')).hexdigest()[:32]
@@ -910,21 +972,21 @@ class EncryptedFS(OTPmeFS):
 
     def _encrypt_block(self, block, unencrypted_block_len, nonce):
         self.logger.debug(f"Encrypting block of size {len(block)} with nonce {nonce.hex()}")
-        #if len(block) != BLOCK_SIZE:
-        #    self.logger.error(f"Invalid block size: {len(block)}, expected {BLOCK_SIZE}")
+        #if len(block) != self.block_size:
+        #    self.logger.error(f"Invalid block size: {len(block)}, expected {self.block_size}")
         #    raise fuse.FuseOSError(errno.EIO)
-        #if len(nonce) != NONCE_SIZE:
-        #    self.logger.error(f"Invalid nonce size: {len(nonce)}, expected {NONCE_SIZE}")
+        #if len(nonce) != self.nonce_size:
+        #    self.logger.error(f"Invalid nonce size: {len(nonce)}, expected {self.nonce_size}")
         #    raise fuse.FuseOSError(errno.EIO)
         try:
             ciphertext = self.aesgcm.encrypt(nonce, block, None)
-            tag = ciphertext[-TAG_SIZE:]
-            encrypted_block = ciphertext[:-TAG_SIZE]
+            tag = ciphertext[-self.tag_size:]
+            encrypted_block = ciphertext[:-self.tag_size]
             block_len = len(encrypted_block)
-            if block_len != BLOCK_SIZE:
-                self.logger.error(f"Encrypted block size invalid: {block_len}, expected {BLOCK_SIZE}")
+            if block_len != self.block_size:
+                self.logger.error(f"Encrypted block size invalid: {block_len}, expected {self.block_size}")
                 raise fuse.FuseOSError(errno.EIO)
-            if tag == b'\x00' * TAG_SIZE:
+            if tag == b'\x00' * self.tag_size:
                 self.logger.error("Generated zero tag, which is invalid")
                 raise fuse.FuseOSError(errno.EIO)
             self.logger.debug(f"Encrypted block size: {block_len}, tag: {tag.hex()}")
@@ -935,8 +997,8 @@ class EncryptedFS(OTPmeFS):
                 nonce +
                 tag
             )
-            #if len(serialized_block) != BLOCK_WITH_METADATA_SIZE:
-            #    self.logger.error(f"Serialized block size invalid: {len(serialized_block)}, expected {BLOCK_WITH_METADATA_SIZE}")
+            #if len(serialized_block) != self.block_with_metadata_size:
+            #    self.logger.error(f"Serialized block size invalid: {len(serialized_block)}, expected {self.block_with_metadata_size}")
             #    raise fuse.FuseOSError(errno.EIO)
             return serialized_block
         except Exception as e:
@@ -1208,12 +1270,12 @@ class EncryptedFS(OTPmeFS):
     def read(self, path, size, offset, fh):
         enc = self._map_plain_to_enc(path, use_diriv_cache=True)
         self.logger.debug(f"Reading {size} bytes at offset {offset} from {path}")
-        start_block = offset // BLOCK_SIZE
-        end_block = (offset + size - 1) // BLOCK_SIZE
+        start_block = offset // self.block_size
+        end_block = (offset + size - 1) // self.block_size
         block_count = end_block - start_block + 1
         self.logger.debug(f"Start block: {start_block}, End block: {end_block}, Block count: {block_count}")
-        read_offset = start_block * BLOCK_WITH_METADATA_SIZE
-        read_size = block_count * BLOCK_WITH_METADATA_SIZE
+        read_offset = start_block * self.block_with_metadata_size
+        read_size = block_count * self.block_with_metadata_size
         self.logger.debug(f"Read offset: {read_offset}, read size: {read_size}")
         encrypted_size = self._get_file_size(enc)
         if encrypted_size == 0:
@@ -1234,7 +1296,7 @@ class EncryptedFS(OTPmeFS):
             raise fuse.FuseOSError(errno.EIO) from e
         decrypted_data = self._decrypt_blocks(encrypted_data, block_count, remove_padding=True)
         del encrypted_data
-        data_offset = offset % BLOCK_SIZE
+        data_offset = offset % self.block_size
         result = decrypted_data[data_offset:data_offset + size]
         del decrypted_data
         return result
@@ -1243,14 +1305,14 @@ class EncryptedFS(OTPmeFS):
         global path_hash_cache
         enc = self._map_plain_to_enc(path, use_diriv_cache=True)
         self.logger.debug(f"Writing {len(data)} bytes at offset {offset} to {path}")
-        start_block = offset // BLOCK_SIZE
-        end_block = (offset + len(data) - 1) // BLOCK_SIZE
+        start_block = offset // self.block_size
+        end_block = (offset + len(data) - 1) // self.block_size
         block_count = end_block - start_block + 1
         self.logger.debug(f"Start block: {start_block}, End block: {end_block}, Block count: {block_count}")
-        write_offset = start_block * BLOCK_WITH_METADATA_SIZE
+        write_offset = start_block * self.block_with_metadata_size
         self.logger.debug(f"Write offset: {write_offset}")
-        is_first_block_partial = offset % BLOCK_SIZE != 0
-        is_last_block_partial = (offset + len(data)) % BLOCK_SIZE != 0
+        is_first_block_partial = offset % self.block_size != 0
+        is_last_block_partial = (offset + len(data)) % self.block_size != 0
         self.logger.debug(f"First block partial: {is_first_block_partial}, Last block partial: {is_last_block_partial}")
         current_size = self._get_file_size(enc)
         decrypted_data = {}
@@ -1261,15 +1323,15 @@ class EncryptedFS(OTPmeFS):
             if is_last_block_partial and end_block != start_block:
                 blocks_to_read.append(end_block)
             for block in blocks_to_read:
-                read_offset = block * BLOCK_WITH_METADATA_SIZE
-                read_size = BLOCK_WITH_METADATA_SIZE
+                read_offset = block * self.block_with_metadata_size
+                read_size = self.block_with_metadata_size
                 max_available_size = self._get_file_size(enc)
                 read_size = min(read_size, max_available_size - read_offset)
                 if read_size > 0:
                     self.logger.debug(f"Reading block {block} at offset {read_offset}, size {read_size}")
                     try:
                         encrypted_data = super().read(enc, read_size, read_offset, fh)
-                        decrypted_data[block] = self._decrypt_blocks(encrypted_data, 1)[:BLOCK_SIZE]
+                        decrypted_data[block] = self._decrypt_blocks(encrypted_data, 1)[:self.block_size]
                     except Exception as e:
                         self.logger.error(f"Failed to read block {block}: {e}")
                         raise fuse.FuseOSError(errno.EIO) from e
@@ -1285,32 +1347,32 @@ class EncryptedFS(OTPmeFS):
         for i in range(start_block, end_block + 1):
             block = bytearray()
             if i == start_block and is_first_block_partial:
-                existing_block = decrypted_data.get(i, b'\x00' * BLOCK_SIZE)
-                block_offset = offset % BLOCK_SIZE
+                existing_block = decrypted_data.get(i, b'\x00' * self.block_size)
+                block_offset = offset % self.block_size
                 block.extend(existing_block[:block_offset])
                 data_start = data_offset
-                data_end = min(len(data), data_start + BLOCK_SIZE - block_offset)
+                data_end = min(len(data), data_start + self.block_size - block_offset)
                 block.extend(data[data_start:data_end])
                 block_length = len(block)
                 data_offset = data_end
-                if len(block) % BLOCK_SIZE != 0:
-                    block.extend(b'\x00' * (BLOCK_SIZE - (len(block) % BLOCK_SIZE)))
+                if len(block) % self.block_size != 0:
+                    block.extend(b'\x00' * (self.block_size - (len(block) % self.block_size)))
             elif i == end_block and is_last_block_partial:
-                existing_block = decrypted_data.get(i, b'\x00' * BLOCK_SIZE)
+                existing_block = decrypted_data.get(i, b'\x00' * self.block_size)
                 remaining_data = data[data_offset:]
                 block.extend(remaining_data)
                 block_length = len(remaining_data)
-                remaining_length = BLOCK_SIZE - len(remaining_data)
+                remaining_length = self.block_size - len(remaining_data)
                 if remaining_length > 0:
                     block.extend(existing_block[:remaining_length])
             else:
                 data_start = data_offset
-                data_end = min(len(data), data_start + BLOCK_SIZE)
+                data_end = min(len(data), data_start + self.block_size)
                 block.extend(data[data_start:data_end])
                 block_length = len(data[data_start:data_end])
                 data_offset = data_end
-                if len(block) % BLOCK_SIZE != 0:
-                    block.extend(b'\x00' * (BLOCK_SIZE - (len(block) % BLOCK_SIZE)))
+                if len(block) % self.block_size != 0:
+                    block.extend(b'\x00' * (self.block_size - (len(block) % self.block_size)))
             # Get block number for nonce.
             block_number = write_offset + block_counter
             # Generate nonce: 8 bytes block_number, 2 bytes path_id, 2 bytes random.
@@ -1319,8 +1381,8 @@ class EncryptedFS(OTPmeFS):
             serialized_data.extend(serialized_block)
         try:
             self.logger.debug(f"Writing {len(serialized_data)} bytes at offset {write_offset}")
-            #if len(serialized_data) != block_count * BLOCK_WITH_METADATA_SIZE:
-            #    self.logger.error(f"Invalid serialized data size: {len(serialized_data)}, expected {block_count * BLOCK_WITH_METADATA_SIZE}")
+            #if len(serialized_data) != block_count * self.block_with_metadata_size:
+            #    self.logger.error(f"Invalid serialized data size: {len(serialized_data)}, expected {block_count * self.block_with_metadata_size}")
             #    raise fuse.FuseOSError(errno.EIO)
             super().write(enc, bytes(serialized_data), write_offset, fh)
         except Exception as e:
@@ -1333,14 +1395,14 @@ class EncryptedFS(OTPmeFS):
     #def write(self, path, data, offset, fh):
     #    enc = self._map_plain_to_enc(path, use_diriv_cache=True)
     #    self.logger.debug(f"Writing {len(data)} bytes at offset {offset} to {path}")
-    #    start_block = offset // BLOCK_SIZE
-    #    end_block = (offset + len(data) - 1) // BLOCK_SIZE
+    #    start_block = offset // self.block_size
+    #    end_block = (offset + len(data) - 1) // self.block_size
     #    block_count = end_block - start_block + 1
     #    self.logger.debug(f"Start block: {start_block}, End block: {end_block}, Block count: {block_count}")
-    #    write_offset = start_block * BLOCK_WITH_METADATA_SIZE
+    #    write_offset = start_block * self.block_with_metadata_size
     #    self.logger.debug(f"Write offset: {write_offset}")
-    #    is_first_block_partial = offset % BLOCK_SIZE != 0
-    #    is_last_block_partial = (offset + len(data)) % BLOCK_SIZE != 0
+    #    is_first_block_partial = offset % self.block_size != 0
+    #    is_last_block_partial = (offset + len(data)) % self.block_size != 0
     #    self.logger.debug(f"First block partial: {is_first_block_partial}, Last block partial: {is_last_block_partial}")
     #    current_size = self._get_file_size(enc)
     #    decrypted_data = {}
@@ -1351,15 +1413,15 @@ class EncryptedFS(OTPmeFS):
     #        if is_last_block_partial and end_block != start_block:
     #            blocks_to_read.append(end_block)
     #        for block in blocks_to_read:
-    #            read_offset = block * BLOCK_WITH_METADATA_SIZE
-    #            read_size = BLOCK_WITH_METADATA_SIZE
+    #            read_offset = block * self.block_with_metadata_size
+    #            read_size = self.block_with_metadata_size
     #            max_available_size = self._get_file_size(enc)
     #            read_size = min(read_size, max_available_size - read_offset)
     #            if read_size > 0:
     #                self.logger.debug(f"Reading block {block} at offset {read_offset}, size {read_size}")
     #                try:
     #                    encrypted_data = super().read(enc, read_size, read_offset, fh)
-    #                    decrypted_data[block] = self._decrypt_blocks(encrypted_data, 1)[:BLOCK_SIZE]
+    #                    decrypted_data[block] = self._decrypt_blocks(encrypted_data, 1)[:self.block_size]
     #                except Exception as e:
     #                    self.logger.error(f"Failed to read block {block}: {e}")
     #                    raise fuse.FuseOSError(errno.EIO) from e
@@ -1368,39 +1430,39 @@ class EncryptedFS(OTPmeFS):
     #    block_lengths = []
     #    for i in range(start_block, end_block + 1):
     #        if i == start_block and is_first_block_partial:
-    #            existing_block = decrypted_data.get(i, b'\x00' * BLOCK_SIZE)
-    #            block_offset = offset % BLOCK_SIZE
+    #            existing_block = decrypted_data.get(i, b'\x00' * self.block_size)
+    #            block_offset = offset % self.block_size
     #            new_data.extend(existing_block[:block_offset])
     #            data_start = data_offset
-    #            data_end = min(len(data), data_start + BLOCK_SIZE - block_offset)
+    #            data_end = min(len(data), data_start + self.block_size - block_offset)
     #            new_data.extend(data[data_start:data_end])
     #            block_lengths.append(len(new_data) - sum(block_lengths))
     #            data_offset = data_end
-    #            if len(new_data) % BLOCK_SIZE != 0:
-    #                new_data.extend(b'\x00' * (BLOCK_SIZE - (len(new_data) % BLOCK_SIZE)))
+    #            if len(new_data) % self.block_size != 0:
+    #                new_data.extend(b'\x00' * (self.block_size - (len(new_data) % self.block_size)))
     #        elif i == end_block and is_last_block_partial:
-    #            existing_block = decrypted_data.get(i, b'\x00' * BLOCK_SIZE)
+    #            existing_block = decrypted_data.get(i, b'\x00' * self.block_size)
     #            remaining_data = data[data_offset:]
     #            new_data.extend(remaining_data)
     #            block_lengths.append(len(remaining_data))
-    #            remaining_length = BLOCK_SIZE - len(remaining_data)
+    #            remaining_length = self.block_size - len(remaining_data)
     #            if remaining_length > 0:
     #                new_data.extend(existing_block[:remaining_length])
     #        else:
     #            data_start = data_offset
-    #            data_end = min(len(data), data_start + BLOCK_SIZE)
+    #            data_end = min(len(data), data_start + self.block_size)
     #            new_data.extend(data[data_start:data_end])
     #            block_lengths.append(len(data[data_start:data_end]))
     #            data_offset = data_end
-    #            if len(new_data) % BLOCK_SIZE != 0:
-    #                new_data.extend(b'\x00' * (BLOCK_SIZE - (len(new_data) % BLOCK_SIZE)))
+    #            if len(new_data) % self.block_size != 0:
+    #                new_data.extend(b'\x00' * (self.block_size - (len(new_data) % self.block_size)))
     #    # Create a unique identifier from the file path using SHA-256.
     #    path_hash = hashlib.sha256(path.encode('utf-8')).digest()
     #    serialized_data = bytearray()
     #    for i in range(block_count):
-    #        block = new_data[i * BLOCK_SIZE:(i + 1) * BLOCK_SIZE]
-    #        #if len(block) != BLOCK_SIZE:
-    #        #    self.logger.error(f"Invalid block size for block {i}: {len(block)} bytes, expected {BLOCK_SIZE}")
+    #        block = new_data[i * self.block_size:(i + 1) * self.block_size]
+    #        #if len(block) != self.block_size:
+    #        #    self.logger.error(f"Invalid block size for block {i}: {len(block)} bytes, expected {self.block_size}")
     #        #    raise fuse.FuseOSError(errno.EIO)
     #        # Get block number for nonce.
     #        block_number = write_offset + i
@@ -1408,10 +1470,10 @@ class EncryptedFS(OTPmeFS):
     #        #path_hash = hashlib.sha256(path.encode('utf-8')).digest()
     #        # Generate nonce: 8 bytes block_number, 2 bytes path_id, 2 bytes random.
     #        nonce = struct.pack('!Q', block_number) + path_hash[:2] + os.urandom(2)
-    #        #if len(nonce) != NONCE_SIZE:
+    #        #if len(nonce) != self.nonce_size:
     #        #    self.logger.error("Generated nonce with wrong size.")
     #        #    raise fuse.FuseOSError(errno.EIO)
-    #        #if nonce == b'\x00' * NONCE_SIZE:
+    #        #if nonce == b'\x00' * self.nonce_size:
     #        #    self.logger.error("Generated zero nonce, which is invalid")
     #        #    raise fuse.FuseOSError(errno.EIO)
     #        block_length = block_lengths[i]
@@ -1420,8 +1482,8 @@ class EncryptedFS(OTPmeFS):
     #    del new_data
     #    try:
     #        self.logger.debug(f"Writing {len(serialized_data)} bytes at offset {write_offset}")
-    #        #if len(serialized_data) != block_count * BLOCK_WITH_METADATA_SIZE:
-    #        #    self.logger.error(f"Invalid serialized data size: {len(serialized_data)}, expected {block_count * BLOCK_WITH_METADATA_SIZE}")
+    #        #if len(serialized_data) != block_count * self.block_with_metadata_size:
+    #        #    self.logger.error(f"Invalid serialized data size: {len(serialized_data)}, expected {block_count * self.block_with_metadata_size}")
     #        #    raise fuse.FuseOSError(errno.EIO)
     #        super().write(enc, bytes(serialized_data), write_offset, fh)
     #    except Exception as e:
@@ -1442,18 +1504,18 @@ class EncryptedFS(OTPmeFS):
             unencrypted_block_len = struct.unpack('!I', encrypted_data[offset + 4:offset + 8])[0]
             offset += 8
             self.logger.debug(f"Reading block {blocks_processed} at offset {offset - 4}, block_len: {block_len}")
-            if block_len != BLOCK_SIZE:
-                self.logger.error(f"Invalid block length: {block_len}, expected {BLOCK_SIZE}")
+            if block_len != self.block_size:
+                self.logger.error(f"Invalid block length: {block_len}, expected {self.block_size}")
                 raise fuse.FuseOSError(errno.EIO)
-            if offset + block_len + NONCE_SIZE + TAG_SIZE > len(encrypted_data):
+            if offset + block_len + self.nonce_size + self.tag_size > len(encrypted_data):
                 self.logger.error(f"Invalid block structure at offset {offset}, not enough data for block")
                 raise fuse.FuseOSError(errno.EIO)
             block = encrypted_data[offset:offset + block_len]
             offset += block_len
-            nonce = encrypted_data[offset:offset + NONCE_SIZE]
-            offset += NONCE_SIZE
-            tag = encrypted_data[offset:offset + TAG_SIZE]
-            offset += TAG_SIZE
+            nonce = encrypted_data[offset:offset + self.nonce_size]
+            offset += self.nonce_size
+            tag = encrypted_data[offset:offset + self.tag_size]
+            offset += self.tag_size
             self.logger.debug(f"Decrypting block_len: {block_len}, nonce: {nonce.hex()}, tag: {tag.hex()}")
             try:
                 decrypted_block = self.aesgcm.decrypt(nonce, block + tag, None)
@@ -1468,8 +1530,8 @@ class EncryptedFS(OTPmeFS):
             self.logger.error(f"Expected {block_count} blocks, but processed {blocks_processed}")
             raise fuse.FuseOSError(errno.EIO)
         if not remove_padding:
-            if len(decrypted_data) < block_count * BLOCK_SIZE:
-                decrypted_data.extend(b'\x00' * (block_count * BLOCK_SIZE - len(decrypted_data)))
+            if len(decrypted_data) < block_count * self.block_size:
+                decrypted_data.extend(b'\x00' * (block_count * self.block_size - len(decrypted_data)))
         return bytes(decrypted_data)
 
     def _get_file_size(self, enc_path):
@@ -1486,19 +1548,19 @@ class EncryptedFS(OTPmeFS):
         """ Calculate unencrypted file size. """
         if enc is None:
             enc = self._map_plain_to_enc(path, use_diriv_cache=True)
-        num_blocks = encrypted_size // BLOCK_WITH_METADATA_SIZE
-        if encrypted_size % BLOCK_WITH_METADATA_SIZE != 0:
-            self.logger.error(f"Invalid encrypted file size for {path}: {encrypted_size}, not a multiple of {BLOCK_WITH_METADATA_SIZE}")
+        num_blocks = encrypted_size // self.block_with_metadata_size
+        if encrypted_size % self.block_with_metadata_size != 0:
+            self.logger.error(f"Invalid encrypted file size for {path}: {encrypted_size}, not a multiple of {self.block_with_metadata_size}")
             raise fuse.FuseOSError(errno.EIO)
-        unencrypted_size = (num_blocks - 1) * BLOCK_SIZE if num_blocks > 0 else 0
+        unencrypted_size = (num_blocks - 1) * self.block_size if num_blocks > 0 else 0
         try:
-            offset = (num_blocks - 1) * BLOCK_WITH_METADATA_SIZE + 4
+            offset = (num_blocks - 1) * self.block_with_metadata_size + 4
             len_data = super().read(enc, 4, offset, None)
             super().release(enc, None)
             unencrypted_block_len = struct.unpack('!I', len_data)[0]
             self.logger.debug(f"Last block unencrypted length: {unencrypted_block_len}")
-            if unencrypted_block_len > BLOCK_SIZE:
-                self.logger.error(f"Invalid unencrypted block length for last block: {unencrypted_block_len}, exceeds {BLOCK_SIZE}")
+            if unencrypted_block_len > self.block_size:
+                self.logger.error(f"Invalid unencrypted block length for last block: {unencrypted_block_len}, exceeds {self.block_size}")
                 raise fuse.FuseOSError(errno.EIO)
             unencrypted_size += unencrypted_block_len
         except Exception as e:
@@ -1525,8 +1587,8 @@ class EncryptedFS(OTPmeFS):
             return 0
 
         # Calculate blocks needed after truncate.
-        needed_blocks = (length + BLOCK_SIZE - 1) // BLOCK_SIZE
-        current_blocks = current_encrypted_size // BLOCK_WITH_METADATA_SIZE
+        needed_blocks = (length + self.block_size - 1) // self.block_size
+        current_blocks = current_encrypted_size // self.block_with_metadata_size
 
         self.logger.debug(f"Current blocks: {current_blocks}, needed blocks: {needed_blocks}")
 
@@ -1545,16 +1607,16 @@ class EncryptedFS(OTPmeFS):
         if needed_blocks < current_blocks:
             # If file should shrink, truncate to full block size.
             self.logger.debug(f"Removing blocks: from {current_blocks} to {needed_blocks}")
-            new_encrypted_size = needed_blocks * BLOCK_WITH_METADATA_SIZE
+            new_encrypted_size = needed_blocks * self.block_with_metadata_size
             super().truncate(enc, new_encrypted_size, fh)
 
         # Handle partial last block.
-        last_block_remainder = length % BLOCK_SIZE
+        last_block_remainder = length % self.block_size
         if last_block_remainder != 0 and needed_blocks > 0:
             self.logger.debug(f"Adjusting last block to {last_block_remainder} bytes")
             # Read current block data.
-            last_block_start_offset = (needed_blocks - 1) * BLOCK_SIZE
-            current_block_data = self.read(path, BLOCK_SIZE, last_block_start_offset, fh)
+            last_block_start_offset = (needed_blocks - 1) * self.block_size
+            current_block_data = self.read(path, self.block_size, last_block_start_offset, fh)
             # Truncate current block.
             truncated_data = current_block_data[:last_block_remainder]
             # Write truncated block.
@@ -1663,7 +1725,8 @@ def mount_share_proc(share, mount, nodes, encrypted, **kwargs):
     setproctitle.setproctitle(new_proctitle)
     mount_share(share, mount, nodes, encrypted, **kwargs)
 
-def mount_share(share, mount, nodes, encrypted=False, foreground=True, logger=None):
+def mount_share(share, mount, nodes, encrypted=False,
+    master_password=None, foreground=True, logger=None):
     #if config.debug_enabled:
     #    logging.basicConfig(level=logging.DEBUG)
     fsname = "OTPmeFS:/%s" % share
@@ -1673,7 +1736,7 @@ def mount_share(share, mount, nodes, encrypted=False, foreground=True, logger=No
     print(msg)
     logger.info(msg)
     if encrypted:
-        fuse.FUSE(EncryptedFS(share, logger, nodes),
+        fuse.FUSE(EncryptedFS(share, logger, nodes, master_password),
                         mount,
                         foreground=foreground,
                         nothreads=True,

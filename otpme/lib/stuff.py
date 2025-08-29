@@ -1725,7 +1725,8 @@ def encrypt_share_key(username, share_user, share_key, sign_mode):
         encrypted_share_key = encrypted_share_key.decode()
     return encrypted_share_key
 
-def decrypt_share_key(username, encrypted_share_key, sign_mode, disable_ctrl_c=False):
+def decrypt_share_key(username, encrypted_share_key,
+    sign_mode, encode=True, disable_ctrl_c=False):
     import base64
     # Make sure share key is bytes.
     if isinstance(encrypted_share_key, str):
@@ -1751,34 +1752,35 @@ def decrypt_share_key(username, encrypted_share_key, sign_mode, disable_ctrl_c=F
     if returncode != 0:
         msg = "Failed to run key script: %s" % script_stderr
         raise OTPmeException(msg)
-    decrypted_share_key = base64.b64encode(decrypted_share_key)
-    # Make sure share key is string.
-    if isinstance(decrypted_share_key, bytes):
-        decrypted_share_key = decrypted_share_key.decode()
+    if encode:
+        decrypted_share_key = base64.b64encode(decrypted_share_key)
+        # Make sure share key is string.
+        if isinstance(decrypted_share_key, bytes):
+            decrypted_share_key = decrypted_share_key.decode()
     return decrypted_share_key
 
-def get_share_key(username, share_name, disable_ctrl_c=False):
-    import base64
-    from otpme.lib.classes.command_handler import CommandHandler
-    command_args = {'share_name':share_name}
-    command_handler = CommandHandler()
-    encrypted_share_key = command_handler.send_command(daemon="mgmtd",
-                                                    command="user",
-                                                    subcommand="get_share_key",
-                                                    command_args=command_args,
-                                                    object_list=[username],
-                                                    parse_command_syntax=False,
-                                                    client_type="RAPI")
-    share_key = decrypt_share_key(username,
-                                encrypted_share_key,
-                                sign_mode=None,
-                                disable_ctrl_c=disable_ctrl_c)
-    try:
-        share_key = base64.b64decode(share_key)
-    except Exception as e:
-        msg = "Failed to decode share key: %s" % e
-        raise OTPmeException(msg)
-    return share_key
+#def get_share_key(username, share_name, disable_ctrl_c=False):
+#    import base64
+#    from otpme.lib.classes.command_handler import CommandHandler
+#    command_args = {'share_name':share_name}
+#    command_handler = CommandHandler()
+#    encrypted_share_key = command_handler.send_command(daemon="mgmtd",
+#                                                    command="user",
+#                                                    subcommand="get_share_key",
+#                                                    command_args=command_args,
+#                                                    object_list=[username],
+#                                                    parse_command_syntax=False,
+#                                                    client_type="RAPI")
+#    share_key = decrypt_share_key(username,
+#                                encrypted_share_key,
+#                                sign_mode=None,
+#                                disable_ctrl_c=disable_ctrl_c)
+#    try:
+#        share_key = base64.b64decode(share_key)
+#    except Exception as e:
+#        msg = "Failed to decode share key: %s" % e
+#        raise OTPmeException(msg)
+#    return share_key
 
 def get_agent_user():
     """ Try to get logged in user from otpme-agent. """

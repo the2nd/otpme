@@ -55,7 +55,10 @@ def verify(password_hash, epoch_time=None, validity_range=None, reneg=False,
 
     if not epoch_time:
         # Get epoch time (10 second timestep).
-        epoch_time = int(str(int(time.time()))[:-1])
+        #epoch_time = int(str(int(time.time()))[:-1])
+        # We need SOTPs in 1 second timestep because fuse mount
+        # and key script sends OTPs one after another.
+        epoch_time = int(str(int(time.time())))
 
     if not validity_range:
         # Calculate SOTP validity times.
@@ -101,7 +104,10 @@ def gen(epoch_time=None, password_hash=None, sotp_len=None,
     """ Generate session OTP. """
     if not epoch_time:
         # get epoch time (10 second timestep)
-        epoch_time = int(str(int(time.time()))[:-1])
+        #epoch_time = int(str(int(time.time()))[:-1])
+        # We need SOTPs in 1 second timestep because fuse mount
+        # and key script sends OTPs one after another.
+        epoch_time = int(str(int(time.time())))
 
     if sotp_len is None:
         sotp_len = config.sotp_len

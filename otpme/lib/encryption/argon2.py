@@ -118,7 +118,7 @@ def register():
 
 def derive(secret, salt=None, key_len=128, hash_algo="Argon2_i",
     min_mem=None, max_mem=None, memory=None, threads=None,
-    iterations=None, quiet=True):
+    iterations=None, quiet=True, **kwargs):
     #iterations=None, quiet=True, **kwargs):
     """ Generate secret hash. """
 
@@ -183,6 +183,7 @@ def derive(secret, salt=None, key_len=128, hash_algo="Argon2_i",
             'memory'        : memory,
             'salt'          : salt,
             'hash'          : _hash,
+            'version'       : 1,
             }
 
     return result

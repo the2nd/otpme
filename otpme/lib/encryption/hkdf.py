@@ -91,6 +91,7 @@ def derive(secret, hash_algo="SHA256", key_len=32,
             'hash_algo'     : hash_algo,
             'key_len'       : key_len,
             'salt'          : salt,
+            'version'       : 1,
             }
 
     return result

@@ -75,15 +75,6 @@ cmd_help = {
                 },
 
 
-    'get_share_key'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user get_share_key {user} {share}',
-                    'cmd'   :   '<|object|> <share_name>',
-                    '_help' :   {
-                                    'cmd'                   : 'Get encrypted share key from user',
-                                },
-                },
-
-
     'get_sign_mode'    : {
                     '_cmd_usage_help' : 'Usage: otpme-user get_sign_mode {user}',
                     'cmd'   :   '<|object|>',

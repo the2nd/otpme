@@ -496,7 +496,8 @@ class OTPmeFsP1(OTPmeServer1):
                 message = ("Unknown share root dir: %s: %s"
                         % (self.share, share.root_dir))
                 return self.build_response(status, message)
-            if not share.is_assigned_token(token_uuid=config.auth_token.uuid):
+            if not share.is_assigned_token(token_uuid=config.auth_token.uuid) \
+            and not share.is_master_password_token(config.auth_token.rel_path):
                 status = status_codes.PERMISSION_DENIED
                 message = "No share permissions: %s" % self.share
                 self.logger.warning(message)
@@ -531,9 +532,12 @@ class OTPmeFsP1(OTPmeServer1):
                 self.create_mode = int(share.create_mode, 0)
             self.encrypted = share.encrypted
             if self.encrypted:
-                block_size = share.block_size
+                self.block_size = share.block_size
+                hash_params = share.master_password_hash_params.copy()
                 try:
-                    init_cryptfs(path=self.root, block_size=block_size)
+                    init_cryptfs(path=self.root,
+                                block_size=self.block_size,
+                                hash_params=hash_params)
                 except AlreadyInitialized:
                     pass
                 except Exception as e:
@@ -562,10 +566,40 @@ class OTPmeFsP1(OTPmeServer1):
                     status = status_codes.UNKNOWN_OBJECT
                     self.logger.warning(message)
                     return self.build_response(status, message)
+                share_key = None
+                master_password_hash_params = None
+                try:
+                    master_password_mount = command_args['master_password_mount']
+                except KeyError:
+                    master_password_mount = False
+                if master_password_mount:
+                    if not share.is_master_password_token(config.auth_token.rel_path):
+                        status = status_codes.PERMISSION_DENIED
+                        message = ("Master password mount not allowed: %s"
+                                    % config.auth_token.rel_path)
+                        self.logger.warning(message)
+                        return self.build_response(status, message)
+                    try:
+                        master_password_hash_params = fs_data['hash_params']
+                    except KeyError:
+                        message = "Cryptfs misses master password hash parameters: %s" % share.name
+                        status = status_codes.UNKNOWN_OBJECT
+                        self.logger.warning(message)
+                        return self.build_response(status, message)
+                else:
+                    share_key = share.get_share_key(username=config.auth_user.name,
+                                                    verify_acls=False)
+                    if not share_key:
+                        status = status_codes.PERMISSION_DENIED
+                        message = ("No share key for user: %s"
+                                    % config.auth_user.name)
+                        self.logger.warning(message)
+                        return self.build_response(status, message)
 
             # Get share node FQDNs to reply.
             share_nodes = share.get_nodes(include_pools=True,
                                         return_type="instance")
+            mount_result = {}
             share_node_fqdns = []
             for node in share_nodes:
                 share_node_fqdns.append(node.fqdn)
@@ -588,7 +622,12 @@ class OTPmeFsP1(OTPmeServer1):
                     return self.build_response(status, message)
                 self.privileges_dropped = True
             self.set_proctitle(self.username, share)
-            message = share_node_fqdns
+            mount_result = {'nodes':share_node_fqdns}
+            if self.encrypted:
+                mount_result['share_key'] = share_key
+                mount_result['block_size'] = self.block_size
+                mount_result['master_password_hash_params'] = master_password_hash_params
+            message = mount_result
             return self.build_response(status, message)
         else:
             if not self.root:

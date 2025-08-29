@@ -1188,9 +1188,8 @@ class OTPmeAgentP1(object):
 
         elif command == "get_sotp":
             from otpme.lib import sotp
-            epoch_time = int(str(int(time.time()))[:-1])
             rsp_hash = otpme_pass.gen_one_iter_hash(self.login_user, self.rsp)
-            otp = sotp.gen(epoch_time=epoch_time, password_hash=rsp_hash)
+            otp = sotp.gen(password_hash=rsp_hash)
             message = {'username':self.login_user, 'sotp':otp}
             status = True
 
