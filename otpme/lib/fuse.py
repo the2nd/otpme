@@ -42,6 +42,7 @@ no_such_data_cache = {}
 last_create_cache = None
 last_create_cache_time = 0.0
 
+UTIME_NOW = 1073741823
 CONF_FILE = "otpmecryptfs.conf"
 DIRIV_NAME = "otpmecryptfs.diriv"
 LONGNAME_PREFIX = "otpmecryptfs.longname."
@@ -121,6 +122,7 @@ class OTPmeFS(fuse.Operations):
     '''
 
     def __init__(self, share, logger, nodes):
+        self.use_ns = True
         self.share = share
         self.nodes = nodes
         self.fsd_conn = None
@@ -681,12 +683,19 @@ class OTPmeFS(fuse.Operations):
     @fuse.overrides(fuse.Operations)
     def utimens(self, path: str, times: Optional[tuple[int, int]] = None) -> int:
         self.logger.debug(f"utimens method called for path: {path}")
-        # FIXME: a simple touch <file> always gives touch_now timestamp. Why?
-        if times is not None:
-            touch_now = 1.073741823
-            if times[0] == touch_now and times[1] == touch_now:
-                now = time.time()
-                times = (now, now)
+        if times is None:
+            now = time.time_ns()
+            times = (now, now)
+        else:
+            atime_ns = times[0]
+            mtime_ns = times[1]
+            if atime_ns == UTIME_NOW or mtime_ns == UTIME_NOW:
+                now = time.time_ns()
+                if atime_ns == UTIME_NOW:
+                    atime_ns = now
+                if mtime_ns == UTIME_NOW:
+                    mtime_ns = now
+                times = (atime_ns, mtime_ns)
         method_data = encode_method_call(method_name="utimens",
                                         path=path,
                                         times=times)

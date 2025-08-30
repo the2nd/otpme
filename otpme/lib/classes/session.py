@@ -287,9 +287,6 @@ class Session(OTPmeLockObject):
         # Set our object type.
         self.type = "session"
 
-        # Old checksum.
-        self.old_checksum = None
-
         if object_id:
             self.oid = object_id
 
@@ -544,14 +541,6 @@ class Session(OTPmeLockObject):
         if not object_config:
             return False
 
-        # Set old checksum. Used in backend to decide
-        # if a full data update is required.
-        if not self.old_checksum:
-            try:
-                self.old_checksum = object_config['CHECKSUM']
-            except KeyError:
-                pass
-
         self.object_config = object_config
 
         return True
@@ -606,20 +595,18 @@ class Session(OTPmeLockObject):
         self.object_config['INDEX'] = self.index
         self.object_config['ORIGIN'] = self.origin
         self.object_config['LAST_MODIFIED'] = self.last_modified
-        self.object_config['CHECKSUM'] = self.checksum
-        self.object_config['SYNC_CHECKSUM'] = self.sync_checksum
 
         # Update reneg stuff.
         self.object_config['RENEG_STARTED'] = self.reneg_started
         self.object_config['RENEG_HASH'] = self.reneg_hash
         self.object_config['LAST_RENEG'] = self.last_reneg
-        self.object_config['OLD_CHECKSUM'] = self.old_checksum
 
         # Write session config.
         try:
             backend.write_config(object_id=self.oid,
                                 instance=self,
                                 full_index_update=True,
+                                full_data_update=True,
                                 cluster=True)
         except Exception as e:
             msg = "Failed to write session: %s: %s" % (self.oid, e)
@@ -786,7 +773,7 @@ class Session(OTPmeLockObject):
         self.pass_hash = self.reneg_hash
         # The old session hash is kept in self.reneg_hash to allow
         # SOTPs generated from the old hash to be verified as long
-        # as the are valid.
+        # as they are valid.
         self.reneg_hash = old_pass_hash
         # Update timestamp.
         self.last_reneg = time.time()

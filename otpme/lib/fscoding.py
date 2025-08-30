@@ -125,14 +125,14 @@ def _decode_float(data: bytes, offset: int) -> Tuple[Optional[float], int]:
     offset += 8
     return f if has_value else None, offset
 
-def _encode_tuple_times(times: Optional[Tuple[float, float]]) -> bytes:
-    """Encode times tuple (atime, mtime)"""
+def _encode_tuple_times(times: Optional[Tuple[int, int]]) -> bytes:
+    """Encode times tuple (atime, mtime) as nanoseconds integers"""
     if times is None:
         return b'\x00'
-    return b'\x01' + struct.pack('!dd', times[0], times[1])
+    return b'\x01' + struct.pack('!QQ', int(times[0]), int(times[1]))
 
-def _decode_tuple_times(data: bytes, offset: int) -> Tuple[Optional[Tuple[float, float]], int]:
-    """Decode times tuple (atime, mtime)"""
+def _decode_tuple_times(data: bytes, offset: int) -> Tuple[Optional[Tuple[int, int]], int]:
+    """Decode times tuple (atime, mtime) as nanoseconds integers"""
     if offset + 1 > len(data):
         raise ValueError("Not enough data to read times flag")
     has_value = data[offset] == 1
@@ -142,10 +142,10 @@ def _decode_tuple_times(data: bytes, offset: int) -> Tuple[Optional[Tuple[float,
     if offset + 16 > len(data):
         raise ValueError("Not enough data to read times tuple")
     try:
-        atime, mtime = struct.unpack('!dd', data[offset:offset+16])
+        atime, mtime = struct.unpack('!QQ', data[offset:offset+16])
     except struct.error as e:
         raise ValueError(f"Failed to unpack times tuple: {e}")
-    return (atime, mtime), offset + 16
+    return (int(atime), int(mtime)), offset + 16
 
 def _encode_list_strings(lst: Optional[List[str]]) -> bytes:
     """Encode a list of strings"""
@@ -308,7 +308,7 @@ def encode_unlink(path: str) -> bytes:
     packet += _encode_string(path)
     return packet
 
-def encode_utimens(path: str, times: Optional[Tuple[float, float]] = None) -> bytes:
+def encode_utimens(path: str, times: Optional[Tuple[int, int]] = None) -> bytes:
     """Encode utimens method call"""
     packet = struct.pack('!B', METHOD_CODES['utimens'])
     packet += _encode_string(path)

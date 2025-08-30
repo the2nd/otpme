@@ -159,13 +159,13 @@ class OTPmeFsP1(OTPmeServer1):
     def getattr(self, path: str, fh: Optional[int] = None) -> dict[str, Any]:
         st = os.lstat(path)
         return {
-            key: getattr(st, key)
+            key.removesuffix('_ns'): getattr(st, key)
             for key in (
-                'st_atime',
-                'st_ctime',
+                'st_atime_ns',
+                'st_ctime_ns',
                 'st_gid',
                 'st_mode',
-                'st_mtime',
+                'st_mtime_ns',
                 'st_nlink',
                 'st_size',
                 'st_uid',
@@ -235,10 +235,8 @@ class OTPmeFsP1(OTPmeServer1):
             path = os.path.realpath(path)
             if not os.path.exists(path):
                 return 0
-        if times:
-            times = (int(times[0]), int(times[1]))
-        now = int(time.time() * 1e9)
-        os.utime(path, times=times or (now, now))
+        now = time.time_ns()
+        os.utime(path, ns=times or (now, now))
         return 0
 
     @with_root_path
