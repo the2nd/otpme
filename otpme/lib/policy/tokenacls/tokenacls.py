@@ -215,6 +215,7 @@ def register_policy_object():
                     ({'add_user_acl': {'acl': 'view_all'}},),
                     ({'add_user_acl': {'acl': 'encrypt'}},),
                     ({'add_user_acl': {'acl': 'decrypt'}},),
+                    ({'add_user_acl': {'acl': 'gen_keys'}},),
                     ({'add_token_acl': {'acl': 'view'}},),
                     ({'add_token_acl': {'acl': 'edit'}},),
                     ({'add_token_acl': {'acl': 'delete'}},),

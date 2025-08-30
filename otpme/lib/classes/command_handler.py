@@ -6027,7 +6027,7 @@ class CommandHandler(object):
             raise OTPmeException(msg)
         try:
             clusterd_conn = connections.get("clusterd",
-                                            timeout=None,
+                                            timeout=30,
                                             socket_uri=socket_uri)
         except Exception as e:
             msg = ("Failed to get node connection: %s: %s"
@@ -6058,7 +6058,7 @@ class CommandHandler(object):
             raise OTPmeException(msg)
         try:
             clusterd_conn = connections.get("clusterd",
-                                            timeout=None,
+                                            timeout=30,
                                             socket_uri=socket_uri)
         except Exception as e:
             msg = ("Failed to get node connection: %s: %s"
@@ -6097,7 +6097,7 @@ class CommandHandler(object):
             raise OTPmeException(msg)
         try:
             clusterd_conn = connections.get("clusterd",
-                                            timeout=None,
+                                            timeout=30,
                                             socket_uri=socket_uri)
         except Exception as e:
             msg = ("Failed to get master node connection: %s: %s"
@@ -6156,7 +6156,7 @@ class CommandHandler(object):
         # Get connection to node.
         try:
             clusterd_conn = connections.get("clusterd",
-                                            timeout=None,
+                                            timeout=30,
                                             socket_uri=socket_uri)
         except Exception as e:
             config.raise_exception()
@@ -6246,7 +6246,7 @@ class CommandHandler(object):
             return msg
         try:
             clusterd_conn = connections.get("clusterd",
-                                            timeout=None,
+                                            timeout=30,
                                             socket_uri=socket_uri)
         except Exception as e:
             config.raise_exception()
@@ -6343,7 +6343,7 @@ class CommandHandler(object):
                 return msg
             try:
                 clusterd_conn = connections.get("clusterd",
-                                                timeout=None,
+                                                timeout=30,
                                                 socket_uri=socket_uri)
             except Exception as e:
                 config.raise_exception()
@@ -6407,7 +6407,7 @@ class CommandHandler(object):
             return msg
         try:
             clusterd_conn = connections.get("clusterd",
-                                            timeout=None,
+                                            timeout=30,
                                             socket_uri=socket_uri)
         except Exception as e:
             config.raise_exception()

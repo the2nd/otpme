@@ -19,6 +19,7 @@ from otpme.lib import oid
 from otpme.lib import jwt
 from otpme.lib import cli
 from otpme.lib import json
+from otpme.lib import trash
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -3870,6 +3871,12 @@ class User(OTPmeObject):
                     ask = callback.ask("Replace existing token?: ")
                     if str(ask).lower() != "y":
                         return callback.abort()
+            # Add replaced token to trash.
+            if config.auth_token:
+                deleted_by = "token:%s" % config.auth_token.rel_path
+            else:
+                deleted_by = "API"
+            trash.add(cur_token.oid, deleted_by)
             # On replace we have to use the token UUID from the replaced token
             # to create the new one.
             token_uuid = cur_token.uuid

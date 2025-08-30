@@ -202,10 +202,17 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
                                                         journal_dir=journal_dir,
                                                         timestamp=timestamp,
                                                         object_uuid=object_uuid)
-            cluster_journal_entry.lock(write=True)
+            cluster_entry_lock = cluster_journal_entry.lock(write=True)
         except ObjectDeleted:
             continue
         break
+
+    if action == "delete":
+        cluster_journal_entry.delete()
+        cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,
+                                                    journal_dir=journal_dir,
+                                                    timestamp=timestamp,
+                                                    object_uuid=object_uuid)
 
     try:
         if object_id:
@@ -248,7 +255,7 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
             config.logger.critical(msg)
             return
     finally:
-        cluster_journal_entry.release()
+        cluster_entry_lock.release_lock()
 
     multiprocessing.cluster_out_event.set()
     return object_event
@@ -332,6 +339,7 @@ class ClusterEntry(object):
             msg = "Entry deleted while waiting for lock: %s" % self.journal_id
             self.release()
             raise ObjectDeleted(msg)
+        return self._lock
 
     def release(self):
         if not self._lock:
@@ -3175,9 +3183,8 @@ class ClusterDaemon(OTPmeDaemon):
             # even offline ones.
             all_nodes_in_sync = True
             actions = cluster_journal_entry.get_actions()
-            action = list(actions.keys())[0]
-            if action == "delete" \
-            or action == "trash_delete":
+            if "delete" in actions \
+            or "trash_delete" in actions:
                 enabled_nodes = list(self.get_enabled_nodes())
                 for node_name in enabled_nodes:
                     if node_name == self.host_name:

@@ -13,7 +13,6 @@ import logging
 import hashlib
 import argparse
 import setproctitle
-import mfusepy as fuse
 from typing import List
 from typing import Optional
 from cryptography.hazmat.primitives import hashes
@@ -29,6 +28,11 @@ from otpme.lib.encryption import hash_password
 from otpme.lib.fscoding import encode_method_call
 
 from otpme.lib.exceptions import *
+
+os.environ['FUSE_NAME'] = "fuse3"
+
+#import mfusepy as fuse
+from otpme.lib.third_party import mfusepy as fuse
 
 diriv_cache = {}
 filesize_cache = {}
@@ -120,6 +124,7 @@ class OTPmeFS(fuse.Operations):
         self.share = share
         self.nodes = nodes
         self.fsd_conn = None
+        self.max_name = 255
         self.username = None
         self.encrypted = False
         self.logger = logger
@@ -298,6 +303,12 @@ class OTPmeFS(fuse.Operations):
                                 self.fsd_conn.close()
                                 self.fsd_conn = None
                                 raise OSError(errno.EINVAL, msg)
+                        # Get max filename length for encrypted shares.
+                        statfs = self.statfs(path="/")
+                        try:
+                            self.max_name = statfs['f_namemax']
+                        except:
+                            pass
                     msg = "Share mounted: %s (%s)" % (self.share, node)
                     self.logger.info(msg)
                     break
@@ -830,10 +841,12 @@ class EncryptedFS(OTPmeFS):
         self.metadata_size = 4 + 4 + self.nonce_size + self.tag_size
         self.block_with_metadata_size = self.block_size + self.metadata_size
         self.max_name = 255
+        self.null_block = b'\x00' * self.block_size
 
     def set_block_size(self, block_size):
         self.block_size = block_size
         self.block_with_metadata_size = self.block_size + self.metadata_size
+        self.null_block = b'\x00' * self.block_size
 
     def setup_encryption(self, key):
         key_len = len(key)
@@ -1293,7 +1306,7 @@ class EncryptedFS(OTPmeFS):
         except Exception as e:
             self.logger.error(f"Read failed: {e}")
             raise fuse.FuseOSError(errno.EIO) from e
-        decrypted_data = self._decrypt_blocks(encrypted_data, block_count, remove_padding=True)
+        decrypted_data = self._decrypt_blocks(encrypted_data, block_count)
         del encrypted_data
         data_offset = offset % self.block_size
         result = decrypted_data[data_offset:data_offset + size]
@@ -1491,7 +1504,7 @@ class EncryptedFS(OTPmeFS):
     #    del serialized_data
     #    return len(data)
 
-    def _decrypt_blocks(self, encrypted_data, block_count, remove_padding=False):
+    def _decrypt_blocks(self, encrypted_data, block_count):
         decrypted_data = bytearray()
         offset = 0
         blocks_processed = 0
@@ -1500,7 +1513,18 @@ class EncryptedFS(OTPmeFS):
             #    self.logger.error(f"Invalid block structure at offset {offset}, not enough data for block length")
             #    raise fuse.FuseOSError(errno.EIO)
             block_len = struct.unpack('!I', encrypted_data[offset:offset + 4])[0]
-            unencrypted_block_len = struct.unpack('!I', encrypted_data[offset + 4:offset + 8])[0]
+            if block_len == 0:
+                block = encrypted_data[offset + 8:offset + 8 + self.block_size]
+                block_len = len(block)
+                if block == self.null_block:
+                    decrypted_data.extend(block)
+                    offset += 8
+                    offset += block_len
+                    offset += self.nonce_size
+                    offset += self.tag_size
+                    blocks_processed += 1
+                    continue
+            # Set block_len and unencrypted_block_len to offset.
             offset += 8
             self.logger.debug(f"Reading block {blocks_processed} at offset {offset - 4}, block_len: {block_len}")
             if block_len != self.block_size:
@@ -1518,8 +1542,6 @@ class EncryptedFS(OTPmeFS):
             self.logger.debug(f"Decrypting block_len: {block_len}, nonce: {nonce.hex()}, tag: {tag.hex()}")
             try:
                 decrypted_block = self.aesgcm.decrypt(nonce, block + tag, None)
-                if remove_padding:
-                    decrypted_block = decrypted_block[:unencrypted_block_len]
                 decrypted_data.extend(decrypted_block)
             except Exception as e:
                 self.logger.error(f"Decryption failed for block {blocks_processed}: {e}")
@@ -1528,9 +1550,8 @@ class EncryptedFS(OTPmeFS):
         if blocks_processed < block_count:
             self.logger.error(f"Expected {block_count} blocks, but processed {blocks_processed}")
             raise fuse.FuseOSError(errno.EIO)
-        if not remove_padding:
-            if len(decrypted_data) < block_count * self.block_size:
-                decrypted_data.extend(b'\x00' * (block_count * self.block_size - len(decrypted_data)))
+        if len(decrypted_data) < block_count * self.block_size:
+            decrypted_data.extend(b'\x00' * (block_count * self.block_size - len(decrypted_data)))
         return bytes(decrypted_data)
 
     def _get_file_size(self, enc_path):
