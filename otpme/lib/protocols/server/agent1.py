@@ -499,6 +499,7 @@ class OTPmeAgentP1(object):
 
         elif command == "mount_shares":
             status = True
+            login_user = self.login_sessions[self.login_pid]['login_user']
             try:
                 shares = command_args['shares']
             except KeyError:
@@ -512,7 +513,7 @@ class OTPmeAgentP1(object):
                     share_nodes = shares[share]['nodes']
                     share_encrypted = shares[share]['encrypted']
                     try:
-                        mount_point = prepare_mount_point(share_site, share)
+                        mount_point = prepare_mount_point(login_user, share_site, share)
                     except Exception as e:
                         msg = "Failed to prepare mountpoint: %s" % e
                         logger.warning(msg)
@@ -560,6 +561,7 @@ class OTPmeAgentP1(object):
 
         elif command == "umount_shares":
             status = True
+            login_user = self.login_sessions[self.login_pid]['login_user']
             try:
                 shares = self.session['mounted_shares']
             except KeyError:
@@ -571,13 +573,16 @@ class OTPmeAgentP1(object):
                 umounted_shares = []
                 for share in shares:
                     share_site = shares[share]['site']
-                    mount_point = get_mount_point(share_site, share)
+                    mount_point = get_mount_point(login_user, share_site, share)
                     try:
                         os.system(f"fusermount -u {mount_point}")
                     except Exception as e:
-                        msg = "Failed to unmount share: %s: %s" % (mount_point, e)
-                        messages.append(msg)
-                        logger.warning(msg)
+                        try:
+                            os.system(f"fusermount -z -u {mount_point}")
+                        except Exception as e:
+                            msg = "Failed to unmount share: %s: %s" % (mount_point, e)
+                            messages.append(msg)
+                            logger.warning(msg)
                     try:
                         os.rmdir(mount_point)
                     except Exception as e:

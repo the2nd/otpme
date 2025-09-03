@@ -289,7 +289,7 @@ class OTPmeFS(fuse.Operations):
                                 try:
                                     share_key = stuff.decrypt_share_key(self.username,
                                                                         share_key,
-                                                                        sign_mode=None,
+                                                                        key_mode=None,
                                                                         encode=False)
                                 except Exception as e:
                                     msg = "Failed to decrypt share key: %s: %s" % (self.share, e)
@@ -349,7 +349,7 @@ class OTPmeFS(fuse.Operations):
             pass
         else:
             cache_age = time.time() - cache_time
-            if cache_age < 5:
+            if cache_age < 2:
                 raise OSError(errno.ENOENT, "No such file or directory")
         no_such_file_cache[path] = time.time()
 
@@ -361,7 +361,7 @@ class OTPmeFS(fuse.Operations):
             pass
         else:
             cache_age = time.time() - cache_time
-            if cache_age < 5:
+            if cache_age < 2:
                 raise OSError(errno.ENODATA, "No such attribute")
         no_such_data_cache[path] = time.time()
 
@@ -939,7 +939,8 @@ class EncryptedFS(OTPmeFS):
     def _long_helper_path(self, enc_dir_path: str, tag: str) -> str:
         return enc_dir_path.rstrip('/') + '/' + tag + ".name" if enc_dir_path != '/' else '/' + tag + ".name"
 
-    def _to_fs_name(self, enc_dir_path: str, clear_name: str, diriv: bytes=None, use_diriv_cache: bool=False) -> str:
+    def _to_fs_name(self, enc_dir_path: str, clear_name: str, diriv: bytes=None,
+        use_diriv_cache: bool=False, create_longname: bool=False) -> str:
         if not diriv:
             diriv = self._load_diriv(enc_dir_path, use_cache=use_diriv_cache)
         ciph = self._encrypt_name_blob(diriv, clear_name)
@@ -948,6 +949,8 @@ class EncryptedFS(OTPmeFS):
         # Handle long names.
         h = hashlib.sha256(ciph.encode('ascii')).hexdigest()[:32]
         tag = LONGNAME_PREFIX + h
+        if not create_longname:
+            return tag
         helper = self._long_helper_path(enc_dir_path, tag)
         try:
             super().create(helper, 0o600, None)
@@ -1070,170 +1073,231 @@ class EncryptedFS(OTPmeFS):
             last_create_cache_age = time.time() - last_create_cache_time
             if last_create_cache_age < 0.5:
                 use_diriv_cache = True
-        last_create_cache = parent
-        last_create_cache_time = time.time()
         name = os.path.basename(path)
         enc_parent = self._map_plain_to_enc(parent, use_diriv_cache=use_diriv_cache)
-        enc_name = self._to_fs_name(enc_parent, name, use_diriv_cache=use_diriv_cache)
+        enc_name = self._to_fs_name(enc_parent,
+                                    name,
+                                    use_diriv_cache=use_diriv_cache,
+                                    create_longname=True)
         enc_path = enc_parent.rstrip('/') + '/' + enc_name if enc_parent != '/' else '/' + enc_name
-        return super().create(enc_path, mode, fi)
+        try:
+            result = super().create(enc_path, mode, fi)
+        except:
+            last_create_cache = None
+            last_create_cache_time = 0.0
+            raise
+        last_create_cache = parent
+        last_create_cache_time = time.time()
+        return result
 
-    def mkdir(self, path: str, mode: int) -> int:
+    def mkdir(self, path: str, mode: int, use_diriv_cache: bool=True) -> int:
         parent = os.path.dirname(path) if path != '/' else '/'
         name = os.path.basename(path)
-        enc_parent = self._map_plain_to_enc(parent, use_diriv_cache=True)
-        enc_name = self._to_fs_name(enc_parent, name, use_diriv_cache=True)
+        enc_parent = self._map_plain_to_enc(parent, use_diriv_cache=use_diriv_cache)
+        enc_name = self._to_fs_name(enc_parent, name,
+                                    use_diriv_cache=use_diriv_cache,
+                                    create_longname=True)
         enc_path = enc_parent.rstrip('/') + '/' + enc_name if enc_parent != '/' else '/' + enc_name
-        r = super().mkdir(enc_path, mode)
+        try:
+            result = super().mkdir(enc_path, mode)
+        except:
+            if not use_diriv_cache:
+                raise
+            return self.mkdir(path, mode, use_diriv_cache=False)
         # Create diriv for new directory.
         self._create_diriv(enc_path)
-        return r
+        return result
 
-    def rmdir(self, path: str) -> int:
+    def rmdir(self, path: str, use_diriv_cache: bool=True) -> int:
         global diriv_cache
         global last_create_cache
         global last_create_cache_time
         empty_dir_entries = [".", "..", DIRIV_NAME]
-        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+        enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
+        enc_dir_path = os.path.dirname(enc)
         try:
             dir_entries = super().readdir(enc, 0)
         except Exception as e:
             if e.errno != errno.ENOENT:
                 raise
-            enc = self._map_plain_to_enc(path)
-            dir_entries = super().readdir(enc, 0)
+            if not use_diriv_cache:
+                raise
+            return self.rmdir(path, use_diriv_cache=False)
         # Remove diriv file on rmdir on empty dir.
         if sorted(empty_dir_entries) == sorted(dir_entries):
-            enc_parent = self._map_plain_to_enc(path, use_diriv_cache=True)
+            enc_parent = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
             diriv_path = os.path.join(enc_parent, DIRIV_NAME)
             super().unlink(diriv_path)
-        enc_dir_path = os.path.dirname(enc)
+            try:
+                diriv_cache.pop(enc_dir_path)
+            except KeyError:
+                pass
         last_create_cache = None
         last_create_cache_time = 0.0
         try:
-            diriv_cache.pop(enc_dir_path)
-        except KeyError:
-            pass
-        return super().rmdir(enc)
+            result = super().rmdir(enc)
+        except:
+            if not use_diriv_cache:
+                raise
+            return self.rmdir(path, use_diriv_cache=False)
+        # Make sure we remove longname file.
+        enc_dir_name = os.path.basename(enc)
+        if enc_dir_name.startswith(LONGNAME_PREFIX):
+            longname_file = enc + ".name"
+            super().unlink(longname_file)
+        return result
 
-    def unlink(self, path: str) -> int:
-        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+    def unlink(self, path: str, use_diriv_cache=True) -> int:
+        enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
+        # Handle longname symlinks.
+        st_info = super().getattr(enc)
+        if stat.S_ISLNK(st_info['st_mode']):
+            link_target = super().readlink(enc)
+            if link_target.startswith(LONGNAME_PREFIX):
+                target_longname_file = "%s.name" % link_target
+                enc_old_parent = os.path.dirname(enc)
+                enc_old_path = os.path.join(enc_old_parent, target_longname_file)
+                super().unlink(enc_old_path)
         # Make sure we remove longname file.
         enc_file = os.path.basename(enc)
         if enc_file.startswith(LONGNAME_PREFIX):
             longname_file = enc + ".name"
-            try:
-                super().unlink(longname_file)
-            except Exception as e:
-                if e.errno != errno.ENOENT:
-                    raise
-                enc = self._map_plain_to_enc(path)
-                # Make sure we remove longname file.
-                enc_file = os.path.basename(enc)
-                if enc_file.startswith(LONGNAME_PREFIX):
-                    longname_file = enc + ".name"
-                    super().unlink(longname_file)
+            super().unlink(longname_file)
         try:
             return super().unlink(enc)
         except Exception as e:
             if e.errno != errno.ENOENT:
                 raise
-            enc = self._map_plain_to_enc(path)
-            # Make sure we remove longname file.
-            enc_file = os.path.basename(enc)
-            if enc_file.startswith(LONGNAME_PREFIX):
-                longname_file = enc + ".name"
-                super().unlink(longname_file)
-            return super().unlink(enc)
+            if not use_diriv_cache:
+                raise
+            return self.unlink(path, use_diriv_cache=False)
 
     def rename(self, old: str, new: str) -> int:
-        # FIXME: We should handle symlinks here.
-        #st_info = self.getattr(old)
-        #if stat.S_ISLNK(st_info['st_mode']):
-        #    print("symlink:", old)
         enc_old = self._map_plain_to_enc(old)
         new_parent = os.path.dirname(new) if new != '/' else '/'
         new_name = os.path.basename(new)
         enc_new_parent = self._map_plain_to_enc(new_parent)
-        enc_new_name = self._to_fs_name(enc_new_parent, new_name)
+        # Handle longname symlinks.
+        st_info = super().getattr(enc_old)
+        if stat.S_ISLNK(st_info['st_mode']):
+            link_target = super().readlink(enc_old)
+            if link_target.startswith(LONGNAME_PREFIX):
+                target_longname_file = "%s.name" % link_target
+                enc_old_parent = os.path.dirname(enc_old)
+                enc_old_path = os.path.join(enc_old_parent, target_longname_file)
+                enc_new_path = os.path.join(enc_new_parent, target_longname_file)
+                super().rename(enc_old_path, enc_new_path)
+        enc_new_name = self._to_fs_name(enc_new_parent,
+                                        new_name,
+                                        create_longname=True)
         enc_new = enc_new_parent.rstrip('/') + '/' + enc_new_name if enc_new_parent != '/' else '/' + enc_new_name
-        result = super().rename(enc_old, enc_new)
-        enc_file = os.path.basename(enc_old)
-        if enc_file.startswith(LONGNAME_PREFIX):
+        try:
+            result = super().rename(enc_old, enc_new)
+        except:
+            enc_new_file = os.path.basename(enc_new)
+            if enc_new_file.startswith(LONGNAME_PREFIX):
+                longname_file = enc_new + ".name"
+                super().unlink(longname_file)
+            raise
+        enc_old_file = os.path.basename(enc_old)
+        if enc_old_file.startswith(LONGNAME_PREFIX):
             longname_file = enc_old + ".name"
             super().unlink(longname_file)
         return result
 
-    def link(self, target: str, source: str):
-        enc_target = self._map_plain_to_enc(target, use_diriv_cache=True)
-        enc_source_parent = self._map_plain_to_enc(os.path.dirname(source) or '/', use_diriv_cache=True)
-        enc_source_name = self._to_fs_name(enc_source_parent, os.path.basename(source), use_diriv_cache=True)
-        enc_source = enc_source_parent.rstrip('/') + '/' + enc_source_name if enc_source_parent != '/' else '/' + enc_source_name
-        try:
-            return super().link(enc_target, enc_source)
-        except Exception as e:
-            if e.errno != errno.ENOENT:
-                raise
-            enc_target = self._map_plain_to_enc(target)
-            enc_source_parent = self._map_plain_to_enc(os.path.dirname(source) or '/')
-            enc_source_name = self._to_fs_name(enc_source_parent, os.path.basename(source))
-            enc_source = enc_source_parent.rstrip('/') + '/' + enc_source_name if enc_source_parent != '/' else '/' + enc_source_name
-            return super().link(enc_target, enc_source)
-
-    def symlink(self, target: str, source: str) -> int:
-        enc_target_parent = self._map_plain_to_enc(os.path.dirname(target) or '/', use_diriv_cache=True)
-        enc_target_name = self._to_fs_name(enc_target_parent, os.path.basename(target), use_diriv_cache=True)
+    def link(self, target: str, source: str, use_diriv_cache: bool=True):
+        enc_source = self._map_plain_to_enc(source, use_diriv_cache=use_diriv_cache)
+        enc_target_parent = self._map_plain_to_enc(os.path.dirname(target) or '/',
+                                                use_diriv_cache=use_diriv_cache)
+        enc_target_name = self._to_fs_name(enc_target_parent,
+                                        os.path.basename(target),
+                                        use_diriv_cache=use_diriv_cache,
+                                        create_longname=True)
         enc_target = enc_target_parent.rstrip('/') + '/' + enc_target_name if enc_target_parent != '/' else '/' + enc_target_name
-        diriv = self._load_diriv(enc_target_parent, use_cache=True)
-        enc_source = self._to_fs_name(enc_target_parent, source or '/', diriv=diriv)
+        try:
+            return super().link(enc_target, enc_source)
+        except Exception as e:
+            # Remove target longname-name file on error.
+            if enc_target_name.startswith(LONGNAME_PREFIX):
+                enc_source_longname_file = "%s.name" % enc_source
+                super().unlink(enc_source_longname_file)
+            if e.errno != errno.ENOENT:
+                raise
+            if not use_diriv_cache:
+                raise
+            # On ENOENT error retry withouth diriv cache.
+            return self.link(target, source, use_diriv_cache=False)
+
+    def symlink(self, target: str, source: str, use_diriv_cache: bool=True) -> int:
+        enc_target_parent = self._map_plain_to_enc(os.path.dirname(target) or '/',
+                                                use_diriv_cache=use_diriv_cache)
+        enc_target_name = self._to_fs_name(enc_target_parent,
+                                        os.path.basename(target),
+                                        use_diriv_cache=use_diriv_cache,
+                                        create_longname=True)
+        enc_target = enc_target_parent.rstrip('/') + '/' + enc_target_name if enc_target_parent != '/' else '/' + enc_target_name
+        diriv = self._load_diriv(enc_target_parent, use_cache=use_diriv_cache)
+        enc_source = self._to_fs_name(enc_target_parent,
+                                    source or '/',
+                                    diriv=diriv,
+                                    create_longname=True)
         try:
             return super().symlink(enc_target, enc_source)
         except Exception as e:
+            # Remove longname-name files on error.
+            if enc_target.startswith(LONGNAME_PREFIX):
+                enc_target_longname_file = "%s.name" % enc_target
+                super().unlink(enc_target_longname_file)
+            if enc_source.startswith(LONGNAME_PREFIX):
+                enc_source_longname_file = "%s.name" % enc_source
+                super().unlink(enc_source_longname_file)
             if e.errno != errno.ENOENT:
                 raise
-            enc_target_parent = self._map_plain_to_enc(os.path.dirname(target) or '/')
-            enc_target_name = self._to_fs_name(enc_target_parent, os.path.basename(target))
-            enc_target = enc_target_parent.rstrip('/') + '/' + enc_target_name if enc_target_parent != '/' else '/' + enc_target_name
-            diriv = self._load_diriv(enc_target_parent)
-            enc_source = self._to_fs_name(enc_target_parent, source or '/', diriv=diriv)
-            return super().symlink(enc_target, enc_source)
+            if not use_diriv_cache:
+                raise
+            # On ENOENT error retry withouth diriv cache.
+            return self.symlink(target, source, use_diriv_cache=False)
 
-    def readlink(self, path: str) -> str:
-        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+    def readlink(self, path: str, use_diriv_cache: bool=True) -> str:
+        enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
         try:
             result = super().readlink(enc)
         except Exception as e:
             if e.errno != errno.ENOENT:
+                raise
+            if not use_diriv_cache:
                 raise
             self.check_no_such_file_cache(enc)
-            enc = self._map_plain_to_enc(path, use_diriv_cache=True)
-            result = super().readlink(enc)
-        enc_dir_path = os.path.dirname(path) if path != '/' else '/'
+            return self.readlink(path, use_diriv_cache=False)
+        enc_dir_path = os.path.dirname(enc) if path != '/' else '/'
         link_clear = self._from_fs_name(enc_dir_path, result)
         return link_clear
 
-    def access(self, path: str, amode: int) -> int:
-        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+    def access(self, path: str, amode: int, use_diriv_cache: bool=True) -> int:
+        enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
         try:
             return super().access(enc, amode)
         except Exception as e:
             if e.errno != errno.ENOENT:
                 raise
+            if not use_diriv_cache:
+                raise
             self.check_no_such_file_cache(enc)
-            enc = self._map_plain_to_enc(path)
-            return super().access(enc, amode)
+            return self.access(path, amode, use_diriv_cache=False)
 
-    def getattr(self, path: str, fh: Optional[int] = None):
+    def getattr(self, path: str, fh: Optional[int] = None, use_diriv_cache: bool=True):
         global filesize_cache
-        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+        enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
         try:
             result = super().getattr(enc, fh)
         except Exception as e:
             if e.errno != errno.ENOENT:
                 raise
+            if not use_diriv_cache:
+                raise
             self.check_no_such_file_cache(enc)
-            enc = self._map_plain_to_enc(path)
-            result = super().getattr(enc, fh)
+            return self.getattr(path, fh, use_diriv_cache=False)
+
         if stat.S_ISDIR(result['st_mode']) or stat.S_ISLNK(result['st_mode']):
             self.logger.debug(f"Path {path} is a {'directory' if stat.S_ISDIR(result['st_mode']) else 'symlink'}, returning original st_size: {result['st_size']}")
             return result
@@ -1278,7 +1342,6 @@ class EncryptedFS(OTPmeFS):
             diriv_cache.pop(enc_dir)
         except KeyError:
             pass
-        #self._create_diriv(enc_dir)
         enc_entries = super().readdir(enc_dir, fh)
         plain = []
         for e in enc_entries:
@@ -1400,6 +1463,7 @@ class EncryptedFS(OTPmeFS):
             nonce = struct.pack('!Q', block_number) + path_hash[:2] + os.urandom(2)
             serialized_block = self._encrypt_block(block, block_length, nonce)
             serialized_data.extend(serialized_block)
+            block_counter += 1
         try:
             self.logger.debug(f"Writing {len(serialized_data)} bytes at offset {write_offset}")
             #if len(serialized_data) != block_count * self.block_with_metadata_size:
@@ -1409,7 +1473,6 @@ class EncryptedFS(OTPmeFS):
         except Exception as e:
             self.logger.error(f"Write failed: {e}")
             raise fuse.FuseOSError(errno.EIO) from e
-            block_counter += 1
         del serialized_data
         return len(data)
 
@@ -1533,6 +1596,10 @@ class EncryptedFS(OTPmeFS):
                     offset += self.tag_size
                     blocks_processed += 1
                     continue
+                msg = "Found invalid block without block len that is not a null block."
+                self.logger.error(msg)
+                raise fuse.FuseOSError(errno.EIO)
+
             # Set block_len and unencrypted_block_len to offset.
             offset += 8
             self.logger.debug(f"Reading block {blocks_processed} at offset {offset - 4}, block_len: {block_len}")
@@ -1653,100 +1720,111 @@ class EncryptedFS(OTPmeFS):
 
         return 0
 
-    def chmod(self, path: str, mode: int) -> int:
-        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+    def chmod(self, path: str, mode: int, use_diriv_cache: bool=True) -> int:
+        enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
         try:
             return super().chmod(enc, mode)
         except Exception as e:
             if e.errno != errno.ENOENT:
                 raise
-            enc = self._map_plain_to_enc(path)
-            return super().chmod(enc, mode)
+            if not use_diriv_cache:
+                raise
+            return self.chmod(path, mode, use_diriv_cache=False)
 
-    def chown(self, path: str, uid: int, gid: int) -> int:
-        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+    def chown(self, path: str, uid: int, gid: int, use_diriv_cache: bool=True) -> int:
+        enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
         try:
             return super().chown(enc, uid, gid)
         except Exception as e:
             if e.errno != errno.ENOENT:
                 raise
-            enc = self._map_plain_to_enc(path)
-            return super().chown(enc, uid, gid)
+            if not use_diriv_cache:
+                raise
+            return self.chown(path, uid, gid, use_diriv_cache=False)
 
-    def utimens(self, path: str, times: Optional[tuple[int, int]] = None) -> int:
-        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+    def utimens(self, path: str, times: Optional[tuple[int, int]] = None, use_diriv_cache: bool=True) -> int:
+        enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
         try:
             return super().utimens(enc, times)
         except Exception as e:
             if e.errno != errno.ENOENT:
                 raise
-            enc = self._map_plain_to_enc(path)
-            return super().utimens(enc, times)
+            if not use_diriv_cache:
+                raise
+            return self.utimens(path, times, use_diriv_cache=False)
 
-    def getxattr(self, path: str, name: str, position: int = 0) -> bytes:
+    def getxattr(self, path: str, name: str, position: int = 0, use_diriv_cache: bool=True) -> bytes:
         """Get extended attributes (including POSIX ACLs) from encrypted filesystem"""
-        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+        enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
         try:
             return super().getxattr(enc, name, position)
         except Exception as e:
+            if e.errno != errno.ENOENT:
+                raise
             if e.errno == errno.ENODATA:
                 self.check_no_such_data_cache(enc)
-            if e.errno != errno.ENOENT:
+            if not use_diriv_cache:
                 raise
             self.check_no_such_file_cache(enc)
-            enc = self._map_plain_to_enc(path)
-            return super().getxattr(enc, name, position)
+            return self.getxattr(path, name, position, use_diriv_cache=False)
 
-    def setxattr(self, path: str, name: str, value: bytes, options: int, position: int = 0) -> int:
+    def setxattr(self, path: str, name: str, value: bytes, options: int, position: int = 0, use_diriv_cache: bool=True) -> int:
         """Set extended attributes (including POSIX ACLs) on encrypted filesystem"""
-        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+        enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
         try:
             return super().setxattr(enc, name, value, options, position)
         except Exception as e:
             if e.errno != errno.ENOENT:
                 raise
-            enc = self._map_plain_to_enc(path)
-            return super().setxattr(enc, name, value, options, position)
+            if not use_diriv_cache:
+                raise
+            return self.setxattr(path, name, value, options, position, use_diriv_cache=False)
 
-    def listxattr(self, path: str) -> List[str]:
+    def listxattr(self, path: str, use_diriv_cache: bool=True) -> List[str]:
         """List all extended attributes from encrypted filesystem"""
-        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+        enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
         try:
             return super().listxattr(enc)
         except Exception as e:
             if e.errno != errno.ENOENT:
                 raise
-            enc = self._map_plain_to_enc(path)
-            return super().listxattr(enc)
+            if not use_diriv_cache:
+                raise
+            return self.listxattr(path, use_diriv_cache=False)
 
-    def removexattr(self, path: str, name: str) -> int:
+    def removexattr(self, path: str, name: str, use_diriv_cache: bool=True) -> int:
         """Remove extended attributes from encrypted filesystem"""
-        enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+        enc = self._map_plain_to_enc(path, use_diriv_cache=use_diriv_cache)
         try:
             return super().removexattr(enc, name)
         except Exception as e:
             if e.errno != errno.ENOENT:
                 raise
-            enc = self._map_plain_to_enc(path)
-            return super().removexattr(enc, name)
+            if not use_diriv_cache:
+                raise
+            return self.removexattr(path, name, use_diriv_cache=False)
 
-def get_mount_point(share_site, share_name):
-    mount_point = "/otpme/%s/%s" % (share_site, share_name)
+def get_mount_point(username, share_site, share_name):
+    mount_point = os.path.join(config.mount_root_dir,
+                                username,
+                                share_site,
+                                share_name)
     return mount_point
 
-def prepare_mount_point(share_site, share):
-    mount_point = get_mount_point(share_site, share)
+def prepare_mount_point(username, share_site, share):
+    mount_point = get_mount_point(username, share_site, share)
     if os.path.ismount(mount_point):
         msg = "Already mounted: %s" % mount_point
         raise OTPmeException(msg)
-    if not os.path.exists(mount_point):
-        old_usmask = os.umask(0)
-        try:
-            os.makedirs(mount_point, mode=0o777, exist_ok=True)
-        except FileExistsError:
-            pass
-        finally:
-            os.umask(old_usmask)
+    if os.path.exists(mount_point):
+        return mount_point
+    old_usmask = os.umask(0o077)
+    try:
+        os.makedirs(mount_point, mode=0o700, exist_ok=True)
+    except FileExistsError:
+        pass
+    finally:
+        os.umask(old_usmask)
     return mount_point
 
 def mount_share_proc(share, mount, nodes, encrypted, **kwargs):

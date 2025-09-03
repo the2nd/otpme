@@ -150,10 +150,10 @@ def row_getter(realm, site, site_order, site_data, acls,
                 row.append("-")
         # Trusts.
         if "trusts" in output_fields:
+            _trusted_sites = []
             if check_acl("view:trust") \
             or check_acl("add:trust") \
             or check_acl("delete:trust"):
-                _trusted_sites = []
                 for x in trusted_sites:
                     x_oid = backend.get_oid(x, instance=True)
                     _trusted_sites.append(x_oid.name)

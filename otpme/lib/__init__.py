@@ -323,8 +323,3 @@ def init_otpme(use_backend=None):
             error_message(_("We do not have a realm. You must first init the "
                             "realm."))
             sys.exit(1)
-
-    # FIXME: does it make sense to get a global command handler when not running as daemon?
-    #if not config.daemon_mode:
-    #    from otpme.lib.classes.command_handler import CommandHandler
-    #    config.command_handler = CommandHandler()

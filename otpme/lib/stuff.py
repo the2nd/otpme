@@ -1693,14 +1693,14 @@ def run_key_script(username, script_command, script_options=None,
                         call=call)
     return return_val
 
-def encrypt_share_key(username, share_user, share_key, sign_mode):
+def encrypt_share_key(username, share_user, share_key, key_mode):
     # Make sure share key is bytes.
     if isinstance(share_key, str):
         share_key = share_key.encode()
     # Command for key script.
     script_command = [ "rsa_encrypt" ]
-    # Add sign mode.
-    if sign_mode == "server":
+    # Add key mode.
+    if key_mode == "server":
         script_command.append("--server-key")
     # Add share user option.
     script_options = ['-u', share_user]
@@ -1726,15 +1726,15 @@ def encrypt_share_key(username, share_user, share_key, sign_mode):
     return encrypted_share_key
 
 def decrypt_share_key(username, encrypted_share_key,
-    sign_mode, encode=True, disable_ctrl_c=False):
+    key_mode, encode=True, disable_ctrl_c=False):
     import base64
     # Make sure share key is bytes.
     if isinstance(encrypted_share_key, str):
         encrypted_share_key = encrypted_share_key.encode()
     # Command for key script.
     script_command = [ "rsa_decrypt" ]
-    # Add sign mode.
-    if sign_mode == "server":
+    # Add key mode.
+    if key_mode == "server":
         script_command.append("--server-key")
     # Run key script.
     proc = run_key_script(username=username,
@@ -1773,7 +1773,7 @@ def decrypt_share_key(username, encrypted_share_key,
 #                                                    client_type="RAPI")
 #    share_key = decrypt_share_key(username,
 #                                encrypted_share_key,
-#                                sign_mode=None,
+#                                key_mode=None,
 #                                disable_ctrl_c=disable_ctrl_c)
 #    try:
 #        share_key = base64.b64decode(share_key)

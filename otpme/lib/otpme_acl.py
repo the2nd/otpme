@@ -351,7 +351,8 @@ def verify(uuid, acl_list, acl, force_acl_check=False, need_exact_acl=False,
         return cached_acl_result
 
     # Get token roles.
-    token_roles = auth_token.get_roles(return_type="uuid")
+    token_roles = auth_token.get_roles(return_type="uuid",
+                                        recursive=True)
 
     # Check ACLs.
     access_granted = None

@@ -35,7 +35,7 @@ from otpme.lib.exceptions import *
 
 class JobCallback(object):
     """ Class to handle user messages from job child processes. """
-    def __init__(self, job=None, uuid=None, api_mode=None):
+    def __init__(self, name="default", job=None, uuid=None, api_mode=None):
         class FakeJob(object):
             def __init__(self, uuid=None, api_mode=True):
                 self.uuid = uuid
@@ -60,6 +60,8 @@ class JobCallback(object):
                 self.api_mode = api_mode
             self.api_exception = "Cannot callback in API mode!"
             self.job = FakeJob(uuid=uuid, api_mode=self.api_mode)
+        # Callback name.
+        self.name = name
         # Only send error messages. Used e.g. in mass_object_add.
         self.only_errors = False
         # Indicates that there was a exception in the callback chain that
@@ -79,6 +81,9 @@ class JobCallback(object):
         self.logger = config.logger
         # Time the callback was last used.
         self.last_used = time.time()
+
+    def __str__(self):
+        return self.name
 
     def add_locked_object(self, o):
         """ Add modified object to callback. """
@@ -492,7 +497,7 @@ class JobCallback(object):
         return reply
 
     @handle_exception
-    def reencrypt_share_key(self, share_user, share_key, sign_mode=None, timeout=1):
+    def reencrypt_share_key(self, share_user, share_key, key_mode=None, timeout=1):
         """ Send query to client to generate and encrypt share key. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
@@ -505,13 +510,13 @@ class JobCallback(object):
         query = reencrypt_share_key(query_id,
                             share_user=share_user,
                             share_key=share_key,
-                            sign_mode=sign_mode)
+                            key_mode=key_mode)
         # Send query.
         reply = self._send_query(query_id, query, timeout=timeout)
         return reply
 
     @handle_exception
-    def gen_share_key(self, key_len=2048, sign_mode=None, timeout=1):
+    def gen_share_key(self, key_len=2048, key_mode=None, timeout=1):
         """ Send query to client to generate and encrypt share key. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
@@ -521,7 +526,7 @@ class JobCallback(object):
         # Gen query ID.
         query_id = self._gen_query_id()
         # Build query string.
-        query = gen_share_key(query_id, key_len=key_len, sign_mode=sign_mode)
+        query = gen_share_key(query_id, key_len=key_len, key_mode=key_mode)
         # Send query.
         reply = self._send_query(query_id, query, timeout=timeout)
         return reply

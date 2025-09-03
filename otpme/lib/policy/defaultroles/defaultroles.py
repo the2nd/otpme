@@ -266,7 +266,6 @@ class DefaultrolesPolicy(Policy):
                             msg = ("Failed to add default token to role: %s: "
                                     "%s: %s" % (role.name, default_token, e))
                             callback.raise_exception = old_exc_val
-                            config.raise_exception()
                             return callback.error(msg)
                         finally:
                             callback.raise_exception = old_exc_val

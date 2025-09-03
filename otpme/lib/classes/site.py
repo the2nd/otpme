@@ -2739,8 +2739,8 @@ class Site(OTPmeObject):
         for script_name in os.listdir(config.script_dir):
             script_path = "%s/%s" % (config.script_dir, script_name)
             script = Script(name=script_name,
-                                site=self.name,
-                                realm=self.realm)
+                            site=self.name,
+                            realm=self.realm)
             if script.exists():
                 script.add_default_policies()
                 continue

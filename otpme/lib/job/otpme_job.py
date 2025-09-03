@@ -187,7 +187,7 @@ class OTPmeJob(object):
         multiprocessing.job_uuid = self.uuid
 
         # Create job callback
-        self.callback = JobCallback(self)
+        self.callback = JobCallback(name=self.name, job=self)
         # Add callback to target method args
         self.args['callback'] = self.callback
         # Set job start time.

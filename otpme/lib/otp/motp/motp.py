@@ -57,25 +57,32 @@ def verify(validity_range, secret, otp, pin=None, otp_len=None, epoch_time=None)
     return False
 
 
-def get_validity_times(validity_time,
-    timedrift_tolerance=0, offset=0, epoch_time=None):
+def get_validity_times(validity_time, timedrift_tolerance=0,
+    offset=0, epoch_time=None, full_epoch_time=None):
     """ Calculate validity start/end time, timestamps etc. """
     # Get epoch time in 10 second timestep.
-    if not epoch_time:
+    if not epoch_time and not full_epoch_time:
         epoch_time = int(str(int(time.time()))[:-1])
     # Calculate epoch time to verify OTP:
     #   - epoch time must be reduced by timedrift_tolerance to allow clock
     #     timedrifts of the client in the past.
     #   - offset (e.g. timezone) must be multiplied with 6 (offset is in minutes,
     #     timestep is 10 seconds) and added to epoch time.
-    otp_epoch_time = epoch_time - timedrift_tolerance + (offset * 6)
+    if full_epoch_time:
+        otp_epoch_time = full_epoch_time - timedrift_tolerance + (offset * 6)
+    elif epoch_time:
+        otp_epoch_time = epoch_time - timedrift_tolerance + (offset * 6)
     # Add (timedrift_tolerance * 2) to validity_range because we had to
     # substract if from epoch_time to allow backward timedrifts and also
     # want to allow forward timedrifts.
     otp_validity_range = validity_time + (timedrift_tolerance * 2)
     # Calculate times and timestamps of OTP validity start/end times.
-    start_timestamp = float(str(otp_epoch_time) + "0")
-    end_timestamp = float(str(otp_epoch_time + otp_validity_range) + "0")
+    if full_epoch_time:
+        start_timestamp = full_epoch_time
+        end_timestamp = float(otp_epoch_time + otp_validity_range)
+    elif epoch_time:
+        start_timestamp = float(str(otp_epoch_time) + "0")
+        end_timestamp = float(str(otp_epoch_time + otp_validity_range) + "0")
     start_time = str(datetime.fromtimestamp(start_timestamp))
     end_time = str(datetime.fromtimestamp(end_timestamp))
     return otp_epoch_time, \

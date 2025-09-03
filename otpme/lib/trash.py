@@ -266,6 +266,14 @@ def delete(trash_id=None, cluster=True, callback=default_callback, **kwargs):
     if not os.path.exists(trash_dir):
         msg = "Unknown trash entry: %s" % trash_id
         return callback.error(msg)
+
+    if config.auth_token:
+        deleted_by = get_deleted_by(trash_id)
+        deleted_by_token = "token:%s" % config.auth_token.rel_path
+        if deleted_by != deleted_by_token:
+            msg = "Permission denied"
+            return callback.error(msg)
+
     try:
         filetools.remove_dir(trash_dir, recursive=True, remove_non_empty=True)
     except Exception as e:
@@ -288,6 +296,13 @@ def restore(trash_id=None, objects=None, callback=default_callback, **kwargs):
     if not os.path.exists(trash_dir):
         msg = "Unknown trash entry: %s" % trash_id
         return callback.error(msg)
+
+    if config.auth_token:
+        deleted_by = get_deleted_by(trash_id)
+        deleted_by_token = "token:%s" % config.auth_token.rel_path
+        if deleted_by != deleted_by_token:
+            msg = "Permission denied"
+            return callback.error(msg)
 
     restore_objects_count = 0
     for root, dirs, files in os.walk(trash_dir):
@@ -422,6 +437,10 @@ def show_trash(max_len=10, border=True, header=True,
             x_dir = os.path.join(TRASH_DIR, x_dir)
             trash_id = os.path.basename(x_dir)
             deleted_by = get_deleted_by(trash_id)
+            if config.auth_token and not config.auth_token.is_admin():
+                deleted_by_token = "token:%s" % config.auth_token.rel_path
+                if deleted_by != deleted_by_token:
+                    continue
             deletion_date = float(trash_id.split("-")[0])
             deletion_date = datetime.datetime.fromtimestamp(deletion_date)
             deletion_date = deletion_date.strftime('%d.%m.%Y %H:%M:%S')

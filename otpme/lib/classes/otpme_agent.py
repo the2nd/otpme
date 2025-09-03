@@ -408,6 +408,7 @@ class OTPmeAgent(UnixDaemon):
         for login_pid in agent_sessions:
             # Umount shares on agent shutdown.
             session = agent_sessions[login_pid]
+            login_user = agent_sessions[login_pid]['login_user']
             try:
                 shares = session['mounted_shares']
             except KeyError:
@@ -416,13 +417,16 @@ class OTPmeAgent(UnixDaemon):
             umounted_shares = []
             for share in shares:
                 share_site = shares[share]['site']
-                mount_point = get_mount_point(share_site, share)
+                mount_point = get_mount_point(login_user, share_site, share)
                 try:
                     os.system(f"fusermount -u {mount_point}")
                 except Exception as e:
-                    msg = "Failed to unmount share: %s: %s" % (mount_point, e)
-                    messages.append(msg)
-                    self.logger.warning(msg)
+                    try:
+                        os.system(f"fusermount -z -u {mount_point}")
+                    except Exception as e:
+                        msg = "Failed to unmount share: %s: %s" % (mount_point, e)
+                        messages.append(msg)
+                        self.logger.warning(msg)
                 try:
                     os.rmdir(mount_point)
                 except Exception as e:

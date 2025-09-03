@@ -897,8 +897,8 @@ class Share(OTPmeObject):
         if self.encrypted and add_result:
             msg = "Generating AES key for encrypted share..."
             callback.send(msg)
-            sign_mode = config.auth_user.sign_mode
-            share_key_response = callback.gen_share_key(key_len=key_len, sign_mode=sign_mode)
+            key_mode = config.auth_user.key_mode
+            share_key_response = callback.gen_share_key(key_len=key_len, key_mode=key_mode)
             try:
                 share_key = share_key_response['share_key']
             except KeyError:
@@ -1261,14 +1261,14 @@ class Share(OTPmeObject):
                 msg = "Sending request to re-encrypt share key for user: %s" % user.name
                 callback.send(msg)
                 auth_user = backend.get_object(uuid=config.auth_user.uuid)
-                sign_mode = auth_user.sign_mode
+                key_mode = auth_user.key_mode
                 auth_user_share_key = self.get_share_key(username=auth_user.name)
                 if not auth_user_share_key:
                     msg = "You dont have a share key for share: %s" % self.name
                     return callback.error(msg)
                 share_key = callback.reencrypt_share_key(share_user=user.name,
                                                         share_key=auth_user_share_key,
-                                                        sign_mode=sign_mode)
+                                                        key_mode=key_mode)
                 if not share_key:
                     msg = "Failed to receive share key from client."
                     return callback.error(msg)

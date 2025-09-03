@@ -1261,7 +1261,7 @@ class OTPmeClient(OTPmeClientBase):
 
         # Load sign data.
         try:
-            sign_mode = sign_request['sign_mode']
+            key_mode = sign_request['key_mode']
             sign_info = sign_request['sign_info']
             sign_data = sign_request['sign_data']
         except Exception as e:
@@ -1291,7 +1291,7 @@ class OTPmeClient(OTPmeClientBase):
 
         # Build key script command to sign data.
         script_command = [ "sign" ]
-        if sign_mode == "server":
+        if key_mode == "server":
             script_command.append("--server-key")
         script_options = [ sign_object_file, '/dev/stdout' ]
 
@@ -1432,7 +1432,7 @@ class OTPmeClient(OTPmeClientBase):
         """ Handle share key re-encryption via users key script. """
         register_module("otpme.lib.encryption")
         key_len = command_dict['key_len']
-        sign_mode = command_dict['sign_mode']
+        key_mode = command_dict['key_mode']
 
         # When not in interactive mode we cannot call key script.
         if not self.interactive:
@@ -1467,7 +1467,7 @@ class OTPmeClient(OTPmeClientBase):
         encrypted_share_key = stuff.encrypt_share_key(username,
                                                     share_user,
                                                     share_key,
-                                                    sign_mode)
+                                                    key_mode)
         share_key_response = {
                             'share_key'     : encrypted_share_key,
                             'hash_params'   : hash_data,
@@ -1476,7 +1476,7 @@ class OTPmeClient(OTPmeClientBase):
 
     def reencrypt_share_key(self, command_dict):
         """ Handle share key re-encryption via users key script. """
-        sign_mode = command_dict['sign_mode']
+        key_mode = command_dict['key_mode']
         share_user = command_dict['share_user']
         encrypted_share_key = command_dict['share_key']
 
@@ -1490,13 +1490,13 @@ class OTPmeClient(OTPmeClientBase):
         # Decrypt share key with key script.
         decrypted_share_key = stuff.decrypt_share_key(username,
                                                     encrypted_share_key,
-                                                    sign_mode,
+                                                    key_mode,
                                                     encode=False)
         # Encrypt share key with key script.
         encrypted_share_key = stuff.encrypt_share_key(username,
                                                     share_user,
                                                     decrypted_share_key,
-                                                    sign_mode)
+                                                    key_mode)
         return encrypted_share_key
 
     def move_objects(self, command_dict):
@@ -3502,7 +3502,10 @@ class OTPmeClient1(OTPmeClientBase):
         status, \
         status_code, \
         response, \
-        binary_data = self.connection.send(command, command_args, handle_auth=False)
+        binary_data = self.connection.send(command=command,
+                                        command_args=command_args,
+                                        handle_response=True,
+                                        handle_auth=False)
 
         if not status:
             raise OTPmeException(_("Error: %s") % response)

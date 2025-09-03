@@ -413,6 +413,8 @@ class OTPmeConfig(object):
                                 config_file_parameter="RUN_DIR")
         self.register_config_var("log_dir", str, "/var/log/otpme",
                                 config_file_parameter="LOG_DIR")
+        self.register_config_var("mount_root_dir", str, "/otpme",
+                                config_file_parameter="MOUNT_ROOT_DIR")
 
         # Set some default filenames.
         self.register_config_var("config_file_name", str, None)
@@ -1869,7 +1871,7 @@ class OTPmeConfig(object):
         # statments e.g. to check if we have to return a "Cannot delete User."
         # message when called from an interactive session or raise an exception when
         # called as API.
-        default_callback = JobCallback()
+        default_callback = JobCallback(name="default_callback")
         return default_callback
 
     def system_user(self):

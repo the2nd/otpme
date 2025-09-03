@@ -624,26 +624,56 @@ class CommandHandler(object):
             if "--stdin-pass" in self.command_line:
                 # Get password from stdin if given.
                 try:
-                    # When a user is configured for sign_mode=server the private
+                    # When a user is configured for key_mode=server the private
                     # key might be encrypted with a passphrase (AES).
                     self.user_aes_pass = stuff.read_pass_from_stdin()
                 except:
                     pass
 
+        # When generating users RSA keys on server side we may have to read
+        # key password from stdin.
+        if command == "user" and subcommand == "import_key":
+            if config.read_stdin_pass:
+                msg = (_("--stdin-key option conflicts with global --stdin-pass option."))
+                raise OTPmeException(msg)
+            private_key = None
+            if "--stdin-key" in self.command_line:
+                # Get private key from stdin if given.
+                try:
+                    private_key = sys.stdin.read()
+                except Exception as e:
+                    msg = "Failed to read private key from stdin: %s" % e
+                    raise OTPmeException(msg)
+                if "--server" in self.command_line:
+                    self.command_args = { 'private_key' : private_key }
+            if "--server" not in self.command_line:
+                return self.handle_user_key_import(command, subcommand, private_key)
+
         # When signing data and the signing key is on server we may have to read
         # the key password from stdin.
-        if command == "user" and subcommand == "sign_data" \
-        and "--stdin-pass" in self.command_line:
-            if config.read_stdin_pass:
-                msg = (_("--stdin-pass option conflicts with global option."))
-                raise OTPmeException(msg)
-            # Get password from stdin if given.
-            try:
-                # When a user is configured for sign_mode=server the private
-                # key might be encrypted with a passphrase (AES).
-                self.user_aes_pass = stuff.read_pass_from_stdin()
-            except:
-                pass
+        if command == "user" and subcommand == "sign_data":
+            if "--stdin-pass" in self.command_line:
+                if "--stdin-data" in self.command_line:
+                    msg = (_("--stdin-pass option conflicts with --stdin-data option."))
+                    raise OTPmeException(msg)
+                if config.read_stdin_pass:
+                    msg = (_("--stdin-pass option conflicts with global option."))
+                    raise OTPmeException(msg)
+                # Get password from stdin if given.
+                try:
+                    # When a user is configured for key_mode=server the private
+                    # key might be encrypted with a passphrase (AES).
+                    self.user_aes_pass = stuff.read_pass_from_stdin()
+                except:
+                    pass
+            if "--stdin-data" in self.command_line:
+                # Get data to sign from stdin if given.
+                try:
+                    data = sys.stdin.read()
+                except Exception as e:
+                    msg = "Failed to read sign data from stdin: %s" % e
+                    raise OTPmeException(msg)
+                self.command_args = {'data' : data}
 
         # Generating users certificate needs some local action (e.g.
         # calling key script) which is done below.
@@ -660,18 +690,28 @@ class CommandHandler(object):
         and subcommand == "sign" \
         or subcommand == "encrypt" \
         or subcommand == "decrypt":
-            #self.handle_user_key_command()
-            if config.read_stdin_pass:
-                msg = (_("--stdin-pass option conflicts with global option."))
-                raise OTPmeException(msg)
             if "--stdin-pass" in self.command_line:
+                if config.read_stdin_pass:
+                    msg = (_("--stdin-pass option conflicts with global option."))
+                    raise OTPmeException(msg)
+                if "--stdin-data" in self.command_line:
+                    msg = (_("--stdin-pass option conflicts with --stdin-data option."))
+                    raise OTPmeException(msg)
                 # Get password from stdin if given.
                 try:
-                    # When a user is configured for sign_mode=server the private
+                    # When a user is configured for key_mode=server the private
                     # key might be encrypted with a passphrase (AES).
                     self.user_aes_pass = stuff.read_pass_from_stdin()
                 except:
                     pass
+            if "--stdin-data" in self.command_line:
+                # Get data to sign from stdin if given.
+                try:
+                    data = sys.stdin.read()
+                except Exception as e:
+                    msg = "Failed to read data from stdin: %s" % e
+                    raise OTPmeException(msg)
+                self.command_args = {'data' : data}
 
         if command == "dictionary" and subcommand == "word_import":
             self.handle_dictionary_word_import_command(command, subcommand)
@@ -2404,119 +2444,8 @@ class CommandHandler(object):
 
         return user_private_key, user_public_key
 
-    # FIXME: make this modular!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!                         
     def deploy_token(self, token_rel_path, token_type, no_token_write=False):
         """ Deploy token. """
-        #deploy_commands = {
-        #    '_include_global_opts'      : False,
-        #    '_usage_help'      : "Usage: " + config.tool_name + " deploy [-n] -t <token_type> [token]",
-        #    'yubikey-serial' : {
-        #                    '_cmd_usage_help' : 'Usage: ' + config.tool_name + ' ' + self.command + ' -t yubikey-serial [-y -n -r -s <slot>]',
-        #                    'cmd'   :   '-t ::token_type:: -s :slot: -l :show_serial=True: -y :visible=True: -n :visible=False: -d :debug=True: [|object|]',
-        #                    '_help' :   {
-        #                                    'cmd'                   : 'write HMAC-SHA1 config to given yubikey slot',
-        #                                    '-s <slot>'             : 'write new config to given slot',
-        #                                    '-l'                    : 'show yubikey serial',
-        #                                    '-y'                    : 'set SERIAL_API_VISIBLE flag to True',
-        #                                    '-n'                    : 'set SERIAL_API_VISIBLE flag to False',
-        #                                    '-d'                    : 'enable token related debug output',
-        #                                },
-        #                    },
-        #    'openssh' : {
-        #                    '_cmd_usage_help' : 'Usage: ' + config.tool_name + ' ' + self.command + ' -t {token_type} [-d --private-key <private_key_file>] [token]',
-        #                    'cmd'   :   '-t ::token_type:: --private-key :private_key: --pass-hash-type :pass_hash_type: -d :debug=True: [|object|]',
-        #                    '_help' :   {
-        #                                    'cmd'                               : 'initialize yubikey GPG applet',
-        #                                    '--private-key <file>'              : 'SSH private key file',
-        #                                    '--pass-hash-type <pass_hash_type>' : 'Hash type used to derive SSH key encryption key from password',
-        #                                    '-d'                                : 'enable token related debug output',
-        #                                },
-        #                    },
-        #                }
-
-        ## Handle deployment of yubikey in OATH HOTP mode (token-type
-        ## hotp in OTPme)
-        #if token_type == "yubikey-hotp":
-        #    # FIXME: move to deploy.py!!!!
-        #    from otpme.lib.smartcard.yubikey.yubikey import Yubikey
-        #    # Try to find yubikey.
-        #    try:
-        #        yk = Yubikey()
-        #    except Exception as e:
-        #        raise OTPmeException(_("Error detecting yubikey: %s") % e)
-
-        #    try:
-        #        slot = local_command_args['slot']
-        #    except:
-        #        # Set default slot=1 if we got no slot from user.
-        #        slot = 1
-        #        local_command_args['slot'] = slot
-
-        #    # Get default token secret length.
-        #    secret_len = config.hotp_secret_len
-
-        #    import hashlib
-        #    # FIXME: make PIN format check a function and use in token.py and here!!
-        #    # Get token PIN from user.
-        #    pin = None
-        #    pin1 = "x"
-        #    pin2 = "y"
-        #    while True:
-        #        pin1 = cli.read_pass(prompt="Token PIN: ")
-        #        pin2 = cli.read_pass(prompt="Repeat PIN: ")
-        #        if pin1 != pin2:
-        #            message("Sorry PINs do not match!")
-        #        else:
-        #            pin = pin1
-        #            break
-
-        #    # Generate token server secret.
-        #    server_secret = stuff.gen_secret(secret_len)
-
-        #    # Derive token secret form server secret and PIN.
-        #    sha512 = hashlib.sha512()
-        #    sha512.update("%s%s" % (pin, server_secret))
-        #    token_secret = str(sha512.hexdigest())[0:secret_len]
-
-        #    # Add token config to deployment args sent to server.
-        #    deploy_args['server_secret'] = server_secret
-        #    deploy_args['pin'] = pin
-
-        #    if not no_token_write:
-        #        if not config.force:
-        #            message(_("WARNING!!!!!!! You will lose any key/password "
-        #                    "configured for the given slot!!!"))
-        #            ask = cli.user_input(_("Write HOTP secret to slot '%s'?: ")
-        #                                    % slot)
-        #            if str(ask).lower() != "y":
-        #                return
-
-        #        # Add token secret.
-        #        local_command_args['key'] = token_secret
-
-        #        # Try to write new config to yubikey.
-        #        try:
-        #            yk.add_oath_hotp(**local_command_args)
-        #            message(_("Configuration successfully written to slot %s")
-        #                        % slot)
-        #        except Exception as e:
-        #            raise OTPmeException(str(e))
-
-        #        # FIXME: do we need this?
-        #        # Workaround for http://bugs.python.org/issue24596
-        #        try:
-        #            del yk
-        #        except:
-        #            pass
-
-        #        ask = cli.user_input(_("Please re-plug your yubikey now and "
-        #                            "press RETURN."))
-
-        #    #if not object_identifier:
-        #    #    # Print new HMAC secret
-        #    #    message(_("New HOTP token secret: %s") % token_secret)
-
-
         # Enable/disable SERIAL_API_VISIBLE flag.
         if token_type == "yubikey-serial":
             from otpme.lib.smartcard.yubikey.yubikey import Yubikey
@@ -3253,7 +3182,8 @@ class CommandHandler(object):
                                         realm=config.realm,
                                         site=config.site,
                                         auto_auth=False,
-                                        username=username)
+                                        username=username,
+                                        interactive=True)
         except Exception as e:
             msg = (_("Unable to get connection to authd: %s") % e)
             raise OTPmeException(msg)
@@ -4855,7 +4785,7 @@ class CommandHandler(object):
                 raise OTPmeException(msg)
             # Get password from stdin if given.
             try:
-                # When a user is configured for sign_mode=server the private
+                # When a user is configured for key_mode=server the private
                 # key might be encrypted with a passphrase (AES).
                 self.user_aes_pass = stuff.read_pass_from_stdin()
             except:
@@ -4979,31 +4909,6 @@ class CommandHandler(object):
         self.newline = False
         return script_stdout
 
-    #def handle_user_key_command(self):
-    #    """ Handle script add command. """
-    #    # Show help if needed.
-    #    if len(self.command_line) < 2:
-    #        return self.get_help()
-
-    #    # Get path to script.
-    #    script_path = self.command_line[-1]
-
-    #    if not os.path.exists(script_path):
-    #        msg = (_("No such file or directory: %s") % script_path)
-    #        raise OTPmeException(msg)
-
-    #    # Try to read script as base64 encoded string.
-    #    try:
-    #        fd = open(script_path, "r")
-    #        script_base64 = encode(fd.read(), "base64")
-    #        fd.close()
-    #    except Exception as e:
-    #        fd.close()
-    #        self.logger.warning("Error reading script file: " % e)
-
-    #    # Add base64 encoded script to command line.
-    #    self.command_line = self.command_line[:-1] + [script_base64]
-
     def handle_script_edit_command(self):
         """ Handle script edit command. """
         register_module("otpme.lib.multiprocessing")
@@ -5086,11 +4991,11 @@ class CommandHandler(object):
         # Get login user.
         login_user = config.login_user
 
-        # Get sign mode of users private key (server or client).
+        # Get key mode of users private key (server or client).
         try:
-            sign_mode = self.get_user_sign_mode(username=login_user)
+            key_mode = self.get_user_key_mode(username=login_user)
         except Exception as e:
-            raise OTPmeException(_("Error getting sign mode: %s") % e)
+            raise OTPmeException(_("Error getting key mode: %s") % e)
 
         # Check if we got "--stdin-pass" (and not the global one).
         if "--stdin-pass" in self.command_line:
@@ -5106,12 +5011,12 @@ class CommandHandler(object):
                         "old_pass\0new_pass"))
                 raise OTPmeException(msg)
 
-            if sign_mode == "server":
+            if key_mode == "server":
                 # Add current and new password to command args.
                 self.command_args['password'] = password
                 self.command_args['new_password'] = new_password
 
-        if sign_mode == "client":
+        if key_mode == "client":
             script_command = [ "change_key_pass" ]
             script_options = []
 
@@ -5155,6 +5060,103 @@ class CommandHandler(object):
             except Exception as e:
                 msg = (_("Error sending private key to server: %s") % e)
                 raise OTPmeException(msg)
+
+        return ""
+
+    def handle_user_key_import(self, command, subcommand, private_key):
+        """ Handle user key import command. """
+        # Init otpme.
+        #self.init()
+        # Get login user.
+
+        # Get command syntax.
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except:
+            return self.get_help(_("Unknown command: %s") % subcommand)
+
+        object_cmd, \
+        object_required, \
+        object_identifier, \
+        command_args = cli.get_opts(command_syntax=command_syntax,
+                                    command_line=self.command_line,
+                                    command_args=self.command_args)
+        try:
+            encrypt_key = command_args['encrypt_key']
+        except:
+            encrypt_key = True
+
+        if not encrypt_key:
+            msg = "Cannot import unencrypted key in key mode client"
+            raise OTPmeException(msg)
+
+        if not private_key:
+            try:
+                private_key = command_args['private_key']
+            except:
+                private_key = None
+
+        if not private_key:
+            msg = "No private key received."
+            raise OTPmeException(msg)
+
+        # Make sure private key is bytes.
+        if isinstance(private_key, str):
+            private_key = private_key.encode()
+
+        script_command = [ "encrypt_key" ]
+        proc = stuff.run_key_script(username=object_identifier,
+                                    call=False,
+                                    return_proc=True,
+                                    script_command=script_command,
+                                    disable_ctrl_c=False)
+        proc.stdin.write(private_key)
+        proc.stdin.flush()
+        proc.stdin.close()
+        proc.wait()
+        script_stdout = proc.stdout.read()
+        script_stderr = proc.stderr.read()
+        returncode = proc.returncode
+        if returncode != 0:
+            self.newline = False
+            if script_stderr == "":
+                msg =(_("Error running key script: %s") % script_stdout)
+                raise OTPmeException(msg)
+            else:
+                msg = (_("Error running key script: %s") % script_stderr)
+                raise OTPmeException(msg)
+
+        # Make sure script output is string.
+        if isinstance(script_stdout, bytes):
+            script_stdout = script_stdout.decode()
+        if isinstance(script_stderr, bytes):
+            script_stderr = script_stderr.decode()
+
+        if not script_stdout:
+            msg = (_("Got no key from key script."))
+            raise OTPmeException(msg)
+
+        enc_private_key, public_key = script_stdout.split(" ")
+
+        # Send private key to server.
+        try:
+            self.set_user_key(username=object_identifier,
+                            key=enc_private_key,
+                            private=True,
+                            force=True)
+        except Exception as e:
+            msg = (_("Error sending private key to server: %s") % e)
+            raise OTPmeException(msg)
+
+        # Send private key to server.
+        try:
+            self.set_user_key(username=object_identifier,
+                            key=public_key,
+                            private=False,
+                            force=True)
+        except Exception as e:
+            msg = (_("Error sending public key to server: %s") % e)
+            raise OTPmeException(msg)
 
         return ""
 
@@ -5441,15 +5443,15 @@ class CommandHandler(object):
         # Get login user.
         login_user = config.login_user
 
-        # Get sign mode of users private key (server or client).
+        # Get key mode of users private key (server or client).
         try:
-            sign_mode = self.get_user_sign_mode(username=login_user)
+            key_mode = self.get_user_key_mode(username=login_user)
         except Exception as e:
             config.raise_exception()
-            raise OTPmeException(_("Error getting sign mode: %s") % e)
+            raise OTPmeException(_("Error getting key mode: %s") % e)
 
-        if not sign_mode:
-            msg = (_("Unable to get users sign mode. Private key missing?"))
+        if not key_mode:
+            msg = (_("Unable to get users key mode. Private key missing?"))
             raise OTPmeException(msg)
 
         # Read key pass from stdin if needed.
@@ -5459,17 +5461,17 @@ class CommandHandler(object):
                 raise OTPmeException(msg)
             try:
                 password = sys.stdin.readline().replace("\n", "")
-                if sign_mode == "server":
+                if key_mode == "server":
                     self.command_args['password'] = password
             except:
                 pass
 
-        if sign_mode == "server":
+        if key_mode == "server":
             # Get private key.
             user_key = self.send_command(daemon="mgmtd", client_type="RAPI")
             self.newline = True
 
-        if sign_mode == "client":
+        if key_mode == "client":
             # Get command syntax.
             try:
                 command_syntax = self.get_command_syntax(command, subcommand)
@@ -5510,12 +5512,8 @@ class CommandHandler(object):
                 script_stdout, \
                 script_stderr, \
                 script_pid = stuff.run_key_script(username=login_user,
-                                                    key_pass=self.user_key_pass,
-                                                    script_command=script_command)
-                # Make sure script output is string.
-                script_stdout = script_stdout.decode()
-                script_stderr = script_stderr.decode()
-
+                                                key_pass=self.user_key_pass,
+                                                script_command=script_command)
                 if script_status != 0:
                     raise OTPmeException(script_stderr)
 
@@ -6548,13 +6546,13 @@ class CommandHandler(object):
         # Command line we have to pass to key script.
         script_command = subcommand.split(" ")
 
-        # Get sign mode of users private key (server or client).
+        # Get key mode of users private key (server or client).
         try:
-            sign_mode = self.get_user_sign_mode(username=login_user)
+            key_mode = self.get_user_key_mode(username=login_user)
         except Exception as e:
-            raise OTPmeException(_("Error getting sign mode: %s") % e)
+            raise OTPmeException(_("Error getting key mode: %s") % e)
 
-        if sign_mode == "server":
+        if key_mode == "server":
             script_command.append("--server-key")
 
         # Get script options:

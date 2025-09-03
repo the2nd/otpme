@@ -1940,11 +1940,6 @@ class OTPmeMgmtP1(OTPmeServer1):
             raise OTPmeException(msg)
 
         if trash_command == "show":
-            if not self.is_admin:
-                status = False
-                message = "You need to be admin to run this command."
-                return self.build_response(status, message)
-
             try:
                 status, \
                 response = self.start_job(name="trash_show",
@@ -1960,11 +1955,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                                 % (backend_command, e))
 
         if trash_command == "restore":
-            if not self.is_admin:
-                status = False
-                message = "You need to be admin to run this command."
-                return self.build_response(status, message)
-
             try:
                 trash_id = command_args.pop('object_identifier')
                 command_args['trash_id'] = trash_id
@@ -1988,11 +1978,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                                 % (backend_command, e))
 
         if trash_command == "del":
-            if not self.is_admin:
-                status = False
-                message = "You need to be admin to run this command."
-                return self.build_response(status, message)
-
             try:
                 trash_id = command_args.pop('object_identifier')
                 command_args['trash_id'] = trash_id
@@ -2020,7 +2005,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                 status = False
                 message = "You need to be admin to run this command."
                 return self.build_response(status, message)
-
             try:
                 status, \
                 response = self.start_job(name="trash_empty",

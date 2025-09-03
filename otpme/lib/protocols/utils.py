@@ -198,24 +198,24 @@ def decrypt(query_id, data, use_rsa_key=False):
             }
     return request
 
-def gen_share_key(query_id, key_len, sign_mode):
+def gen_share_key(query_id, key_len, key_mode):
     """ Sends request to client to generate and encrypt share key. """
     request = {
             'query_id'      : query_id,
             'command'       : 'OTPME_GEN_SHARE_KEY',
             'key_len'       : key_len,
-            'sign_mode'     : sign_mode,
+            'key_mode'     : key_mode,
             }
     return request
 
-def reencrypt_share_key(query_id, share_user, share_key, sign_mode):
+def reencrypt_share_key(query_id, share_user, share_key, key_mode):
     """ Sends request to client to re-encrypt given share key. """
     request = {
             'query_id'      : query_id,
             'command'       : 'OTPME_REENCRYPT_SHARE_KEY',
             'share_user'    : share_user,
             'share_key'     : share_key,
-            'sign_mode'     : sign_mode,
+            'key_mode'     : key_mode,
             }
     return request
 

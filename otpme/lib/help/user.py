@@ -74,19 +74,27 @@ cmd_help = {
                                 },
                 },
 
+    'key_mode'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user key_mode {user} {key_mode}',
+                    'cmd'   :   '<|object|> <key_mode>',
+                    '_help' :   {
+                                    'cmd'                   : 'Set user key key mode (client or server)',
+                                },
+                },
 
-    'get_sign_mode'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user get_sign_mode {user}',
+
+    'get_key_mode'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user get_key_mode {user}',
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'Get user key sign mode (client or server)',
+                                    'cmd'                   : 'Get user key key mode (client or server)',
                                 },
                 },
 
 
     'gen_keys'    : {
                     '_cmd_usage_help' : 'Usage: otpme-user gen_keys [--server] [-b <bits>] [--pass-hash-type <hash_type>] [-n] {user}',
-                    'cmd'   :   '-b :key_len: --server :sign_mode=server: --pass-hash-type :pass_hash_type: -n :encrypt_key=False: --stdin-pass :stdin_pass=True: <|object|>',
+                    'cmd'   :   '-b :key_len: --server :key_mode=server: --pass-hash-type :pass_hash_type: -n :encrypt_key=False: --stdin-pass :stdin_pass=True: <|object|>',
                     '_help' :   {
                                     'cmd'                               : 'Generate users RSA key pair',
                                     '-b <bits>'                         : 'Key len in bits (e.g. 2048)',
@@ -116,7 +124,6 @@ cmd_help = {
                                 },
                 },
 
-
     'private_key'    : {
                     '_cmd_usage_help' : 'Usage: otpme-user private_key {user}',
                     'cmd'   :   '<|object|> <private_key>',
@@ -134,6 +141,18 @@ cmd_help = {
                                 },
                 },
 
+
+    'import_key'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-user import_key [--server] [-n] [--stdin-key] {user} [private_key_file]',
+                    'cmd'   :   '--server :key_mode=server: -n :encrypt_key=False: --stdin-key :stdin_key=True: <|object|> [file:private_key]',
+                    '_help' :   {
+                                    'cmd'                   : 'Import users RSA key',
+                                    '-n'                    : 'Dont encrypt private key',
+                                    '--server'              : 'Save key on server.',
+                                    '--stdin-key'           : 'Read RSA private key from stdin',
+                                },
+
+                },
 
     'dump_key'    : {
                     '_cmd_usage_help' : 'Usage: otpme-user dump_key [-p] [-n] [--stdin-pass] {user}',
@@ -159,22 +178,22 @@ cmd_help = {
 
     'sign_data'    : {
                     # This command is not intended to be used by the user directly.
-                    # It is called internally when running otpme-token sign command.
-                    'cmd'   :   '--data :data: --digest :digest: --stdin-pass :stdin_pass=True: <|object|>',
+                    # It is called internally when running otpme-tool sign command.
+                    'cmd'   :   '--data :data: --stdin-data :stdin_data=True: --digest :digest: --stdin-pass :stdin_pass=True: <|object|>',
                 },
 
 
     'encrypt'    : {
                     # This command is not intended to be used by the user directly.
-                    # It is called internally when running otpme-token encrypt command.
-                    'cmd'   :   '--data :data: --stdin-pass :stdin_pass=True: <|object|>',
+                    # It is called internally when running otpme-tool encrypt command.
+                    'cmd'   :   '--data :data: --stdin-data :stdin_data=True: --stdin-pass :stdin_pass=True: <|object|>',
                 },
 
 
     'decrypt'    : {
                     # This command is not intended to be used by the user directly.
-                    # It is called internally when running otpme-token decrypt command.
-                    'cmd'   :   '--data :data: --stdin-pass :stdin_pass=True: <|object|>',
+                    # It is called internally when running otpme-tool decrypt command.
+                    'cmd'   :   '--data :data: --stdin-data :stdin_data=True: --stdin-pass :stdin_pass=True: <|object|>',
                 },
 
 
@@ -522,7 +541,7 @@ cmd_help = {
 
 
     'auth_script'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user auth_script {user} {auth_script}',
+                    '_cmd_usage_help' : 'Usage: otpme-user auth_script {user} {auth_script} -- [script_options]',
                     'cmd'   :   '<|object|> <auth_script> [script_options]',
                     '_help' :   {
                                     'cmd'                   : 'change users authorization script',
@@ -558,7 +577,7 @@ cmd_help = {
                 },
 
     'key_script'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user key_script {user} [key_script]',
+                    '_cmd_usage_help' : 'Usage: otpme-user key_script {user} [key_script] -- [script_options]',
                     'cmd'   :   '<|object|> [key_script] [script_options]',
                     '_help' :   {
                                     'cmd'                   : 'change users key script',
@@ -566,7 +585,7 @@ cmd_help = {
                 },
 
     'agent_script'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user agent_script {user} [agent_script]',
+                    '_cmd_usage_help' : 'Usage: otpme-user agent_script {user} [agent_script] -- [script_options]',
                     'cmd'   :   '<|object|> [agent_script] [script_options]',
                     '_help' :   {
                                     'cmd'                   : 'change users agent script',
@@ -574,7 +593,7 @@ cmd_help = {
                 },
 
     'login_script'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-user login_script {user} [login_script]',
+                    '_cmd_usage_help' : 'Usage: otpme-user login_script {user} [login_script] -- [script_options]',
                     'cmd'   :   '<|object|> [login_script] [script_options]',
                     '_help' :   {
                                     'cmd'                   : 'change users login script',

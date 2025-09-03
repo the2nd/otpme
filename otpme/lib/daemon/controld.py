@@ -553,6 +553,7 @@ class ControlDaemon(UnixDaemon):
 
     def run(self):
         """ Start daemon loop. """
+        from otpme.lib import filetools
         # Register modules.
         register_modules()
         # Set own PID.
@@ -562,6 +563,14 @@ class ControlDaemon(UnixDaemon):
         config.daemon_name = self.name
         # Make sure we use direct backend access.
         config.use_backend = True
+        # Create OTPmeFS mount point root dir.
+        if config.mount_root_dir:
+            directories = {
+                            config.mount_root_dir : 0o770,
+                        }
+            filetools.ensure_fs_permissions(directories=directories,
+                                            user="root",
+                                            group=config.realm_users_group)
         # Handle multiprocessing stuff.
         multiprocessing.atfork()
         # Enable file logging if run in daemon  mode.

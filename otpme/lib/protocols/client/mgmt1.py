@@ -155,22 +155,22 @@ class OTPmeMgmtP1(OTPmeClient1):
             raise OTPmeException(msg)
         return user_key
 
-    def get_user_sign_mode(self, username):
-        """ Get key sign mode (client or server) for the given user. """
-        self.logger.debug("Requesting users key sign mode...")
+    def get_user_key_mode(self, username):
+        """ Get key key mode (client or server) for the given user. """
+        self.logger.debug("Requesting users key mode...")
         command = "user"
         command_args = {
-                        'subcommand'        : 'get_sign_mode',
+                        'subcommand'        : 'get_key_mode',
                         'object_identifier' : username,
                         }
         try:
-            status, sign_mode = self.send_command(command, command_args)
+            status, key_mode = self.send_command(command, command_args)
         except Exception as e:
-            msg = (_("Unable to get users key sign mode: %s") % e)
+            msg = (_("Unable to get users key mode: %s") % e)
             raise OTPmeException(msg)
-        if not sign_mode:
-            sign_mode = None
-        return sign_mode
+        if not key_mode:
+            key_mode = None
+        return key_mode
 
     def get_user_key_script_path(self, username):
         """ Get users key script path and options. """

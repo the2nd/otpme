@@ -6930,7 +6930,7 @@ class OTPmeObject(OTPmeBaseObject):
         # Build sign request.
         sign_request = {
                             'stdin_pass': stdin_pass,
-                            'sign_mode' : signer.sign_mode,
+                            'key_mode'  : signer.key_mode,
                             'sign_info' : sign_info,
                             'sign_data' : sign_template,
                         }

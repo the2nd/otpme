@@ -369,7 +369,7 @@ class AgentConn(object):
         status, status_code, response = self.send(helo_command, **helo_args)
 
         if status_code != status_codes.OK:
-            msg = (_("Error sending helo command to otpme-agent: %s") % msg)
+            msg = (_("Error sending helo command to otpme-agent: %s") % response)
             raise OTPmeException(msg)
 
         # Set agent protocol we negotiated.

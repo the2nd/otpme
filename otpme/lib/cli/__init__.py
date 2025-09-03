@@ -489,19 +489,19 @@ def get_opts(command_syntax, command_line, command_args,
         except:
             found_required_string = False
 
-        # Check for file.
-        try:
-            para = check_string(para, "file:")
-            found_file_opt = True
-        except:
-            found_file_opt = False
-
         # Check for optional_opt parameter/object.
         try:
             para = check_string(para, "[", "]")
             found_optional_string = True
         except:
             found_optional_string = False
+
+        # Check for file.
+        try:
+            para = check_string(para, "file:")
+            found_file_opt = True
+        except:
+            found_file_opt = False
 
         # Check if we got an object command line.
         try:
@@ -531,7 +531,10 @@ def get_opts(command_syntax, command_line, command_args,
 
         if found_optional_string:
             if not found_object_string:
-                cmd_opt_paras[para_count] = para
+                cmd_opt_paras[para_count] = {}
+                cmd_opt_paras[para_count]['para'] = para
+                cmd_opt_paras[para_count]['file'] = found_file_opt
+                para_count += 1
                 para_count += 1
             #cmd_list.pop(0)
             continue
@@ -655,7 +658,8 @@ def get_opts(command_syntax, command_line, command_args,
                     para_is_file = cmd_paras[para_count]['file']
                     cmd_paras.pop(para_count)
                 elif para_count in cmd_opt_paras:
-                    para_var = cmd_opt_paras.pop(para_count)
+                    para_var = cmd_opt_paras[para_count]['para']
+                    para_is_file = cmd_opt_paras[para_count]['file']
                 elif para_count in cmd_key_val_paras:
                     key_name = cmd_key_val_paras[para_count][0]
                     key_name = key_name.replace("<", "").replace(">", "")
@@ -672,10 +676,9 @@ def get_opts(command_syntax, command_line, command_args,
 
                 if not para_var and not key_name:
                     if not ignore_unknown_opts:
-                        msg = ("Unknown parameter: %s" % command_line[0])
-                        raise OTPmeException(msg)
-                    command_line.pop(0)
-                    continue
+                        if check_for_otpme_opts:
+                            msg = ("Unknown parameter: %s" % command_line[0])
+                            raise OTPmeException(msg)
 
                 if para_var:
                     if para_is_file:
