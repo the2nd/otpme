@@ -55,10 +55,7 @@ def register_backend():
                             path=FAILED_DIR,
                             drop=True,
                             perms=0o770)
-    def upath_getter(object_id):
-        user_uuid = backend.get_uuid(object_id)
-        if not user_uuid:
-            return
+    def upath_getter(user_oid, user_uuid):
         failed_dir = os.path.join(FAILED_DIR, user_uuid, path_id)
         return failed_dir
     backend.register_object_dir(object_type="user",
@@ -89,12 +86,13 @@ def register_backend():
                                 accessgroup_uuid=accessgroup_uuid,
                                 object_hash=object_hash)
         return object_id
-    def path_getter(object_id):
+    def path_getter(object_id, object_uuid):
         user_oid = backend.get_oid(object_id.user_uuid,
                                     object_type="user",
                                     instance=True)
+        user_uuid = backend.get_uuid(user_oid)
         x = backend.get_object_path_settings("user")['path_getter']
-        user_paths = x(user_oid)
+        user_paths = x(user_oid, user_uuid)
         failed_pass_dir = user_paths[path_id]
         failed_pass_dir = os.path.join(failed_pass_dir, object_id.accessgroup_uuid)
         sign_hash = object_id.object_hash

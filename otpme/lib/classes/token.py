@@ -738,43 +738,37 @@ def register_backend():
     # Extension for token dirs.
     token_dir_extension = "token"
     # Generic path getter.
-    def _path_getter(token_oid, path_id):
-        try:
-            # Get token UUID.
-            token_uuid = backend.get_uuid(token_oid)
-            if not token_uuid:
-                return
-            # Get user OID.
-            user_oid = oid.get(object_type="user",
-                                realm=token_oid.realm,
-                                site=token_oid.site,
-                                name=token_oid.user)
-            # Get user "used" dir.
-            user_used_dir = backend.get_object_dir(user_oid, "used_dir")
-            user_used_dir = user_used_dir['used_dir']['path']
-            # Build path to save used token OTPs/counters.
-            used_otp_dir = "%s/%s/%s" % (user_used_dir, path_id, token_uuid)
-        except:
-            return
+    def _path_getter(token_oid, token_uuid, path_id):
+        # Get user OID.
+        user_oid = oid.get(object_type="user",
+                            realm=token_oid.realm,
+                            site=token_oid.site,
+                            name=token_oid.user)
+        user_uuid = backend.get_uuid(user_oid)
+        # Get user "used" dir.
+        user_used_dir = backend.get_object_dir(user_oid, user_uuid, "used_dir")
+        user_used_dir = user_used_dir['used_dir']['path']
+        # Build path to save used token OTPs/counters.
+        used_otp_dir = "%s/%s/%s" % (user_used_dir, path_id, token_uuid)
         return used_otp_dir
     # Register used token OTP dir.
     otp_path_id = "used_otp"
-    def opath_getter(token_oid):
-        return _path_getter(token_oid, path_id=otp_path_id)
+    def opath_getter(token_oid, token_uuid):
+        return _path_getter(token_oid, token_uuid, path_id=otp_path_id)
     backend.register_object_dir(object_type="token",
                                 name=otp_path_id,
                                 getter=opath_getter,
                                 drop=True)
     # Register token counter dir.
     counter_path_id = "token_counter"
-    def cpath_getter(token_oid):
-        return _path_getter(token_oid, path_id=counter_path_id)
+    def cpath_getter(token_oid, token_uuid):
+        return _path_getter(token_oid, token_uuid, path_id=counter_path_id)
     backend.register_object_dir(object_type="token",
                                 name=counter_path_id,
                                 getter=cpath_getter,
                                 drop=True)
     # Path getter for token paths.
-    def path_getter(token_oid):
+    def path_getter(token_oid, token_uuid):
         """ Get data paths of token. """
         # Get token owner OID.
         user_oid = oid.get(object_type="user",
@@ -801,7 +795,7 @@ def register_backend():
         config_paths['rmtree_on_delete'] = [config_dir]
 
         # Add token dirs (e.g. registered above or by other token class).
-        token_dirs = backend.get_object_dir(token_oid)
+        token_dirs = backend.get_object_dir(token_oid, token_uuid)
         for x in token_dirs:
             x_path = token_dirs[x]['path']
             if not x_path:
@@ -3354,8 +3348,6 @@ class Token(OTPmeObject):
         self.set_path()
         # Update object config.
         self.update_object_config()
-        # Reload extensions.
-        self.load_extensions(verbose_level=verbose_level, callback=callback)
 
         # Actually move token in backend.
         if not replace:

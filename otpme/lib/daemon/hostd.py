@@ -569,18 +569,19 @@ class HostDaemon(OTPmeDaemon):
                     sync_checksum = backend.get_sync_checksum(x_oid)
                     if sync_checksum == o.sync_checksum:
                         continue
-                    # Realm/site objects need some special handling (e.g.
-                    # preserve auth/sync settings.
-                    if object_type == "realm" or object_type == "site":
-                        # Preserve auth/sync settings.
-                        o.auth_enabled = x_object.auth_enabled
-                        o.sync_enabled = x_object.sync_enabled
-                        # Update object config.
-                        o._set_variables()
-                        o.set_variables()
-                        o.update_object_config()
-                        # Get object config of updated object.
-                        object_config = o.object_config.copy()
+                    if config.master_node:
+                        # Realm/site objects need some special handling (e.g.
+                        # preserve auth/sync settings.
+                        if object_type == "realm" or object_type == "site":
+                            # Preserve auth/sync settings.
+                            o.auth_enabled = x_object.auth_enabled
+                            o.sync_enabled = x_object.sync_enabled
+                            # Update object config.
+                            o._set_variables()
+                            o.set_variables()
+                            o.update_object_config()
+                            # Get object config of updated object.
+                            object_config = o.object_config.copy()
                     # Update sync checksum of object.
                     object_config['SYNC_CHECKSUM'] = o.sync_checksum
                     updated_objects += 1
@@ -595,7 +596,8 @@ class HostDaemon(OTPmeDaemon):
                     backend.write_config(object_id=x_oid,
                                     object_config=object_config,
                                     full_data_update=True,
-                                    full_index_update=True)
+                                    full_index_update=True,
+                                    full_ldif_update=True)
                 except Exception as e:
                     msg = "Failed to write object: %s: %s" % (x_oid, e)
                     self.logger.critical(msg)

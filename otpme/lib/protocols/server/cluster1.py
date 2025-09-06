@@ -165,8 +165,10 @@ class OTPmeClusterP1(OTPmeServer1):
                             "release_lock",
                             "get_checksums",
                             "get_full_checksums",
+                            "get_index_checksums",
                             "object_exists",
                             "get_node_vote",
+                            "get_last_used",
                             "set_node_sync",
                             "last_used_write",
                             "unset_node_sync",
@@ -391,6 +393,73 @@ class OTPmeClusterP1(OTPmeServer1):
                         continue
                     oc.update_checksums(force=True)
                     session_checksums[x_oid.full_oid] = oc.checksum
+            sessions_checksum = json.dumps(session_checksums, sort_keys=True)
+            sessions_checksum = stuff.gen_md5(sessions_checksum)
+
+            message = {
+                        'object_checksums'  : object_checksums,
+                        'objects_checksum'  : objects_checksum,
+                        'data_checksum'     : data_checksum,
+                        'data_checksums'    : data_checksums,
+                        'sessions_checksum' : sessions_checksum,
+                        'session_checksums' : session_checksums,
+                        }
+
+        elif command == "get_index_checksums":
+            status = True
+            object_types = list(config.tree_object_types)
+            data_types = list(config.flat_object_types)
+            data_types.remove("session")
+            session_types = ['session']
+
+            object_checksums = {}
+            for object_type in object_types:
+                result = backend.search(object_type=object_type,
+                                        realm=config.realm,
+                                        site=config.site,
+                                        attribute="uuid",
+                                        value="*",
+                                        return_type="oid")
+                for x_oid in result:
+                    index_dump = backend.index_dump(object_id=x_oid,
+                                                    checksum_ready=True)
+                    index_dump = json.dumps(index_dump, sort_keys=True)
+                    index_checksum = stuff.gen_md5(index_dump)
+                    object_checksums[x_oid.full_oid] = index_checksum
+            objects_checksum = json.dumps(object_checksums, sort_keys=True)
+            objects_checksum = stuff.gen_md5(objects_checksum)
+
+            data_checksums = {}
+            for object_type in data_types:
+                result = backend.search(object_type=object_type,
+                                        realm=config.realm,
+                                        site=config.site,
+                                        attribute="uuid",
+                                        value="*",
+                                        return_type="oid")
+                for x_oid in result:
+                    index_dump = backend.index_dump(object_id=x_oid,
+                                                    checksum_ready=True)
+                    index_dump = json.dumps(index_dump, sort_keys=True)
+                    index_checksum = stuff.gen_md5(index_dump)
+                    data_checksums[x_oid.full_oid] = index_checksum
+            data_checksum = json.dumps(data_checksums, sort_keys=True)
+            data_checksum = stuff.gen_md5(data_checksum)
+
+            session_checksums = {}
+            for object_type in session_types:
+                result = backend.search(object_type=object_type,
+                                        realm=config.realm,
+                                        site=config.site,
+                                        attribute="uuid",
+                                        value="*",
+                                        return_type="oid")
+                for x_oid in result:
+                    index_dump = backend.index_dump(object_id=x_oid,
+                                                    checksum_ready=True)
+                    index_dump = json.dumps(index_dump, sort_keys=True)
+                    index_checksum = stuff.gen_md5(index_dump)
+                    session_checksums[x_oid.full_oid] = index_checksum
             sessions_checksum = json.dumps(session_checksums, sort_keys=True)
             sessions_checksum = stuff.gen_md5(sessions_checksum)
 
@@ -794,6 +863,27 @@ class OTPmeClusterP1(OTPmeServer1):
                     trash.empty(cluster=False)
                 except Exception as e:
                     message = ("Failed to empty trash: %s" % e)
+                    status = False
+
+        elif command == "get_last_used":
+            status = True
+            message = None
+            try:
+                object_types = command_args['object_types']
+            except:
+                message = "Missing object type."
+                status = False
+            if config.daemon_shutdown:
+                message = "Daemon shutdown."
+                status = False
+            if status:
+                try:
+                    message = backend.get_last_used_times(object_types=object_types)
+                    status = True
+                except Exception as e:
+                    msg = "Failed to get last used data from backend: %s" % e
+                    self.logger.warning(msg)
+                    message = "Failed to get last used data from backend."
                     status = False
 
         elif command == "last_used_write":

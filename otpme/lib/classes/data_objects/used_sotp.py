@@ -50,9 +50,11 @@ def register_backend():
     """ Register object for the file backend. """
     path_id = "used_sotp"
     used_dir = backend.get_data_dir("used")
-    def upath_getter(object_id):
+    def upath_getter(object_id, object_uuid):
         try:
-            user_used_dir = backend.get_object_dir(object_id, "used_dir")
+            user_used_dir = backend.get_object_dir(object_id,
+                                                object_uuid,
+                                                "used_dir")
             user_used_dir = user_used_dir['used_dir']['path']
             used_sotp_dir = os.path.join(user_used_dir, path_id)
         except:
@@ -81,12 +83,13 @@ def register_backend():
                                 user_uuid=user_uuid,
                                 object_hash=object_hash)
         return object_id
-    def path_getter(object_id):
+    def path_getter(object_id, object_uuid):
         user_oid = backend.get_oid(object_id.user_uuid,
                                     object_type="user",
                                     instance=True)
+        user_uuid = backend.get_uuid(user_oid)
         x = backend.get_object_path_settings("user")['path_getter']
-        user_paths = x(user_oid)
+        user_paths = x(user_oid, user_uuid)
         used_sotp_dir = user_paths[path_id]
         sotp_hash = object_id.object_hash
         config_dir = os.path.join(used_sotp_dir, sotp_hash)

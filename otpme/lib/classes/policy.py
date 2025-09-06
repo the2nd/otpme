@@ -387,7 +387,7 @@ def register_backend():
     """ Register object for the file backend. """
     from otpme.lib import policy
     policy_dir_extension = "policy"
-    def path_getter(policy_oid):
+    def path_getter(policy_oid, policy_uuid):
         return backend.config_path_getter(policy_oid, policy_dir_extension)
     def index_rebuild(objects):
         after = [

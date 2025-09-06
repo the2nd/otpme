@@ -694,7 +694,7 @@ def register_backend():
     from otpme.lib.classes.otpme_object import oid_getter
     objects_dir = backend.get_data_dir("objects")
     realm_dir_extension = "realm"
-    def path_getter(object_id):
+    def path_getter(object_id, object_uuid):
         # Get object realm.
         config_paths = {}
         config_dir_name = "%s.realm" % object_id.realm

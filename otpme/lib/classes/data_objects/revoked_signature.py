@@ -84,7 +84,7 @@ def register_backend():
                                 signer_uuid=signer_uuid,
                                 signature_hash=signature_hash)
         return object_id
-    def path_getter(object_id):
+    def path_getter(object_id, object_uuid):
         revoked_signs_dir = backend.get_data_dir(path_id)
         realm = object_id.realm
         site = object_id.site

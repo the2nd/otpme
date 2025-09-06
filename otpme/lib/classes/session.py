@@ -144,7 +144,7 @@ def register_backend():
                             path=SESSIONS_DIR,
                             drop=True,
                             perms=0o770)
-    def path_getter(object_id):
+    def path_getter(object_id, object_uuid):
         session_name = object_id.name
         config_file_name = "%s.json" % session_name
         config_file = os.path.join(SESSIONS_DIR, config_file_name)
@@ -481,7 +481,7 @@ class Session(OTPmeLockObject):
             msg = (_("Object '%s' does not exist.") % self.oid)
             return callback.error(msg)
         object_config = self.object_config.copy()
-        object_config = json.dumps(object_config, indent=4, sort_keys=True)
+        object_config = json.dumps(object_config, indent=4)
         return callback.ok(object_config)
 
     def outdate(self):
@@ -802,9 +802,12 @@ class Session(OTPmeLockObject):
             msg = (_("Need 'password' or 'challenge' + 'response'!"))
             raise OTPmeException(msg)
         session_hashes = [ self.pass_hash ]
-        # If we have a renegotiation hash we have to check it too.
+        # If we have a renegoiation hash we check it if its
+        # younger than 60 seconds.
         if self.reneg_hash:
-            session_hashes.append(self.reneg_hash)
+            reneg_age = time.time() - self.last_reneg
+            if reneg_age <= 60:
+                session_hashes.append(self.reneg_hash)
 
         for session_hash in session_hashes:
             if password:

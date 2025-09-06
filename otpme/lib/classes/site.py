@@ -885,7 +885,7 @@ def register_backend():
     """ Register object for the file backend. """
     site_dir_extension = "site"
     objects_dir = backend.get_data_dir("objects")
-    def path_getter(object_id):
+    def path_getter(object_id, object_uuid):
         config_paths = {}
         realm_dir_extension = backend.get_object_path_settings("realm")
         realm_dir_extension = realm_dir_extension['dir_name_extension']

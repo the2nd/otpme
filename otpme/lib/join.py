@@ -423,6 +423,8 @@ class JoinHandler(object):
                 try:
                     backend.write_config(object_id=object_id,
                                     full_index_update=True,
+                                    full_acl_update=True,
+                                    full_ldif_update=True,
                                     object_config=object_config)
                 except Exception as e:
                     config.raise_exception()

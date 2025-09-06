@@ -49,7 +49,7 @@ class OTPmeLDIFHandler(object):
         except:
             return callback.ok()
 
-        if not dn_attribute in o.ldif_attributes:
+        if dn_attribute not in o.ldif_attributes:
             x_attrs = config.get_ldif_attributes(self.name, o.type)
             if dn_attribute in x_attrs:
                 if not self.add_attribute(o=o,
@@ -105,6 +105,10 @@ class OTPmeLDIFHandler(object):
                 msg = (_("Extension %s: Error adding default attribute: %s")
                         % (self.name, at))
                 raise OTPmeException(msg)
+
+        self.load(o=o,
+                verbose_level=verbose_level,
+                callback=callback)
 
         return callback.ok()
 
@@ -177,10 +181,10 @@ class OTPmeLDIFHandler(object):
             # Get value ACLs.
             value_acls = self.get_value_acls(o.type)
             for acl_type in value_acls:
-                if not acl_type in o._value_acls:
+                if acl_type not in o._value_acls:
                     o._value_acls[acl_type] = []
                 for attribute in value_acls[acl_type]:
-                    if not attribute in o._value_acls[acl_type]:
+                    if attribute not in o._value_acls[acl_type]:
                         o._value_acls[acl_type].append(attribute)
         # Call child class method to do extension specific stuff.
         return self._preload()
@@ -252,104 +256,82 @@ class OTPmeLDIFHandler(object):
             return callback.ok()
 
         ldif = []
-        ldif_incomplete = False
         # Try to get DN.
-        if not dn_attribute in o.ldif_attributes:
-            dn = self.build_dn(o, dn_attribute)
-            if dn:
-                ldif.append(['dn', dn])
+        if "dn" not in o.ldif_attributes:
+            if dn_attribute in o.ldif_attributes:
+                dn = self.build_dn(o, dn_attribute)
+                if not dn:
+                    msg = "Unable to build DN: %s" % o
+                    return callback.error(msg)
+                dn_ldif = [['dn', dn]]
+                o.add_ldif(dn_ldif, position=0)
 
-        # We can only continue if DN is complete.
-        if not ldif_incomplete:
-            # Try to add all mandatory attributes to LDIF.
-            for oc in o.object_classes:
-                # Do not handle object classes that this extension is not
-                # responsible for.
-                if not oc in self.object_classes[o.type]:
-                    continue
-                try:
-                    mandatory_attrs = config.ldap_object_classes[oc].must
-                except:
-                    mandatory_attrs = []
+        # Try to add all mandatory attributes to LDIF.
+        for oc in o.object_classes:
+            # Do not handle object classes that this extension is not
+            # responsible for.
+            if oc not in self.object_classes[o.type]:
+                continue
+            try:
+                mandatory_attrs = config.ldap_object_classes[oc].must
+            except:
+                mandatory_attrs = []
 
-                for at in mandatory_attrs:
-                    if at in processed_attributes:
-                        continue
-                    at_val = self.get_attribute(o, at)
-                    if not at_val:
-                        if at in o.ldif_attributes:
-                            continue
-                        else:
-                            ldif_incomplete = True
-                            break
-                    if config.ldap_attribute_types[at].single_value:
-                        if len(at_val) > 1:
-                            msg = ("Got multiple values for single value "
-                                    "attribute: %s: %s" % (at, at_val))
-                            raise OTPmeException(msg)
-                        x_ldif = [at, at_val[0]]
-                        if x_ldif in ldif:
-                            continue
-                        ldif.append(x_ldif)
-                    else:
-                        for v in at_val:
-                            x_ldif = [at, v]
-                            if x_ldif in ldif:
-                                continue
-                            ldif.append(x_ldif)
-                    processed_attributes.append(at)
-
-            # Add object classes to LDIF.
-            for oc in o.object_classes:
-                if oc in self.object_classes[o.type]:
-                    ldif.append(['objectClass', oc])
-
-            # Add all object attributes of this extension to LDIF.
-            for at in o.get_extension_attributes(extension=self.name):
+            for at in mandatory_attrs:
                 if at in processed_attributes:
                     continue
-                at_val = self.get_attribute(o, at)
-                if not at_val:
+                cur_val = self.get_attribute(o, at)
+                if cur_val:
                     continue
-                if config.ldap_attribute_types[at].single_value:
-                    if len(at_val) > 1:
-                        msg = ("Got multiple values for single value "
-                                "attribute: %s: %s" % (at, at_val))
-                        raise OTPmeException(msg)
-                    x_ldif = [at, at_val[0]]
-                    if x_ldif in ldif:
-                        continue
-                    ldif.append(x_ldif)
-                else:
-                    for v in at_val:
-                        x_ldif = [at, v]
-                        if x_ldif in ldif:
-                            continue
-                        ldif.append(x_ldif)
+                new_val = self.gen_attribute_value(o, at, callback=callback)
+                if not new_val:
+                    msg = "Unable to generate attribute value: %s: %s" % (o, at)
+                    return callback.error(msg)
+                x_ldif = [at, new_val]
+                if x_ldif in ldif:
+                    continue
+                ldif.append(x_ldif)
                 processed_attributes.append(at)
 
-                try:
-                    at_deps = config.ldap_attribute_deps[at]
-                except:
-                    at_deps = []
+        # Add object classes to LDIF.
+        for oc in o.object_classes:
+            if oc in self.object_classes[o.type]:
+                ldif.append(['objectClass', oc])
 
-                if len(at_deps) > 0:
-                    at_deps_ok = False
-                    for oc in at_deps:
-                        if oc in o.object_classes:
-                            at_deps_ok = True
-                            break
-                    if not at_deps_ok:
-                        ldif_incomplete = True
+        # Add all object attributes of this extension to LDIF.
+        for at in o.get_extension_attributes(extension=self.name):
+            if at in processed_attributes:
+                continue
+            cur_val = self.get_attribute(o, at)
+            if cur_val:
+                continue
+            new_val = self.gen_attribute_value(o, at, callback=callback)
+            x_ldif = [at, new_val]
+            if x_ldif in ldif:
+                continue
+            ldif.append(x_ldif)
+            processed_attributes.append(at)
 
-            if o.type == "realm":
-                ldif.append(['subschemaSubentry', 'cn=Subschema'])
+            try:
+                at_deps = config.ldap_attribute_deps[at]
+            except:
+                at_deps = []
 
-        # Only add LDIF stuff if its complete.
-        if not ldif_incomplete:
-            o.add_ldif(ldif)
-        else:
-            o.add_ldif_attributes(ldif)
+            if len(at_deps) > 0:
+                at_deps_ok = False
+                for oc in at_deps:
+                    if oc in o.object_classes:
+                        at_deps_ok = True
+                        break
+                if not at_deps_ok:
+                    msg = "Unable to add object classes: %s: %s" % (o, at_deps)
+                    return callback.error(msg)
+
+        if o.type == "realm":
+            ldif.append(['subschemaSubentry', 'cn=Subschema'])
+
+        # Add LDIF to object.
+        o.add_ldif(ldif)
 
         if verify:
             return self.verify(o=o,
@@ -744,7 +726,6 @@ class OTPmeLDIFHandler(object):
                         callback.send(_("Adding needed object class: %s") % oc)
                     self.add_object_class(o=o,
                                         oc=oc,
-                                        verify=False,
                                         verbose_level=verbose_level,
                                         callback=callback)
                     found_object_class = True
@@ -780,16 +761,16 @@ class OTPmeLDIFHandler(object):
 
         x_attrs = config.get_ldif_attributes(self.name, o.type)
         if a not in x_attrs:
-            msg = (_("Cannot delete unknown attribute: %s: %s")
-                    % (self.name, a))
-            return callback.error(msg)
+            if a != config.dn_attributes[o.type]:
+                msg = (_("Cannot delete unknown attribute: %s: %s")
+                        % (self.name, a))
+                return callback.error(msg)
 
         x_val = o.get_extension_attribute(extension=self.name, attribute=a)
         if not x_val:
-            if ignore_missing:
-                return callback.ok()
-            msg = (_("Object does not have attribute '%s'.") % a)
-            return callback.error(msg)
+            if not ignore_missing:
+                msg = (_("Object does not have attribute '%s'.") % a)
+                return callback.error(msg)
 
         # Check if there are mappings for this attribute.
         mappings = self.get_attribute_mapping(o, a)
@@ -910,15 +891,15 @@ class OTPmeLDIFHandler(object):
 
         return callback.ok()
 
-    def add_object_class(self, o, oc, verify=True,
-        verbose_level=0, callback=default_callback):
+    def add_object_class(self, o, oc, verbose_level=0,
+        callback=default_callback):
         """ Add object class to object. """
         if oc in o.object_classes:
             return callback.error("Object class already assigned.")
 
-        if not oc in self.object_classes[o.type]:
-            raise Exception(_("Object class not known to this extension: %s")
-                            % oc)
+        if oc not in self.object_classes[o.type]:
+            msg = (_("Object class not known to this extension: %s") % oc)
+            return callback.error(msg)
 
         o.object_classes.append(oc)
 
@@ -941,11 +922,29 @@ class OTPmeLDIFHandler(object):
                             verify=True,
                             verbose_level=0,
                             callback=callback)
-        # Reload extension.
-        if verify:
-            return self.load(o=o,
-                            verify=verify,
-                            verbose_level=verbose_level,
+        return callback.ok()
+
+    def clear_extension(self, o, callback=default_callback):
+        """ Clear all extension OCs and attributes. """
+        # Get extension attributes.
+        attributes = config.get_ldif_attributes(self.name, o.type)
+        # Get object DN attribute.
+        dn_attribute = config.dn_attributes[o.type]
+        # If DN attribute would be remove return error.
+        if dn_attribute in attributes:
+            msg = ("Cannot remove extension with DN attribute: %s: %s"
+                    % (self.name, dn_attribute))
+            return callback.error(msg)
+        # Get object classes of extension.
+        object_classes = self.object_classes[o.type]
+        # Remove object classes.
+        for oc in object_classes:
+            self.clear_object_class(o, oc, callback=callback, force=True)
+        # Remove attributes.
+        for at in attributes:
+            self.del_attribute(o=o, a=at,
+                            ignore_deps=True,
+                            ignore_missing=True,
                             callback=callback)
         return callback.ok()
 
@@ -958,7 +957,8 @@ class OTPmeLDIFHandler(object):
                         + config.ldap_object_classes[oc].may
         for at in oc_attributes:
             if not o.get_extension_attribute(extension=self.name, attribute=at):
-                dependent_attributes.append(at)
+                continue
+            dependent_attributes.append(at)
 
         # Remove DN attribute from dependent attributes.
         dn_attribute = config.dn_attributes[o.type]
@@ -968,10 +968,19 @@ class OTPmeLDIFHandler(object):
         # Remove all attributes from dependent attributes list that are still
         # needed by any other object class.
         for c in o.object_classes:
-            if c != oc:
-                for at in dependent_attributes:
-                    if at in config.ldap_object_classes[c].must:
-                        dependent_attributes.remove(at)
+            if c == oc:
+                continue
+            for at in list(dependent_attributes):
+                if at not in config.ldap_object_classes[c].must:
+                    continue
+                dependent_attributes.remove(at)
+
+        # Only remove attributes the object has.
+        for at in list(dependent_attributes):
+            at_val = self.get_attribute(o, at)
+            if at_val:
+                continue
+            dependent_attributes.remove(at)
 
         if len(dependent_attributes) > 0 and not force:
             return callback.error(_("%s: The following attributes depend on "
@@ -1052,6 +1061,6 @@ class OTPmeLDIFHandler(object):
                     % (old_name, new_name))
             raise OTPmeException(msg)
         # Add new DN.
-        o.add_ldif([["dn", dn]])
+        o.add_ldif([["dn", dn]], position=0)
 
         return callback.ok()

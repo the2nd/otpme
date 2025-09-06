@@ -758,7 +758,7 @@ def register_hooks():
 def register_backend():
     """ Register object for the file backend. """
     accessgroup_dir_extension = "accessgroup"
-    def path_getter(ag_oid):
+    def path_getter(ag_oid, ag_uuid):
         return backend.config_path_getter(ag_oid, accessgroup_dir_extension)
     def index_rebuild(objects):
         after = [

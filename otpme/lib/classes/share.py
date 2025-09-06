@@ -667,13 +667,12 @@ def register_oid():
 
 def register_sync_settings():
     """ Register sync settings. """
-    config.register_cluster_sync(object_type="share")
     config.register_object_sync(host_type="node", object_type="share")
 
 def register_backend():
     """ Register object for the file backend. """
     share_dir_extension = "share"
-    def path_getter(share_oid):
+    def path_getter(share_oid, share_uuid):
         return backend.config_path_getter(share_oid, share_dir_extension)
     def index_rebuild(objects):
         after = [

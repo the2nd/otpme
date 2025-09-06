@@ -892,10 +892,6 @@ class OTPmeBaseObject(OTPmeLockObject):
         Get object config with fields selected by sync peer type (e.g.
         host or node)
         """
-        # Make sure our object config is up-to-date.
-        #self.update_object_config()
-        # Get a copy of our object config.
-        #sync_config = self.object_config.copy()
         sync_config = backend.read_config(self.oid)
         sync_config = sync_config.copy()
 
@@ -1495,8 +1491,8 @@ class OTPmeBaseObject(OTPmeLockObject):
                 modifier_cache = config.auth_token.rel_path
             self.last_modified_by = modifier
             self.last_modified_by_cache = modifier_cache
-        # Update index.
-        self.update_index('last_modified_by', self.last_modified_by)
+            # Update index.
+            self.update_index('last_modified_by', self.last_modified_by)
 
     @object_lock()
     def touch(self, callback: JobCallback=default_callback, **kwargs):
@@ -2059,8 +2055,8 @@ class OTPmeObject(OTPmeBaseObject):
         """ Load object config from backend. """
         # Call base class write method.
         result = super(OTPmeObject, self)._load()
-        # Preload object extensions.
-        self.preload_extensions()
+        # Load object extensions.
+        self.load_extensions()
         return result
 
     def exists(self, run_policies: bool=True):
@@ -2706,7 +2702,7 @@ class OTPmeObject(OTPmeBaseObject):
                                 encrypted=False)
         encrypted_object_config = object_config.encrypt(enc_key, fake=fake)
         # Encode object config.
-        config_string = ujson.dumps(encrypted_object_config, indent=4, sort_keys=True)
+        config_string = ujson.dumps(encrypted_object_config, indent=4)
         return callback.ok(config_string)
 
     def get_members(self, **kwargs):
@@ -2744,7 +2740,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         return parent_object
 
-    def preload_extensions(
+    def load_extensions(
         self,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -2758,31 +2754,6 @@ class OTPmeObject(OTPmeBaseObject):
             #_e.load_schema(verbose_level=verbose_level, callback=callback)
             _e.preload(self)
             self._extensions[_e.name] = _e
-
-    def load_extensions(
-        self,
-        verbose_level: int=0,
-        callback: JobCallback=default_callback,
-        ):
-        """ Load all extensions for this object. """
-        from otpme.lib.extensions import utils
-        # Empty extensions stuff.
-        self.ldif = {}
-        self._extensions = {}
-        self.ldif_attributes = []
-
-        extensions = utils.load_extensions(self.extensions)
-        for _e in extensions:
-            try:
-                _e.load(self, log_errors=True,
-                        verbose_level=verbose_level,
-                        callback=callback)
-                self._extensions[_e.name] = _e
-            except Exception as e:
-                config.raise_exception()
-                msg = (_("Failed to load extension: %s: %s") % (_e.name, e))
-                logger.critical(msg)
-                callback.send(msg)
 
     @check_acls(acls=['add:extension'])
     @object_lock()
@@ -2841,7 +2812,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Add extension to object.
         self.extensions.append(extension)
-        # Reload extensions (to re-create ldif)
+        # Reload extensions.
         self.load_extensions(verbose_level=verbose_level, callback=callback)
         # Update index.
         self.add_index('extension', extension)
@@ -2890,22 +2861,17 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = str(e)
                 return callback.error(msg)
 
+        # Try to clear extension attributes.
+        e = self._extensions[extension]
+        if not e.clear_extension(self, callback=callback):
+            return callback.error()
         # Remove extension from object.
         self.extensions.remove(extension)
-        # Reload extensions (to re-create ldif)
+        # Reload extensions.
         self.load_extensions(verbose_level=verbose_level, callback=callback)
         # Update index.
         self.del_index('extension', extension)
-
         return self._cache(callback=callback)
-
-    ##@backend.transaction
-    #def update_extensions(self, hook, write=True,
-    #    callback=default_callback, **kwargs):
-    #    """ Make sure object is written. """
-    #    if write:
-    #        self._write(callback=callback)
-    #    return self._update_extensions(hook, callback=callback, **kwargs)
 
     #@object_lock()
     def update_extensions(
@@ -5074,7 +5040,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         try:
             extension.add_object_class(self, object_class,
-                                        verbose_level=verbose_level)
+                                    verbose_level=verbose_level)
         except Exception as e:
             msg = (_("Error adding object class: %s" % e))
             return callback.error(msg)
@@ -5108,9 +5074,9 @@ class OTPmeObject(OTPmeBaseObject):
 
         # xxxxxxxxxxx
         # FIXME: how to handle ACLs here?
-        if not object_class in self.object_classes:
+        if object_class not in self.object_classes:
             object_type = "%s%s" % (self.type[0].upper(), self.type[1:])
-            msg = (_("%(object)s does not have object class '%s' assigned.")
+            msg = (_("%(object)s does not have object class '%(object_class)s' assigned.")
                     % {"object":object_type,
                     "object_class":object_class})
             return callback.error(msg)
@@ -5118,22 +5084,30 @@ class OTPmeObject(OTPmeBaseObject):
             if self.confirmation_policy == "force":
                 force = True
 
+        extension = None
+        for e in self._extensions:
+            extension = self._extensions[e]
+            if self.type in extension.object_types:
+                if object_class in extension.object_classes[self.type]:
+                    break
+        if not extension:
+            msg = ("Failed to get extension to handle object class: %s"
+                    % object_class)
+            return callback.error(msg)
+
         while True:
-            for e in self._extensions:
-                extension = self._extensions[e]
-                extension.clear_object_class(self,
-                                            object_class,
-                                            force=force,
-                                            callback=callback)
+            extension.clear_object_class(self,
+                                        object_class,
+                                        force=force,
+                                        callback=callback)
             if force:
                 break
 
             if not force:
                 answer = callback.ask("Delete object class?: ")
-                if answer.lower() == "y":
-                    force = True
-                else:
+                if answer.lower() != "y":
                     return callback.abort()
+                force = True
 
         self.object_classes.remove(object_class)
 
@@ -5158,8 +5132,15 @@ class OTPmeObject(OTPmeBaseObject):
                 if a != "modifyTimestamp":
                     ldif_attr = "ldif:%s" % a
                     self.add_index(ldif_attr, v)
+            if a == "dn":
+                self.ldif.move_to_end(key=a, last=False)
 
         self.add_ldif_attributes(ldif)
+
+        try:
+            self.ldif.move_to_end("modifyTimestamp")
+        except KeyError:
+            pass
 
         now = time.time_ns()
         self.ldif_journal.append([now, "add", ldif, position])
@@ -5181,6 +5162,11 @@ class OTPmeObject(OTPmeBaseObject):
                 attr_values.remove(v)
             except:
                 pass
+            if len(attr_values) == 0:
+                try:
+                    self.ldif.pop(a)
+                except KeyError:
+                    pass
             # Update index.
             now = time.time_ns()
             if a == "modifyTimestamp":
@@ -5189,8 +5175,6 @@ class OTPmeObject(OTPmeBaseObject):
                 self.ldif_journal.append([now, "del", [[a, v]]])
                 ldif_attr = "ldif:%s" % a
                 self.del_index(ldif_attr, v)
-            if not attr_values:
-                self.ldif.pop(a)
 
         self.del_ldif_attributes(ldif)
 
@@ -5969,7 +5953,8 @@ class OTPmeObject(OTPmeBaseObject):
     def handle_acl(
         self,
         action: str,
-        acl: str,
+        acl: str=None,
+        raw_acl: str=None,
         owner_type: Union[str,None]=None,
         owner_name: Union[str,None]=None,
         owner_uuid: Union[str,None]=None,
@@ -5986,7 +5971,6 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Handle ACL add/del. """
-        raw_acl = None
         valid_acl = True
         exception = None
 
@@ -6025,8 +6009,18 @@ class OTPmeObject(OTPmeBaseObject):
                     msg = str(e)
                     return callback.error(msg)
 
+        if raw_acl:
+            # Load raw ACL.
+            try:
+                _acl = otpme_acl.decode(raw_acl)
+            except Exception as e:
+                msg = (_("Error decoding raw ACL: %s: %s") % (raw_acl, e))
+                logger.critical(msg)
+                return callback.error(msg)
+            owner_type = _acl.owner_type
+            owner_uuid = _acl.owner_uuid
         # Try to get object type and UUID from ACL.
-        if not owner_type and not owner_uuid:
+        elif not owner_type and not owner_uuid:
             try:
                 _acl = otpme_acl.decode(acl)
             except Exception as e:
@@ -6105,7 +6099,7 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 _acl = otpme_acl.decode(raw_acl)
             except Exception as e:
-                msg = (_("Error decoding ACL: %s: %s") % (acl, e))
+                msg = (_("Error decoding raw ACL: %s: %s") % (acl, e))
                 logger.critical(msg)
                 return callback.error(msg)
 

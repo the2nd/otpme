@@ -31,11 +31,12 @@ cmd_help = {
 
     'status'    : {
                     '_cmd_usage_help' : 'Usage: otpme-cluster status [--diff] [--full]',
-                    'cmd'   :   '--diff :diff_data=True: --full :full_data_diff=True:',
+                    'cmd'   :   '--diff :diff_data=True: --full :full_data_diff=True: --full-index :full_index_diff=True:',
                     '_help' :   {
                                     'cmd'                   : 'Get cluster status.',
                                     '--diff'                : 'Diff object checksums.',
                                     '--full'                : 'Diff object checksums (read full data).',
+                                    '--full-index'          : 'Diff object checksums (read full index data).',
                                 },
                 },
 

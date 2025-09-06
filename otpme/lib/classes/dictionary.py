@@ -479,7 +479,7 @@ def register_oid():
 def register_backend():
     """ Register object for the file backend. """
     dict_dir_extension = "dictionary"
-    def path_getter(dict_oid):
+    def path_getter(dict_oid, dict_uuid):
         return backend.config_path_getter(dict_oid, dict_dir_extension)
     def index_rebuild(objects):
         after = [

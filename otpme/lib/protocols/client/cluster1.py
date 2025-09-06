@@ -182,8 +182,21 @@ class OTPmeClusterP1(OTPmeClient1):
         return reply
 
     def get_full_checksums(self):
-        """ Get cluster checksums. """
+        """ Get cluster full checksums. """
         command = "get_full_checksums"
+        command_args = {}
+        status, \
+        status_code, \
+        reply, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
+        if not status:
+            msg = "Failed to get cluster checksums: %s" % reply
+            raise OTPmeException(msg)
+        return reply
+
+    def get_index_checksums(self):
+        """ Get cluster ndex checksums. """
+        command = "get_index_checksums"
         command_args = {}
         status, \
         status_code, \
@@ -304,7 +317,13 @@ class OTPmeClusterP1(OTPmeClient1):
             msg = "Writing received object: %s (%s)" % (x_oid, x_checksum)
             self.logger.debug(msg)
             x_uuid = x_config['UUID']
-            backend.write_config(x_oid, object_config=x_config, cluster=False)
+            backend.write_config(x_oid,
+                                object_config=x_config,
+                                full_index_update=True,
+                                full_data_update=True,
+                                full_ldif_update=True,
+                                full_acl_update=True,
+                                cluster=False)
             synced_objects.append(x_oid)
         msg = ("Synced %s objects from peer: %s"
                 % (len(synced_objects), self.peer.name))
@@ -321,6 +340,45 @@ class OTPmeClusterP1(OTPmeClient1):
             except UnknownObject:
                 pass
         return reply
+
+    def sync_last_used(self):
+        """ Sync last used times. """
+        msg = "Syncing last used times..."
+        self.logger.info(msg)
+        object_types = config.get_cluster_object_types()
+        # Get timestamps from peer.
+        command = "get_last_used"
+        command_args = {'object_types':object_types}
+        status, \
+        status_code, \
+        remote_last_used, \
+        binary_data = self.connection.send(command, command_args, timeout=None)
+        local_last_used = backend.get_last_used_times(object_types)
+        # Process last used timestamps from peer.
+        for x_type in remote_last_used:
+            if x_type not in object_types:
+                msg = "Got not requested object type from peer: %s" % x_type
+                self.logger.warning(msg)
+                continue
+            updates = {}
+            for x_uuid in remote_last_used[x_type]:
+                try:
+                    timestamp = remote_last_used[x_type][x_uuid]
+                except:
+                    msg = "Remote last used data misses timestamp: %s" % x_uuid
+                    self.logger.warning(msg)
+                    continue
+                try:
+                    local_last_used_time = local_last_used[x_type][x_uuid]
+                except:
+                    local_last_used_time = 0.0
+                if str(local_last_used_time) == str(timestamp):
+                    continue
+                updates[x_uuid] = timestamp
+            # Finally set last used times.
+            if updates:
+                backend.set_last_used_times(x_type, updates)
+        return True
 
     def sync_trash(self):
         """ Sync trash with peer. """

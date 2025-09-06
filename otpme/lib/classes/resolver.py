@@ -471,7 +471,7 @@ def register_backend():
     """ Register object for the file backend. """
     from otpme.lib import resolver
     resolver_dir_extension = "resolver"
-    def path_getter(resolver_oid):
+    def path_getter(resolver_oid, resolver_uuid):
         return backend.config_path_getter(resolver_oid, resolver_dir_extension)
     def index_rebuild(objects):
         after = [

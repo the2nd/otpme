@@ -42,7 +42,11 @@ def register():
 
 def with_root_path(func):
     def wrapper(self, path, *args, **kwargs):
-        return func(self, self.root + path, *args, **kwargs)
+        path = self.root + path
+        path = os.path.realpath(path)
+        if not path.startswith(self.root):
+            raise OSError(errno.ENOENT, "No such file or directory")
+        return func(self, path, *args, **kwargs)
     return wrapper
 
 def static_with_root_path(func):

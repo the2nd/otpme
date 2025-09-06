@@ -5579,7 +5579,12 @@ class CommandHandler(object):
         except KeyError:
             full_data_diff = False
 
-        def get_node_data(node, data_dict, full=False):
+        try:
+            full_index_diff = command_args['full_index_diff']
+        except KeyError:
+            full_index_diff = False
+
+        def get_node_data(node, data_dict, full=False, full_index=False):
             msg = "Reading cluster data from node: %s" % node.name
             print(msg)
             master_node = None
@@ -5632,6 +5637,8 @@ class CommandHandler(object):
                 # Get cluster checksums.
                 if full:
                     node_checksums[node.name] = clusterd_conn.get_full_checksums()
+                elif full_index:
+                    node_checksums[node.name] = clusterd_conn.get_index_checksums()
                 else:
                     node_checksums[node.name] = clusterd_conn.get_checksums()
             except Exception as e:
@@ -5674,10 +5681,16 @@ class CommandHandler(object):
             full = False
             if full_data_diff:
                 full = True
+            full_index = False
+            if full_index_diff:
+                full_index = True
             node_data_thread = multiprocessing.start_thread(name=node.name,
                                                         target=get_node_data,
                                                         target_args=(node, data_dict),
-                                                        target_kwargs={'full':full},
+                                                        target_kwargs={
+                                                                    'full'      : full,
+                                                                    'full_index': full_index,
+                                                                    },
                                                         daemon=True)
             node_threads[node.name] = node_data_thread
 

@@ -574,14 +574,14 @@ class BaseTransaction(object):
             wait_for_write = False
         if not config.wait_for_cluster_writes:
             wait_for_write = False
-        cluster_event = cluster_sync_object(action="write",
+        event_data = cluster_sync_object(action="write",
                                         object_uuid=object_uuid,
                                         object_id=object_id,
                                         object_type=object_type,
                                         acl_journal=acl_journal,
                                         index_journal=index_journal,
                                         wait_for_write=wait_for_write)
-        return cluster_event
+        return event_data
 
     def handle_cluster_delete(self, journal_entry):
         object_uuid = journal_entry['object_uuid']
@@ -593,12 +593,12 @@ class BaseTransaction(object):
             wait_for_write = False
         if not config.wait_for_cluster_writes:
             wait_for_write = False
-        cluster_event = cluster_sync_object(action="delete",
-                                            object_uuid=object_uuid,
-                                            object_id=object_id,
-                                            object_type=object_type,
-                                            wait_for_write=wait_for_write)
-        return cluster_event
+        event_data = cluster_sync_object(action="delete",
+                                        object_uuid=object_uuid,
+                                        object_id=object_id,
+                                        object_type=object_type,
+                                        wait_for_write=wait_for_write)
+        return event_data
 
     def handle_cluster_rename(self, journal_entry):
         old_object_id = journal_entry['old_object_id']
@@ -612,13 +612,13 @@ class BaseTransaction(object):
             wait_for_write = False
         if not config.wait_for_cluster_writes:
             wait_for_write = False
-        cluster_event = cluster_sync_object(action="rename",
+        event_data = cluster_sync_object(action="rename",
                                             object_uuid=object_uuid,
                                             old_object_id=old_object_id,
                                             object_type=object_type,
                                             new_object_id=new_object_id,
                                             wait_for_write=wait_for_write)
-        return cluster_event
+        return event_data
 
     def handle_cluster_journal(self):
         cluster_events = {}
@@ -633,23 +633,23 @@ class BaseTransaction(object):
 
             if action == "cluster_write":
                 if not self.no_disk_writes:
-                    cluster_event = self.handle_cluster_write(journal_entry)
+                    cluster_event, timestamp = self.handle_cluster_write(journal_entry)
                     object_id = journal_entry['object_id']
                     if cluster_event:
                         object_id = journal_entry['object_id']
-                        cluster_events[cluster_event] = object_id
+                        cluster_events[cluster_event] = (object_id, timestamp)
             elif action == "cluster_delete":
                 if not self.no_disk_writes:
-                    cluster_event = self.handle_cluster_delete(journal_entry)
+                    cluster_event, timestamp = self.handle_cluster_delete(journal_entry)
                     if cluster_event:
                         object_id = journal_entry['object_id']
-                        cluster_events[cluster_event] = object_id
+                        cluster_events[cluster_event] = (object_id, timestamp)
             elif action == "cluster_rename":
                 if not self.no_disk_writes:
-                    cluster_event = self.handle_cluster_rename(journal_entry)
+                    cluster_event, timestamp = self.handle_cluster_rename(journal_entry)
                     if cluster_event:
-                        old_object_id = journal_entry['old_object_id']
-                        cluster_events[cluster_event] = old_object_id
+                        object_id = journal_entry['old_object_id']
+                        cluster_events[cluster_event] = (object_id, timestamp)
             else:
                 msg = "Unknown transaction action: %s" % action
                 raise OTPmeException(msg)
@@ -663,15 +663,20 @@ class BaseTransaction(object):
         msg = "Waiting for cluster events..."
         logger.debug(msg)
         for x in cluster_events:
-            msg = "Waiting for cluster event: %s" % object_id
+            object_id = cluster_events[x][0]
+            timestamp = cluster_events[x][1]
+            msg = "Waiting for cluster event: %s (%s)" % (object_id, timestamp)
             logger.debug(msg)
             try:
                 x.wait(timeout=30)
             except TimeoutReached:
-                msg = "Timeout waiting for cluster write: %s" % object_id
+                msg = "Timeout waiting for cluster write: %s (%s)" % (object_id, timestamp)
                 logger.warning(msg)
-            x.unlink()
-            msg = "Got cluster event: %s" % object_id
+            else:
+                msg = "Got cluster event: %s (%s)" % (object_id, timestamp)
+                logger.debug(msg)
+            finally:
+               x.unlink()
             logger.debug(msg)
         msg = "Finished waiting for cluster events..."
         logger.debug(msg)

@@ -19,6 +19,7 @@ PBKDF2_DEFAULTS = {
             'iterations'    : 100000,
             'hash_algo'     : 'SHA256',
             'key_len'       : 128,
+            'version'       : 1,
             }
 
 CONFIG_OPTIONS = {

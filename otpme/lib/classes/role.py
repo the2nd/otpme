@@ -641,7 +641,7 @@ def register_oid():
 def register_backend():
     """ Register object for the file backend. """
     role_dir_extension = "role"
-    def path_getter(role_oid):
+    def path_getter(role_oid, role_uuid):
         return backend.config_path_getter(role_oid, role_dir_extension)
     def index_rebuild(objects):
         after = [

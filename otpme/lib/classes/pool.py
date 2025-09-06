@@ -408,13 +408,12 @@ def register_oid():
 
 def register_sync_settings():
     """ Register sync settings. """
-    config.register_cluster_sync(object_type="pool")
     config.register_object_sync(host_type="node", object_type="pool")
 
 def register_backend():
     """ Register object for the file backend. """
     pool_dir_extension = "pool"
-    def path_getter(pool_oid):
+    def path_getter(pool_oid, pool_uuid):
         return backend.config_path_getter(pool_oid, pool_dir_extension)
     def index_rebuild(objects):
         after = [

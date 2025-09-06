@@ -22,6 +22,7 @@ ARGON2D_DEFAULTS = {
             'memory'        : 65536,
             'threads'       : 4,
             'key_len'       : 128,
+            'version'       : 1,
             }
 ARGON2I_DEFAULTS = {
             'hash_algo'     : 'Argon2_i',
@@ -31,6 +32,7 @@ ARGON2I_DEFAULTS = {
             'memory'        : 65536,
             'threads'       : 4,
             'key_len'       : 128,
+            'version'       : 1,
             }
 
 CONFIG_OPTIONS = {

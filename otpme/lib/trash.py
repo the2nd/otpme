@@ -250,11 +250,12 @@ def add(object_id, deleted_by, callback=default_callback):
     except Exception as e:
         msg = "Failed to create object trash data: %s: %s" % (object_id, e)
         return callback.error(msg)
-    cluster_event = cluster_sync_object(object_id=object_id,
+    event_data = cluster_sync_object(object_id=object_id,
                                     object_data=trash_data,
                                     trash_id=trash_id,
                                     deleted_by=deleted_by,
                                     action="trash_write")
+    cluster_event = event_data[0]
     if cluster_event:
         cluster_event.wait()
 
@@ -282,7 +283,8 @@ def delete(trash_id=None, cluster=True, callback=default_callback, **kwargs):
     if not cluster:
         return callback.ok()
     # Cluster trash ID deletion.
-    cluster_event = cluster_sync_object(action="trash_delete", trash_id=trash_id)
+    event_data = cluster_sync_object(action="trash_delete", trash_id=trash_id)
+    cluster_event = event_data[0]
     if cluster_event:
         cluster_event.wait()
     return callback.ok()
@@ -390,7 +392,8 @@ def empty(cluster=True, callback=default_callback, **kwargs):
     if not cluster:
         return callback.ok()
     # Cluster trash empty.
-    cluster_event = cluster_sync_object(action="trash_empty")
+    event_data = cluster_sync_object(action="trash_empty")
+    cluster_event = event_data[0]
     if cluster_event:
         cluster_event.wait()
     return callback.ok()

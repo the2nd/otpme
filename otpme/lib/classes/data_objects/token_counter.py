@@ -68,7 +68,7 @@ def register_backend():
                                 token_uuid=token_uuid,
                                 object_hash=object_hash)
         return object_id
-    def path_getter(object_id):
+    def path_getter(object_id, object_uuid):
         token_uuid = object_id.token_uuid
         counter_hash = object_id.object_hash
         token_oid = backend.get_oid(token_uuid,

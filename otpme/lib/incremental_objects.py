@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
+from collections import OrderedDict
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -48,13 +49,26 @@ class IncrementalDict(IncrementaObject):
     """ Handle incremental updates of dict attribute. """
     def __init__(self, data={}, key=None, dict_path=[], incremental_data=[]):
         self.key = key
-        self.data = {}
+        #self.data = {}
         self.type = "dict"
+        self.data = OrderedDict()
         self.dict_path = dict_path
         self.incremental_data = incremental_data
         for x in data:
             self.__setitem__(x, data[x])
 
+    def move_to_end(self, key, last=True):
+        self.data.move_to_end(key, last=last)
+        if last == True:
+            action = "move_to_end"
+        else:
+            action = "move_to_begin"
+        self.incremental_data.append((time.time(),
+                                    self.key,
+                                    action,
+                                    self.type,
+                                    self.dict_path,
+                                    key))
     @property
     def modified(self):
         for x in self.incremental_data:
@@ -152,7 +166,8 @@ class IncrementalDict(IncrementaObject):
         return del_val
 
     def set(self, _dict):
-        self.data = {}
+        #self.data = {}
+        self.data = OrderedDict()
         for key in _dict:
             key = str(key)
             val = _dict[key]
@@ -244,7 +259,7 @@ class IncrementalList(list, IncrementaObject):
     def set(self, _list):
         super(IncrementalList, self).__init__(_list)
 
-def incremental_update(update_dict, action, key, dict_path, value_type, value, index=-1):
+def incremental_update(update_dict, action, key, dict_path, value_type, value=None, index=-1):
     if len(dict_path) > 1:
         root_key = dict_path[0]
         try:
@@ -292,6 +307,14 @@ def incremental_update(update_dict, action, key, dict_path, value_type, value, i
                     dict_val.pop(key)
                 except KeyError:
                     pass
+            if action == "move_to_begin":
+                dict_val = OrderedDict(dict_val)
+                dict_val.move_to_end(key, last=False)
+                dict_val = dict(dict_val)
+            if action == "move_to_end":
+                dict_val = OrderedDict(dict_val)
+                dict_val.move_to_end(key)
+                dict_val = dict(dict_val)
         value = current_dict
     else:
         if value_type == "dict":

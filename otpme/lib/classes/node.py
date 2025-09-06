@@ -767,7 +767,7 @@ def register_hooks():
 def register_backend():
     """ Register object for the file backend. """
     node_dir_extension = "node"
-    def path_getter(node_oid):
+    def path_getter(node_oid, node_uuid):
         return backend.config_path_getter(node_oid, node_dir_extension)
     def index_rebuild(objects):
         after = [

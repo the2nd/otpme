@@ -463,7 +463,7 @@ def register_hooks():
 def register_backend():
     """ Register object for the file backend. """
     script_dir_extension = "script"
-    def path_getter(script_oid):
+    def path_getter(script_oid, script_uuid):
         return backend.config_path_getter(script_oid, script_dir_extension)
     def index_rebuild(objects):
         after = [

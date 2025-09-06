@@ -841,7 +841,7 @@ def register_hooks():
 def register_backend():
     """ Register object for the file backend. """
     host_dir_extension = "host"
-    def path_getter(host_oid):
+    def path_getter(host_oid, host_uuid):
         return backend.config_path_getter(host_oid, host_dir_extension)
     def index_rebuild(objects):
         after = [

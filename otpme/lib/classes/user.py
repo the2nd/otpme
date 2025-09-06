@@ -1150,10 +1150,7 @@ def register_backend():
     # Base data dir for used (OTP) objects.
     used_base_dir = backend.get_data_dir("used")
     # Path getter for users "used" dir.
-    def upath_getter(user_oid):
-        user_uuid = backend.get_uuid(user_oid)
-        if not user_uuid:
-            return
+    def upath_getter(user_oid, user_uuid):
         user_used_dir = os.path.join(used_base_dir, user_uuid)
         return user_used_dir
     # Register users "used" dir.
@@ -1162,7 +1159,7 @@ def register_backend():
                                 getter=upath_getter,
                                 drop=True)
     # Path getter for user paths.
-    def opath_getter(user_oid):
+    def opath_getter(user_oid, user_uuid):
         unit_fs_path = backend.get_unit_fs_path(user_oid)
         site_dir = backend.get_site_dir(user_oid.realm, user_oid.site)
         config_dir_name = "%s.%s" % (user_oid.name, user_dir_extension)
@@ -1172,7 +1169,10 @@ def register_backend():
         config_paths['config_dir'] = config_dir
         config_paths['rmtree_on_delete'] = [config_dir]
 
-        user_dirs = backend.get_object_dir(user_oid)
+        if not user_uuid:
+            return config_paths
+
+        user_dirs = backend.get_object_dir(user_oid, user_uuid)
         for x in user_dirs:
             x_path = user_dirs[x]['path']
             if not x_path:
@@ -2273,8 +2273,6 @@ class User(OTPmeObject):
            msg = "Permission denied while setting group."
            return callback.error(msg, exception=PermissionDenied)
 
-        # Reload extensions.
-        self.load_extensions(verbose_level=verbose_level, callback=callback)
         return self._cache(callback=callback)
 
     @check_acls(['edit:private_key'])
@@ -4056,7 +4054,10 @@ class User(OTPmeObject):
 
         # When replacing a token we just need to copy some token settings.
         if replace:
-            new_token.acls = cur_token.acls
+            msg = "Trying to preserve token ACLs..."
+            callback.send(msg)
+            for x in cur_token.acls:
+                new_token.add_acl(raw_acl=x, callback=callback)
             new_token.acl_inheritance_enabled = cur_token.acl_inheritance_enabled
             if new_token.allow_offline is not None:
                 new_token.allow_offline = cur_token.allow_offline

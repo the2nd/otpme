@@ -18,6 +18,7 @@ from otpme.lib.exceptions import *
 HKDF_DEFAULTS = {
             'hash_algo' : 'SHA256',
             'key_len'   : 32,
+            'version'   : 1,
             }
 
 CONFIG_OPTIONS = {

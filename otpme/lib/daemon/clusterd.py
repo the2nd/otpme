@@ -159,16 +159,16 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
     new_object_id=None, index_journal=None, acl_journal=None,
     trash_id=None, deleted_by=None, wait_for_write=True):
     if config.host_type != "node":
-        return
+        return (None, None)
     if not multiprocessing.cluster_out_event:
-        return
+        return (None, None)
     if config.one_node_setup:
-        return
+        return (None, None)
     if config.two_node_setup:
         if len(multiprocessing.online_nodes) == 0:
             if action != "delete":
                 if action != "trash_delete":
-                    return
+                    return (None, None)
             wait_for_write = False
     while len(multiprocessing.pause_writes) > 0:
         time.sleep(0.1)
@@ -242,9 +242,9 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
                 msg = ("Failed to commit cluster journal entry: %s: %s"
                         % (object_id, e))
                 config.logger.critical(msg)
-                return
+                return (None, None)
             multiprocessing.cluster_out_event.set()
-            return
+            return (None, None)
         object_event = cluster_journal_entry.add_object_event(timestamp)
         object_event.open()
         try:
@@ -253,12 +253,12 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
             msg = ("Failed to commit cluster journal entry: %s: %s"
                     % (object_id, e))
             config.logger.critical(msg)
-            return
+            return (None, None)
     finally:
         cluster_entry_lock.release_lock()
 
     multiprocessing.cluster_out_event.set()
-    return object_event
+    return (object_event, timestamp)
 
 def calc_node_vote():
     node_name = config.host_data['name']
@@ -582,7 +582,7 @@ class ClusterJournalEntry(ClusterEntry):
     #@entry_lock(write=False)
     def timestamp(self):
         try:
-            timestamp = filetools.read_file(self.timestamp_file)
+            timestamp = os.stat(self.timestamp_file).st_mtime_ns
         except FileNotFoundError:
             timestamp = 0
         except Exception as e:
@@ -590,19 +590,21 @@ class ClusterJournalEntry(ClusterEntry):
             msg = ("Failed to read timestamp from cluster entry: %s: %s"
                     % (self.journal_id, e))
             self.logger.critical(msg)
-        return int(timestamp)
+        return timestamp
 
     @timestamp.setter
     def timestamp(self, timestamp):
         try:
-            filetools.create_file(path=self.timestamp_file,
-                                    content=str(timestamp))
+            if not os.path.exists(self.timestamp_file):
+                filetools.touch(self.timestamp_file)
         except FileNotFoundError:
             raise ObjectDeleted()
         except Exception as e:
             msg = ("Failed to add timestamp to cluster entry: %s: %s"
                     % (self.journal_id, e))
             self.logger.critical(msg)
+        else:
+            os.utime(self.timestamp_file, ns=(timestamp, timestamp))
 
     @property
     #@entry_lock(write=False)
@@ -905,6 +907,7 @@ class ClusterDaemon(OTPmeDaemon):
         self.all_nodes = []
         self.member_nodes = []
         self.online_nodes = []
+        self.processed_journal_entries = {}
         self.nsscache_sync = multiprocessing.get_bool("otpme-nsscache-sync",
                                                     random_name=False,
                                                     init=False)
@@ -1207,6 +1210,13 @@ class ClusterDaemon(OTPmeDaemon):
                 continue
             try:
                 try:
+                    processed_timestamp = self.processed_journal_entries[cluster_journal_entry.journal_id]
+                except KeyError:
+                    pass
+                else:
+                    if cluster_journal_entry.timestamp == processed_timestamp:
+                        continue
+                try:
                     object_type = cluster_journal_entry.object_type
                 except ObjectDeleted:
                     continue
@@ -1314,6 +1324,17 @@ class ClusterDaemon(OTPmeDaemon):
                 clusterd_conn.sync(skip_deletions=skip_deletions)
             except Exception as e:
                 msg = "Failed to sync with node: %s: %s" % (node_name, e)
+                self.logger.warning(msg)
+                time.sleep(1)
+                #config.raise_exception()
+            else:
+                msg = "Data sync finished with node: %s" % node_name
+                self.logger.info(msg)
+                sync_finished = True
+            try:
+                clusterd_conn.sync_last_used()
+            except Exception as e:
+                msg = "Failed to sync last used times with node: %s: %s" % (node_name, e)
                 self.logger.warning(msg)
                 time.sleep(1)
                 #config.raise_exception()
@@ -1829,7 +1850,7 @@ class ClusterDaemon(OTPmeDaemon):
                 break
             time.sleep(1)
 
-    def get_clusterd_connection(self, node_name, timeout=None, quiet=True):
+    def get_clusterd_connection(self, node_name, timeout=60, quiet=True):
         socket_uri = stuff.get_daemon_socket("clusterd", node_name)
         try:
             clusterd_conn = connections.get("clusterd",
@@ -2110,7 +2131,8 @@ class ClusterDaemon(OTPmeDaemon):
                                 time.sleep(0.1)
                                 continue
                             break
-                        sync_status = self.do_master_node_sync(master_node)
+                        sync_status = self.do_master_node_sync(master_node,
+                                                            sync_last_used=True)
                         if sync_status is not None:
                             sync_status = self.do_master_node_sync(master_node,
                                                                 sync_last_used=True)
@@ -2745,6 +2767,7 @@ class ClusterDaemon(OTPmeDaemon):
                 object_id = cluster_journal_entry.object_id
                 if object_id:
                     object_id = oid.get(object_id)
+                processed_timestamp = cluster_journal_entry.timestamp
                 object_uuid = cluster_journal_entry.object_uuid
                 actions = cluster_journal_entry.get_actions(node_name)
                 object_written = False
@@ -2784,16 +2807,29 @@ class ClusterDaemon(OTPmeDaemon):
                             acl_journal = cluster_journal_entry.get_acl_journal(node_name)
                             index_journal_committer, \
                             index_journal = cluster_journal_entry.get_index_journal(node_name)
+                            failed_nodes = cluster_journal_entry.get_failed_nodes()
+                            if node_name in failed_nodes:
+                                acl_journal = None
+                                index_journal = None
+                                use_acl_journal = False
+                                use_index_journal = False
+                                full_acl_update = True
+                                full_index_update = True
+                            else:
+                                use_acl_journal = True
+                                use_index_journal = True
+                                full_acl_update = False
+                                full_index_update = False
                             try:
                                 write_status = node_conn.write(object_id.full_oid,
                                                             object_config,
                                                             acl_journal=acl_journal,
                                                             index_journal=index_journal,
-                                                            use_acl_journal=True,
-                                                            use_index_journal=True,
+                                                            use_acl_journal=use_acl_journal,
+                                                            use_index_journal=use_index_journal,
                                                             use_ldif_journal=False,
-                                                            full_acl_update=False,
-                                                            full_index_update=False,
+                                                            full_acl_update=full_acl_update,
+                                                            full_index_update=full_index_update,
                                                             full_ldif_update=True,
                                                             full_data_update=True,
                                                             object_uuid=object_uuid,
@@ -2804,6 +2840,7 @@ class ClusterDaemon(OTPmeDaemon):
                                 msg = ("Failed to send object: %s: %s: %s"
                                         % (node_name, object_id, e))
                                 self.logger.warning(msg)
+                                cluster_journal_entry.add_failed_node(node_name)
                                 self.check_member_nodes(cluster_journal_entry)
                                 raise ProcessingFailed(msg)
                             except Exception as e:
@@ -2812,6 +2849,7 @@ class ClusterDaemon(OTPmeDaemon):
                                 msg = ("Error sending object: %s: %s: %s"
                                         % (node_name, object_id, e))
                                 self.logger.warning(msg)
+                                cluster_journal_entry.add_failed_node(node_name)
                                 self.check_member_nodes(cluster_journal_entry)
                                 #config.raise_exception()
                                 raise ProcessingFailed(msg)
@@ -2856,7 +2894,7 @@ class ClusterDaemon(OTPmeDaemon):
                             self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         except Exception as e:
-                            config.raise_exception()
+                            #config.raise_exception()
                             #self.node_leave(node_name)
                             self.node_disconnect(node_name)
                             msg = ("Failed to rename object: %s: %s: %s"
@@ -3028,7 +3066,10 @@ class ClusterDaemon(OTPmeDaemon):
                         except ObjectDeleted:
                             pass
                 # Check if object was written to member nodes.
-                if self.check_member_nodes(cluster_journal_entry):
+                member_nodes_check = self.check_member_nodes(cluster_journal_entry,
+                                                        timestamp=processed_timestamp,
+                                                        cache=True)
+                if member_nodes_check:
                     # Check if object was written to all online nodes.
                     self.check_online_nodes(cluster_journal_entry)
             except ObjectDeleted:
@@ -3197,7 +3238,7 @@ class ClusterDaemon(OTPmeDaemon):
             events = cluster_journal_entry.get_object_events()
             for object_event in events:
                 object_event.set()
-                object_event.unlink()
+                #object_event.unlink()
             if org_timestamp != cluster_journal_entry.timestamp:
                 return
             try:
@@ -3207,8 +3248,9 @@ class ClusterDaemon(OTPmeDaemon):
         finally:
             cluster_journal_entry.release()
 
-    def check_member_nodes(self, cluster_journal_entry):
-        org_timestamp = cluster_journal_entry.timestamp
+    def check_member_nodes(self, cluster_journal_entry, timestamp=None, cache=False):
+        if timestamp is None:
+            timestamp = cluster_journal_entry.timestamp
         try:
             cluster_journal_entry.lock(write=True)
         except ObjectDeleted:
@@ -3233,9 +3275,11 @@ class ClusterDaemon(OTPmeDaemon):
             events = cluster_journal_entry.get_object_events()
             for object_event in events:
                 object_event.set()
-                object_event.unlink()
-            if org_timestamp != cluster_journal_entry.timestamp:
+                #object_event.unlink()
+            if timestamp != cluster_journal_entry.timestamp:
                 return False
+            if cache:
+                self.processed_journal_entries[cluster_journal_entry.journal_id] = timestamp
         finally:
             cluster_journal_entry.release()
         return True

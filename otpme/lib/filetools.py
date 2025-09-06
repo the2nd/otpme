@@ -10,6 +10,7 @@ import pprint
 import shutil
 from pathlib import Path
 from functools import wraps
+from collections import OrderedDict
 
 try:
     import simdjson as json
@@ -844,12 +845,6 @@ class JsonFile(object):
         new_db = False
         if not os.path.exists(self.file_path):
             new_db = True
-            #touch(self.file_path,
-            #        user=user,
-            #        group=group,
-            #        mode=mode,
-            #        user_acls=user_acls,
-            #        group_acls=group_acls)
 
         if not new_db:
             current_oc = self.read_file()
@@ -916,9 +911,18 @@ class JsonFile(object):
                             index = -1
                         key = dict_path[-1]
                     if value_type == "dict":
-                        key = x[5]
-                        value = x[6]
-                        index = -1
+                        if action == "move_to_begin":
+                            key = x[5]
+                            value = None
+                            index = None
+                        elif action == "move_to_end":
+                            key = x[5]
+                            value = None
+                            index = None
+                        else:
+                            key = x[5]
+                            value = x[6]
+                            index = -1
                     try:
                         current_dict = current_oc[attr]
                     except KeyError:
@@ -930,7 +934,7 @@ class JsonFile(object):
                                                     key,
                                                     dict_path,
                                                     value_type,
-                                                    value,
+                                                    value=value,
                                                     index=index)
                         action = "add"
                         key = dict_path[0]
@@ -941,6 +945,14 @@ class JsonFile(object):
                             current_dict.pop(key)
                         except KeyError:
                             pass
+                    elif action == "move_to_begin":
+                        current_dict = OrderedDict(current_dict)
+                        current_dict.move_to_end(key, last=False)
+                        current_dict = dict(current_dict)
+                    elif action == "move_to_end":
+                        current_dict = OrderedDict(current_dict)
+                        current_dict.move_to_end(key)
+                        current_dict = dict(current_dict)
                     else:
                         msg = "Unknown action: %s" % action
                         raise OTPmeException(msg)

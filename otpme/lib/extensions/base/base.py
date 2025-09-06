@@ -230,7 +230,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
         if not current_dn:
             msg = ("Unable to rename object: Cannot get DN: %s > %s"
                     % (old_name, new_name))
-            raise OTPmeException(msg)
+            return callback.error(msg)
         current_dn = current_dn[0]
 
         # Remove current DN.
@@ -241,9 +241,9 @@ class OTPmeExtension(OTPmeLDIFHandler):
         if not dn:
             msg = ("Unable to rename object: Cannot build DN: %s > %s"
                     % (old_name, new_name))
-            raise OTPmeException(msg)
+            return callback.error(msg)
         # Add new DN.
-        o.add_ldif([["dn", dn]])
+        o.add_ldif([["dn", dn]], position=0)
 
         return callback.ok()
 
@@ -274,7 +274,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
         o.del_ldif([("dn", current_dn)])
         # Add new DN attribute
         dn = self.build_dn(o, dn_attribute)
-        o.add_ldif([["dn", dn]])
+        o.add_ldif([["dn", dn]], position=0)
         # Update location.
         if o.type == "user":
             self.del_attribute(o=o, a="l", callback=callback)

@@ -1629,7 +1629,7 @@ class OTPmeAgent(UnixDaemon):
 
         idle_timer = 0
         idle_start = None
-        next_interval = 300
+        next_interval = 60
 
         comm_handler = self.comm_queue.get_handler("main_process")
         # Run in loop unitl we get a signal.
@@ -1642,8 +1642,8 @@ class OTPmeAgent(UnixDaemon):
             except Exception as e:
                 daemon_command = None
 
-            # By default we sleep for 5 minutes.
-            next_interval = 300
+            # By default we sleep for one minute.
+            next_interval = 60
 
             if daemon_command == "reload":
                 self.config_reload = True
@@ -1882,14 +1882,14 @@ class OTPmeAgent(UnixDaemon):
 
     def rotate_logfile(self):
         """ Rotate agent logfile """
-        if not self.logfile:
-            return
         import gzip
         import glob
         import shutil
         import datetime
+        if not self.logfile:
+            return
         # Remove old logfile archives.
-        rotation_regex = "-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].[0-9]*.gz"
+        rotation_regex = "-[0-9][0-9][0-9][0-9][0-9][0-9][0-9].[0-9].gz"
         logfile_glob = self.logfile + rotation_regex
         old_logs = {(os.path.getmtime(x), x) for x in glob.glob(logfile_glob)}
         if len(old_logs) > self.logfile_max_rotate:
@@ -1907,7 +1907,7 @@ class OTPmeAgent(UnixDaemon):
                     self.logger.warning(msg)
 
         # Check if we have to rotate the current logfile.
-        logfile_size = os.path.getsize(self.logfile) / 1024
+        logfile_size = int(os.path.getsize(self.logfile) / 1024)
         if logfile_size < self.logfile_rotate_size:
             return
 

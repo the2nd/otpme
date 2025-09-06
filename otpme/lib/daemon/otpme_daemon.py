@@ -185,7 +185,7 @@ class OTPmeDaemon(object):
 
         # Reload config to re-configure logger etc.
         try:
-            config.reload()
+            config.reload(configure_logger=True)
         except Exception as e:
             msg = "Failed to reload config: %s" % e
             self.logger.critical(msg)

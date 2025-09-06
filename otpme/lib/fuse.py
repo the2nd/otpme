@@ -313,6 +313,7 @@ class OTPmeFS(fuse.Operations):
                             pass
                     msg = "Share mounted: %s (%s)" % (self.share, node)
                     self.logger.info(msg)
+                    print(msg)
                     break
 
             if not self.fsd_conn:

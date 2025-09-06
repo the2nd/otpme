@@ -584,7 +584,7 @@ def register_oid():
 def register_backend():
     """ Register object for the file backend. """
     unit_dir_extension = "unit"
-    def path_getter(unit_oid):
+    def path_getter(unit_oid, unit_uuid):
         site_dir = backend.get_site_dir(unit_oid.realm, unit_oid.site)
         if unit_oid.unit:
             unit_fs_path = backend.get_unit_fs_path(unit_oid)

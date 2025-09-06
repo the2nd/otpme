@@ -68,7 +68,7 @@ def register_backend():
                                 realm=object_realm,
                                 site=object_site)
         return object_id
-    def path_getter(object_id):
+    def path_getter(object_id, object_uuid):
         data_revision_dir = backend.get_data_dir(path_id)
         config_dir = os.path.join(data_revision_dir)
         config_file = os.path.join(config_dir, config.object_config_file_name)

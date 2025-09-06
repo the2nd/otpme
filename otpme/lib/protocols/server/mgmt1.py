@@ -756,7 +756,6 @@ class OTPmeMgmtP1(OTPmeServer1):
                     method_kwargs['roles'] = roles
                 if ldif_attributes:
                     method_kwargs['ldif_attributes'] = ldif_attributes.split(",")
-
             else:
                 msg = "Unsupported object type: %s" % object_type
                 raise OTPmeException(msg)
@@ -2390,7 +2389,8 @@ class OTPmeMgmtP1(OTPmeServer1):
 
                 if object_id:
                     try:
-                        response = backend.index_dump(object_id=object_id)
+                        response = backend.index_dump(object_id=object_id,
+                                                    checksum_ready=True)
                         status = True
                     except Exception as e:
                         status = False

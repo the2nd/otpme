@@ -732,7 +732,7 @@ def register_oid():
 def register_backend():
     """ Register object for the file backend. """
     client_dir_extension = "client"
-    def path_getter(client_oid):
+    def path_getter(client_oid, client_uuid):
         return backend.config_path_getter(client_oid, client_dir_extension)
     def index_rebuild(objects):
         after = [

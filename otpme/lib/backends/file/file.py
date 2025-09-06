@@ -3,7 +3,7 @@
 import os
 #import time
 #import pprint
-import collections
+from collections import OrderedDict
 
 try:
     import simdjson as json
@@ -192,7 +192,7 @@ def register_data_dir(name, path, drop, perms):
     data_dirs[name]['drop'] = drop
     data_dirs[name]['perms'] = perms
 
-def get_object_dir(object_id, name=None):
+def get_object_dir(object_id, object_uuid, name=None):
     """ Get path to object directory. """
     object_type = object_id.object_type
     if name is None:
@@ -211,7 +211,7 @@ def get_object_dir(object_id, name=None):
             msg = "Object (%s) directory not registered: %s" % (object_type, x)
             raise OTPmeException(msg)
         try:
-            x_path = x_getter(object_id)
+            x_path = x_getter(object_id, object_uuid)
         except Exception as e:
             msg = ("Error getting %s directory path: %s: %s"
                     % (object_type, x, e))
@@ -328,7 +328,7 @@ def clear_index_caches(object_id):
 #                }
 #    return index_data
 
-def get_config_file_move(new_oid, old_oid=None, uuid=None):
+def get_config_file_move(uuid, new_oid, old_oid=None):
     """ Get object move data (e.g. on unit change). """
     if not old_oid and not uuid:
         msg = "Need <uuid> or <old_oid>."
@@ -341,6 +341,7 @@ def get_config_file_move(new_oid, old_oid=None, uuid=None):
                         object_type=new_oid.object_type,
                         force_index=True,
                         instance=True)
+
     old_config_file = None
     new_config_file = None
     object_type = new_oid.object_type
@@ -352,15 +353,17 @@ def get_config_file_move(new_oid, old_oid=None, uuid=None):
                     % {"new_oid":new_oid, "old_oid":old_oid})
             raise OTPmeException(msg)
         old_config_file = get_config_paths(object_id=old_oid,
-                            use_index=True)['config_file']
+                                        object_uuid=uuid,
+                                        use_index=True)['config_file']
         new_config_file = get_config_paths(object_id=new_oid,
-                            use_index=False)['config_file']
+                                        object_uuid=uuid,
+                                        use_index=False)['config_file']
     return old_oid, old_config_file, new_config_file
 
 def get_moved_child_objects(old_config_dir, new_config_dir):
     """ Get child objects to be updated in index. """
     child_objects = {}
-    result = collections.OrderedDict()
+    result = OrderedDict()
     for i in os.walk(old_config_dir):
         x_dir = i[0]
         if x_dir == old_config_dir:
@@ -463,7 +466,7 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
         checksum = object_config['CHECKSUM']
 
     # Get config file path from index.
-    object_paths = get_config_paths(object_id, use_index=False)
+    object_paths = get_config_paths(object_id, object_uuid=uuid, use_index=False)
     if "config_dir" in object_paths:
         config_dir = object_paths['config_dir']
         config_file = os.path.join(config_dir, config.object_config_file_name)
@@ -527,7 +530,7 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
         if uuid:
             old_oid, \
             old_config_file, \
-            new_config_file = get_config_file_move(new_oid=object_id, uuid=uuid)
+            new_config_file = get_config_file_move(uuid, new_oid=object_id)
             move_dirs = False
             if old_config_file and old_config_file != new_config_file:
                 # We need to do a full index update if OID changed...
@@ -718,8 +721,9 @@ def rename(object_id, new_object_id, no_lock=False,
         # Check if objects config dir path has changed and we have to move it,
         old_oid, \
         old_config_file, \
-        new_config_file = get_config_file_move(new_oid=new_object_id,
-                                                old_oid=object_id)
+        new_config_file = get_config_file_move(object_uuid,
+                                            new_oid=new_object_id,
+                                            old_oid=object_id)
         old_config_dir = os.path.dirname(old_config_file)
         new_config_dir = os.path.dirname(new_config_file)
         if os.path.exists(new_config_dir):
@@ -995,7 +999,7 @@ def config_path_getter(object_id, dir_extension):
     config_paths['rmdir_on_delete'] = [config_dir]
     return config_paths
 
-def get_config_paths(object_id, use_index=True, no_lock=False):
+def get_config_paths(object_id, object_uuid=None, use_index=True, no_lock=False):
     """ Get object config directories and files. """
     # Try to get config paths via index.
     if use_index:
@@ -1004,11 +1008,13 @@ def get_config_paths(object_id, use_index=True, no_lock=False):
             config_paths = index_object.fs_paths
             config_paths = json.loads(config_paths)
             return config_paths
+    if not object_uuid:
+        object_uuid = get_uuid(object_id)
     # Get object type.
     object_type = object_id.object_type
     # Get config paths via getter function.
     path_getter = object_settings[object_type]['path_getter']
-    config_paths = path_getter(object_id)
+    config_paths = path_getter(object_id, object_uuid)
     # In-tree objects register only the config dir. We have to add the default
     # config file name.
     if object_type in config.tree_object_types:
@@ -1650,7 +1656,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     result_list = []
     # For multiple return attributes we have to return the result as dict.
     # Use ordered dict to keep result sorted when using <order_by>.
-    result_dict = collections.OrderedDict()
+    result_dict = OrderedDict()
     # Get objects base attributes from result.
     for x in result:
         object_uuid = x[0]
@@ -1799,7 +1805,7 @@ def get_uuid(object_id):
     return uuid
 
 @handle_transaction
-def index_dump(object_id=None, uuid=None, session=None, **kwargs):
+def index_dump(object_id=None, uuid=None, session=None, checksum_ready=False, **kwargs):
     """ Dump all index attributes of given object. """
     if not object_id and not uuid:
         raise Exception("Need <uuid> or <object_id>.")
@@ -1830,25 +1836,56 @@ def index_dump(object_id=None, uuid=None, session=None, **kwargs):
     result['base_attributes'] = base_attributes
     q = session.query(IndexObjectAttribute)
     x = q.filter(IndexObjectAttribute.ioid == index_object.id)
-    object_attributes = {}
-    for x in x.all():
-        object_attributes[x.id] = {}
-        object_attributes[x.id]['realm'] = x.realm
-        object_attributes[x.id]['site'] = x.site
-        object_attributes[x.id]['object_type'] = x.object_type
-        object_attributes[x.id]['name'] = x.name
-        object_attributes[x.id]['value'] = x.value
-    result['object_attributes'] = object_attributes
-    q = session.query(IndexObjectACL)
-    x = q.filter(IndexObjectACL.ioid == index_object.id)
-    object_acls = {}
-    for x in x.all():
-        object_acls[x.id] = {}
-        object_acls[x.id]['realm'] = x.realm
-        object_acls[x.id]['site'] = x.site
-        object_acls[x.id]['object_type'] = x.object_type
-        object_acls[x.id]['value'] = x.value
-    result['object_acls'] = object_acls
+    if checksum_ready:
+        _object_attributes = []
+        for x in x.all():
+            _object_attributes.append((x.realm, x.site, x.object_type, x.name, x.value))
+        attr_counter = 0
+        object_attributes = {}
+        for x in sorted(_object_attributes):
+            object_attributes[attr_counter] = {}
+            object_attributes[attr_counter]['realm'] = x[0]
+            object_attributes[attr_counter]['site'] = x[1]
+            object_attributes[attr_counter]['object_type'] = x[2]
+            object_attributes[attr_counter]['name'] = x[3]
+            object_attributes[attr_counter]['value'] = x[4]
+            attr_counter += 1
+        result['object_attributes'] = object_attributes
+        q = session.query(IndexObjectACL)
+        x = q.filter(IndexObjectACL.ioid == index_object.id)
+        _object_acls = []
+        for x in x.all():
+            _object_acls.append((x.realm, x.site, x.object_type, x.value))
+        acl_counter = 0
+        object_acls = {}
+        for x in sorted(_object_acls):
+            object_acls[acl_counter] = {}
+            object_acls[acl_counter]['realm'] = x[0]
+            object_acls[acl_counter]['site'] = x[1]
+            object_acls[acl_counter]['object_type'] = x[2]
+            object_acls[acl_counter]['value'] = x[3]
+            acl_counter += 1
+        result['object_acls'] = object_acls
+    else:
+        object_attributes = {}
+        for x in x.all():
+            object_attributes[x.id] = {}
+            object_attributes[x.id]['realm'] = x.realm
+            object_attributes[x.id]['site'] = x.site
+            object_attributes[x.id]['object_type'] = x.object_type
+            object_attributes[x.id]['name'] = x.name
+            object_attributes[x.id]['value'] = x.value
+        result['object_attributes'] = object_attributes
+        q = session.query(IndexObjectACL)
+        x = q.filter(IndexObjectACL.ioid == index_object.id)
+        object_acls = {}
+        for x in x.all():
+            object_acls[x.id] = {}
+            object_acls[x.id]['realm'] = x.realm
+            object_acls[x.id]['site'] = x.site
+            object_acls[x.id]['object_type'] = x.object_type
+            object_acls[x.id]['value'] = x.value
+        result['object_acls'] = object_acls
     return result
 
 @handle_transaction
@@ -2039,8 +2076,11 @@ def index_add(object_id, object_paths=None, object_config=None,
 
     if not index_object:
         full_acl_update = True
+        use_acl_journal = False
         full_ldif_update = True
+        use_ldif_journal = False
         full_index_update = True
+        use_index_journal = False
 
     attributes = []
     if full_index_update:
@@ -2093,7 +2133,7 @@ def index_add(object_id, object_paths=None, object_config=None,
         if autocommit:
             session.commit()
 
-    elif use_index_journal and index_journal:
+    if use_index_journal and index_journal:
         # Get existing attributes.
         existing_attrs = []
         if index_object:
@@ -2102,6 +2142,7 @@ def index_add(object_id, object_paths=None, object_config=None,
             existing_attrs = session.execute(sql_stmt)
             existing_attrs = existing_attrs.all()
         # Handle index journal.
+        deleted_attrs = []
         for x_entry in index_journal:
             x_entry_type = x_entry[1]
             x_attribute = x_entry[2]
@@ -2119,19 +2160,27 @@ def index_add(object_id, object_paths=None, object_config=None,
                 q = q.filter(IndexObjectAttribute.name == x_attribute)
                 if x_value:
                     q = q.filter(IndexObjectAttribute.value == x_value)
-                result = q.all()
+                result = list(q.all())
+                if result:
+                    if x_value:
+                        deleted_attrs.append((x_attribute, x_value))
+                    else:
+                        deleted_attrs.append(x_attribute)
                 for a in result:
                     session.delete(a)
 
             # Add attributes.
             if x_entry_type == "add":
                 x_value = x_entry[3]
-                if (x_attribute, x_value) in existing_attrs:
-                    continue
+                if x_attribute not in deleted_attrs:
+                    if (x_attribute, x_value) not in deleted_attrs:
+                        if (x_attribute, x_value) in existing_attrs:
+                            continue
                 a = IndexObjectAttribute(realm=object_realm,
                                         site=object_site,
                                         object_type=object_type,
-                                        name=x_attribute, value=x_value)
+                                        name=x_attribute,
+                                        value=x_value)
                 # If the object already exists in the DB we just have to add the
                 # new/changed attribute.
                 if index_object:
@@ -2142,7 +2191,6 @@ def index_add(object_id, object_paths=None, object_config=None,
                     # Add attribute to list of attributes for the new index object.
                     attributes.append(a)
 
-    # Get object ACLs from index DB.
     if full_acl_update:
         # Get object ACLs.
         try:
@@ -2150,14 +2198,6 @@ def index_add(object_id, object_paths=None, object_config=None,
         except KeyError:
             object_acls = []
             full_acl_update = False
-            #msg = "Unable to update object index: %s: Missing 'ACLS'" % object_id
-            #raise OTPmeException(msg)
-        # Skip default ACLs.
-        for x in list(object_acls):
-            acl = otpme_acl.decode(x)
-            if not acl.default:
-                continue
-            object_acls.remove(x)
 
     # Add/del ACLs of existing object (update index).
     acls = []
@@ -2187,21 +2227,25 @@ def index_add(object_id, object_paths=None, object_config=None,
                     a.ioid = index_object.id
                     session.add(a)
         else:
-            # Add new attributes.
             for raw_acl in object_acls:
                 a = IndexObjectACL(realm=object_realm,
                                 site=object_site,
                                 object_type=object_type,
                                 value=raw_acl)
-                # Add ACL to list of ACLs for the new index object.
                 acls.append(a)
-                #local_object = session.merge(a)
-                #session.add(local_object)
 
         if autocommit:
             session.commit()
 
-    elif use_acl_journal and acl_journal:
+    if use_acl_journal and acl_journal:
+        # Get existing attributes.
+        deleted_acls = []
+        existing_acls = []
+        if index_object:
+            sql_stmt = select(IndexObjectACL.value)
+            sql_stmt = sql_stmt.where(IndexObjectACL.ioid == index_object.id)
+            existing_acls = session.execute(sql_stmt)
+            existing_acls = existing_acls.all()
         # Handle ACL journal.
         clear_acl_cache = True
         for x_entry in acl_journal:
@@ -2214,12 +2258,17 @@ def index_add(object_id, object_paths=None, object_config=None,
                 q = session.query(IndexObjectACL)
                 q = q.filter(IndexObjectACL.ioid == index_object.id)
                 q = q.filter(IndexObjectACL.value == x_raw_acl)
-                result = q.all()
+                result = list(q.all())
+                if result:
+                    deleted_acls.append(x_raw_acl)
                 for a in result:
                     session.delete(a)
 
             # Add attributes.
             if x_entry_type == "add":
+                if x_raw_acl not in deleted_acls:
+                    if (x_raw_acl,) in existing_acls:
+                        continue
                 a = IndexObjectACL(realm=object_realm,
                                 site=object_site,
                                 object_type=object_type,
@@ -2244,7 +2293,8 @@ def index_add(object_id, object_paths=None, object_config=None,
             update_object_ldif = True
         else:
             full_ldif_update = False
-    elif use_ldif_journal and index_object and ldif_journal:
+
+    if use_ldif_journal and index_object and ldif_journal:
         update_object_ldif = True
         object_ldif = json.loads(index_object.ldif)
         for x in ldif_journal:
@@ -2269,6 +2319,11 @@ def index_add(object_id, object_paths=None, object_config=None,
                             cur_vals.remove(x_val)
                         except ValueError:
                             pass
+                        if len(cur_vals) == 0:
+                            try:
+                                object_ldif.pop(x_attr)
+                            except KeyError:
+                                pass
             elif x_entry_action == "add":
                 x_entry_position = x[3]
                 for x_data in x_entry_data:
@@ -2279,7 +2334,10 @@ def index_add(object_id, object_paths=None, object_config=None,
                     except KeyError:
                         cur_vals = []
                         object_ldif[x_attr] = cur_vals
-                    cur_vals.insert(x_entry_position, x_val)
+                    if x_entry_position == -1:
+                        cur_vals.append(x_val)
+                    else:
+                        cur_vals.insert(x_entry_position, x_val)
             else:
                 msg = "Unknown action for LDIF journal: %s" % x_entry_action
                 raise OTPmeException(msg)
@@ -2292,6 +2350,20 @@ def index_add(object_id, object_paths=None, object_config=None,
     object_path = object_id.path
     object_rel_path = object_id.rel_path
     object_paths = json.dumps(object_paths)
+    # Sort object LDIF.
+    if object_ldif:
+        sorted_ldif = OrderedDict()
+        for key in sorted(object_ldif):
+            sorted_ldif[key] = object_ldif[key]
+        try:
+            sorted_ldif.move_to_end("dn", last=False)
+        except  KeyError:
+            pass
+        try:
+            sorted_ldif.move_to_end("modifyTimestamp")
+        except  KeyError:
+            pass
+        object_ldif = dict(sorted_ldif)
     object_ldif = json.dumps(object_ldif)
 
     # If the index object already exists we have to make sure that all
