@@ -777,6 +777,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                                 value="*",
                                 return_type="name")
         line = 0
+        callbacks = []
         objects_to_add = []
         id_range_cache = {}
         objects_by_unit = {}
@@ -797,17 +798,17 @@ class OTPmeMgmtP1(OTPmeServer1):
             if object_type == "user":
                 if object_name in all_users:
                     msg = "%s already exists: %s" % (object_type, object_name)
-                    callback.error(msg)
+                    callbacks.append(msg)
                     continue
             elif object_type == "group":
                 if object_name in all_groups:
                     msg = "%s already exists: %s" % (object_type, object_name)
-                    callback.error(msg)
+                    callbacks.append(msg)
                     continue
             elif object_type == "role":
                 if object_name in all_roles:
                     msg = "%s already exists: %s" % (object_type, object_name)
-                    callback.error(msg)
+                    callbacks.append(msg)
                     continue
             else:
                 msg = "Invalid object type: %s: %s" % (object_type, object_name)
@@ -897,6 +898,8 @@ class OTPmeMgmtP1(OTPmeServer1):
                     by_unit_objects.append((object_type, object_name))
             objects_to_add.append((object_type, object_name, object_unit, method_kwargs, idrange_policy))
 
+        callbacks = "\n".join(callbacks)
+        callback.error(callbacks)
         if verify_csv:
             return callback.ok()
 

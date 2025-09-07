@@ -1496,7 +1496,12 @@ class OTPmeBaseObject(OTPmeLockObject):
 
     @object_lock()
     def touch(self, callback: JobCallback=default_callback, **kwargs):
-        return self._write(update_last_modified_by=False, callback=callback)
+        return self._write(update_last_modified_by=False,
+                            use_index_journal=False,
+                            full_index_update=True,
+                            use_acl_journal=False,
+                            full_acl_update=True,
+                            callback=callback)
 
     @object_lock()
     def _write(self,
@@ -1505,6 +1510,12 @@ class OTPmeBaseObject(OTPmeLockObject):
         wait_for_cluster_writes: bool=True,
         update_last_modified: bool=True,
         update_last_modified_by: bool=True,
+        use_index_journal=True,
+        full_index_update=False,
+        use_acl_journal=True,
+        full_acl_update=False,
+        use_ldif_journal=True,
+        full_ldif_update=False,
         callback: JobCallback=default_callback,
         ):
         """ Write object config to backend. """
@@ -1528,20 +1539,23 @@ class OTPmeBaseObject(OTPmeLockObject):
 
         # Process index journal.
         index_journal = []
-        if self.index_journal:
-            index_journal = copy.deepcopy(self.index_journal)
+        if not full_index_update:
+            if self.index_journal:
+                index_journal = copy.deepcopy(self.index_journal)
         self.index_journal = []
 
         # Process ACL journal.
         acl_journal = []
-        if self.acl_journal:
-            acl_journal = copy.deepcopy(self.acl_journal)
+        if not full_acl_update:
+            if self.acl_journal:
+                acl_journal = copy.deepcopy(self.acl_journal)
         self.acl_journal = []
 
         # Process LDIF journal.
         ldif_journal = []
-        if self.ldif_journal:
-            ldif_journal = copy.deepcopy(self.ldif_journal)
+        if not full_ldif_update:
+            if self.ldif_journal:
+                ldif_journal = copy.deepcopy(self.ldif_journal)
         self.ldif_journal = []
 
         # Update object config from variables.
@@ -1580,9 +1594,12 @@ class OTPmeBaseObject(OTPmeLockObject):
                         cluster=cluster,
                         wait_for_cluster_writes=wait_for_cluster_writes,
                         no_transaction=no_transaction,
-                        use_index_journal=True,
-                        use_ldif_journal=True,
-                        use_acl_journal=True,
+                        full_index_update=full_index_update,
+                        use_index_journal=use_index_journal,
+                        full_ldif_update=full_ldif_update,
+                        use_ldif_journal=use_ldif_journal,
+                        full_acl_update=full_acl_update,
+                        use_acl_journal=use_acl_journal,
                         index_journal=index_journal,
                         ldif_journal=ldif_journal,
                         acl_journal=acl_journal)

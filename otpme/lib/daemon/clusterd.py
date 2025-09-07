@@ -202,17 +202,25 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
                                                         journal_dir=journal_dir,
                                                         timestamp=timestamp,
                                                         object_uuid=object_uuid)
-            cluster_entry_lock = cluster_journal_entry.lock(write=True)
+            cluster_journal_entry.lock(write=True)
         except ObjectDeleted:
             continue
         break
 
     if action == "delete":
-        cluster_journal_entry.delete()
-        cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,
-                                                    journal_dir=journal_dir,
-                                                    timestamp=timestamp,
-                                                    object_uuid=object_uuid)
+        if cluster_journal_entry.committed:
+            cluster_journal_entry.release()
+            while True:
+                try:
+                    cluster_journal_entry.delete()
+                    cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,
+                                                                journal_dir=journal_dir,
+                                                                timestamp=timestamp,
+                                                                object_uuid=object_uuid)
+                    cluster_journal_entry.lock(write=True)
+                except ObjectDeleted:
+                    continue
+                break
 
     try:
         if object_id:
@@ -255,7 +263,7 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
             config.logger.critical(msg)
             return (None, None)
     finally:
-        cluster_entry_lock.release_lock()
+        cluster_journal_entry.release()
 
     multiprocessing.cluster_out_event.set()
     return (object_event, timestamp)
@@ -344,7 +352,12 @@ class ClusterEntry(object):
     def release(self):
         if not self._lock:
             return
-        self._lock.release_lock()
+        try:
+            self._lock.release_lock()
+        except Exception as e:
+            msg = ("Failed to release cluster entry lock: %s: %s"
+                    % (self.journal_id, e))
+            self.logger.warning(msg)
         self._lock = None
 
     @property
@@ -374,16 +387,34 @@ class ClusterEntry(object):
             msg = ("Failed to commit cluster entry: %s: %s"
                     % (self.journal_id, e))
             self.logger.critical(msg)
+        # Remove committed nodes.
+        self.remove_nodes()
 
     #@entry_lock(write=True)
     def add_node(self, node_name):
         node_file = os.path.join(self.nodes_dir, node_name)
         try:
             filetools.create_file(path=node_file, content=str(time.time()))
+        except FileNotFoundError:
+            raise ObjectDeleted()
         except Exception as e:
             msg = ("Failed to add node to cluster entry: %s: %s"
                     % (node_name, e))
             self.logger.critical(msg)
+
+    #@entry_lock(write=False)
+    def remove_nodes(self):
+        nodes_files = sorted(glob.glob(self.nodes_dir + "/*"))
+        for node_file in nodes_files:
+            node_name = os.path.basename(node_file)
+            try:
+                os.remove(node_file)
+            except FileNotFoundError:
+                pass
+            except Exception as e:
+                msg = ("Failed to remove node from cluster entry: %s: %s"
+                        % (node_name, e))
+                self.logger.critical(msg)
 
     #@entry_lock(write=False)
     def get_nodes(self):
@@ -474,8 +505,11 @@ class ClusterEntry(object):
             nodes.append(node_name)
         return nodes
 
-    #@entry_lock(write=True)
-    def delete(self):
+    @entry_lock(write=True)
+    def delete(self, timestamp=None):
+        if timestamp:
+            if self.timestamp != timestamp:
+                return
         object_id = self.object_id
         random_part = stuff.gen_secret(len=8)
         entry_del_dir = "%s-%s.deleting" % (self.entry_dir, random_part)
@@ -1351,7 +1385,7 @@ class ClusterDaemon(OTPmeDaemon):
                 msg = "Failed to sync trash with node: %s: %s" % (node_name, e)
                 self.logger.warning(msg)
                 time.sleep(1)
-                config.raise_exception()
+                #config.raise_exception()
             else:
                 msg = "Trash sync finished with node: %s" % node_name
                 self.logger.info(msg)
@@ -2339,7 +2373,7 @@ class ClusterDaemon(OTPmeDaemon):
             except Exception as e:
                 msg = "Failed to handle cluster in-journal: %s" % e
                 self.logger.critical(msg)
-                config.raise_exception()
+                #config.raise_exception()
 
     def handle_cluster_in_journal(self):
         cluster_journal_files = self.get_cluster_in_journal()
@@ -2438,7 +2472,7 @@ class ClusterDaemon(OTPmeDaemon):
         except Exception as e:
             msg = "Error in two node handler: %s" % e
             self.logger.critical(msg)
-            config.raise_exception()
+            #config.raise_exception()
 
     def _start_two_node_handler(self):
         """ Start two node handler. """
@@ -2551,7 +2585,7 @@ class ClusterDaemon(OTPmeDaemon):
         except Exception as e:
             msg = "Error in node write connection: %s" % e
             self.logger.critical(msg)
-            config.raise_exception()
+            #config.raise_exception()
 
     def _start_node_write_connection(self, node_name):
         """ Start cluster write communication with node. """
@@ -2620,7 +2654,7 @@ class ClusterDaemon(OTPmeDaemon):
                 start_over = True
                 msg = "Failed to handle cluster journal: %s" % e
                 self.logger.critical(msg)
-                config.raise_exception()
+                #config.raise_exception()
 
             if start_over:
                 continue
@@ -2639,7 +2673,7 @@ class ClusterDaemon(OTPmeDaemon):
             except Exception as e:
                 msg = "Error processing cluster journal: %s" % e
                 self.logger.critical(msg)
-                config.raise_exception()
+                #config.raise_exception()
                 return True
             if not self.member_candidate:
                 break
@@ -2655,7 +2689,7 @@ class ClusterDaemon(OTPmeDaemon):
                 except Exception as e:
                     msg = "Error processing cluster journal: %s" % e
                     self.logger.critical(msg)
-                    config.raise_exception()
+                    #config.raise_exception()
                     return True
                 # Update data revision on peer.
                 if config.master_node:
@@ -2808,7 +2842,14 @@ class ClusterDaemon(OTPmeDaemon):
                             index_journal_committer, \
                             index_journal = cluster_journal_entry.get_index_journal(node_name)
                             failed_nodes = cluster_journal_entry.get_failed_nodes()
-                            if node_name in failed_nodes:
+                            if object_id.object_type in config.flat_object_types:
+                                acl_journal = None
+                                index_journal = None
+                                use_acl_journal = False
+                                use_index_journal = False
+                                full_acl_update = True
+                                full_index_update = True
+                            elif node_name in failed_nodes:
                                 acl_journal = None
                                 index_journal = None
                                 use_acl_journal = False
@@ -2841,7 +2882,7 @@ class ClusterDaemon(OTPmeDaemon):
                                         % (node_name, object_id, e))
                                 self.logger.warning(msg)
                                 cluster_journal_entry.add_failed_node(node_name)
-                                self.check_member_nodes(cluster_journal_entry)
+                                #self.check_member_nodes(cluster_journal_entry)
                                 raise ProcessingFailed(msg)
                             except Exception as e:
                                 #self.node_leave(node_name)
@@ -2850,10 +2891,11 @@ class ClusterDaemon(OTPmeDaemon):
                                         % (node_name, object_id, e))
                                 self.logger.warning(msg)
                                 cluster_journal_entry.add_failed_node(node_name)
-                                self.check_member_nodes(cluster_journal_entry)
+                                #self.check_member_nodes(cluster_journal_entry)
                                 #config.raise_exception()
                                 raise ProcessingFailed(msg)
                             if write_status != "done":
+                                cluster_journal_entry.add_failed_node(node_name)
                                 continue
                             msg = ("Written object to node: %s: %s (%s)"
                                     % (node_name, object_id, object_checksum))
@@ -2891,7 +2933,7 @@ class ClusterDaemon(OTPmeDaemon):
                             msg = ("Failed to rename object: %s: %s: %s"
                                     % (node_name, object_id, e))
                             self.logger.warning(msg)
-                            self.check_member_nodes(cluster_journal_entry)
+                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         except Exception as e:
                             #config.raise_exception()
@@ -2900,7 +2942,7 @@ class ClusterDaemon(OTPmeDaemon):
                             msg = ("Failed to rename object: %s: %s: %s"
                                     % (node_name, object_id, e))
                             self.logger.warning(msg)
-                            self.check_member_nodes(cluster_journal_entry)
+                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         if rename_status != "done":
                             continue
@@ -2925,7 +2967,7 @@ class ClusterDaemon(OTPmeDaemon):
                             msg = ("Failed to delete object: %s: (%s) %s"
                                     % (object_id, node_name, e))
                             self.logger.warning(msg)
-                            self.check_member_nodes(cluster_journal_entry)
+                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         except Exception as e:
                             #self.node_leave(node_name)
@@ -2933,7 +2975,7 @@ class ClusterDaemon(OTPmeDaemon):
                             msg = ("Error deleting object: %s: (%s) %s"
                                     % (object_id, node_name, e))
                             self.logger.warning(msg)
-                            self.check_member_nodes(cluster_journal_entry)
+                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         if del_status != "done":
                             continue
@@ -2973,7 +3015,7 @@ class ClusterDaemon(OTPmeDaemon):
                             msg = ("Failed to send trash object: %s: %s: %s: %s"
                                     % (node_name, trash_id, object_id, e))
                             self.logger.warning(msg)
-                            self.check_member_nodes(cluster_journal_entry)
+                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         except Exception as e:
                             #self.node_leave(node_name)
@@ -2981,7 +3023,7 @@ class ClusterDaemon(OTPmeDaemon):
                             msg = ("Error sending trash object: %s: %s: %s: %s"
                                     % (node_name, trash_id, object_id, e))
                             self.logger.warning(msg)
-                            self.check_member_nodes(cluster_journal_entry)
+                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         if trash_write_status != "done":
                             continue
@@ -3008,7 +3050,7 @@ class ClusterDaemon(OTPmeDaemon):
                             msg = ("Failed to delete trash object: %s: %s: %s"
                                     % (node_name, trash_id, e))
                             self.logger.warning(msg)
-                            self.check_member_nodes(cluster_journal_entry)
+                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         except Exception as e:
                             #self.node_leave(node_name)
@@ -3016,8 +3058,8 @@ class ClusterDaemon(OTPmeDaemon):
                             msg = ("Error deleting trash object: %s: %s: %s"
                                     % (node_name, trash_id, e))
                             self.logger.warning(msg)
-                            self.check_member_nodes(cluster_journal_entry)
-                            config.raise_exception()
+                            #self.check_member_nodes(cluster_journal_entry)
+                            #config.raise_exception()
                             raise ProcessingFailed(msg)
                         if trash_del_status != "done":
                             continue
@@ -3032,7 +3074,6 @@ class ClusterDaemon(OTPmeDaemon):
                             cluster_journal_entry.add_node(node_name)
                         except ObjectDeleted:
                             pass
-
                     # Send trash empty request to peer.
                     if action == "trash_empty":
                         try:
@@ -3043,7 +3084,7 @@ class ClusterDaemon(OTPmeDaemon):
                             msg = ("Failed to send trash empty request: %s: %s"
                                     % (node_name, e))
                             self.logger.warning(msg)
-                            self.check_member_nodes(cluster_journal_entry)
+                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         except Exception as e:
                             #self.node_leave(node_name)
@@ -3051,7 +3092,7 @@ class ClusterDaemon(OTPmeDaemon):
                             msg = ("Error sending trash empty request: %s: %s"
                                     % (node_name, e))
                             self.logger.warning(msg)
-                            self.check_member_nodes(cluster_journal_entry)
+                            #self.check_member_nodes(cluster_journal_entry)
                             raise ProcessingFailed(msg)
                         if trash_empty_status != "done":
                             continue
@@ -3156,7 +3197,7 @@ class ClusterDaemon(OTPmeDaemon):
                 msg = ("Failed to send last used times: %s: %s: %s"
                         % (node_name, object_type, e))
                 self.logger.warning(msg)
-                self.check_member_nodes(cluster_journal_entry)
+                #self.check_member_nodes(cluster_journal_entry)
                 raise ProcessingFailed(msg)
             except Exception as e:
                 #self.node_leave(node_name)
@@ -3164,7 +3205,7 @@ class ClusterDaemon(OTPmeDaemon):
                 msg = ("Error sending last used times: %s: %s: %s"
                         % (node_name, object_type, e))
                 self.logger.warning(msg)
-                self.check_member_nodes(cluster_journal_entry)
+                #self.check_member_nodes(cluster_journal_entry)
                 raise ProcessingFailed(msg)
             if last_used_write_status != "done":
                 continue
@@ -3242,8 +3283,12 @@ class ClusterDaemon(OTPmeDaemon):
             if org_timestamp != cluster_journal_entry.timestamp:
                 return
             try:
-                cluster_journal_entry.delete()
+                cluster_journal_entry.delete(timestamp=org_timestamp)
             except ObjectDeleted:
+                pass
+            try:
+                self.processed_journal_entries.pop(cluster_journal_entry.journal_id)
+            except KeyError:
                 pass
         finally:
             cluster_journal_entry.release()
