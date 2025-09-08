@@ -16,7 +16,7 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     '_include_global_opts'      : True,
-    '_usage_help'               : "Usage: otpme-policy {command} [policy]",
+    '_usage_help'               : "Usage: otpme-policy [--type <policy_type>] {command} [policy]",
 
     'show'      : {
                     '_cmd_usage_help' : 'Usage: otpme-policy show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [policy]',
@@ -35,6 +35,13 @@ cmd_help = {
                     'cmd'   :   '[search_regex]',
                     '_help' :   {
                                     'cmd'                   : 'list policies',
+                                },
+                },
+
+    'add'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-policy --type <policy_type> add {policy}',
+                    '_help' :   {
+                                    'cmd'                   : 'Add new policy',
                                 },
                 },
 

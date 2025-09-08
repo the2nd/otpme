@@ -16,7 +16,7 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     '_include_global_opts'      : True,
-    '_usage_help'               : "Usage: otpme-resolver {command} [resolver]",
+    '_usage_help'               : "Usage: otpme-resolver [--type <resolver_type>] {command} [resolver]",
 
     'show'      : {
                     '_cmd_usage_help' : 'Usage: otpme-resolver show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [resolver]',
@@ -35,6 +35,14 @@ cmd_help = {
                     'cmd'   :   '[search_regex]',
                     '_help' :   {
                                     'cmd'                   : 'list resolvers',
+                                },
+                },
+
+    'add'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-resolver --type <resolver_type> add {resolver}',
+                    '_help' :   {
+                                    'cmd'                       : 'Add new resolver',
+                                    '--type <resolver_type>'    : 'Resolver type (e.g. ldap)',
                                 },
                 },
 

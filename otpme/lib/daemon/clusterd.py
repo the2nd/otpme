@@ -324,19 +324,6 @@ class ClusterEntry(object):
         self.deleted_by_file = os.path.join(self.entry_dir, "deleted_by")
         self.object_data_file = os.path.join(self.entry_dir, "object_data")
 
-        try:
-            filetools.create_dir(self.entry_dir)
-        except FileExistsError:
-            pass
-        try:
-            filetools.create_dir(self.nodes_dir)
-        except FileExistsError:
-            pass
-        try:
-            filetools.create_dir(self.failed_nodes_dir)
-        except FileExistsError:
-            pass
-
     def lock(self, write=False):
         if self._lock:
             return
@@ -506,10 +493,7 @@ class ClusterEntry(object):
         return nodes
 
     @entry_lock(write=True)
-    def delete(self, timestamp=None):
-        if timestamp:
-            if self.timestamp != timestamp:
-                return
+    def delete(self):
         object_id = self.object_id
         random_part = stuff.gen_secret(len=8)
         entry_del_dir = "%s-%s.deleting" % (self.entry_dir, random_part)
@@ -518,7 +502,7 @@ class ClusterEntry(object):
         except FileNotFoundError:
             return
         except Exception as e:
-            msg = "Failed to rename entry dir: %s: %s" % (self.entry_dir, e)
+            msg = "Failed to rename cluster entry dir: %s: %s" % (self.entry_dir, e)
             self.logger.critical(msg)
             return
         try:
@@ -526,7 +510,7 @@ class ClusterEntry(object):
         except FileNotFoundError:
             pass
         except Exception as e:
-            msg = ("Failed to remove cluster entry nodes dir: %s: %s"
+            msg = ("Failed to remove cluster entry dir: %s: %s"
                     % (self.entry_dir, e))
             self.logger.warning(msg)
         msg = ("Deleted cluster entry: %s" % object_id)
@@ -534,31 +518,28 @@ class ClusterEntry(object):
 
 class ClusterJournalEntry(ClusterEntry):
     """ Cluster journal entry. """
-    def __init__(self, journal_id, journal_dir, timestamp=None,
-        object_uuid=None, object_id=None, object_type=None,
-        object_data=None, index_journal=None, acl_journal=None,
-        trash_id=None, deleted_by=None):
+    def __init__(self, journal_id, journal_dir, timestamp=None, object_uuid=None):
         super(ClusterJournalEntry, self).__init__(journal_dir=journal_dir,
                                                 journal_id=journal_id,
                                                 _lock_type=JOURNAL_LOCK_TYPE)
+        if timestamp or object_uuid:
+            try:
+                filetools.create_dir(self.entry_dir)
+            except FileExistsError:
+                pass
+            try:
+                filetools.create_dir(self.nodes_dir)
+            except FileExistsError:
+                pass
+            try:
+                filetools.create_dir(self.failed_nodes_dir)
+            except FileExistsError:
+                pass
+
         if timestamp is not None:
             self.timestamp = timestamp
-        if object_id is not None:
-            self.object_id = object_id
-        if object_type is not None:
-            self.object_type = object_type
         if object_uuid is not None:
             self.object_uuid = object_uuid
-        if object_data is not None:
-            self.object_data = object_data
-        if acl_journal is not None:
-            self.add_acl_journal(acl_journal)
-        if index_journal is not None:
-            self.add_index_journal(index_journal)
-        if trash_id is not None:
-            self.trash_id = trash_id
-        if deleted_by is not None:
-            self.deleted_by = deleted_by
 
     def __str__(self):
         #x = os.path.getmtime(self.commit_file)
@@ -1193,7 +1174,7 @@ class ClusterDaemon(OTPmeDaemon):
     def get_cluster_out_journal_trash(self):
         journal_dir = TRASH_JOURNAL_DIR
         journal_dirs = sorted(glob.glob(journal_dir + "/*"))
-        journal_dirs = [d for d in journal_dirs if not d.endswith(".delete")]
+        journal_dirs = [d for d in journal_dirs if not d.endswith(".deleting")]
         journal_entries = []
         for x_dir in journal_dirs:
             journal_id = os.path.basename(x_dir)
@@ -1210,12 +1191,12 @@ class ClusterDaemon(OTPmeDaemon):
     def get_cluster_out_journal_last_used(self):
         journal_dir = LAST_USED_JOURNAL_DIR
         journal_dirs = sorted(glob.glob(journal_dir + "/*"))
-        journal_dirs = [d for d in journal_dirs if not d.endswith(".delete")]
+        journal_dirs = [d for d in journal_dirs if not d.endswith(".deleting")]
         journal_entries = []
         for x_dir in journal_dirs:
             journal_id = os.path.basename(x_dir)
             cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,
-                                                    journal_dir=journal_dir)
+                                                        journal_dir=journal_dir)
             if not cluster_journal_entry.committed:
                 continue
             try:
@@ -1229,7 +1210,7 @@ class ClusterDaemon(OTPmeDaemon):
     def get_cluster_out_journal(self):
         journal_dir = OBJECTS_JOURNAL_DIR
         journal_dirs = glob.glob(journal_dir + "/*")
-        journal_dirs = [d for d in journal_dirs if not d.endswith(".delete")]
+        journal_dirs = [d for d in journal_dirs if not d.endswith(".deleting")]
         journal_entries = {}
         journal_entries_sorted = []
         for x_dir in journal_dirs:
@@ -3279,11 +3260,11 @@ class ClusterDaemon(OTPmeDaemon):
             events = cluster_journal_entry.get_object_events()
             for object_event in events:
                 object_event.set()
-                #object_event.unlink()
+                object_event.unlink()
             if org_timestamp != cluster_journal_entry.timestamp:
                 return
             try:
-                cluster_journal_entry.delete(timestamp=org_timestamp)
+                cluster_journal_entry.delete()
             except ObjectDeleted:
                 pass
             try:

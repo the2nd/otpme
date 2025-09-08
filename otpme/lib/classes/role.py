@@ -895,53 +895,6 @@ class Role(OTPmeObject):
         else:
             self.name = name.lower()
 
-    #@assigned_token_cache.cache_method()
-    #def is_assigned_token(
-    #    self,
-    #    token_uuid: str,
-    #    skip_disabled_roles: bool=True,
-    #    ):
-    #    if token_uuid in self.tokens:
-    #        return True
-    #    child_roles = self.get_roles(return_type="instance",
-    #                        skip_disabled=skip_disabled_roles,
-    #                        recursive=False)
-    #    processed_roles = []
-    #    for role in child_roles:
-    #        if skip_disabled_roles:
-    #            if not role.enabled:
-    #                continue
-    #        if role.uuid in processed_roles:
-    #            continue
-    #        processed_roles.append(role.uuid)
-    #        if role.is_assigned_token(token_uuid):
-    #            return True
-    #    return False
-
-    #@assigned_role_cache.cache_method()
-    #def is_assigned_role(
-    #    self,
-    #    role_uuid: str,
-    #    skip_disabled_roles: bool=True,
-    #    ):
-    #    if role_uuid in self.roles:
-    #        return True
-    #    parent_roles = self.get_roles(parent=True,
-    #                        return_type="instance",
-    #                        skip_disabled=skip_disabled_roles,
-    #                        recursive=False)
-    #    processed_roles = []
-    #    for role in parent_roles:
-    #        if skip_disabled_roles:
-    #            if not role.enabled:
-    #                continue
-    #        if role.uuid in processed_roles:
-    #            continue
-    #        processed_roles.append(role.uuid)
-    #        if role.is_assigned_role(role_uuid):
-    #            return True
-    #    return False
-
     @cli.check_rapi_opts()
     def get_roles(
         self,

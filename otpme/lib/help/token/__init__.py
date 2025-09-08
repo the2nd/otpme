@@ -16,7 +16,7 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     '_include_global_opts'      : True,
-    '_usage_help'               : "Usage: otpme-token {command} [token]",
+    '_usage_help'               : "Usage: otpme-token [--type <token_type>] {command} [token]",
 
     'show'      : {
                     '_cmd_usage_help' : 'Usage: otpme-token show [--policy-limit <limit>] [--fields <field1,field2,field3>] [-z <size_limit>] [-a] [token]',
@@ -36,6 +36,13 @@ cmd_help = {
                     'cmd'   :   '[search_regex]',
                     '_help' :   {
                                     'cmd'                   : 'list tokens',
+                                },
+                },
+
+    'add'    : {
+                    '_cmd_usage_help' : 'Usage: otpme-token --type <token_type> add {token}',
+                    '_help' :   {
+                                    'cmd'                       : 'Add new token',
                                 },
                 },
 

@@ -1536,10 +1536,14 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                 acl_q = acl_q.order_by(order_by)
 
         # Query objects.
+        object_count = []
         acl_result = acl_q.all()
         for x in acl_result:
+            x_id = x[0]
+            if x_id not in object_count:
+                object_count.append(x_id)
             if max_results > 0:
-                if len(query_result) >= max_results:
+                if len(object_count) > max_results:
                     break
             # Get result attributes.
             x_uuid = x[1]
