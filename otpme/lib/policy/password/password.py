@@ -350,6 +350,8 @@ class PasswordPolicy(Policy):
             pin = str(pin)
             return self.check_pin(pin, callback=callback,
                                 verbose_level=verbose_level)
+        msg = "Missing <password> or <pin>."
+        return callback.error(msg)
 
     def handle_hook(self, hook_object, hook_name,
         callback=default_callback, **kwargs):
@@ -363,7 +365,7 @@ class PasswordPolicy(Policy):
         msg = (_("Unknown policy hook: %s") % hook_name)
         return callback.error(msg)
 
-    def check_pin(self, pin, callback=default_callback):
+    def check_pin(self, pin, verbose_level=0, callback=default_callback):
         """ Check if the given PIN is in the correct format """
         # Make sure PIN is string.
         pin = str(pin)

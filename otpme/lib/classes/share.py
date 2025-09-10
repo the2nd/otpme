@@ -107,13 +107,13 @@ commands = {
                 'missing'    : {
                     'method'            : 'add',
                     'args'              : ['root_dir'],
-                    'oargs'             : ['unit', 'encrypted', 'block_size'],
+                    'oargs'             : ['unit', 'encrypted', 'no_key_gen', 'block_size'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
                     'method'            : 'add',
                     'args'              : ['root_dir'],
-                    'oargs'             : ['unit', 'encrypted', 'block_size'],
+                    'oargs'             : ['unit', 'encrypted', 'no_key_gen', 'block_size'],
                     'job_type'          : 'process',
                     },
                 },
@@ -746,6 +746,7 @@ class Share(OTPmeObject):
                         'trusted'  : [
                             "ROOT_DIR",
                             "READ_ONLY",
+                            "ENCRYPTED",
                             "TOKENS",
                             "ROLES",
                             ]
@@ -755,6 +756,7 @@ class Share(OTPmeObject):
                         'untrusted'  : [
                             "ROOT_DIR",
                             "READ_ONLY",
+                            "ENCRYPTED",
                             "TOKENS",
                             "ROLES",
                             ]
@@ -873,6 +875,7 @@ class Share(OTPmeObject):
         encrypted: bool=False,
         key_len: int=32,
         block_size: int=4096,
+        no_key_gen: bool=False,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -886,18 +889,22 @@ class Share(OTPmeObject):
         if not self.set_root_dir(root_dir, callback=callback):
             return callback.error()
         self.encrypted = encrypted
-        self.block_size = block_size
         self.add_index('encrypted', self.encrypted)
-        self.add_index('block_size', self.block_size)
+        if self.encrypted:
+            self.block_size = block_size
+            self.add_index('block_size', self.block_size)
         # Add object using parent class.
         add_result = super(Share, self).add(verify_acls=verify_acls,
                                         verbose_level=verbose_level,
                                         callback=callback, **kwargs)
-        if self.encrypted and add_result:
+        if self.encrypted and add_result and not no_key_gen:
             msg = "Generating AES key for encrypted share..."
             callback.send(msg)
             key_mode = config.auth_user.key_mode
             share_key_response = callback.gen_share_key(key_len=key_len, key_mode=key_mode)
+            if not share_key_response:
+                msg = "Received empty share key response."
+                return callback.error(msg)
             try:
                 share_key = share_key_response['share_key']
             except KeyError:
@@ -1152,7 +1159,6 @@ class Share(OTPmeObject):
                                 attribute="rel_path",
                                 value=token_path,
                                 realm=config.realm,
-                                site=config.site,
                                 return_type="uuid")
         if not result:
             msg = "Unknown token: %s" % token_path
@@ -1222,7 +1228,6 @@ class Share(OTPmeObject):
                                 attribute="rel_path",
                                 value=token_path,
                                 realm=config.realm,
-                                site=config.site,
                                 return_type="uuid")
         if not result:
             msg = "Unknown token: %s" % token_path
@@ -1237,7 +1242,6 @@ class Share(OTPmeObject):
                                 attribute="name",
                                 value=token_user,
                                 realm=config.realm,
-                                site=config.site,
                                 return_type="instance")
         if not result:
             msg = "Unknown user: %s" % token_user
@@ -1300,7 +1304,6 @@ class Share(OTPmeObject):
                                 attribute="rel_path",
                                 value=token_path,
                                 realm=config.realm,
-                                site=config.site,
                                 return_type="uuid")
         if not result:
             msg = "Unknown token: %s" % token_path
@@ -1318,6 +1321,7 @@ class Share(OTPmeObject):
 
         return super(Share, self).remove_token(token_path=token_path,
                                             callback=callback, **kwargs)
+
     @object_lock()
     def add_role(
         self,

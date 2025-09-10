@@ -51,11 +51,12 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-share add [--crypt] [--block-size <block_size>] [--key-len <key_len>] {share} {root_dir}',
-                    'cmd'   :   '--crypt :encrypted=True: --block-size :block_size: --key-len :key_len: <|object|> <root_dir>',
+                    '_cmd_usage_help' : 'Usage: otpme-share add [--crypt] [--no-key-gen] [--block-size <block_size>] [--key-len <key_len>] {share} {root_dir}',
+                    'cmd'   :   '--crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --key-len :key_len: <|object|> <root_dir>',
                     '_help' :   {
                                     'cmd'                       : 'Add new share.',
                                     '--crypt'                   : 'Add encrpyted share.',
+                                    '--no-key-gen'              : 'Dont generate AES key.',
                                     '--key-len <key_len>'       : 'Generate AES key of length <key_len>.',
                                     '--block-size <blocksize>'  : 'Encrpyted share block size (default 4096).',
                                 },

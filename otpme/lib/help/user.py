@@ -306,8 +306,8 @@ cmd_help = {
                 },
 
     'show_config'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-user show_config',
-                    'cmd'   :   '[|object|]',
+                    '_cmd_usage_help' : 'Usage: otpme-user show_config {user}',
+                    'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : 'Show user config parameters',
                                 },

@@ -1037,7 +1037,8 @@ class Role(OTPmeObject):
                 _roles.append(_role)
 
         # Run parent class stuff e.g. verify ACLs.
-        result = self._prepare_add(callback=callback, **kwargs)
+        result = self._prepare_add(verify_acls=verify_acls,
+                                callback=callback, **kwargs)
         if result is False:
             return callback.error()
 

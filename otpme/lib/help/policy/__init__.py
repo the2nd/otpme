@@ -86,8 +86,8 @@ cmd_help = {
                 },
 
     'show_config'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy show_config',
-                    'cmd'   :   '[|object|]',
+                    '_cmd_usage_help' : 'Usage: otpme-policy show_config {policy}',
+                    'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : 'Show policy config parameters',
                                 },
@@ -209,7 +209,7 @@ cmd_help = {
                 },
     'list_policies'   : {
                     '_cmd_usage_help' : 'Usage: otpme-policy list_policies {policy}',
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: <|object|>',
                     'ovals' :   {
                                 'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
                                 },

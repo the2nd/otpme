@@ -1031,9 +1031,6 @@ class SharedDict(dict):
     def __getitem__(self, key):
         return self.get(key)
 
-    #def __repr__(self, *args, **kwargs):
-    #    print("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", args, kwargs)
-
     def __len__(self):
         x = self.dict()
         return len(x)

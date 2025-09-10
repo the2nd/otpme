@@ -1166,7 +1166,7 @@ class CommandHandler(object):
             return self.handle_get_jwt_command(command_line)
 
         if subcommand == "get_sotp":
-            return self.get_sotp()
+            return self.get_sotp(command, subcommand)
 
         if subcommand == "get_srp":
             return self.get_srp()
@@ -3310,13 +3310,27 @@ class CommandHandler(object):
 
         return tty
 
-    def get_sotp(self):
+    def get_sotp(self, command, subcommand):
         """ Get SOTP from agent. """
         from otpme.lib import connections
 
         # Create otpme-agent instance
         from otpme.lib.classes.otpme_agent import OTPmeAgent
         otpme_agent = OTPmeAgent()
+
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except Exception as e:
+            help_text = self.get_help(_("Unknown command: %s") % subcommand)
+            raise OTPmeException(help_text)
+
+        # Parse command line.
+        object_cmd, \
+        object_required, \
+        object_identifier, \
+        command_args = cli.get_opts(command_syntax=command_syntax,
+                                    command_line=self.command_line,
+                                    command_args=self.command_args)
 
         agent_conn = None
 
@@ -3337,7 +3351,14 @@ class CommandHandler(object):
             raise OTPmeException("Not logged in.")
 
         # Get SOTP from agent
-        sotp = agent_conn.get_sotp()[1]
+        try:
+            site = command_args['site']
+        except KeyError:
+            site = None
+        try:
+            sotp = agent_conn.get_sotp(site=site)[1]
+        finally:
+            agent_conn.close()
 
         return sotp
 
@@ -5170,10 +5191,19 @@ class CommandHandler(object):
         parser.add_argument("--list", dest="list_shares", action="store_true", help="List shares")
         parser.add_argument('--nodes', dest='nodes')
         parser.add_argument("--encrypted", dest="encrypted", action="store_true", help="Share is encrypted")
+        parser.add_argument("--add-share-key", dest="add_share_key", action="store_true", help="Add share key to share")
         parser.add_argument("--master-password-mount", dest="master_password_mount", action="store_true", help="Use master password to mount encrypted share.")
         parser.add_argument('share', nargs='?')
         parser.add_argument('mount', nargs='?')
         args = parser.parse_args(sys.argv)
+
+        if args.add_share_key:
+            if not args.master_password_mount:
+                msg = "Need --master-password-mount with --add-share-key"
+                raise OTPmeException(msg)
+            if config.login_user != "root":
+                msg = "You must be root for --add-share-key."
+                raise OTPmeException(msg)
         self.init(use_backend=False)
         nodes = None
         encrypted = None
@@ -5193,18 +5223,25 @@ class CommandHandler(object):
                                     parse_command_syntax=False,
                                     client_type="RAPI")
             return reply
+        share_id = args.share
+        try:
+            share_site = share_id.split("/")[0]
+            share_name = share_id.split("/")[1]
+        except:
+            msg = "Invalid share: %s" % share_id
+            raise OTPmeException(msg)
         mount_point = args.mount
         if nodes is None or mount_point is None:
-            command_args = {'share_name':args.share}
+            command_args = {'share_id':share_id}
             reply = self.send_command(daemon="mgmtd",
                                     command="get_share",
                                     command_args=command_args,
                                     parse_command_syntax=False,
                                     client_type="RAPI")
             if nodes is None:
-                nodes = reply[args.share]['nodes']
+                nodes = reply[share_id]['nodes']
             if encrypted is None:
-                encrypted = reply[args.share]['encrypted']
+                encrypted = reply[share_id]['encrypted']
             if mount_point is None:
                 shares = reply
                 try:
@@ -5225,26 +5262,29 @@ class CommandHandler(object):
                 raise OTPmeException(msg)
         os.environ['OTPME_LOGIN_SESSION'] = login_session_id
         if args.foreground:
-            mount_share(args.share,
+            mount_share(share_name,
+                        share_site,
                         mount_point,
                         nodes,
                         encrypted,
                         master_password=master_password,
+                        add_share_key=args.add_share_key,
                         foreground=args.foreground)
         else:
             mount_proc = multiprocessing.start_process(name="mount",
                                                     target=mount_share,
-                                                    target_args=(args.share, mount_point, nodes, encrypted),
+                                                    target_args=(share_name, share_site, mount_point, nodes, encrypted),
                                                     target_kwargs={
                                                                     'master_password'   : master_password,
+                                                                    'add_share_key'     : args.add_share_key,
                                                                     'foreground'        : False,
                                                                 },
                                                     daemon=False)
             mount_proc.join()
             if mount_proc.exitcode != 0:
-                msg = "Failed to mount share: %s" % args.share
+                msg = "Failed to mount share: %s" % share_id
                 raise OTPmeException(msg)
-        os.system(f"sudo -n setreadahead {mount_point}")
+            os.system(f"sudo -n setreadahead {mount_point}")
         return
 
     def handle_smartcard_detection(self, command, subcommand):

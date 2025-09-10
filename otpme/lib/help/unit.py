@@ -46,8 +46,8 @@ cmd_help = {
                 },
 
     'show_config'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-unit show_config',
-                    'cmd'   :   '[|object|]',
+                    '_cmd_usage_help' : 'Usage: otpme-unit show_config {unit}',
+                    'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : 'show units config parameters',
                                 },

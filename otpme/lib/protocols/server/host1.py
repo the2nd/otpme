@@ -359,12 +359,14 @@ class OTPmeHostP1(OTPmeServer1):
                 realm_name = command_args['realm']
             except:
                 realm_name = None
+            if not realm_name:
                 message = "INCOMPLETE_COMMAND"
                 status = False
             try:
                 site_name = command_args['site']
             except:
                 site_name = None
+            if not site_name:
                 message = "INCOMPLETE_COMMAND"
                 status = False
 

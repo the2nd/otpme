@@ -32,6 +32,7 @@ from otpme.lib.protocols.otpme_server import OTPmeServer1
 from otpme.lib.exceptions import *
 
 filehandlers = {}
+default_callback = config.get_callback()
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
@@ -43,7 +44,8 @@ def register():
 def with_root_path(func):
     def wrapper(self, path, *args, **kwargs):
         path = self.root + path
-        path = os.path.realpath(path)
+        # Get absolut path to prevent break out of root dir.
+        path = os.path.abspath(path)
         if not path.startswith(self.root):
             raise OSError(errno.ENOENT, "No such file or directory")
         return func(self, path, *args, **kwargs)
@@ -424,6 +426,7 @@ class OTPmeFsP1(OTPmeServer1):
         # All valid commands.
         valid_commands = [
                             "mount",
+                            "add_share_key",
                             "exists",
                             "get_mtime",
                             "get_ctime",
@@ -637,7 +640,51 @@ class OTPmeFsP1(OTPmeServer1):
                 status = status_codes.UNKNOWN_OBJECT
                 return self.build_response(status, message)
 
-        if command == "exists":
+        if command == "add_share_key":
+            try:
+                share_key = command_args['share_key']
+            except KeyError:
+                status = status_codes.UNKNOWN_OBJECT
+                message = "Missing share key."
+                return self.build_response(status, message)
+            if not self.root:
+                message = "No share mounted."
+                status = status_codes.UNKNOWN_OBJECT
+                return self.build_response(status, message)
+            if not self.encrypted:
+                status = status_codes.UNKNOWN_OBJECT
+                message = "Share not encrypted."
+                return self.build_response(status, message)
+            result = backend.search(object_type="share",
+                                    attribute="name",
+                                    value=self.share,
+                                    realm=config.realm,
+                                    site=config.site,
+                                    return_type="instance")
+            if not result:
+                status = status_codes.UNKNOWN_OBJECT
+                message = "Unknown share: %s" % self.share
+                return self.build_response(status, message)
+            share = result[0]
+            if not share.is_master_password_token(config.auth_token.rel_path):
+                status = status_codes.PERMISSION_DENIED
+                message = "No share permissions: %s" % self.share
+                self.logger.warning(message)
+                return self.build_response(status, message)
+            if not share_key:
+                status = status_codes.UNKNOWN_OBJECT
+                message = ("Got no share key: %s" % config.auth_user.name)
+                self.logger.warning(message)
+                return self.build_response(status, message)
+            share.add_token(token_path=config.auth_token.rel_path,
+                            share_key=share_key,
+                            callback=default_callback,
+                            verify_acls=False)
+            default_callback.write_modified_objects()
+            message = "Share key added for user: %s" % config.auth_user.name
+            status = True
+
+        elif command == "exists":
             try:
                 path = command_args['path']
             except KeyError:
@@ -651,7 +698,7 @@ class OTPmeFsP1(OTPmeServer1):
                 message = str(e)
             return self.build_response(status, message)
 
-        if command == "get_mtime":
+        elif command == "get_mtime":
             try:
                 path = command_args['path']
             except KeyError:
@@ -665,7 +712,7 @@ class OTPmeFsP1(OTPmeServer1):
                 message = str(e)
             return self.build_response(status, message)
 
-        if command == "get_ctime":
+        elif command == "get_ctime":
             try:
                 path = command_args['path']
             except KeyError:

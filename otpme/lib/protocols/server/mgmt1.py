@@ -2108,16 +2108,23 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Handle get share command.
         if command == "get_share":
             try:
-                share_name = command_args['share_name']
+                share_id = command_args['share_id']
             except KeyError:
                 status = False
-                response = "Missing <share_name>"
+                response = "Missing <share_id>"
+                return self.build_response(status, response)
+            try:
+                share_site = share_id.split("/")[0]
+                share_name = share_id.split("/")[1]
+            except:
+                status = False
+                response = "Invalid share id: %s" % share_id
                 return self.build_response(status, response)
             result = backend.search(object_type="share",
                                     attribute="name",
                                     value=share_name,
                                     realm=config.realm,
-                                    site=config.site,
+                                    site=share_site,
                                     return_type="instance")
             if not result:
                 status = False
@@ -2138,10 +2145,12 @@ class OTPmeMgmtP1(OTPmeServer1):
                 node_fqdns = []
                 for node in share_nodes:
                     node_fqdns.append(node.fqdn)
-                shares[share.name] = {}
-                shares[share.name]['site'] = share.site
-                shares[share.name]['nodes'] = node_fqdns
-                shares[share.name]['encrypted'] = share.encrypted
+                share_id = "%s/%s" % (share.site, share.name)
+                shares[share_id] = {}
+                shares[share_id]['name'] = share.name
+                shares[share_id]['site'] = share.site
+                shares[share_id]['nodes'] = node_fqdns
+                shares[share_id]['encrypted'] = share.encrypted
             status = True
             return self.build_response(status, shares)
 
@@ -2176,10 +2185,12 @@ class OTPmeMgmtP1(OTPmeServer1):
                     node_fqdns = []
                     for node in share_nodes:
                         node_fqdns.append(node.fqdn)
-                    shares[share.name] = {}
-                    shares[share.name]['site'] = share.site
-                    shares[share.name]['nodes'] = node_fqdns
-                    shares[share.name]['encrypted'] = share.encrypted
+                    share_id = "%s/%s" % (share.site, share.name)
+                    shares[share_id] = {}
+                    shares[share_id]['name'] = share.name
+                    shares[share_id]['site'] = share.site
+                    shares[share_id]['nodes'] = node_fqdns
+                    shares[share_id]['encrypted'] = share.encrypted
             status = True
             return self.build_response(status, shares)
 
@@ -2490,6 +2501,11 @@ class OTPmeMgmtP1(OTPmeServer1):
                             attribute = "rel_path"
                             search_value = object_rel_path
 
+                        # Allow dump of public key for users from all sites (used by key script on share mount).
+                        search_site = config.site
+                        if command == "user" and subcommand == "dump_key":
+                            search_site = None
+
                         # Check if we can find the object on our site.
                         if object_type != "realm" and object_type != "site":
                             # Search for existing object of our own site.
@@ -2499,7 +2515,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                                                         value=search_value,
                                                         return_type="instance",
                                                         realm=config.realm,
-                                                        site=config.site)
+                                                        site=search_site)
                             except LockWaitTimeout as e:
                                 message = "Object locked: %s" % e
                                 status = False

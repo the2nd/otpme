@@ -1693,7 +1693,7 @@ def run_key_script(username, script_command, script_options=None,
                         call=call)
     return return_val
 
-def encrypt_share_key(username, share_user, share_key, key_mode):
+def encrypt_share_key(username, share_user, share_key, key_mode, disable_ctrl_c=False):
     # Make sure share key is bytes.
     if isinstance(share_key, str):
         share_key = share_key.encode()
@@ -1709,7 +1709,8 @@ def encrypt_share_key(username, share_user, share_key, key_mode):
                         call=False,
                         return_proc=True,
                         script_command=script_command,
-                        script_options=script_options)
+                        script_options=script_options,
+                        disable_ctrl_c=disable_ctrl_c)
     proc.stdin.write(share_key)
     proc.stdin.flush()
     proc.stdin.close()

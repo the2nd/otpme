@@ -131,14 +131,17 @@ class AgentConn(object):
     #    else:
     #        return False, False
 
-    def get_sotp(self):
+    def get_sotp(self, site=None):
         """ Get SOTP from otpme-agent. """
         username = None
         sotp = None
-        status, status_code, reply = self.send("get_sotp")
-        if status_code == status_codes.OK:
-            username = reply['username']
-            sotp = reply['sotp']
+        command_args = {'site':site}
+        status, status_code, reply = self.send("get_sotp", command_args=command_args)
+        if status_code != status_codes.OK:
+            msg = "Failed to get SOTP from agent: %s" % reply
+            raise OTPmeException(msg)
+        username = reply['username']
+        sotp = reply['sotp']
         return username, sotp
 
     def get_srp(self):
@@ -197,7 +200,7 @@ class AgentConn(object):
         command_args = {
                         'shares' : shares,
                     }
-        status, status_code, reply = self.send("mount_shares", **command_args)
+        status, status_code, reply = self.send("mount_shares", command_args)
         if status_code != status_codes.OK:
             raise Exception(_("Failed to mount shares: %s")
                             % reply)
@@ -218,7 +221,7 @@ class AgentConn(object):
                         'session_id'    : session_id,
                         'tty'           : tty,
                     }
-        status, status_code, reply = self.send("add_session", **command_args)
+        status, status_code, reply = self.send("add_session", command_args)
         if status_code != status_codes.OK:
             raise Exception(_("Error adding login session to agent: %s")
                             % reply)
@@ -249,7 +252,7 @@ class AgentConn(object):
                         'timeout'       : timeout,
                         'unused_timeout': unused_timeout,
                     }
-        status, status_code, reply = self.send("add_rsp", **command_args)
+        status, status_code, reply = self.send("add_rsp", command_args)
         if status_code != status_codes.OK:
             raise Exception(_("Failed to set RSP: %s") % reply)
         self.logger.debug("Added RSP to otpme-agent: %s/%s" % (realm, site))
@@ -260,7 +263,7 @@ class AgentConn(object):
                         'realm'         : realm,
                         'site'          : site,
                     }
-        status, status_code, reply = self.send("reneg", **command_args)
+        status, status_code, reply = self.send("reneg", command_args)
         if status_code != status_codes.OK:
             raise Exception(_("Error: %s") % reply)
         return reply
@@ -271,7 +274,7 @@ class AgentConn(object):
                         'login_token'       : login_token,
                         'login_pass_type'   : login_pass_type,
                     }
-        status, status_code, reply = self.send("set_login_token", **command_args)
+        status, status_code, reply = self.send("set_login_token", command_args)
         if status_code != status_codes.OK:
             raise Exception(_("Failed to set login token: %s") % reply)
 
@@ -281,7 +284,7 @@ class AgentConn(object):
                         'ssh_agent_pid' : ssh_agent_pid,
                         'ssh_key_pass'  : ssh_key_pass,
                     }
-        status, status_code, reply = self.send("add_ssh_key_pass", **command_args)
+        status, status_code, reply = self.send("add_ssh_key_pass", command_args)
         if status_code != status_codes.OK:
             raise Exception(_("Failed to add SSH key passphrase to agent: %s")
                             % reply)
@@ -319,7 +322,7 @@ class AgentConn(object):
                         'username'  : username,
                         'acl'       : acl,
                     }
-        status, status_code, reply = self.send("add_acl", **command_args)
+        status, status_code, reply = self.send("add_acl", command_args)
         if status_code != status_codes.OK:
             raise Exception(_("Failed to add ACL to agent: %s")
                             % reply)
@@ -330,7 +333,7 @@ class AgentConn(object):
                         'username'  : username,
                         'acl'       : acl,
                     }
-        status, status_code, reply = self.send("del_acl", **command_args)
+        status, status_code, reply = self.send("del_acl", command_args)
         if status_code != status_codes.OK:
             raise Exception(_("Failed to remove ACL from agent: %s")
                             % reply)
@@ -366,7 +369,7 @@ class AgentConn(object):
             raise OTPmeException(msg)
         helo_args = {'supported_protocols' : supported_protocols}
         # Send helo command to agent.
-        status, status_code, response = self.send(helo_command, **helo_args)
+        status, status_code, response = self.send(helo_command, helo_args)
 
         if status_code != status_codes.OK:
             msg = (_("Error sending helo command to otpme-agent: %s") % response)
@@ -380,7 +383,7 @@ class AgentConn(object):
         try:
             status, \
             status_code, \
-            response = self.send(use_proto_command, **use_proto_args)
+            response = self.send(use_proto_command, use_proto_args)
         except Exception as e:
             msg = (_("Error sending 'use_proto': %s") % e)
             config.raise_exception()
@@ -390,7 +393,7 @@ class AgentConn(object):
             command_args = {
                             'login_session_id' : self.login_session_id,
                         }
-            status, status_code, msg = self.send("auth", **command_args)
+            status, status_code, msg = self.send("auth", command_args)
             if status_code != status_codes.OK:
                 if status_code == status_codes.UNKNOWN_LOGIN_SESSION:
                     # Retry agent auth without session ID.
@@ -401,7 +404,7 @@ class AgentConn(object):
                     raise OTPmeException(msg)
         self.connected = True
 
-    def send(self, command, **command_args):
+    def send(self, command, command_args={}, **kwargs):
         """ Send command requests to agent and handle response. """
         response = ""
 

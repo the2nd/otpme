@@ -2707,10 +2707,12 @@ class AuthHandler(object):
                             node_fqdns = []
                             for node in share_nodes:
                                 node_fqdns.append(node.fqdn)
-                            shares[share.name] = {}
-                            shares[share.name]['site'] = share.site
-                            shares[share.name]['nodes'] = node_fqdns
-                            shares[share.name]['encrypted'] = share.encrypted
+                            share_id = "%s/%s" % (share.site, share.name)
+                            shares[share_id] = {}
+                            shares[share_id]['name'] = share.name
+                            shares[share_id]['site'] = share.site
+                            shares[share_id]['nodes'] = node_fqdns
+                            shares[share_id]['encrypted'] = share.encrypted
                     auth_reply['shares'] = shares
 
             # Get SSH private key from token.

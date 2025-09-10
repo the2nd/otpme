@@ -698,6 +698,7 @@ def get_sync_list(
     logger = config.logger
 
     if not object_types:
+        # FIXME: get objects from config.tree_object_types and flat_object_types?
         object_types = [
                         "realm",
                         "site",
@@ -715,6 +716,8 @@ def get_sync_list(
                         "script",
                         "dictionary",
                         "ca",
+                        "pool",
+                        "share",
                         "used_otp",
                         "used_sotp",
                         "failed_pass",

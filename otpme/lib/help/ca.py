@@ -110,8 +110,8 @@ cmd_help = {
                 },
 
     'show_config'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-ca show_config',
-                    'cmd'   :   '[|object|]',
+                    '_cmd_usage_help' : 'Usage: otpme-ca show_config {ca}',
+                    'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : 'Show CA config parameters',
                                 },

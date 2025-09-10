@@ -102,8 +102,8 @@ cmd_help = {
                 },
 
     'show_config'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-client show_config',
-                    'cmd'   :   '[|object|]',
+                    '_cmd_usage_help' : 'Usage: otpme-client show_config {client}',
+                    'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : 'Show client config parameters',
                                 },

@@ -9,9 +9,7 @@ import errno
 import random
 import base64
 import struct
-import logging
 import hashlib
-import argparse
 import setproctitle
 from typing import List
 from typing import Optional
@@ -121,15 +119,23 @@ class OTPmeFS(fuse.Operations):
     OTPmeFS.
     '''
 
-    def __init__(self, share, logger, nodes):
+    def __init__(
+        self,
+        share,
+        share_site,
+        logger,
+        nodes,
+        ):
         self.use_ns = True
         self.share = share
+        self.share_site = share_site
         self.nodes = nodes
         self.fsd_conn = None
         self.max_name = 255
         self.username = None
         self.encrypted = False
         self.logger = logger
+        self.add_share_key = False
         self.master_password = None
         config.daemon_mode = True
 
@@ -142,27 +148,19 @@ class OTPmeFS(fuse.Operations):
         return username
 
     def get_fsd_connection(self, node):
+        # Get SOTP from agent
         agent_conn = connections.get(daemon="agent")
-        status, \
-        status_code, \
-        reply = agent_conn.send("get_sotp")
-        if not status:
-            msg = "Unable to get SOTP from agent: %s" % reply
-            raise OTPmeException(msg)
         try:
-            try:
-                sotp = reply['sotp']
-            except KeyError:
-                msg = "Failed to get SOTP from agent."
-                self.logger.warning(msg)
-                return
+            sotp = agent_conn.get_sotp(site=self.share_site)[1]
+        except Exception as e:
+            msg = "Unable to get SOTP from agent: %s" % e
+            raise OTPmeException(msg)
         finally:
             agent_conn.close()
         try:
             fsd_conn = connections.get(daemon="fsd",
                                     node=node,
-                                    realm=config.realm,
-                                    site=config.site,
+                                    allow_untrusted=True,
                                     username=self.username,
                                     password=sotp,
                                     use_ssh_agent=False,
@@ -200,6 +198,7 @@ class OTPmeFS(fuse.Operations):
                         self.fsd_conn = None
                         msg = "Failed to get fsd connection: %s" % e
                         self.logger.warning(msg)
+                        #config.raise_exception()
                         if len(tried_nodes) == len(nodes):
                             msg = "Nodes failed: %s" % tried_nodes
                             self.logger.warning(msg)
@@ -314,6 +313,34 @@ class OTPmeFS(fuse.Operations):
                     msg = "Share mounted: %s (%s)" % (self.share, node)
                     self.logger.info(msg)
                     print(msg)
+                    # Add share key.
+                    if self.add_share_key:
+                        # Encrypt share key with key script.
+                        try:
+                            enc_share_key = stuff.encrypt_share_key(username=self.username,
+                                                                    share_user=self.username,
+                                                                    share_key=share_key,
+                                                                    key_mode=None)
+                        except Exception as e:
+                            msg = "Failed to encrypt share key: %s: %s" % (self.share, e)
+                            self.logger.warning(msg)
+                            self.fsd_conn.close()
+                            self.fsd_conn = None
+                            raise OSError(errno.EACCES, "Failed to decrypt share key")
+                        # Add token and share key to share
+                        add_args = {'share_key':enc_share_key}
+                        add_status, \
+                        add_response_code, \
+                        add_response, \
+                        add_binary_data = self.fsd_conn.send(command="add_share_key",
+                                                        command_args=add_args,
+                                                        handle_response=False,
+                                                        encrypt_request=False,
+                                                        encode_request=False,
+                                                        compress_request=False)
+                        if not add_status:
+                            raise OSError(errno.EACCES, "Failed to add share key.")
+                        self.add_share_key = False
                     break
 
             if not self.fsd_conn:
@@ -838,12 +865,23 @@ class OTPmeFS(fuse.Operations):
 
 
 class EncryptedFS(OTPmeFS):
-    def __init__(self, share, logger, nodes, master_password, *args, **kwargs):
-        super().__init__(share, logger, nodes, *args, **kwargs)
+    def __init__(
+        self,
+        share,
+        share_site,
+        logger,
+        nodes,
+        master_password,
+        add_share_key=False,
+        *args,
+        **kwargs,
+        ):
+        super().__init__(share, share_site, logger, nodes, *args, **kwargs)
         self.key = None
         self.encrypted = True
         self.name_key = None
         self.content_key = None
+        self.add_share_key = add_share_key
         self.master_password = master_password
         self.block_size = 4096
         self.nonce_size = 12
@@ -1828,13 +1866,17 @@ def prepare_mount_point(username, share_site, share):
         os.umask(old_usmask)
     return mount_point
 
-def mount_share_proc(share, mount, nodes, encrypted, **kwargs):
+def mount_share_proc(share, share_site, mount, nodes, encrypted, **kwargs):
     new_proctitle = "otpme-mount %s %s" % (share, mount)
     setproctitle.setproctitle(new_proctitle)
-    mount_share(share, mount, nodes, encrypted, **kwargs)
+    mount_share(share, share_site, mount, nodes, encrypted, **kwargs)
 
-def mount_share(share, mount, nodes, encrypted=False,
-    master_password=None, foreground=True, logger=None):
+def mount_share(share, share_site, mount, nodes, encrypted=False,
+    master_password=None, add_share_key=False, foreground=True,
+    logger=None):
+    if add_share_key and not master_password:
+        msg = "Need <master_password> with <add_share_key>"
+        raise OTPmeException(msg)
     #if config.debug_enabled:
     #    logging.basicConfig(level=logging.DEBUG)
     fsname = "OTPmeFS:/%s" % share
@@ -1844,44 +1886,16 @@ def mount_share(share, mount, nodes, encrypted=False,
     print(msg)
     logger.info(msg)
     if encrypted:
-        fuse.FUSE(EncryptedFS(share, logger, nodes, master_password),
+        fuse.FUSE(EncryptedFS(share, share_site, logger, nodes, master_password, add_share_key),
                         mount,
                         foreground=foreground,
                         nothreads=True,
                         fsname=fsname,
                         )
     else:
-        fuse.FUSE(OTPmeFS(share, logger, nodes=nodes),
+        fuse.FUSE(OTPmeFS(share, share_site, logger, nodes=nodes),
                         mount,
                         foreground=foreground,
                         nothreads=True,
                         fsname=fsname,
                         )
-
-
-def cli(args=None):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('share')
-    parser.add_argument('mount')
-    parser.add_argument('--nodes', dest='nodes')
-    args = parser.parse_args(args)
-
-    nodes = args.nodes.split(",")
-
-    logging.basicConfig(level=logging.DEBUG)
-
-    logger = config.logger
-    fsname = "OTPmeFS:/%s" % args.share
-    fuse.FUSE(OTPmeFS(args.share, logger, nodes=nodes),
-                    args.mount,
-                    foreground=True,
-                    nothreads=True,
-                    fsname=fsname,
-                    #big_writes=True,
-                    #max_read=0,
-                    #max_readahead=1024000,
-                    #max_write=1024000,
-                    )
-
-if __name__ == '__main__':
-    cli()

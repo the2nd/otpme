@@ -13,6 +13,7 @@ except:
 
 from otpme.lib import re
 from otpme.lib import srp
+from otpme.lib import sotp
 from otpme.lib import json
 from otpme.lib import stuff
 from otpme.lib import config
@@ -508,26 +509,31 @@ class OTPmeAgentP1(object):
             if status:
                 messages = []
                 new_mounts = {}
-                for share in shares:
-                    share_site = shares[share]['site']
-                    share_nodes = shares[share]['nodes']
-                    share_encrypted = shares[share]['encrypted']
+                for share_id in shares:
+                    share_name = shares[share_id]['name']
+                    share_site = shares[share_id]['site']
+                    share_nodes = shares[share_id]['nodes']
+                    share_encrypted = shares[share_id]['encrypted']
                     try:
-                        mount_point = prepare_mount_point(login_user, share_site, share)
+                        mount_point = prepare_mount_point(login_user, share_site, share_name)
                     except Exception as e:
                         msg = "Failed to prepare mountpoint: %s" % e
                         logger.warning(msg)
                         continue
                     if os.path.ismount(mount_point):
                         status = False
-                        msg = "Share already mounted: %s: %s" % (share, mount_point)
+                        msg = "Share already mounted: %s: %s" % (share_id, mount_point)
                         logger.info(msg)
                         messages.append(msg)
                     else:
                         os.environ['OTPME_LOGIN_SESSION'] = self.session_id
                         mount_proc = multiprocessing.start_process(name="mount",
                                                                 target=mount_share_proc,
-                                                                target_args=(share, mount_point, share_nodes, share_encrypted),
+                                                                target_args=(share_name,
+                                                                            share_site,
+                                                                            mount_point,
+                                                                            share_nodes,
+                                                                            share_encrypted),
                                                                 target_kwargs={
                                                                                 'logger'    :logger,
                                                                                 'foreground':False,
@@ -535,11 +541,11 @@ class OTPmeAgentP1(object):
                                                                 daemon=False)
                         mount_proc.join()
                         if mount_proc.exitcode != 0:
-                            msg = "Failed to mount share: %s" % share
+                            msg = "Failed to mount share: %s" % share_id
                             logger.info(msg)
                             messages.append(msg)
                             continue
-                        new_mounts[share] = shares[share]
+                        new_mounts[share_id] = shares[share_id]
                         try:
                             os.system(f"sudo -n setreadahead {mount_point}")
                         except Exception as e:
@@ -551,8 +557,8 @@ class OTPmeAgentP1(object):
                     mounted_shares = self.session['mounted_shares']
                 except KeyError:
                     mounted_shares = {}
-                for share in new_mounts:
-                    mounted_shares[share] = new_mounts[share]
+                for share_id in new_mounts:
+                    mounted_shares[share_id] = new_mounts[share_id]
                 self.session['mounted_shares'] = mounted_shares
                 self.login_sessions[self.login_pid] = self.session
                 msg = "Shares mounted: %s" % new_mounts
@@ -571,9 +577,10 @@ class OTPmeAgentP1(object):
             if shares:
                 messages = []
                 umounted_shares = []
-                for share in shares:
-                    share_site = shares[share]['site']
-                    mount_point = get_mount_point(login_user, share_site, share)
+                for share_id in shares:
+                    share_site = shares[share_id]['site']
+                    share_name = shares[share_id]['name']
+                    mount_point = get_mount_point(login_user, share_site, share_name)
                     try:
                         os.system(f"fusermount -u {mount_point}")
                     except Exception as e:
@@ -588,7 +595,7 @@ class OTPmeAgentP1(object):
                     except Exception as e:
                         msg = "Failed to rmdir mountpoint: %s: %s" % (mount_point, e)
                         logger.warning(msg)
-                    umounted_shares.append(share)
+                    umounted_shares.append(share_id)
                 msg = "Shares unmounted: %s" % umounted_shares
                 messages.append(msg)
                 message = "\n".join(messages)
@@ -1192,11 +1199,47 @@ class OTPmeAgentP1(object):
 
 
         elif command == "get_sotp":
-            from otpme.lib import sotp
-            rsp_hash = otpme_pass.gen_one_iter_hash(self.login_user, self.rsp)
-            otp = sotp.gen(password_hash=rsp_hash)
-            message = {'username':self.login_user, 'sotp':otp}
-            status = True
+            try:
+                site = command_args['site']
+            except KeyError:
+                site = None
+            if site:
+                try:
+                    rsp = self.session['server_sessions'][self.realm][site]['rsp']
+                except:
+                    # If no RSP exists for this site, try login to the site.
+                    login_request = {
+                                'login_pid' : self.login_pid,
+                                'realm'     : self.realm,
+                                'site'      : site,
+                                'daemon'    : 'agent',
+                                }
+                    try:
+                        self.send_command(command="login_user",
+                                        request=login_request)
+                    except Exception as e:
+                        message = str(e)
+                        status = False
+                    # Re-load session.
+                    try:
+                        self.session = self.login_sessions[self.login_pid]
+                    except KeyError:
+                        pass
+                    # Try to get RSP.
+                    try:
+                        rsp = self.session['server_sessions'][self.realm][site]['rsp']
+                    except:
+                        rsp = None
+            else:
+                rsp = self.rsp
+            if rsp:
+                rsp_hash = otpme_pass.gen_one_iter_hash(self.login_user, rsp)
+                otp = sotp.gen(password_hash=rsp_hash)
+                message = {'username':self.login_user, 'sotp':otp}
+                status = True
+            else:
+                message = "No server session."
+                status = False
 
         elif command == "get_slp":
             if self.slp:

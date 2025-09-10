@@ -526,7 +526,9 @@ class OathToken(Token):
                     gen_qrcode = False
                     show_secret = False
             if gen_qrcode:
-                term_qrcode = self.gen_qrcode(pin=pin, run_policies=False)
+                term_qrcode = self.gen_qrcode(pin=pin,
+                                            verify_acls=verify_acls,
+                                            run_policies=False)
                 return_message = term_qrcode
             if show_secret:
                 if return_message:

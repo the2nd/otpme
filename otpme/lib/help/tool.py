@@ -471,7 +471,8 @@ cmd_help = {
                 },
 
     'get_sotp'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-tool get_sotp',
+                    '_cmd_usage_help' : 'Usage: otpme-tool get_sotp --site {site}',
+                    'cmd'   :   '--site :site:',
                     '_help' :   {
                                     'cmd'                   : 'get a SOTP for logged in user',
                                 },

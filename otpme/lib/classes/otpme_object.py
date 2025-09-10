@@ -3951,10 +3951,11 @@ class OTPmeObject(OTPmeBaseObject):
                     pool_nodes = []
                 result += pool_nodes
 
-        result = backend.search(object_type="node",
-                                attribute="uuid",
-                                values=result,
-                                return_type=return_type)
+        if result:
+            result = backend.search(object_type="node",
+                                    attribute="uuid",
+                                    values=result,
+                                    return_type=return_type)
         if _caller == "RAPI":
             result = ",".join(result)
         if _caller == "CLIENT":

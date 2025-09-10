@@ -244,7 +244,7 @@ def get(daemon, **kwargs):
                 reply = result[2]
             except Exception as e:
                 status = False
-                reply = ""
+                reply = str(e)
 
             if daemon != "agent":
                 if not conn.print_messages \

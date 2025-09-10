@@ -415,9 +415,10 @@ class OTPmeAgent(UnixDaemon):
                 shares = []
             messages = []
             umounted_shares = []
-            for share in shares:
-                share_site = shares[share]['site']
-                mount_point = get_mount_point(login_user, share_site, share)
+            for share_id in shares:
+                share_name = shares[share_id]['name']
+                share_site = shares[share_id]['site']
+                mount_point = get_mount_point(login_user, share_site, share_name)
                 try:
                     os.system(f"fusermount -u {mount_point}")
                 except Exception as e:
@@ -432,7 +433,7 @@ class OTPmeAgent(UnixDaemon):
                 except Exception as e:
                     msg = "Failed to rmdir mountpoint: %s: %s" % (mount_point, e)
                     self.logger.warning(msg)
-                umounted_shares.append(share)
+                umounted_shares.append(share_id)
             if umounted_shares:
                 msg = "Shares unmounted: %s" % umounted_shares
                 self.logger.info(msg)
@@ -1081,6 +1082,7 @@ class OTPmeAgent(UnixDaemon):
                                     realm=realm,
                                     site=site,
                                     rsp=rsp,
+                                    slp=_slp,
                                     shares=shares,
                                     login_time=login_time,
                                     session_key=session_key,
@@ -1313,7 +1315,19 @@ class OTPmeAgent(UnixDaemon):
 
             # Handle commands to ourselves from connection handler.
             if daemon == "agent":
-                if command == "add_session":
+                if command == "login_user":
+                    # Try to login user.
+                    try:
+                        message = self.login_user(login_pid,
+                                                realm,
+                                                site,
+                                                use_dns=use_dns)
+                        status_code = status_codes.OK
+                    except Exception as e:
+                        message = "Failed to logout user: %s" % e
+                        status_code = status_codes.ERR
+
+                elif command == "add_session":
                     # Start new thread that will notify us if the login PID
                     # has ended.
                     try:

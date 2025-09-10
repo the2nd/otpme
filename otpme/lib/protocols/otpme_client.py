@@ -196,7 +196,7 @@ class OTPmeClient(OTPmeClientBase):
     def __init__(self, daemon, use_ssl=True, verify_server=True,
         connect_timeout=None, timeout=None, client=None, username=None,
         autoconnect=True, auto_auth=True, auto_preauth=False, do_preauth=None,
-        use_dns=False, local_socket=False, site_ident=False,
+        use_dns=False, local_socket=False, socket_uri=None, site_ident=False,
         site_ident_digest="sha256", trust_site_cert=False,
         trust_site_cert_fp=None, encrypt_session=True,
         quiet_autoconnect=False, realm=None, site=None, **kwargs):
@@ -228,7 +228,7 @@ class OTPmeClient(OTPmeClientBase):
                 do_preauth = True
             self.proto_handler_args['do_preauth'] = do_preauth
 
-        if not local_socket:
+        if not local_socket and not socket_uri:
             # Set default realm and site if needed.
             if not realm:
                 realm = config.connect_realm
@@ -245,6 +245,8 @@ class OTPmeClient(OTPmeClientBase):
         # realm/site we connect to.
         self.realm = realm
         self.site = site
+        # Socket URI to connect to.
+        self.socket_uri = socket_uri
         # Use DNS to get site address?
         self.use_dns = use_dns
         # Indicates that we should use SSL.
@@ -487,6 +489,11 @@ class OTPmeClient(OTPmeClientBase):
                     % self.peer_cert)
             self.logger.warning(msg)
             raise CertVerifyFailed("AUTH_INVALID_CERT_CN")
+        # If we got no realm/site (e.g. socket_uri) set it.
+        if not self.realm:
+            self.realm = self.peer_realm
+        if not self.site:
+            self.site = self.peer_site
 
     def connect(self, connect_timeout=None, timeout=None,
         auto_auth=None, auto_preauth=None, quiet=False):
@@ -2012,7 +2019,6 @@ class OTPmeClient1(OTPmeClientBase):
         # Check if we are connected to the correct site.
         self.check_connected_site = check_connected_site
 
-        # ECDH curve to use.
         self.ecdh_curve = "SECP384R1"
         # ECDH handler to generage RSP.
         self.rsp_ecdh_key = None
@@ -2526,7 +2532,13 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Load site cert.
         if need_site_cert and not self.site_cert:
-            cert = stuff.get_site_cert(realm=self.realm, site=self.site)
+            realm = self.realm
+            if self.connection.peer_realm:
+                realm = self.connection.peer_realm
+            site = self.site
+            if self.connection.peer_site:
+                site = self.connection.peer_site
+            cert = stuff.get_site_cert(realm=realm, site=site)
             if not cert:
                 msg = "Unable to get site certificate."
                 raise OTPmeException(msg)

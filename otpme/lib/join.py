@@ -710,10 +710,10 @@ class JoinHandler(object):
         if master_node_join:
             node_cert_req, host_key = self.gen_host_cert_req(key_len=host_key_len)
             host_cert = self.handle_master_node_stuff(join_reply,
-                                                        site_ca_key,
-                                                        node_cert_req,
-                                                        password, jotp,
-                                                        conn_kwargs)
+                                                    site_ca_key,
+                                                    node_cert_req,
+                                                    password, jotp,
+                                                    conn_kwargs)
 
         elif host_cert_req:
             host_cert = join_reply['host_cert']
@@ -728,7 +728,9 @@ class JoinHandler(object):
             filetools.touch(config.node_joined_file)
 
         # Update nsscache:
+        master_site = self._my_site.get_master_site()
         nsscache.update(config.realm, config.site)
+        nsscache.update(config.realm, master_site.name)
         # Enable nsscache symlinks.
         nsscache.enable()
 

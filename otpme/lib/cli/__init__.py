@@ -535,7 +535,6 @@ def get_opts(command_syntax, command_line, command_args,
                 cmd_opt_paras[para_count]['para'] = para
                 cmd_opt_paras[para_count]['file'] = found_file_opt
                 para_count += 1
-                para_count += 1
             #cmd_list.pop(0)
             continue
 
@@ -676,9 +675,8 @@ def get_opts(command_syntax, command_line, command_args,
 
                 if not para_var and not key_name:
                     if not ignore_unknown_opts:
-                        if check_for_otpme_opts:
-                            msg = ("Unknown parameter: %s" % command_line[0])
-                            raise OTPmeException(msg)
+                        msg = ("Unknown parameter: %s" % command_line[0])
+                        raise OTPmeException(msg)
 
                 if para_var:
                     if para_is_file:

@@ -2496,7 +2496,7 @@ def index_get_object(object_id=None, object_type=None,
     q = session.query(IndexObject)
 
     if object_id:
-        # Gen read OID of object.
+        # Get read OID of object.
         read_oid = object_id.read_oid
         # Name uniq objects must be searched by object type/name because they may
         # be referenced via their realtive read OID (e.g. user|realm/site/root).
