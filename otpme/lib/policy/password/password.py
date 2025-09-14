@@ -13,6 +13,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.spsc import SPSC
 from otpme.lib import otpme_acl
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
@@ -463,6 +464,7 @@ class PasswordPolicy(Policy):
     @check_acls(['edit:password_min_len'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_password_min_len(self, password_min_len, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change min password length. """
@@ -487,6 +489,7 @@ class PasswordPolicy(Policy):
     @check_acls(['edit:pin_min_len'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_pin_min_len(self, pin_min_len, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change min PIN length. """
@@ -511,6 +514,7 @@ class PasswordPolicy(Policy):
     @check_acls(['edit:strength_checker'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_strength_checker(self, strength_checker, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change strength checker. """
@@ -535,6 +539,7 @@ class PasswordPolicy(Policy):
     @check_acls(['edit:strength_checker_opts'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_strength_checker_opts(self, options, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change strength checker options. """
@@ -600,6 +605,7 @@ class PasswordPolicy(Policy):
     @check_acls(['enable:strength_checker'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_strength_checker(self, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Enable strength checker. """
@@ -629,6 +635,7 @@ class PasswordPolicy(Policy):
     @check_acls(['disable:strength_checker'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_strength_checker(self, force=False, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Disable strength checker. """

@@ -12,6 +12,7 @@ except:
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
@@ -314,6 +315,7 @@ class ObjecttemplatesPolicy(Policy):
     @check_acls(['set_template'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def set_template(self, object_type, object_name=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Set object template. """

@@ -14,6 +14,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.classes.token import Token
 from otpme.lib.otpme_acl import check_acls
@@ -373,6 +374,7 @@ class PasswordToken(Token):
     @check_acls(['edit:2ftoken'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def change_2f_token(
         self,
         second_factor_token: str,
@@ -417,6 +419,7 @@ class PasswordToken(Token):
     @check_acls(['enable:2ftoken'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_2f_token(
         self,
         force: bool=False,
@@ -463,6 +466,7 @@ class PasswordToken(Token):
     @check_acls(['disable:2ftoken'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_2f_token(
         self,
         force: bool=False,

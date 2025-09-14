@@ -14,6 +14,7 @@ from otpme.lib import cli
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import decode
@@ -659,6 +660,7 @@ class Script(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def rename(
         self,
         new_name: str,
@@ -687,6 +689,7 @@ class Script(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
+    @audit_log()
     def add(
         self,
         script: str,
@@ -796,6 +799,7 @@ class Script(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def copy(
         self,
         destination_script: str,
@@ -876,6 +880,7 @@ class Script(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def delete(
         self,
         force: bool=False,

@@ -32,6 +32,7 @@ from otpme.lib import filetools
 from otpme.lib import encryption
 from otpme.lib import otpme_pass
 from otpme.lib import mschap_util
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
@@ -1260,6 +1261,7 @@ class Session(OTPmeLockObject):
         return result
 
     @object_lock()
+    @audit_log()
     def delete(
         self,
         force: bool=False,

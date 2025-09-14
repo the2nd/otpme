@@ -18,6 +18,7 @@ from otpme.lib import qrcode
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.otp.oath import hotp
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
@@ -799,6 +800,7 @@ class HotpToken(OathToken):
     @check_acls(['resync'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log(ignore_args=['otp'])
     def resync(
         self,
         otp: Union[str,None]=None,
@@ -950,6 +952,7 @@ class HotpToken(OathToken):
     @check_acls(['edit:counter_check_range'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_counter_check_range(
         self,
         run_policies: bool=True,
@@ -995,6 +998,7 @@ class HotpToken(OathToken):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log(ignore_args=['server_secret', 'pin'])
     def deploy(
         self,
         server_secret: str,

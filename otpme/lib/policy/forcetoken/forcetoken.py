@@ -11,6 +11,7 @@ except:
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
@@ -284,6 +285,7 @@ class ForcetokenPolicy(Policy):
     @check_acls(['edit:force_token_types'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_force_token_types(self, token_types, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change list of allowed forced token types. """
@@ -310,6 +312,7 @@ class ForcetokenPolicy(Policy):
     @check_acls(['edit:force_pass_types'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_force_pass_types(self, pass_types, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change list of allowed pass types. """

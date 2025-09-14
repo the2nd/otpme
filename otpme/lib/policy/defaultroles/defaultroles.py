@@ -11,6 +11,7 @@ except:
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
@@ -277,6 +278,7 @@ class DefaultrolesPolicy(Policy):
     @check_acls(['add:default_role'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def add_role(self, role_name, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add default role. """
@@ -313,6 +315,7 @@ class DefaultrolesPolicy(Policy):
     @check_acls(['remove:default_role'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def remove_role(self, role_name, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Remove default role. """

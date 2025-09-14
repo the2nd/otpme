@@ -19,6 +19,7 @@ from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.pki import utils
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encoding.base import encode
@@ -878,6 +879,7 @@ class Realm(OTPmeObject):
     @check_acls(['enable:auth'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_auth(
         self,
         force: bool=False,
@@ -924,6 +926,7 @@ class Realm(OTPmeObject):
     @check_acls(['disable:auth'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_auth(
         self,
         force: bool=False,
@@ -974,6 +977,7 @@ class Realm(OTPmeObject):
     @check_acls(['enable:sync'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_sync(
         self,
         force: bool=False,
@@ -1015,6 +1019,7 @@ class Realm(OTPmeObject):
     @check_acls(['disable:sync'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_sync(
         self,
         force: bool=False,

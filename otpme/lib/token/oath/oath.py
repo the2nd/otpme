@@ -14,6 +14,7 @@ except:
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib.audit import audit_log
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.encoding.base import decode
@@ -138,6 +139,7 @@ class OathToken(Token):
     @check_acls(['edit:mode'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_mode(
         self,
         new_mode: str,

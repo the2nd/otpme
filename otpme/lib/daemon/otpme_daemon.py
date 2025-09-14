@@ -19,6 +19,7 @@ try:
 except:
     pass
 
+from otpme.lib import log
 from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import backend
@@ -181,6 +182,8 @@ class OTPmeDaemon(object):
         """ Make sure we are configured correctly. """
         # Enable file logging when going to background.
         if config.daemonize:
+            config.file_logging = True
+        if not config.debug_enabled:
             config.file_logging = True
 
         # Reload config to re-configure logger etc.
@@ -368,11 +371,9 @@ class OTPmeDaemon(object):
         config.daemon_status = "running"
         # Update logger with new PID and daemon name.
         log_banner = "%s:" % self.full_name
-        #for h in self.logger.handlers:
-        #    h.close()
-        self.logger = config.setup_logger(banner=log_banner,
-                                        pid=self.pid,
-                                        existing_logger=config.logger)
+        self.logger = log.setup_logger(banner=log_banner,
+                                    pid=self.pid,
+                                    existing_logger=config.logger)
         # Set process title.
         try:
             setproctitle.setproctitle(self.full_name)

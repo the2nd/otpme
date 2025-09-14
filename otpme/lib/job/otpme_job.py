@@ -10,7 +10,9 @@ try:
 except:
     pass
 
+from otpme.lib import log
 from otpme.lib import stuff
+from otpme.lib import syslog
 from otpme.lib import config
 from otpme.lib import multiprocessing
 from otpme.lib.job.callback import JobCallback
@@ -174,7 +176,7 @@ class OTPmeJob(object):
             # Reconfigure logger.
             #for h in self.logger.handlers:
             #    h.close()
-            self.logger = config.setup_logger(pid=True,
+            self.logger = log.setup_logger(pid=True,
                                 existing_logger=config.logger)
             # Timeout handler.
             if self.timeout is not None:
@@ -370,3 +372,6 @@ class OTPmeJob(object):
         self.comm_queue.close()
         self.comm_queue.unlink()
         self.objects_written.close()
+        if self.start_thread:
+            syslog.close_log_handlers()
+

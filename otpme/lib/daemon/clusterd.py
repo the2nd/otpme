@@ -23,6 +23,7 @@ try:
 except:
     pass
 
+from otpme.lib import log
 from otpme.lib import oid
 from otpme.lib import stuff
 from otpme.lib import config
@@ -2058,7 +2059,7 @@ class ClusterDaemon(OTPmeDaemon):
         # Update logger with new PID and daemon name.
         self.pid = os.getpid()
         log_banner = "%s:" % self.full_name
-        self.logger = config.setup_logger(banner=log_banner,
+        self.logger = log.setup_logger(banner=log_banner,
                                         pid=self.pid,
                                         existing_logger=config.logger)
 
@@ -2333,7 +2334,7 @@ class ClusterDaemon(OTPmeDaemon):
         # Update logger with new PID and daemon name.
         self.pid = os.getpid()
         log_banner = "%s:" % self.full_name
-        self.logger = config.setup_logger(banner=log_banner,
+        self.logger = log.setup_logger(banner=log_banner,
                                         pid=self.pid,
                                         existing_logger=config.logger)
         while True:
@@ -2473,7 +2474,7 @@ class ClusterDaemon(OTPmeDaemon):
         # Update logger with new PID and daemon name.
         self.pid = os.getpid()
         log_banner = "%s:" % self.full_name
-        self.logger = config.setup_logger(banner=log_banner,
+        self.logger = log.setup_logger(banner=log_banner,
                                         pid=self.pid,
                                         existing_logger=config.logger)
         while True:
@@ -2510,7 +2511,7 @@ class ClusterDaemon(OTPmeDaemon):
         # Update logger with new PID and daemon name.
         self.pid = os.getpid()
         log_banner = "%s:" % self.full_name
-        self.logger = config.setup_logger(banner=log_banner,
+        self.logger = log.setup_logger(banner=log_banner,
                                         pid=self.pid,
                                         existing_logger=config.logger)
         while True:
@@ -2595,7 +2596,7 @@ class ClusterDaemon(OTPmeDaemon):
         # Update logger with new PID and daemon name.
         self.pid = os.getpid()
         log_banner = "%s:" % self.full_name
-        self.logger = config.setup_logger(banner=log_banner,
+        self.logger = log.setup_logger(banner=log_banner,
                                         pid=self.pid,
                                         existing_logger=config.logger)
         start_over= True

@@ -14,6 +14,7 @@ try:
 except:
     pass
 
+from otpme.lib.syslog import get_log_handler
 from otpme.lib.messages import error_message
 from otpme.lib.filetools import AtomicFileLock
 
@@ -51,9 +52,11 @@ class ContextFilter(logging.Filter):
         #return True
         return valid_log
 
-def get_logger(log_name, level, logger=None, pid=None, banner=None,
-    logfile=None, syslog=False, facility=None, systemd=False,
-    timestamps=None, color_logs=False, stderr_log=False):
+def get_logger(log_name, level, syslog=False, syslog_address="/dev/log",
+    syslog_ssl=False, syslog_ca_cert=None, syslog_cert=None, syslog_key=None,
+    syslog_relp=False, logger=None, pid=None, banner=None, logfile=None,
+    facility="LOCAL7", systemd=False, timestamps=None, color_logs=False,
+    stderr_log=False):
     """ Get new logger instance or re-configure a given one """
     global log_banner
     unknown_loglevel = None
@@ -134,8 +137,25 @@ def get_logger(log_name, level, logger=None, pid=None, banner=None,
     # Set loglevel.
     logger.setLevel(level)
 
+    # Check if we should log to syslog.
+    if syslog:
+        # Default log format should be with date.
+        if not log_format:
+            log_format = log_format_date
+        # Create syslog handler:
+        syslog_handler = get_log_handler(address=syslog_address,
+                                        use_ssl=syslog_ssl,
+                                        ca_cert_file=syslog_ca_cert,
+                                        client_cert_file=syslog_cert,
+                                        client_key_file=syslog_key,
+                                        facility=facility,
+                                        relp=syslog_relp)
+        # Set log format for handler
+        syslog_handler.setFormatter(log_format)
+        # If file logging is not enabled print to stdout.
+        logger.addHandler(syslog_handler)
     # Check if we should log to file.
-    if logfile:
+    elif logfile:
         # Default log format should be with date.
         if not log_format:
             log_format = log_format_date
@@ -145,18 +165,6 @@ def get_logger(log_name, level, logger=None, pid=None, banner=None,
         file_handler.setFormatter(log_format)
         # Enable logging to logfile.
         logger.addHandler(file_handler)
-
-    elif syslog:
-        # Default log format should be with date.
-        if not log_format:
-            log_format = log_format_date
-        # Create handler for stdout.
-        syslog_handler = logging.handlers.SysLogHandler(address='/dev/log',
-                                                        facility=facility)
-        # Set log format for handler
-        syslog_handler.setFormatter(log_format)
-        # If file logging is not enabled print to stdout.
-        logger.addHandler(syslog_handler)
 
     elif systemd:
         from systemd import journal
@@ -191,6 +199,56 @@ def get_logger(log_name, level, logger=None, pid=None, banner=None,
     otpme_logger = OTPmeLogger(logger, logfile=logfile, banner=log_banner)
 
     return otpme_logger
+
+def setup_logger(*args, **kwargs):
+    """ Configure logger based on site settings. """
+    from otpme.lib import config
+    relp = False
+    use_ssl = False
+    ca_cert_file = None
+    client_cert_file = None
+    client_key_file = None
+    address = None
+    timestamps = True
+    logger_syslog = False
+    if not config.debug_enabled and not config.realm_init:
+        if config.syslog_enabled:
+            logger_syslog = True
+            timestamps = False
+            address = config.syslog_server.split(":")
+            relp = False
+            if config.syslog_protocol == "relp":
+                relp = True
+            use_ssl = config.syslog_use_tls
+            if use_ssl:
+                ca_cert_file = config.syslog_ca_cert
+                if not ca_cert_file:
+                    logger_syslog = False
+                    msg = "Cannot start syslog. Site misses CA cert."
+                    config.logger.warning(msg)
+                if config.syslog_use_client_cert:
+                    client_cert_file = config.syslog_cert
+                    client_key_file = config.syslog_key
+                    if not client_cert_file:
+                        logger_syslog = False
+                        msg = "Cannot start syslog. Node misses client cert."
+                        config.logger.warning(msg)
+                    if not client_key_file:
+                        logger_syslog = False
+                        msg = "Cannot start syslog. Node misses client key."
+                        config.logger.warning(msg)
+    # Setup logger.
+    logger = config.setup_logger(*args,
+                                logger_syslog=logger_syslog,
+                                syslog_address=address,
+                                syslog_ssl=use_ssl,
+                                syslog_ca_cert=ca_cert_file,
+                                syslog_cert=client_cert_file,
+                                syslog_key=client_key_file,
+                                syslog_relp=relp,
+                                timestamps=timestamps,
+                                **kwargs)
+    return logger
 
 def log_lock():
     """ Decorator to handle logfile locking. """

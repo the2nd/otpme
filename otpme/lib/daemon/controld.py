@@ -12,6 +12,7 @@ try:
 except:
     pass
 
+from otpme.lib import log
 from otpme.lib import net
 from otpme.lib import host
 from otpme.lib import stuff
@@ -344,10 +345,6 @@ class ControlDaemon(UnixDaemon):
         if not keep_floating_ip:
             self.deconfigure_floating_ip()
 
-        ## Close log handlers.
-        #for h in self.logger.handlers:
-        #    h.close()
-
         # Stop cache.
         self._stop_cache()
         # Stop index (e.g. postgresql).
@@ -575,6 +572,8 @@ class ControlDaemon(UnixDaemon):
         multiprocessing.atfork()
         # Enable file logging if run in daemon  mode.
         if config.daemonize:
+            config.file_logging = True
+        if not config.debug_enabled:
             config.file_logging = True
         # Setup logger.
         log_banner = "%s:" % self.full_name
@@ -862,6 +861,11 @@ class ControlDaemon(UnixDaemon):
         """ Run loop to handle daemon commands. """
         # Handle multiprocessing stuff.
         multiprocessing.atfork()
+        # Setup logger (e.g. to syslog server).
+        log_banner = "%s:" % self.full_name
+        self.logger = log.setup_logger(banner=log_banner,
+                                        pid=self.pid,
+                                        existing_logger=config.logger)
         # Set process title for handler process.
         proctitle = "%s (daemon handler)" % self.full_name
         try:

@@ -13,6 +13,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.humanize import units
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
@@ -350,6 +351,7 @@ class AutodisablePolicy(Policy):
     @check_acls(['edit:auto_disable'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def _change_auto_disable(self, auto_disable, unused=False,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):

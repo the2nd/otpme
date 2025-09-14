@@ -11,6 +11,7 @@ except:
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib.audit import audit_log
 from otpme.lib.classes.user import User
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -486,6 +487,7 @@ class TokenaclsPolicy(Policy):
     @check_acls(['add:user_acl'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def add_user_acl(self, acl, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add user ACL. """
@@ -519,6 +521,7 @@ class TokenaclsPolicy(Policy):
     @check_acls(['del:user_acl'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def del_user_acl(self, acl, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Del token ACL. """
@@ -541,6 +544,7 @@ class TokenaclsPolicy(Policy):
     @check_acls(['add:token_acl'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def add_token_acl(self, acl, **kwargs):
         """ Add token ACL. """
         return self._add_token_acl(acl, acl_type="token", **kwargs)
@@ -548,6 +552,7 @@ class TokenaclsPolicy(Policy):
     @check_acls(['del:token_acl'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def del_token_acl(self, acl, **kwargs):
         """ Del token ACL. """
         return self._del_token_acl(acl, acl_type="token", **kwargs)
@@ -555,6 +560,7 @@ class TokenaclsPolicy(Policy):
     @check_acls(['add:creator_acl'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def add_creator_acl(self, acl, **kwargs):
         """ Add token creator ACL. """
         return self._add_token_acl(acl, acl_type="creator", **kwargs)
@@ -562,6 +568,7 @@ class TokenaclsPolicy(Policy):
     @check_acls(['del:creator_acl'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def del_creator_acl(self, acl, **kwargs):
         """ Del token creator ACL. """
         return self._del_token_acl(acl, acl_type="creator", **kwargs)

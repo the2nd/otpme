@@ -43,12 +43,15 @@ pid = None
 ## Process name.
 #proc_name = None
 #proc_thread_id = None
+cleanup_methods = []
 # Posix message queues to close on exit.
 message_queues = []
 # Posix semaphores to close on exit.
 posix_semaphores = {}
 # Python multiprocessing manager to use. This is only used within otpme-agent.
 manager = None
+# Audit logger.
+audit_logger = None
 
 # Clusterd events.
 cluster_in_event = None
@@ -65,6 +68,10 @@ def register():
     """ Register module. """
     from otpme.lib import locking
     locking.register_lock_type(LOCK_TYPE, module=__file__)
+
+def register_cleanup_method(method):
+    global cleanup_methods
+    cleanup_methods.append(method)
 
 def register_module_var(v_name, v_type):
     """ Register variable. """
@@ -203,6 +210,7 @@ def cleanup(keep_queues=False):
     from otpme.lib import locking
     from otpme.lib import connections
     global message_queues
+    global cleanup_methods
     global posix_semaphores
     proc_type = get_proc_type()
     if proc_type != "process":
@@ -266,6 +274,9 @@ def cleanup(keep_queues=False):
         except posix_ipc.PermissionsError:
             pass
         posix_semaphores.pop(sem_name)
+    # Run cleanup methods.
+    for method in cleanup_methods:
+        method()
 
 def get_bool(name, default=False, random_name=True, init=True):
     class SharedBool(object):

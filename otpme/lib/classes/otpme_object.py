@@ -32,6 +32,7 @@ from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib import encryption
 from otpme.lib.humanize import units
+from otpme.lib.audit import audit_log
 from otpme.lib import multiprocessing
 from otpme.lib.pki.cert import SSLCert
 from otpme.lib.extensions import utils
@@ -2187,6 +2188,7 @@ class OTPmeObject(OTPmeBaseObject):
         return value
 
     @check_acls(acls=['edit:config'])
+    @audit_log()
     def set_config_param(
         self,
         parameter: str,
@@ -2678,6 +2680,7 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok()
 
     @check_acls(acls=['export'])
+    @audit_log()
     def export_config(
         self,
         run_policies: bool=True,
@@ -2774,6 +2777,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['add:extension'])
     @object_lock()
+    @audit_log()
     def add_extension(
         self,
         extension: str,
@@ -2838,6 +2842,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['remove:extension'])
     @object_lock()
+    @audit_log()
     def remove_extension(
         self,
         extension: str,
@@ -3965,6 +3970,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock()
     @check_acls(['add:dynamic_groups'])
+    @audit_log()
     def add_dynamic_group(
         self,
         group_name: str,
@@ -4005,6 +4011,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @object_lock()
     @check_acls(['remove:dynamic_groups'])
+    @audit_log()
     def remove_dynamic_group(
         self,
         group_name: str,
@@ -4044,6 +4051,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['add:policy'])
     @object_lock()
+    @audit_log()
     def add_policy(
         self,
         policy_name: str,
@@ -4150,6 +4158,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['remove:policy'])
     @object_lock()
+    @audit_log()
     def remove_policy(
         self,
         policy_name: str,
@@ -4775,6 +4784,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['add:attribute'])
     @object_lock()
+    @audit_log()
     def add_attribute(
         self,
         attribute: str,
@@ -4846,6 +4856,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['edit:attribute'])
     @object_lock()
+    @audit_log()
     def modify_attribute(
         self,
         attribute: str,
@@ -4916,6 +4927,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['delete:attribute'])
     @object_lock()
+    @audit_log()
     def del_attribute(
         self,
         attribute: str,
@@ -5014,6 +5026,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['add:object_class'])
     @object_lock()
+    @audit_log()
     def add_object_class(
         self,
         object_class: str,
@@ -5067,6 +5080,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['delete:object_class'])
     @object_lock()
+    @audit_log()
     def del_object_class(
         self,
         object_class: bool=False,
@@ -5255,6 +5269,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['enable:object'])
     @check_special_user()
     @object_lock()
+    @audit_log()
     def enable(
         self,
         force: bool=False,
@@ -5305,6 +5320,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['disable:object'])
     @object_lock()
+    @audit_log()
     def disable(
         self,
         force: bool=False,
@@ -5850,6 +5866,7 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok()
 
     @check_acls(acls=['view:acl'])
+    @audit_log()
     def get_acls(
         self,
         run_policies: bool=True,
@@ -6272,6 +6289,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(['edit:auto_disable'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_auto_disable(
         self,
         auto_disable: Union[str, int],
@@ -6312,6 +6330,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['edit:secret'])
     @object_lock(full_lock=True)
+    @audit_log()
     def change_secret(
         self,
         secret: str=None,
@@ -6395,6 +6414,7 @@ class OTPmeObject(OTPmeBaseObject):
         return self._cache(callback=callback)
 
     @check_acls(acls=['view_all:secret'])
+    @audit_log()
     def show_secret(
         self,
         run_policies: bool=True,
@@ -6429,6 +6449,7 @@ class OTPmeObject(OTPmeBaseObject):
         return callback.ok(self.cert)
 
     @check_acls(acls=['view_all:cert_key'])
+    @audit_log()
     def get_cert_key(
         self,
         passphrase: Union[str,None]=None,
@@ -6476,6 +6497,7 @@ class OTPmeObject(OTPmeBaseObject):
     # Besides we dont need a transaction for object moves it keeps object
     # locks longer than needed and slows down other jobs while moving.
     #@backend.transaction
+    @audit_log()
     def move(
         self,
         new_unit: str,
@@ -6994,6 +7016,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['add:signature'])
     @object_lock()
+    @audit_log()
     def add_sign(
         self,
         signature: object,
@@ -7088,6 +7111,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['delete:signature'])
     @object_lock()
+    @audit_log()
     def del_sign(
         self,
         username: Union[str,None]=None,
@@ -7465,6 +7489,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['edit:description'])
     @object_lock()
+    @audit_log()
     def change_description(
         self,
         description: str=None,
@@ -7919,6 +7944,7 @@ class OTPmeObject(OTPmeBaseObject):
     @check_acls(acls=['rename:object'])
     @object_lock(recursive=True, full_lock=True)
     @backend.transaction
+    @audit_log()
     def _rename(
         self,
         new_oid: oid.OTPmeOid,
@@ -8083,6 +8109,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['remove:orphans'])
     @object_lock()
+    @audit_log()
     def remove_orphan_acls(
         self,
         force: bool=False,
@@ -8130,6 +8157,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['remove:orphans'])
     @object_lock()
+    @audit_log()
     def remove_orphan_policies(
         self,
         force: bool=False,
@@ -8181,6 +8209,7 @@ class OTPmeObject(OTPmeBaseObject):
 
     @check_acls(acls=['remove:orphans'])
     @object_lock()
+    @audit_log()
     def remove_orphan_signatures(
         self,
         force: bool=False,
@@ -8527,6 +8556,7 @@ class OTPmeClientObject(OTPmeObject):
 
     @check_acls(['limit_logins'])
     @object_lock()
+    @audit_log()
     def limit_logins(
         self,
         run_policies: bool=True,
@@ -8553,6 +8583,7 @@ class OTPmeClientObject(OTPmeObject):
 
     @check_acls(['unlimit_logins'])
     @object_lock()
+    @audit_log()
     def unlimit_logins(
         self,
         run_policies: bool=True,

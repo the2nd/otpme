@@ -19,6 +19,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_pass
 from otpme.lib.humanize import units
+from otpme.lib.audit import audit_log
 from otpme.lib.cache import config_cache
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -1939,6 +1940,7 @@ class Token(OTPmeObject):
     @check_acls(['enable:pin'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_pin(
         self,
         run_policies: bool=True,
@@ -1979,6 +1981,7 @@ class Token(OTPmeObject):
     @check_acls(['disable:pin'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_pin(
         self,
         run_policies: bool=True,
@@ -2022,6 +2025,7 @@ class Token(OTPmeObject):
     @check_acls(['enable:mschap'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_mschap(
         self,
         run_policies: bool=True,
@@ -2062,6 +2066,7 @@ class Token(OTPmeObject):
     @check_acls(['disable:mschap'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_mschap(
         self,
         run_policies: bool=True,
@@ -2096,6 +2101,7 @@ class Token(OTPmeObject):
     @check_acls(['enable:offline'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_offline(
         self,
         run_policies: bool=True,
@@ -2145,6 +2151,7 @@ class Token(OTPmeObject):
     @check_acls(['disable:offline'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_offline(
         self,
         run_policies: bool=True,
@@ -2194,6 +2201,7 @@ class Token(OTPmeObject):
     @check_acls(['edit:offline_expiry'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_offline_expiry(
         self,
         expiry: str,
@@ -2249,6 +2257,7 @@ class Token(OTPmeObject):
     @check_acls(['edit:offline_unused_expiry'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_offline_unused_expiry(
         self,
         expiry: str,
@@ -2304,6 +2313,7 @@ class Token(OTPmeObject):
     @check_acls(['enable:session_keep'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_session_keep(
         self,
         run_policies: bool=True,
@@ -2357,6 +2367,7 @@ class Token(OTPmeObject):
     @check_acls(['disable:session_keep'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_session_keep(
         self,
         run_policies: bool=True,
@@ -2411,6 +2422,7 @@ class Token(OTPmeObject):
     @check_acls(['enable:auth_script'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_auth_script(
         self,
         run_policies: bool=True,
@@ -2442,6 +2454,7 @@ class Token(OTPmeObject):
     @check_acls(['disable:auth_script'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_auth_script(
         self,
         run_policies: bool=True,
@@ -2471,6 +2484,7 @@ class Token(OTPmeObject):
     @check_acls(['edit:auth_script'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def change_auth_script(
         self,
         auth_script: Union[str,None]=None,
@@ -2599,6 +2613,7 @@ class Token(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log(ignore_args=['password'])
     def change_password(
         self,
         password: Union[str,None]=None,
@@ -2763,6 +2778,7 @@ class Token(OTPmeObject):
     @check_acls(['set_temp_password'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log(ignore_args=['temp_password'])
     def set_temp_password(
         self,
         temp_password: Union[str,None]=None,
@@ -2877,6 +2893,7 @@ class Token(OTPmeObject):
     @check_acls(['edit:pin'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log(ignore_args=['pin'])
     def change_pin(
         self,
         pin: Union[str,None]=None,
@@ -2995,6 +3012,7 @@ class Token(OTPmeObject):
     @check_acls(['edit:otp_format'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_otp_format(
         self,
         otp_format: str,
@@ -3100,6 +3118,7 @@ class Token(OTPmeObject):
     @load_object(force=False)
     @backend.transaction
     @run_pre_post_add_policies()
+    @audit_log()
     def add(
         self,
         owner_uuid: str,
@@ -3174,6 +3193,7 @@ class Token(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def rename(
         self,
         new_name: str,
@@ -3199,6 +3219,7 @@ class Token(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def move(
         self,
         new_token_path: str,
@@ -3405,6 +3426,7 @@ class Token(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def delete(
         self,
         force: bool=False,

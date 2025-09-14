@@ -13,6 +13,7 @@ from otpme.lib import oid
 from otpme.lib import cli
 from otpme.lib import config
 from otpme.lib import backend
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
@@ -869,6 +870,7 @@ class Share(OTPmeObject):
     @object_lock(full_lock=True)
     @backend.transaction
     @run_pre_post_add_policies()
+    @audit_log()
     def add(
         self,
         root_dir: str,
@@ -921,6 +923,7 @@ class Share(OTPmeObject):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def rename(
         self,
         new_name: str,
@@ -939,6 +942,7 @@ class Share(OTPmeObject):
 
     @check_acls(['edit:root_dir'])
     @object_lock()
+    @audit_log()
     def set_root_dir(
         self,
         root_dir,
@@ -959,6 +963,7 @@ class Share(OTPmeObject):
 
     @check_acls(['edit:force_group'])
     @object_lock()
+    @audit_log()
     def force_group(
         self,
         group_name,
@@ -988,6 +993,7 @@ class Share(OTPmeObject):
 
     @check_acls(['edit:force_create_mode'])
     @object_lock()
+    @audit_log()
     def force_create_mode(
         self,
         create_mode,
@@ -1005,6 +1011,7 @@ class Share(OTPmeObject):
 
     @check_acls(['edit:force_directory_mode'])
     @object_lock()
+    @audit_log()
     def force_directory_mode(
         self,
         create_mode,
@@ -1022,6 +1029,7 @@ class Share(OTPmeObject):
 
     @check_acls(['enable:read_only'])
     @object_lock()
+    @audit_log()
     def enable_ro(
         self,
         force: bool=False,
@@ -1064,6 +1072,7 @@ class Share(OTPmeObject):
 
     @check_acls(['enable:read_only'])
     @object_lock()
+    @audit_log()
     def disable_ro(
         self,
         force: bool=False,
@@ -1138,6 +1147,7 @@ class Share(OTPmeObject):
 
     @check_acls(['add:master_password_token'])
     @object_lock()
+    @audit_log()
     def add_master_password_token(
         self,
         token_path: str,
@@ -1174,6 +1184,7 @@ class Share(OTPmeObject):
 
     @check_acls(['remove:master_password_token'])
     @object_lock()
+    @audit_log()
     def remove_master_password_token(
         self,
         token_path: str,
@@ -1210,6 +1221,7 @@ class Share(OTPmeObject):
         return self._write(callback=callback)
 
     @object_lock()
+    @audit_log(ignore_args=['share_key'])
     def add_token(
         self,
         token_path: str,
@@ -1287,6 +1299,7 @@ class Share(OTPmeObject):
                                         callback=callback, **kwargs)
 
     @object_lock()
+    @audit_log()
     def remove_token(
         self,
         token_path: str,
@@ -1323,6 +1336,7 @@ class Share(OTPmeObject):
                                             callback=callback, **kwargs)
 
     @object_lock()
+    @audit_log()
     def add_role(
         self,
         *args,
@@ -1337,6 +1351,7 @@ class Share(OTPmeObject):
 
     @check_acls(['add:share_key'])
     @object_lock()
+    @audit_log(ignore_args=['share_key'])
     def add_share_key(
         self,
         username: str,
@@ -1419,6 +1434,7 @@ class Share(OTPmeObject):
 
     @check_acls(['delete:share_key'])
     @object_lock()
+    @audit_log()
     def del_share_key(
         self,
         username: str,
@@ -1458,6 +1474,7 @@ class Share(OTPmeObject):
 
     @check_acls(['add:ppol'])
     @object_lock()
+    @audit_log()
     def add_pool(
         self,
         pool_name: str,
@@ -1512,6 +1529,7 @@ class Share(OTPmeObject):
 
     @check_acls(['remove:ppol'])
     @object_lock()
+    @audit_log()
     def remove_pool(
         self,
         pool_name: str,

@@ -16,6 +16,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.spsc import SPSC
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
@@ -609,6 +610,7 @@ class Dictionary(OTPmeObject):
         self.name = str(name).lower()
 
     @check_acls(['dump'])
+    @audit_log()
     def dump(
         self,
         run_policies: bool=True,
@@ -660,6 +662,7 @@ class Dictionary(OTPmeObject):
     @check_acls(['add:words'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def add_words(
         self,
         word_list: List,
@@ -698,6 +701,7 @@ class Dictionary(OTPmeObject):
     @check_acls(['rename'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def rename(
         self,
         new_name: str,
@@ -747,6 +751,7 @@ class Dictionary(OTPmeObject):
     @check_acls(['delete'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def delete(
         self,
         force: bool=False,

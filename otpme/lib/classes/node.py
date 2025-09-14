@@ -14,6 +14,7 @@ from otpme.lib import cli
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
@@ -945,6 +946,7 @@ class Node(OTPmeHost):
 
     @check_acls(['edit:vote_script'])
     @object_lock()
+    @audit_log()
     def change_vote_script(
         self,
         vote_script: Union[str,None]=None,
@@ -975,6 +977,7 @@ class Node(OTPmeHost):
 
     @check_acls(['enable:vote_script'])
     @object_lock()
+    @audit_log()
     def enable_vote_script(
         self,
         run_policies: bool=True,
@@ -1004,6 +1007,7 @@ class Node(OTPmeHost):
 
     @check_acls(['disable:vote_script'])
     @object_lock()
+    @audit_log()
     def disable_vote_script(
         self,
         run_policies: bool=True,

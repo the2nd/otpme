@@ -13,6 +13,7 @@ except:
     pass
 
 from otpme.lib import re
+from otpme.lib import log
 from otpme.lib import jwt
 from otpme.lib import json
 from otpme.lib import stuff
@@ -143,7 +144,7 @@ class OTPmeServer1(object):
         self._sign_key = None
 
         # Reconfigure logger to add new PID.
-        self.logger = config.setup_logger(banner=config.log_name, pid=True,
+        self.logger = log.setup_logger(banner=config.log_name, pid=True,
                                         existing_logger=config.logger)
         if config.use_api:
             # No preauth in API mode.
@@ -887,7 +888,7 @@ class OTPmeServer1(object):
             if config.loglevel == "DEBUG":
                 # In debug mode its handy to have username included in loglines.
                 log_banner = "%s:%s(unauth):" % (config.log_name, username)
-                self.logger = config.setup_logger(banner=log_banner,
+                self.logger = log.setup_logger(banner=log_banner,
                                                 existing_logger=config.logger,
                                                 pid=True)
 
@@ -1552,7 +1553,7 @@ class OTPmeServer1(object):
         # In debug mode its handy to have node name included in loglines.
         if config.debug_enabled or config.loglevel == "DEBUG":
             log_banner = ("%s:%s:" % (config.log_name, self.peer.name))
-            self.logger = config.setup_logger(banner=log_banner, pid=True,
+            self.logger = log.setup_logger(banner=log_banner, pid=True,
                                             existing_logger=config.logger)
 
         # Get server challenge to be signed by us.
@@ -1662,7 +1663,7 @@ class OTPmeServer1(object):
             # In debug mode its handy to have username included in loglines.
             if config.debug_enabled or config.loglevel == "DEBUG":
                 log_banner = "%s:%s:" % (config.log_name, username)
-                self.logger = config.setup_logger(banner=log_banner, pid=True,
+                self.logger = log.setup_logger(banner=log_banner, pid=True,
                                                 existing_logger=config.logger)
         try:
             auth_type = command_args.pop('auth_type')

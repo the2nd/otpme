@@ -16,6 +16,7 @@ from otpme.lib import json
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.encryption.rsa import RSAKey
@@ -783,6 +784,7 @@ class Group(OTPmeObject):
     @check_acls(['add:default_group_user'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def add_default_group_user(
         self,
         user_uuid: str,
@@ -804,6 +806,7 @@ class Group(OTPmeObject):
     @check_acls(['remove:default_group_user'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def remove_default_group_user(
         self,
         user_uuid: str,
@@ -1202,6 +1205,7 @@ class Group(OTPmeObject):
 
     @check_acls(['remove:orphans'])
     @object_lock()
+    @audit_log()
     def remove_orphans(
         self,
         force: bool=False,

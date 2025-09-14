@@ -14,6 +14,7 @@ from otpme.lib import cli
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
@@ -1124,6 +1125,7 @@ class Host(OTPmeHost):
     @check_acls(['enable:sync_by_login_token'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_sync_by_login_token(
         self,
         run_policies: bool=True,
@@ -1150,6 +1152,7 @@ class Host(OTPmeHost):
     @check_acls(['disable:sync_by_login_token'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_sync_by_login_token(
         self,
         run_policies: bool=True,
@@ -1176,6 +1179,7 @@ class Host(OTPmeHost):
     @check_acls(['add:sync_group'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def add_sync_group(
         self,
         group_name: str,
@@ -1217,6 +1221,7 @@ class Host(OTPmeHost):
     @check_acls(['remove:sync_group'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def remove_sync_group(
         self,
         group_name: str,
@@ -1258,6 +1263,7 @@ class Host(OTPmeHost):
     @check_acls(['enable:sync_groups'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_sync_groups(
         self,
         run_policies: bool=True,
@@ -1284,6 +1290,7 @@ class Host(OTPmeHost):
     @check_acls(['disable:sync_groups'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_sync_groups(
         self,
         run_policies: bool=True,

@@ -17,6 +17,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
@@ -944,6 +945,7 @@ class Client(OTPmeClientObject):
     # FIXME: check if IP is valid!!!
     @object_lock()
     @check_acls(['add:address'])
+    @audit_log()
     def add_address(
         self,
         address: str,
@@ -975,6 +977,7 @@ class Client(OTPmeClientObject):
 
     @object_lock()
     @check_acls(['delete:address'])
+    @audit_log()
     def del_address(
         self,
         address: str,
@@ -1006,6 +1009,7 @@ class Client(OTPmeClientObject):
 
     @object_lock()
     @check_acls(['edit:accessgroup'])
+    @audit_log()
     def change_access_group(
         self,
         access_group: Union[str,None]=None,
@@ -1052,6 +1056,7 @@ class Client(OTPmeClientObject):
 
     @check_acls(['add:sso_logo'])
     @object_lock()
+    @audit_log()
     def add_sso_logo(
         self,
         image_data: str,
@@ -1088,6 +1093,7 @@ class Client(OTPmeClientObject):
 
     @check_acls(['del:sso_logo'])
     @object_lock()
+    @audit_log()
     def del_sso_logo(
         self,
         run_policies: bool=True,
@@ -1112,6 +1118,7 @@ class Client(OTPmeClientObject):
 
     @check_acls(['dump:sso_logo'])
     @object_lock()
+    @audit_log()
     def dump_sso_logo(
         self,
         run_policies: bool=True,
@@ -1138,6 +1145,7 @@ class Client(OTPmeClientObject):
 
     @check_acls(['edit:sso_name'])
     @object_lock()
+    @audit_log()
     def change_sso_name(
         self,
         sso_name: str,
@@ -1163,6 +1171,7 @@ class Client(OTPmeClientObject):
 
     @check_acls(['enable:sso'])
     @object_lock()
+    @audit_log()
     def enable_sso(
         self,
         run_policies: bool=True,
@@ -1201,6 +1210,7 @@ class Client(OTPmeClientObject):
 
     @check_acls(['disable:sso'])
     @object_lock()
+    @audit_log()
     def disable_sso(
         self,
         run_policies: bool=True,
@@ -1231,6 +1241,7 @@ class Client(OTPmeClientObject):
 
     @object_lock()
     @check_acls(acls=['edit:login_url'])
+    @audit_log()
     def change_login_url(
         self,
         login_url: bool=False,
@@ -1259,6 +1270,7 @@ class Client(OTPmeClientObject):
 
     @object_lock()
     @check_acls(acls=['edit:helper_url'])
+    @audit_log()
     def change_helper_url(
         self,
         helper_url: str=None,
@@ -1287,6 +1299,7 @@ class Client(OTPmeClientObject):
 
     @check_acls(['enable:sso_popup'])
     @object_lock()
+    @audit_log()
     def enable_sso_popup(
         self,
         run_policies: bool=True,
@@ -1324,6 +1337,7 @@ class Client(OTPmeClientObject):
 
     @check_acls(['disable:sso_popup'])
     @object_lock()
+    @audit_log()
     def disable_sso_popup(
         self,
         run_policies: bool=True,
@@ -1353,6 +1367,7 @@ class Client(OTPmeClientObject):
 
     @check_acls(['remove:orphans'])
     @object_lock()
+    @audit_log()
     def remove_orphans(
         self,
         force: bool=False,

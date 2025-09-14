@@ -10,6 +10,7 @@ try:
 except:
     pass
 
+from otpme.lib import log
 from otpme.lib import jwt
 from otpme.lib import config
 from otpme.lib import backend
@@ -62,7 +63,7 @@ class OTPmeAuthP1(OTPmeServer1):
         # In debug mode its handy to have username included in loglines
         if config.debug_enabled or config.loglevel == "DEBUG":
             log_banner = "%s:%s:" % (config.log_name, username)
-            self.logger = config.setup_logger(banner=log_banner,
+            self.logger = log.setup_logger(banner=log_banner,
                                         existing_logger=config.logger,
                                         pid=True)
 

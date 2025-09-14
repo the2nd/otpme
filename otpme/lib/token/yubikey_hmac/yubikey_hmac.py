@@ -15,6 +15,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.otp.motp import motp
+from otpme.lib.audit import audit_log
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -387,6 +388,7 @@ class YubikeyhmacToken(Token):
     @check_acls(['edit:validity_time'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_validity_time(
         self,
         run_policies: bool=True,
@@ -427,6 +429,7 @@ class YubikeyhmacToken(Token):
     @check_acls(['edit:timedrift_tolerance'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_timedrift_tolerance(
         self,
         run_policies: bool=True,
@@ -609,6 +612,7 @@ class YubikeyhmacToken(Token):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log(ignore_args=['secret', 'hmac_challenge'])
     def deploy(
         self,
         smartcard_id: str,

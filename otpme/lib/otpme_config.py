@@ -92,6 +92,44 @@ class OTPmeConfig(object):
                             config_file_parameter="PAM_USE_LOGFILE")
         self.register_config_var("pam_logfile", str, "/var/log/otpme/pam.log",
                             config_file_parameter="PAM_LOGFILE")
+        # Audit log settings.
+        self.register_config_var("audit_log_enabled", bool, False,
+                            config_file_parameter="AUDIT_LOG_ENABLED")
+        self.register_config_var("audit_log_facility", str, "DAEMON",
+                            config_file_parameter="AUDIT_LOG_FACILITY")
+        self.register_config_var("audit_log_server", str, None,
+                            config_file_parameter="AUDIT_LOG_SERVER")
+        self.register_config_var("audit_log_protocol", str, None,
+                            config_file_parameter="AUDIT_LOG_PROTOCOL")
+        self.register_config_var("audit_log_use_tls", str, None,
+                            config_file_parameter="AUDIT_LOG_USE_TLS")
+        self.register_config_var("audit_log_ca_cert", str, None,
+                            config_file_parameter="AUDIT_LOG_CA_CERT")
+        self.register_config_var("audit_log_use_client_cert", str, None,
+                            config_file_parameter="AUDIT_LOG_USE_CLIENT_CERT")
+        self.register_config_var("audit_log_cert", str, None,
+                            config_file_parameter="AUDIT_LOG_CERT")
+        self.register_config_var("audit_log_key", str, None,
+                            config_file_parameter="AUDIT_LOG_KEY")
+        # Syslog settings.
+        self.register_config_var("syslog_enabled", bool, False,
+                            config_file_parameter="SYSLOG_ENABLED")
+        self.register_config_var("syslog_facility", str, "DAEMON",
+                            config_file_parameter="SYSLOG_FACILITY")
+        self.register_config_var("syslog_server", str, None,
+                            config_file_parameter="SYSLOG_SERVER")
+        self.register_config_var("syslog_protocol", str, None,
+                            config_file_parameter="SYSLOG_PROTOCOL")
+        self.register_config_var("syslog_use_tls", str, None,
+                            config_file_parameter="SYSLOG_USE_TLS")
+        self.register_config_var("syslog_ca_cert", str, None,
+                            config_file_parameter="SYSLOG_CA_CERT")
+        self.register_config_var("syslog_use_client_cert", str, None,
+                            config_file_parameter="SYSLOG_USE_CLIENT_CERT")
+        self.register_config_var("syslog_cert", str, None,
+                            config_file_parameter="SYSLOG_CERT")
+        self.register_config_var("syslog_key", str, None,
+                            config_file_parameter="SYSLOG_KEY")
         # Pickle type to use for caching.
         self.register_config_var("pickle_cache_module", str, "pickle",
                                 config_file_parameter="PICKLE_CACHE_MODULE")

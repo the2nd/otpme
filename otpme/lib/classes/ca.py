@@ -17,6 +17,7 @@ from otpme.lib import cli
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.pki import utils
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
@@ -777,6 +778,7 @@ class Ca(OTPmeObject):
 
     @check_acls(['edit:crl_validity'])
     @object_lock()
+    @audit_log()
     def set_crl_validity(
         self,
         crl_validity: int,
@@ -793,6 +795,7 @@ class Ca(OTPmeObject):
 
     @check_acls(['create_cert'])
     @object_lock(full_lock=True)
+    @audit_log()
     def create_cert(
         self,
         cn: str,
@@ -877,6 +880,7 @@ class Ca(OTPmeObject):
 
     @check_acls(['create_ca_cert'])
     @object_lock(full_lock=True)
+    @audit_log()
     def create_ca_cert(
         self,
         cn: str,
@@ -941,6 +945,7 @@ class Ca(OTPmeObject):
 
     @check_acls(['create_server_cert'])
     @object_lock(full_lock=True)
+    @audit_log()
     def create_server_cert(
         self,
         cn: str,
@@ -1004,6 +1009,7 @@ class Ca(OTPmeObject):
 
     @check_acls(['create_client_cert'])
     @object_lock(full_lock=True)
+    @audit_log()
     def create_client_cert(
         self,
         cn: str,
@@ -1188,6 +1194,7 @@ class Ca(OTPmeObject):
     @check_acls(['update_crl'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def update_crl(
         self,
         sign_algo: Union[str,None]=None,
@@ -1281,6 +1288,7 @@ class Ca(OTPmeObject):
     @check_acls(['revoke:cert'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def revoke_cert(
         self,
         cert: str,

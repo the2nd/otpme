@@ -19,6 +19,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import locking
 from otpme.lib.humanize import units
+from otpme.lib.audit import audit_log
 from otpme.lib.classes.unit import Unit
 from otpme.lib.classes.user import User
 from otpme.lib.classes.group import Group
@@ -640,6 +641,7 @@ class Resolver(OTPmeObject):
     @check_acls(['enable:sync_units'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_sync_units(
         self,
         run_policies: bool=True,
@@ -668,6 +670,7 @@ class Resolver(OTPmeObject):
     @check_acls(['disable:sync_units'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_sync_units(
         self,
         run_policies: bool=True,
@@ -696,6 +699,7 @@ class Resolver(OTPmeObject):
     @check_acls(['enable:deletions'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_deletions(
         self,
         run_policies: bool=True,
@@ -724,6 +728,7 @@ class Resolver(OTPmeObject):
     @check_acls(['disable:deletions'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_deletions(
         self,
         run_policies: bool=True,
@@ -752,6 +757,7 @@ class Resolver(OTPmeObject):
     @check_acls(['edit:key_attribute'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_key_attribute(
         self,
         object_type: str,
@@ -779,6 +785,7 @@ class Resolver(OTPmeObject):
         return self._cache(callback=callback)
 
     @check_acls(['run', 'test'])
+    @audit_log()
     def test(
         self,
         object_types: Union[List,None]=None,
@@ -810,6 +817,7 @@ class Resolver(OTPmeObject):
         return callback.ok("All tests successful.")
 
     @check_acls(['run'])
+    @audit_log()
     def run(
         self,
         object_types: Union[List,None]=None,
@@ -1711,6 +1719,7 @@ class Resolver(OTPmeObject):
         return result
 
     @check_acls(['sync_interval'])
+    @audit_log()
     def set_sync_interval(
         self,
         sync_interval: str,
@@ -1728,6 +1737,7 @@ class Resolver(OTPmeObject):
         return self._cache(callback=callback)
 
     @check_acls(['get_objects'])
+    @audit_log()
     def get_resolver_objects(
         self,
         object_types: List=[],
@@ -1769,6 +1779,7 @@ class Resolver(OTPmeObject):
         return callback.ok(result)
 
     @check_acls(['delete:objects'])
+    @audit_log()
     def delete_objects(
         self,
         object_types: List=[],
@@ -1866,6 +1877,7 @@ class Resolver(OTPmeObject):
     @check_acls(['delete:object'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def delete(
         self,
         delete_objects: bool=False,

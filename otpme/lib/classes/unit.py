@@ -17,6 +17,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib import multiprocessing
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
@@ -1079,6 +1080,7 @@ class Unit(OTPmeObject):
 
     @object_lock(full_lock=True)
     @run_pre_post_add_policies()
+    @audit_log()
     def add(self, verify_acls=True, inherit_acls=True,
         verbose_level=0, callback=default_callback, **kwargs):
         """ Add a unit. """
@@ -1152,6 +1154,7 @@ class Unit(OTPmeObject):
                                 callback=callback, **kwargs)
 
     @object_lock(full_lock=True)
+    @audit_log()
     def delete(
         self,
         force: bool=False,
@@ -1264,6 +1267,7 @@ class Unit(OTPmeObject):
 
     @check_acls(['remove:orphans'])
     @object_lock()
+    @audit_log()
     def remove_orphans(
         self,
         recursive: bool=False,

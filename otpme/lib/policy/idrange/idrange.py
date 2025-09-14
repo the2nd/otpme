@@ -14,6 +14,7 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import locking
 from otpme.lib import otpme_acl
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
@@ -320,6 +321,7 @@ class IdrangePolicy(Policy):
     @check_acls(['enable:id_check'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_id_check(self, callback=default_callback, **kwargs):
         """ Enable ID check. """
         if self.verify_new_id:
@@ -331,6 +333,7 @@ class IdrangePolicy(Policy):
     @check_acls(['disable:id_check'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_id_check(self, callback=default_callback, **kwargs):
         """ Disable ID check. """
         if not self.verify_new_id:
@@ -342,6 +345,7 @@ class IdrangePolicy(Policy):
     @check_acls(['enable:id_range_recheck'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_id_range_recheck(self, callback=default_callback, **kwargs):
         """ Enable ID range re-check. """
         if self.recheck_id_ranges:
@@ -353,6 +357,7 @@ class IdrangePolicy(Policy):
     @check_acls(['disable:id_range_recheck'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_id_range_recheck(self, callback=default_callback, **kwargs):
         """ Disable ID range re-check. """
         if not self.recheck_id_ranges:
@@ -669,6 +674,7 @@ class IdrangePolicy(Policy):
     @check_acls(['add:idrange'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def add_id_range(self, id_range, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add ID range. """
@@ -719,6 +725,7 @@ class IdrangePolicy(Policy):
     @check_acls(['delete:idrange'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def del_id_range(self, id_range, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Delete ID range. """

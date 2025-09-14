@@ -16,6 +16,7 @@ from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib import mschap_util
 from otpme.lib.otp.motp import motp
+from otpme.lib.audit import audit_log
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -413,6 +414,7 @@ class MotpToken(Token):
     @check_acls(['edit:validity_time'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_validity_time(
         self,
         run_policies: bool=True,
@@ -453,6 +455,7 @@ class MotpToken(Token):
     @check_acls(['edit:timedrift_tolerance'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_timedrift_tolerance(
         self,
         run_policies: bool=True,

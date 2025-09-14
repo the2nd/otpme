@@ -16,6 +16,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib.audit import audit_log
 from otpme.lib.classes.token import Token
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
@@ -512,6 +513,7 @@ class SshToken(Token):
     @check_acls(['edit:card_type'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_card_type(
         self,
         card_type: Union[str,None]=None,
@@ -546,6 +548,7 @@ class SshToken(Token):
     @check_acls(['edit:key_type'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_key_type(
         self,
         key_type: str="rsa",
@@ -579,6 +582,7 @@ class SshToken(Token):
     @check_acls(['edit:ssh_public_key'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def change_ssh_public_key(
         self,
         ssh_public_key: Union[str,None]=None,
@@ -781,6 +785,7 @@ class SshToken(Token):
     @check_acls(['edit:2ftoken'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def change_2f_token(
         self,
         second_factor_token: str,
@@ -824,6 +829,7 @@ class SshToken(Token):
     @check_acls(['enable:2ftoken'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def enable_2f_token(
         self,
         force: bool=False,
@@ -870,6 +876,7 @@ class SshToken(Token):
     @check_acls(['disable:2ftoken'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def disable_2f_token(
         self,
         force: bool=False,
@@ -905,6 +912,7 @@ class SshToken(Token):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log(ignore_args=['private_key', 'password'])
     def deploy(
         self,
         public_key: Union[str,None]=None,
@@ -950,6 +958,7 @@ class SshToken(Token):
     @check_acls(['edit:password'])
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log()
     def change_key_password(
         self,
         force: bool=False,

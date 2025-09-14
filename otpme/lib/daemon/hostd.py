@@ -14,6 +14,7 @@ try:
 except:
     pass
 
+from otpme.lib import log
 from otpme.lib import oid
 from otpme.lib import ssh
 from otpme.lib import json
@@ -930,7 +931,7 @@ class HostDaemon(OTPmeDaemon):
 
         # Reconfigure logger to add sync type.
         log_banner = "%s:(sync:%s)" % (config.log_name, sync_type)
-        self.logger = config.setup_logger(pid=True, banner=log_banner)
+        self.logger = log.setup_logger(pid=True, banner=log_banner)
         # Start sync.
         sync_status = None
         if sync_type != "nsscache" and sync_type != "notify":

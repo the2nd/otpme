@@ -13,8 +13,9 @@ except:
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
-from otpme.lib.otpme_acl import check_acls
+from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
+from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.resolver import Resolver
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.unit import register_subtype_add_acl
@@ -385,6 +386,7 @@ class LdapResolver(Resolver):
     @check_acls(['add:ldap_server'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def add_server(self, server_uri, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add LDAP server. """
@@ -410,6 +412,7 @@ class LdapResolver(Resolver):
     @check_acls(['del:ldap_server'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def del_server(self, server_uri, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Delete LDAP server. """
@@ -435,6 +438,7 @@ class LdapResolver(Resolver):
     @check_acls(['add:ldap_filter'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def add_filter(self, object_type, ldap_filter, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Add LDAP filter. """
@@ -463,6 +467,7 @@ class LdapResolver(Resolver):
     @check_acls(['del:ldap_filter'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def del_filter(self, object_type, ldap_filter, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Delete LDAP filter. """
@@ -491,6 +496,7 @@ class LdapResolver(Resolver):
     @check_acls(['add:attribute_mapping'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def add_attribute_mapping(self, object_type, src_attr, dst_attr=None,
         run_policies=True, _caller="API", callback=default_callback, **kwargs):
         """ Add LDAP attribute mapping. """
@@ -524,6 +530,7 @@ class LdapResolver(Resolver):
     @check_acls(['del:attribute_mapping'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def del_attribute_mapping(self, object_type, src_attr,
         run_policies=True, callback=default_callback,
         _caller="API", **kwargs):
@@ -560,6 +567,7 @@ class LdapResolver(Resolver):
     @check_acls(['edit:ldap_base'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_ldap_base(self, ldap_base, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change LDAP base. """
@@ -581,6 +589,7 @@ class LdapResolver(Resolver):
     @check_acls(['edit:login_dn'])
     @object_lock()
     @backend.transaction
+    @audit_log()
     def change_login_dn(self, login_dn, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change LDAP login DN. """
@@ -603,6 +612,7 @@ class LdapResolver(Resolver):
     @check_acls(['edit:login_password'])
     @object_lock()
     @backend.transaction
+    @audit_log(ignore_args=['login_password'])
     def change_login_password(self, login_password=None, run_policies=True,
         callback=default_callback, _caller="API", **kwargs):
         """ Change LDAP login passowrd. """
