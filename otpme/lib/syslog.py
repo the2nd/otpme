@@ -26,7 +26,7 @@ def close_log_handlers():
     for handler in list(active_log_handlers):
         try:
             handler.close()
-        except Exception as e:
+        except:
             pass
     active_log_handlers.clear()
 

@@ -2753,7 +2753,10 @@ class AuthHandler(object):
 
             # Audit logging.
             if self.audit_logger:
-                self.audit_logger.info(ok_message)
+                audit_msg = "%s: %s" % (config.daemon_name, ok_message)
+                self.audit_logger.info(audit_msg)
+                for x in self.audit_logger.handlers:
+                    x.close()
 
             # Finally return.
             return auth_reply
@@ -2771,7 +2774,10 @@ class AuthHandler(object):
 
             # Audit logging.
             if self.audit_logger:
-                self.audit_logger.info(logout_message)
+                audit_msg = "%s: %s" % (config.daemon_name, logout_message)
+                self.audit_logger.info(audit_msg)
+                for x in self.audit_logger.handlers:
+                    x.close()
 
             # Logout reply.
             auth_reply = {
@@ -2843,7 +2849,10 @@ class AuthHandler(object):
 
         # Audit logging.
         if self.audit_logger:
-            self.audit_logger.warning(failed_message)
+            audit_msg = "%s: %s" % (config.daemon_name, failed_message)
+            self.audit_logger.warning(audit_msg)
+            for x in self.audit_logger.handlers:
+                x.close()
 
         # Authentication failed!!
         auth_reply = {

@@ -5030,7 +5030,9 @@ class User(OTPmeObject):
             return add_result
 
         # Make sure user has displayName attribute.
-        self.add_attribute(attribute="displayName", verify_acls=verify_acls)
+        self.add_attribute(attribute="displayName",
+                        verify_acls=verify_acls,
+                        callback=callback)
 
         # Internal users (e.g. TOKENSTORE) do not need any scripts etc.
         internal_users = config.get_internal_objects("user")
@@ -5330,7 +5332,8 @@ class User(OTPmeObject):
             if default_group:
                 default_group.remove_default_group_user(self.uuid,
                                                 verify_acls=False,
-                                                ignore_missing=True)
+                                                ignore_missing=True,
+                                                callback=callback)
 
         # Delete user sessions.
         session_list = backend.get_sessions(user=self.uuid,

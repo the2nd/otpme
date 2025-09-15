@@ -358,6 +358,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         job = OTPmeJob(name=name,
                     target_method=target_method,
                     args=_method_args,
+                    client=self.client,
                     thread=thread,
                     process=process,
                     timeout=job_timeout,

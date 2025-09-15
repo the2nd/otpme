@@ -44,6 +44,7 @@ pid = None
 #proc_name = None
 #proc_thread_id = None
 cleanup_methods = []
+atfork_methods = []
 # Posix message queues to close on exit.
 message_queues = []
 # Posix semaphores to close on exit.
@@ -72,6 +73,10 @@ def register():
 def register_cleanup_method(method):
     global cleanup_methods
     cleanup_methods.append(method)
+
+def register_atfork_method(method):
+    global atfork_methods
+    atfork_methods.append(method)
 
 def register_module_var(v_name, v_type):
     """ Register variable. """
@@ -168,6 +173,7 @@ def atfork(keep_locks=False, quiet=True,
     from otpme.lib import connections
     global pid
     #global proc_thread_id
+    global atfork_methods
     global message_queues
     global posix_semaphores
     #proc_thread_id = None
@@ -202,6 +208,9 @@ def atfork(keep_locks=False, quiet=True,
     message_queues = []
     # Clear semaphores from parent process.
     posix_semaphores.clear()
+    # Run atfork methods.
+    for method in atfork_methods:
+        method()
 
 def cleanup(keep_queues=False):
     """ Do a clean process exit. """

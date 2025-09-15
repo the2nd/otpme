@@ -13,11 +13,18 @@ except:
 from otpme.lib import syslog
 from otpme.lib import config
 from otpme.lib import multiprocessing
+from otpme.lib.multiprocessing import register_atfork_method
 
 from otpme.lib.exceptions import *
 
 audit_loggers = {}
 logger = config.logger
+
+def atfork_cleanup():
+    global audit_loggers
+    audit_loggers.clear()
+
+register_atfork_method(atfork_cleanup)
 
 def audit_log(ignore_args=None, ignore_api_calls=False):
     """ Decorator to handle object lock. """
@@ -92,14 +99,22 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
                 if ignore_api_calls:
                     return result
                 auth_token = "API"
+
+            if callback:
+                job_client = callback.job.client
+                try:
+                    job_error = callback.job.exit_info['last_error']
+                except KeyError:
+                    pass
+            else:
+                job_client = "Unknown client"
+                job_error = "Unknown error"
+                from otpme.lib import debug
+                debug.trace()
             if result is False:
-                if callback:
-                    try:
-                        job_error = callback.job.exit_info['last_error']
-                    except KeyError:
-                        job_error = "Unknown error."
-                audit_msg = ("[%s] %s: Job failed (%s): %s %s %s %s"
+                audit_msg = ("[%s] Client: %s: Token: %s: Job failed (%s): Data: %s %s %s %s"
                             % (os.getpid(),
+                            job_client,
                             auth_token,
                             job_error,
                             func_name,
@@ -108,8 +123,9 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
                             log_kwargs,
                             ))
             else:
-                audit_msg = ("[%s] %s: %s %s %s %s"
+                audit_msg = ("[%s] Client: %s: Token: %s: Data: %s %s %s %s"
                             % (os.getpid(),
+                            job_client,
                             auth_token,
                             func_name,
                             self,

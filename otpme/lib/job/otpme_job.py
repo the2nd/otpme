@@ -24,10 +24,12 @@ from otpme.lib.exceptions import *
 class OTPmeJob(object):
     """ Class to run a OTPme job as thread. """
     def __init__(self, name, target_method, thread=True, process=False,
-        timeout=None, lock_timeout=30, lock_wait_timeout=0,
+        timeout=None, lock_timeout=30, lock_wait_timeout=0, client=None,
         reload_objects_on_change=True, _caller="API", args={}):
         # Set our name.
         self.name = name
+        # Connected client.
+        self.client = client
         # Gen job UUID.
         self.uuid = stuff.gen_uuid()
         # Generate uniq job ID.
