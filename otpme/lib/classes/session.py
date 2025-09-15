@@ -2,10 +2,10 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
-from datetime import datetime
-from datetime import timedelta
 from typing import List
 from typing import Union
+from datetime import datetime
+from datetime import timedelta
 
 try:
     import simdjson as json
@@ -1261,7 +1261,7 @@ class Session(OTPmeLockObject):
         return result
 
     @object_lock()
-    @audit_log()
+    @audit_log(ignore_api_calls=True)
     def delete(
         self,
         force: bool=False,

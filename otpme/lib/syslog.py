@@ -8,6 +8,7 @@ import socket
 import logging
 #import logging.handlers
 from relppy.client import RelpTlsClient
+from relppy.client import RelpTCPClient
 from tlssysloghandler import TLSSysLogHandler
 
 try:
@@ -30,7 +31,7 @@ def close_log_handlers():
     active_log_handlers.clear()
 
 class RelpHandler(logging.handlers.SysLogHandler):
-    def __init__(self, address, context, facility, resend_size=32):
+    def __init__(self, address, facility, context=None, resend_size=32):
         from otpme.lib import config
         global active_log_handlers
         self.address = address
@@ -45,10 +46,14 @@ class RelpHandler(logging.handlers.SysLogHandler):
 
     def createSocket(self):
         try:
-            self.relp_client = RelpTlsClient(address=self.address,
-                                            context=self.context,
-                                            resend_size=self.resend_size,
-                                            server_hostname=self.address[0])
+            if self.context:
+                self.relp_client = RelpTlsClient(address=self.address,
+                                                context=self.context,
+                                                resend_size=self.resend_size,
+                                                server_hostname=self.address[0])
+            else:
+                self.relp_client = RelpTCPClient(address=self.address,
+                                                resend_size=self.resend_size)
         except Exception as e:
             msg = ("Failed to connect to relp log server: %s: %s"
                     % (self.address, e))
@@ -210,8 +215,15 @@ def get_log_handler(address="/dev/log", use_ssl=False, ca_cert_file=None,
             # Load client cert/key.
             context.load_cert_chain(certfile=client_cert_file,
                                     keyfile=client_key_file)
+        address = address.split(":")
+        if len(address) < 2:
+            msg = "Invalid syslog address: %s" % address
+            raise OTPmeException(msg)
         if relp:
-            log_handler = RelpHandler(address, context, facility, resend_size=32)
+            log_handler = RelpHandler(address=address,
+                                    facility=facility,
+                                    context=context,
+                                    resend_size=32)
         else:
             reconnecting_handler = get_reconnecting_handler(TLSSysLogHandler)
             log_handler = reconnecting_handler(address=address,
@@ -219,10 +231,20 @@ def get_log_handler(address="/dev/log", use_ssl=False, ca_cert_file=None,
                                         secure=context,
                                         facility=facility)
     else:
-        reconnecting_handler = get_reconnecting_handler(logging.handlers.SysLogHandler)
-        log_handler = reconnecting_handler(address=address,
-                                        socktype=socket.SOCK_STREAM,
-                                        facility=facility)
+        if relp:
+            address = address.split(":")
+            log_handler = RelpHandler(address=address,
+                                    facility=facility,
+                                    resend_size=32)
+        else:
+            if len(address.split(":")) < 2:
+                socktype = socket.SOCK_DGRAM
+            else:
+                socktype = socket.SOCK_STREAM
+            reconnecting_handler = get_reconnecting_handler(logging.handlers.SysLogHandler)
+            log_handler = reconnecting_handler(address=address,
+                                            socktype=socktype,
+                                            facility=facility)
 
     formatter = logging.Formatter('%(name)s: [%(levelname)s] %(message)s')
     log_handler.setFormatter(formatter)

@@ -18,6 +18,7 @@ from otpme.lib import backend
 from otpme.lib import otpme_pass
 from otpme.lib.encryption.ec import ECKey
 from otpme.lib.encoding.base import decode
+from otpme.lib.audit import get_audit_logger
 from otpme.lib.classes.session import Session
 from otpme.lib.daemon.scriptd import run_script
 
@@ -2198,6 +2199,14 @@ class AuthHandler(object):
         self.rsp_hash_types = ['PBKDF2']
         # Allow reuse of SOTPs.
         self.allow_sotp_reuse = allow_sotp_reuse
+        # Get audit logger.
+        try:
+            self.audit_logger = get_audit_logger()
+        except Exception as e:
+            msg = "Failed to get audit logger: %s" % e
+            self.logger.warning(msg)
+            self.audit_logger = None
+
         if rsp_hash_type:
             if rsp_hash_type not in self.rsp_hash_types:
                 msg = "Unsupported RSP hash type: %s" % rsp_hash_type
@@ -2742,6 +2751,10 @@ class AuthHandler(object):
             ok_message = self.build_log_message()
             self.logger.info(ok_message)
 
+            # Audit logging.
+            if self.audit_logger:
+                self.audit_logger.info(ok_message)
+
             # Finally return.
             return auth_reply
 
@@ -2755,6 +2768,10 @@ class AuthHandler(object):
             # Log final logout message.
             logout_message = self.build_log_message()
             self.error_log_method(logout_message)
+
+            # Audit logging.
+            if self.audit_logger:
+                self.audit_logger.info(logout_message)
 
             # Logout reply.
             auth_reply = {
@@ -2823,6 +2840,10 @@ class AuthHandler(object):
         # Log final failed message.
         failed_message = self.build_log_message()
         self.error_log_method(failed_message)
+
+        # Audit logging.
+        if self.audit_logger:
+            self.audit_logger.warning(failed_message)
 
         # Authentication failed!!
         auth_reply = {

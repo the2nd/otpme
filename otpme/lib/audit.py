@@ -19,7 +19,7 @@ from otpme.lib.exceptions import *
 audit_loggers = {}
 logger = config.logger
 
-def audit_log(ignore_args=None):
+def audit_log(ignore_args=None, ignore_api_calls=False):
     """ Decorator to handle object lock. """
     def wrapper(f):
         @wraps(f)
@@ -34,57 +34,89 @@ def audit_log(ignore_args=None):
                             'run_policies',
                             'lock_reload_on_change',
                             ]
-            proc_id = multiprocessing.get_id()
             try:
-                audit_logger = audit_loggers[proc_id]
+                callback = f_kwargs['callback']
             except KeyError:
-                audit_logger = None
-
-            # Dont do audit log on realm init.
-            if audit_logger is None and not config.realm_init:
-                # Get audit logger.
+                callback = None
+            try:
+                no_audit_log = f_kwargs['no_audit_log']
+            except KeyError:
+                no_audit_log = False
+            if not no_audit_log:
+                proc_id = multiprocessing.get_id()
                 try:
-                    audit_logger = get_audit_logger()
-                except Exception as e:
-                    msg = "Failed to get audit logger: %s" % e
-                    logger.warning(msg)
+                    audit_logger = audit_loggers[proc_id]
+                except KeyError:
                     audit_logger = None
-                else:
-                    audit_loggers[proc_id] = audit_logger
+
+                # Dont do audit log on realm init.
+                if audit_logger is None and not config.realm_init:
+                    # Get audit logger.
+                    try:
+                        audit_logger = get_audit_logger()
+                    except Exception as e:
+                        msg = "Failed to get audit logger: %s" % e
+                        logger.warning(msg)
+                        audit_logger = None
+                    else:
+                        audit_loggers[proc_id] = audit_logger
             # Call given class method.
             try:
                 result = f(self, *f_args, **f_kwargs)
             except:
                 raise
+
+            if no_audit_log:
+                return result
+
+            if not audit_logger:
+                return result
+
+            func_name = f.__name__
+            log_args = list(f_args)
+            log_kwargs = dict(f_kwargs)
+            if ignore_args is not None:
+                for kwarg in ignore_args:
+                    try:
+                        log_kwargs.pop(kwarg)
+                    except KeyError:
+                        pass
+            for kwarg in _ignore_args:
+                try:
+                    log_kwargs.pop(kwarg)
+                except KeyError:
+                    pass
+            if config.auth_token:
+                auth_token = config.auth_token.rel_path
             else:
-                if result and audit_logger:
-                    func_name = f.__name__
-                    log_args = list(f_args)
-                    log_kwargs = dict(f_kwargs)
-                    if ignore_args is not None:
-                        for kwarg in ignore_args:
-                            try:
-                                log_kwargs.pop(kwarg)
-                            except KeyError:
-                                pass
-                    for kwarg in _ignore_args:
-                        try:
-                            log_kwargs.pop(kwarg)
-                        except KeyError:
-                            pass
-                    if config.auth_token:
-                        auth_token = config.auth_token.rel_path
-                    else:
-                        auth_token = "API"
-                    audit_msg = ("[%s] %s: %s %s %s %s"
-                                % (os.getpid(),
-                                auth_token,
-                                func_name,
-                                self,
-                                log_args,
-                                log_kwargs,
-                                ))
-                    audit_logger.info(audit_msg)
+                if ignore_api_calls:
+                    return result
+                auth_token = "API"
+            if result is False:
+                if callback:
+                    try:
+                        job_error = callback.job.exit_info['last_error']
+                    except KeyError:
+                        job_error = "Unknown error."
+                audit_msg = ("[%s] %s: Job failed (%s): %s %s %s %s"
+                            % (os.getpid(),
+                            auth_token,
+                            job_error,
+                            func_name,
+                            self,
+                            log_args,
+                            log_kwargs,
+                            ))
+            else:
+                audit_msg = ("[%s] %s: %s %s %s %s"
+                            % (os.getpid(),
+                            auth_token,
+                            func_name,
+                            self,
+                            log_args,
+                            log_kwargs,
+                            ))
+            audit_logger.info(audit_msg)
             return result
         return wrapped
     return wrapper
@@ -94,7 +126,7 @@ def get_audit_logger(address="/dev/log", use_ssl=True, ca_cert_file=None,
     """ Get audit logger. """
     if not config.audit_log_enabled:
         return
-    address = config.audit_log_server.split(":")
+    address = config.audit_log_server
     facility = config.audit_log_facility
     relp = False
     if config.audit_log_protocol == "relp":

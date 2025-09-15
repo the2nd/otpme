@@ -1149,7 +1149,7 @@ class ClusterDaemon(OTPmeDaemon):
         node = backend.get_object(uuid=node_uuid)
         if node.enabled:
             return
-        node.enable(force=True, verify_acls=False)
+        node.enable(force=True, verify_acls=False, no_audit_log=True)
         node.acquire_lock(lock_caller="clusterd")
         node._write(cluster=False)
         node.release_lock(lock_caller="clusterd")
@@ -1159,7 +1159,7 @@ class ClusterDaemon(OTPmeDaemon):
         node = backend.get_object(uuid=node_uuid)
         if not node.enabled:
             return
-        node.disable(force=True, verify_acls=False)
+        node.disable(force=True, verify_acls=False, no_audit_log=True)
         node.acquire_lock(lock_caller="clusterd")
         node._write(cluster=False)
         node.release_lock(lock_caller="clusterd")
