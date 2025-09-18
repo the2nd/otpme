@@ -2059,9 +2059,7 @@ class ClusterDaemon(OTPmeDaemon):
         # Update logger with new PID and daemon name.
         self.pid = os.getpid()
         log_banner = "%s:" % self.full_name
-        self.logger = log.setup_logger(banner=log_banner,
-                                        pid=self.pid,
-                                        existing_logger=config.logger)
+        self.logger = log.setup_logger(banner=log_banner, pid=self.pid)
 
         if not reload:
             multiprocessing.master_node.clear()
@@ -2334,9 +2332,7 @@ class ClusterDaemon(OTPmeDaemon):
         # Update logger with new PID and daemon name.
         self.pid = os.getpid()
         log_banner = "%s:" % self.full_name
-        self.logger = log.setup_logger(banner=log_banner,
-                                        pid=self.pid,
-                                        existing_logger=config.logger)
+        self.logger = log.setup_logger(banner=log_banner, pid=self.pid)
         while True:
             try:
                 multiprocessing.cluster_in_event.wait(timeout=3)
@@ -2474,9 +2470,8 @@ class ClusterDaemon(OTPmeDaemon):
         # Update logger with new PID and daemon name.
         self.pid = os.getpid()
         log_banner = "%s:" % self.full_name
-        self.logger = log.setup_logger(banner=log_banner,
-                                        pid=self.pid,
-                                        existing_logger=config.logger)
+        self.logger = log.setup_logger(banner=log_banner, pid=self.pid)
+
         while True:
             multiprocessing.two_node_setup_event.wait()
 
@@ -2511,9 +2506,8 @@ class ClusterDaemon(OTPmeDaemon):
         # Update logger with new PID and daemon name.
         self.pid = os.getpid()
         log_banner = "%s:" % self.full_name
-        self.logger = log.setup_logger(banner=log_banner,
-                                        pid=self.pid,
-                                        existing_logger=config.logger)
+        self.logger = log.setup_logger(banner=log_banner, pid=self.pid)
+
         while True:
             if config.daemon_shutdown:
                 os._exit(0)
@@ -2596,9 +2590,8 @@ class ClusterDaemon(OTPmeDaemon):
         # Update logger with new PID and daemon name.
         self.pid = os.getpid()
         log_banner = "%s:" % self.full_name
-        self.logger = log.setup_logger(banner=log_banner,
-                                        pid=self.pid,
-                                        existing_logger=config.logger)
+        self.logger = log.setup_logger(banner=log_banner, pid=self.pid)
+
         start_over= True
         while True:
             # Wait for cluster event.
@@ -3563,14 +3556,14 @@ class ClusterDaemon(OTPmeDaemon):
 
     def _run(self, reload=False, master_node=False, **kwargs):
         """ Start daemon loop. """
+        # Setup logger.
+        self.logger = log.setup_logger(pid=True)
         # FIXME: where to configure max_conn?
         # Set max client connections.
         self.max_conn = 100
         # Set signal handler.
         signal.signal(signal.SIGTERM, self.signal_handler)
         signal.signal(signal.SIGINT, self.signal_handler)
-        # Set logger.
-        self.logger = config.logger
         # Set node vote to (1 - daemon start time) (e.g.first started
         # node gets master node if all nodes have the same data
         # revision.

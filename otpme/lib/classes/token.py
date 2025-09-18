@@ -1271,6 +1271,7 @@ class Token(OTPmeObject):
 
     @check_acls(['upgrade_pass_hash'])
     @backend.transaction
+    @audit_log()
     def upgrade_pass_hash(
         self,
         hash_type: Union[str,None]=None,
@@ -3118,7 +3119,7 @@ class Token(OTPmeObject):
     @load_object(force=False)
     @backend.transaction
     @run_pre_post_add_policies()
-    @audit_log()
+    @audit_log(ignore_args=['password'])
     def add(
         self,
         owner_uuid: str,

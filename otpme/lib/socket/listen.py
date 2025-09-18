@@ -16,6 +16,7 @@ except:
     pass
 
 from otpme.lib import re
+from otpme.lib import log
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import filetools
@@ -264,6 +265,8 @@ class ListenSocket(object):
 
         # Handle multiprocessing stuff.
         multiprocessing.atfork(quiet=True)
+        # Setup logger.
+        self.logger = log.setup_logger(pid=os.getpid())
 
         # Start socket initialization.
         try:
@@ -487,6 +490,9 @@ class ListenSocket(object):
         """ Handle a connection. """
         # Handle multiprocessing stuff.
         multiprocessing.atfork(quiet=True)
+
+        # Setup logger.
+        self.logger = log.setup_logger(pid=os.getpid())
 
         # Set process title.
         new_proctitle = "%s Client: %s" % (self.proctitle, client)

@@ -28,6 +28,7 @@ from otpme.lib import connections
 from otpme.lib import multiprocessing
 from otpme.lib.sync_cache import SyncCache
 from otpme.lib.protocols import status_codes
+from otpme.lib.audit import process_spooled_logs
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
 from otpme.lib.protocols.client.sync1 import validate_received_object
 
@@ -415,6 +416,8 @@ class HostDaemon(OTPmeDaemon):
         sync_status = True
         # Handle multiprocessing stuff.
         multiprocessing.atfork(exit_on_signal=True)
+        # Setup logger.
+        self.logger = log.setup_logger(pid=True)
         # Set proctitle for new child process.
         self.set_proctitle(sync_type="sync_sites", resync=False)
 
@@ -892,6 +895,9 @@ class HostDaemon(OTPmeDaemon):
         """ Start sync. """
         # Handle multiprocessing stuff.
         multiprocessing.atfork(exit_on_signal=True)
+        # Reconfigure logger to add sync type.
+        log_banner = "%s:(sync:%s)" % (config.log_name, sync_type)
+        self.logger = log.setup_logger(pid=True, banner=log_banner)
         # Set proctitle for new child process.
         if nsscache_resync:
             self.set_proctitle(sync_type=sync_type,
@@ -929,9 +935,6 @@ class HostDaemon(OTPmeDaemon):
                     break
                 time.sleep(0.01)
 
-        # Reconfigure logger to add sync type.
-        log_banner = "%s:(sync:%s)" % (config.log_name, sync_type)
-        self.logger = log.setup_logger(pid=True, banner=log_banner)
         # Start sync.
         sync_status = None
         if sync_type != "nsscache" and sync_type != "notify":
@@ -1255,6 +1258,13 @@ class HostDaemon(OTPmeDaemon):
             return True
         return False
 
+    def process_spooled_logs(self):
+        try:
+            process_spooled_logs()
+        except Exception as e:
+            msg = "Failed to resend spooled audit log entries: %s" % e
+            self.logger.warning(msg)
+
     def update_crls(self):
         """ Update CA CRLs. """
         if not config.master_node:
@@ -1305,6 +1315,8 @@ class HostDaemon(OTPmeDaemon):
         self.set_proctitle(proctitle="Run resolvers")
         # Handle multiprocessing stuff.
         multiprocessing.atfork(exit_on_signal=True)
+        # Setup logger.
+        self.logger = log.setup_logger(pid=True)
         resolvers = backend.search(object_type="resolver",
                                     attribute="uuid",
                                     value="*",
@@ -1371,7 +1383,8 @@ class HostDaemon(OTPmeDaemon):
         self.set_proctitle(proctitle="Remove outdated tokens")
         # Handle multiprocessing stuff.
         multiprocessing.atfork(exit_on_signal=True)
-
+        # Setup logger.
+        self.logger = log.setup_logger(pid=True)
         try:
             user_uuids = os.listdir(config.offline_dir)
         except:
@@ -1575,12 +1588,14 @@ class HostDaemon(OTPmeDaemon):
         # Run in loop until we get signal.
         recv_timeout = None
         init_sync_started = False
+        log_resend_interval = 60
         crl_update_interval = 300
         resolver_run_interval = 30
         cache_outdate_interval = 30
         host_object_reload_interval = 30
         token_data_removal_interval = 30
         last_resolver_run = time.time()
+        last_log_resend_run = time.time()
         last_crl_update_run = time.time()
         last_cache_outdate = time.time()
         last_host_object_reload = time.time()
@@ -1600,6 +1615,7 @@ class HostDaemon(OTPmeDaemon):
             try:
                 # Calculate new recv timeout.
                 new_timeout = min(crl_update_interval,
+                                log_resend_interval,
                                 resolver_run_interval,
                                 cache_outdate_interval,
                                 host_object_reload_interval,
@@ -1649,6 +1665,11 @@ class HostDaemon(OTPmeDaemon):
                 if (now - last_resolver_run) >= resolver_run_interval:
                     self.run_resolvers()
                     last_resolver_run = time.time()
+
+                # Retry spooled log entries.
+                if (now - last_log_resend_run) >= log_resend_interval:
+                    self.process_spooled_logs()
+                    last_log_resend_run = time.time()
 
                 # Check if command can be handled by parent class.
                 if daemon_command is not None:

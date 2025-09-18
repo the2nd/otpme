@@ -577,9 +577,8 @@ class ControlDaemon(UnixDaemon):
             config.file_logging = True
         # Setup logger.
         log_banner = "%s:" % self.full_name
-        self.logger = config.setup_logger(banner=log_banner,
-                                        pid=self.pid,
-                                        existing_logger=config.logger)
+        self.logger = config.setup_logger(banner=log_banner, pid=True)
+
         if not os.path.exists(config.uuid_file):
             msg = (_("Host is not a realm member."))
             raise OTPmeException(msg)
@@ -863,9 +862,7 @@ class ControlDaemon(UnixDaemon):
         multiprocessing.atfork()
         # Setup logger (e.g. to syslog server).
         log_banner = "%s:" % self.full_name
-        self.logger = log.setup_logger(banner=log_banner,
-                                        pid=self.pid,
-                                        existing_logger=config.logger)
+        self.logger = log.setup_logger(banner=log_banner, pid=True)
         # Set process title for handler process.
         proctitle = "%s (daemon handler)" % self.full_name
         try:

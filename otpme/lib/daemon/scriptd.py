@@ -11,6 +11,7 @@ try:
 except:
     pass
 
+from otpme.lib import log
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import script
@@ -251,6 +252,8 @@ class ScriptDaemon(OTPmeDaemon):
 
     def _run(self, **kwargs):
         """ Start daemon loop. """
+        # Setup logger.
+        self.logger = log.setup_logger(pid=True)
         # Set process title.
         self.set_proctitle()
         # Configure ourselves (e.g. certificates etc.).

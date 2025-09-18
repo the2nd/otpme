@@ -9,6 +9,12 @@ TIMEZONE="Europe/Berlin"
 START_FREERADIUS="True"
 # Path to freeradius binary.
 FREERADIUS_BIN="/usr/sbin/freeradius"
+RADIUS_CACHE_TIME="60"
+USE_RADIUS_MOD="True"
+RADIUS_START_SERVERS="32"
+RADIUS_MAX_SERVERS="64"
+RADIUS_MIN_SPARE_SERVERS="8"
+RADIUS_MAX_SPARE_SERVERS="16"
 
 # How long to wait for second node in two node clusters to appear.
 TWO_NODE_TIMEOUT="3"
@@ -85,6 +91,30 @@ POSTGRES_PG_CTL_BIN="/usr/lib/postgresql/13/bin/pg_ctl"
 #POSTGRES_DATESTYLE="iso, mdy"
 #POSTGRES_TIMEZONE="Europe/Berlin"
 #POSTGRES_LOG_TIMEZONE="Europe/Berlin"
+
+# Audit log settings.
+AUDIT_LOG_ENABLED="False"
+AUDIT_LOG_FACILITY="DAEMON"
+AUDIT_LOG_SERVER="syslog-server.domain.tld:514"
+# OTPme support protocols "syslog" and "relp".
+AUDIT_LOG_PROTOCOL="syslog"
+AUDIT_LOG_USE_TLS="False"
+AUDIT_LOG_CA_CERT="/etc/otpme/ssl/syslog-ca.pem"
+AUDIT_LOG_USE_CLIENT_CERT="False"
+AUDIT_LOG_CERT="/etc/otpme/ssl/syslog-cert.pem"
+AUDIT_LOG_KEY="/etc/otpme/ssl/syslog-key.pem"
+
+# Syslog settings.
+SYSLOG_ENABLED="False"
+SYSLOG_FACILITY="DAEMON"
+SYSLOG_SERVER="syslog-server.domain.tld:514"
+# OTPme support protocols "syslog" and "relp".
+SYSLOG_PROTOCOL="syslog"
+SYSLOG_USE_TLS="False"
+SYSLOG_CA_CERT="/etc/otpme/ssl/syslog-ca.pem"
+SYSLOG_USE_CLIENT_CERT="False"
+SYSLOG_CERT="/etc/otpme/ssl/syslog-cert.pem"
+SYSLOG_KEY="/etc/otpme/ssl/syslog-key.pem"
 
 # Pickle module used for caching. Currently
 # Run root scripts as this user.
@@ -171,6 +201,9 @@ POSIX_MSGSIZE_MAX="8192"
 # to a proper value. It will be set on daemon start.
 RLIMIT_MSGQUEUE="2621440000"
 
+# The socket receive buffer. This should be a high value like 100MiB to speedup OTPme fuse module.
+SOCKET_RECEIVE_BUFFER="104857600"
+
 # Max interval in seconds the backend executes object policies (e.g. autodisable).
 # Setting this value to low will result in poor performance because the backend
 # will call policies to frequently. Setting it to high will prevent policies with
@@ -184,6 +217,7 @@ PAM_USE_SYSLOG="False"
 PAM_USE_SYSTEMD="True"
 PAM_USE_LOGFILE="False"
 PAM_LOGFILE="/var/log/otpme/pam.log"
+RADIUS_MOD_LOGFILE="/var/log/otpme/radius-module.log"
 
 # Command to get encryption key
 # KEY_COMMAND can be one of:
@@ -226,7 +260,7 @@ OBJECT_EXPORT_HASH_TYPE="Argon2_i"
 # a host (e.g. a notebook) from site A on site B. But its also
 # a good idea to use DNS in case you need to change the site
 # address.
-LOGIN_USE_DNS="False"
+LOGIN_USE_DNS="True"
 
 # Use DNS to resolve site address. If this is set to False
 # all OTPme daemons, agents and tools use the IP address
@@ -257,6 +291,8 @@ CACHE_DIR="/var/cache/otpme"
 RUN_DIR="/var/run/otpme"
 # Directory for logfiles.
 LOG_DIR="/var/log/otpme"
+# Mount root dir.
+MOUNT_ROOT_DIR="/otpme"
 
 # Comma separated list of users allowed to login (used by pam_otpme, SSH etc.).
 # If you add the users UUID separated by a colon (username:uuid) the user is

@@ -365,15 +365,14 @@ class OTPmeDaemon(object):
         # Override singal handler.
         signal.signal(signal.SIGTERM, self.signal_handler)
         signal.signal(signal.SIGINT, self.signal_handler)
-        # Our PID.
-        self.pid = os.getpid()
         # Set daemon status.
         config.daemon_status = "running"
+        # Our PID.
+        self.pid = os.getpid()
         # Update logger with new PID and daemon name.
         log_banner = "%s:" % self.full_name
-        self.logger = log.setup_logger(banner=log_banner,
-                                    pid=self.pid,
-                                    existing_logger=config.logger)
+        # Setup logger.
+        self.logger = log.setup_logger(banner=log_banner, pid=self.pid)
         # Set process title.
         try:
             setproctitle.setproctitle(self.full_name)

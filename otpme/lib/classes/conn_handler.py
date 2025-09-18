@@ -9,7 +9,7 @@ except:
     pass
 
 from otpme.lib import config
-#from otpme.lib import multiprocessing
+from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
 from otpme.lib.protocols.request import decode_request
 from otpme.lib.protocols.response import build_response
@@ -250,8 +250,8 @@ class ConnHandler(object):
 
         # Close connection.
         self.connection.close()
-        # FIXME: do we stil need this here? It closes mqueues which results in malfunction of e.g. otpme-agent.
-        #multiprocessing.cleanup()
+        # Mulitprocessing cleanup.
+        multiprocessing.cleanup(keep_queues=True)
 
     def cleanup(self):
         """ Is called on client disconnect. """

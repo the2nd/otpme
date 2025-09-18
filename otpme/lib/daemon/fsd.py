@@ -8,6 +8,7 @@ try:
 except:
     pass
 
+from otpme.lib import log
 from otpme.lib import config
 from otpme.lib.protocols import status_codes
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
@@ -28,6 +29,8 @@ class FsDaemon(OTPmeDaemon):
 
     def _run(self, **kwargs):
         """ Start daemon loop. """
+        # Setup logger.
+        self.logger = log.setup_logger(pid=True)
         # Configure ourselves (e.g. certificates etc.)
         self.configure()
         # All protocols we support.

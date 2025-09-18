@@ -689,6 +689,7 @@ class PasswordToken(Token):
 
     @object_lock(full_lock=True)
     @backend.transaction
+    @audit_log(ignore_args=['password'])
     def _add(
         self,
         password: Union[str,None]=None,

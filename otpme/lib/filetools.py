@@ -60,13 +60,14 @@ def check_group(group):
 
 class AtomicFile(object):
     def __init__(self, path, user=None, group=None,
-        perms=0o666, mode="r+", auto_open=True,
+        perms=0o666, mode="r+", flags=None, auto_open=True,
         create_missing=False, register=None, unregister=None):
         self.path = path
         self.user = user
         self.group = group
         self.mode = mode
         self.perms = perms
+        self.flags = flags
         self.register_method = register
         self.unregister_method = unregister
         self.create_missing = create_missing
@@ -85,9 +86,15 @@ class AtomicFile(object):
             if self.register_method:
                 self.register_method(self)
             if self.mode.startswith("r"):
-                open_flags = os.O_CREAT | os.O_RDONLY
+                if self.flags is None:
+                    open_flags = os.O_CREAT | os.O_RDONLY
+                else:
+                    open_flags = self.flags
             if self.mode.startswith("w"):
-                open_flags = os.O_CREAT | os.O_RDWR
+                if self.flags is None:
+                    open_flags = os.O_CREAT | os.O_RDWR
+                else:
+                    open_flags = self.flags
             self._fd = os.open(self.path, open_flags, self.perms)
             self.fd = os.fdopen(self._fd, self.mode)
             if self.user:
@@ -98,6 +105,8 @@ class AtomicFile(object):
                 except FileNotFoundError:
                     pass
         except FileNotFoundError:
+            raise
+        except FileExistsError:
             raise
         except Exception as e:
             msg = "Failed to open file: %s: %s" % (self.path, e)
@@ -128,7 +137,7 @@ class AtomicFile(object):
 
 class AtomicFileLock(object):
     def __init__(self, path, user=None, group=None, perms=0o666,
-        mode="r+", read_lock=False, write_lock=False, auto_open=True,
+        mode="r+", flags=None, read_lock=False, write_lock=False, auto_open=True,
         block=True, register=None, unregister=None):
         from otpme.lib import config
         self.fd = None
@@ -137,6 +146,7 @@ class AtomicFileLock(object):
         self.user = user
         self.group = group
         self.perms = perms
+        self.flags = flags
         self.register_method = register
         self.unregister_method = unregister
         self._method_flock = None
@@ -157,6 +167,7 @@ class AtomicFileLock(object):
                         user=self.user,
                         group=self.group,
                         mode=self.mode,
+                        flags=self.flags,
                         create_missing=True,
                         register=self.register_method,
                         unregister=self.unregister_method)
@@ -393,7 +404,8 @@ def read_file(path, read_mode="r", compression=None):
     return file_content
 
 def create_file(path, content=None, user=None, group=True, mode=0o660,
-    user_acls=[], group_acls=[], write_mode="w", compression=None, lock=True):
+    flags=None, user_acls=[], group_acls=[], write_mode="w",
+    compression=None, lock=True):
     """ Create file with content and sane permissions. """
     from otpme.lib import stuff
     if not user or not group:
@@ -415,9 +427,10 @@ def create_file(path, content=None, user=None, group=True, mode=0o660,
     # Get file real path to ensure working locking (e.g. on symlink).
     file_real_path = os.path.realpath(path)
 
-    # Open temp file.
+    # Open file.
     fd = AtomicFileLock(path=file_real_path,
                         mode=write_mode,
+                        flags=flags,
                         write_lock=True,
                         perms=mode)
     # Truncate file.
@@ -505,6 +518,8 @@ def delete(path):
     except Exception as e:
         msg = "Failed to delete file: %s: %s" % (path, e)
         raise OTPmeException(msg)
+    finally:
+        fd.close()
     return True
 
 def set_fs_ownership(path, user, group=None, recursive=False):

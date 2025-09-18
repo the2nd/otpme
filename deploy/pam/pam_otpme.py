@@ -42,14 +42,14 @@ def pam_sm_authenticate(pamh, flags, argv):
         pam_handler = pam.PamHandler(pamh, argv)
     except Exception as e:
         msg = "Error loading pam handler: %s" % e
-        logger.critical(msg)
+        logger.warning(msg)
         config.raise_exception()
         return pamh.PAM_SYSTEM_ERR
     try:
         retval = pam_handler.authenticate()
     except Exception as e:
         msg = ("pam_sm_authenticate: Error in pam_otpme.py: %s" % e)
-        logger.critical(msg, exc_info=True)
+        logger.warning(msg, exc_info=True)
         retval = pamh.PAM_SYSTEM_ERR
     return retval
 
@@ -60,14 +60,14 @@ def pam_sm_setcred(pamh, flags, argv):
         pam_handler = pam.PamHandler(pamh, argv)
     except Exception as e:
         msg = "Error loading pam handler: %s" % e
-        logger.critical(msg)
+        logger.warning(msg)
         config.raise_exception()
         return pamh.PAM_SYSTEM_ERR
     try:
         retval = pam_handler.pam_sm_setcred()
     except Exception as e:
         msg = ("pam_sm_setcred: Error in pam_otpme.py: %s" % e)
-        logger.critical(msg, exc_info=True)
+        logger.warning(msg, exc_info=True)
         return pamh.PAM_SYSTEM_ERR
     return retval
 
@@ -81,14 +81,14 @@ def pam_sm_open_session(pamh, flags, argv):
         pam_handler = pam.PamHandler(pamh, argv)
     except Exception as e:
         msg = "Error loading pam handler: %s" % e
-        logger.critical(msg)
+        logger.warning(msg)
         config.raise_exception()
         return pamh.PAM_SYSTEM_ERR
     try:
         retval = pam_handler.open_session()
     except Exception as e:
         msg = ("pam_sm_open_session: Error in pam_otpme.py: %s" % e)
-        logger.critical(msg, exc_info=True)
+        logger.warning(msg, exc_info=True)
         return pamh.PAM_SYSTEM_ERR
     return retval
 
@@ -99,14 +99,14 @@ def pam_sm_close_session(pamh, flags, argv):
         pam_handler = pam.PamHandler(pamh, argv)
     except Exception as e:
         msg = "Error loading pam handler: %s" % e
-        logger.critical(msg)
+        logger.warning(msg)
         config.raise_exception()
         return pamh.PAM_SYSTEM_ERR
     try:
         retval = pam_handler.close_session()
     except Exception as e:
         msg = ("pam_sm_close_session: Error in pam_otpme.py: %s" % e)
-        logger.critical(msg, exc_info=True)
+        logger.warning(msg, exc_info=True)
         return pamh.PAM_SYSTEM_ERR
     return retval
 

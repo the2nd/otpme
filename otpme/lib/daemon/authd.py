@@ -9,6 +9,7 @@ try:
 except:
     pass
 
+from otpme.lib import log
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.protocols import status_codes
@@ -41,6 +42,8 @@ class AuthDaemon(OTPmeDaemon):
 
     def _run(self, **kwargs):
         """ Start daemon loop. """
+        # Setup logger.
+        self.logger = log.setup_logger(pid=True)
         # Configure ourselves (e.g. certificates etc.)
         self.configure()
         # All protocols we support.

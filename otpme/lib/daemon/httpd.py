@@ -14,6 +14,7 @@ try:
 except:
     pass
 
+from otpme.lib import log
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -48,6 +49,9 @@ class HttpDaemon(OTPmeDaemon):
 
     def _run(self, **kwargs):
         """ Start daemon loop. """
+        # Setup logger.
+        self.logger = log.setup_logger(pid=True)
+
         # Configure ourselves (e.g. certificates etc.)
         self.configure()
         # FIXME: Where to configure max_conn?

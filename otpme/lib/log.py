@@ -48,8 +48,6 @@ class ContextFilter(logging.Filter):
                 if log_banner and log_banner.startswith(x_check):
                     valid_log = True
                     break
-        #if record.getMessage().startswith('xxx'):
-        #return True
         return valid_log
 
 def get_logger(log_name, level, syslog=False, syslog_address="/dev/log",
@@ -123,13 +121,12 @@ def get_logger(log_name, level, syslog=False, syslog_address="/dev/log",
     else:
         log_format = None
 
-    # If we got a logger instance remove all existing handlers.
-    if logger:
-        if logger.hasHandlers():
-            logger.handlers.clear()
-    else:
-        # Create new logger if there where no logger instance given to us.
+    # Create new logger if there where no logger instance given to us.
+    if not logger:
         logger = logging.getLogger(log_name)
+
+    if logger.hasHandlers():
+        logger.handlers.clear()
 
     # Add filter to add log_banner to format string of logging.
     logger.addFilter(ContextFilter())
@@ -212,10 +209,10 @@ def setup_logger(*args, **kwargs):
     timestamps = True
     logger_syslog = False
     if not config.debug_enabled and not config.realm_init:
-        if config.syslog_enabled:
+        if config.syslog_enabled and config.syslog_server:
             logger_syslog = True
             timestamps = False
-            address = config.syslog_server.split(":")
+            address = config.syslog_server
             relp = False
             if config.syslog_protocol == "relp":
                 relp = True

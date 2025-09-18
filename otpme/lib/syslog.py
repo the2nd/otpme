@@ -3,6 +3,7 @@
 import os
 import sys
 import ssl
+import json
 import time
 import socket
 import logging
@@ -17,9 +18,17 @@ try:
 except:
     pass
 
+from otpme.lib.multiprocessing import register_atfork_method
+from otpme.lib.multiprocessing import register_cleanup_method
+
 from otpme.lib.exceptions import *
 
 active_log_handlers = []
+
+def clear_log_handlers():
+    global active_log_handlers
+    active_log_handlers.clear()
+register_atfork_method(clear_log_handlers)
 
 def close_log_handlers():
     global active_log_handlers
@@ -29,9 +38,37 @@ def close_log_handlers():
         except:
             pass
     active_log_handlers.clear()
+register_cleanup_method(close_log_handlers)
+
+def spool_record(spool_dir, record):
+    from otpme.lib import config
+    logger = config.logger
+    if not os.path.exists(spool_dir):
+        return
+    record_data = {
+                    'created'   : record.created,
+                    'loglevel'  : record.levelname,
+                    'message'   : record.msg,
+                }
+    record_data = json.dumps(record_data)
+    record_data = record_data.encode()
+    while True:
+        spool_file = os.path.join(spool_dir, str(time.time_ns()))
+        try:
+            fd = os.open(spool_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.write(fd, record_data)
+            os.close(fd)
+        except FileExistsError:
+            continue
+        except Exception as e:
+            msg = "Failed to create audit log spool file: %s: %s" % (spool_file, e)
+            logger.warning(msg)
+            return
+        break
 
 class RelpHandler(logging.handlers.SysLogHandler):
-    def __init__(self, address, facility, context=None, resend_size=32):
+    def __init__(self, address, facility, context=None,
+        resend_size=32, spool_dir=None, exception_on_emit=False):
         from otpme.lib import config
         global active_log_handlers
         self.address = address
@@ -39,10 +76,12 @@ class RelpHandler(logging.handlers.SysLogHandler):
         self.facility = facility
         self.relp_client = None
         self.resend_size = resend_size
+        self.spool_dir = spool_dir
+        self.logger = config.logger
+        self.exception_on_emit = exception_on_emit
+        self.connection_broken = False
         logging.Handler.__init__(self)
         active_log_handlers.append(self)
-        self.connection_broken = False
-        self.logger = config.logger
 
     def createSocket(self):
         try:
@@ -55,6 +94,7 @@ class RelpHandler(logging.handlers.SysLogHandler):
                 self.relp_client = RelpTCPClient(address=self.address,
                                                 resend_size=self.resend_size)
         except Exception as e:
+            self.connection_broken = True
             msg = ("Failed to connect to relp log server: %s: %s"
                     % (self.address, e))
             self.logger.warning(msg)
@@ -97,6 +137,8 @@ class RelpHandler(logging.handlers.SysLogHandler):
             self.relp_client.send_command(b"syslog", msg)
             self.connection_broken = False
         except Exception as e:
+            if self.exception_on_emit:
+                raise
             spool_message = False
             # On socket error try to resend message.
             if isinstance(e, socket.error):
@@ -113,10 +155,14 @@ class RelpHandler(logging.handlers.SysLogHandler):
                         spool_message = True
             else:
                 spool_message = True
-            # FIXME: Here we should spool not transmitted records.
             if spool_message:
-                #print("sss", record.levelname, record.msg)
-                self.handleError(record)
+                if self.spool_dir and os.path.exists(self.spool_dir):
+                    try:
+                        spool_record(self.spool_dir, record)
+                    except Exception as e:
+                        msg = "Failed to spool record: %s" % e
+                        print(msg)
+            self.handleError(record)
 
 def get_reconnecting_handler(handler_class):
     # https://stackoverflow.com/questions/40091456/python-sysloghandler-over-tcp-handling-connection-loss
@@ -129,10 +175,19 @@ def get_reconnecting_handler(handler_class):
         the same host/port used before.  Also make 1 attempt to re-send the
         message.
         """
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args, spool_dir=None, exception_on_emit=False, **kwargs):
             global active_log_handlers
-            super(ReconnectingSysLogHandler, self).__init__(*args, **kwargs)
+            try:
+                super(ReconnectingSysLogHandler, self).__init__(*args, **kwargs)
+            except Exception as e:
+                # We ignore socket errors because SysLogHandler calls createSocket()
+                # and we dont want the log handler to fail on __init__() because we
+                # want to spool records an failure.
+                if not isinstance(e, socket.error):
+                    raise
             self._is_retry = False
+            self.spool_dir = spool_dir
+            self.exception_on_emit = exception_on_emit
             active_log_handlers.append(self)
 
         def _reconnect(self):
@@ -151,6 +206,13 @@ def get_reconnecting_handler(handler_class):
             # infinite, recursive loop telling us something is broken.
             # This leaves the socket broken.
             if self._is_retry:
+                # If resend failed spool record.
+                if self.spool_dir and os.path.exists(self.spool_dir):
+                    try:
+                        spool_record(self.spool_dir, record)
+                    except Exception as e:
+                        msg = "Failed to spool record: %s" % e
+                        print(msg)
                 return
 
             # Set the retry flag and begin deciding if this is a closed socket, and
@@ -158,19 +220,17 @@ def get_reconnecting_handler(handler_class):
             self._is_retry = True
             try:
                 __, exception, __ = sys.exc_info()
-                # If the error is a broken pipe exception (32) or ssl EOF error (8), get a new socket.
-                if isinstance(exception, socket.error) and (exception.errno == 32 or exception.errno == 8):
+                # If the error is a broken pipe exception (32)
+                # or ssl EOF error (8) or connection refused (111),
+                # get a new socket.
+                if isinstance(exception, socket.error) and (exception.errno == 111 or exception.errno == 32 or exception.errno == 8):
                     try:
                         self._reconnect()
                     except:
-                        pass
-                    else:
-                        # Make an effort to rescue the record..
-                        self.emit(record)
-                # On any other socket error spool the record for later delivery.
-                elif isinstance(exception, socket.error):
-                    # FIXME: Here we should spool not transmitted records.
-                    pass
+                        if self.exception_on_emit:
+                            raise
+                    # Make an effort to rescue the record.
+                    self.emit(record)
             finally:
                 self._is_retry = False
 
@@ -190,10 +250,9 @@ def get_reconnecting_handler(handler_class):
     return ReconnectingSysLogHandler
 
 def get_log_handler(address="/dev/log", use_ssl=False, ca_cert_file=None,
-    client_cert_file=None, client_key_file=None, facility=None, relp=False):
+    client_cert_file=None, client_key_file=None, facility=None,
+    relp=False, spool_dir=None, exception_on_emit=False):
     from otpme.lib import config
-    from otpme.lib.multiprocessing import register_cleanup_method
-    register_cleanup_method(close_log_handlers)
     #logging.raiseExceptions = True
     if facility is None:
         facility = config.syslog_facility
@@ -223,19 +282,25 @@ def get_log_handler(address="/dev/log", use_ssl=False, ca_cert_file=None,
             log_handler = RelpHandler(address=address,
                                     facility=facility,
                                     context=context,
-                                    resend_size=32)
+                                    resend_size=32,
+                                    spool_dir=spool_dir,
+                                    exception_on_emit=exception_on_emit)
         else:
             reconnecting_handler = get_reconnecting_handler(TLSSysLogHandler)
             log_handler = reconnecting_handler(address=address,
-                                        socktype=socket.SOCK_STREAM,
-                                        secure=context,
-                                        facility=facility)
+                                            socktype=socket.SOCK_STREAM,
+                                            secure=context,
+                                            facility=facility,
+                                            spool_dir=spool_dir,
+                                            exception_on_emit=exception_on_emit)
     else:
         if relp:
             address = address.split(":")
             log_handler = RelpHandler(address=address,
                                     facility=facility,
-                                    resend_size=32)
+                                    resend_size=32,
+                                    spool_dir=spool_dir,
+                                    exception_on_emit=exception_on_emit)
         else:
             if len(address.split(":")) < 2:
                 socktype = socket.SOCK_DGRAM
@@ -244,7 +309,9 @@ def get_log_handler(address="/dev/log", use_ssl=False, ca_cert_file=None,
             reconnecting_handler = get_reconnecting_handler(logging.handlers.SysLogHandler)
             log_handler = reconnecting_handler(address=address,
                                             socktype=socktype,
-                                            facility=facility)
+                                            facility=facility,
+                                            spool_dir=spool_dir,
+                                            exception_on_emit=exception_on_emit)
 
     formatter = logging.Formatter('%(name)s: [%(levelname)s] %(message)s')
     log_handler.setFormatter(formatter)

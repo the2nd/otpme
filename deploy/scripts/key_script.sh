@@ -3,6 +3,13 @@
 # Distributed under the terms of the GNU General Public License v2
 
 unset LANG
+
+source /etc/otpme/otpme.conf
+
+if [ "$PINENTRY" = "" ] ; then
+	export PINENTRY="pinentry"
+fi
+
 # Offset lines (file header) to strip off decryption script from file.
 SCRIPT_LINES_OFFSET="5"
 
@@ -11,6 +18,11 @@ mkdir -p "$TMP_DIR"
 
 if (exec < /dev/tty) ; then
 	export TTY="/dev/tty"
+fi
+
+DISPLAY_FILE="$HOME/.display"
+if [ -f $DISPLAY_FILE ] ; then
+	export DISPLAY="$(cat $DISPLAY_FILE)"
 fi
 
 cleanup () {
@@ -26,6 +38,7 @@ ENC_TYPE="AES"
 # Default encryption of AES keys is via RSA public key
 AES_KEY_ENC="rsa"
 CIPHER="aes-256-cbc"
+ITERATIONS="5000000"
 
 PASS_DECRYPT_SCRIPT='#!/bin/bash
 SELF_LINES="$(head -n '$SCRIPT_LINES_OFFSET' "$0" | grep "#OTPME_SCRIPT_LINES:" | cut -d ":" -f 2)"
@@ -78,122 +91,122 @@ get_opts () {
         for I in $ARGS ; do
                 case "$I" in
                         --use-gpg)
-				shift
-                                GPG_ID="$1"
-				AES_KEY_ENC="gpg"
-				# Make sure we get an attribute for --use-gpg (and not an option)
-				if [[ $GPG_ID == -* ]] ; then
-					show_help
-					return 1
-				fi
-                                shift
+							shift
+							GPG_ID="$1"
+							GPG_KEY_ENCRYPTION="true"
+							# Make sure we get an attribute for --use-gpg (and not an option)
+							if [[ $GPG_ID == -* ]] ; then
+								show_help
+								return 1
+							fi
+							shift
                         ;;
 
 
                         --yubikey-hmac)
-				shift
-				YUBIKEY_SLOT="$1"
-				AES_KEY_ENC="yubikey-hmac"
-				# Make sure we get an yubikey slot as integer.
-				if ! echo "$YUBIKEY_SLOT" | grep '^[0-9]*$' > /dev/null 2>&1 ; then
-					show_help
-					return 1
-				fi
-                                shift
+							shift
+							YUBIKEY_SLOT="$1"
+							AES_KEY_ENC="yubikey-hmac"
+							# Make sure we get an yubikey slot as integer.
+							if ! echo "$YUBIKEY_SLOT" | grep '^[0-9]*$' > /dev/null 2>&1 ; then
+								show_help
+								return 1
+							fi
+							shift
                         ;;
 
 
                         -u)
-				shift
-                                ENC_USERNAME="$1"
-                                shift
+							shift
+							ENC_USERNAME="$1"
+							shift
                         ;;
 
 
                         -b)
-				shift
-                                KEY_LEN="$1"
-                                shift
+							shift
+							KEY_LEN="$1"
+							shift
                         ;;
 
 
                         --server-key)
-                                SIGN_MODE="server"
-                                shift
+							KEY_MODE="server"
+							shift
                         ;;
 
 
                         --rsa)
-                                USE_RSA="True"
-				ENC_TYPE="RSA"
-                                shift
+							USE_RSA="True"
+							ENC_TYPE="RSA"
+							shift
                         ;;
 
 
                         --salt-file)
-				shift
-                                SALT_FILE="$1"
-				if [ "$SALT_FILE" != "" ] ; then
-					# FIXME: Is there a better way than using the SHA1 hash of the salt file as AES salt!?!
-					PASSWORD_SALT="$(sha1sum "$SALT_FILE" | awk '{ print $1 }')"
-				fi
-                                shift
+							shift
+							SALT_FILE="$1"
+							if [ "$SALT_FILE" != "" ] ; then
+								# FIXME: Is there a better way than using the SHA1 hash of the salt file as AES salt!?!
+								PASSWORD_SALT="$(sha1sum "$SALT_FILE" | awk '{ print $1 }')"
+							fi
+							shift
                         ;;
 
 
                         --key-enc)
-				shift
-				KEY_ENC="$1"
-                                shift
+							shift
+							KEY_ENC="$1"
+							shift
                         ;;
 
                         --force-pass)
-				FORCE_PASS="True"
-				shift
+							FORCE_PASS="True"
+							shift
                         ;;
 
 
                         --no-rsa)
-				NO_RSA="True"
-				shift
+							NO_RSA="True"
+							shift
                         ;;
 
 
                         --no-self-decrypt)
-                                NO_SELF_DECRYPT_SCRIPT="True"
-                                shift
+							NO_SELF_DECRYPT_SCRIPT="True"
+							shift
                         ;;
 
 
-			--api)
-				OTPME_OPTS="$OTPME_OPTS --api"
-				shift
-			;;
+						--api)
+							OTPME_OPTS="$OTPME_OPTS --api"
+							shift
+						;;
 
-			--auth-token)
-				shift
-				AUTH_TOKEN="$1"
-				OTPME_OPTS="--auth-token $AUTH_TOKEN $OTPME_OPTS"
-				shift
-			;;
+						--auth-token)
+							shift
+							AUTH_TOKEN="$1"
+							OTPME_OPTS="--auth-token $AUTH_TOKEN $OTPME_OPTS"
+							shift
+						;;
 
-                        -h)
-                                shift
-                                show_help
-                                return 1
-                        ;;
-
-
-                        --help)
-                                shift
-                                show_help
-                                return 1
-                        ;;
+						-h)
+							shift
+							show_help
+							return 1
+						;;
 
 
-			--)
-				break
-			;;
+						--help)
+							shift
+							show_help
+							return 1
+						;;
+
+
+						--)
+							break
+						;;
                 esac
         done
 
@@ -233,29 +246,32 @@ get_opts () {
 }
 
 show_help () {
-	echo "Usage: $BASENAME [sign|verify|encrypt|decrypt] [-u username] [--help]"
+	echo "Usage: $BASENAME [sign|verify|encrypt|decrypt|rsa_encrypt|rsa_decrypt] [-u username] [--help]"
 	echo
 	echo "Commands:"
-	echo "	gen_keys			Generate users RSA key pair"
-	echo "	gen_csr				Generate CSR"
-	echo "	change_key_pass			Change passphrase of users private key"
-	echo "	export_key			Export users private key unencrypted"
+	echo "	gen_keys					Generate users RSA key pair"
+	echo "	gen_csr						Generate CSR"
+	echo "	change_key_pass				Change passphrase of users private key"
+	echo "	encrypt_key					Encrypt private key from stdin and write private key + public key to stdout"
+	echo "	export_key					Export users private key unencrypted"
 	echo "	sign <file> <sig_file>		Create signature file for <file>"
 	echo "	verify <sig_file> <file>	Verify signature of <file>"
 	echo "	encrypt <file> <enc_file>	Encrypt <file> and write it to <enc_file>"
 	echo "	decrypt <enc_file> <file>	Decrypt <enc_file> and write it to <file>"
+	echo "	rsa_encrypt					Encrypt <stdin> and write it to <stdout>"
+	echo "	rsa_decrypt 				Decrypt <stdin> and write it to <stdout>"
 	echo
 	echo "Options:"
-	echo "	-u <username>			Encrypt AES key of encrypted file with RSA public key of <username>"
-	echo "	-b <bit>			Generate RSA key (gen_keys) of len <bit>"
-	echo "	--server-key			Users RSA private key is kept on server"
-	echo "	--rsa				Encrypt file with RSA public directly (file size limited to size of key)"
-	echo "	--no-rsa			Disable use of RSA public keys for encryption of AES keys."
-	echo "	--salt-file <file>		Use <file> as salt for AES encryption"
+	echo "	-u <username>				Encrypt AES key of encrypted file with RSA public key of <username>"
+	echo "	-b <bit>					Generate RSA key (gen_keys) of len <bit>"
+	echo "	--server-key				Users RSA private key is kept on server"
+	echo "	--rsa						Encrypt file with RSA public directly (file size limited to size of key)"
+	echo "	--no-rsa					Disable use of RSA public keys for encryption of AES keys."
+	echo "	--salt-file <file>			Use <file> as salt for AES encryption"
 	echo "	--key-enc <rsa|aes|gpg>		Force encryption of AES keys with the given encrytion type (e.g. gpg)"
-	echo "	--use-gpg <id>			Use given GPG key (e.g. to en/decrypt RSA private key)"
+	echo "	--use-gpg <id>				Use given GPG key (e.g. to en/decrypt RSA private key)"
 	echo "	--yubikey-hmac <slot>		Use yubikey in HMAC challenge/response mode to derive AES passphrase."
-	echo "	--no-self-decrypt		Do not add self decryption script to encrypted file."
+	echo "	--no-self-decrypt			Do not add self decryption script to encrypted file."
 }
 
 message () {
@@ -300,15 +316,15 @@ dump_private_key () {
 		return
 	fi
 	tty_message "Loading private key..."
-	otpme-user $OTPME_OPTS dump_key -p "$_OTPME_KEYSCRIPT_USER"
+	PRIVATE_KEY="$(otpme-user $OTPME_OPTS dump_key -p "$_OTPME_KEYSCRIPT_USER")"
+	echo $PRIVATE_KEY
 }
 
 get_private_key () {
 	if ! PRIVATE_KEY="$(dump_private_key)" ; then
 		return 1
 	fi
-
-	echo "$PRIVATE_KEY" | decrypt_key
+	echo "$PRIVATE_KEY" | base64 -d | decrypt_key
 }
 
 yk_derive_aes_key () {
@@ -332,12 +348,14 @@ gpg_encrypt () {
 		return 1
 	fi
 	TMP_FILE="$TMP_DIR/$RANDOM".tmp
-        gpg2 --output - --encrypt -r "$GPG_ID" /dev/stdin 2> "$TMP_FILE"
+	gpg2 --output - --encrypt -r "$GPG_ID" /dev/stdin 2> "$TMP_FILE"
 	EXIT="$?"
 	if [ "$EXIT" != "0" ] ; then
 		cat "$TMP_FILE" > /dev/stderr
+		rm "$TMP_FILE"
 		return $EXIT
 	else
+		rm "$TMP_FILE"
 		return 0
 	fi
 }
@@ -347,12 +365,15 @@ gpg_decrypt () {
 		return 1
 	fi
 	TMP_FILE="$TMP_DIR/$RANDOM".tmp
-	gpg2 --output - --decrypt -r "$GPG_ID" /dev/stdin 2> "$TMP_FILE"
+	#gpg2 -vvv --output - --decrypt -r "$GPG_ID" /dev/stdin 2> "$TMP_FILE"
+	gpg2 -vvv --output - --decrypt /dev/stdin 2> "$TMP_FILE"
 	EXIT="$?"
 	if [ "$EXIT" != "0" ] ; then
 		cat "$TMP_FILE" > /dev/stderr
+		rm "$TMP_FILE"
 		return $EXIT
 	else
+		rm "$TMP_FILE"
 		return 0
 	fi
 }
@@ -382,7 +403,7 @@ aes_encrypt () {
 		fi
 	fi
 
-	cat | openssl $CIPHER -pbkdf2 -salt -a -A -pass file:<(echo -n "$AES_PASS") | base64 -w 0
+	cat | openssl $CIPHER -pbkdf2 -salt -iter $ITERATIONS -a -A -pass file:<(echo -n "$AES_PASS") | base64 -w 0
 	if [ "${PIPESTATUS[1]}" != "0" ] ; then
 		echo "Error while doing AES encryption." 1>&2
 		return 1
@@ -401,7 +422,7 @@ aes_decrypt () {
 		fi
 	fi
 
-	cat | openssl $CIPHER -pbkdf2 -salt -a -A -d -pass file:<(echo -n "$PASSWORD_SALT$AES_PASS")
+	cat | openssl $CIPHER -pbkdf2 -salt -iter $ITERATIONS -a -A -d -pass file:<(echo -n "$PASSWORD_SALT$AES_PASS")
 	if [ "${PIPESTATUS[1]}" != "0" ] ; then
 		echo "Error while doing AES decryption." 1>&2
 		return 1
@@ -409,7 +430,7 @@ aes_decrypt () {
 }
 
 encrypt_key () {
-	if [ "$GPG_ID" ] ; then
+	if [ "$GPG_KEY_ENCRYPTION" ] ; then
 		gpg_encrypt | base64 -w 0
 		return "${PIPESTATUS[0]}"
 	else
@@ -422,7 +443,7 @@ encrypt_key () {
 }
 
 decrypt_key () {
-	if [ "$GPG_ID" ] ; then
+	if [ "$GPG_KEY_ENCRYPTION" ] ; then
 		gpg_decrypt
 	else
 		AES_PASS="$_OTPME_KEYSCRIPT_KEY_PASS"
@@ -439,16 +460,21 @@ read_pass_from_tty () {
 	else
 		PROMPT="$1"
 	fi
-	echo -n "$PROMPT" > /dev/tty
-	read -s PASSWORD < /dev/tty
-	echo > /dev/tty
-	echo "$PASSWORD"
+	if [ "$GPG_TTY" = "" ] ; then
+		GPG_TTY="$(otpme-tool get_tty)"
+	fi
+	echo -e "SETDESC Private key password for command $COMMAND\nSETPROMPT $PROMPT:\nGETPIN\n" | $PINENTRY -T "$GPG_TTY" | grep "^D " | cut -d' ' -f2-
+	#echo -n "$PROMPT" > /dev/tty
+	#read -s PASSWORD < /dev/tty
+	#echo > /dev/tty
+	#echo "$PASSWORD"
 }
 
 create_file_header () {
 	KEY_ENC_TYPE="$AES_KEY_ENC"
 	if [ "$NO_SELF_DECRYPT_SCRIPT" != "" ] ; then
 		echo "#ENC_TYPE:$ENC_TYPE"
+		echo "#ENC_USERNAME:$ENC_USERNAME"
 		echo "#CIPHER:$CIPHER"
 		echo "#KEY_ENC_TYPE:$KEY_ENC_TYPE"
 		echo "#OTPME_SCRIPT_LINES:0"
@@ -462,6 +488,7 @@ create_file_header () {
 	local SCRIPT_LINES="$(echo -en "$DECRYPT_SCRIPT" | wc -l)"
 	local SCRIPT_LINES="$[$SCRIPT_LINES+$SCRIPT_LINES_OFFSET]"
 	echo "#ENC_TYPE:$ENC_TYPE"
+	echo "#ENC_USERNAME:$ENC_USERNAME"
 	echo "#CIPHER:$CIPHER"
 	echo "#KEY_ENC_TYPE:$KEY_ENC_TYPE"
 	echo "#OTPME_SCRIPT_LINES:$SCRIPT_LINES"
@@ -481,25 +508,28 @@ handle_file_type () {
 		cat
 		return
 	fi
-	# Get AES cipher from file header.
+	# Get ENC_USERNAME from file header. This may be empty if no ENC_USERNAME was given.
 	read LINE2
-	CIPHER="$(echo "$LINE2" | grep "#CIPHER:" | cut -d ":" -f 2)"
+	ENC_USERNAME="$(echo "$LINE2" | grep "#ENC_USERNAME:" | cut -d ":" -f 2)"
+	# Get AES cipher from file header.
+	read LINE3
+	CIPHER="$(echo "$LINE3" | grep "#CIPHER:" | cut -d ":" -f 2)"
 	if [ "$CIPHER" = "" ] ; then
-		echo "File header is missing cipher." > /dev/stderr
+		echo "File header is missing cipher. $LINE3" > /dev/stderr
 		return 1
 	fi
 	# Get key encryption type (e.g. AES key encrypted with passphrase)
-	read LINE3
-	local KEY_ENC_TYPE="$(echo "$LINE3" | grep "#KEY_ENC_TYPE:" | cut -d ":" -f 2)"
+	read LINE4
+	local KEY_ENC_TYPE="$(echo "$LINE4" | grep "#KEY_ENC_TYPE:" | cut -d ":" -f 2)"
 	if [ "$KEY_ENC_TYPE" = "" ] ; then
-		echo "Found unknown file header: $LINE3" > /dev/stderr
+		echo "Found unknown file header: $LINE4" > /dev/stderr
 		return 1
 	fi
 	# Get length of self decryption script.
-	read LINE4
-	local SCRIPT_LINES="$(echo "$LINE4" | grep "#OTPME_SCRIPT_LINES:" | cut -d ":" -f 2)"
+	read LINE5
+	local SCRIPT_LINES="$(echo "$LINE5" | grep "#OTPME_SCRIPT_LINES:" | cut -d ":" -f 2)"
 	if [ "$SCRIPT_LINES" = "" ] ; then
-		echo "Found unknown file header: $LINE4" > /dev/stderr
+		echo "Found unknown file header: $LINE5" > /dev/stderr
 		return 1
 	fi
 	# Skip all lines of a possible self decryption script.
@@ -542,13 +572,14 @@ decrypt_file () {
 		fi
 		# Handle RSA encrypted AES key.
 		if [ "$KEY_ENC_TYPE" = "rsa" ] ; then
-			if [ "$SIGN_MODE" = "server" ] ; then
+			if [ "$KEY_MODE" = "server" ] ; then
 				if [ "$_OTPME_KEYSCRIPT_KEY_PASS" = "" ] ; then
-					if ! AES_KEY="$(otpme-user $OTPME_OPTS decrypt --data "$AES_KEY_ENCRYPTED" "$_OTPME_KEYSCRIPT_USER")" ; then
+					#if ! AES_KEY="$(otpme-user $OTPME_OPTS decrypt --data "$AES_KEY_ENCRYPTED" "$_OTPME_KEYSCRIPT_USER" | base64 -d)" ; then
+					if ! AES_KEY="$(echo -n "$AES_KEY_ENCRYPTED" | otpme-user $OTPME_OPTS decrypt --stdin-data "$_OTPME_KEYSCRIPT_USER" | base64 -d)" ; then
 						return 1
 					fi
 				else
-					if ! AES_KEY="$(echo "$_OTPME_KEYSCRIPT_KEY_PASS" | $(which otpme-user) $OTPME_OPTS decrypt --data "$AES_KEY_ENCRYPTED" --stdin-pass "$_OTPME_KEYSCRIPT_USER")" ; then
+					if ! AES_KEY="$(echo "$_OTPME_KEYSCRIPT_KEY_PASS" | $(which otpme-user) $OTPME_OPTS decrypt --data "$AES_KEY_ENCRYPTED" --stdin-pass "$_OTPME_KEYSCRIPT_USER" | base64 -d)" ; then
 						return 1
 					fi
 				fi
@@ -563,10 +594,11 @@ decrypt_file () {
 
 	# Handle RSA encrypted data.
 	if [ "$ENC_TYPE" = "RSA" ] ; then
-		if [ "$SIGN_MODE" = "server" ] ; then
+		if [ "$KEY_MODE" = "server" ] ; then
 			RSA_DATA="$(cat)"
 			if [ "$_OTPME_KEYSCRIPT_KEY_PASS" = "" ] ; then
-				otpme-user $OTPME_OPTS decrypt --data "$RSA_DATA" "$_OTPME_KEYSCRIPT_USER"
+				#otpme-user $OTPME_OPTS decrypt --data "$RSA_DATA" "$_OTPME_KEYSCRIPT_USER"
+				echo -n "$RSA_DATA" | otpme-user $OTPME_OPTS decrypt --stdin-data "$_OTPME_KEYSCRIPT_USER"
 			else
 				echo "$_OTPME_KEYSCRIPT_KEY_PASS" | $(which otpme-user) $OTPME_OPTS decrypt --data "$RSA_DATA" --stdin-pass "$_OTPME_KEYSCRIPT_USER"
 			fi
@@ -590,11 +622,14 @@ if ! get_opts "$@" ; then
 	exit 1
 fi
 
+if [ "$KEY_MODE" = "" ] ; then
+	KEY_MODE="$(otpme-user $OTPME_OPTS get_key_mode $_OTPME_KEYSCRIPT_USER)"
+fi
+
 case "$COMMAND" in
 	export_key)
 		get_private_key
 	;;
-
 
 	gen_keys)
 		tty_message "Generating key ($KEY_LEN)..."
@@ -613,7 +648,6 @@ case "$COMMAND" in
 		echo "$PRIVATE_KEY_ENC" "$PUBLIC_KEY_ENC"
 	;;
 
-
 	gen_csr)
 		PRIVATE_KEY="$(get_private_key)"
 		CSR_SUBJECT="/C=DE/ST=NRW/L=Koeln/O=OTPme/OU=Development/CN=otpme.org"
@@ -627,9 +661,21 @@ case "$COMMAND" in
 		echo "$CSR"
 	;;
 
+	encrypt_key)
+		PRIVATE_KEY="$(cat -)"
+		if ! PRIVATE_KEY_ENC="$(echo "$PRIVATE_KEY" | encrypt_key)" ; then
+			exit 1
+		fi
+		if ! PUBLIC_KEY="$(echo "$PRIVATE_KEY" | openssl rsa -pubout -in /dev/stdin)" ; then
+			echo "Error extacting public key." 1>&2
+			exit 1
+		fi
+		PUBLIC_KEY_ENC="$(echo -n "$PUBLIC_KEY" | base64 -w 0)"
+		echo "$PRIVATE_KEY_ENC" "$PUBLIC_KEY_ENC"
+	;;
 
 	change_key_pass)
-		if [ "$GPG_ID" != "" ] ; then
+		if [ "$GPG_KEY_ENCRYPTION" != "" ] ; then
 			echo "Cannot change key passphrase in GPG mode." > /dev/stderr
 			exit 1
 		fi
@@ -642,6 +688,27 @@ case "$COMMAND" in
 		fi
 	;;
 
+	rsa_encrypt)
+		if [ "$ENC_USERNAME" = "" ] ; then
+			PUBLIC_KEY="$(get_public_key)"
+		else
+			PUBLIC_KEY="$(get_public_key "$ENC_USERNAME")"
+		fi
+		openssl pkeyutl -encrypt -pubin -inkey <(echo -n "$PUBLIC_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 | base64 -w 0
+		exit $?
+	;;
+
+	rsa_decrypt)
+		if [ "$KEY_MODE" = "server" ] ; then
+			#DATA="$(cat -)"
+			#otpme-user $OTPME_OPTS decrypt --data "$DATA" "$_OTPME_KEYSCRIPT_USER" | base64 -d
+			cat - | otpme-user $OTPME_OPTS decrypt --stdin-data "$_OTPME_KEYSCRIPT_USER" | base64 -d
+		else
+			PRIVATE_KEY="$(get_private_key)"
+			cat - | base64 -d | openssl pkeyutl -decrypt -inkey <(echo -n "$PRIVATE_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+		fi
+		exit $?
+	;;
 
 	sign)
 		FILE="${PARAMETERS[0]}"
@@ -653,7 +720,7 @@ case "$COMMAND" in
 			error_message "$BASENAME: No such file or directory: $FILE"
 			exit 1
 		fi
-		if [ "$SIGN_MODE" = "server" ] ; then
+		if [ "$KEY_MODE" = "server" ] ; then
 			SHA256_SUM="$(sha256sum "$FILE" | awk '{ print $1 }')"
 			if [ "$_OTPME_KEYSCRIPT_KEY_PASS" = "" ] ; then
 				if ! SIGNATURE="$(otpme-user $OTPME_OPTS sign_data --digest "$SHA256_SUM" "$_OTPME_KEYSCRIPT_USER")" ; then
@@ -679,7 +746,6 @@ case "$COMMAND" in
 		fi
 		(echo 'USERNAME="'$_OTPME_KEYSCRIPT_USER'"';echo 'SIGNATURE="'$SIGNATURE'"')  > "$OUTFILE"
 	;;
-
 
 	verify)
 		SIG_FILE="${PARAMETERS[0]}"
@@ -711,9 +777,9 @@ case "$COMMAND" in
 		#OPENSSL_VERIFY_CMD="openssl dgst -sha256 -verify /dev/stdin -signature "$TMP_FILE" "$FILE""
 		# Sign PKCS1_PSS
 		OPENSSL_VERIFY_CMD="openssl dgst -sha256 -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-2 -verify /dev/stdin -signature "$TMP_FILE" "$FILE""
+		rm "$TMP_FILE"
 		echo "$SIGNER_PUBLIC_KEY" | $OPENSSL_VERIFY_CMD
 	;;
-
 
 	encrypt)
 		FILE="${PARAMETERS[0]}"
@@ -763,7 +829,6 @@ case "$COMMAND" in
 		(echo "$AES_KEY_ENCRYPTED";cat "$FILE" | openssl enc -$CIPHER -salt -pbkdf2 -pass file:<(echo -n "$AES_KEY") | base64 -w 0) | gzip -f >> "$OUTFILE"
 	;;
 
-
 	decrypt)
 		FILE="${PARAMETERS[0]}"
 		OUTFILE="${PARAMETERS[1]}"
@@ -782,7 +847,6 @@ case "$COMMAND" in
 
 		cat "$FILE" | handle_file_type | decrypt_file "$OUTFILE"
 	;;
-
 
 	*)
 		# Print to stderr to be catched by otpme.

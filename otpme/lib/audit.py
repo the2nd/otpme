@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import json
+import socket
 import logging
 from functools import wraps
 
@@ -10,20 +12,19 @@ try:
 except:
     pass
 
-from otpme.lib import syslog
 from otpme.lib import config
+from otpme.lib import syslog
+from otpme.lib import filetools
 from otpme.lib import multiprocessing
 from otpme.lib.multiprocessing import register_atfork_method
 
 from otpme.lib.exceptions import *
 
 audit_loggers = {}
-logger = config.logger
 
 def atfork_cleanup():
     global audit_loggers
     audit_loggers.clear()
-
 register_atfork_method(atfork_cleanup)
 
 def audit_log(ignore_args=None, ignore_api_calls=False):
@@ -31,6 +32,7 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
     def wrapper(f):
         @wraps(f)
         def wrapped(self, *f_args, **f_kwargs):
+            logger = config.logger
             global audit_loggers
             _ignore_args = [
                             'verbose_level',
@@ -137,21 +139,96 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
         return wrapped
     return wrapper
 
-def get_audit_logger(address="/dev/log", use_ssl=True, ca_cert_file=None,
-    client_cert_file=None, client_key_file=None, relp=False):
+def process_spooled_logs():
+    logger = config.logger
+    spool_dir = config.audit_log_spool_dir
+    if not os.path.exists(spool_dir):
+        return
+    try:
+        spool_files = os.listdir(spool_dir)
+    except Exception as e:
+        msg = "Failed to read spool dir: %s: %s" % (spool_dir, e)
+        logger.warning(msg)
+        return
+    if not spool_files:
+        return
+    try:
+        audit_logger = get_audit_logger(no_spool=True, exception_on_emit=True)
+    except Exception as e:
+        msg = "Failed to get audit logger: %s" % e
+        logger.warning(msg)
+        return
+    for x in spool_files:
+        spool_file = os.path.join(spool_dir, x)
+        try:
+            spool_data = filetools.read_file(spool_file)
+        except Exception as e:
+            msg = "Failed to read log spool file: %s" % e
+            logger.warning(msg)
+            continue
+        try:
+            spool_data = json.loads(spool_data)
+        except Exception as e:
+            msg = "Failed to load log spool data: %s: %s" % (spool_file, e)
+            logger.warning(msg)
+            continue
+        try:
+            timestamp = spool_data['created']
+            loglevel = spool_data['loglevel']
+            message = spool_data['message']
+        except KeyError:
+            msg = "Got invalid log entry: %s" % spool_file
+            logger.warning(msg)
+            continue
+        log_message = "LOG_RESEND: %s: %s" % (timestamp, message)
+        try:
+            log_method = getattr(audit_logger, loglevel.lower())
+        except:
+            msg = "Invalid loglevel: %s: %s" % (loglevel, spool_file)
+            logger.warning(msg)
+            continue
+        try:
+            log_method(log_message)
+        except Exception as e:
+            msg = "Failed to resend log message: %s" % e
+            logger.warning(msg)
+            if isinstance(e, socket.error):
+                break
+            continue
+        try:
+            os.remove(spool_file)
+        except Exception as e:
+            msg = "Failed to remove spool file: %s: %s" % (spool_file, e)
+            logger.warning(msg)
+
+    for handler in audit_logger.handlers:
+        try:
+            handler.close()
+        except:
+            pass
+
+def get_audit_logger(no_spool=False, exception_on_emit=False):
     """ Get audit logger. """
     if not config.audit_log_enabled:
         return
+    if not config.audit_log_server:
+        return
+    logger = config.logger
     address = config.audit_log_server
     facility = config.audit_log_facility
     relp = False
     if config.audit_log_protocol == "relp":
         relp = True
     ca_cert_file = None
+    ca_cert_file = None
+    client_key_file = None
+    client_cert_file = None
     use_ssl = config.audit_log_use_tls
+    if no_spool:
+        spool_dir = None
+    else:
+        spool_dir = config.audit_log_spool_dir
     if use_ssl:
-        client_cert_file = None
-        client_key_file = None
         ca_cert_file = config.audit_log_ca_cert
         if not ca_cert_file:
             msg = "Cannot start audit log. Site misses CA cert."
@@ -174,7 +251,9 @@ def get_audit_logger(address="/dev/log", use_ssl=True, ca_cert_file=None,
                                         client_cert_file=client_cert_file,
                                         client_key_file=client_key_file,
                                         facility=facility,
-                                        relp=relp)
+                                        relp=relp,
+                                        spool_dir=spool_dir,
+                                        exception_on_emit=exception_on_emit)
     audit_logger = logging.getLogger('OTPme-audit')
     audit_logger.setLevel(logging.DEBUG)
     if audit_logger.hasHandlers():

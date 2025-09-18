@@ -4,16 +4,16 @@
 
 unset LANG
 BASENAME="$(basename "$0" | cut -d '.' -f 1)"
+PINENTRY_BIN="$OTPME_BIN_DIR/otpme-pinentry"
 
 if [ "$SSH_AGENT_NAME" = "" ] ; then
 	export SSH_AGENT_NAME="ssh-agent"
 fi
 
-
 # Get command line options
 get_opts () {
         # Get options
-        if ! ARGS=$(getopt -n $BASENAME -l help -l gpg-agent -l gpg-smartcard h $*) ; then
+        if ! ARGS=$(getopt -n $BASENAME -l help -l pinentry -l gpg-agent -l gpg-smartcard h $*) ; then
                 show_help
                 return 1
         fi
@@ -21,19 +21,25 @@ get_opts () {
         for I in $ARGS ; do
                 case "$I" in
                         --gpg-smartcard)
-				# We need to export all option variables to make
-				# them available when calling ourselves (e.g. via
-				# $0 status)
-                                export USE_GPG_SMARTCARD="True"
-				# This option implies --gpg-agent
-				export SSH_AGENT_NAME="gpg-agent"
-                                shift
+							# We need to export all option variables to make
+							# them available when calling ourselves (e.g. via
+							# $0 status)
+							export USE_GPG_SMARTCARD="True"
+							# This option implies --gpg-agent
+							export SSH_AGENT_NAME="gpg-agent"
+							shift
                         ;;
 
                         --gpg-agent)
-				export SSH_AGENT_NAME="gpg-agent"
-                                shift
-			;;
+							export SSH_AGENT_NAME="gpg-agent"
+							shift
+						;;
+
+                        --pinentry)
+							shift
+							export PINENTRY_BIN="$1"
+							shift
+						;;
 
                         -h)
                                 shift
@@ -123,7 +129,7 @@ case $COMMAND in
 			echo "SSH agent already running."
 		else
 			if [ "$SSH_AGENT_NAME" == "gpg-agent" ] ; then
-				AGENT_OUT="$(gpg-agent --daemon --enable-ssh-support --log-file ~/.gnupg/gpg-agent.log --pinentry-program $OTPME_BIN_DIR/otpme-pinentry)"
+				AGENT_OUT="$(gpg-agent --daemon --enable-ssh-support --log-file ~/.gnupg/gpg-agent.log --pinentry-program $PINENTRY_BIN)"
 				AGENT_PID="$(pgrep -u "$USER" -f "$SSH_AGENT_NAME")"
 				AGENT_OUT="$AGENT_OUT\nSSH_AGENT_PID=$AGENT_PID;export SSH_AGENT_PID"
 			else
@@ -141,36 +147,37 @@ case $COMMAND in
 		done
 	;;
 
-	unlock)
-		if $0 status > /dev/null 2>&1 ; then
-			if [ "$SSH_AGENT_NAME" == "gpg-agent" ] ; then
-				if [ "$USE_GPG_SMARTCARD" = "" ] ; then
-					$0 restart
-				else
-					# When using gpg-agent with smartcard we have to make sure that the running agent
-					# is from this session (e.g. DISPLAY must be set for pinentry to work).
-					if pgrep -f "$SSH_AGENT_NAME" -u "$USER" > /dev/null 2>&1 ; then
-						# On screen unlock we must ensure gpg-agent will re-ask for the token pin.
-						# There are two ways to accomplish this:
-						#   gpgconf --kill scdaemon
-						#   gpg-connect-agent "SCD RESET" /bye
-						# Both do not work for me on debian bookworm with yubikey 5, so we kill scdaemon.
-						while pgrep -u "$USER" scdaemon > /dev/null 2>&1 ; do
-							pkill -9 -u "$USER" scdaemon > /dev/null 2>&1
-						done
-					else
-						# If the found gpg-agent is not from this session restart it.
-						$0 restart
-					fi
-				fi
-			else
-				# When using ssh-agent we just restart the agent.
-				$0 restart
-			fi
-		else
-			$0 start
-		fi
-	;;
+	# Not used anymore. We restart gpg-agent with pinentry from otpme.conf.
+	#unlock)
+	#	if $0 status > /dev/null 2>&1 ; then
+	#		if [ "$SSH_AGENT_NAME" == "gpg-agent" ] ; then
+	#			if [ "$USE_GPG_SMARTCARD" = "" ] ; then
+	#				$0 restart
+	#			else
+	#				# When using gpg-agent with smartcard we have to make sure that the running agent
+	#				# is from this session (e.g. DISPLAY must be set for pinentry to work).
+	#				if pgrep -f "$SSH_AGENT_NAME" -u "$USER" > /dev/null 2>&1 ; then
+	#					# On screen unlock we must ensure gpg-agent will re-ask for the token pin.
+	#					# There are two ways to accomplish this:
+	#					#   gpgconf --kill scdaemon
+	#					#   gpg-connect-agent "SCD RESET" /bye
+	#					# Both do not work for me on debian bookworm with yubikey 5, so we kill scdaemon.
+	#					while pgrep -u "$USER" scdaemon > /dev/null 2>&1 ; do
+	#						pkill -9 -u "$USER" scdaemon > /dev/null 2>&1
+	#					done
+	#				else
+	#					# If the found gpg-agent is not from this session restart it.
+	#					$0 restart
+	#				fi
+	#			fi
+	#		else
+	#			# When using ssh-agent we just restart the agent.
+	#			$0 restart
+	#		fi
+	#	else
+	#		$0 start
+	#	fi
+	#;;
 
 	restart)
 			$0 stop

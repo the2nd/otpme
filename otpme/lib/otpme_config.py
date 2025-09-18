@@ -23,7 +23,6 @@ if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
 
 import otpme
 from otpme.lib import re
-from otpme.lib import log
 from otpme.lib.messages import message
 from otpme.lib.encryption import get_module
 from otpme.lib.messages import error_message
@@ -507,6 +506,7 @@ class OTPmeConfig(object):
         self.register_config_var("sockets_dir", str, None)
         self.register_config_var("sync_dir", str, None)
         self.register_config_var("reload_file_path", str, None)
+        self.register_config_var("audit_log_spool_dir", str, None)
         self.register_config_var("node_sync_file", str, None)
         self.register_config_var("cache_clear_file", str, None)
         self.register_config_var("node_joined_file", str, None)
@@ -964,6 +964,7 @@ class OTPmeConfig(object):
         self.reload_file_path = os.path.join(self.spool_dir, "reload")
         self.node_sync_file = os.path.join(self.spool_dir, "node_synced")
         self.cache_clear_file = os.path.join(self.spool_dir, "cache_clear")
+        self.audit_log_spool_dir = os.path.join(self.spool_dir, "audit_log")
         self.node_joined_file = os.path.join(self.spool_dir, "new_node")
         self.realm_data_file_path = os.path.join(self.cache_dir, "realm-data.json")
         self.sync_status_file_path = os.path.join(self.cache_dir, "sync-status.json")
@@ -2103,6 +2104,8 @@ class OTPmeConfig(object):
                     # Contains log files
                     self.log_dir : 0o750,
                     self.cache_dir : 0o775,
+                    # Audit log spool dir.
+                    self.audit_log_spool_dir : 0o770,
                     # We write offline tokens to offline dir and thus we need
                     # it world writeable.
                     self.offline_dir : 0o1777,
@@ -2566,6 +2569,7 @@ class OTPmeConfig(object):
         log_file=False, logger_syslog=False, logger_systemd=False,
         timestamps=None, pid=None, logger_color_logs=None, **kwargs):
         """ Configure logger. """
+        from otpme.lib import log
         logger_logfile = log_file
         logger_loglevel = self.loglevel
         if logger_color_logs is None:
@@ -2631,7 +2635,7 @@ class OTPmeConfig(object):
                                 systemd=logger_systemd, level=logger_loglevel,
                                 color_logs=logger_color_logs, timestamps=timestamps,
                                 logger=existing_logger, **kwargs)
-        return self.logger
+        return self._logger
 
     def get_extensions(self):
         """ Return list with all installed OTPme extensions. """
