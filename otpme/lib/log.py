@@ -15,7 +15,6 @@ except:
     pass
 
 from otpme.lib.syslog import get_log_handler
-from otpme.lib.messages import error_message
 from otpme.lib.filetools import AtomicFileLock
 
 fd = None
@@ -256,7 +255,6 @@ def log_lock():
             global fd
             if self.logfile:
                 from otpme.lib import config
-                #from otpme.lib import multiprocessing
                 if fd:
                     try:
                         fd.release_lock()
@@ -267,6 +265,7 @@ def log_lock():
                     except:
                         pass
                     fd = None
+                if config.locks_dir:
                     counter = 0
                     max_wait = 1000
                     lock_id = self.logfile.replace("/", ":")
@@ -274,6 +273,8 @@ def log_lock():
                     while counter < max_wait:
                         try:
                             fd = AtomicFileLock(path=lock_file,
+                                                user=config.user,
+                                                group=config.group,
                                                 write_lock=True,
                                                 block=False)
                             break
@@ -281,8 +282,9 @@ def log_lock():
                             counter += 1
                             time.sleep(0.001)
                     if not fd:
-                        msg = "Failed to acquire logfile lock: %s" % self.logfile
-                        error_message(msg)
+                        msg = "Failed to acquire logfile lock: %s\n" % self.logfile
+                        sys.stderr.write(msg)
+                        sys.stderr.flush()
             # Call given class method.
             try:
                 result = f(self, *f_args, **f_kwargs)
@@ -325,17 +327,30 @@ class OTPmeLogger(object):
     @log_lock()
     def debug(self, *args, **kwargs):
         return self.logger.debug(*args, **kwargs)
+
     @log_lock()
     def info(self, *args, **kwargs):
         return self.logger.info(*args, **kwargs)
+
     @log_lock()
     def warning(self, *args, **kwargs):
         #kwargs['exc_info'] = True
-        #print("wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww")
-        #from otpme.lib import debug
-        #debug.trace()
         return self.logger.warning(*args, **kwargs)
+
+    @log_lock()
+    def error(self, *args, **kwargs):
+        #kwargs['exc_info'] = True
+        return self.logger.error(*args, **kwargs)
+
     @log_lock()
     def critical(self, *args, **kwargs):
         #kwargs['exc_info'] = True
         return self.logger.critical(*args, **kwargs)
+
+    @log_lock()
+    def warn(self, *args, **kwargs):
+        return self.logger.warn(*args, **kwargs)
+
+    @log_lock()
+    def fatal(self, *args, **kwargs):
+        return self.logger.fatal(*args, **kwargs)

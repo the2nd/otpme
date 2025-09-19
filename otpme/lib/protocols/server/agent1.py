@@ -32,8 +32,6 @@ from otpme.lib.protocols.response import build_response
 
 from otpme.lib.exceptions import *
 
-logger = config.logger
-
 REGISTER_BEFORE = []
 REGISTER_AFTER = []
 PROTOCOL_VERSION = "OTPme-agent-1.0"
@@ -46,7 +44,7 @@ def register():
 
 class OTPmeAgentP1(object):
     """ Class that implements OTPme-agent-1.0 """
-    def __init__(self, client, peer_cert=None, **handler_args):
+    def __init__(self, client, peer_cert=None, logger=None, **handler_args):
         # Our name.
         self.name = "agent"
         # The protocol we support
@@ -55,6 +53,11 @@ class OTPmeAgentP1(object):
         self.client = client
         # Indicates if connected client is authenticated.
         self.authorized = False
+
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = config.logger
 
         # Will hold session of the requesting client (PID).
         self.session = {}
@@ -213,7 +216,7 @@ class OTPmeAgentP1(object):
         # session we grant access because there is no way to protect the RSP
         # from beeing stolen if the user has e.g. access to /proc/$PID/environ.
         if session['system_user'] == username:
-            logger.debug("PID %s authorized." % pid)
+            self.logger.debug("PID %s authorized." % pid)
             return True
 
         # Check session ACLs for the user of the connecting PID.
@@ -230,7 +233,7 @@ class OTPmeAgentP1(object):
                 authorized = True
 
         if authorized:
-            logger.debug("User %s (%s) authorized by ACL."
+            self.logger.debug("User %s (%s) authorized by ACL."
                         % (username, pid))
             return True
 
@@ -315,7 +318,7 @@ class OTPmeAgentP1(object):
             status = True
             return self.build_response(status, message)
 
-        #logger.debug("PID %s called command: %s" % (self.client_pid, command))
+        #self.logger.debug("PID %s called command: %s" % (self.client_pid, command))
 
         # Check if the requesting process is allowed to access one of the
         # sessions we hold.
@@ -365,7 +368,7 @@ class OTPmeAgentP1(object):
                     continue
                 self.authorized = True
                 self.login_pid = login_pid
-                logger.debug("Granted access to SSH key passphrase by PID: %s"
+                self.logger.debug("Granted access to SSH key passphrase by PID: %s"
                             % self.client_pid)
                 break
 
@@ -456,7 +459,7 @@ class OTPmeAgentP1(object):
                     self.tty = None
 
                 if self.login_user:
-                    logger.info("Adding session for user '%s' (PID: %s)."
+                    self.logger.info("Adding session for user '%s' (PID: %s)."
                                 % (self.login_user, self.login_pid))
                     # If we got a session ID get login PID from it.
                     if self.session_id:
@@ -464,7 +467,7 @@ class OTPmeAgentP1(object):
                         if stuff.check_pid(login_pid):
                             self.login_pid = login_pid
                         else:
-                            logger.warning("Login PID from given session ID "
+                            self.logger.warning("Login PID from given session ID "
                                             "does not exist: %s" % login_pid)
                     else:
                         self.session_id = "%s:%s" % (self.login_pid,
@@ -518,41 +521,41 @@ class OTPmeAgentP1(object):
                         mount_point = prepare_mount_point(login_user, share_site, share_name)
                     except Exception as e:
                         msg = "Failed to prepare mountpoint: %s" % e
-                        logger.warning(msg)
+                        self.logger.warning(msg)
                         continue
                     if os.path.ismount(mount_point):
                         status = False
                         msg = "Share already mounted: %s: %s" % (share_id, mount_point)
-                        logger.info(msg)
+                        self.logger.info(msg)
                         messages.append(msg)
-                    else:
-                        os.environ['OTPME_LOGIN_SESSION'] = self.session_id
-                        mount_proc = multiprocessing.start_process(name="mount",
-                                                                target=mount_share_proc,
-                                                                target_args=(share_name,
-                                                                            share_site,
-                                                                            mount_point,
-                                                                            share_nodes,
-                                                                            share_encrypted),
-                                                                target_kwargs={
-                                                                                'logger'    :logger,
-                                                                                'foreground':False,
-                                                                            },
-                                                                daemon=False)
-                        mount_proc.join()
-                        if mount_proc.exitcode != 0:
-                            msg = "Failed to mount share: %s" % share_id
-                            logger.info(msg)
-                            messages.append(msg)
-                            continue
-                        new_mounts[share_id] = shares[share_id]
-                        try:
-                            os.system(f"sudo -n setreadahead {mount_point}")
-                        except Exception as e:
-                            status = False
-                            msg = "Failed to run setreadahead: %s: %s" % (mount_point, e)
-                            messages.append(msg)
-                            logger.info(msg)
+                        continue
+                    os.environ['OTPME_LOGIN_SESSION'] = self.session_id
+                    mount_proc = multiprocessing.start_process(name="mount",
+                                                            target=mount_share_proc,
+                                                            target_args=(share_name,
+                                                                        share_site,
+                                                                        mount_point,
+                                                                        share_nodes,
+                                                                        share_encrypted),
+                                                            target_kwargs={
+                                                                            'logger'    :self.logger,
+                                                                            'foreground':False,
+                                                                        },
+                                                            daemon=False)
+                    mount_proc.join()
+                    if mount_proc.exitcode != 0:
+                        msg = "Failed to mount share: %s" % share_id
+                        self.logger.warning(msg)
+                        messages.append(msg)
+                        continue
+                    new_mounts[share_id] = shares[share_id]
+                    try:
+                        os.system(f"sudo -n setreadahead {mount_point}")
+                    except Exception as e:
+                        status = False
+                        msg = "Failed to run setreadahead: %s: %s" % (mount_point, e)
+                        messages.append(msg)
+                        self.logger.warning(msg)
                 try:
                     mounted_shares = self.session['mounted_shares']
                 except KeyError:
@@ -562,6 +565,7 @@ class OTPmeAgentP1(object):
                 self.session['mounted_shares'] = mounted_shares
                 self.login_sessions[self.login_pid] = self.session
                 msg = "Shares mounted: %s" % new_mounts
+                self.logger.info(msg)
                 messages.append(msg)
                 message = "\n".join(messages)
 
@@ -589,12 +593,12 @@ class OTPmeAgentP1(object):
                         except Exception as e:
                             msg = "Failed to unmount share: %s: %s" % (mount_point, e)
                             messages.append(msg)
-                            logger.warning(msg)
+                            self.logger.warning(msg)
                     try:
                         os.rmdir(mount_point)
                     except Exception as e:
                         msg = "Failed to rmdir mountpoint: %s: %s" % (mount_point, e)
-                        logger.warning(msg)
+                        self.logger.warning(msg)
                     umounted_shares.append(share_id)
                 msg = "Shares unmounted: %s" % umounted_shares
                 messages.append(msg)
@@ -678,7 +682,7 @@ class OTPmeAgentP1(object):
             message = "Not logged in"
             status = status_codes.NOT_FOUND
             if command != "get_user" and command != "del_session":
-                logger.warning("Command '%s' denied: process=%s(%s) user=%s"
+                self.logger.warning("Command '%s' denied: process=%s(%s) user=%s"
                                 % (command,
                                 self.client_proc,
                                 self.client_pid,
@@ -775,7 +779,7 @@ class OTPmeAgentP1(object):
             if self.login_token:
                 msg = ("Setting login token for user '%s' (PID: %s)."
                         % (self.login_user, self.login_pid))
-                logger.info(msg)
+                self.logger.info(msg)
                 session_lock = self.acquire_session_lock(self.session_id)
                 try:
                     self.session['login_token'] = self.login_token
@@ -808,7 +812,7 @@ class OTPmeAgentP1(object):
                     if ssh_agent_proc:
                         msg = ("Adding SSH key passphrase for user '%s' "
                             "(PID: %s)." % (self.login_user, self.ssh_agent_pid))
-                        logger.info(msg)
+                        self.logger.info(msg)
                         # Add new session for the given ssh-agent PID.
                         session_lock = self.acquire_session_lock(self.session_id)
                         try:
@@ -839,7 +843,7 @@ class OTPmeAgentP1(object):
             else:
                 message = "No SSH key passphrase set"
                 status = False
-                logger.debug(message)
+                self.logger.debug(message)
 
 
         elif command == "del_ssh_key_pass":
@@ -848,7 +852,7 @@ class OTPmeAgentP1(object):
             if self.ssh_agent_pid:
                 msg = ("Removing SSH key passphrase for user '%s' "
                     "(PID: %s)." % (self.login_user, self.ssh_agent_pid))
-                logger.info(msg)
+                self.logger.info(msg)
                 session_lock = self.acquire_session_lock(self.session_id)
                 try:
                     self.login_sessions.pop(self.ssh_agent_pid)
@@ -924,7 +928,7 @@ class OTPmeAgentP1(object):
                 except Exception as e:
                     message = "Failed to load session key: %s" % e
                     status = False
-                    logger.critical(message)
+                    self.logger.critical(message)
                 if status:
                     verify_status = key.verify(rsp_signature,
                                                 message=rsp,
@@ -934,7 +938,7 @@ class OTPmeAgentP1(object):
                         status = False
 
             if status:
-                logger.info("Adding RSP for user '%s@%s/%s' (PID: %s)."
+                self.logger.info("Adding RSP for user '%s@%s/%s' (PID: %s)."
                             % (self.login_user, realm, site, self.login_pid))
 
                 # Make sure server session exists in dict.
@@ -1000,7 +1004,7 @@ class OTPmeAgentP1(object):
                     message = str(e)
                     status = False
                     msg = "Failed to add RSP: %s" % e
-                    logger.warning(msg)
+                    self.logger.warning(msg)
 
         elif command == "add_acl":
             try:
@@ -1027,7 +1031,7 @@ class OTPmeAgentP1(object):
                     message = "ACL exists"
                     status = False
                 else:
-                    logger.info("Adding ACL for user session '%s' (PID: %s)."
+                    self.logger.info("Adding ACL for user session '%s' (PID: %s)."
                                 % (self.login_user, self.login_pid))
                     user_acls.append(acl)
                     self.session['acls'][username] = user_acls
@@ -1069,7 +1073,7 @@ class OTPmeAgentP1(object):
                 if acl in user_acls:
                     msg = ("Removing ACL for user session '%s' (PID: %s)."
                                 % (self.login_user, self.login_pid))
-                    logger.info(msg)
+                    self.logger.info(msg)
                     try:
                         user_acls.remove(acl)
                     except:
@@ -1094,7 +1098,7 @@ class OTPmeAgentP1(object):
 
         elif command == "del_session":
             if self.rsp:
-                logger.info("Received request to delete user session for '%s'."
+                self.logger.info("Received request to delete user session for '%s'."
                             % self.login_user)
                 del_request = {
                             'login_pid' : self.login_pid,
@@ -1110,7 +1114,7 @@ class OTPmeAgentP1(object):
                     message = str(e)
                     status = False
             else:
-                logger.info("Removing empty session (%s) for user '%s'."
+                self.logger.info("Removing empty session (%s) for user '%s'."
                             % (self.login_pid, self.login_user))
                 try:
                     self.session_ids.pop(self.session_id)

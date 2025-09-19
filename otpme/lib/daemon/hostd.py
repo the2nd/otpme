@@ -68,10 +68,8 @@ def handle_sync_child():
                 self._send_local_daemon_msg("sync_done")
                 multiprocessing.cleanup(keep_queues=True)
             if result is True:
-                #os._exit(0)
                 sys.exit(0)
             if result is False:
-                #os._exit(1)
                 sys.exit(0)
             return result
         return wrapped
@@ -1465,6 +1463,8 @@ class HostDaemon(OTPmeDaemon):
         # Set signal handler.
         signal.signal(signal.SIGTERM, self.signal_handler)
         signal.signal(signal.SIGINT, self.signal_handler)
+        # Setup logger.
+        self.logger = log.setup_logger(pid=True)
         # Timeout waiting for backend locks.
         self.lock_timeout = 10
         # Configure ourselves (e.g. certificates etc.).
@@ -1886,6 +1886,8 @@ class HostDaemon(OTPmeDaemon):
 
         self.shutdown_sync_childs()
         self.logger.info("Received signal, terminating.")
+        # Cleanup multiprocessing.
+        multiprocessing.cleanup()
 
     def shutdown_sync_childs(self):
         """ Shutdown sync childs. """

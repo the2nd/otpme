@@ -3928,6 +3928,16 @@ class OTPmeObject(OTPmeBaseObject):
         if exception:
             return callback.error(exception)
 
+        # If no nodes or pools assigned to share return all nodes of this site.
+        if not self.nodes and not self.pools:
+            result = backend.search(object_type="node",
+                                    attribute="uuid",
+                                    value="*",
+                                    realm=config.realm,
+                                    site=config.site,
+                                    return_type=return_type)
+            return result
+
         result = []
         if self.nodes:
             search_attr = {}

@@ -808,6 +808,17 @@ class OTPmeConfig(object):
         return log_name
 
     @property
+    def log_file(self):
+        if self.force_logfile:
+            log_file = str(os.path.realpath(str(self.force_logfile)))
+        else:
+            if self.tool_name == "otpme-controld":
+                log_file = os.path.join(self.log_dir, "%s.log" % self.log_name.lower())
+            else:
+                log_file = "/dev/null"
+        return log_file
+
+    @property
     def object_add_order(self):
         """ Return objects in add order. """
         from otpme.lib import stuff
@@ -1052,20 +1063,6 @@ class OTPmeConfig(object):
         # Try to get password salt.
         if not self.password_hash_salt:
             self.password_hash_salt = self.get_password_salt()
-
-        # Set logfile path if not already done.
-        if (not self.use_syslog and not self.use_systemd_log and not self.log_file) or self.config_reload:
-            if self.force_logfile:
-                self.log_file = str(os.path.realpath(str(self.force_logfile)))
-            else:
-                if self.tool_name == "otpme-controld":
-                    self.log_file = os.path.join(self.log_dir, "%s.log" % self.log_name.lower())
-                else:
-                    self.log_file = "/dev/null"
-
-        if self.log_file and not self.use_syslog and not self.use_systemd_log:
-            # Make sure logfile exists and has proper permissions.
-            self.ensure_logfile(self.log_file)
 
         # Check if logger instance already exists.
         if configure_logger is None:
@@ -2629,6 +2626,10 @@ class OTPmeConfig(object):
                 # If we are not in debug mode and logging is not enabled throw away
                 # log messages.
                 logger_logfile = "/dev/null"
+
+        # Make sure logfile exists and has proper permissions.
+        if logger_logfile:
+            self.ensure_logfile(logger_logfile)
 
         self._logger = log.get_logger(log_name=self.log_name, pid=pid, banner=banner,
                                 logfile=logger_logfile, syslog=logger_syslog,

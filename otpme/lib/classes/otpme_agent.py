@@ -1609,7 +1609,9 @@ class OTPmeAgent(UnixDaemon):
         start_thread(name=self.full_name, target=self._conn_proxy, daemon=True)
 
         # Create handler for the new socket.
-        conn_handler = ConnHandler(protocols=self.protocols, **handler_args)
+        conn_handler = ConnHandler(protocols=self.protocols,
+                                logger=self.logger,
+                                **handler_args)
 
         # Set agent socket URI.
         self.socket_uri = config.get_agent_socket()
@@ -1882,6 +1884,7 @@ class OTPmeAgent(UnixDaemon):
                                     socket_handler=SocketProtoHandler,
                                     banner=banner,
                                     proctitle=config.tool_name,
+                                    logger=self.logger,
                                     user=self.user)
         # Append new socket to list of daemon sockets.
         self.sockets.append(new_socket)

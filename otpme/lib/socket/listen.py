@@ -30,7 +30,7 @@ class ListenSocket(object):
         blocking=True, timeout=1, banner=None, socket_handler=None, user=None,
         group=None, mode=0o600, use_ssl=False, ssl_version=ssl.PROTOCOL_TLSv1_2,
         ssl_cert=None, ssl_key=None, ssl_ca_data=None, ssl_verify_client=False,
-        proctitle=None, max_conn=100):
+        proctitle=None, logger=None, max_conn=100):
         # Check if we got all required paramters.
         if use_ssl:
             if not ssl_cert:
@@ -44,7 +44,12 @@ class ListenSocket(object):
         # Our name.
         self.name = name
         # Get logger.
-        self.logger = config.logger
+        if logger:
+            self.logger = logger
+            self.got_logger = True
+        else:
+            self.got_logger = False
+            self.logger = config.logger
         # Set socket blocking.
         self.blocking = blocking
         # Our timeout.
@@ -266,7 +271,8 @@ class ListenSocket(object):
         # Handle multiprocessing stuff.
         multiprocessing.atfork(quiet=True)
         # Setup logger.
-        self.logger = log.setup_logger(pid=os.getpid())
+        if not self.got_logger:
+            self.logger = log.setup_logger(pid=os.getpid())
 
         # Start socket initialization.
         try:
@@ -482,17 +488,17 @@ class ListenSocket(object):
                             join=True)
             # Add process to dict.
             self.add_connection_pid(client, p.pid)
+        self.logger.info("Stopped listening on '%s'" % self.socket_uri)
         # Do multiprocessing cleanup.
         multiprocessing.cleanup()
-        self.logger.info("Stopped listening on '%s'" % self.socket_uri)
 
     def handle_connection(self, client_conn, client, handler):
         """ Handle a connection. """
         # Handle multiprocessing stuff.
         multiprocessing.atfork(quiet=True)
-
         # Setup logger.
-        self.logger = log.setup_logger(pid=os.getpid())
+        if not self.got_logger:
+            self.logger = log.setup_logger(pid=os.getpid())
 
         # Set process title.
         new_proctitle = "%s Client: %s" % (self.proctitle, client)
@@ -537,6 +543,7 @@ class ListenSocket(object):
                                 client=client,
                                 blocking=self.blocking,
                                 peer_cert=peer_cert,
+                                logger=self.logger,
                                 socket_handler=self.socket_handler)
 
         # Send banner if given.
@@ -557,6 +564,7 @@ class ListenSocket(object):
                                             protocols=handler.protocols,
                                             client=client,
                                             peer_cert=peer_cert,
+                                            logger=self.logger,
                                             **handler.handler_args)
             # Start connection handler.
             try:
@@ -611,9 +619,8 @@ class ListenSocket(object):
         except:
             pass
 
-        # FIXME: do we stil need this here? It closes mqueues which results in malfunction of e.g. otpme-agent.
-        ## Cleanup locks etc.
-        ##multiprocessing.cleanup()
+        # Cleanup locks etc.
+        multiprocessing.cleanup(keep_queues=True)
 
         return True
 
@@ -705,7 +712,7 @@ class ListenSocket(object):
 class Connection(object):
     """ Class to handle send/recv data. """
     def __init__(self, connection, client, blocking,
-        socket_handler=None, peer_cert=None):
+        socket_handler=None, peer_cert=None, logger=None):
         # Our connection.
         self.connection = connection
         # Blocking.
@@ -718,7 +725,10 @@ class Connection(object):
         self.peer_cert = peer_cert
         # Connection status.
         self.connected = True
-        self.logger = config.logger
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = config.logger
 
     def __getattr__(self, name):
         """ Map to original attributes. """

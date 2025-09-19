@@ -22,7 +22,8 @@ class ConnHandler(object):
     start the needed protocol handlers.
     """
     def __init__(self, protocols, connection=None,
-        client=None, peer_cert=None, **handler_args):
+        client=None, peer_cert=None, logger=None,
+        **handler_args):
         self.connection = connection
         self.client = client
         self.peer_cert = peer_cert
@@ -33,7 +34,10 @@ class ConnHandler(object):
         self.proto_neg_finished = False
         # Arguments we will pass on to protocol handler
         self.handler_args = handler_args
-        self.logger = config.logger
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = config.logger
 
     def run(self):
         """ Run handler loop. """
@@ -152,6 +156,7 @@ class ConnHandler(object):
                         self.proto_handler = proto_class(client=self.client,
                                                         peer_cert=self.peer_cert,
                                                         connection=self.connection,
+                                                        logger=self.logger,
                                                         **self.handler_args)
                     except Exception as e:
                         msg = ("Failed to load protocol handler: %s: %s"

@@ -72,8 +72,6 @@ REGISTER_AFTER = [
                 "otpme.lib.classes.accessgroup",
                 ]
 
-logger = config.logger
-
 def register():
     register_config()
 
@@ -194,6 +192,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         if dn is None:
             dn = ''
 
+        self.logger = config.logger
         self.auth_token_uuid = None
 
         if auth_token:
@@ -305,7 +304,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             parser.dataReceived(ldif)
         except Exception as e:
             msg = "Failed to load LDIF: %s" % e
-            logger.critical(msg)
+            self.logger.critical(msg)
 
         entries = parser.seen
 
@@ -327,7 +326,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         """ Authenticate user against OTPme. """
         if self.client is None:
             msg = "Missing client DC: %s" % self.dn.getText()
-            logger.warning(msg)
+            self.logger.warning(msg)
             raise ldaperrors.LDAPInvalidCredentials
 
         # Get username from DN.
@@ -351,7 +350,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                         encrypt_session=False)
         except Exception as e:
             msg = "Failed to get authd connection: %s" % e
-            logger.critical(msg)
+            self.logger.critical(msg)
             raise
 
         # Build command args.
@@ -370,14 +369,14 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                 command_args=command_args)
         except Exception as e:
             msg = "Failed to authenticate user: %s" % e
-            logger.warning(msg)
+            self.logger.warning(msg)
             raise ldaperrors.LDAPInvalidCredentials
         finally:
             authd_conn.close()
 
         if status is False:
             msg = "Failed to authenticate user: %s" % auth_reply
-            logger.warning(msg)
+            self.logger.warning(msg)
             raise ldaperrors.LDAPInvalidCredentials
 
         # Set auth token.
@@ -1142,6 +1141,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         return results
 
 def otpme_log_translate(conf):
+    logger = config.logger
     try:
         debug_message = conf['debug']
     except:
@@ -1159,7 +1159,7 @@ def otpme_log_translate(conf):
         if debug_message:
             pass
             #if config.loglevel == "DEBUG" or config.debug_enabled:
-            #    logger.debug(message)
+            #    self.logger.debug(message)
         else:
             if loglevel == "CRITICAL":
                 logger.critical(message)
@@ -1267,7 +1267,7 @@ class LDAPServer(object):
     def signal_handler(self, _signal, frame):
         """ Exit on signal. """
         msg = ("Received SIGTERM.")
-        logger.info(msg)
+        self.logger.info(msg)
         if config.print_timing_results:
             from otpme.lib import debug
             debug.print_timing_result(print_status=True)
@@ -1308,11 +1308,14 @@ class LDAPServer(object):
 
     def run(self):
         """ Start LDAP server. """
+        from otpme.lib import log
         if not self.reactor:
             msg = ("You need to call listen() first.")
             raise OTPmeException(msg)
         # Handle multiprocessing stuff.
         multiprocessing.atfork(quiet=True)
+        # Setup logger.
+        self.logger = log.setup_logger(pid=True)
         # FIXME: we need this?
         from otpme.lib.extensions import utils
         extensions = utils.load_extensions(config.extensions)

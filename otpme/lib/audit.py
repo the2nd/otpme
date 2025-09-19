@@ -111,8 +111,7 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
             else:
                 job_client = "Unknown client"
                 job_error = "Unknown error"
-                from otpme.lib import debug
-                debug.trace()
+
             if result is False:
                 audit_msg = ("[%s] Client: %s: Token: %s: Job failed (%s): Data: %s %s %s %s"
                             % (os.getpid(),

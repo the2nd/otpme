@@ -236,10 +236,16 @@ class OTPmeFS(fuse.Operations):
                         time.sleep(1)
                         continue
                     try:
-                        self.nodes = mount_response['nodes']
+                        nodes = mount_response['nodes']
+                        if not nodes:
+                            msg = "Received empty share nodes from fsd."
+                            self.logger.warning(msg)
                     except KeyError:
+                        nodes = None
                         msg = "Mount response misses nodes: %s: %s" % (self.share, node)
                         self.logger.info(msg)
+                    if nodes:
+                        self.nodes = nodes
                     if self.encrypted:
                         try:
                             block_size= mount_response['block_size']
@@ -395,7 +401,8 @@ class OTPmeFS(fuse.Operations):
 
     @fuse.overrides(fuse.Operations)
     def chmod(self, path: str, mode: int) -> int:
-        self.logger.debug(f"chmod method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"chmod method called for path: {path}")
         method_data = encode_method_call(method_name="chmod",
                                         path=path,
                                         mode=mode)
@@ -405,14 +412,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_chmod", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"chmod failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"chmod failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"chmod successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"chmod successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def chown(self, path: str, uid: int, gid: int) -> int:
-        self.logger.debug(f"chown method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"chown method called for path: {path}")
         method_data = encode_method_call(method_name="chown",
                                         path=path,
                                         uid=uid,
@@ -423,14 +433,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_chown", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"chown failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"chown failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"chown successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"chown successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def create(self, path: str, mode, fi=None) -> int:
-        self.logger.debug(f"create method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"create method called for path: {path}")
         method_data = encode_method_call(method_name="create",
                                         path=path,
                                         mode=mode)
@@ -440,21 +453,26 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_create", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"create failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"create failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"create successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"create successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def destroy(self, path: str) -> None:
-        self.logger.debug(f"destroy method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"destroy method called for path: {path}")
         if self.fsd_conn:
             self.fsd_conn.close()
-        self.logger.debug(f"destroy completed for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"destroy completed for path: {path}")
 
     @fuse.overrides(fuse.Operations)
     def getattr(self, path: str, fh: Optional[int] = None):
-        self.logger.debug(f"getattr method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"getattr method called for path: {path}")
         method_data = encode_method_call(method_name="getattr", path=path)
         command_args = {'method_data':method_data}
         status, \
@@ -462,7 +480,8 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_getattr", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"getattr failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"getattr failed for path: {path}")
             if response_code == errno.ENOENT:
                 self.check_no_such_file_cache(path)
             raise fuse.FuseOSError(response_code)
@@ -472,12 +491,14 @@ class OTPmeFS(fuse.Operations):
         new_blocks = file_size // PREFERRED_BLOCK_SIZE
         response['st_blocks'] = new_blocks
         response['st_blksize'] = PREFERRED_BLOCK_SIZE
-        self.logger.debug(f"getattr successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"getattr successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def statfs(self, path: str):
-        self.logger.debug(f"statfs method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"statfs method called for path: {path}")
         method_data = encode_method_call(method_name="statfs", path=path)
         command_args = {'method_data':method_data}
         status, \
@@ -485,16 +506,19 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_statfs", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"statfs failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"statfs failed for path: {path}")
             raise fuse.FuseOSError(response_code)
         response['f_bsize'] = PREFERRED_BLOCK_SIZE
         response['f_frsize'] = PREFERRED_BLOCK_SIZE
-        self.logger.debug(f"statfs successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"statfs successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def mkdir(self, path: str, mode: int) -> int:
-        self.logger.debug(f"mkdir method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"mkdir method called for path: {path}")
         method_data = encode_method_call(method_name="mkdir",
                                         path=path,
                                         mode=mode)
@@ -504,14 +528,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_mkdir", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"mkdir failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"mkdir failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"mkdir successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"mkdir successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def read(self, path: str, size: int, offset: int, fh: int) -> bytes:
-        self.logger.debug(f"read method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"read method called for path: {path}")
         method_data = encode_method_call(method_name="read",
                                         path=path,
                                         size=size,
@@ -522,14 +549,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_read", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"read failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"read failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"read successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"read successful for path: {path}")
         return binary_data
 
     @fuse.overrides(fuse.Operations)
     def open(self, path: str, flags) -> int:
-        self.logger.debug(f"open method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"open method called for path: {path}")
         method_data = encode_method_call(method_name="open",
                                         path=path,
                                         flags=flags)
@@ -539,14 +569,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_open", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"open failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"open failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"open successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"open successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def release(self, path: str, fh: int=None) -> int:
-        self.logger.debug(f"release method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"release method called for path: {path}")
         method_data = encode_method_call(method_name="release", path=path)
         command_args = {'method_data':method_data}
         status, \
@@ -554,14 +587,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_release", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"release failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"release failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"release successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"release successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def access(self, path: str, amode: int) -> int:
-        self.logger.debug(f"access method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"access method called for path: {path}")
         method_data = encode_method_call(method_name="access",
                                         path=path,
                                         amode=amode)
@@ -571,16 +607,19 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_access", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"access failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"access failed for path: {path}")
             if response_code == errno.ENOENT:
                 self.check_no_such_file_cache(path)
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"access successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"access successful for path: {path}")
         return 0
 
     @fuse.overrides(fuse.Operations)
     def readdir(self, path: str, fh: int) -> fuse.ReadDirResult:
-        self.logger.debug(f"readdir method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"readdir method called for path: {path}")
         method_data = encode_method_call(method_name="readdir", path=path)
         command_args = {'method_data':method_data}
         status, \
@@ -588,14 +627,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_readdir", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"readdir failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"readdir failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"readdir successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"readdir successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def readlink(self, path: str) -> str:
-        self.logger.debug(f"readlink method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"readlink method called for path: {path}")
         method_data = encode_method_call(method_name="readlink", path=path)
         command_args = {'method_data':method_data}
         status, \
@@ -603,16 +645,19 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_readlink", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"readlink failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"readlink failed for path: {path}")
             if response_code == errno.ENOENT:
                 self.check_no_such_file_cache(path)
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"readlink successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"readlink successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def rename(self, old: str, new: str) -> int:
-        self.logger.debug(f"rename method called for old: {old}, new: {new}")
+        if config.debug_enabled:
+            self.logger.debug(f"rename method called for old: {old}, new: {new}")
         method_data = encode_method_call(method_name="rename",
                                         old=old,
                                         new=new)
@@ -622,14 +667,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_rename", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"rename failed for old: {old}, new: {new}")
+            if config.debug_enabled:
+                self.logger.debug(f"rename failed for old: {old}, new: {new}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"rename successful for old: {old}, new: {new}")
+        if config.debug_enabled:
+            self.logger.debug(f"rename successful for old: {old}, new: {new}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def rmdir(self, path: str) -> int:
-        self.logger.debug(f"rmdir method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"rmdir method called for path: {path}")
         method_data = encode_method_call(method_name="rmdir", path=path)
         command_args = {'method_data':method_data}
         status, \
@@ -637,14 +685,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_rmdir", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"rmdir failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"rmdir failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"rmdir successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"rmdir successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def link(self, target: str, source: str):
-        self.logger.debug(f"link method called for target: {target}, source: {source}")
+        if config.debug_enabled:
+            self.logger.debug(f"link method called for target: {target}, source: {source}")
         method_data = encode_method_call(method_name="link",
                                         target=target,
                                         source=source)
@@ -654,14 +705,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_link", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"link failed for target: {target}, source: {source}")
+            if config.debug_enabled:
+                self.logger.debug(f"link failed for target: {target}, source: {source}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"link successful for target: {target}, source: {source}")
+        if config.debug_enabled:
+            self.logger.debug(f"link successful for target: {target}, source: {source}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def symlink(self, target: str, source: str) -> int:
-        self.logger.debug(f"symlink method called for target: {target}, source: {source}")
+        if config.debug_enabled:
+            self.logger.debug(f"symlink method called for target: {target}, source: {source}")
         method_data = encode_method_call(method_name="symlink",
                                         target=target,
                                         source=source)
@@ -671,14 +725,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_symlink", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"symlink failed for target: {target}, source: {source}")
+            if config.debug_enabled:
+                self.logger.debug(f"symlink failed for target: {target}, source: {source}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"symlink successful for target: {target}, source: {source}")
+        if config.debug_enabled:
+            self.logger.debug(f"symlink successful for target: {target}, source: {source}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def truncate(self, path: str, length: int, fh: Optional[int] = None) -> int:
-        self.logger.debug(f"truncate method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"truncate method called for path: {path}")
         method_data = encode_method_call(method_name="truncate",
                                         path=path,
                                         length=length)
@@ -688,14 +745,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_truncate", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"truncate failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"truncate failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"truncate successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"truncate successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def unlink(self, path: str) -> int:
-        self.logger.debug(f"unlink method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"unlink method called for path: {path}")
         method_data = encode_method_call(method_name="unlink", path=path)
         command_args = {'method_data':method_data}
         status, \
@@ -703,14 +763,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_unlink", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"unlink failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"unlink failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"unlink successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"unlink successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def utimens(self, path: str, times: Optional[tuple[int, int]] = None) -> int:
-        self.logger.debug(f"utimens method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"utimens method called for path: {path}")
         if times is None:
             now = time.time_ns()
             times = (now, now)
@@ -733,14 +796,17 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_utimens", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"utimens failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"utimens failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"utimens successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"utimens successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def write(self, path: str, data: bytes, offset: int, fh: int) -> int:
-        self.logger.debug(f"write method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"write method called for path: {path}")
         method_data = encode_method_call(method_name="write", path=path, offset=offset)
         command_args = {'method_data':method_data}
         status, \
@@ -748,13 +814,16 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_write", command_args=command_args, binary_data=data)
         if status is not True:
-            self.logger.debug(f"write failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"write failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"write successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"write successful for path: {path}")
         return response
 
     def exists(self, path: str):
-        self.logger.debug(f"exists method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"exists method called for path: {path}")
         method_data = encode_method_call(method_name="exists", path=path)
         command_args = {'method_data':method_data}
         status, \
@@ -762,13 +831,16 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_exists", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"exists failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"exists failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"exists successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"exists successful for path: {path}")
         return response
 
     def get_mtime(self, path: str):
-        self.logger.debug(f"get_mtime method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"get_mtime method called for path: {path}")
         method_data = encode_method_call(method_name="get_mtime", path=path)
         command_args = {'method_data':method_data}
         status, \
@@ -776,13 +848,16 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_get_mtime", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"get_mtime failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"get_mtime failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"get_mtime successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"get_mtime successful for path: {path}")
         return response
 
     def get_ctime(self, path: str):
-        self.logger.debug(f"get_ctime method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"get_ctime method called for path: {path}")
         method_data = encode_method_call(method_name="get_ctime", path=path)
         command_args = {'method_data':method_data}
         status, \
@@ -790,15 +865,18 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_get_ctime", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"get_ctime failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"get_ctime failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"get_ctime successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"get_ctime successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
     def getxattr(self, path: str, name: str, position: int = 0) -> bytes:
         """Get extended attributes (including POSIX ACLs)"""
-        self.logger.debug(f"getxattr method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"getxattr method called for path: {path}")
         method_data = encode_method_call(method_name="getxattr",
                                         path=path,
                                         name=name,
@@ -809,15 +887,18 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_getxattr", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"getxattr failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"getxattr failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"getxattr successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"getxattr successful for path: {path}")
         return binary_data if binary_data else response
 
     @fuse.overrides(fuse.Operations)
     def setxattr(self, path: str, name: str, value: bytes, options: int, position: int = 0) -> int:
         """Set extended attributes (including POSIX ACLs)"""
-        self.logger.debug(f"setxattr method called for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"setxattr method called for path: {path}")
         method_data = encode_method_call(method_name="setxattr",
                                         path=path,
                                         name=name,
@@ -830,9 +911,11 @@ class OTPmeFS(fuse.Operations):
         response, \
         binary_data = self.send(command="fsop_setxattr", command_args=command_args)
         if status is not True:
-            self.logger.debug(f"setxattr failed for path: {path}")
+            if config.debug_enabled:
+                self.logger.debug(f"setxattr failed for path: {path}")
             raise fuse.FuseOSError(response_code)
-        self.logger.debug(f"setxattr successful for path: {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"setxattr successful for path: {path}")
         return response
 
     @fuse.overrides(fuse.Operations)
@@ -1034,7 +1117,8 @@ class EncryptedFS(OTPmeFS):
         return enc_path
 
     def _encrypt_block(self, block, unencrypted_block_len, nonce):
-        self.logger.debug(f"Encrypting block of size {len(block)} with nonce {nonce.hex()}")
+        if config.debug_enabled:
+            self.logger.debug(f"Encrypting block of size {len(block)} with nonce {nonce.hex()}")
         #if len(block) != self.block_size:
         #    self.logger.error(f"Invalid block size: {len(block)}, expected {self.block_size}")
         #    raise fuse.FuseOSError(errno.EIO)
@@ -1052,7 +1136,8 @@ class EncryptedFS(OTPmeFS):
             if tag == b'\x00' * self.tag_size:
                 self.logger.error("Generated zero tag, which is invalid")
                 raise fuse.FuseOSError(errno.EIO)
-            self.logger.debug(f"Encrypted block size: {block_len}, tag: {tag.hex()}")
+            if config.debug_enabled:
+                self.logger.debug(f"Encrypted block size: {block_len}, tag: {tag.hex()}")
             serialized_block = (
                 struct.pack('!I', block_len) +
                 struct.pack('!I', unencrypted_block_len) +
@@ -1338,12 +1423,14 @@ class EncryptedFS(OTPmeFS):
             return self.getattr(path, fh, use_diriv_cache=False)
 
         if stat.S_ISDIR(result['st_mode']) or stat.S_ISLNK(result['st_mode']):
-            self.logger.debug(f"Path {path} is a {'directory' if stat.S_ISDIR(result['st_mode']) else 'symlink'}, returning original st_size: {result['st_size']}")
+            if config.debug_enabled:
+                self.logger.debug(f"Path {path} is a {'directory' if stat.S_ISDIR(result['st_mode']) else 'symlink'}, returning original st_size: {result['st_size']}")
             return result
 
         encrypted_size = result['st_size']
         if encrypted_size == 0:
-            self.logger.debug(f"No data for {path}, assuming empty file")
+            if config.debug_enabled:
+                self.logger.debug(f"No data for {path}, assuming empty file")
             return result
 
         file_mtime = result['st_mtime']
@@ -1364,7 +1451,8 @@ class EncryptedFS(OTPmeFS):
         if unencrypted_size is None:
             unencrypted_size = self._calc_unencrypted_size(path, encrypted_size, enc)
         unencrypted_blocks = (unencrypted_size + 511) // 512
-        self.logger.debug(f"Unencrypted file size for {path}: {unencrypted_size}")
+        if config.debug_enabled:
+            self.logger.debug(f"Unencrypted file size for {path}: {unencrypted_size}")
         result['st_size'] = unencrypted_size
         result['st_blocks'] = unencrypted_blocks
         filesize_cache[path] = {
@@ -1392,25 +1480,31 @@ class EncryptedFS(OTPmeFS):
 
     def read(self, path, size, offset, fh):
         enc = self._map_plain_to_enc(path, use_diriv_cache=True)
-        self.logger.debug(f"Reading {size} bytes at offset {offset} from {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"Reading {size} bytes at offset {offset} from {path}")
         start_block = offset // self.block_size
         end_block = (offset + size - 1) // self.block_size
         block_count = end_block - start_block + 1
-        self.logger.debug(f"Start block: {start_block}, End block: {end_block}, Block count: {block_count}")
+        if config.debug_enabled:
+            self.logger.debug(f"Start block: {start_block}, End block: {end_block}, Block count: {block_count}")
         read_offset = start_block * self.block_with_metadata_size
         read_size = block_count * self.block_with_metadata_size
-        self.logger.debug(f"Read offset: {read_offset}, read size: {read_size}")
+        if config.debug_enabled:
+            self.logger.debug(f"Read offset: {read_offset}, read size: {read_size}")
         encrypted_size = self._get_file_size(enc)
         if encrypted_size == 0:
-            self.logger.debug("File is empty")
+            if config.debug_enabled:
+                self.logger.debug("File is empty")
             return b''
         read_size = min(read_size, encrypted_size - read_offset)
         if read_size <= 0:
-            self.logger.debug("No data to read at offset")
+            if config.debug_enabled:
+                self.logger.debug("No data to read at offset")
             return b''
         try:
             encrypted_data = super().read(enc, read_size, read_offset, fh)
-            self.logger.debug(f"Read {len(encrypted_data)} bytes from server")
+            if config.debug_enabled:
+                self.logger.debug(f"Read {len(encrypted_data)} bytes from server")
             #if len(encrypted_data) != read_size:
             #    self.logger.error(f"Expected {read_size} bytes, but read {len(encrypted_data)}")
             #    raise fuse.FuseOSError(errno.EIO)
@@ -1427,16 +1521,20 @@ class EncryptedFS(OTPmeFS):
     def write(self, path, data, offset, fh):
         global path_hash_cache
         enc = self._map_plain_to_enc(path, use_diriv_cache=True)
-        self.logger.debug(f"Writing {len(data)} bytes at offset {offset} to {path}")
+        if config.debug_enabled:
+            self.logger.debug(f"Writing {len(data)} bytes at offset {offset} to {path}")
         start_block = offset // self.block_size
         end_block = (offset + len(data) - 1) // self.block_size
         block_count = end_block - start_block + 1
-        self.logger.debug(f"Start block: {start_block}, End block: {end_block}, Block count: {block_count}")
+        if config.debug_enabled:
+            self.logger.debug(f"Start block: {start_block}, End block: {end_block}, Block count: {block_count}")
         write_offset = start_block * self.block_with_metadata_size
-        self.logger.debug(f"Write offset: {write_offset}")
+        if config.debug_enabled:
+            self.logger.debug(f"Write offset: {write_offset}")
         is_first_block_partial = offset % self.block_size != 0
         is_last_block_partial = (offset + len(data)) % self.block_size != 0
-        self.logger.debug(f"First block partial: {is_first_block_partial}, Last block partial: {is_last_block_partial}")
+        if config.debug_enabled:
+            self.logger.debug(f"First block partial: {is_first_block_partial}, Last block partial: {is_last_block_partial}")
         current_size = self._get_file_size(enc)
         decrypted_data = {}
         if current_size > 0 and (is_first_block_partial or is_last_block_partial):
@@ -1451,7 +1549,8 @@ class EncryptedFS(OTPmeFS):
                 max_available_size = self._get_file_size(enc)
                 read_size = min(read_size, max_available_size - read_offset)
                 if read_size > 0:
-                    self.logger.debug(f"Reading block {block} at offset {read_offset}, size {read_size}")
+                    if config.debug_enabled:
+                        self.logger.debug(f"Reading block {block} at offset {read_offset}, size {read_size}")
                     try:
                         encrypted_data = super().read(enc, read_size, read_offset, fh)
                         decrypted_data[block] = self._decrypt_blocks(encrypted_data, 1)[:self.block_size]
@@ -1504,7 +1603,8 @@ class EncryptedFS(OTPmeFS):
             serialized_data.extend(serialized_block)
             block_counter += 1
         try:
-            self.logger.debug(f"Writing {len(serialized_data)} bytes at offset {write_offset}")
+            if config.debug_enabled:
+                self.logger.debug(f"Writing {len(serialized_data)} bytes at offset {write_offset}")
             #if len(serialized_data) != block_count * self.block_with_metadata_size:
             #    self.logger.error(f"Invalid serialized data size: {len(serialized_data)}, expected {block_count * self.block_with_metadata_size}")
             #    raise fuse.FuseOSError(errno.EIO)
@@ -1641,7 +1741,8 @@ class EncryptedFS(OTPmeFS):
 
             # Set block_len and unencrypted_block_len to offset.
             offset += 8
-            self.logger.debug(f"Reading block {blocks_processed} at offset {offset - 4}, block_len: {block_len}")
+            if config.debug_enabled:
+                self.logger.debug(f"Reading block {blocks_processed} at offset {offset - 4}, block_len: {block_len}")
             if block_len != self.block_size:
                 self.logger.error(f"Invalid block length: {block_len}, expected {self.block_size}")
                 raise fuse.FuseOSError(errno.EIO)
@@ -1654,7 +1755,8 @@ class EncryptedFS(OTPmeFS):
             offset += self.nonce_size
             tag = encrypted_data[offset:offset + self.tag_size]
             offset += self.tag_size
-            self.logger.debug(f"Decrypting block_len: {block_len}, nonce: {nonce.hex()}, tag: {tag.hex()}")
+            if config.debug_enabled:
+                self.logger.debug(f"Decrypting block_len: {block_len}, nonce: {nonce.hex()}, tag: {tag.hex()}")
             try:
                 decrypted_block = self.aesgcm.decrypt(nonce, block + tag, None)
                 decrypted_data.extend(decrypted_block)
@@ -1672,7 +1774,8 @@ class EncryptedFS(OTPmeFS):
     def _get_file_size(self, enc_path):
         try:
             attrs = super().getattr(enc_path)
-            self.logger.debug(f"File size for {enc_path}: {attrs['st_size']}")
+            if config.debug_enabled:
+                self.logger.debug(f"File size for {enc_path}: {attrs['st_size']}")
             return attrs['st_size']
         except fuse.FuseOSError as e:
             if e.errno == errno.ENOENT:
@@ -1693,7 +1796,8 @@ class EncryptedFS(OTPmeFS):
             len_data = super().read(enc, 4, offset, None)
             super().release(enc, None)
             unencrypted_block_len = struct.unpack('!I', len_data)[0]
-            self.logger.debug(f"Last block unencrypted length: {unencrypted_block_len}")
+            if config.debug_enabled:
+                self.logger.debug(f"Last block unencrypted length: {unencrypted_block_len}")
             if unencrypted_block_len > self.block_size:
                 self.logger.error(f"Invalid unencrypted block length for last block: {unencrypted_block_len}, exceeds {self.block_size}")
                 raise fuse.FuseOSError(errno.EIO)
@@ -1705,18 +1809,21 @@ class EncryptedFS(OTPmeFS):
 
     def truncate(self, path, length, fh=None):
         enc = self._map_plain_to_enc(path)
-        self.logger.debug(f"Truncating {path} to {length} bytes")
+        if config.debug_enabled:
+            self.logger.debug(f"Truncating {path} to {length} bytes")
 
         current_encrypted_size = self._get_file_size(enc)
 
         # Truncate file to 0.
         if length == 0:
-            self.logger.debug("Truncating file to 0 bytes")
+            if config.debug_enabled:
+                self.logger.debug("Truncating file to 0 bytes")
             return super().truncate(enc, 0, fh)
 
         # Pad empty file with zeros.
         if current_encrypted_size == 0:
-            self.logger.debug("File is empty, creating zero-filled content")
+            if config.debug_enabled:
+                self.logger.debug("File is empty, creating zero-filled content")
             zero_data = b'\x00' * length
             self.write(path, zero_data, 0, fh)
             return 0
@@ -1725,12 +1832,14 @@ class EncryptedFS(OTPmeFS):
         needed_blocks = (length + self.block_size - 1) // self.block_size
         current_blocks = current_encrypted_size // self.block_with_metadata_size
 
-        self.logger.debug(f"Current blocks: {current_blocks}, needed blocks: {needed_blocks}")
+        if config.debug_enabled:
+            self.logger.debug(f"Current blocks: {current_blocks}, needed blocks: {needed_blocks}")
 
         # File gets bigger, expand with zeros.
         current_unencrypted_size = self._calc_unencrypted_size(path, current_encrypted_size, enc)
         if length > current_unencrypted_size:
-            self.logger.debug("Expanding file with zeros")
+            if config.debug_enabled:
+                self.logger.debug("Expanding file with zeros")
             zero_data = b'\x00' * (length - current_unencrypted_size)
             self.write(path, zero_data, current_unencrypted_size, fh)
             return 0
@@ -1741,14 +1850,16 @@ class EncryptedFS(OTPmeFS):
 
         if needed_blocks < current_blocks:
             # If file should shrink, truncate to full block size.
-            self.logger.debug(f"Removing blocks: from {current_blocks} to {needed_blocks}")
+            if config.debug_enabled:
+                self.logger.debug(f"Removing blocks: from {current_blocks} to {needed_blocks}")
             new_encrypted_size = needed_blocks * self.block_with_metadata_size
             super().truncate(enc, new_encrypted_size, fh)
 
         # Handle partial last block.
         last_block_remainder = length % self.block_size
         if last_block_remainder != 0 and needed_blocks > 0:
-            self.logger.debug(f"Adjusting last block to {last_block_remainder} bytes")
+            if config.debug_enabled:
+                self.logger.debug(f"Adjusting last block to {last_block_remainder} bytes")
             # Read current block data.
             last_block_start_offset = (needed_blocks - 1) * self.block_size
             current_block_data = self.read(path, self.block_size, last_block_start_offset, fh)
