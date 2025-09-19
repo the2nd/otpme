@@ -190,9 +190,6 @@ data_files = [
                 ('/etc/otpme/scripts',
                     get_files("deploy/scripts/")
                 ),
-                ('/etc/otpme/radius',
-                    get_files("deploy/radius/")
-                ),
                 ('/etc/bash_completion.d/',
                     [
                         'bash_completion/otpme',
