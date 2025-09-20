@@ -1578,6 +1578,38 @@ class Share(OTPmeObject):
         self.del_index('pool', pool.uuid)
         return self._cache(callback=callback)
 
+    @cli.check_rapi_opts()
+    def get_nodes(
+        self,
+        return_type: str="name",
+        skip_disabled: bool=True,
+        include_pools: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Get nodes valid for this share. """
+        # If no nodes or pools assigned to share return all nodes of shares site.
+        if not self.nodes and not self.pools:
+            result = backend.search(object_type="node",
+                                    attribute="uuid",
+                                    value="*",
+                                    realm=self.realm,
+                                    site=self.site,
+                                    return_type=return_type)
+            if _caller == "RAPI":
+                result = ",".join(result)
+            if _caller == "CLIENT":
+                result = "\n".join(result)
+            return callback.ok(result)
+
+        result = super(Share, self).get_nodes(return_type=return_type,
+                                            skip_disabled=skip_disabled,
+                                            include_pools=include_pools,
+                                            callback=callback,
+                                            _caller=_caller)
+
+        return callback.ok(result)
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show role config. """

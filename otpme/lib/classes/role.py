@@ -663,7 +663,10 @@ def register_backend():
     config.register_object_type(object_type="role",
                             tree_object=True,
                             uniq_name=True,
-                            add_after=["token"],
+                            # FIXME: must be roles added before tokens?
+                            #        This is required in client/sync1.py
+                            #add_after=["token"],
+                            add_before=["token"],
                             sync_before=["token", "user"],
                             object_cache=1024,
                             cache_region="tree_object",

@@ -332,7 +332,6 @@ class OTPmeSyncP1(OTPmeClient1):
     def sync_objects(self, realm, site, resync=False, max_tries=5,
         skip_object_deletion=True, sync_last_used=False,
         sync_older_objects=False, ignore_changed_objects=False):
-        own_realm, own_site = get_own_realm_site()
         # Acquire sync lock.
         lock_id = "sync_objects:%s/%s" % (realm, site)
         sync_lock = locking.acquire_lock(lock_type=LOCK_TYPE, lock_id=lock_id)
@@ -352,10 +351,9 @@ class OTPmeSyncP1(OTPmeClient1):
         # Sync object last used timestamps.
         if sync_last_used:
             if result is not False:
-                if self.connection.peer:
-                    if self.connection.peer.realm == own_realm \
-                    and self.connection.peer.site == own_site:
-                        self.sync_last_used(realm, site)
+                if realm == config.realm \
+                and site == config.site:
+                    self.sync_last_used(realm, site)
         return result
 
     def _sync_objects(self, realm, site, resync=False, max_tries=5,

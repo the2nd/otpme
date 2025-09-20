@@ -64,7 +64,7 @@ class OTPmeJoinP1(OTPmeServer1):
         self.session_otp_type = None
         # Indicates master node join.
         self.master_node_join = False
-        # Join/Leave job uuid.
+        # Join/Leave job UUID.
         self.job_uuid = None
         self.callback = None
         # Call parent class init.
@@ -1120,7 +1120,7 @@ class OTPmeJoinP1(OTPmeServer1):
             # Add callback with job UUID needed for proper object locking.
             self.job_uuid = stuff.gen_uuid()
         if not self.callback:
-            self.callback = JobCallback(uuid=self.job_uuid)
+            self.callback = JobCallback(uuid=self.job_uuid, client=self.client)
             # Disable sending of client messages.
             self.callback.disable()
 

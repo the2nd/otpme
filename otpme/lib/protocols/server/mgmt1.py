@@ -2135,23 +2135,15 @@ class OTPmeMgmtP1(OTPmeServer1):
             shares = {}
             share_nodes = share.get_nodes(include_pools=True,
                                         return_type="instance")
-            if not share_nodes:
-                share_nodes = backend.search(object_type="node",
-                                            attribute="uuid",
-                                            value="*",
-                                            realm=share.realm,
-                                            site=share.site,
-                                            return_type="instance")
-            if share_nodes:
-                node_fqdns = []
-                for node in share_nodes:
-                    node_fqdns.append(node.fqdn)
-                share_id = "%s/%s" % (share.site, share.name)
-                shares[share_id] = {}
-                shares[share_id]['name'] = share.name
-                shares[share_id]['site'] = share.site
-                shares[share_id]['nodes'] = node_fqdns
-                shares[share_id]['encrypted'] = share.encrypted
+            node_fqdns = []
+            for node in share_nodes:
+                node_fqdns.append(node.fqdn)
+            share_id = "%s/%s" % (share.site, share.name)
+            shares[share_id] = {}
+            shares[share_id]['name'] = share.name
+            shares[share_id]['site'] = share.site
+            shares[share_id]['nodes'] = node_fqdns
+            shares[share_id]['encrypted'] = share.encrypted
             status = True
             return self.build_response(status, shares)
 

@@ -1137,15 +1137,24 @@ class HostDaemon(OTPmeDaemon):
                                                     }
             nsscache_sync_status = False
             try:
-                nsscache_sync_status = nsscache.update(realm, site,
-                                            resync=resync,
-                                            cache_resync=nsscache_resync,
-                                            lock=sync_lock)
+                nsscache_sync_status = nsscache.update(realm,
+                                                    site,
+                                                    resync=resync,
+                                                    cache_resync=nsscache_resync,
+                                                    lock=sync_lock)
+                # On nssache sync from other sites we also have to sync nsscache
+                # of our site (e.g. token is in role/group of our site).
+                if site != config.site:
+                    nsscache_sync_status = nsscache.update(config.realm,
+                                                        config.site,
+                                                        resync=resync,
+                                                        cache_resync=nsscache_resync,
+                                                        lock=sync_lock)
             except Exception as e:
                 nsscache_sync_status = False
                 msg = "Error updating nsscache: %s" % e
                 self.logger.critical(msg)
-                config.raise_exception()
+                #config.raise_exception()
             finally:
                 # Release sync lock.
                 sync_lock.release_lock()
@@ -1175,7 +1184,7 @@ class HostDaemon(OTPmeDaemon):
                 sync_status = ssh_sync_status
 
         # Make sure we sent sync notifications to unsynchronized peers.
-        if sync_type == "notify" and self.host_type == "node":
+        if sync_type == "notify" and self.host_type == "node" and config.master_node:
             try:
                 notify_sites = self.get_unsync_sites(timeout=self.lock_timeout)
             except LockWaitTimeout:
@@ -1442,8 +1451,9 @@ class HostDaemon(OTPmeDaemon):
             self.start_sync(sync_type="ssh_authorized_keys")
             self.start_sync(sync_type="used_otps", offline=True)
             self.start_sync(sync_type="token_counters", offline=True)
-            self.start_sync(sync_type="notify")
             self.start_sync(sync_type="nsscache")
+            if config.master_node:
+                self.start_sync(sync_type="notify")
             #self.start_sync(sync_type="used_otps")
             #self.start_sync(sync_type="token_counters")
         else:

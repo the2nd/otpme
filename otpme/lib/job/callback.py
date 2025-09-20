@@ -35,11 +35,12 @@ from otpme.lib.exceptions import *
 
 class JobCallback(object):
     """ Class to handle user messages from job child processes. """
-    def __init__(self, name="default", job=None, uuid=None, api_mode=None):
+    def __init__(self, name="default", job=None, uuid=None, api_mode=None, client="API"):
         class FakeJob(object):
             def __init__(self, uuid=None, api_mode=True):
                 self.uuid = uuid
                 self.exit_info = {}
+                self.client = client
                 self._caller = "API"
                 self.return_value = None
                 class FakeBool(object):

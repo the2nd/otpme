@@ -744,9 +744,9 @@ class OTPmeSyncP1(OTPmeServer1):
         own_site = backend.get_object(object_type="site",
                                     uuid=config.site_uuid)
 
-        # If we are the site master we have to sync only the site we
-        # got notified from.
-        if own_site.uuid == master_site.uuid:
+        # If we are the master node of the master site we have to
+        # sync only the site we got notified from.
+        if config.master_node and own_site.uuid == master_site.uuid:
             value = self.peer.site
         else:
             # Non-master nodes must sync all sites of their realm.

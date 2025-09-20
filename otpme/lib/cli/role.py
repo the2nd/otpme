@@ -61,7 +61,7 @@ def register():
                 row_getter=row_getter,
                 write_acls=write_acls,
                 read_acls=read_acls,
-                max_len=30)
+                max_len=10)
 
 def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
     max_tokens=5, max_sync_users=5, max_ags=5, max_groups=5, max_policies=5,

@@ -238,7 +238,7 @@ class OTPmeFS(fuse.Operations):
                     try:
                         nodes = mount_response['nodes']
                         if not nodes:
-                            msg = "Received empty share nodes from fsd."
+                            msg = "Received empty share nodes from fsd: %s: %s" % (self.share, node)
                             self.logger.warning(msg)
                     except KeyError:
                         nodes = None
