@@ -33,6 +33,7 @@ fido2>=1.2.0
 qrcode>=5.1
 bson>=0.5.10
 ujson>=5.7.0
+orjson>=3.11.0
 pysimdjson>=6.0.2
 #larch-pickle>=1.1.3
 ldaptor>=21.2.0
@@ -75,6 +76,9 @@ yubikey-manager>=5.5.1
 python-gnupg>=0.4.9
 mfusepy>=3.0.0
 xattr>=1.2.0
+tlssysloghandler>=1.0.3
+relppy>=0.4
+#msgpack>=1.1.1
 #py-radius>=2.0.2.post1
 # apt-get install libffi-dev libssl-dev
 # For use with U2F token (client site only).
