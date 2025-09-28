@@ -140,9 +140,9 @@ def row_getter(realm, site, user_order, user_data, acls,
             or check_acl("enable:object") \
             or check_acl("disable:object"):
                 if enabled:
-                    enabled_string = "Enabled"
+                    enabled_string = _("Enabled")
                 else:
-                    enabled_string = "Disabled"
+                    enabled_string = _("Disabled")
                 row.append(enabled_string)
             else:
                 row.append("-")
@@ -183,9 +183,9 @@ def row_getter(realm, site, user_order, user_data, acls,
             or check_acl("enable:acl_inheritance") \
             or check_acl("disable:acl_inheritance"):
                 if acl_inheritance_enabled:
-                    acl_inheritance_string = "Enabled"
+                    acl_inheritance_string = _("Enabled")
                 else:
-                    acl_inheritance_string = "Disabled"
+                    acl_inheritance_string = _("Disabled")
                 row.append(acl_inheritance_string)
             else:
                 row.append("-")

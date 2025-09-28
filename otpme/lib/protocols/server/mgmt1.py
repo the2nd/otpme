@@ -2088,8 +2088,9 @@ class OTPmeMgmtP1(OTPmeServer1):
                 return self.build_response(status, message)
 
         # Enable localization for user.
-        if config.auth_user.language is not None:
-            config.setup_locale(config.auth_user.language)
+        if config.auth_user:
+            if config.auth_user.language is not None:
+                config.setup_locale(config.auth_user.language)
 
         # Check if authenticated user is admin.
         self.is_admin = False

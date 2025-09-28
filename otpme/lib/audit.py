@@ -121,7 +121,7 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
                 audit_msg = audit_msg.format(pid=os.getpid(), client=job_client, token=auth_token, error=job_error, func=func_name, self=self, args=log_args, kwargs=log_kwargs)
             else:
                 audit_msg = _("[{pid}] Client: {client}: Token: {token}: Data: {func} {self} {args} {kwargs}")
-                audit_msg = audit_msg.format(pid=os.getpid, client=job_client, token=auth_token, func=func_name, self=self, args=log_args, kwargs=log_kwargs)
+                audit_msg = audit_msg.format(pid=os.getpid(), client=job_client, token=auth_token, func=func_name, self=self, args=log_args, kwargs=log_kwargs)
             audit_logger.info(audit_msg)
             return result
         return wrapped

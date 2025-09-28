@@ -546,7 +546,8 @@ msgstr "Lade Modul: {module_name}"
 #: otpme/lib/cli/token.py:201 otpme/lib/cli/token.py:212
 #: otpme/lib/cli/token.py:417 otpme/lib/cli/policy.py:131
 #: otpme/lib/cli/policy.py:154 otpme/lib/cli/client.py:127
-#: otpme/lib/cli/client.py:317
+#: otpme/lib/cli/client.py:317 otpme/lib/cli/user.py:143
+#: otpme/lib/cli/user.py:186
 msgid "Enabled"
 msgstr "Aktiviert"
 
@@ -565,7 +566,8 @@ msgstr "Aktiviert"
 #: otpme/lib/cli/token.py:203 otpme/lib/cli/token.py:214
 #: otpme/lib/cli/token.py:419 otpme/lib/cli/policy.py:133
 #: otpme/lib/cli/policy.py:156 otpme/lib/cli/client.py:129
-#: otpme/lib/cli/client.py:319
+#: otpme/lib/cli/client.py:319 otpme/lib/cli/user.py:145
+#: otpme/lib/cli/user.py:188
 msgid "Disabled"
 msgstr "Deaktiviert"
 
@@ -2620,6 +2622,10 @@ msgstr "Leeres Passwort erhalten."
 #: otpme/lib/protocols/server/mgmt1.py:2406
 #: otpme/lib/protocols/server/mgmt1.py:2413
 #: otpme/lib/protocols/server/mgmt1.py:2456
+#: otpme/lib/protocols/server/mgmt1.py:2360
+#: otpme/lib/protocols/server/mgmt1.py:2407
+#: otpme/lib/protocols/server/mgmt1.py:2414
+#: otpme/lib/protocols/server/mgmt1.py:2457
 msgid "Permission denied."
 msgstr "Zugriff verweigert."
 
@@ -2893,6 +2899,7 @@ msgstr "Ausführung des Key-Scripts fehlgeschlagen: {script_stderr}"
 #: otpme/lib/protocols/server/mgmt1.py:2640
 #: otpme/lib/protocols/client/host1.py:126
 #: otpme/lib/protocols/server/mgmt1.py:2644
+#: otpme/lib/protocols/server/mgmt1.py:2645
 #, python-brace-format
 msgid "Unknown site: {site}"
 msgstr "Unbekannte Site: {site}"
@@ -18582,6 +18589,7 @@ msgstr ""
 #: otpme/lib/protocols/server/mgmt1.py:1246
 #: otpme/lib/protocols/server/mgmt1.py:2566
 #: otpme/lib/protocols/server/mgmt1.py:2570
+#: otpme/lib/protocols/server/mgmt1.py:2571
 #, python-brace-format
 msgid "Error: {error}"
 msgstr "Fehler: {error}"
@@ -18828,6 +18836,7 @@ msgstr "Unbehandelte Ausnahme beim Ausführen der Suche: {error}"
 #: otpme/lib/protocols/server/mgmt1.py:1981
 #: otpme/lib/protocols/server/mgmt1.py:2800
 #: otpme/lib/protocols/server/mgmt1.py:2804
+#: otpme/lib/protocols/server/mgmt1.py:2805
 #, python-brace-format
 msgid "Unknown job type: {type}"
 msgstr "Unbekannter Job-Typ: {type}"
@@ -18835,6 +18844,7 @@ msgstr "Unbekannter Job-Typ: {type}"
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2163
 #: otpme/lib/protocols/server/mgmt1.py:2167
+#: otpme/lib/protocols/server/mgmt1.py:2168
 #, python-brace-format
 msgid "Invalid share id: {id}"
 msgstr "Ungültige Freigabe-ID: {id}"
@@ -18842,6 +18852,7 @@ msgstr "Ungültige Freigabe-ID: {id}"
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2174
 #: otpme/lib/protocols/server/mgmt1.py:2178
+#: otpme/lib/protocols/server/mgmt1.py:2179
 #, python-brace-format
 msgid "Unknown share: {name}"
 msgstr "Unbekannte Freigabe: {name}"
@@ -18849,6 +18860,7 @@ msgstr "Unbekannte Freigabe: {name}"
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2248
 #: otpme/lib/protocols/server/mgmt1.py:2252
+#: otpme/lib/protocols/server/mgmt1.py:2253
 #, python-brace-format
 msgid "Unknown token: {path}"
 msgstr "Unbekanntes Token: {path}"
@@ -18856,6 +18868,7 @@ msgstr "Unbekanntes Token: {path}"
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2270
 #: otpme/lib/protocols/server/mgmt1.py:2274
+#: otpme/lib/protocols/server/mgmt1.py:2275
 #, python-brace-format
 msgid "Unknown policy: {name}"
 msgstr "Unbekannte Richtlinie: {name}"
@@ -18863,6 +18876,7 @@ msgstr "Unbekannte Richtlinie: {name}"
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2374
 #: otpme/lib/protocols/server/mgmt1.py:2378
+#: otpme/lib/protocols/server/mgmt1.py:2379
 #, python-brace-format
 msgid "Error deleting object: {error}"
 msgstr "Fehler beim Löschen des Objekts: {error}"
@@ -18874,6 +18888,9 @@ msgstr "Fehler beim Löschen des Objekts: {error}"
 #: otpme/lib/protocols/server/mgmt1.py:2402
 #: otpme/lib/protocols/server/mgmt1.py:2431
 #: otpme/lib/protocols/server/mgmt1.py:2844
+#: otpme/lib/protocols/server/mgmt1.py:2403
+#: otpme/lib/protocols/server/mgmt1.py:2432
+#: otpme/lib/protocols/server/mgmt1.py:2845
 #, python-brace-format
 msgid "Error running command: {cmd}: {error}"
 msgstr "Fehler beim Ausführen des Befehls: {cmd}: {error}"
@@ -18881,6 +18898,7 @@ msgstr "Fehler beim Ausführen des Befehls: {cmd}: {error}"
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2459
 #: otpme/lib/protocols/server/mgmt1.py:2463
+#: otpme/lib/protocols/server/mgmt1.py:2464
 #, python-brace-format
 msgid "MGMT_INVALID_SYNTAX: Missing {cmd} name"
 msgstr "MGMT_INVALID_SYNTAX: Fehlender {cmd}-Name"
@@ -18888,6 +18906,7 @@ msgstr "MGMT_INVALID_SYNTAX: Fehlender {cmd}-Name"
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2484
 #: otpme/lib/protocols/server/mgmt1.py:2488
+#: otpme/lib/protocols/server/mgmt1.py:2489
 #, python-brace-format
 msgid "MGMT_INVALID_SESSION_ID: {id}"
 msgstr "MGMT_INVALID_SESSION_ID: {id}"
@@ -18895,6 +18914,7 @@ msgstr "MGMT_INVALID_SESSION_ID: {id}"
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2561
 #: otpme/lib/protocols/server/mgmt1.py:2565
+#: otpme/lib/protocols/server/mgmt1.py:2566
 #, python-brace-format
 msgid "Object locked: {error}"
 msgstr "Objekt gesperrt: {error}"
@@ -18902,6 +18922,7 @@ msgstr "Objekt gesperrt: {error}"
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2587
 #: otpme/lib/protocols/server/mgmt1.py:2591
+#: otpme/lib/protocols/server/mgmt1.py:2592
 #, python-brace-format
 msgid "Missing argument: {arg}"
 msgstr "Fehlendes Argument: {arg}"
@@ -18909,6 +18930,7 @@ msgstr "Fehlendes Argument: {arg}"
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2605
 #: otpme/lib/protocols/server/mgmt1.py:2609
+#: otpme/lib/protocols/server/mgmt1.py:2610
 #, python-brace-format
 msgid "Error loading object: {error}"
 msgstr "Fehler beim Laden des Objekts: {error}"
@@ -18916,12 +18938,14 @@ msgstr "Fehler beim Laden des Objekts: {error}"
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2647
 #: otpme/lib/protocols/server/mgmt1.py:2651
+#: otpme/lib/protocols/server/mgmt1.py:2652
 msgid "You have to delete sites on the master site."
 msgstr "Sie müssen Sites auf der Master-Site löschen."
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2652
 #: otpme/lib/protocols/server/mgmt1.py:2656
+#: otpme/lib/protocols/server/mgmt1.py:2657
 #, python-brace-format
 msgid "MGMT_INVALID_OBJECT_NAME: {name}"
 msgstr "MGMT_INVALID_OBJECT_NAME: {name}"
@@ -18929,6 +18953,7 @@ msgstr "MGMT_INVALID_OBJECT_NAME: {name}"
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2823
 #: otpme/lib/protocols/server/mgmt1.py:2827
+#: otpme/lib/protocols/server/mgmt1.py:2828
 #, python-brace-format
 msgid "Failed to run command: {error}"
 msgstr "Fehler beim Ausführen des Befehls: {error}"

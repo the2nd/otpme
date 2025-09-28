@@ -473,7 +473,7 @@ class ControlDaemon(UnixDaemon):
         if address != self.floating_address:
             self.deconfigure_floating_ip()
         try:
-            net.configure_floating_ip(address, ping=True)
+            net.configure_floating_ip(address)
         except AddressAlreadyAssigned as e:
             self.logger.warning(str(e))
         except AddressAlreadyInUse as e:
