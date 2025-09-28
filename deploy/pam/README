@@ -1,0 +1,39 @@
+# OTPme PAM module with support for offline logins
+
+# example pam entry
+auth	[success=1 default=ignore]	pam_python.so pam_otpme.py realm_login try_first_pass cache_login_tokens use_smartcard=auto use_ssh_agent=auto offline_key_func=Argon2_i;min_mem:65536,max_mem:262144,iterations:6,threads:4 check_offline_pass_strength=password_strength;0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3 debug
+
+# valid options
+cache_login_tokens		- cache login tokens that are configured for offline usage
+check_offline_pass_strength	- enable dynamic calculation of key derivation iterations based on password strength
+					- the first parameter is the password policy to use to get the password strength score
+						- you an use "auto" to use the policy assigned to the host
+					- the second parameter (after the ";") is a comma separated list of score:interations pairs
+unlock_via_offline_token	- Use offline token on screen unlock. This does not send an auth request to the server.
+offline_key_func		- key derivation function used for offline token encryption
+offline_greeting		- show greeting on successful offline login
+online_greeting			- show greeting on successful online login
+message_timeout			- messages are shown this time in seconds
+use_first_pass			- use password from previous pam module and fail if none is found
+try_first_pass			- try to get password from previous pam module but ask for one if needed
+send_password			- send password to servers? If you use a token type that does not require the password
+						  on server side you can set this to false to make sure your password never leaves the host.
+							- true: Send password to server if requested.
+							- false: Never send password to server.
+use_smartcard			- enable smartcard support (e.g. yubikey HMAC-SHA1)
+							- auto: try to use local connected smartcard (default)
+							- true: force use of local connected smartcard (login without smartcard not possible)
+							- false: ignore local connected smartcard
+use_ssh_agent			- enable support for authentication via SSH key (e.g. yubikey with GPG applet and OTPme "ssh" token on server side)
+							- auto: try to use SSH key from agent (default)
+							- true: force use of SSH key from agent (login without valid SSH key not possible)
+							- false: do not use (and not start) SSH agent
+start_ssh_agent			- start SSH agent at login.
+							- auto: decide to start SSH agent based on public keys received from server
+							- true: definitly start SSH agent.
+							- false: dont start SSH agent.
+show_errors 			- show OTPme login errors via PAM message
+connect_timeout			- timeout when connecting to OTPme servers
+connection_timeout		- connection timeout when waiting for answer from server
+
+debug				- enable debug logging

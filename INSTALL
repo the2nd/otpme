@@ -1,0 +1,85 @@
+# OTPme installation instructions
+# *******************************
+# Debian
+#apt-get install git pwgen libnss-cache liboath-dev postgresql postgresql-server-dev-all redis-server redis-tools libre2-9 libre2-dev pkg-config libsystemd-dev cython3 pyflakes3 python3-ipaddr python3-psutil python3-tz python3-paramiko python3-pexpect python3-prettytable python3-openssl python3-pylibacl python3-ecdsa python3-dns python3-dnspython python3-twisted python3-progressbar python3-netifaces python3-passlib python3-humanize python3-cachetools python3-future python3-setproctitle python3-jwt python3-colorlog python3-apsw python3-sqlalchemy python3-daemon python3-daemonize python3-ldap3 python3-scapy python3-pam python3-dogpile.cache python3-redis python3-pylibmc python3-termcolor python3-pyscard python3-fido2 libpcsclite1 yubikey-personalization
+
+apt-get install python3-scapy python3-systemd python3-fido2 python3-sqlalchemy python3-dev python3-pip libpq-dev libacl1-dev libre2-9 libre2-dev pkg-config git python3-jwt liboath0 liboath-dev redis redis-tools postgresql libnss-cache python3-pyotp pwgen python3-pylibmc libsystemd-dev freeradius
+
+# Add OTPme user
+# --------------
+useradd -r -U -d /var/lib/otpme otpme
+
+# To use the OTPme PAM module e.g. with sddm (kubuntu display manager)
+# you have to add the "sddm" user to the "otpme" group:
+gpasswd -a sddm otpme
+
+# Install OTPme command (not required for pip install).
+# -----------------------------------------------------
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-accessgroup
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-agent
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-auth
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-ca
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-client
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-controld
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-group
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-accessgroup
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-host
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-node
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-realm
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-role
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-session
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-site
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-token
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-tool
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-unit
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-user
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-script
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-policy
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-resolver
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-dictionary
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-pinentry
+ln -si /usr/local/otpme/otpme/command.py /usr/local/bin/otpme-get-authorized-keys
+
+mkdir /etc/otpme
+cp -i deploy/otpme.conf.dist /etc/otpme/otpme.conf
+cp -a deploy/schema /etc/otpme/
+
+# It's recommended to enable bash command completion
+ln -si /usr/local/otpme/bash_completion/otpme /etc/bash_completion.d/
+source ~/.bashrc
+
+# You should modify your /etc/nsswitch.conf to make OTPme users/groups
+# available via Name Service Switch (libnss-cache).
+/etc/nsswitch.conf
+passwd:         cache compat
+group:          cache compat
+shadow:         cache compat
+
+# You can use the OTPme PAM module to authenticate any PAM capable application
+# against OTPme.
+ln -si /usr/local/otpme/deploy/pam/pam_otpme.py /lib/security/
+ln -si /usr/local/otpme/deploy/pam/pam_otpme.py /lib/x86_64-linux-gnu/security/
+ln -si /usr/local/otpme/deploy/pam/pam_otpme.py /usr/lib/x86_64-linux-gnu/security/
+cp -ai /usr/local/otpme/deploy/pam/otpme-* /etc/pam.d/
+
+# To enable the OTPme PAM module for a service you just have to replace any
+# "@include common-xxx" line with "@include otpme-xxx". An example for the SSH
+# service is included in the pam/examples directory.
+@include otpme-auth
+@include otpme-account
+@include otpme-session
+
+# /etc/security/limits.conf
+*               -       msgqueue        262144000
+
+# You can also deploy SSH public keys with OTPme.
+/etc/ssh/sshd_config
+AuthorizedKeysCommand /usr/local/bin/otpme-get-authorized-keys
+AuthorizedKeysCommandUser otpme
+PermitUserEnvironment yes
+
+# To enable second factor authentication for SSH add the following lines to
+# your /etc/ssh/sshd_config and add a second token (e.g. HOTP) to your users...
+/etc/ssh/sshd_config
+ChallengeResponseAuthentication yes
+AuthenticationMethods "publickey,password"

@@ -1,0 +1,16 @@
+#wget https://kumisystems.dl.sourceforge.net/project/pam-python/pam-python-1.0.8-1/pam-python-1.0.8.tar.gz
+#
+#tar xvfz pam-python-1.0.8.tar.gz
+#patch -p 0 < pam-python-1.0.8.patch
+#cd pam-python-1.0.8/src/
+#python3 setup.py build
+#cp build/lib.linux-x86_64-3.9/pam_python.cpython-39-x86_64-linux-gnu.so /lib/x86_64-linux-gnu/security/pam_python.so
+
+
+apt-get install libpam0g-dev
+
+git clone https://github.com/castlabs/pam-python
+cd pam-python
+make
+make install
+ln -s  /lib/security/pam_python3.so /lib/x86_64-linux-gnu/security/pam_python.so

@@ -1,0 +1,16 @@
+/var/log/otpme/*.log
+{
+	create 600 otpme otpme
+	daily
+	compress
+	dateext
+	maxage 365
+	rotate 99
+	missingok
+	notifempty
+	su root root
+	sharedscripts
+	postrotate
+		/usr/local/bin/otpme-controld reload > /dev/null
+	endscript
+}

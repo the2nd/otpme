@@ -1,0 +1,4 @@
+cp -a deploy/systemd/otpme.service /etc/systemd/system/otpme.service
+systemctl daemon-reload
+systemctl enable otpme
+systemctl start otpme

@@ -1,0 +1,5 @@
+auth	required                        pam_group.so
+auth	[success=1 default=ignore]	pam_python.so pam_otpme.py realm_login try_first_pass cache_login_tokens use_smartcard=auto use_ssh_agent=auto start_ssh_agent=auto create_home home_skel=/etc/skel debug
+#auth	required	pam_python.so pam_otpme.py realm_login try_first_pass cache_login_tokens use_smartcard=auto use_ssh_agent=auto debug
+auth	requisite			pam_deny.so
+auth	required			pam_permit.so

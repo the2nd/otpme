@@ -1,0 +1,4362 @@
+#!/bin/sh
+
+check_stdin () {
+	if [ ! -t 0 ] ; then
+		echo "Please use full path to OTPme command when running in PIPE." > /dev/stderr
+		return 1
+	fi
+}
+
+reset_expansion () {
+	CMD="$1"
+	shift
+	$CMD "$@"
+	EXIT_CODE="$?"
+	set +f
+	return "$EXIT_CODE"
+}
+
+# OTPme's aliases are required because we want to disable bash globbing to
+# allow usage of wildcards (e.g. otpme-user show u*) without the need to put
+# them in quotation marks. But there seems to be no way to do this AND to
+# allow the OTPme command to receive it's stdin via pipe. Thats because we
+# need to call "set -f" in front of the reset_expansion function that
+# eliminates the stdin that may come from a pipe. As a workaround it is
+# required to use the full path to the OTPme command in pipes.
+alias otpme-realm='check_stdin && set -f && reset_expansion otpme-realm'
+alias otpme-site='check_stdin && set -f && reset_expansion otpme-site'
+alias otpme-unit='check_stdin && set -f && reset_expansion otpme-unit'
+alias otpme-ca='check_stdin && set -f && reset_expansion otpme-ca'
+alias otpme-user='check_stdin && set -f && reset_expansion otpme-user'
+alias otpme-token='check_stdin && set -f && reset_expansion otpme-token'
+alias otpme-group='check_stdin && set -f && reset_expansion otpme-group'
+alias otpme-client='check_stdin && set -f && reset_expansion otpme-client'
+alias otpme-accessgroup='check_stdin && set -f && reset_expansion otpme-accessgroup'
+alias otpme-node='check_stdin && set -f && reset_expansion otpme-node'
+alias otpme-host='check_stdin && set -f && reset_expansion otpme-host'
+alias otpme-role='check_stdin && set -f && reset_expansion otpme-role'
+alias otpme-script='check_stdin && set -f && reset_expansion otpme-script'
+alias otpme-policy='check_stdin && set -f && reset_expansion otpme-policy'
+alias otpme-resolver='check_stdin && set -f && reset_expansion otpme-resolver'
+alias otpme-dictionary='check_stdin && set -f && reset_expansion otpme-dictionary'
+
+_otpme_get_realms () {
+	otpme-realm $_OTPME_OPTS list 2> /dev/null | sed "s|$|$1|"
+}
+
+_otpme_get_sites () {
+	otpme-site $_OTPME_OPTS list 2> /dev/null | sed "s|$|$1|"
+}
+
+_otpme_get_units () {
+	otpme-unit $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null | sed "s|$|$1|"
+}
+
+_otpme_get_users () {
+	# get users and append $1 to end of username (used for "otpme-token add")
+	otpme-user $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null | sed "s|$|$1|"
+}
+
+_otpme_get_groups () {
+	otpme-group $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null
+}
+
+_otpme_get_clients () {
+	otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null
+}
+
+_otpme_get_nodes () {
+	otpme-node $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null
+}
+
+_otpme_get_hosts () {
+	otpme-host $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null
+}
+
+_otpme_get_roles () {
+	otpme-role $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null
+}
+
+_otpme_get_cas () {
+	otpme-ca $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null
+}
+
+_otpme_get_user_paths () {
+	otpme-user $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list / 2> /dev/null
+}
+
+_otpme_get_group_paths () {
+	otpme-group $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list / 2> /dev/null
+}
+
+_otpme_get_client_paths () {
+	otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list / 2> /dev/null
+}
+
+_otpme_get_node_paths () {
+	otpme-node $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list / 2> /dev/null
+}
+
+_otpme_get_host_paths () {
+	otpme-host $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list / 2> /dev/null
+}
+
+_otpme_get_role_paths () {
+	otpme-role $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list / 2> /dev/null
+}
+
+_otpme_get_ca_paths () {
+	otpme-ca $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list / 2> /dev/null
+}
+
+_otpme_get_group_members () {
+	local GROUP="$1"
+	local _TYPE="$2"
+
+	if [ "$_TYPE" = "client" ] ; then
+		otpme-group $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$GROUP" 2> /dev/null | grep "^CLIENTS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+
+	if [ "$_TYPE" = "node" ] ; then
+		otpme-group $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$GROUP" 2> /dev/null | grep "^NODES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+
+	if [ "$_TYPE" = "host" ] ; then
+		otpme-group $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$GROUP" 2> /dev/null | grep "^HOSTS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+
+_otpme_get_accessgroups () {
+	otpme-accessgroup $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null
+}
+
+_otpme_get_child_groups () {
+	local GROUP="$1"
+	if [ "$GROUP" != "" ] ; then
+		otpme-accessgroup $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$GROUP" 2> /dev/null | grep "^CHILD_GROUPS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_child_sessions () {
+	local GROUP="$1"
+	if [ "$GROUP" != "" ] ; then
+		otpme-accessgroup $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$GROUP" 2> /dev/null | grep "^CHILD_SESSIONS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_client_addresses () {
+	local CLIENT="$1"
+	if [ "$CLIENT" != "" ] ; then
+		otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$CLIENT" 2> /dev/null | grep "^ADDRESSES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_realm_aliases () {
+	local R="$1"
+	if [ "$R" != "" ] ; then
+		otpme-realm $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$R" 2> /dev/null | grep "^ALIASES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+
+_otpme_get_dicts () {
+	otpme-dictionary $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null
+}
+
+_otpme_get_policies () {
+	otpme-policy $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null
+}
+
+_otpme_get_resolvers () {
+	otpme-resolver $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null
+}
+
+_otpme_get_scripts () {
+	otpme-script $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null
+}
+
+_otpme_get_script_signatures () {
+	local NAME="$1"
+	otpme-script $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$NAME" 2> /dev/null | grep "^SIGNATURES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+}
+
+
+_otpme_get_token_signatures () {
+	local NAME="$1"
+	otpme-token $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$NAME" 2> /dev/null | grep "^SIGNATURES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+}
+
+
+_otpme_get_object_extensions () {
+	local _TYPE="$1"
+	local NAME="$2"
+	otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$NAME" 2> /dev/null | grep "^EXTENSIONS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+}
+
+_otpme_get_object_description () {
+	local _TYPE="$1"
+	local NAME="$2"
+	otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$NAME" 2> /dev/null | grep "^DESCRIPTION=" | cut -d '=' -f 2 | tr -d '"' | tr -d "'"
+}
+
+
+_otpme_get_policy_token_types () {
+	local _TYPE="$1"
+	local NAME="$2"
+	otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$NAME" 2> /dev/null | grep "^FORCE_TOKEN_TYPES=" | cut -d '=' -f 2- | tr -d '"' | tr -d "'"
+}
+
+_otpme_get_policy_pass_types () {
+	local _TYPE="$1"
+	local NAME="$2"
+	otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$NAME" 2> /dev/null | grep "^FORCE_PASS_TYPES=" | cut -d '=' -f 2- | tr -d '"' | tr -d "'"
+}
+
+_otpme_get_policy_login_times () {
+	local _TYPE="$1"
+	local NAME="$2"
+	otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$NAME" 2> /dev/null | grep "^LOGIN_TIMES=" | cut -d '=' -f 2- | tr -d '"' | tr -d "'"
+}
+
+_otpme_get_policy_id_ranges () {
+	local _TYPE="$1"
+	local NAME="$2"
+	otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$NAME" 2> /dev/null | grep "^ID_RANGES=" | cut -d '=' -f 2- | tr -d '"' | tr -d "'" | tr ',' '\n'
+}
+
+_otpme_get_policy_strength_checker_opts () {
+	local _TYPE="$1"
+	local NAME="$2"
+	otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$NAME" 2> /dev/null | grep "^STRENGTH_CHECKER_OPTS=" | cut -d '=' -f 2- | tr -d '"' | tr -d "'"
+}
+
+_otpme_get_object_acls () {
+	local _TYPE="$1"
+	local NAME="$2"
+	otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" show_acls "$NAME" 2> /dev/null
+}
+
+_otpme_get_object_supported_acls () {
+	local _TYPE="$1"
+	local NAME="$2"
+	otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_supported_acls "$NAME" 2> /dev/null
+}
+
+_otpme_get_object_supported_default_acls () {
+	local _TYPE="$1"
+	local NAME="$2"
+	otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_supported_default_acls "$NAME" 2> /dev/null
+}
+
+_otpme_get_object_supported_default_acls_recursive () {
+	local _TYPE="$1"
+	local NAME="$2"
+	otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_supported_recursive_default_acls "$NAME" 2> /dev/null
+}
+
+
+_otpme_get_role_accessgroups () {
+	local ROLE="$1"
+	if [ "$ROLE" != "" ] ; then
+		otpme-role $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$ROLE" 2> /dev/null | grep "^ACCESS_GROUPS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_role_roles () {
+	local ROLE="$1"
+	if [ "$ROLE" != "" ] ; then
+		otpme-role $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$ROLE" 2> /dev/null | grep "^ROLES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_role_tokens () {
+	local ROLE="$1"
+	if [ "$ROLE" != "" ] ; then
+		otpme-role $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$ROLE" 2> /dev/null | grep "^TOKENS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_role_groups () {
+	local ROLE="$1"
+	if [ "$ROLE" != "" ] ; then
+		otpme-role $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$ROLE" 2> /dev/null | grep "^GROUPS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+
+_otpme_get_host_tokens () {
+	local HOST="$1"
+	if [ "$HOST" != "" ] ; then
+		otpme-host $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$HOST" 2> /dev/null | grep "^TOKENS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_node_tokens () {
+	local NODE="$1"
+	if [ "$NODE" != "" ] ; then
+		otpme-node $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$NODE" 2> /dev/null | grep "^TOKENS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_client_tokens () {
+	local CLIENT="$1"
+	if [ "$CLIENT" != "" ] ; then
+		otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$CLIENT" 2> /dev/null | grep "^TOKENS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_accessgroup_tokens () {
+	local ACCESSGROUP="$1"
+	if [ "$ACCESSGROUP" != "" ] ; then
+		otpme-accessgroup $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$ACCESSGROUP" 2> /dev/null | grep "^TOKENS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_accessgroup_roles () {
+	local ACCESSGROUP="$1"
+	if [ "$ACCESSGROUP" != "" ] ; then
+		otpme-accessgroup $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$ACCESSGROUP" 2> /dev/null | grep "^ROLES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_accessgroup_groups () {
+	local ACCESSGROUP="$1"
+	if [ "$ACCESSGROUP" != "" ] ; then
+		otpme-accessgroup $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$ACCESSGROUP" 2> /dev/null | grep "^GROUPS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+
+_otpme_get_group_tokens () {
+	local GROUP="$1"
+	if [ "$GROUP" != "" ] ; then
+		otpme-group $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$GROUP" 2> /dev/null | grep "^TOKENS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_group_roles () {
+	local GROUP="$1"
+	if [ "$GROUP" != "" ] ; then
+		otpme-group $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$GROUP" 2> /dev/null | grep "^ROLES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_group_policies () {
+	local POLICY="$1"
+	if [ "$POLICY" != "" ] ; then
+		otpme-group $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$POLICY" 2> /dev/null | grep "^POLICIES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_realm_policies () {
+	local POLICY="$1"
+	if [ "$POLICY" != "" ] ; then
+		otpme-realm $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$POLICY" 2> /dev/null | grep "^POLICIES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_site_policies () {
+	local POLICY="$1"
+	if [ "$POLICY" != "" ] ; then
+		otpme-site $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$POLICY" 2> /dev/null | grep "^POLICIES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_unit_policies () {
+	local POLICY="$1"
+	if [ "$POLICY" != "" ] ; then
+		otpme-unit $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$POLICY" 2> /dev/null | grep "^POLICIES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_accessgroup_policies () {
+	local POLICY="$1"
+	if [ "$POLICY" != "" ] ; then
+		otpme-accessgroup $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$POLICY" 2> /dev/null | grep "^POLICIES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_user_policies () {
+	local POLICY="$1"
+	if [ "$POLICY" != "" ] ; then
+		otpme-user $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$POLICY" 2> /dev/null | grep "^POLICIES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_role_policies () {
+	local POLICY="$1"
+	if [ "$POLICY" != "" ] ; then
+		otpme-role $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$POLICY" 2> /dev/null | grep "^POLICIES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_client_policies () {
+	local POLICY="$1"
+	if [ "$POLICY" != "" ] ; then
+		otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$POLICY" 2> /dev/null | grep "^POLICIES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_token_policies () {
+	local POLICY="$1"
+	if [ "$POLICY" != "" ] ; then
+		otpme-token $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$POLICY" 2> /dev/null | grep "^POLICIES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_host_policies () {
+	local POLICY="$1"
+	if [ "$POLICY" != "" ] ; then
+		otpme-host $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$POLICY" 2> /dev/null | grep "^POLICIES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+
+_otpme_get_node_policies () {
+	local POLICY="$1"
+	if [ "$POLICY" != "" ] ; then
+		otpme-node $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$POLICY" 2> /dev/null | grep "^POLICIES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_token_groups () {
+	local TOKEN="$1"
+	if [ "$TOKEN" != "" ] ; then
+		otpme-token $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$TOKEN" 2> /dev/null | grep "^GROUPS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+_otpme_get_token_accessgroups () {
+	local TOKEN="$1"
+	if [ "$TOKEN" != "" ] ; then
+		otpme-token $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$TOKEN" 2> /dev/null | grep "^ACCESS_GROUPS=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+
+_otpme_get_site_trusts () {
+	local SITE="$1"
+	if [ "$SITE" != "" ] ; then
+		otpme-site $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$SITE" 2> /dev/null | grep "^TRUSTED_SITES=" | cut -d '=' -f 2 | tr -d '"' | tr ',' ' '
+	fi
+}
+
+
+_otpme_get_tokens () {
+	local _USER="$1"
+	local _TYPE="$2"
+
+	if [ "$_USER" = "" ] ; then
+		if [ "$_TYPE" = "" ] ; then
+			otpme-token $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null
+		else
+			otpme-token $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" show .* 2> /dev/null | sed '1,/----/d' | grep  "^ [^ ]*[ ]*$_TYPE[ ]*[ED]" | awk '{ print $1 }'
+		fi
+	else
+		if [ "$_TYPE" = "" ] ; then
+			otpme-token $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" show $_USER 2> /dev/null | sed '1,/----/d' | awk '{ print $1 }' | grep '/' | sed -e "s|^$_USER/||g"
+		else
+			otpme-token $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" show $_USER 2> /dev/null | sed '1,/----/d' | grep  "^ [^ ]*[ ]*$_TYPE[ ]*[ED]" | awk '{ print $1 }' | sed -e "s|^$_USER/||g"
+		fi
+	fi
+}
+
+_otpme_get_sessions () {
+	otpme-session $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null
+}
+
+_otpme_get_clients_with_secret () {
+	local ALL_CLIENTS="`otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null`"
+	for CLIENT in $ALL_CLIENTS ; do
+		local CLIENT_SECRET="`otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$CLIENT" 2> /dev/null | grep "^SECRET=" | cut -d '=' -f 2 | tr -d '"'`"
+		if [ "$CLIENT_SECRET" != "" ] ; then
+			echo "$CLIENT"
+		fi
+	done
+}
+
+_otpme_get_clients_tp_enabled () {
+	local ALL_CLIENTS="`otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null`"
+	for CLIENT in $ALL_CLIENTS ; do
+		if otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$CLIENT" 2> /dev/null | grep "TP_ENABLED=\"True\"" > /dev/null 2>&1 ; then
+			echo "$CLIENT"
+		fi
+	done
+}
+
+_otpme_get_clients_tp_disabled () {
+	local ALL_CLIENTS="`otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null`"
+	for CLIENT in $ALL_CLIENTS ; do
+		if otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$CLIENT" 2> /dev/null | grep "TP_ENABLED=\"False\"" > /dev/null 2>&1 ; then
+			echo "$CLIENT"
+		fi
+	done
+}
+
+_otpme_get_clients_tp_forced () {
+	local ALL_CLIENTS="`otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null`"
+	for CLIENT in $ALL_CLIENTS ; do
+		if otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$CLIENT" 2> /dev/null | grep "TP_FORCED=\"True\"" > /dev/null 2>&1 ; then
+			echo "$CLIENT"
+		fi
+	done
+}
+
+_otpme_get_clients_tp_not_forced () {
+	local ALL_CLIENTS="`otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" list 2> /dev/null`"
+	for CLIENT in $ALL_CLIENTS ; do
+		if otpme-client $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$CLIENT" 2> /dev/null | grep "TP_FORCED=\"False\"" > /dev/null 2>&1 ; then
+			echo "$CLIENT"
+		fi
+	done
+}
+
+_otpme_get_token_types () {
+	otpme-realm $_OTPME_OPTS _show_token_types $_OTPME_REALM 2> /dev/null
+}
+
+_otpme_get_policy_types () {
+	otpme-realm $_OTPME_OPTS _show_policy_types $_OTPME_REALM 2> /dev/null
+}
+
+_otpme_get_resolver_types () {
+	otpme-realm $_OTPME_OPTS _show_resolver_types $_OTPME_REALM 2> /dev/null
+}
+
+_otpme_get_valid_search_attributes () {
+	otpme-realm $_OTPME_OPTS _show_valid_search_attributes $_OTPME_REALM 2> /dev/null
+}
+
+_otpme_get_hash_types () {
+	otpme-tool $_OTPME_OPTS show_hash_types 2> /dev/null | cut -d ':' -f 2 | sed -e 's|^ ||g'
+}
+
+_otpme_get_word () {
+	local POS="$[$1+$pos_fix]"
+	local WORD="${COMP_WORDS[$POS]}"
+	# Make sure echo(1) does not interpret options!
+	if [[ $WORD == -* ]] ; then
+		echo -- "$WORD"
+	else
+		echo "$WORD"
+	fi
+}
+
+# shared command functions
+_otpme_comlete_otpme_script () {
+	if [ "$_TYPE" != "$1" ] ; then
+		_CUR_SCRIPT=""
+		_CUR_SCRIPT_OPTIONS=""
+	fi
+	if [ "$_SCRIPT_PARAMETER_NAME" != "$2" ] ; then
+		_CUR_SCRIPT=""
+		_CUR_SCRIPT_OPTIONS=""
+	fi
+	_TYPE="$1"
+	_SCRIPT_PARAMETER_NAME="$2"
+	_SCRIPT_OPTIONS_PARAMETER_NAME="$3"
+
+	_USER="`_otpme_get_word 2`"
+	_CUR_SCRIPT="`otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$_USER" 2> /dev/null | grep "^$_SCRIPT_PARAMETER_NAME=" | cut -d '=' -f 2 | tr -d '"' | tr -d "'"`"
+
+	OLD_COMPLETE_EXISTING_SCRIPT="$COMPLETE_EXISTING_SCRIPT"
+	if [ "$_CUR_SCRIPT" = "" ] ; then
+		COMPLETE_EXISTING_SCRIPT="False"
+	else
+		COMPLETE_EXISTING_SCRIPT="True"
+		if [ "$cur" != "" ] ; then
+			COMPLETE_EXISTING_SCRIPT="False"
+			if [ "$OLD_COMPLETE_EXISTING_SCRIPT" != "False" ] ; then
+				COMP_LIST=""
+			fi
+		fi
+	fi
+
+	if [ "$COMP_LIST" = "" ] ; then
+		if [ "$_CUR_SCRIPT" != "" ] ; then
+			_CUR_SCRIPT_OPTIONS="`otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$_USER" 2> /dev/null | grep "^$_SCRIPT_OPTIONS_PARAMETER_NAME=" | cut -d '=' -f 2 | tr -d '"' | tr -d "'"`"
+		fi
+		COMP_OPTS="nospace"
+		COMP_IFS=$'\x0a';
+		if [ "$COMPLETE_EXISTING_SCRIPT" = "True" ] ; then
+			if [ "$_CUR_SCRIPT_OPTIONS" = "" ] ; then
+				COMP_LIST="\'$_CUR_SCRIPT\'"
+			else
+				COMP_LIST="\'$_CUR_SCRIPT $_CUR_SCRIPT_OPTIONS\'"
+			fi
+		else
+			if [ "$cur" = "" ] ; then
+				compopt +o nospace
+				COMPREPLY=( `compgen -W '\\"' -- $cur` )
+				compopt -o nospace
+			else
+				WORD3="$(_otpme_get_word 3 | tr -d '"')"
+				#COMP_LIST="$(_otpme_get_scripts | sed -e "s|^|$WORD3|g")"
+				COMP_LIST="$(_otpme_get_scripts)"
+			fi
+		fi
+	fi
+}
+
+_otpme_add_extension () {
+	if [ "$cur_pos" = "3" ] ; then
+		if [ "$COMP_LIST" = "" ] ; then
+			COMP_LIST="$(otpme-realm $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_extensions $_OTPME_REALM)"
+		fi
+	fi
+}
+
+_otpme_remove_extension () {
+	_TYPE="$1"
+	if [ "$cur_pos" = "3" ] ; then
+		if [ "$COMP_LIST" = "" ] ; then
+			_OBJECT="`_otpme_get_word 2`"
+			COMP_LIST="$(_otpme_get_object_extensions "$_TYPE" "$_OBJECT")"
+		fi
+	fi
+}
+
+_otpme_add_object_class () {
+	_TYPE="$1"
+	if [ "$cur_pos" = "3" ] ; then
+		_OBJECT="`_otpme_get_word 2`"
+		compopt -o default
+		compopt +o nospace
+		COMPREPLY=( `compgen -W "$(otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _list_valid_object_classes "$_OBJECT")" -- $cur` )
+		compopt -o nospace
+	fi
+}
+
+
+_otpme_add_attribute () {
+	_TYPE="$1"
+	if [ "$cur_pos" = "3" ] ; then
+		if [[ $cur != *= ]] ; then
+			_OBJECT="`_otpme_get_word 2`"
+			if [ "$COMP_LIST" = "" ] ; then
+				COMP_OPTS="nospace"
+				COMP_LIST="$(otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _list_valid_attributes "$_OBJECT" | sed -e 's|$|=|g')"
+				#if [ "$cur" = "" ] ; then
+				#	compopt +o nospace
+				#	COMPREPLY=( `compgen -W '\\"' -- $cur` )
+				#	compopt -o nospace
+				#else
+				#	COMP_OPTS="nospace"
+				#	COMP_LIST="$(otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _list_valid_attributes "$_OBJECT" | sed -e 's|$|=|g')"
+				#fi
+			fi
+			return
+		fi
+	fi
+
+	_OBJECT="`_otpme_get_word 2`"
+	WORD3="$(_otpme_get_word 3 | tr -d '"')"
+	ATTRIBUTE="$(echo "$WORD3" | cut -d '=' -f 1 | tr -d '"')"
+
+	# Allow whitespace in attribute values.
+	COMP_IFS=$'\x0a';
+	# Add leading $WORD3 to auto values.
+	COMP_LIST="$(otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _list_attribute_auto_values "$_OBJECT" "$ATTRIBUTE" | sed -e "s|^|$WORD3|g")"
+}
+
+
+_otpme_del_attribute () {
+	_TYPE="$1"
+	if [ "$cur_pos" = "3" ] ; then
+		if [ "$cur" = "" ] ; then
+			compopt +o nospace
+			COMPREPLY=( `compgen -W '\\"' -- $cur` )
+			compopt -o nospace
+		else
+			if [ "$cur" = '"' ] ; then
+				cur=""
+			fi
+			# allow whitespace in attribute values
+			COMP_IFS=$'\x0a';
+			_OBJECT="`_otpme_get_word 2`"
+
+			# fix problem with "=" beeing in $COMP_WORDBREAKS
+			if [ "$cur" = "=" ] ; then
+				if [ "$COMP_LIST" = "" ] ; then
+					prev="`_otpme_get_word $[$cur_pos-1]`"
+					cur=$prev$cur
+					replace=$cur
+					COMP_LIST=$(otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_attributes "$_OBJECT" 2> /dev/null | grep "^$cur" | sed -e "s|^$replace||g")
+				fi
+			elif [ "$prev" = "=" ] ; then
+				if [ "$COMP_LIST" = "" ] ; then
+					attr="`_otpme_get_word $[$cur_pos-2]`"
+					cur=$attr"="$cur
+					replace=$attr"="
+					COMP_LIST=$(otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_attributes "$_OBJECT" 2> /dev/null | grep "^$cur" | sed -e "s|^$replace||g")
+				fi
+			else
+				compopt +o nospace
+				if [ "$COMP_LIST" = "" ] ; then
+					COMP_LIST="$(otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_attributes "$_OBJECT" 2> /dev/null)"
+				fi
+				compopt -o nospace
+			fi
+		fi
+
+		# make sure quotation marks are not removed
+		X=\"$COMPREPLY\"
+		if [ "$cur" = "$X" ] ; then
+			COMPREPLY=""
+		fi
+	fi
+}
+
+
+_otpme_del_object_class () {
+	_TYPE="$1"
+	if [ "$cur_pos" = "3" ] ; then
+		if [ "$COMP_LIST" = "" ] ; then
+			_OBJECT="`_otpme_get_word 2`"
+			COMP_LIST="$(otpme-$_TYPE $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_object_classes "$_OBJECT")"
+		fi
+	fi
+}
+
+_otpme_add_acl () {
+	_TYPE="$1"
+	_OBJECT="`_otpme_get_word 2`"
+
+	if [[ "$cur" == -* ]] ; then
+		COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+		return
+	fi
+
+	if [ "$cur_pos" = "3" ] ; then
+		COMPREPLY=( $( compgen -W 'role token' -- "$cur" ) )
+	fi
+
+	if [ "$cur_pos" = "4" ] ; then
+		ACL_OBJECT_TYPE="`_otpme_get_word 3`"
+		if [ "$ACL_OBJECT_TYPE" = "role" ] ; then
+			if [[ $cur == /* ]] ; then
+				_otpme_complete_path
+			else
+				COMP_LIST="$(_otpme_get_roles)"
+			fi
+		fi
+		if [ "$ACL_OBJECT_TYPE" = "token" ] ; then
+			if [ "$COMP_LIST" = "" ] ; then
+				COMP_LIST="$(_otpme_get_tokens)"
+			fi
+		fi
+	fi
+
+	if [ "$cur_pos" -gt "4" ] ; then
+		prev_word="`_otpme_get_word $[$cur_pos-1]`"
+		if [[ $prev_word != *\" ]] ; then
+			if [ "$cur" = "" ] ; then
+				compopt +o nospace
+				COMPREPLY=( `compgen -W '\\"' -- $cur` )
+				compopt -o nospace
+			else
+				if [[ $cur == \"\+\+* ]] ; then
+					if ! echo "$COMP_LIST" | grep '^[+][+]' > /dev/null 2>&1 ; then
+						COMP_LIST=""
+					fi
+					if [ "$COMP_LIST" = "" ] ; then
+						COMP_LIST="$(_otpme_get_object_supported_default_acls_recursive $_TYPE $_OBJECT)"
+					fi
+				elif [[ $cur == \"\+* ]] ; then
+					if ! echo "$COMP_LIST" | grep '^[+][^+]' > /dev/null 2>&1 ; then
+						COMP_LIST=""
+					fi
+					if [ "$COMP_LIST" = "" ] ; then
+						COMP_LIST="$(_otpme_get_object_supported_default_acls $_TYPE $_OBJECT)"
+					fi
+				else
+					if echo "$COMP_LIST" | grep '^[+]' > /dev/null 2>&1 ; then
+						COMP_LIST=""
+					fi
+					if [ "$COMP_LIST" = "" ] ; then
+						COMP_LIST="$(_otpme_get_object_supported_acls $_TYPE $_OBJECT)"
+					fi
+				fi
+			fi
+		fi
+	fi
+
+	# make sure quotation marks are not removed
+	X=\"$COMPREPLY\"
+	if [ "$cur" = "$X" ] ; then
+		COMPREPLY=""
+	fi
+}
+
+
+_otpme_del_acl () {
+	_TYPE="$1"
+
+	if [[ "$cur" == -* ]] ; then
+		COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+		return
+	fi
+
+	if [ "$cur_pos" = "3" ] ; then
+		if [ "$cur" = "" ] ; then
+			compopt +o nospace
+			COMPREPLY=( `compgen -W '\\"' -- $cur` )
+			compopt -o nospace
+		else
+			if [ "$cur" = '"' ] ; then
+				cur=""
+			fi
+			_OBJECT="`_otpme_get_word 2`"
+			ACL="`_otpme_get_word 3`"
+
+			if [[ $ACL == \"* ]] ; then
+				COMP_OPTS="nospace"
+				if [ "$COMP_LIST" = "" ] ; then
+					COMP_LIST="$(_otpme_get_object_acls $_TYPE $_OBJECT )"
+				fi
+				#if [ "$cur" = ":" ] ; then
+				#	prev="`_otpme_get_word $[$cur_pos-1]`"
+				#	cur=$prev$cur
+				#	replace=$cur
+				#	COMPREPLY=( $(_otpme_get_object_acls $_TYPE $_OBJECT | grep "^$cur" | sed -e "s|^$replace||g") )
+				#elif [ "$prev" = ":" ] ; then
+				#	attr="`_otpme_get_word $[$cur_pos-2]`"
+				#	cur=$attr":"$cur
+				#	replace=$attr":"
+				#	COMPREPLY=( $(_otpme_get_object_acls $_TYPE $_OBJECT | grep "^$cur" | sed -e "s|^$replace||g") )
+				#else
+				#	compopt +o nospace
+				#	COMPREPLY=( $(compgen -W '$(_otpme_get_object_acls $_TYPE $_OBJECT )' -- $cur) )
+				#	compopt -o nospace
+				#fi
+			fi
+		fi
+
+		# make sure quotation marks are not removed
+		X=\"$COMPREPLY\"
+		if [ "$cur" = "$X" ] ; then
+			COMPREPLY=""
+		fi
+	fi
+}
+
+
+_otpme_complete_path () {
+	if [[ $cur == /*/*/* ]] ; then
+		if ! echo "$COMP_LIST" | grep '^[/][^/]*[/][^/]*[/][^/]*[/]' > /dev/null 2>&1 ; then
+			COMP_LIST=""
+		fi
+		COMP_OPTS="nospace"
+		if [ "$COMP_LIST" = "" ] ; then
+			_OBJECTS=""
+			_OTPME_REALM_ORG="$_OTPME_REALM"
+			_OTPME_SITE_ORG="$_OTPME_SITE"
+			_OTPME_REALM="$(echo "$cur" | cut -d "/" -f 2)"
+			_OTPME_SITE="$(echo "$cur" | cut -d "/" -f 3)"
+			_replace="/$_OTPME_REALM/$_OTPME_SITE/"
+			if [ "$command" = "otpme-user" ] ; then
+				if [ "$action" = "add_acl" ] ; then
+					_OBJECTS="$(_otpme_get_role_paths)"
+				fi
+			fi
+			if [ "$_OBJECTS" = "" ] ; then
+				_OBJECTS="$(_otpme_get_units "/" | sed "s|^|"$_replace"|")"
+			fi
+			COMP_LIST="$_OBJECTS"
+			_OTPME_REALM="$_OTPME_REALM_ORG"
+			_OTPME_SITE="$_OTPME_SITE_ORG"
+		fi
+	elif [[ $cur == /*/* ]] ; then
+		if ! echo "$COMP_LIST" | grep '^[/][^/]*[/][^/]\+$' > /dev/null 2>&1 ; then
+			COMP_LIST=""
+		fi
+		COMP_OPTS="nospace"
+		if [ "$COMP_LIST" = "" ] ; then
+			_OTPME_REALM_ORG="$_OTPME_REALM"
+			_OTPME_REALM="`echo "$cur" | cut -d "/" -f 2`"
+			_replace="/$_OTPME_REALM/"
+			COMP_LIST="$(_otpme_get_sites "/" | sed "s|^|"$_replace"|")"
+			_OTPME_REALM="$_OTPME_REALM_ORG"
+		fi
+	elif [[ $cur == /* ]] ; then
+		if ! echo "$COMP_LIST" | grep '^[/]' > /dev/null 2>&1 ; then
+			COMP_LIST=""
+		fi
+		COMP_OPTS="nospace"
+		if [ "$COMP_LIST" = "" ] ; then
+			COMP_LIST="$(_otpme_get_realms "/" | sed "s|^|/|")"
+		fi
+	else
+		if echo "$COMP_LIST" | grep '^[/]' > /dev/null 2>&1 ; then
+			COMP_LIST=""
+		fi
+		COMP_OPTS="nospace"
+		if [ "$COMP_LIST" = "" ] ; then
+			COMP_LIST="$(_otpme_get_units "/")"
+		fi
+	fi
+}
+
+_otpme_get_action_options () {
+	local ACTION="$1"
+	_OTPME_COMMAND_OPTS=$($command $_OTPME_OPTS -h 2> /dev/null | sed '/Options:/,/^$/!d')
+	_OTPME_ACTION_OPTS=$(echo "$_OTPME_COMMAND_OPTS" | sed "/ $ACTION:/,/^[^:]*:/!d" | awk '{ print $1 }' | grep -- '^-')
+	echo "$_OTPME_ACTION_OPTS"
+}
+
+_comp_cache_add () {
+	# a simple caching mechanism to get better performance
+	_COMP_CACHE="$*"
+	_LAST_COMP_WORDS="${COMP_WORDS[@]:0:$COMP_CWORD}"
+	_LAST_HISTCOUNT="$(fc -l -1 | awk '{ print $1 }')"
+}
+
+_comp_cache_get () {
+	# a simple caching mechanism to get better performance
+	# check if the current command line (without $cur) matches the last command line
+	if [[ ${_LAST_COMP_WORDS[@]} == ${COMP_WORDS[@]:0:$COMP_CWORD} ]] ; then
+		# check if the user executed a command since we where last invoked
+		if [ "$_LAST_HISTCOUNT" = "$(fc -l -1 | awk '{ print $1 }')" ] ; then
+			echo "$_COMP_CACHE"
+		fi
+	fi
+}
+
+
+_OTPME_OPTS="--no-auth"
+_OTPME_REALM=""
+_OTPME_SITE=""
+
+_otpme_do_completion() {
+# init vars
+local command
+local org_prev
+local prev
+local cur_pos
+local pos_fix
+local action
+local COUNT
+local WORD
+local MAIN_OPT_COUNT
+local ACTION_OPT_COUNT
+
+COMPREPLY=()
+command=${COMP_WORDS[0]}
+
+# try to get completion list from cache if current word is not an option
+if [[ $cur == -* ]] ; then
+	COMP_LIST=""
+	COMP_OPTS=""
+else
+	COMP_LIST="$(_comp_cache_get)"
+	if [ "$COMP_LIST" = "" ] ; then
+		_COMP_CACHE=""
+		COMP_OPTS=""
+	fi
+fi
+
+# count main options (options that where given before $action)
+COUNT="0"
+MAIN_OPT_COUNT="0"
+for WORD in ${COMP_WORDS[@]} ; do
+	if [ "$COUNT" -gt "0" ] ; then
+		if [[ $WORD == -* ]] ; then
+			MAIN_OPT_COUNT="$[$MAIN_OPT_COUNT+1]"
+			# get site from command line option
+			if [[ $WORD == -s ]] ; then
+				_OTPME_SITE="${COMP_WORDS[$[$COUNT+1]]}"
+			fi
+
+			if [[ $WORD == -r ]] ; then
+				_OTPME_REALM="${COMP_WORDS[$[$COUNT+1]]}"
+			fi
+
+			# set --api command line switch for all commands if given
+			if [[ $WORD == --api ]] ; then
+				_OTPME_OPTS="$_OTPME_OPTS$IFS--api"
+			fi
+		else
+			case $PREV_WORD in
+				# for options followed by a parameter we have to add one more to $MAIN_OPT_COUNT and continue
+				-c|-t|-tt|-r|-s|-u|--use-ssh-agent|--use-agent|--use-smartcard)
+					MAIN_OPT_COUNT="$[$MAIN_OPT_COUNT+1]"
+				;;
+
+				# else stop loop
+				*)
+					break
+				;;
+			esac
+		fi
+
+		# save $WORD for next iteration
+		PREV_WORD="$WORD"
+	fi
+	COUNT="$[$COUNT+1]"
+done
+
+# get users realm if it was not given via "-r" option
+if [ "$_OTPME_REALM" = "" ] ; then
+	# get local realm just once cause its slow
+	if [ "$_OTPME_LOCAL_REALM" = "" ] ; then
+		_OTPME_LOCAL_REALM="`otpme-tool $_OTPME_OPTS get_realm 2> /dev/null`"
+	fi
+	_OTPME_REALM="$_OTPME_LOCAL_REALM"
+fi
+
+# get users site if it was not given via "-s" option
+if [ "$_OTPME_SITE" = "" ] ; then
+	# get local site just once cause its slow
+	if [ "$_OTPME_LOCAL_SITE" = "" ] ; then
+		_OTPME_LOCAL_SITE="`otpme-tool $_OTPME_OPTS get_site 2> /dev/null`"
+	fi
+	_OTPME_SITE="$_OTPME_LOCAL_SITE"
+fi
+
+org_prev=""
+prev=${COMP_WORDS[COMP_CWORD-1]}
+cur_pos=$COMP_CWORD
+pos_fix="0"
+action=${COMP_WORDS[1]}
+
+if [ "$MAIN_OPT_COUNT" -gt "0" ] ; then
+	# check if current word is an option and set variables
+	if [ "$COMP_CWORD" = "$[$MAIN_OPT_COUNT+1]" ] ; then
+		# set original prev (needed for -c)
+		org_prev=${COMP_WORDS[COMP_CWORD-1]}
+		# if current word is an option set prev to word before first main options
+		prev=${COMP_WORDS[COMP_CWORD-$[$MAIN_OPT_COUNT+1]]}
+		# we also have to fix cur_pos
+		cur_pos=$[$COMP_CWORD-$MAIN_OPT_COUNT]
+		# and we should remember how to fix position when accessing COMP_WORDS
+		pos_fix="+$MAIN_OPT_COUNT"
+	# if current word is not an option but we got main options...
+	else
+		# set original prev (needed for -c)
+		org_prev=${COMP_WORDS[COMP_CWORD-1]}
+		# prev is really the prev options in this case
+		prev=${COMP_WORDS[COMP_CWORD-1]}
+		# we also have to fix cur_pos
+		cur_pos=$[$COMP_CWORD-$MAIN_OPT_COUNT]
+		# and we should remember how to fix position when accessing COMP_WORDS
+		pos_fix="+$MAIN_OPT_COUNT"
+		# action is the word after the last main option
+		action=${COMP_WORDS[$[$MAIN_OPT_COUNT+1]]}
+	fi
+fi
+
+# DEBUG
+#echo "command=$command action=$action prev=$prev cur_pos=$cur_pos pos_fix=$pos_fix"
+
+if [ "$MAIN_OPT_COUNT" -gt "0" ] ; then
+	if [ "$cur_pos" = "0" ] ; then
+		if [[ $cur == -* ]] ; then
+			if [[ $command == otpme-* ]] ; then
+				_OTPME_COMMAND_OPTS=$($command $_OTPME_OPTS -h 2> /dev/null | sed '/Options:/,/^$/!d')
+				_OTPME_GLOBAL_OPTS=$(echo "$_OTPME_COMMAND_OPTS" | sed '/ global:/,/^[^:]*:/!d' | awk '{ print $1 }' | grep -- '^-')
+				_OTPME_MAIN_OPTS=$(echo "$_OTPME_COMMAND_OPTS" | sed '/ main:/,/^[^:]*:/!d' | awk '{ print $1 }' | grep -- '^-')
+				COMPREPLY=( `compgen -W "$(echo -e "$_OTPME_GLOBAL_OPTS\n$_OTPME_MAIN_OPTS")" -- $cur` )
+				#COMPREPLY=( `compgen -W "$($command -h 2> /dev/null | sed '1,/Options:/d' | awk '{ print $1 }' | grep -- '^-')" -- $cur` )
+				return
+			fi
+		fi
+	fi
+fi
+
+if [ "$cur_pos" -lt "2" ] ; then
+	case $org_prev in
+		-t|-tt)
+			return
+		;;
+
+		-c)
+			compopt -o default
+			compopt +o nospace
+			compopt -o nospace
+			return
+		;;
+
+		--use-ssh-agent)
+			COMPREPLY=( `compgen -W "y n" -- $cur` )
+			return
+		;;
+
+		--use-smartcard)
+			COMPREPLY=( `compgen -W "y n" -- $cur` )
+			return
+		;;
+
+		--use-agent)
+			COMPREPLY=( `compgen -W "y n auto" -- $cur` )
+			return
+		;;
+
+		-r)
+			COMPREPLY=( `compgen -W "$(_otpme_get_realms)" -- $cur` )
+			return
+		;;
+
+		-s)
+			COMPREPLY=( `compgen -W "$(_otpme_get_sites)" -- $cur` )
+			return
+		;;
+
+		-u)
+			COMPREPLY=( `compgen -W "$(_otpme_get_users)" -- $cur` )
+			return
+		;;
+	esac
+fi
+
+	if [ "$prev" = "$command" ] ; then
+		if [[ "$cur" == _* ]] ; then
+			COMPREPLY=( `compgen -W "$($prev $_OTPME_OPTS --compgen 2> /dev/null)" -- $cur` )
+		else
+			_OTPME_COMMANDS="$($prev $_OTPME_OPTS -h 2> /dev/null | sed '/Commands:/,/^[a-zA-Z]*:/!d' | grep ' [a-zA-Z0-9]' | awk '{ print $1 }')"
+			COMPREPLY=( `compgen -W "$(echo "$_OTPME_COMMANDS")" -- $cur` )
+		fi
+		return
+	fi
+
+	ACTION_OPT_COUNT="0"
+	ACTION_OPTS=""
+	if [[ $cur != -* ]] ; then
+		for I in `seq 2 1 $cur_pos` ; do
+			WORD="`_otpme_get_word $[$I]`"
+			if [[ $WORD == -* ]] ; then
+				ACTION_OPT_COUNT="$[$ACTION_OPT_COUNT+1]"
+				ACTION_OPTS="$ACTION_OPTS\n$WORD"
+			fi
+		done
+	fi
+
+	#clear
+	#echo COMP_CWORD: $COMP_CWORD "$[$MAIN_OPT_COUNT+$ACTION_OPT_COUNT+1]"
+	#echo MAIN_OPT_COUNT: $MAIN_OPT_COUNT
+	#echo ACTION_OPT_COUNT: $ACTION_OPT_COUNT
+	#echo ORG_ACTION: $action
+	#echo ORG_CUR: $cur
+	#echo ORG_PREV: $prev
+	#echo ORG_CURPOS: $cur_pos
+
+	# process $action options
+	if [ "$ACTION_OPT_COUNT" -gt "0" ] ; then
+		# check if current word is an option and set variables
+		if [ "$COMP_CWORD" != "$[$MAIN_OPT_COUNT+$ACTION_OPT_COUNT+1]" ] ; then
+			fix="$[$MAIN_OPT_COUNT+$ACTION_OPT_COUNT]"
+			org_prev=${COMP_WORDS[COMP_CWORD-1]}
+			if [ "$MAIN_OPT_COUNT" -gt 0 ] ; then
+				prev=${COMP_WORDS[COMP_CWORD-$[$fix-$[$MAIN_OPT_COUNT-1]]]}
+			else
+				prev=${COMP_WORDS[COMP_CWORD-$[$fix+1]]}
+			fi
+			# we also have to fix cur_pos
+			cur_pos=$[$COMP_CWORD-$fix]
+			# and we should remember how to fix position when accessing COMP_WORDS
+			pos_fix="+$fix"
+		else
+			if [[ "$prev" == -* ]] ; then
+				fix="$[$MAIN_OPT_COUNT+$ACTION_OPT_COUNT]"
+				org_prev=${COMP_WORDS[COMP_CWORD-1]}
+				if [ "$MAIN_OPT_COUNT" -gt 0 ] ; then
+					prev=${COMP_WORDS[COMP_CWORD-$[$fix-$[$MAIN_OPT_COUNT]]]}
+				else
+					prev=${COMP_WORDS[COMP_CWORD-$[$fix]]}
+				fi
+				# we also have to fix cur_pos
+				cur_pos=$[$COMP_CWORD-$fix]
+				# and we should remember how to fix position when accessing COMP_WORDS
+				pos_fix="+$fix"
+			fi
+		fi
+	else
+		org_prev=$prev
+	fi
+
+	#echo
+	#echo MAIN_OPT_COUNT: $MAIN_OPT_COUNT
+	#echo ACTION_OPT_COUNT: $ACTION_OPT_COUNT
+	#echo ACTION: $action
+	#echo CUR: $cur
+	#echo PREV: $prev
+	#echo CURPOS: $cur_pos
+	#echo FIX: $fix
+	#echo POS_FIX: $pos_fix
+
+	case $command in
+		otpme-tool)
+			case $action in
+				sign|verify|decrypt)
+					if [[ $cur != -* ]] ; then
+						if [ "$COMP_LIST" = "" ] ; then
+							compopt -o default
+							compopt +o nospace
+							compopt -o nospace
+							return
+						fi
+					else
+						COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+						return
+					fi
+				;;
+
+				encrypt)
+					if [[ $cur != -* ]] ; then
+						if [ "$COMP_LIST" = "" ] ; then
+							if [[ $org_prev == -u ]] ; then
+								COMP_LIST="$(_otpme_get_users)"
+							else
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							fi
+							return
+						fi
+					else
+						COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+						return
+					fi
+				;;
+
+				join)
+					if [[ $cur == -* ]] ; then
+						COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+						return
+
+					else
+						if [ "$COMP_LIST" = "" ] ; then
+							if [[ $org_prev == --host-type ]] ; then
+								COMP_LIST="host node"
+							fi
+						fi
+					fi
+				;;
+
+				leave)
+					if [[ $cur == -* ]] ; then
+						COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+						return
+					fi
+				;;
+
+				dump_object|delete_object)
+					if [ "$cur" = "" ] ; then
+						compopt +o nospace
+						COMPREPLY=( `compgen -W '\\"' -- $cur` )
+						compopt -o nospace
+					else
+						if [ "$COMP_LIST" = "" ] ; then
+							COMP_LIST="$(otpme-tool $_OTPME_OPTS search attribute=uuid value=*)"
+						fi
+					fi
+				;;
+
+				dump)
+					_CACHE_TYPES="object_cache checksum_cache pickle_cache session_cache session_locks acl_cache sync_map sync_list_cache object_counter hash_cache list_cache sync_skip_list valid_sign_cache invalid_sign_cache"
+					COMPREPLY=( $( compgen -W "$_CACHE_TYPES" -- "$cur" ) )
+				;;
+
+				sync)
+					if [[ "$cur" == -* ]] ; then
+						COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+					else
+						if [ "$COMP_LIST" = "" ] ; then
+							if [[ $org_prev == --realm ]] ; then
+								COMP_LIST="$(_otpme_get_realms)"
+							elif [[ $org_prev == --site ]] ; then
+								COMP_LIST="$(_otpme_get_sites)"
+							else
+								COMPREPLY=( $( compgen -W 'objects token_data ssh_authorized_keys nsscache notify' -- "$cur" ) )
+							fi
+						fi
+					fi
+				;;
+
+				resync)
+					COMPREPLY=( $( compgen -W 'objects nsscache' -- "$cur" ) )
+				;;
+
+				search)
+					# fix problem with "=" beeing in $COMP_WORDBREAKS
+					if [ "$prev" = "=" ] ; then
+						prev="`_otpme_get_word $[$cur_pos-2]`"
+					fi
+					if [ "$cur" = "=" ] ; then
+						prev="`_otpme_get_word $[$cur_pos-1]`"
+						cur=""
+					fi
+
+					# fix problem with ":" beeing in $COMP_WORDBREAKS
+					if [ "$cur" = ":" ] ; then
+						cur=$prev$cur
+						prev="`_otpme_get_word $[$cur_pos-3]`"
+						search=$cur
+						replace=$cur
+					elif [ "$prev" = ":" ] ; then
+						prev="`_otpme_get_word $[$cur_pos-4]`"
+						replace="ldif:"
+						search="ldif:"$cur
+					else
+						replace=""
+						search="$cur"
+					fi
+
+					if [ "$prev" = "return_type" ] ; then
+						COMPREPLY=( $( compgen -W 'uuid oid name rel_path path' -- "$cur" ) )
+					elif [ "$prev" = "object_type" ] ; then
+						COMPREPLY=( $( compgen -W 'node host realm site unit user group token client accessgroup ca role resolver policy used_otp used_sotp used_slp token_counter last_used revoked_signature' -- "$cur" ) )
+					elif [ "$prev" = "attribute" ] ; then
+						COMPREPLY=( $(_otpme_get_valid_search_attributes | grep "^$search" | sed -e "s|^$replace||g") )
+					else
+						compopt +o nospace
+						COMPREPLY=( $( compgen -W 'attribute= value= regex= object_type= return_type=' -- "$cur" ) )
+						compopt -o nospace
+					fi
+				;;
+			esac
+		;;
+	esac
+
+
+	if [ "$prev" = "$action" ] ; then
+		case $command in
+			otpme-realm)
+				case $action in
+					show)
+						if [[ "$cur" != -* ]] ; then
+							if [[ "$org_prev" != --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_realms)"
+									return
+								fi
+							fi
+						fi
+					;;
+
+					init)
+						if [[ "$cur" != -* ]] ; then
+							if [ "$COMP_LIST" = "" ] ; then
+								if [[ $org_prev == --ca-key-len ]] ; then
+									COMP_LIST="1024 2048 4096 8192"
+								elif [[ $org_prev == --ca-valid ]] ; then
+									COMP_LIST="0365 0730 1095 1460 1825 2190 2555 2920 3285 3650"
+								fi
+								return
+							fi
+						fi
+					;;
+
+
+					del|enable|disable|secret|show_secret|add_alias|del_alias|description|add_extension\
+					|remove_extension|add_attribute|add_object_class|del_object_class|del_attribute\
+					|show_ldif|show_acls|add_acl|del_acl|dump_ca_data|update_ca_data|remove_orphans\
+					|add_policy|remove_policy|export)
+						if [ "$COMP_LIST" = "" ] ; then
+							COMP_LIST="$(_otpme_get_realms)"
+							return
+						fi
+					;;
+				esac
+			;;
+
+			otpme-site)
+				case $action in
+					show)
+						if [[ "$cur" != -* ]] ; then
+							if [[ "$org_prev" != --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_sites)"
+									return
+								fi
+							fi
+						fi
+
+					;;
+
+					add_acl|del_acl)
+						if [[ "$cur" != -* ]] ; then
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_sites)"
+								return
+							fi
+						fi
+					;;
+
+					remove_orphans)
+						if [[ "$cur" != -* ]] ; then
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_sites)"
+								return
+							fi
+						fi
+					;;
+
+					del|enable|disable|address|description|add_extension|remove_extension|add_attribute\
+					|add_object_class|del_object_class|del_attribute|revoke_cert|renew_cert|dump_cert\
+					|dump_ca_chain|show_ldif|show_acls|add_policy|remove_policy|add_trust|del_trust|export)
+						if [ "$COMP_LIST" = "" ] ; then
+							COMP_LIST="$(_otpme_get_sites)"
+							return
+						fi
+					;;
+
+					dump_key)
+						if [[ "$cur" == -* ]] ; then
+							COMPREPLY=( $( compgen -W '-p' -- "$cur" ) )
+						elif [ "$org_prev" != "-p" ] ; then
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_sites)"
+								return
+							fi
+						fi
+					;;
+				esac
+			;;
+
+			otpme-unit)
+				case $action in
+					show)
+						if [[ "$cur" != -* ]] ; then
+							if [[ "$org_prev" != --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_units)"
+									return
+								fi
+							fi
+						fi
+					;;
+
+					add|del)
+						_otpme_complete_path
+					;;
+
+
+					add_acl|del_acl)
+						if [[ "$cur" != -* ]] ; then
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_units)"
+								return
+							fi
+						fi
+					;;
+
+
+					remove_orphans)
+						if [[ "$cur" != -* ]] ; then
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_units)"
+								return
+							fi
+						fi
+					;;
+
+
+					del|rename|enable|disable|description|enable_acl_inheritance|disable_acl_inheritance|show_acls\
+					|export|add_extension|remove_extension|add_attribute|add_object_class|del_object_class\
+					|del_attribute|add_policy|remove_policy|show_ldif)
+						if [ "$COMP_LIST" = "" ] ; then
+							COMP_LIST="$(_otpme_get_units "/")"
+							return
+						fi
+					;;
+				esac
+			;;
+
+			otpme-role)
+				case $action in
+					show)
+						if [[ "$cur" != -* ]] ; then
+							if [[ "$org_prev" != --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_roles)"
+									return
+								fi
+							fi
+						fi
+					;;
+
+					add)
+						_otpme_complete_path
+					;;
+
+
+					list|del|rename|enable|disable|add_token|remove_token|add_accessgroup|remove_accessgroup|add_group\
+					|remove_group|add_role|remove_role|unit|description|enable_acl_inheritance|disable_acl_inheritance|show_acls|add_acl|\
+					del_acl|add_policy|remove_policy|remove_orphans|export)
+						if [ "$COMP_LIST" = "" ] ; then
+							COMP_LIST="$(_otpme_get_roles)"
+							return
+						fi
+					;;
+				esac
+			;;
+
+			otpme-ca)
+				case $action in
+					show)
+						if [[ "$cur" != -* ]] ; then
+							if [[ "$org_prev" != --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_cas)"
+									return
+								fi
+							fi
+						fi
+					;;
+
+					add)
+						if [[ "$cur" != -* ]] ; then
+							_otpme_complete_path
+						fi
+					;;
+
+					del|enable|disable|add_token|remove_token|dump_cert|dump_ca_chain|dump_crl|update_crl\
+					|description|enable_acl_inheritance|disable_acl_inheritance|show_acls|add_acl|del_acl\
+					|remove_orphans|export)
+						if [ "$COMP_LIST" = "" ] ; then
+							COMP_LIST="$(_otpme_get_cas)"
+							return
+						fi
+					;;
+
+					dump_key)
+						if [[ "$cur" == -* ]] ; then
+							COMPREPLY=( $( compgen -W '-p' -- "$cur" ) )
+						elif [ "$org_prev" != "-p" ] ; then
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_cas)"
+								return
+							fi
+						fi
+					;;
+				esac
+			;;
+
+			otpme-user)
+				case $action in
+					show)
+						if [[ "$cur" != -* ]] ; then
+							if [[ "$org_prev" != --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_users)"
+									return
+								fi
+							fi
+						fi
+					;;
+
+
+					gen_keys)
+						if [[ "$cur" != -* ]] ; then
+							if [ "$COMP_LIST" = "" ] ; then
+								if [[ $org_prev == -b ]] ; then
+									COMPREPLY=( $( compgen -W '1024 2048 4096 8192' -- "$cur" ) )
+								elif [[ $org_prev != -b ]] ; then
+									COMP_LIST="$(_otpme_get_users)"
+								fi
+								return
+							fi
+						fi
+					;;
+
+
+					dump_key|key_pass)
+						if [[ $cur != -* ]] ; then
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_users)"
+								return
+							fi
+						fi
+					;;
+
+
+					add)
+						_otpme_complete_path
+					;;
+
+
+					add_token)
+						if [[ $cur != -* ]] ; then
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_users)"
+								return
+							fi
+						fi
+					;;
+
+
+					add_acl|del_acl)
+						if [[ "$cur" != -* ]] ; then
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_users)"
+								return
+							fi
+						fi
+					;;
+
+
+					remove_orphans)
+						if [[ "$cur" != -* ]] ; then
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_users)"
+								return
+							fi
+						fi
+					;;
+
+
+					list|del|rename|enable|disable|unlock|unit|group|description\
+					|auth_script|enable_auth_script|disable_auth_script|add_policy|remove_policy|add_extension|remove_extension\
+					|add_attribute|add_object_class|del_object_class|del_attribute|show_ldif|enable_acl_inheritance\
+					|disable_acl_inheritance|show_acls|login_script|enable_login_script|disable_login_script|agent_script\
+					|key_script|get_key_script|get_sign_mode|del_token|public_key|private_key|export)
+						if [ "$COMP_LIST" = "" ] ; then
+							COMP_LIST="$(_otpme_get_users)"
+							return
+						fi
+					;;
+					esac
+				;;
+
+				otpme-client)
+					case $action in
+						show)
+							if [[ "$cur" != -* ]] ; then
+								if [[ "$org_prev" != --fields ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_clients)"
+										return
+									fi
+								fi
+							fi
+						;;
+
+
+						add)
+							_otpme_complete_path
+						;;
+
+
+						list|del|rename|enable|disable|access_group|add_address|del_address|secret|show_secret\
+						|ctp_hash_type|gen_tp|unit|description|enable_acl_inheritance|disable_acl_inheritance|show_acls\
+						|add_token|remove_token|add_policy|remove_policy|add_acl|del_acl|remove_orphans|export)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_clients)"
+								return
+							fi
+						;;
+
+						enable_tp)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_clients_tp_disabled)"
+								return
+							fi
+						;;
+
+						disable_tp)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_clients_tp_enabled)"
+								return
+							fi
+						;;
+
+						enable_tp_forced)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_clients_tp_not_forced)"
+								return
+							fi
+						;;
+
+						disable_tp_forced)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_clients_tp_forced)"
+								return
+							fi
+						;;
+					esac
+				;;
+
+				otpme-node)
+					case $action in
+						show)
+							if [[ "$cur" != -* ]] ; then
+								if [[ "$org_prev" != --fields ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_nodes)"
+										return
+									fi
+								fi
+							fi
+						;;
+
+						add)
+							_otpme_complete_path
+						;;
+
+						list|del|rename|enable|disable|secret|show_secret|revoke_cert|renew_cert\
+						|dump_cert|dump_ca_chain|unit|description|enable_acl_inheritance|disable_acl_inheritance\
+						|show_acls|add_acl|del_acl|enable_jotp_rejoin|disable_jotp_rejoin|add_policy|remove_policy\
+						|remove_orphans|add_token|remove_token|export)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_nodes)"
+								return
+							fi
+						;;
+
+						dump_key)
+							if [[ "$cur" == -* ]] ; then
+								COMPREPLY=( $( compgen -W '-p' -- "$cur" ) )
+							elif [ "$org_prev" != "-p" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_nodes)"
+									return
+								fi
+							fi
+						;;
+					esac
+				;;
+
+				otpme-host)
+					case $action in
+						show)
+							if [[ "$cur" != -* ]] ; then
+								if [[ "$org_prev" != --fields ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_hosts)"
+										return
+									fi
+								fi
+							fi
+						;;
+
+						add)
+							_otpme_complete_path
+						;;
+
+
+						list|del|rename|enable|disable|secret|show_secret|revoke_cert|renew_cert\
+						|dump_cert|dump_ca_chain|unit|description|enable_acl_inheritance|disable_acl_inheritance\
+						|show_acls|add_acl|del_acl|enable_jotp_rejoin|disable_jotp_rejoin|add_policy|remove_policy\
+						|remove_orphans|add_token|remove_token|export)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_hosts)"
+								return
+							fi
+						;;
+
+						dump_key)
+							if [[ "$cur" == -* ]] ; then
+								COMPREPLY=( $( compgen -W '-p' -- "$cur" ) )
+							elif [ "$org_prev" != "-p" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_hosts)"
+									return
+								fi
+							fi
+						;;
+					esac
+				;;
+
+				otpme-group)
+					case $action in
+						show)
+							if [[ "$cur" != -* ]] ; then
+								if [[ "$org_prev" != --fields ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_groups)"
+										return
+									fi
+								fi
+							fi
+						;;
+
+						add)
+							_otpme_complete_path
+						;;
+
+
+						list|del|rename|enable|disable|add_client|remove_client\
+						|add_node|remove_node|add_host|remove_host|add_extension|remove_extension|add_attribute\
+						|add_object_class|del_object_class|del_attribute|show_ldif|add_token|remove_token|add_role|remove_role\
+						|add_policy|remove_policy|unit|description|enable_acl_inheritance|disable_acl_inheritance|show_acls\
+						|add_acl|del_acl|remove_orphans|export)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_groups)"
+								return
+							fi
+						;;
+					esac
+				;;
+
+				otpme-accessgroup)
+					case $action in
+						show)
+							if [[ "$cur" != -* ]] ; then
+								if [[ "$org_prev" != --fields ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_accessgroups)"
+										return
+									fi
+								fi
+							fi
+						;;
+
+
+						add)
+							_otpme_complete_path
+						;;
+
+
+						list|del|rename|enable|disable|enable_sessions|disable_sessions|enable_session_master\
+						|disable_session_master|enable_timeout_pass_on|disable_timeout_pass_on|add_child_group\
+						|remove_child_group|add_child_session|remove_child_session|add_child|remove_child\
+						|max_sessions|relogin_timeout|max_fail|max_use|timeout|unused_timeout|add_token|remove_token\
+						|add_role|remove_role|add_group|remove_group|add_policy|remove_policy|unit|description\
+						|enable_acl_inheritance|disable_acl_inheritance|show_acls|add_acl|del_acl|remove_orphans|export)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_accessgroups)"
+								return
+							fi
+						;;
+					esac
+				;;
+
+				otpme-session)
+					case $action in
+						show)
+							if [[ "$org_prev" == --sort-by ]] ; then
+								COMPREPLY=( $( compgen -W 'creation_time expiration_time unused_expiration_time last_login user' -- "$cur" ) )
+							elif [[ "$cur" != -* ]] ; then
+								if [[ "$org_prev" != --fields ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_users)"
+										return
+									fi
+								fi
+							fi
+						;;
+
+						del)
+							if [[ "$cur" != -* ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_sessions)"
+									return
+								fi
+							fi
+						;;
+
+						export)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_sessions)"
+								return
+							fi
+						;;
+
+
+					esac
+				;;
+
+				otpme-token)
+					case $action in
+						show)
+							if [[ "$cur" != -* ]] ; then
+								if [[ "$org_prev" != --fields ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_tokens)"
+										return
+									fi
+								fi
+							fi
+						;;
+
+						deploy)
+							if [[ "$org_prev" == -t ]] ; then
+								_OTPME_HW_TOKEN_TYPES="$(otpme-token $_OTPME_OPTS deploy --list-token-types 2> /dev/null 2>&1)"
+								COMPREPLY=( `compgen -W "$_OTPME_HW_TOKEN_TYPES" -- $cur` )
+								return
+							else
+								COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+							fi
+						;;
+
+						del|rename|enable|disable|add_group|remove_group|add_accessgroup|remove_accessgroup|enable_offline\
+						|disable_offline|offline_expiry|offline_unused_expiry|enable_session_keep|disable_session_keep|test\
+						|description|dd_acl|del_acl|enable_acl_inheritance|disable_acl_inheritance\
+						|show_acls|add_policy|remove_policy|sign|verify_sign|add_sign|del_sign|remove_orphans|export)
+							if [[ "$cur" != -* ]] ; then
+								if [[ "$org_prev" != --* ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_tokens)"
+										return
+									fi
+								fi
+							fi
+						;;
+
+
+						auth_script|enable_auth_script|disable_auth_script)
+							if [ "$COMP_LIST" = "" ] ; then
+								OTP_TOKENS="`_otpme_get_tokens "" motp`"
+								PASSWORD_TOKENS="`_otpme_get_tokens "" password`"
+								SCRIPT_STATIC_TOKENS="`_otpme_get_tokens "" script-static`"
+								SCRIPT_OTP_TOKENS="`_otpme_get_tokens "" script-otp`"
+								COMP_LIST="$OTP_TOKENS $PASSWORD_TOKENS $SCRIPT_STATIC_TOKENS $SCRIPT_OTP_TOKENS"
+								return
+							fi
+						;;
+
+						enable_mschap|disable_mschap)
+							if [ "$COMP_LIST" = "" ] ; then
+								TOKENS="`_otpme_get_tokens "" password`"
+								COMP_LIST="$TOKENS"
+								return
+							fi
+						;;
+
+						enable_pin|disable_pin)
+							if [ "$COMP_LIST" = "" ] ; then
+								HOTP_TOKENS="`_otpme_get_tokens "" hotp`"
+								TOTP_TOKENS="`_otpme_get_tokens "" totp`"
+								COMP_LIST="$HOTP_TOKENS $TOTP_TOKENS"
+								return
+							fi
+						;;
+
+						ssh_public_key)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_tokens)"
+								return
+							fi
+						;;
+
+						2f_token|enable_2f|disable_2f)
+							if [ "$COMP_LIST" = "" ] ; then
+								SSH_TOKENS="`_otpme_get_tokens "" ssh`"
+								PASSWORD_TOKENS="`_otpme_get_tokens "" password`"
+								COMP_LIST="$SSH_TOKENS $PASSWORD_TOKENS"
+								return
+							fi
+						;;
+
+						phone_number|push_script|push_token)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="`_otpme_get_tokens "" otp-push`"
+								return
+							fi
+						;;
+
+						otp_format)
+							if [ "$COMP_LIST" = "" ] ; then
+								HOTP_TOKENS="`_otpme_get_tokens "" hotp`"
+								TOTP_TOKENS="`_otpme_get_tokens "" totp`"
+								MOTP_TOKENS="`_otpme_get_tokens "" motp`"
+								COMP_LIST="$HOTP_TOKENS $TOTP_TOKENS $MOTP_TOKENS"
+								return
+							fi
+						;;
+
+						mode)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_tokens)"
+								return
+							fi
+						;;
+
+						counter_check_range)
+							if [ "$COMP_LIST" = "" ] ; then
+								HOTP_TOKENS="`_otpme_get_tokens "" hotp`"
+								COMP_LIST="$HOTP_TOKENS"
+								return
+							fi
+						;;
+
+						card_type)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="`_otpme_get_tokens "" ssh`"
+								return
+							fi
+						;;
+
+						key_type)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="`_otpme_get_tokens "" ssh`"
+								return
+							fi
+						;;
+
+						gen_qrcode)
+							if [ "$COMP_LIST" = "" ] ; then
+								HOTP_TOKENS="`_otpme_get_tokens "" hotp`"
+								TOTP_TOKENS="`_otpme_get_tokens "" totp`"
+								COMP_LIST="$HOTP_TOKENS $TOTP_TOKENS"
+								return
+							fi
+						;;
+
+						pin|secret|show_pin|show_secret|gen)
+							if [ "$COMP_LIST" = "" ] ; then
+								OTPME_TOKENS="`_otpme_get_tokens "" otpme`"
+								MOTP_TOKENS="`_otpme_get_tokens "" motp`"
+								HOTP_TOKENS="`_otpme_get_tokens "" hotp`"
+								TOTP_TOKENS="`_otpme_get_tokens "" totp`"
+								COMP_LIST="$OTPME_TOKENS $MOTP_TOKENS $HOTP_TOKENS $TOTP_TOKENS"
+								return
+							fi
+						;;
+
+						gen_mschap)
+							if [ "$COMP_LIST" = "" ] ; then
+								OTPME_TOKENS="`_otpme_get_tokens "" otpme`"
+								MOTP_TOKENS="`_otpme_get_tokens "" motp`"
+								HOTP_TOKENS="`_otpme_get_tokens "" hotp`"
+								TOTP_TOKENS="`_otpme_get_tokens "" totp`"
+								OTP_TOKENS="$OTPME_TOKENS $MOTP_TOKENS $HOTP_TOKENS $TOTP_TOKENS"
+								PASSWORD_TOKENS="`_otpme_get_tokens "" password`"
+								COMP_LIST="$OTP_TOKENS $PASSWORD_TOKENS"
+								return
+							fi
+						;;
+
+						password)
+							if [ "$COMP_LIST" = "" ] ; then
+								if [[ $cur != -* ]] ; then
+									STATIC_TOKENS="`_otpme_get_tokens "" password`"
+									PUSH_TOKENS="`_otpme_get_tokens "" otp-push`"
+									COMP_LIST="$STATIC_TOKENS $PUSH_TOKENS"
+									return
+								else
+									COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+									return
+								fi
+							fi
+						;;
+
+						resync)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="`_otpme_get_tokens "" hotp`"
+								return
+							fi
+						;;
+
+						add)
+							COMP_OPTS="nospace"
+							if [[ $cur != -* ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									if [[ $org_prev == -r ]] ; then
+										COMP_LIST="$(_otpme_get_tokens)"
+									else
+										COMP_LIST="$(_otpme_get_users "/")"
+									fi
+									return
+								fi
+							fi
+						;;
+					esac
+				;;
+
+				otpme-script)
+					case $action in
+						show)
+							if [[ "$cur" != -* ]] ; then
+								if [[ "$org_prev" != --fields ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_scripts)"
+										return
+									fi
+								fi
+							fi
+						;;
+
+						add)
+							if [[ "$cur" != -* ]] ; then
+								_otpme_complete_path
+							fi
+						;;
+
+
+						list|del|rename|enable|disable|dump|unit|description|enable_acl_inheritance|disable_acl_inheritance|show_acls\
+						|add_acl|del_acl|remove_orphans|edit|copy|run|sign|add_sign|del_sign|verify_sign|get_sign|export)
+							if [[ "$cur" != -* ]] ; then
+								if [[ "$org_prev" != --* ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_scripts)"
+										return
+									fi
+								fi
+							fi
+						;;
+
+						dump)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="$(_otpme_get_scripts)"
+								return
+							fi
+						;;
+					esac
+				;;
+
+
+				otpme-policy)
+					case $action in
+						show)
+							if [[ "$cur" != -* ]] ; then
+								if [[ "$org_prev" != --fields ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_policies)"
+										return
+									fi
+								fi
+							fi
+						;;
+
+						add)
+							if [[ "$cur" != -* ]] ; then
+								_otpme_complete_path
+							fi
+						;;
+
+
+						list|del|rename|enable|disable|unit|description|enable_acl_inheritance|disable_acl_inheritance|show_acls\
+						|add_acl|del_acl|remove_orphans|pin_min_len|password_min_len|test|strength_checker|strength_checker_opts\
+						|login_times|auto_disable|force_token_types|force_pass_types|enable_strength_checker|disable_strength_checker\
+						|add_id_range|del_id_range|export)
+							if [[ "$cur" != -* ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_policies)"
+									return
+								fi
+							fi
+						;;
+					esac
+				;;
+
+
+				otpme-resolver)
+					case $action in
+						show)
+							if [[ "$cur" != -* ]] ; then
+								if [[ "$org_prev" != --fields ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_resolvers)"
+										return
+									fi
+								fi
+							fi
+						;;
+
+						add)
+							if [[ "$cur" != -* ]] ; then
+								_otpme_complete_path
+							fi
+						;;
+
+
+						list|del|rename|enable|disable|unit|description|enable_acl_inheritance|disable_acl_inheritance|show_acls\
+						|add_acl|del_acl|remove_orphans|ldap_base|login_dn|login_password|add_ldap_server|remove_ldap_server\
+						|add_ldap_filter|remove_ldap_filter|test|export)
+							if [[ "$cur" != -* ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_resolvers)"
+									return
+								fi
+							fi
+						;;
+					esac
+				;;
+
+
+				otpme-dictionary)
+					case $action in
+						show)
+							if [[ "$cur" != -* ]] ; then
+								if [[ "$org_prev" != --fields ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_dicts)"
+										return
+									fi
+								fi
+							fi
+						;;
+
+						add)
+							if [[ "$cur" != -* ]] ; then
+								_otpme_complete_path
+							fi
+						;;
+
+
+						list|del|rename|enable|disable|unit|description|enable_acl_inheritance|disable_acl_inheritance|show_acls\
+						|add_acl|del_acl|remove_orphans|clear|word_learning|word_import|word_export|export)
+							if [[ "$cur" != -* ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_dicts)"
+									return
+								fi
+							fi
+						;;
+					esac
+				;;
+
+				otpme-auth)
+					case $action in
+						verify*)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="`_otpme_get_users`"
+								return
+							fi
+						;;
+					esac
+				;;
+
+				otpme-tool)
+					case $action in
+						sync)
+							if [[ "$cur" == -* ]] ; then
+								COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+							else
+								if [[ $org_prev == --realm ]] ; then
+									COMP_LIST="$(_otpme_get_realms)"
+								elif [[ $org_prev == --site ]] ; then
+									COMP_LIST="$(_otpme_get_sites)"
+								else
+									COMPREPLY=( $( compgen -W 'objects token_data ssh_authorized_keys nsscache notify' -- "$cur" ) )
+								fi
+							fi
+						;;
+
+						import)
+							compopt -o default
+							compopt +o nospace
+							compopt -o nospace
+						;;
+
+						gen_logout|gen_refresh|gen_refresh_mschap|gen_logout_mschap|gen_mschap)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="`_otpme_get_users`"
+								return
+							fi
+						;;
+					esac
+				;;
+			esac
+
+
+			# get action specific options from help
+			if [[ "$cur" == -* ]] ; then
+				COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+				return
+			fi
+
+
+		else
+			case $command in
+				otpme-realm)
+					case $action in
+						init)
+							if [[ "$cur" == -* ]] ; then
+								COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+							else
+								if [ "$COMP_LIST" = "" ] ; then
+									if [[ $org_prev == --ca-key-len ]] ; then
+										COMP_LIST="1024 2048 4096 8192"
+									elif [[ $org_prev == --ca-valid ]] ; then
+										COMP_LIST="0365 0730 1095 1460 1825 2190 2555 2920 3285 3650"
+									fi
+									return
+								fi
+							fi
+						;;
+
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_realms`"
+								fi
+							fi
+						;;
+
+						add_acl)
+							_otpme_add_acl "realm"
+						;;
+
+						del_acl)
+							_otpme_del_acl "realm"
+						;;
+
+						add_extension)
+							_otpme_add_extension "realm"
+						;;
+
+						remove_extension)
+							_otpme_remove_extension "realm"
+						;;
+
+						add_attribute)
+							_otpme_add_attribute "realm"
+						;;
+
+						del_attribute)
+							_otpme_del_attribute "realm"
+						;;
+
+						add_object_class)
+							_otpme_add_object_class "realm"
+						;;
+
+						del_object_class)
+							_otpme_del_object_class "realm"
+						;;
+					esac
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							del_alias)
+								R="`_otpme_get_word 2`"
+								REALM_ALIASRS="`_otpme_get_realm_aliases "$R"`"
+								COMPREPLY=( `compgen -W "$_OTPME_REALM_ALIASRS" -- $cur` )
+							;;
+
+							add_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="`_otpme_get_policies`"
+									fi
+								fi
+							;;
+
+							remove_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										local REALM="`_otpme_get_word 2`"
+										COMP_LIST="$(_otpme_get_realm_policies "$REALM")"
+									fi
+								fi
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								R="`_otpme_get_word 2`"
+								CLIENT_DESCRIPTION="`otpme-realm $_OTPME_OPTS show "$R" 2> /dev/null | grep "^DESCRIPTION=" | cut -d '=' -f 2 | tr -d '"' | tr -d "'"`"
+								if [ "$CLIENT_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$CLIENT_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+				otpme-site)
+					case $action in
+						add)
+							if [[ "$cur" == -* ]] ; then
+								COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+							fi
+						;;
+
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_sites`"
+								fi
+							fi
+						;;
+
+						add_acl)
+							_otpme_add_acl "site"
+						;;
+
+						del_acl)
+							_otpme_del_acl "site"
+						;;
+
+						add_extension)
+							_otpme_add_extension "site"
+						;;
+
+						remove_extension)
+							_otpme_remove_extension "site"
+						;;
+
+						add_attribute)
+							_otpme_add_attribute "site"
+						;;
+
+						del_attribute)
+							_otpme_del_attribute "site"
+						;;
+
+						add_object_class)
+							_otpme_add_object_class "site"
+						;;
+
+						del_object_class)
+							_otpme_del_object_class "site"
+						;;
+
+						dump_cert|dump_ca_chain)
+							if [ "$cur_pos" -le 2 ] ; then
+								COMPREPLY=( `compgen -W "$(_otpme_get_sites)" -- $cur` )
+							else
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							fi
+						;;
+
+						dump_key)
+							if [ "$prev" = "-p" ] ; then
+								COMPREPLY=( `compgen -W "$(_otpme_get_sites)" -- $cur` )
+							else
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							fi
+						;;
+
+					esac
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							address)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								_SITE="`_otpme_get_word 2`"
+								_SITE_ADDRESS="`otpme-site $_OTPME_OPTS show "$_SITE" 2> /dev/null | grep "^ADDRESS=" | cut -d '=' -f 2 | tr -d '"' | tr -d "'"`"
+								if [ "$_OTPME_SITE_ADDRESS" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$_SITE_ADDRESS\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+
+							add_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="`_otpme_get_policies`"
+									fi
+								fi
+							;;
+
+							remove_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										local SITE="`_otpme_get_word 2`"
+										COMP_LIST="$(_otpme_get_site_policies "$SITE")"
+									fi
+								fi
+							;;
+
+							add_trust)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="`_otpme_get_sites`"
+									fi
+								fi
+							;;
+
+							del_trust)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										local SITE="`_otpme_get_word 2`"
+										COMP_LIST="$(_otpme_get_site_trusts "$SITE")"
+									fi
+								fi
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								_SITE="`_otpme_get_word 2`"
+								_SITE_DESCRIPTION="`otpme-site $_OTPME_OPTS show "$_SITE" 2> /dev/null | grep "^DESCRIPTION=" | cut -d '=' -f 2 | tr -d '"' | tr -d "'"`"
+								if [ "$_OTPME_SITE_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$_SITE_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+				otpme-unit)
+					case $action in
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_units`"
+								fi
+							fi
+						;;
+
+						add_acl)
+							_otpme_add_acl "unit"
+						;;
+
+						del_acl)
+							_otpme_del_acl "unit"
+						;;
+
+						add_extension)
+							_otpme_add_extension "unit"
+						;;
+
+						remove_extension)
+							_otpme_remove_extension "unit"
+						;;
+
+						add_attribute)
+							_otpme_add_attribute "unit"
+						;;
+
+						del_attribute)
+							_otpme_del_attribute "unit"
+						;;
+
+						add_object_class)
+							_otpme_add_object_class "unit"
+						;;
+
+						del_object_class)
+							_otpme_del_object_class "unit"
+						;;
+					esac
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							add_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="`_otpme_get_policies`"
+									fi
+								fi
+							;;
+
+							remove_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										local UNIT="`_otpme_get_word 2`"
+										COMP_LIST="$(_otpme_get_unit_policies "$UNIT")"
+									fi
+								fi
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								UNIT="`_otpme_get_word 2`"
+								UNIT_DESCRIPTION="`_otpme_get_object_description unit "$UNIT"`"
+								if [ "$UNIT_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$UNIT_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+				otpme-ca)
+					case $action in
+						add)
+							if [[ "$cur" == -* ]] ; then
+								COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+							fi
+						;;
+
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_cas`"
+								fi
+							fi
+						;;
+
+						add_acl)
+							_otpme_add_acl "ca"
+						;;
+
+						del_acl)
+							_otpme_del_acl "ca"
+						;;
+
+						dump_cert|dump_ca_chain|dump_crl)
+							if [ "$cur_pos" -le 2 ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_cas`"
+								fi
+							else
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							fi
+						;;
+
+						dump_key)
+							if [ "$prev" = "-p" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_cas`"
+								fi
+							else
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							fi
+						;;
+					esac
+
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							unit)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_units`"
+								fi
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								CA="`_otpme_get_word 2`"
+								CA_DESCRIPTION="`_otpme_get_object_description ca "$CA"`"
+								if [ "$CA_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$CA_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+				otpme-role)
+					case $action in
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_roles`"
+								fi
+							fi
+						;;
+
+						add_policy)
+							if [ "$cur_pos" = "3" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_policies`"
+								fi
+							fi
+						;;
+
+						remove_policy)
+							if [ "$cur_pos" = "3" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									local ROLE="`_otpme_get_word 2`"
+									COMP_LIST="$(_otpme_get_role_policies "$ROLE")"
+								fi
+							fi
+						;;
+
+						add_acl)
+							_otpme_add_acl "role"
+						;;
+
+						del_acl)
+							_otpme_del_acl "role"
+						;;
+					esac
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							add_role)
+								if [[ $cur == /* ]] ; then
+									_otpme_complete_path
+								else
+									COMP_LIST="`_otpme_get_roles`"
+								fi
+							;;
+
+							remove_role)
+								ROLE="`_otpme_get_word 2`"
+								ROLES="`_otpme_get_role_roles "$ROLE"`"
+								COMPREPLY=( `compgen -W "$ROLES" -- $cur` )
+							;;
+
+
+							add_token)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_tokens`"
+								fi
+							;;
+
+							# aaaaaaaaaaaaaaaaaaaaaaaaa
+							# FIXME: list only member tokens. implement hidden _show function for all commands?
+							remove_token)
+								ROLE="`_otpme_get_word 2`"
+								TOKENS="`_otpme_get_role_tokens "$ROLE"`"
+								COMPREPLY=( `compgen -W "$TOKENS" -- $cur` )
+							;;
+
+							add_accessgroup)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_accessgroups`"
+								fi
+							;;
+
+							remove_accessgroup)
+								ROLE="`_otpme_get_word 2`"
+								COMPREPLY=( `compgen -W "$(_otpme_get_role_accessgroups "$ROLE")" -- $cur` )
+							;;
+
+							add_group)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_groups`"
+								fi
+							;;
+
+							remove_group)
+								ROLE="`_otpme_get_word 2`"
+								COMPREPLY=( `compgen -W "$(_otpme_get_role_groups "$ROLE")" -- $cur` )
+							;;
+
+							unit)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_units`"
+								fi
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								ROLE="`_otpme_get_word 2`"
+								ROLE_DESCRIPTION="`_otpme_get_object_description role "$ROLE"`"
+								if [ "$ROLE_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$ROLE_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+				otpme-user)
+					case $action in
+						show)
+							POS1="`_otpme_get_word 1`"
+							if [[ "$POS1" == --fields ]] ; then
+								if [[ "$org_prev" == --fields ]] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="`_otpme_get_users`"
+									fi
+								else
+									if [ "$cur_pos" = "4" ] ; then
+										if [ "$COMP_LIST" = "" ] ; then
+											local _USER="`_otpme_get_word 3`"
+											COMP_LIST="$(_otpme_get_tokens "$_USER")"
+										fi
+									else
+										if [ "$COMP_LIST" = "" ] ; then
+											COMP_LIST="`_otpme_get_users`"
+										fi
+									fi
+								fi
+							else
+								if [ "$COMP_LIST" = "" ] ; then
+									local _USER="`_otpme_get_word 2`"
+									COMP_LIST="$(_otpme_get_tokens "$_USER")"
+								fi
+							fi
+						;;
+
+						gen_keys)
+							if [[ "$cur" != -* ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_users)"
+									return
+								fi
+							else
+								COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+							fi
+						;;
+
+						key_pass)
+							if [[ "$cur" != -* ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_users)"
+									return
+								fi
+							else
+								COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+							fi
+						;;
+
+						dump_key)
+							if [[ "$cur" != -* ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									if [ "$cur_pos" -ge 3 ] && [[ "$org_prev" != -* ]] ; then
+										compopt -o default
+										compopt +o nospace
+										compopt -o nospace
+									else
+										COMP_LIST="$(_otpme_get_users)"
+										return
+									fi
+								fi
+							else
+								COMPREPLY=( `compgen -W "$(_otpme_get_action_options $action)" -- $cur` )
+							fi
+						;;
+
+
+						get_key_script)
+							if [[ "$cur" != -* ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMPREPLY=( $( compgen -W 'name uuid' -- "$cur" ) )
+									return
+								fi
+							fi
+						;;
+
+
+						key_script)
+							_otpme_comlete_otpme_script "user" "KEY_SCRIPT" "KEY_SCRIPT_OPTIONS"
+						;;
+
+
+						agent_script)
+							_otpme_comlete_otpme_script "user" "AGENT_SCRIPT" "AGENT_SCRIPT_OPTIONS"
+						;;
+
+
+						login_script)
+							_otpme_comlete_otpme_script "user" "LOGIN_SCRIPT" "LOGIN_SCRIPT_OPTIONS"
+						;;
+
+
+						auth_script)
+							_otpme_comlete_otpme_script "user" "AUTH_SCRIPT" "AUTH_SCRIPT_OPTIONS"
+						;;
+
+
+						unlock)
+							if [ "$cur_pos" = "3" ] ; then
+								local _USER="`_otpme_get_word 2`"
+								local USER_LOCKED_GROUPS="`otpme-user $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" show $_USER 2> /dev/null \
+										| tr ' ' '\n' | grep -B 1 "(.)" | grep -v "(.)" | grep -v -- "^-" | tr -d '()'`"
+								COMPREPLY=( `compgen -W "$USER_LOCKED_GROUPS" -- $cur` )
+							fi
+						;;
+
+						add_policy)
+							if [ "$cur_pos" = "3" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_policies`"
+								fi
+							fi
+						;;
+
+						remove_policy)
+							if [ "$cur_pos" = "3" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									local USER="`_otpme_get_word 2`"
+									COMP_LIST="$(_otpme_get_user_policies "$USER")"
+								fi
+							fi
+						;;
+
+						add_acl)
+							_otpme_add_acl "user"
+						;;
+
+						del_acl)
+							_otpme_del_acl "user"
+						;;
+
+						add_extension)
+							_otpme_add_extension "user"
+						;;
+
+						remove_extension)
+							_otpme_remove_extension "user"
+						;;
+
+						add_attribute)
+							_otpme_add_attribute "user"
+						;;
+
+						del_attribute)
+							_otpme_del_attribute "user"
+						;;
+
+						add_object_class)
+							_otpme_add_object_class "user"
+						;;
+
+						del_object_class)
+							_otpme_del_object_class "user"
+						;;
+
+						unit)
+							if [ "$cur_pos" = "3" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_units`"
+								fi
+							fi
+						;;
+
+						group)
+							if [ "$cur_pos" = "3" ] ; then
+								COMPREPLY=( `compgen -W "$(_otpme_get_groups)" -- $cur` )
+							fi
+						;;
+
+						add_token)
+							if [ "$cur_pos" = "3" ] ; then
+								if [ "$prev" = "-r" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										local _USER="$org_prev"
+										COMP_LIST="`_otpme_get_tokens "$_USER"`"
+									fi
+								fi
+							elif [ "$cur_pos" = "4" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_token_types`"
+								fi
+							elif [ "$cur_pos" = "5" ] ; then
+								local TOKEN_TYPE="$org_prev"
+								if [ "$TOKEN_TYPE" = "link" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_tokens)"
+									fi
+								fi
+							fi
+						;;
+
+
+						del_token)
+							local _USER="`_otpme_get_word 2`"
+							COMPREPLY=( `compgen -W "$(_otpme_get_tokens "$_USER")" -- $cur` )
+						;;
+
+						description)
+							if [ "$cur_pos" = "3" ] ; then
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								local _USER="`_otpme_get_word 2`"
+								local USER_DESCRIPTION="`_otpme_get_object_description user "$_USER"`"
+								if [ "$USER_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$USER_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							fi
+						;;
+					esac
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+				otpme-client)
+					case $action in
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_clients`"
+								fi
+							fi
+						;;
+
+						add_acl)
+							_otpme_add_acl "client"
+						;;
+
+						del_acl)
+							_otpme_del_acl "client"
+						;;
+					esac
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							access_group)
+								COMPREPLY=( `compgen -W "$(_otpme_get_accessgroups)" -- $cur` )
+							;;
+
+							del_address)
+								CLIENT="`_otpme_get_word 2`"
+								CLIENT_ADDRESSES="`_otpme_get_client_addresses "$CLIENT"`"
+								COMPREPLY=( `compgen -W "$CLIENT_ADDRESSES" -- $cur` )
+							;;
+
+							unit)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_units`"
+								fi
+							;;
+
+							add_token)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_tokens`"
+								fi
+							;;
+
+							remove_token)
+								local CLIENT="`_otpme_get_word 2`"
+								local TOKENS="`_otpme_get_client_tokens "$CLIENT"`"
+								COMPREPLY=( `compgen -W "$TOKENS" -- $cur` )
+							;;
+
+							add_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="`_otpme_get_policies`"
+									fi
+								fi
+							;;
+
+							remove_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										local CLIENT="`_otpme_get_word 2`"
+										COMP_LIST="$(_otpme_get_client_policies "$CLIENT")"
+									fi
+								fi
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								CLIENT="`_otpme_get_word 2`"
+								CLIENT_DESCRIPTION="`_otpme_get_object_description client "$CLIENT"`"
+								if [ "$CLIENT_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$CLIENT_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+
+							ctp_hash_type)
+								COMPREPLY=( `compgen -W "$(_otpme_get_hash_types)" -- $cur` )
+							;;
+
+
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+				otpme-node)
+					case $action in
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_nodes`"
+								fi
+							fi
+						;;
+
+						add_acl)
+							_otpme_add_acl "node"
+						;;
+
+						del_acl)
+							_otpme_del_acl "node"
+						;;
+
+						dump_cert|dump_ca_chain)
+							if [ "$cur_pos" -le 2 ] ; then
+								COMPREPLY=( `compgen -W "$(_otpme_get_nodes)" -- $cur` )
+							else
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							fi
+						;;
+
+						dump_key)
+							if [ "$prev" = "-p" ] ; then
+								COMPREPLY=( `compgen -W "$(_otpme_get_nodes)" -- $cur` )
+							else
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							fi
+						;;
+					esac
+
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							unit)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_units`"
+								fi
+							;;
+
+							add_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="`_otpme_get_policies`"
+									fi
+								fi
+							;;
+
+							remove_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										local NODE="`_otpme_get_word 2`"
+										COMP_LIST="$(_otpme_get_node_policies "$NODE")"
+									fi
+								fi
+							;;
+
+							add_token)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_tokens`"
+								fi
+							;;
+
+							remove_token)
+								local NODE="`_otpme_get_word 2`"
+								local TOKENS="`_otpme_get_node_tokens "$NODE"`"
+								COMPREPLY=( `compgen -W "$TOKENS" -- $cur` )
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								local NODE="`_otpme_get_word 2`"
+								local NODE_DESCRIPTION="`_otpme_get_object_description node "$NODE"`"
+								if [ "$NODE_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$NODE_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+				otpme-host)
+					case $action in
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_hosts`"
+								fi
+							fi
+						;;
+
+						add_acl)
+							_otpme_add_acl "host"
+						;;
+
+						del_acl)
+							_otpme_del_acl "host"
+						;;
+
+						dump_cert|dump_ca_chain)
+							if [ "$cur_pos" -le 2 ] ; then
+								COMPREPLY=( `compgen -W "$(_otpme_get_hosts)" -- $cur` )
+							else
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							fi
+						;;
+
+						dump_key)
+							if [ "$prev" = "-p" ] ; then
+								COMPREPLY=( `compgen -W "$(_otpme_get_hosts)" -- $cur` )
+							else
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							fi
+						;;
+					esac
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							unit)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_units`"
+								fi
+							;;
+
+							add_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="`_otpme_get_policies`"
+									fi
+								fi
+							;;
+
+							remove_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										local HOST="`_otpme_get_word 2`"
+										COMP_LIST="$(_otpme_get_host_policies "$HOST")"
+									fi
+								fi
+							;;
+
+							add_token)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_tokens`"
+								fi
+							;;
+
+							remove_token)
+								local HOST="`_otpme_get_word 2`"
+								local TOKENS="`_otpme_get_host_tokens "$HOST"`"
+								COMPREPLY=( `compgen -W "$TOKENS" -- $cur` )
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								local HOST="`_otpme_get_word 2`"
+								local HOST_DESCRIPTION="`_otpme_get_object_description host "$HOST"`"
+								if [ "$HOST_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$HOST_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+				otpme-accessgroup)
+					case $action in
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_accessgroups`"
+								fi
+							fi
+						;;
+
+						add_acl)
+							_otpme_add_acl "accessgroup"
+						;;
+
+						del_acl)
+							_otpme_del_acl "accessgroup"
+						;;
+
+					esac
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							add_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="`_otpme_get_policies`"
+									fi
+								fi
+							;;
+
+							remove_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										local ACCESSGROUP="`_otpme_get_word 2`"
+										COMP_LIST="$(_otpme_get_accessgroup_policies "$ACCESSGROUP")"
+									fi
+								fi
+							;;
+
+							add_role)
+								local ROLES="`_otpme_get_roles`"
+								COMPREPLY=( `compgen -W "$ROLES" -- $cur` )
+							;;
+
+							remove_role)
+								local ACCESSGROUP="`_otpme_get_word 2`"
+								local ROLES="`_otpme_get_accessgroup_roles "$ACCESSGROUP"`"
+								COMPREPLY=( `compgen -W "$ROLES" -- $cur` )
+							;;
+
+							add_token)
+								TOKENS="`_otpme_get_tokens`"
+								COMPREPLY=( `compgen -W "$TOKENS" -- $cur` )
+							;;
+
+							# aaaaaaaaaaaaaaaaaaaaaaaaa
+							# FIXME: list only member tokens. implement hidden _show function for all commands?
+							remove_token)
+								local ACCESSGROUP="`_otpme_get_word 2`"
+								local TOKENS="`_otpme_get_accessgroup_tokens "$ACCESSGROUP"`"
+								COMPREPLY=( `compgen -W "$TOKENS" -- $cur` )
+							;;
+
+							add_group)
+								COMPREPLY=( `compgen -W "$(_otpme_get_groups)" -- $cur` )
+							;;
+
+							remove_group)
+								local ACCESSGROUP="`_otpme_get_word 2`"
+								local MEMBER_GROUPS="`_otpme_get_accessgroup_groups "$ACCESSGROUP"`"
+								COMPREPLY=( `compgen -W "$MEMBER_GROUPS" -- $cur` )
+							;;
+
+
+							add_child_group|add_child_session|add_child)
+								COMPREPLY=( `compgen -W "$(_otpme_get_accessgroups)" -- $cur` )
+							;;
+
+							remove_child_group)
+								local GROUP="`_otpme_get_word 2`"
+								local CHILD_GROUPS="`_otpme_get_child_groups "$GROUP"`"
+								COMPREPLY=( `compgen -W "$CHILD_GROUPS" -- $cur` )
+							;;
+
+							remove_child_session)
+								local GROUP="`_otpme_get_word 2`"
+								local CHILD_SESSIONS="`_otpme_get_child_sessions "$GROUP"`"
+								COMPREPLY=( `compgen -W "$CHILD_SESSIONS" -- $cur` )
+							;;
+
+							remove_child)
+								local GROUP="`_otpme_get_word 2`"
+								local CHILD_GROUPS="`_otpme_get_child_groups "$GROUP"`"
+								local CHILD_SESSIONS="`_otpme_get_child_sessions "$GROUP"`"
+								local CHILDS="`echo "$CHILD_GROUPS" "$CHILD_SESSIONS" | tr ' ' '\n' | sort -u`"
+								COMPREPLY=( `compgen -W "$CHILDS" -- $cur` )
+							;;
+
+							unit)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_units`"
+								fi
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								local GROUP="`_otpme_get_word 2`"
+								local GROUP_DESCRIPTION="`_otpme_get_object_description accessgroup "$GROUP"`"
+								if [ "$GROUP_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$GROUP_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+				otpme-group)
+					case $action in
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_groups`"
+								fi
+							fi
+						;;
+
+						add_acl)
+							_otpme_add_acl "group"
+						;;
+
+						del_acl)
+							_otpme_del_acl "group"
+						;;
+
+						add_extension)
+							_otpme_add_extension "group"
+						;;
+
+						remove_extension)
+							_otpme_remove_extension "group"
+						;;
+
+						add_attribute)
+							_otpme_add_attribute "group"
+						;;
+
+						del_attribute)
+							_otpme_del_attribute "group"
+						;;
+
+						add_object_class)
+							_otpme_add_object_class "group"
+						;;
+
+						del_object_class)
+							_otpme_del_object_class "group"
+						;;
+					esac
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							add_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="`_otpme_get_policies`"
+									fi
+								fi
+							;;
+
+							remove_policy)
+								if [ "$cur_pos" = "3" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										local GROUP="`_otpme_get_word 2`"
+										COMP_LIST="$(_otpme_get_group_policies "$GROUP")"
+									fi
+								fi
+							;;
+
+							add_role)
+								local ROLES="`_otpme_get_roles`"
+								COMPREPLY=( `compgen -W "$ROLES" -- $cur` )
+							;;
+
+							remove_role)
+								local GROUP="`_otpme_get_word 2`"
+								local ROLES="`_otpme_get_group_roles "$GROUP"`"
+								COMPREPLY=( `compgen -W "$ROLES" -- $cur` )
+							;;
+
+							add_token)
+								TOKENS="`_otpme_get_tokens`"
+								COMPREPLY=( `compgen -W "$TOKENS" -- $cur` )
+							;;
+
+							# aaaaaaaaaaaaaaaaaaaaaaaaa
+							# FIXME: list only member tokens. implement hidden _show function for all commands?
+							remove_token)
+								local GROUP="`_otpme_get_word 2`"
+								local TOKENS="`_otpme_get_group_tokens "$GROUP"`"
+								COMPREPLY=( `compgen -W "$TOKENS" -- $cur` )
+							;;
+
+
+							add_client)
+								COMPREPLY=( `compgen -W "$(_otpme_get_clients)" -- $cur` )
+							;;
+
+							remove_client)
+								local GROUP="`_otpme_get_word 2`"
+								local CLIENTS="`_otpme_get_group_members "$GROUP" "client"`"
+								COMPREPLY=( `compgen -W "$CLIENTS" -- $cur` )
+							;;
+
+
+							add_node)
+								COMPREPLY=( `compgen -W "$(_otpme_get_nodes)" -- $cur` )
+							;;
+
+							remove_node)
+								local GROUP="`_otpme_get_word 2`"
+								local NODE="`_otpme_get_group_members "$GROUP" "node"`"
+								COMPREPLY=( `compgen -W "$NODE" -- $cur` )
+							;;
+
+
+							add_host)
+								COMPREPLY=( `compgen -W "$(_otpme_get_hosts)" -- $cur` )
+							;;
+
+							remove_host)
+								local GROUP="`_otpme_get_word 2`"
+								local HOST="`_otpme_get_group_members "$GROUP" "host"`"
+								COMPREPLY=( `compgen -W "$HOST" -- $cur` )
+							;;
+
+
+							unit)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_units`"
+								fi
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								local GROUP="`_otpme_get_word 2`"
+								local GROUP_DESCRIPTION="`_otpme_get_object_description group "$GROUP"`"
+								if [ "$GROUP_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$GROUP_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+				otpme-token)
+					case $action in
+						add)
+							if [ "$cur_pos" = "3" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_token_types`"
+								fi
+							elif [ "$cur_pos" -ge "4" ] ; then
+								local TOKEN_TYPE="$org_prev"
+								if [ "$TOKEN_TYPE" = "link" ] ; then
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$(_otpme_get_tokens)"
+									fi
+								fi
+							fi
+						;;
+
+
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_tokens`"
+								fi
+							fi
+						;;
+
+						deploy)
+							if [[ $org_prev == -s ]] ; then
+								COMPREPLY=( `compgen -W "1 2" -- $cur` )
+							elif [[ $cur == -* ]] ; then
+
+								if echo "$_OTPME_HW_TOKEN_TYPES" | grep "^$prev$" > /dev/null ; then
+									_TOKEN_TYPE="$prev"
+								elif echo "$_OTPME_HW_TOKEN_TYPES" | grep "^$org_prev$" > /dev/null ; then
+									_TOKEN_TYPE="$org_prev"
+								fi
+
+								if [ "$_TOKEN_TYPE" != "" ] ; then
+									_OTPME_COMMAND_OPTS=$($command $_OTPME_OPTS $action -t $_TOKEN_TYPE -h 2> /dev/null | sed '/Options:/,/^$/!d')
+									_OTPME_TOKEN_OPTS=$(echo "$_OTPME_COMMAND_OPTS" | sed "/ $_TOKEN_TYPE:/,/^[^:]*:/!d" | awk '{ print $1 }' | grep -- '^-')
+									COMPREPLY=( `compgen -W "$(echo "$_OTPME_TOKEN_OPTS")" -- $cur` )
+									return
+								fi
+							else
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_tokens`"
+								fi
+							fi
+						;;
+
+						add_acl)
+							_otpme_add_acl "token"
+						;;
+
+						del_acl)
+							_otpme_del_acl "token"
+						;;
+
+						sign|add_sign|verify_sign|del_sign|get_sign)
+							if [ "$prev" = --* ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									case $prev in
+										--user)
+											COMP_LIST="`_otpme_get_users`"
+										;;
+									esac
+								fi
+							elif [ "$prev" = "$action" ] || [[ $prev != --* ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_tokens`"
+								fi
+							else
+								if [ "$COMP_LIST" = "" ] ; then
+									local TOKEN="`_otpme_get_word 2`"
+									COMP_LIST="`_otpme_get_token_signatures "$TOKEN"`"
+									return
+								fi
+							fi
+						;;
+					esac
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							add_policy)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_policies`"
+								fi
+							;;
+
+							remove_policy)
+								if [ "$COMP_LIST" = "" ] ; then
+									local TOKEN="`_otpme_get_word 2`"
+									COMP_LIST="$(_otpme_get_token_policies "$TOKEN")"
+								fi
+							;;
+
+							add_group)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_groups`"
+								fi
+							;;
+
+							remove_group)
+								if [ "$COMP_LIST" = "" ] ; then
+									local TOKEN="`_otpme_get_word 2`"
+									COMP_LIST="$(_otpme_get_token_groups "$TOKEN")"
+								fi
+							;;
+
+							add_accessgroup)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_accessgroups`"
+								fi
+							;;
+
+							remove_accessgroup)
+								if [ "$COMP_LIST" = "" ] ; then
+									local TOKEN="`_otpme_get_word 2`"
+									COMP_LIST="$(_otpme_get_token_accessgroups "$TOKEN")"
+								fi
+							;;
+
+
+							auth_script)
+								_otpme_comlete_otpme_script "token" "AUTH_SCRIPT" "AUTH_SCRIPT_OPTIONS"
+							;;
+
+
+							push_script)
+								_otpme_comlete_otpme_script "token" "PUSH_SCRIPT" "PUSH_SCRIPT_OPTIONS"
+							;;
+
+
+							phone_number)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								local TOKEN="`_otpme_get_word 2`"
+								local TOKEN_PHONE_NUMBER="`otpme-token $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _show_config "$TOKEN" 2> /dev/null | grep "^PHONE_NUMBER=" | cut -d '=' -f 2 | tr -d '"' | tr -d "'"`"
+								if [ "$TOKEN_PHONE_NUMBER" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$TOKEN_PHONE_NUMBER\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+
+							push_token|2f_token)
+								if [ "$COMP_LIST" = "" ] ; then
+									local _USER="`_otpme_get_word 2 | cut -d '/' -f 1`"
+									local HOTP_TOKENS="`_otpme_get_tokens "$_USER" hotp`"
+									local TOTP_TOKENS="`_otpme_get_tokens "$_USER" totp`"
+									local MOTP_TOKENS="`_otpme_get_tokens "$_USER" motp`"
+									local OTPME_TOKENS="`_otpme_get_tokens "$_USER" otpme`"
+									local U2F_TOKENS="`_otpme_get_tokens "$_USER" u2f`"
+									COMP_LIST="$HOTP_TOKENS $TOTP_TOKENS $MOTP_TOKENS $OTPME_TOKENS $U2F_TOKENS"
+								fi
+							;;
+
+							otp_format)
+								if [ "$COMP_LIST" = "" ] ; then
+									local TOKEN="`_otpme_get_word 2`"
+									COMP_LIST="$(otpme-token $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _list_otp_formats $TOKEN 2> /dev/null)"
+								fi
+							;;
+
+
+							mode)
+								if [ "$COMP_LIST" = "" ] ; then
+									local TOKEN="`_otpme_get_word 2`"
+									COMP_LIST="$(otpme-token $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _list_modes $TOKEN 2> /dev/null)"
+								fi
+							;;
+
+
+							card_type)
+								if [ "$COMP_LIST" = "" ] ; then
+									local TOKEN="`_otpme_get_word 2`"
+									COMP_LIST="$(otpme-token $_OTPME_OPTS -r "$_OTPME_REALM" -s "$_OTPME_SITE" _list_card_types $TOKEN 2> /dev/null)"
+								fi
+							;;
+
+
+							key_type)
+								if [ "$COMP_LIST" = "" ] ; then
+									local TOKEN="`_otpme_get_word 2`"
+									COMP_LIST="rsa dsa"
+								fi
+							;;
+
+
+							gen_qrcode)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								local TOKEN="`_otpme_get_word 2`"
+								local TOKEN_DESCRIPTION="`_otpme_get_object_description token "$TOKEN"`"
+								if [ "$TOKEN_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$TOKEN_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+
+							ssh_public_key)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								compopt +o nospace
+								COMPREPLY=( `compgen -W '\\"' -- $cur` )
+								compopt -o nospace
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+
+				otpme-script)
+					case $action in
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_scripts`"
+								fi
+							fi
+						;;
+
+						add)
+							if [[ $cur != -* ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									if [[ $org_prev == -r ]] ; then
+										COMP_LIST="$(_otpme_get_scripts)"
+									else
+										compopt -o default
+										compopt +o nospace
+										compopt -o nospace
+									fi
+									return
+								fi
+							fi
+						;;
+
+						copy)
+							if [ "$cur_pos" = 3 ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_scripts)"
+									return
+								fi
+							fi
+						;;
+
+						sign|add_sign|verify_sign|del_sign|get_sign)
+							if [ "$prev" = "$action" ] || [[ $prev == --tags ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_scripts`"
+								fi
+							else
+								if [ "$COMP_LIST" = "" ] ; then
+									local SCRIPT="`_otpme_get_word 2`"
+									COMP_LIST="`_otpme_get_script_signatures "$SCRIPT"`"
+									return
+								fi
+							fi
+						;;
+
+						add_acl)
+							_otpme_add_acl "script"
+						;;
+
+						del_acl)
+							_otpme_del_acl "script"
+						;;
+
+						dump)
+							if [ "$cur_pos" -le 2 ] ; then
+								COMPREPLY=( `compgen -W "$(_otpme_get_scripts)" -- $cur` )
+							else
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							fi
+						;;
+					esac
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							unit)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_units`"
+								fi
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								SCRIPT="`_otpme_get_word 2`"
+								SCRIPT_DESCRIPTION="`_otpme_get_object_description script "$SCRIPT"`"
+								if [ "$SCRIPT_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$SCRIPT_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+
+				otpme-policy)
+					case $action in
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_policies`"
+								fi
+							fi
+						;;
+
+
+						add)
+							if [ "$cur_pos" = "3" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_policy_types`"
+								fi
+							fi
+						;;
+
+
+						add_acl)
+							_otpme_add_acl "policy"
+						;;
+
+						del_acl)
+							_otpme_del_acl "policy"
+						;;
+					esac
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							unit)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_units`"
+								fi
+							;;
+
+							strength_checker_opts)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								POLICY="`_otpme_get_word 2`"
+								POLICY_OPTS="`_otpme_get_policy_strength_checker_opts policy "$POLICY"`"
+								if [ "$POLICY_OPTS" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$POLICY_OPTS\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+
+							login_times)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								POLICY="`_otpme_get_word 2`"
+								LOGIN_TIMES="`_otpme_get_policy_login_times policy "$POLICY"`"
+								if [ "$LOGIN_TIMES" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$LOGIN_TIMES\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+
+							force_token_types)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								POLICY="`_otpme_get_word 2`"
+								TOKEN_TYPES="`_otpme_get_policy_token_types policy "$POLICY"`"
+								if [ "$TOKEN_TYPES" != "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W "$TOKEN_TYPES" -- $cur` )
+									compopt -o nospace
+								fi
+								IFS="$OLD_IFS"
+							;;
+
+							force_pass_types)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								POLICY="`_otpme_get_word 2`"
+								PASS_TYPES="`_otpme_get_policy_pass_types policy "$POLICY"`"
+								if [ "$PASS_TYPES" != "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W "$PASS_TYPES" -- $cur` )
+									compopt -o nospace
+								fi
+								IFS="$OLD_IFS"
+							;;
+
+							del_id_range)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								POLICY="`_otpme_get_word 2`"
+								ID_RANGES="`_otpme_get_policy_id_ranges policy "$POLICY"`"
+								if [ "$cur" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									#COMPREPLY=( `compgen -W "$ID_RANGES" -- $cur` )
+									if [ "$COMP_LIST" = "" ] ; then
+										COMP_LIST="$ID_RANGES"
+									fi
+								fi
+								IFS="$OLD_IFS"
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								POLICY="`_otpme_get_word 2`"
+								POLICY_DESCRIPTION="`_otpme_get_object_description policy "$POLICY"`"
+								if [ "$POLICY_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$POLICY_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+
+				otpme-resolver)
+					case $action in
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_resolvers`"
+								fi
+							fi
+						;;
+
+
+						add)
+							if [ "$cur_pos" = "3" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_resolver_types`"
+								fi
+							fi
+						;;
+
+
+						add_acl)
+							_otpme_add_acl "resolver"
+						;;
+
+						del_acl)
+							_otpme_del_acl "resolver"
+						;;
+					esac
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							unit)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_units`"
+								fi
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								RESOLVER="`_otpme_get_word 2`"
+								RESOLVER_DESCRIPTION="`_otpme_get_object_description resolver "$RESOLVER"`"
+								if [ "$RESOLVER_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$RESOLVER_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+
+				otpme-dictionary)
+					case $action in
+						show)
+							if [ "$prev" = "$action" ] || [[ $prev == --fields ]] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_policies`"
+								fi
+							fi
+						;;
+
+						add)
+							if [ "$COMP_LIST" = "" ] ; then
+								COMP_LIST="list sorted-list guessing"
+							fi
+						;;
+
+						word_learning|word_import)
+							if [ "$cur_pos" = "3" ] ; then
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							fi
+						;;
+
+
+						add_acl)
+							_otpme_add_acl "policy"
+						;;
+
+						del_acl)
+							_otpme_del_acl "policy"
+						;;
+					esac
+
+					if [ "$cur_pos" = "3" ] ; then
+						case $action in
+							unit)
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="`_otpme_get_units`"
+								fi
+							;;
+
+							description)
+								OLD_IFS="$IFS"
+								IFS=$'\x0a';
+								POLICY="`_otpme_get_word 2`"
+								POLICY_DESCRIPTION="`_otpme_get_object_description policy "$POLICY"`"
+								if [ "$POLICY_DESCRIPTION" = "" ] ; then
+									compopt +o nospace
+									COMPREPLY=( `compgen -W '\\"' -- $cur` )
+									compopt -o nospace
+								else
+									COMPREPLY=( `compgen -W "\\'$POLICY_DESCRIPTION\\'" -- $cur` )
+								fi
+								IFS="$OLD_IFS"
+							;;
+						esac
+					fi
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+
+				otpme-session)
+					case $action in
+						show)
+							if [[ "$org_prev" == --sort-by ]] ; then
+								COMPREPLY=( $( compgen -W 'creation_time expiration_time unused_expiration_time last_login user' -- "$cur" ) )
+							elif [[ "$cur" == -* ]] ; then
+								COMPREPLY=( $( compgen -W '--fields --sort-by --reverse-sort' -- "$cur" ) )
+							else
+								case $org_prev in
+									--reverse-sort|creation_time|expiration_time|unused_expiration_time|last_login)
+										if [ "$COMP_LIST" = "" ] ; then
+											COMP_LIST="$(_otpme_get_users)"
+										fi
+									;;
+								esac
+							fi
+						;;
+
+						del)
+							if [[ "$cur" == -* ]] ; then
+								COMPREPLY=( $( compgen -W '-d -f' -- "$cur" ) )
+							else
+								if [ "$COMP_LIST" = "" ] ; then
+									SESSIONS="$(_otpme_get_sessions)"
+									# in case of only one session do not autocomplete session id
+									# if it is already there
+									if [ "$prev" != "$SESSIONS" ] ; then
+										COMP_LIST="$(_otpme_get_sessions)"
+									fi
+								fi
+							fi
+						;;
+					esac
+
+					if [ "$cur_pos" -ge 3 ] ; then
+						case $action in
+							export)
+								compopt -o default
+								compopt +o nospace
+								compopt -o nospace
+							;;
+						esac
+					fi
+				;;
+
+				otpme-auth)
+					case $action in
+						verify_mschap*)
+							if [ "$cur_pos" = "5" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_clients)"
+								fi
+							fi
+
+							if [ "$cur_pos" = "6" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									CLIENT="`_otpme_get_word 5`"
+									COMP_LIST="`_otpme_get_client_addresses "$CLIENT"`"
+								fi
+							fi
+						;;
+
+						verify*)
+							if [ "$cur_pos" = "4" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									COMP_LIST="$(_otpme_get_clients)"
+								fi
+							fi
+
+							if [ "$cur_pos" = "5" ] ; then
+								if [ "$COMP_LIST" = "" ] ; then
+									CLIENT="`_otpme_get_word 4`"
+									COMP_LIST="`_otpme_get_client_addresses "$CLIENT"`"
+								fi
+							fi
+						;;
+					esac
+				;;
+
+			esac
+		fi
+}
+
+_otpme() {
+	local cur
+	cur=${COMP_WORDS[COMP_CWORD]}
+	_otpme_do_completion
+	if [ "$COMP_LIST" != "" ] ; then
+		_comp_cache_add "$COMP_LIST"
+
+		if [ "$COMP_IFS" != "" ] ; then
+			OLD_IFS="$IFS"
+			IFS="$COMP_IFS"
+		fi
+		if [ "$COMP_OPTS" = "nospace" ] ; then
+			compopt +o nospace
+		fi
+		COMPREPLY=( `compgen -W "$COMP_LIST" -- $cur` )
+		if [ "$COMP_OPTS" = "nospace" ] ; then
+			compopt -o nospace
+		fi
+		if [ "$COMP_IFS" != "" ] ; then
+			IFS="$OLD_IFS"
+		fi
+	fi
+
+        return 0
+}
+
+complete -F _otpme otpme-controld otpme-agent otpme-user otpme-group otpme-accessgroup otpme-client otpme-realm otpme-token otpme-session otpme-tool otpme-auth otpme-site otpme-node otpme-host otpme-unit otpme-role otpme-ca otpme-script otpme-policy otpme-resolver otpme-dictionary

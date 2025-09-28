@@ -1,0 +1,24 @@
+# This file is required to get files included in sdist which is required when
+# running stdeb.
+# http://stackoverflow.com/questions/30885731/creating-deb-or-rpm-with-setuptools-data-files
+#
+# Include the license file.
+include LICENSE
+
+include deploy/otpme.conf.dist
+include bash_completion/otpme
+include deploy/pam/pam_otpme.py
+include deploy/pam/pam-python/README
+
+# Include schema files.
+recursive-include deploy/schema *
+recursive-include otpme/lib/dicts *
+recursive-include otpme/web/app/templates *
+recursive-include otpme/web/app/static *
+
+# Include the examples files
+#recursive-include deploy/examples *
+
+# If using Python 2.6 or less, then have to include package data, even though
+# it's already declared in setup.py
+# include sample/*.dat
