@@ -1555,6 +1555,8 @@ msgstr "Objekttyp nicht registriert: {object_type}"
 #: otpme/lib/backends/file/file.py:261 otpme/lib/backend.py:134
 #: otpme/lib/otpme_config.py:1369 otpme/lib/otpme_config.py:1381
 #: otpme/lib/otpme_config.py:1386 otpme/lib/otpme_config.py:1395
+#: otpme/lib/otpme_config.py:1368 otpme/lib/otpme_config.py:1380
+#: otpme/lib/otpme_config.py:1385 otpme/lib/otpme_config.py:1394
 #, python-brace-format
 msgid "Object type already registered: {object_type}"
 msgstr "Objekttyp bereits registriert: {object_type}"
@@ -2614,6 +2616,10 @@ msgstr "Leeres Passwort erhalten."
 #: otpme/lib/protocols/server/mgmt1.py:2452
 #: otpme/lib/protocols/server/sync1.py:1060
 #: otpme/lib/protocols/client/sync1.py:237 otpme/command.py:348
+#: otpme/lib/protocols/server/mgmt1.py:2359
+#: otpme/lib/protocols/server/mgmt1.py:2406
+#: otpme/lib/protocols/server/mgmt1.py:2413
+#: otpme/lib/protocols/server/mgmt1.py:2456
 msgid "Permission denied."
 msgstr "Zugriff verweigert."
 
@@ -2886,6 +2892,7 @@ msgstr "Ausführung des Key-Scripts fehlgeschlagen: {script_stderr}"
 #: otpme/lib/classes/otpme_host.py:327 otpme/lib/protocols/server/join1.py:871
 #: otpme/lib/protocols/server/mgmt1.py:2640
 #: otpme/lib/protocols/client/host1.py:126
+#: otpme/lib/protocols/server/mgmt1.py:2644
 #, python-brace-format
 msgid "Unknown site: {site}"
 msgstr "Unbekannte Site: {site}"
@@ -3205,6 +3212,7 @@ msgstr "Standard-Token konnte nicht zur Rolle hinzugefügt werden: {}: {}, {}"
 #: otpme/lib/policy/defaultroles/defaultroles.py:296
 #: otpme/lib/policy/defaultroles/defaultroles.py:335
 #: otpme/lib/classes/user.py:4928 otpme/lib/classes/role.py:1041
+#: otpme/lib/classes/user.py:4956
 #, python-brace-format
 msgid "Unknown role: {role_name}"
 msgstr "Unbekannte Rolle: {role_name}"
@@ -3518,7 +3526,7 @@ msgstr ""
 #: otpme/lib/policy/defaultgroups/defaultgroups.py:396
 #: otpme/lib/classes/host.py:1201 otpme/lib/classes/host.py:1245
 #: otpme/lib/classes/user.py:4905 otpme/lib/classes/share.py:988
-#: otpme/lib/classes/role.py:1018
+#: otpme/lib/classes/role.py:1018 otpme/lib/classes/user.py:4933
 #, python-brace-format
 msgid "Unknown group: {group_name}"
 msgstr "Unbekannte Gruppe: {group_name}"
@@ -4870,7 +4878,7 @@ msgid "Error writing cache file: {error}"
 msgstr "Fehler beim Schreiben der Cache-Datei: {error}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:780
+#: otpme/lib/otpme_config.py:780 otpme/lib/otpme_config.py:779
 #, python-brace-format
 msgid "Unknown config file parameter: {name}"
 msgstr "Unbekannter Konfigurationsdatei-Parameter: {name}"
@@ -4881,67 +4889,67 @@ msgid "locale_test"
 msgstr "locale_test"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:921
+#: otpme/lib/otpme_config.py:921 otpme/lib/otpme_config.py:917
 msgid "Error reading backend parameter from config file."
 msgstr "Fehler beim Lesen des Backend-Parameters aus Konfigurationsdatei."
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:941
+#: otpme/lib/otpme_config.py:941 otpme/lib/otpme_config.py:937
 #, python-brace-format
 msgid "Unknown config file parameter: {config_file}: {parameter}"
 msgstr "Unbekannter Konfigurationsdatei-Parameter: {config_file}: {parameter}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:959
+#: otpme/lib/otpme_config.py:959 otpme/lib/otpme_config.py:955
 #, python-brace-format
 msgid "Unable to set config parameter: {parameter}: {e}"
 msgstr "Konfigurationsparameter kann nicht gesetzt werden: {parameter}: {e}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1033
+#: otpme/lib/otpme_config.py:1033 otpme/lib/otpme_config.py:1032
 #, python-brace-format
 msgid "Failed to load disk encryption module: {e}"
 msgstr "Fehler beim Laden des Festplattenverschlüsselungsmoduls: {e}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1106
+#: otpme/lib/otpme_config.py:1106 otpme/lib/otpme_config.py:1105
 #, python-brace-format
 msgid "Tracebacks: {print_tracebacks}"
 msgstr "Tracebacks: {print_tracebacks}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1109
+#: otpme/lib/otpme_config.py:1109 otpme/lib/otpme_config.py:1108
 #, python-brace-format
 msgid "Logging to file: {file_logging}"
 msgstr "Protokollierung in Datei: {file_logging}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1112
+#: otpme/lib/otpme_config.py:1112 otpme/lib/otpme_config.py:1111
 #, python-brace-format
 msgid "Debug Level: {debug_levels_string}"
 msgstr "Debug-Stufe: {debug_levels_string}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1223
+#: otpme/lib/otpme_config.py:1223 otpme/lib/otpme_config.py:1222
 #, python-brace-format
 msgid "No cache region registerd for object type: {object_type}"
 msgstr "Keine Cache-Region für Objekttyp registriert: {object_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1273
+#: otpme/lib/otpme_config.py:1273 otpme/lib/otpme_config.py:1272
 #, python-brace-format
 msgid "Config variable already registered: {name}"
 msgstr "Konfigurationsvariable bereits registriert: {name}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1283
+#: otpme/lib/otpme_config.py:1283 otpme/lib/otpme_config.py:1282
 #, python-brace-format
 msgid "Config file parameter already registered: {config_file_parameter}"
 msgstr ""
 "Konfigurationsdatei-Parameter bereits registriert: {config_file_parameter}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1290
+#: otpme/lib/otpme_config.py:1290 otpme/lib/otpme_config.py:1289
 #, python-brace-format
 msgid ""
 "User config file parameter already registered: {user_config_file_parameter}"
@@ -4950,55 +4958,56 @@ msgstr ""
 "{user_config_file_parameter}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1308
+#: otpme/lib/otpme_config.py:1308 otpme/lib/otpme_config.py:1307
 #, python-brace-format
 msgid "Config parameter already registered: {name}"
 msgstr "Konfigurationsparameter bereits registriert: {name}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1321
+#: otpme/lib/otpme_config.py:1321 otpme/lib/otpme_config.py:1320
 #, python-brace-format
 msgid "Smartcard type already registered: {smartcard_type}"
 msgstr "Smartcard-Typ bereits registriert: {smartcard_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1334
+#: otpme/lib/otpme_config.py:1334 otpme/lib/otpme_config.py:1333
 #, python-brace-format
 msgid "Smartcard type not registered: {smartcard_type}"
 msgstr "Smartcard-Typ nicht registriert: {smartcard_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1412
+#: otpme/lib/otpme_config.py:1412 otpme/lib/otpme_config.py:1411
 #, python-brace-format
 msgid "Sub object type already registered: {object_type}: {stype}"
 msgstr "Unterobjekttyp bereits registriert: {object_type}: {stype}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1422
+#: otpme/lib/otpme_config.py:1422 otpme/lib/otpme_config.py:1421
 #, python-brace-format
 msgid "LDAP object type already registered: {object_type}"
 msgstr "LDAP-Objekttyp bereits registriert: {object_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1430
+#: otpme/lib/otpme_config.py:1430 otpme/lib/otpme_config.py:1429
 #, python-brace-format
 msgid "Object type backup attributes not registered: {object_type}"
 msgstr "Objekttyp-Backup-Attribute nicht registriert: {object_type}"
 
 #. AI-generated
 #: otpme/lib/otpme_config.py:1472 otpme/lib/otpme_config.py:1544
+#: otpme/lib/otpme_config.py:1471 otpme/lib/otpme_config.py:1543
 #, python-brace-format
 msgid "{o_type} already registered: {name}"
 msgstr "{o_type} bereits registriert: {name}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1513
+#: otpme/lib/otpme_config.py:1513 otpme/lib/otpme_config.py:1512
 #, python-brace-format
 msgid "No default unit configured for object type: {object_type}"
 msgstr "Keine Standardeinheit für Objekttyp konfiguriert: {object_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1521
+#: otpme/lib/otpme_config.py:1521 otpme/lib/otpme_config.py:1520
 #, python-brace-format
 msgid ""
 "Default unit for object type already registered: {object_type}: {unit_path}"
@@ -5006,147 +5015,148 @@ msgstr ""
 "Standardeinheit für Objekttyp bereits registriert: {object_type}: {unit_path}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1572
+#: otpme/lib/otpme_config.py:1572 otpme/lib/otpme_config.py:1571
 #, python-brace-format
 msgid "Per site {object_type} already registered: {object_name}"
 msgstr "Pro Site {object_type} bereits registriert: {object_name}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1593
+#: otpme/lib/otpme_config.py:1593 otpme/lib/otpme_config.py:1592
 #, python-brace-format
 msgid "Object template already registered: {object_name}"
 msgstr "Objektvorlage bereits registriert: {object_name}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1625
+#: otpme/lib/otpme_config.py:1625 otpme/lib/otpme_config.py:1624
 #, python-brace-format
 msgid "Default policy already registered: {object_type}: {policy_name}"
 msgstr "Standardrichtlinie bereits registriert: {object_type}: {policy_name}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1642
+#: otpme/lib/otpme_config.py:1642 otpme/lib/otpme_config.py:1641
 #, python-brace-format
 msgid "DN attribute already registered: {object_type}: {x_dn_attr}"
 msgstr "DN-Attribut bereits registriert: {object_type}: {x_dn_attr}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1662
+#: otpme/lib/otpme_config.py:1662 otpme/lib/otpme_config.py:1661
 #, python-brace-format
 msgid "Default extension already registered: {object_type}: {extension_name}"
 msgstr ""
 "Standarderweiterung bereits registriert: {object_type}: {extension_name}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1671
+#: otpme/lib/otpme_config.py:1671 otpme/lib/otpme_config.py:1670
 #, python-brace-format
 msgid "Extension already registered: {extension}"
 msgstr "Erweiterung bereits registriert: {extension}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1697
+#: otpme/lib/otpme_config.py:1697 otpme/lib/otpme_config.py:1696
 #, python-brace-format
 msgid "LDIF attribute already registered: {extension}: {attribute}"
 msgstr "LDIF-Attribut bereits registriert: {extension}: {attribute}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1707
+#: otpme/lib/otpme_config.py:1707 otpme/lib/otpme_config.py:1706
 #, python-brace-format
 msgid "LDIF index attribute already registered: {attribute}"
 msgstr "LDIF-Indexattribut bereits registriert: {attribute}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1713
+#: otpme/lib/otpme_config.py:1713 otpme/lib/otpme_config.py:1712
 #, python-brace-format
 msgid "OTPme index attribute already registered: {attribute}"
 msgstr "OTPme-Indexattribut bereits registriert: {attribute}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1725
+#: otpme/lib/otpme_config.py:1725 otpme/lib/otpme_config.py:1724
 #, python-brace-format
 msgid "Unsupported encryption type: {enc_type}"
 msgstr "Nicht unterstützter Verschlüsselungstyp: {enc_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1734
+#: otpme/lib/otpme_config.py:1734 otpme/lib/otpme_config.py:1733
 #, python-brace-format
 msgid "Encryption type already registered: {enc_type}"
 msgstr "Verschlüsselungstyp bereits registriert: {enc_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1745
+#: otpme/lib/otpme_config.py:1745 otpme/lib/otpme_config.py:1744
 #, python-brace-format
 msgid "Unsupported encoding type: {enc_type}"
 msgstr "Nicht unterstützter Kodierungstyp: {enc_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1754
+#: otpme/lib/otpme_config.py:1754 otpme/lib/otpme_config.py:1753
 #, python-brace-format
 msgid "Encoding type already registered: {enc_type}"
 msgstr "Kodierungstyp bereits registriert: {enc_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1762
+#: otpme/lib/otpme_config.py:1762 otpme/lib/otpme_config.py:1761
 #, python-brace-format
 msgid "Unsupported compression type: {enc_type}"
 msgstr "Nicht unterstützter Komprimierungstyp: {enc_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1771
+#: otpme/lib/otpme_config.py:1771 otpme/lib/otpme_config.py:1770
 #, python-brace-format
 msgid "Compression type already registered: {ctype}"
 msgstr "Komprimierungstyp bereits registriert: {ctype}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1786
+#: otpme/lib/otpme_config.py:1786 otpme/lib/otpme_config.py:1785
 #, python-brace-format
 msgid "ECDH curve already registered: {ecdh_curve}"
 msgstr "ECDH-Kurve bereits registriert: {ecdh_curve}"
 
 #. AI-generated
 #: otpme/lib/otpme_config.py:1803 otpme/lib/otpme_config.py:1812
-#: otpme/lib/otpme_config.py:1821
+#: otpme/lib/otpme_config.py:1821 otpme/lib/otpme_config.py:1802
+#: otpme/lib/otpme_config.py:1811 otpme/lib/otpme_config.py:1820
 #, python-brace-format
 msgid "Unsupported hash type: {hash_type}"
 msgstr "Nicht unterstützter Hash-Typ: {hash_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1831
+#: otpme/lib/otpme_config.py:1831 otpme/lib/otpme_config.py:1830
 #, python-brace-format
 msgid "Hash algorithm already registered: {hash_type}"
 msgstr "Hash-Algorithmus bereits registriert: {hash_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1848
+#: otpme/lib/otpme_config.py:1848 otpme/lib/otpme_config.py:1847
 #, python-brace-format
 msgid "Daemon already registered: {daemon}"
 msgstr "Daemon bereits registriert: {daemon}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1876
+#: otpme/lib/otpme_config.py:1876 otpme/lib/otpme_config.py:1875
 #, python-brace-format
 msgid "Protocol already registered: {protocol}"
 msgstr "Protokoll bereits registriert: {protocol}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1889
+#: otpme/lib/otpme_config.py:1889 otpme/lib/otpme_config.py:1888
 #, python-brace-format
 msgid "Host type not registered for sync: {host_type}"
 msgstr "Host-Typ nicht für Sync registriert: {host_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1901
+#: otpme/lib/otpme_config.py:1901 otpme/lib/otpme_config.py:1900
 #, python-brace-format
 msgid "Object type already registered for sync: {object_type}"
 msgstr "Objekttyp bereits für Sync registriert: {object_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1915
+#: otpme/lib/otpme_config.py:1915 otpme/lib/otpme_config.py:1914
 #, python-brace-format
 msgid "Object type already registered for clustering: {object_type}"
 msgstr "Objekttyp bereits für Clustering registriert: {object_type}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1927
+#: otpme/lib/otpme_config.py:1927 otpme/lib/otpme_config.py:1926
 msgid ""
 "WARNING!!!!! Raising exceptions is enabled (-dee). This exception would not "
 "occur in normal operation mode!"
@@ -5155,196 +5165,198 @@ msgstr ""
 "würde im normalen Betriebsmodus nicht auftreten!"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1932
+#: otpme/lib/otpme_config.py:1932 otpme/lib/otpme_config.py:1931
 #, python-brace-format
 msgid "Exception time: {now}"
 msgstr "Exception-Zeit: {now}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1935
+#: otpme/lib/otpme_config.py:1935 otpme/lib/otpme_config.py:1934
 #, python-brace-format
 msgid "Exception PID: {pid}"
 msgstr "Exception-PID: {pid}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:1938
+#: otpme/lib/otpme_config.py:1938 otpme/lib/otpme_config.py:1937
 #, python-brace-format
 msgid "Exception daemon: {daemon_name}"
 msgstr "Exception-Daemon: {daemon_name}"
 
 #. AI-generated
 #: otpme/lib/otpme_config.py:2096 otpme/lib/otpme_config.py:2459
-#: otpme/lib/classes/otpme_agent.py:220
+#: otpme/lib/classes/otpme_agent.py:220 otpme/lib/otpme_config.py:2095
+#: otpme/lib/otpme_config.py:2458
 #, python-brace-format
 msgid "Error reading config file: {error}"
 msgstr "Fehler beim Lesen der Konfigurationsdatei: {error}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2111
+#: otpme/lib/otpme_config.py:2111 otpme/lib/otpme_config.py:2110
 #, python-brace-format
 msgid "Reloading config file '{user_conf_file}'."
 msgstr "Konfigurationsdatei '{user_conf_file}' wird neu geladen."
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2114
+#: otpme/lib/otpme_config.py:2114 otpme/lib/otpme_config.py:2113
 #, python-brace-format
 msgid "Loading config file: {user_conf_file}"
 msgstr "Lade Konfigurationsdatei: {user_conf_file}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2128
+#: otpme/lib/otpme_config.py:2128 otpme/lib/otpme_config.py:2127
 #, python-brace-format
 msgid "Unknown config file parameter: {user_conf_file}: {x}"
 msgstr "Unbekannter Konfigurationsdatei-Parameter: {user_conf_file}: {x}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2215
+#: otpme/lib/otpme_config.py:2215 otpme/lib/otpme_config.py:2214
 #, python-brace-format
 msgid "No such file or directory: {logfile_parent_dir}"
 msgstr "Datei oder Verzeichnis nicht vorhanden: {logfile_parent_dir}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2219
+#: otpme/lib/otpme_config.py:2219 otpme/lib/otpme_config.py:2218
 #, python-brace-format
 msgid "Permission denied: {logfile_parent_dir}"
 msgstr "Zugriff verweigert: {logfile_parent_dir}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2230
+#: otpme/lib/otpme_config.py:2230 otpme/lib/otpme_config.py:2229
 #, python-brace-format
 msgid "Permission denied: {logfile}"
 msgstr "Zugriff verweigert: {logfile}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2238
+#: otpme/lib/otpme_config.py:2238 otpme/lib/otpme_config.py:2237
 msgid "KEY_COMMAND is not set to a file. Unable to generate AES key."
 msgstr ""
 "KEY_COMMAND ist nicht auf eine Datei gesetzt. AES-Schlüssel kann nicht "
 "generiert werden."
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2249
+#: otpme/lib/otpme_config.py:2249 otpme/lib/otpme_config.py:2248
 #, python-brace-format
 msgid "Warning: Key file '{key_file}' exists. Overwrite?: "
 msgstr ""
 "Warnung: Schlüsseldatei '{key_file}' existiert bereits. Überschreiben?:"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2255
+#: otpme/lib/otpme_config.py:2255 otpme/lib/otpme_config.py:2254
 msgid "Generating encryption master key..."
 msgstr "Generiere Verschlüsselungs-Hauptschlüssel..."
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2258
+#: otpme/lib/otpme_config.py:2258 otpme/lib/otpme_config.py:2257
 msgid "Please give master password: "
 msgstr "Bitte Master-Passwort eingeben:"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2262
+#: otpme/lib/otpme_config.py:2262 otpme/lib/otpme_config.py:2261
 msgid "Please give new master password: "
 msgstr "Bitte neues Master-Passwort eingeben:"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2264
+#: otpme/lib/otpme_config.py:2264 otpme/lib/otpme_config.py:2263
 msgid "Please repeat master password: "
 msgstr "Bitte Master-Passwort wiederholen:"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2267
+#: otpme/lib/otpme_config.py:2267 otpme/lib/otpme_config.py:2266
 msgid "Passwords do not match. Please try again."
 msgstr "Passwörter stimmen nicht überein. Bitte erneut versuchen."
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2287
+#: otpme/lib/otpme_config.py:2287 otpme/lib/otpme_config.py:2286
 #, python-brace-format
 msgid "Error writing master key file: {e}"
 msgstr "Fehler beim Schreiben der Master-Schlüsseldatei: {e}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2298
+#: otpme/lib/otpme_config.py:2298 otpme/lib/otpme_config.py:2297
 #, python-brace-format
 msgid "Error writing master key salt file: {e}"
 msgstr "Fehler beim Schreiben der Master-Schlüssel-Salt-Datei: {e}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2322
+#: otpme/lib/otpme_config.py:2322 otpme/lib/otpme_config.py:2321
 #, python-brace-format
 msgid "Error running KEY_COMMAND: {script_stderr}"
 msgstr "Fehler beim Ausführen von KEY_COMMAND: {script_stderr}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2336
+#: otpme/lib/otpme_config.py:2336 otpme/lib/otpme_config.py:2335
 msgid "Generating password salt..."
 msgstr "Generiere Passwort-Salt..."
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2346
+#: otpme/lib/otpme_config.py:2346 otpme/lib/otpme_config.py:2345
 #, python-brace-format
 msgid "Error writing salt file: {e}"
 msgstr "Fehler beim Schreiben der Salt-Datei: {e}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2416
+#: otpme/lib/otpme_config.py:2416 otpme/lib/otpme_config.py:2415
 #, python-brace-format
 msgid "Failed to load module 'colorlog': {e}"
 msgstr "Modul 'colorlog' konnte nicht geladen werden: {e}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2441
+#: otpme/lib/otpme_config.py:2441 otpme/lib/otpme_config.py:2440
 #, python-brace-format
 msgid "Missing cache size for object type: {x}"
 msgstr "Fehlende Cache-Größe für Objekttyp: {x}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2451
+#: otpme/lib/otpme_config.py:2451 otpme/lib/otpme_config.py:2450
 #, python-brace-format
 msgid "Missing config file: {config_file}"
 msgstr "Fehlende Konfigurationsdatei: {config_file}"
 
 #. AI-generated
 #: otpme/lib/otpme_config.py:2551 otpme/lib/otpme_config.py:2590
+#: otpme/lib/otpme_config.py:2550 otpme/lib/otpme_config.py:2589
 #, python-brace-format
 msgid "Unknown realm: {realm}"
 msgstr "Unbekanntes Realm: {realm}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2737
+#: otpme/lib/otpme_config.py:2737 otpme/lib/otpme_config.py:2736
 #, python-brace-format
 msgid "Unable to read realm data file: {e}"
 msgstr "Realm-Datendatei kann nicht gelesen werden: {e}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2743
+#: otpme/lib/otpme_config.py:2743 otpme/lib/otpme_config.py:2742
 #, python-brace-format
 msgid "Failed to decode realm data: {e}"
 msgstr "Realm-Daten konnten nicht dekodiert werden: {e}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2769
+#: otpme/lib/otpme_config.py:2769 otpme/lib/otpme_config.py:2768
 #, python-brace-format
 msgid "Unable to save realm data: {e}"
 msgstr "Realm-Daten können nicht gespeichert werden: {e}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2794
+#: otpme/lib/otpme_config.py:2794 otpme/lib/otpme_config.py:2793
 #, python-brace-format
 msgid "Invalid status: {status} [{valid_status_str}]"
 msgstr "Ungültiger Status: {status} [{valid_status_str}]"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2838
+#: otpme/lib/otpme_config.py:2838 otpme/lib/otpme_config.py:2837
 #, python-brace-format
 msgid "Unable to save sync status: {e}"
 msgstr "Sync-Status kann nicht gespeichert werden: {e}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2855
+#: otpme/lib/otpme_config.py:2855 otpme/lib/otpme_config.py:2854
 #, python-brace-format
 msgid "Unable to load sync status: {e}"
 msgstr "Sync-Status kann nicht geladen werden: {e}"
 
 #. AI-generated
-#: otpme/lib/otpme_config.py:2865
+#: otpme/lib/otpme_config.py:2865 otpme/lib/otpme_config.py:2864
 #, python-brace-format
 msgid "Unable to decode sync status: {e}"
 msgstr "Synchronisierungsstatus kann nicht dekodiert werden: {e}"
@@ -8590,6 +8602,7 @@ msgstr ""
 
 #. AI-generated
 #: otpme/lib/classes/group.py:1080 otpme/lib/classes/user.py:1992
+#: otpme/lib/classes/user.py:2010
 #, python-brace-format
 msgid "Object move failed: {reply}"
 msgstr "Objektverschiebung fehlgeschlagen: {reply}"
@@ -8604,18 +8617,21 @@ msgstr "JWT-Verifizierung fehlgeschlagen: {error}"
 
 #. AI-generated
 #: otpme/lib/classes/group.py:1103 otpme/lib/classes/user.py:2015
+#: otpme/lib/classes/user.py:2033
 #, python-brace-format
 msgid "Failed to find object in reply: {x_oid}"
 msgstr "Objekt in Antwort nicht gefunden: {x_oid}"
 
 #. AI-generated
 #: otpme/lib/classes/group.py:1107 otpme/lib/classes/user.py:2019
+#: otpme/lib/classes/user.py:2037
 #, python-brace-format
 msgid "UUID missmatch in reply: {x_oid}: {x_uuid} <> {y_uuid}"
 msgstr "UUID-Diskrepanz in Antwort: {x_oid}: {x_uuid} <> {y_uuid}"
 
 #. AI-generated
 #: otpme/lib/classes/group.py:1122 otpme/lib/classes/user.py:2034
+#: otpme/lib/classes/user.py:2052
 #, python-brace-format
 msgid "Failed to delete object on source site: {x_oid}"
 msgstr "Löschen des Objekts am Quellstandort fehlgeschlagen: {x_oid}"
@@ -8732,6 +8748,7 @@ msgstr ""
 #. AI-generated
 #: otpme/lib/classes/group.py:1297 otpme/lib/classes/user.py:5526
 #: otpme/lib/classes/site.py:3363 otpme/lib/classes/role.py:1227
+#: otpme/lib/classes/user.py:5554
 #, python-brace-format
 msgid "{msg}Remove?: "
 msgstr "{msg}Entfernen?:"
@@ -10741,66 +10758,69 @@ msgid "Delete CA '{name}'?: "
 msgstr "CA '{name}' löschen?:"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:1267
+#: otpme/lib/classes/user.py:1267 otpme/lib/classes/user.py:1277
 #, python-brace-format
 msgid "Unable to get 'max_fail' for accessgroup '{access_group}'"
 msgstr ""
 "'max_fail' für Zugriffsgruppe '{access_group}' konnte nicht abgerufen werden"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:1568
+#: otpme/lib/classes/user.py:1568 otpme/lib/classes/user.py:1586
 msgid "Username must be lowercase."
 msgstr "Benutzername muss kleingeschrieben sein."
 
 #. AI-generated
 #: otpme/lib/classes/user.py:1601 otpme/lib/classes/user.py:2275
+#: otpme/lib/classes/user.py:1619 otpme/lib/classes/user.py:2303
 #, python-brace-format
 msgid "Unknown group: {new_group}"
 msgstr "Unbekannte Gruppe: {new_group}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:1638
+#: otpme/lib/classes/user.py:1638 otpme/lib/classes/user.py:1656
 #, python-brace-format
 msgid "Unknown group: {group_uuid}"
 msgstr "Unbekannte Gruppe: {group_uuid}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:1660
+#: otpme/lib/classes/user.py:1660 otpme/lib/classes/user.py:1678
 #, python-brace-format
 msgid "User already in group: {new_group_name}"
 msgstr "Benutzer bereits in Gruppe: {new_group_name}"
 
 #. AI-generated
 #: otpme/lib/classes/user.py:1708 otpme/lib/classes/user.py:1715
+#: otpme/lib/classes/user.py:1726 otpme/lib/classes/user.py:1733
 #, python-brace-format
 msgid "Setting group: {new_group_name}"
 msgstr "Setze Gruppe: {new_group_name}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:1723
+#: otpme/lib/classes/user.py:1723 otpme/lib/classes/user.py:1741
 msgid "Failed to change user default group."
 msgstr "Änderung der Standardgruppe des Benutzers fehlgeschlagen."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:1846
+#: otpme/lib/classes/user.py:1846 otpme/lib/classes/user.py:1864
 #, python-brace-format
 msgid "Set user default group failed: {reply}"
 msgstr "Setzen der Standardgruppe des Benutzers fehlgeschlagen: {reply}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:1849
+#: otpme/lib/classes/user.py:1849 otpme/lib/classes/user.py:1867
 #, python-brace-format
 msgid "Unset user default group failed: {reply}"
 msgstr "Aufheben der Standardgruppe des Benutzers fehlgeschlagen: {reply}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:1852
+#: otpme/lib/classes/user.py:1852 otpme/lib/classes/user.py:1870
 #, python-brace-format
 msgid "Change user default group failed: {reply}"
 msgstr "Änderung der Standardgruppe des Benutzers fehlgeschlagen: {reply}"
 
 #. AI-generated
 #: otpme/lib/classes/user.py:1865 otpme/lib/classes/user.py:1952
+#: otpme/lib/classes/user.py:1883 otpme/lib/classes/user.py:1970
 #, python-brace-format
 msgid "Unable to get public key of site certificate: {dst_site}: {e}"
 msgstr ""
@@ -10809,12 +10829,13 @@ msgstr ""
 
 #. AI-generated
 #: otpme/lib/classes/user.py:1876 otpme/lib/classes/user.py:2002
+#: otpme/lib/classes/user.py:1894 otpme/lib/classes/user.py:2020
 #, python-brace-format
 msgid "JWT verification failed: {e}"
 msgstr "JWT-Verifizierung fehlgeschlagen: {e}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:1882
+#: otpme/lib/classes/user.py:1882 otpme/lib/classes/user.py:1900
 #, python-brace-format
 msgid ""
 "Got wrong JWT data from peer:\n"
@@ -10842,133 +10863,152 @@ msgstr ""
 #: otpme/lib/classes/user.py:4606 otpme/lib/classes/user.py:4639
 #: otpme/lib/classes/user.py:4673 otpme/lib/classes/user.py:4707
 #: otpme/lib/classes/user.py:4741 otpme/lib/classes/user.py:5394
-#: otpme/lib/classes/user.py:5496
+#: otpme/lib/classes/user.py:5496 otpme/lib/classes/user.py:2084
+#: otpme/lib/classes/user.py:2125 otpme/lib/classes/user.py:2171
+#: otpme/lib/classes/user.py:2203 otpme/lib/classes/user.py:2317
+#: otpme/lib/classes/user.py:2357 otpme/lib/classes/user.py:2399
+#: otpme/lib/classes/user.py:2590 otpme/lib/classes/user.py:2734
+#: otpme/lib/classes/user.py:2802 otpme/lib/classes/user.py:2918
+#: otpme/lib/classes/user.py:3005 otpme/lib/classes/user.py:3062
+#: otpme/lib/classes/user.py:3102 otpme/lib/classes/user.py:3148
+#: otpme/lib/classes/user.py:3830 otpme/lib/classes/user.py:3898
+#: otpme/lib/classes/user.py:4479 otpme/lib/classes/user.py:4518
+#: otpme/lib/classes/user.py:4557 otpme/lib/classes/user.py:4601
+#: otpme/lib/classes/user.py:4634 otpme/lib/classes/user.py:4667
+#: otpme/lib/classes/user.py:4701 otpme/lib/classes/user.py:4735
+#: otpme/lib/classes/user.py:4769 otpme/lib/classes/user.py:5422
+#: otpme/lib/classes/user.py:5524
 #, python-brace-format
 msgid "Error running policies: {e}"
 msgstr "Fehler beim Ausführen von Richtlinien: {e}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:2173
+#: otpme/lib/classes/user.py:2173 otpme/lib/classes/user.py:2191
 msgid "No photo set."
 msgstr "Kein Foto gesetzt."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:2205
+#: otpme/lib/classes/user.py:2205 otpme/lib/classes/user.py:2223
 #, python-brace-format
 msgid "Unable to add signer cache: {self_oid}: {e}"
 msgstr "Signer-Cache konnte nicht hinzugefügt werden: {self_oid}: {e}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:2214
+#: otpme/lib/classes/user.py:2214 otpme/lib/classes/user.py:2242
 #, python-brace-format
 msgid "Users key mode already set to {key_mode}"
 msgstr "Schlüsselmodus des Benutzers bereits auf {key_mode} gesetzt"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:2267
+#: otpme/lib/classes/user.py:2267 otpme/lib/classes/user.py:2295
 msgid "Missing group."
 msgstr "Gruppe fehlt."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:2409
+#: otpme/lib/classes/user.py:2409 otpme/lib/classes/user.py:2437
 #, python-brace-format
 msgid "Script does not exist: {key_script}"
 msgstr "Skript existiert nicht: {key_script}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:2421
+#: otpme/lib/classes/user.py:2421 otpme/lib/classes/user.py:2449
 #, python-brace-format
 msgid "Invalid <return_type>: {return_type}"
 msgstr "Ungültiger <return_type>: {return_type}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:2452
+#: otpme/lib/classes/user.py:2452 otpme/lib/classes/user.py:2480
 #, python-brace-format
 msgid "Script does not exist: {agent_script}"
 msgstr "Skript existiert nicht: {agent_script}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:2537
+#: otpme/lib/classes/user.py:2537 otpme/lib/classes/user.py:2565
 #, python-brace-format
 msgid "Unknown key mode: {key_mode}"
 msgstr "Unbekannter Schlüsselmodus: {key_mode}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:2549
+#: otpme/lib/classes/user.py:2549 otpme/lib/classes/user.py:2577
 #, python-brace-format
 msgid "Key bits must be one of: {valid_key_lens}"
 msgstr "Schlüssellänge muss eine der folgenden sein: {valid_key_lens}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:2600
+#: otpme/lib/classes/user.py:2600 otpme/lib/classes/user.py:2628
 #, python-brace-format
 msgid "Key generation failed: {message}"
 msgstr "Schlüsselerzeugung fehlgeschlagen: {message}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:2634
+#: otpme/lib/classes/user.py:2634 otpme/lib/classes/user.py:2662
 #, python-brace-format
 msgid "Generating keys ({key_len} bits)..."
 msgstr "Generiere Schlüssel ({key_len} Bits)..."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:2641
+#: otpme/lib/classes/user.py:2641 otpme/lib/classes/user.py:2669
 #, python-brace-format
 msgid "Error creating RSA key: {e}"
 msgstr "Fehler beim Erstellen des RSA-Schlüssels: {e}"
 
 #. AI-generated
 #: otpme/lib/classes/user.py:2652 otpme/lib/classes/user.py:2810
-#: otpme/lib/classes/user.py:2940
+#: otpme/lib/classes/user.py:2940 otpme/lib/classes/user.py:2680
+#: otpme/lib/classes/user.py:2838 otpme/lib/classes/user.py:2968
 #, python-brace-format
 msgid "Error encrypting private key: {e}"
 msgstr "Fehler beim Verschlüsseln des privaten Schlüssels: {e}"
 
 #. AI-generated
 #: otpme/lib/classes/user.py:2761 otpme/lib/classes/user.py:2993
-#: otpme/lib/classes/user.py:3136
+#: otpme/lib/classes/user.py:3136 otpme/lib/classes/user.py:2789
+#: otpme/lib/classes/user.py:3021 otpme/lib/classes/user.py:3164
 #, python-brace-format
 msgid "Error loading private key: {e}"
 msgstr "Fehler beim Laden des privaten Schlüssels: {e}"
 
 #. AI-generated
 #: otpme/lib/classes/user.py:2851 otpme/lib/classes/user.py:2919
+#: otpme/lib/classes/user.py:2879 otpme/lib/classes/user.py:2947
 #, python-brace-format
 msgid "Error decrypting private key: {e}"
 msgstr "Fehler beim Entschlüsseln des privaten Schlüssels: {e}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3001
+#: otpme/lib/classes/user.py:3001 otpme/lib/classes/user.py:3029
 #, python-brace-format
 msgid "Error siging data: {e}"
 msgstr "Fehler beim Signieren von Daten: {e}"
 
 #. AI-generated
 #: otpme/lib/classes/user.py:3040 otpme/lib/classes/user.py:3086
+#: otpme/lib/classes/user.py:3068 otpme/lib/classes/user.py:3114
 #, python-brace-format
 msgid "Error loading public key: {e}"
 msgstr "Fehler beim Laden des öffentlichen Schlüssels: {e}"
 
 #. AI-generated
 #: otpme/lib/classes/user.py:3048 otpme/lib/pki/cert.py:277
+#: otpme/lib/classes/user.py:3076
 #, python-brace-format
 msgid "Error verifying signature: {e}"
 msgstr "Fehler beim Verifizieren der Signatur: {e}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3093
+#: otpme/lib/classes/user.py:3093 otpme/lib/classes/user.py:3121
 #, python-brace-format
 msgid "Error encrypting data: {e}"
 msgstr "Fehler beim Verschlüsseln der Daten: {e}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3145
+#: otpme/lib/classes/user.py:3145 otpme/lib/classes/user.py:3173
 #, python-brace-format
 msgid "Error decrypting data: {e}"
 msgstr "Fehler beim Entschlüsseln der Daten: {e}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3450
+#: otpme/lib/classes/user.py:3450 otpme/lib/classes/user.py:3478
 #, python-brace-format
 msgid ""
 "Selecting token '{token_uuid}' based on accessgroup '{access_group_name}'."
@@ -10977,13 +11017,13 @@ msgstr ""
 "'{access_group_name}'."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3612
+#: otpme/lib/classes/user.py:3612 otpme/lib/classes/user.py:3640
 #, python-brace-format
 msgid "Removing expired used SOTP from backend: {self_name}"
 msgstr "Entferne abgelaufenes genutztes SOTP aus Backend: {self_name}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3689
+#: otpme/lib/classes/user.py:3689 otpme/lib/classes/user.py:3717
 #, python-brace-format
 msgid "Unable to get max fail: Unknown accessgroup: {access_group}"
 msgstr ""
@@ -10991,7 +11031,7 @@ msgstr ""
 "Zugriffsgruppe: {access_group}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3698
+#: otpme/lib/classes/user.py:3698 otpme/lib/classes/user.py:3726
 #, python-brace-format
 msgid ""
 "Config parameter <failed_pass_history> overruled by <max_fail> of "
@@ -11001,7 +11041,7 @@ msgstr ""
 "der Zugriffsgruppe {access_group}."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3732
+#: otpme/lib/classes/user.py:3732 otpme/lib/classes/user.py:3760
 #, python-brace-format
 msgid "Failed login count failed: Unknown accessgroup: {access_group}"
 msgstr ""
@@ -11009,7 +11049,7 @@ msgstr ""
 "Zugriffsgruppe: {access_group}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3772
+#: otpme/lib/classes/user.py:3772 otpme/lib/classes/user.py:3800
 #, python-brace-format
 msgid "Error counting failed login attempt: {self_oid}: {e}"
 msgstr ""
@@ -11017,25 +11057,25 @@ msgstr ""
 
 #. AI-generated
 #: otpme/lib/classes/user.py:3813 otpme/lib/classes/session.py:352
-#: otpme/lib/classes/session.py:1233
+#: otpme/lib/classes/session.py:1233 otpme/lib/classes/user.py:3841
 #, python-brace-format
 msgid "Unknown accessgroup: {access_group}"
 msgstr "Unbekannte Zugriffsgruppe: {access_group}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3892
+#: otpme/lib/classes/user.py:3892 otpme/lib/classes/user.py:3920
 #, python-brace-format
 msgid "Failed to load token class: {e}"
 msgstr "Fehler beim Laden der Token-Klasse: {e}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3902
+#: otpme/lib/classes/user.py:3902 otpme/lib/classes/user.py:3930
 #, python-brace-format
 msgid "Problem loading token type '{x}': {e}"
 msgstr "Problem beim Laden des Token-Typs '{x}': {e}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3907
+#: otpme/lib/classes/user.py:3907 otpme/lib/classes/user.py:3935
 #, python-brace-format
 msgid "Unable to find token class to deploy hardware token: {token_type}"
 msgstr ""
@@ -11043,7 +11083,7 @@ msgstr ""
 "{token_type}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3922
+#: otpme/lib/classes/user.py:3922 otpme/lib/classes/user.py:3950
 #, python-brace-format
 msgid ""
 "Existing token '{token_rel_path} ({token_token_type})' does not support "
@@ -11053,7 +11093,7 @@ msgstr ""
 "Hardware-Token-Typ nicht: {smartcard_type}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:3935
+#: otpme/lib/classes/user.py:3935 otpme/lib/classes/user.py:3963
 #, python-brace-format
 msgid ""
 "Creating new token of type '{token_type}' to deploy token: "
@@ -11063,257 +11103,261 @@ msgstr ""
 "{token_type_second}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4023
+#: otpme/lib/classes/user.py:4023 otpme/lib/classes/user.py:4051
 msgid "Please give link destination."
 msgstr "Bitte Linkziel angeben."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4033
+#: otpme/lib/classes/user.py:4033 otpme/lib/classes/user.py:4061
 #, python-brace-format
 msgid "Token does not exist: {destination_token}"
 msgstr "Token existiert nicht: {destination_token}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4043
+#: otpme/lib/classes/user.py:4043 otpme/lib/classes/user.py:4071
 msgid "Destination token does not exist."
 msgstr "Ziel-Token existiert nicht."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4047
+#: otpme/lib/classes/user.py:4047 otpme/lib/classes/user.py:4075
 msgid "Cannot link already linked token."
 msgstr "Bereits verlinkter Token kann nicht verlinkt werden."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4054
+#: otpme/lib/classes/user.py:4054 otpme/lib/classes/user.py:4082
 #, python-brace-format
 msgid "Token does not support cross site links: {dst_token_rel_path}"
 msgstr ""
 "Token unterstützt keine standortübergreifenden Links: {dst_token_rel_path}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4093
+#: otpme/lib/classes/user.py:4093 otpme/lib/classes/user.py:4121
 #, python-brace-format
 msgid "Error removing token '{cur_token_name}': {e}"
 msgstr "Fehler beim Entfernen des Tokens '{cur_token_name}': {e}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4098
+#: otpme/lib/classes/user.py:4098 otpme/lib/classes/user.py:4126
 #, python-brace-format
 msgid "Token already exists: {cur_token_rel_path}"
 msgstr "Token existiert bereits: {cur_token_rel_path}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4118
+#: otpme/lib/classes/user.py:4118 otpme/lib/classes/user.py:4146
 #, python-brace-format
 msgid "Unknown token type: {token_type}"
 msgstr "Unbekannter Token-Typ: {token_type}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4122
+#: otpme/lib/classes/user.py:4122 otpme/lib/classes/user.py:4150
 #, python-brace-format
 msgid "Problem loading token type '{token_type}': {e}"
 msgstr "Problem beim Laden des Token-Typs '{token_type}': {e}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4195
+#: otpme/lib/classes/user.py:4195 otpme/lib/classes/user.py:4223
 #, python-brace-format
 msgid "Added token: {self_name}/{new_token_name}"
 msgstr "Token hinzugefügt: {self_name}/{new_token_name}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4229
+#: otpme/lib/classes/user.py:4229 otpme/lib/classes/user.py:4257
 #, python-brace-format
 msgid "Permission denied: {token}"
 msgstr "Zugriff verweigert: {token}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4256
+#: otpme/lib/classes/user.py:4256 otpme/lib/classes/user.py:4284
 msgid "Cannot delete token used at login."
 msgstr "Bei der Anmeldung verwendeter Token kann nicht gelöscht werden."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4477
+#: otpme/lib/classes/user.py:4477 otpme/lib/classes/user.py:4505
 #, python-brace-format
 msgid "Script does not exist: {auth_script}"
 msgstr "Skript existiert nicht: {auth_script}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4496
+#: otpme/lib/classes/user.py:4496 otpme/lib/classes/user.py:4524
 msgid "Authorization script already enabled for this user."
 msgstr "Autorisierungsskript für diesen Benutzer bereits aktiviert."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4517
+#: otpme/lib/classes/user.py:4517 otpme/lib/classes/user.py:4545
 msgid "Authorization script already disabled for this user."
 msgstr "Autorisierungsskript für diesen Benutzer bereits deaktiviert."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4555
+#: otpme/lib/classes/user.py:4555 otpme/lib/classes/user.py:4583
 #, python-brace-format
 msgid "Script does not exist: {login_script}"
 msgstr "Skript existiert nicht: {login_script}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4561
+#: otpme/lib/classes/user.py:4561 otpme/lib/classes/user.py:4589
 msgid "Login script already enabled for this user."
 msgstr "Anmeldeskript für diesen Benutzer bereits aktiviert."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4594
+#: otpme/lib/classes/user.py:4594 otpme/lib/classes/user.py:4622
 msgid "Login script already disabled for this user."
 msgstr "Anmeldeskript für diesen Benutzer bereits deaktiviert."
 
 #. AI-generated
 #: otpme/lib/classes/user.py:4775 otpme/lib/classes/user.py:4843
+#: otpme/lib/classes/user.py:4803 otpme/lib/classes/user.py:4871
 #, python-brace-format
 msgid "User already exists: {user_oid}"
 msgstr "Benutzer existiert bereits: {user_oid}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4891
+#: otpme/lib/classes/user.py:4891 otpme/lib/classes/user.py:4919
 #, python-brace-format
 msgid "Unknown token type: {default_token_type}"
 msgstr "Unbekannter Token-Typ: {default_token_type}"
 
 #. AI-generated
 #: otpme/lib/classes/user.py:4911 otpme/lib/classes/role.py:1024
+#: otpme/lib/classes/user.py:4939
 #, python-brace-format
 msgid "Group: {group_name}: Permission denied"
 msgstr "Gruppe: {group_name}: Zugriff verweigert"
 
 #. AI-generated
 #: otpme/lib/classes/user.py:4934 otpme/lib/classes/role.py:1047
+#: otpme/lib/classes/user.py:4962
 #, python-brace-format
 msgid "Role: {role_name}: Permission denied"
 msgstr "Rolle: {role_name}: Zugriff verweigert"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4951
+#: otpme/lib/classes/user.py:4951 otpme/lib/classes/user.py:4979
 #, python-brace-format
 msgid "Unknown token: {default_token_path}"
 msgstr "Unbekannter Token: {default_token_path}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4957
+#: otpme/lib/classes/user.py:4957 otpme/lib/classes/user.py:4985
 #, python-brace-format
 msgid "Unable to set password for token type: {default_token_token_type}"
 msgstr ""
 "Passwort kann für Token-Typ nicht gesetzt werden: {default_token_token_type}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4963
+#: otpme/lib/classes/user.py:4963 otpme/lib/classes/user.py:4991
 #, python-brace-format
 msgid "Unable to set password for token type: {default_token_type}"
 msgstr "Passwort kann für Token-Typ nicht gesetzt werden: {default_token_type}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:4975
+#: otpme/lib/classes/user.py:4975 otpme/lib/classes/user.py:5003
 #, python-brace-format
 msgid "Unknown template: {template_name}"
 msgstr "Unbekannte Vorlage: {template_name}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5001
+#: otpme/lib/classes/user.py:5001 otpme/lib/classes/user.py:5029
 #, python-brace-format
 msgid "Unknown group: {group}"
 msgstr "Unbekannte Gruppe: {group}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5007
+#: otpme/lib/classes/user.py:5007 otpme/lib/classes/user.py:5035
 #, python-brace-format
 msgid "Group: {group}: Permission denied"
 msgstr "Gruppe: {group}: Zugriff verweigert"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5025
+#: otpme/lib/classes/user.py:5025 otpme/lib/classes/user.py:5053
 #, python-brace-format
 msgid "{self_type_title} already exists."
 msgstr "{self_type_title} existiert bereits."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5052
+#: otpme/lib/classes/user.py:5052 otpme/lib/classes/user.py:5080
 #, python-brace-format
 msgid "WARNING: Unable to inherit ACLs from parent object: {e}"
 msgstr ""
 "WARNUNG: ACLs können nicht vom übergeordneten Objekt geerbt werden: {e}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5104
+#: otpme/lib/classes/user.py:5104 otpme/lib/classes/user.py:5132
 #, python-brace-format
 msgid "Invalid attribute: {x}"
 msgstr "Ungültiges Attribut: {x}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5145
+#: otpme/lib/classes/user.py:5145 otpme/lib/classes/user.py:5173
 #, python-brace-format
 msgid "Unable to find template key script: {template_key_script}"
 msgstr "Template-Schlüsselskript nicht gefunden: {template_key_script}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5152
+#: otpme/lib/classes/user.py:5152 otpme/lib/classes/user.py:5180
 #, python-brace-format
 msgid "Setting default key script: {default_key_script}"
 msgstr "Setze Standard-Schlüsselskript: {default_key_script}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5167
+#: otpme/lib/classes/user.py:5167 otpme/lib/classes/user.py:5195
 #, python-brace-format
 msgid "Unable to find template agent script: {template_agent_script}"
 msgstr "Template-Agentenskript nicht gefunden: {template_agent_script}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5174
+#: otpme/lib/classes/user.py:5174 otpme/lib/classes/user.py:5202
 #, python-brace-format
 msgid "Setting default agent script: {default_agent_script}"
 msgstr "Standard-Agentenskript wird gesetzt: {default_agent_script}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5190
+#: otpme/lib/classes/user.py:5190 otpme/lib/classes/user.py:5218
 #, python-brace-format
 msgid "Unable to find template login script: {template_login_script}"
 msgstr ""
 "Template-Login-Skript kann nicht gefunden werden: {template_login_script}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5197
+#: otpme/lib/classes/user.py:5197 otpme/lib/classes/user.py:5225
 #, python-brace-format
 msgid "Setting default login script: {default_login_script}"
 msgstr "Standard-Login-Skript wird gesetzt: {default_login_script}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5219
+#: otpme/lib/classes/user.py:5219 otpme/lib/classes/user.py:5247
 #, python-brace-format
 msgid "Unable to find template auth script: {template_auth_script}"
 msgstr ""
 "Template-Auth-Skript kann nicht gefunden werden: {template_auth_script}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5226
+#: otpme/lib/classes/user.py:5226 otpme/lib/classes/user.py:5254
 #, python-brace-format
 msgid "Setting default auth script: {default_auth_script}"
 msgstr "Standard-Auth-Skript wird gesetzt: {default_auth_script}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5322
+#: otpme/lib/classes/user.py:5322 otpme/lib/classes/user.py:5350
 #, python-brace-format
 msgid "Unable to find {site_admin_role} role."
 msgstr "Rolle {site_admin_role} kann nicht gefunden werden."
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5361
+#: otpme/lib/classes/user.py:5361 otpme/lib/classes/user.py:5389
 #, python-brace-format
 msgid "Cannot delete internal user: {self_name}"
 msgstr "Interner Benutzer kann nicht gelöscht werden: {self_name}"
 
 #. AI-generated
 #: otpme/lib/classes/user.py:5378 otpme/lib/classes/user.py:5383
-#: otpme/lib/classes/realm.py:1644
+#: otpme/lib/classes/realm.py:1644 otpme/lib/classes/user.py:5406
+#: otpme/lib/classes/user.py:5411
 #, python-brace-format
 msgid "Permission denied: {self_name}"
 msgstr "Zugriff verweigert: {self_name}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5405
+#: otpme/lib/classes/user.py:5405 otpme/lib/classes/user.py:5433
 #, python-brace-format
 msgid ""
 "User has tokens: {token_list}\n"
@@ -11323,7 +11367,7 @@ msgstr ""
 "Bitte '{self_name}' eingeben, um Objekt zu löschen:"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5411
+#: otpme/lib/classes/user.py:5411 otpme/lib/classes/user.py:5439
 #, python-brace-format
 msgid ""
 "User has tokens: {token_list}\n"
@@ -11333,19 +11377,19 @@ msgstr ""
 "Benutzer '{self_name}' löschen?:"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5418
+#: otpme/lib/classes/user.py:5418 otpme/lib/classes/user.py:5446
 #, python-brace-format
 msgid " Please type '{self_name}' to delete object: "
 msgstr "Bitte '{self_name}' eingeben, um Objekt zu löschen:"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5447
+#: otpme/lib/classes/user.py:5447 otpme/lib/classes/user.py:5475
 #, python-brace-format
 msgid "Unable to remove token: {token_name}"
 msgstr "Token kann nicht entfernt werden: {token_name}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5460
+#: otpme/lib/classes/user.py:5460 otpme/lib/classes/user.py:5488
 #, python-brace-format
 msgid "Error removing used SOTP '{used_object}' from backend: {e}"
 msgstr ""
@@ -11353,13 +11397,13 @@ msgstr ""
 "{e}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5514
+#: otpme/lib/classes/user.py:5514 otpme/lib/classes/user.py:5542
 #, python-brace-format
 msgid "{self_type}|{self_name}: Found the following orphan ACLs: {acl_list}\n"
 msgstr "{self_type}|{self_name}: Folgende verwaiste ACLs gefunden: {acl_list}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5518
+#: otpme/lib/classes/user.py:5518 otpme/lib/classes/user.py:5546
 #, python-brace-format
 msgid ""
 "{self_type}|{self_name}: Found the following orphan policies: {policy_list}\n"
@@ -11368,7 +11412,7 @@ msgstr ""
 "{policy_list}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5522
+#: otpme/lib/classes/user.py:5522 otpme/lib/classes/user.py:5550
 #, python-brace-format
 msgid ""
 "{self_type}|{self_name}: Found the following orphan token UUIDs: "
@@ -11378,19 +11422,19 @@ msgstr ""
 "{token_list}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5548
+#: otpme/lib/classes/user.py:5548 otpme/lib/classes/user.py:5576
 #, python-brace-format
 msgid "Removing orphan token UUID: {i}"
 msgstr "Verwaiste Token-UUID wird entfernt: {i}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5565
+#: otpme/lib/classes/user.py:5565 otpme/lib/classes/user.py:5593
 #, python-brace-format
 msgid "No orphan objects found for {self_type}: {self_name}"
 msgstr "Keine verwaisten Objekte für {self_type} gefunden: {self_name}"
 
 #. AI-generated
-#: otpme/lib/classes/user.py:5596
+#: otpme/lib/classes/user.py:5596 otpme/lib/classes/user.py:5624
 #, python-brace-format
 msgid "Unknown token: {token_name}"
 msgstr "Unbekanntes Token: {token_name}"
@@ -18537,6 +18581,7 @@ msgstr ""
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:1246
 #: otpme/lib/protocols/server/mgmt1.py:2566
+#: otpme/lib/protocols/server/mgmt1.py:2570
 #, python-brace-format
 msgid "Error: {error}"
 msgstr "Fehler: {error}"
@@ -18782,36 +18827,42 @@ msgstr "Unbehandelte Ausnahme beim Ausführen der Suche: {error}"
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:1981
 #: otpme/lib/protocols/server/mgmt1.py:2800
+#: otpme/lib/protocols/server/mgmt1.py:2804
 #, python-brace-format
 msgid "Unknown job type: {type}"
 msgstr "Unbekannter Job-Typ: {type}"
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2163
+#: otpme/lib/protocols/server/mgmt1.py:2167
 #, python-brace-format
 msgid "Invalid share id: {id}"
 msgstr "Ungültige Freigabe-ID: {id}"
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2174
+#: otpme/lib/protocols/server/mgmt1.py:2178
 #, python-brace-format
 msgid "Unknown share: {name}"
 msgstr "Unbekannte Freigabe: {name}"
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2248
+#: otpme/lib/protocols/server/mgmt1.py:2252
 #, python-brace-format
 msgid "Unknown token: {path}"
 msgstr "Unbekanntes Token: {path}"
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2270
+#: otpme/lib/protocols/server/mgmt1.py:2274
 #, python-brace-format
 msgid "Unknown policy: {name}"
 msgstr "Unbekannte Richtlinie: {name}"
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2374
+#: otpme/lib/protocols/server/mgmt1.py:2378
 #, python-brace-format
 msgid "Error deleting object: {error}"
 msgstr "Fehler beim Löschen des Objekts: {error}"
@@ -18820,53 +18871,64 @@ msgstr "Fehler beim Löschen des Objekts: {error}"
 #: otpme/lib/protocols/server/mgmt1.py:2398
 #: otpme/lib/protocols/server/mgmt1.py:2427
 #: otpme/lib/protocols/server/mgmt1.py:2840
+#: otpme/lib/protocols/server/mgmt1.py:2402
+#: otpme/lib/protocols/server/mgmt1.py:2431
+#: otpme/lib/protocols/server/mgmt1.py:2844
 #, python-brace-format
 msgid "Error running command: {cmd}: {error}"
 msgstr "Fehler beim Ausführen des Befehls: {cmd}: {error}"
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2459
+#: otpme/lib/protocols/server/mgmt1.py:2463
 #, python-brace-format
 msgid "MGMT_INVALID_SYNTAX: Missing {cmd} name"
 msgstr "MGMT_INVALID_SYNTAX: Fehlender {cmd}-Name"
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2484
+#: otpme/lib/protocols/server/mgmt1.py:2488
 #, python-brace-format
 msgid "MGMT_INVALID_SESSION_ID: {id}"
 msgstr "MGMT_INVALID_SESSION_ID: {id}"
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2561
+#: otpme/lib/protocols/server/mgmt1.py:2565
 #, python-brace-format
 msgid "Object locked: {error}"
 msgstr "Objekt gesperrt: {error}"
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2587
+#: otpme/lib/protocols/server/mgmt1.py:2591
 #, python-brace-format
 msgid "Missing argument: {arg}"
 msgstr "Fehlendes Argument: {arg}"
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2605
+#: otpme/lib/protocols/server/mgmt1.py:2609
 #, python-brace-format
 msgid "Error loading object: {error}"
 msgstr "Fehler beim Laden des Objekts: {error}"
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2647
+#: otpme/lib/protocols/server/mgmt1.py:2651
 msgid "You have to delete sites on the master site."
 msgstr "Sie müssen Sites auf der Master-Site löschen."
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2652
+#: otpme/lib/protocols/server/mgmt1.py:2656
 #, python-brace-format
 msgid "MGMT_INVALID_OBJECT_NAME: {name}"
 msgstr "MGMT_INVALID_OBJECT_NAME: {name}"
 
 #. AI-generated
 #: otpme/lib/protocols/server/mgmt1.py:2823
+#: otpme/lib/protocols/server/mgmt1.py:2827
 #, python-brace-format
 msgid "Failed to run command: {error}"
 msgstr "Fehler beim Ausführen des Befehls: {error}"
@@ -23378,3 +23440,8 @@ msgstr ""
 #, python-brace-format
 msgid "OTPme config verification failed: {e}"
 msgstr "OTPme-Konfigurationsverifikation fehlgeschlagen: {e}"
+
+#: otpme/lib/classes/user.py:2232
+#, python-brace-format
+msgid "Users language already set to {language}"
+msgstr ""
