@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PinEntryDialog</class>
+ <widget class="QDialog" name="PinEntryDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>491</width>
+    <height>188</height>
+   </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="MinimumExpanding" vsizetype="Preferred">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
+  <property name="focusPolicy">
+   <enum>Qt::TabFocus</enum>
+  </property>
+  <property name="windowTitle">
+   <string>pinentry-otpme</string>
+  </property>
+  <property name="windowIcon">
+   <iconset>
+    <normaloff>../../icons/lock.png</normaloff>../../icons/lock.png</iconset>
+  </property>
+  <widget class="QSpinBox" name="AutoconfirmSpinBox">
+   <property name="geometry">
+    <rect>
+     <x>250</x>
+     <y>100</y>
+     <width>61</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="focusPolicy">
+    <enum>Qt::TabFocus</enum>
+   </property>
+  </widget>
+  <widget class="QLabel" name="labelText">
+   <property name="geometry">
+    <rect>
+     <x>90</x>
+     <y>10</y>
+     <width>401</width>
+     <height>81</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string/>
+   </property>
+   <property name="wordWrap">
+    <bool>true</bool>
+   </property>
+  </widget>
+  <widget class="QLabel" name="AutoconfirmLabel">
+   <property name="geometry">
+    <rect>
+     <x>320</x>
+     <y>100</y>
+     <width>151</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Remember (Min.)</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="ButtonAllow">
+   <property name="geometry">
+    <rect>
+     <x>250</x>
+     <y>140</y>
+     <width>110</width>
+     <height>39</height>
+    </rect>
+   </property>
+   <property name="font">
+    <font>
+     <strikeout>false</strikeout>
+     <kerning>true</kerning>
+    </font>
+   </property>
+   <property name="layoutDirection">
+    <enum>Qt::LeftToRight</enum>
+   </property>
+   <property name="autoFillBackground">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Allow</string>
+   </property>
+   <property name="icon">
+    <iconset>
+     <normaloff>../icons/dialog-ok-apply.png</normaloff>../icons/dialog-ok-apply.png</iconset>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="ButtonDeny">
+   <property name="geometry">
+    <rect>
+     <x>370</x>
+     <y>140</y>
+     <width>110</width>
+     <height>39</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Deny</string>
+   </property>
+   <property name="icon">
+    <iconset>
+     <normaloff>../incons/dialog-cancel.png</normaloff>../incons/dialog-cancel.png</iconset>
+   </property>
+  </widget>
+  <widget class="QLabel" name="labelIcon">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>20</y>
+     <width>71</width>
+     <height>61</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string/>
+   </property>
+   <property name="pixmap">
+    <pixmap>../../../icons/lock.png</pixmap>
+   </property>
+   <property name="wordWrap">
+    <bool>true</bool>
+   </property>
+  </widget>
+  <widget class="QCheckBox" name="AllKeysCheckBox">
+   <property name="geometry">
+    <rect>
+     <x>150</x>
+     <y>100</y>
+     <width>71</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>all keys</string>
+   </property>
+  </widget>
+ </widget>
+ <tabstops>
+  <tabstop>ButtonDeny</tabstop>
+  <tabstop>ButtonAllow</tabstop>
+  <tabstop>AutoconfirmSpinBox</tabstop>
+  <tabstop>AllKeysCheckBox</tabstop>
+ </tabstops>
+ <resources/>
+ <connections/>
+</ui>

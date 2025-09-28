@@ -1,0 +1,1 @@
+pyuic4 confirm_dialog.ui > confirm_dialog.py

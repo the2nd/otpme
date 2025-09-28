@@ -14,6 +14,13 @@ _otpme() {
 				if [[ $WORD == --api ]] ; then
 					_OTPME_OPTS="$_OTPME_OPTS$IFS--api"
 				fi
+				# set --type command line switch for all commands if given
+				if [[ $WORD == --type ]] ; then
+					_OTPME_TYPE="${COMP_WORDS[$[$COUNT+1]]}"
+					if [ "$_OTPME_TYPE" != "" ] ; then
+						_OTPME_OPTS="$_OTPME_OPTS$IFS--type$IFS$_OTPME_TYPE"
+					fi
+				fi
 			fi
 		fi
 		COUNT="$[$COUNT+1]"
@@ -29,9 +36,11 @@ _otpme() {
 	#echo $COMP_LIST
 	#echo $COMP_OPTS
 	#cur=${COMP_WORDS[COMP_CWORD]}
-	test="$command $_OTPME_OPTS --compgen --comp-words \"$_COMP_WORDS\" --comp-cword \"$_COMP_CWORD\" --cur \"$cur\""
+	#test="$command $_OTPME_OPTS --compgen --comp-words \"$_COMP_WORDS\" --comp-cword \"$_COMP_CWORD\" --cur \"$cur\""
 	#echo $test
+	COMP_CMD="$command $_OTPME_OPTS --compgen --comp-words \"$_COMP_WORDS\" --comp-cword "$_COMP_CWORD" --cur "$cur""
 	COMP_LIST="$($command $_OTPME_OPTS --compgen --comp-words "$_COMP_WORDS" --comp-cword "$_COMP_CWORD" --cur "$cur")"
+	#COMP_LIST="$($command $_OTPME_OPTS --compgen --comp-words "$_COMP_WORDS" --comp-cword "$_COMP_CWORD" --cur "$cur")"
 	if [ "$COMP_LIST" = "" ] ; then
 		COMPREPLY=()
 	else
@@ -42,4 +51,4 @@ _otpme() {
 }
 
 
-complete -o bashdefault -o default -F _otpme otpme-controld otpme-agent otpme-user otpme-group otpme-accessgroup otpme-client otpme-realm otpme-token otpme-session otpme-cluster otpme-tool otpme-auth otpme-site otpme-node otpme-host otpme-unit otpme-role otpme-ca otpme-script otpme-policy otpme-resolver otpme-dictionary
+complete -o bashdefault -o default -F _otpme otpme-controld otpme-agent otpme-user otpme-group otpme-accessgroup otpme-client otpme-realm otpme-token otpme-session otpme-cluster otpme-tool otpme-auth otpme-site otpme-node otpme-host otpme-unit otpme-role otpme-ca otpme-script otpme-policy otpme-resolver otpme-dictionary otpme-trash otpme-share otpme-pool

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSO Portal</title>
+    <script>
+	function openTabAndSendPost(sso_url, data) {
+	  const newTab = window.open('', '_blank');
+
+	  if (newTab) {
+	    const form = newTab.document.createElement('form');
+	    form.method = 'POST';
+	    form.action = sso_url;
+	    form.target = '_top';
+
+	    for (const key in data) {
+	      const input = newTab.document.createElement('input');
+	      input.type = 'hidden';
+	      input.name = key;
+	      input.value = data[key];
+	      form.appendChild(input);
+	    }
+
+	    newTab.document.body.appendChild(form);
+	    form.submit();
+	  }
+	}
+
+	const sso_url = 'https://cloud.domain.tld/nextcloud/sso.php';
+	const data = {
+	  username: 'username',
+	  password: 'password',
+	  redirect_url: 'https://cloud.domain.tld/nextcloud/index.php/login',
+	};
+
+    </script>
+</head>
+<body>
+    <button onclick="openTabAndSendPost(sso_url, data)">Nextcloud</button>
+</body>
+</html>
+
