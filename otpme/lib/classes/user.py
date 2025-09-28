@@ -2230,7 +2230,7 @@ class User(OTPmeObject):
         """ Change users localization. """
         if language == self.language:
             msg = _("Users language already set to {language}")
-            msg = msg.format(key_mode=self.language)
+            msg = msg.format(language=self.language)
             return callback.error(msg)
         self.language = language
         return self._cache(callback=callback)
