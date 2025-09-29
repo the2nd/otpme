@@ -18,25 +18,25 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     '_include_global_opts'      : True,
-    '_usage_help'               : "Usage: otpme-auth {command} {username} {{password|otp}|{challenge}{response}} [client] [ipaddr]",
+    '_usage_help'               : _("Usage: otpme-auth {command} {username} {{password|otp}|{challenge}{response}} [client] [ipaddr]"),
 
     'verify'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-auth verify [--socket] [--cache <seconds>] {username} {password|otp} [client] [ipaddr]',
+                    '_cmd_usage_help' : _('Usage: otpme-auth verify [--socket] [--cache <seconds>] {username} {password|otp} [client] [ipaddr]'),
                     'cmd'   :   '--socket :use_socket=True: --cache :cache_seconds: <username> <password> [client] [client_ip]',
                     '_help' :   {
-                                    'cmd'                   : 'verify clear-text password|otp against valid tokens of user',
-                                    '--cache <seconds>'     : 'Cache auth request for given seconds..',
-                                    '--socket'              : 'Connect to authd socket.',
+                                    'cmd'                   : _('Verify clear-text password|otp against valid tokens of user'),
+                                    '--cache <seconds>'     : _('Cache auth request for given seconds.'),
+                                    '--socket'              : _('Connect to authd socket.'),
                                 },
                 },
 
 
     'verify_mschap'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-auth verify_mschap {[--socket] username} {challenge} {response} [client] [ipaddr]',
+                    '_cmd_usage_help' : _('Usage: otpme-auth verify_mschap {[--socket] username} {challenge} {response} [client] [ipaddr]'),
                     'cmd'   :   '--socket :use_socket=True: <username> <mschap_challenge> <mschap_response> [client] [client_ip]',
                     '_help' :   {
-                                    'cmd'                   : 'verify mschap challenge/response against valid tokens of user',
-                                    '--socket'              : 'Connect to authd socket.',
+                                    'cmd'                   : _('Verify mschap challenge/response against valid tokens of user'),
+                                    '--socket'              : _('Connect to authd socket.'),
                                 },
                 },
     }

@@ -18,26 +18,26 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy add {policy}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy add {policy}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'add new policy',
+                                    'cmd'                   : _('Add new policy'),
                                 },
                 },
 
     'force_token_types'          : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy force_token_types {policy} {token_types}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy force_token_types {policy} {token_types}'),
                     'cmd'   :   '<|object|> <token_types>',
                     '_help' :   {
-                                    'cmd'                   : 'change list with allowed token types',
+                                    'cmd'                   : _('Change list with allowed token types.'),
                                 },
                 },
 
     'force_pass_types'          : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy force_pass_types {policy} {pass_types}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy force_pass_types {policy} {pass_types}'),
                     'cmd'   :   '<|object|> <pass_types>',
                     '_help' :   {
-                                    'cmd'                   : 'change list with allowed pass types',
+                                    'cmd'                   : _('Change list with allowed pass types.'),
                                 },
                 },
     }

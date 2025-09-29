@@ -18,18 +18,18 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy add {policy}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy add {policy}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'add new policy',
+                                    'cmd'                   : _('Add new policy'),
                                 },
                 },
 
     'set_template'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy set_template {policy} {object_type} {template}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy set_template {policy} {object_type} {template}'),
                     'cmd'   :   '<|object|> <object_type> <object_name>',
                     '_help' :   {
-                                    'cmd'                   : 'Set template.',
+                                    'cmd'                   : _('Set template.'),
                                 },
                 },
     }

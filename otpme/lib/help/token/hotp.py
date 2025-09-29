@@ -18,117 +18,117 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token add [-r] [--no-qrcode] {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token add [-r] [--no-qrcode] {token}'),
                     'cmd'   :   '-r :replace=True: --no-qrcode :gen_qrcode=False: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'add new token',
-                                    '-r'                    : 'replace existing token and keep its UUID',
-                                    '--no-qrcode'           : 'Do not generate QRCode',
+                                    'cmd'                   : _('Add new token.'),
+                                    '-r'                    : _('Replace existing token and keep its UUID.'),
+                                    '--no-qrcode'           : _('Do not generate QRCode.'),
                                 },
                 },
 
     'secret'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token secret {token} [secret]',
+                    '_cmd_usage_help' : _('Usage: otpme-token secret {token} [secret]'),
                     'cmd'   :   '<|object|> [secret]',
                     '_help' :   {
-                                    'cmd'                   : 'change token secret',
+                                    'cmd'                   : _('Change token secret.'),
                                 },
                 },
 
     'show_secret'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token show_secret {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token show_secret {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'show tokens secret',
+                                    'cmd'                   : _('Show token\'s secret.'),
                                 },
                 },
 
     'pin'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token pin {token} [pin]',
+                    '_cmd_usage_help' : _('Usage: otpme-token pin {token} [pin]'),
                     'cmd'   :   '--generate :auto_pin=True: <|object|> ["pin"]',
                     '_help' :   {
-                                    'cmd'                   : 'change token pin',
-                                    '--generate'            : 'generate PIN',
+                                    'cmd'                   : _('Change token PIN.'),
+                                    '--generate'            : _('Generate PIN.'),
                                 },
                 },
 
     'show_pin'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token show_pin {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token show_pin {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'show tokens PIN',
+                                    'cmd'                   : _('Show token\'s PIN.'),
                                 },
                 },
 
     'enable_pin'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token enable_pin {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token enable_pin {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'enable token PIN',
+                                    'cmd'                   : _('Enable token PIN.'),
                                 },
                 },
 
     'disable_pin'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token disable_pin {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token disable_pin {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'disable token PIN',
+                                    'cmd'                   : _('Disable token PIN.'),
                                 },
                 },
 
     'gen'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token gen {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token gen {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'generate token OTP',
+                                    'cmd'                   : _('Generate token OTP.'),
                                 },
                 },
 
     'gen_mschap'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token gen_mschap {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token gen_mschap {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'generate MSCHAP challenge/response from token OTP',
+                                    'cmd'                   : _('Generate MSCHAP challenge/response from token OTP.'),
                                 },
                 },
 
     'gen_qrcode'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token gen_qrcode {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token gen_qrcode {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'generate QRCode for automatic token configuration (e.g. yubico authenticator)',
+                                    'cmd'                   : _('Generate QRCode for automatic token configuration (e.g. yubico authenticator).'),
                                 },
                 },
 
     'counter_check_range'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token counter_check_range {token} [int]',
+                    '_cmd_usage_help' : _('Usage: otpme-token counter_check_range {token} [int]'),
                     'cmd'   :   '<|object|> [counter_check_range]',
                     '_help' :   {
-                                    'cmd'                   : 'change OTP check range',
+                                    'cmd'                   : _('Change OTP check range.'),
                                 },
                 },
 
     'resync'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token resync {token} [otp]',
+                    '_cmd_usage_help' : _('Usage: otpme-token resync {token} [otp]'),
                     'cmd'   :   '<|object|> [otp]',
                     '_help' :   {
-                                    'cmd'                   : 'resync counter based token',
+                                    'cmd'                   : _('Resync counter based token.'),
                                 },
                 },
 
     'mode'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token mode {token} {mode}',
+                    '_cmd_usage_help' : _('Usage: otpme-token mode {token} {mode}'),
                     'cmd'   :   '<|object|> <new_mode>',
                     '_help' :   {
-                                    'cmd'                   : 'Change token operation mode.',
+                                    'cmd'                   : _('Change token operation mode.'),
                                 },
                 },
 
     'get_token_counter'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token get_token_counter {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token get_token_counter {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'Get token counter.',
+                                    'cmd'                   : _('Get token counter.'),
                                 },
                 },
 

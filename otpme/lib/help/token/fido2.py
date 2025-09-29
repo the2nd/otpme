@@ -18,21 +18,21 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token add [-r] {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token add [-r] {token}'),
                     'cmd'   :   '-r :replace=True: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'add new token',
-                                    '-r'                    : 'replace existing token and keep its UUID',
+                                    'cmd'                   : _('Add new token.'),
+                                    '-r'                    : _('Replace existing token and keep its UUID.'),
                                 },
                 },
 
     'deploy' : {
-                    '_cmd_usage_help' : 'Usage: otpme-token deploy [-d] [-r] <token>',
+                    '_cmd_usage_help' : _('Usage: otpme-token deploy [-d] [-r] <token>'),
                     'cmd'   :   '-d :debug=True: -r :replace=True: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'Deploy fido2 token.',
-                                    '-r'                    : 'Replace existing token.',
-                                    '-d'                    : 'Enable token related debug output.',
+                                    'cmd'                   : _('Deploy fido2 token.'),
+                                    '-r'                    : _('Replace existing token.'),
+                                    '-d'                    : _('Enable token related debug output.'),
                                 },
                     },
     }

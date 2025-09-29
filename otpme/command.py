@@ -174,7 +174,6 @@ sys.argv.pop(0)
 
 help_needed = False
 help_message = None
-register_help()
 
 # Set cli object type.
 subcommand = None
@@ -192,6 +191,11 @@ if "--type" in sys.argv:
         error_message(help_msg)
         sys.exit(0)
 config.cli_object_type = object_type
+
+# Load OTPme config.
+config.load(quiet=True)
+# Register help after loading config (e.g. gettext configured).
+register_help()
 
 # Check if we have to print the help screen.
 try:
@@ -309,7 +313,7 @@ if not help_needed:
                             sys.exit(0)
 
 # Load OTPme config.
-config.load(quiet=True)
+#config.load(quiet=True)
 # Print warning if API mode is requested and daemon is running.
 if config.use_api:
     if not "--compgen" in sys.argv:

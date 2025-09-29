@@ -18,68 +18,68 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy add {policy}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy add {policy}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'add new policy',
+                                    'cmd'                   : _('Add new policy'),
                                 },
                 },
 
     'pin_min_len'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy pin_min_len {policy} {pin_min_len}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy pin_min_len {policy} {pin_min_len}'),
                     'cmd'   :   '<|object|> <pin_min_len>',
                     '_help' :   {
-                                    'cmd'                   : 'set PIN min length',
+                                    'cmd'                   : _('Set PIN min length.'),
                                 },
                 },
 
     'password_min_len'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy password_min_len {policy} {pass_min_len}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy password_min_len {policy} {pass_min_len}'),
                     'cmd'   :   '<|object|> <password_min_len>',
                     '_help' :   {
-                                    'cmd'                   : 'set password min length',
+                                    'cmd'                   : _('Set password min length.'),
                                 },
                 },
 
     'strength_checker'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy strength_checker {policy} {strength_checker}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy strength_checker {policy} {strength_checker}'),
                     'cmd'   :   '<|object|> <strength_checker>',
                     '_help' :   {
-                                    'cmd'                   : 'change strength checker',
+                                    'cmd'                   : _('Change strength checker.'),
                                 },
                 },
 
     'enable_strength_checker'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy enable_strength_checker {policy}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy enable_strength_checker {policy}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'enable strength checker',
+                                    'cmd'                   : _('Enable strength checker.'),
                                 },
 
                 },
 
     'disable_strength_checker'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy disable_strength_checker {policy}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy disable_strength_checker {policy}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'disable strength checker',
+                                    'cmd'                   : _('Disable strength checker.'),
                                 },
                 },
 
     'strength_checker_opts'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy strength_checker_opts {policy} {options}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy strength_checker_opts {policy} {options}'),
                     'cmd'   :   '<|object|> <options>',
                     '_help' :   {
-                                    'cmd'                   : 'change strength checker options',
+                                    'cmd'                   : _('Change strength checker options.'),
                                 },
                 },
     'test'          : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy test [--password <password>] [--pin <pin>] {policy}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy test [--password <password>] [--pin <pin>] {policy}'),
                     'cmd'   :   '--password :password: --pin :pin: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'test policy',
-                                    '--password'            : 'Password to test.',
-                                    '--pin'                 : 'PIN to test.',
+                                    'cmd'                   : _('Test policy.'),
+                                    '--password'            : _('Password to test.'),
+                                    '--pin'                 : _('PIN to test.'),
                                 },
                 },
     }

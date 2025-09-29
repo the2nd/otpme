@@ -18,5 +18,5 @@ def register():
 cmd_help = {
     '_need_command'             : False,
     '_include_global_opts'      : False,
-    '_usage_help'      : "Usage: otpme-pinentry",
+    '_usage_help'      : _("Usage: otpme-pinentry"),
     }

@@ -18,26 +18,26 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy add {policy}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy add {policy}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'add new policy',
+                                    'cmd'                   : _('Add new policy'),
                                 },
                 },
 
     'add_default_role'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy add_default_role {policy} {role}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy add_default_role {policy} {role}'),
                     'cmd'   :   '<|object|> <role_name>',
                     '_help' :   {
-                                    'cmd'                   : 'Add role.',
+                                    'cmd'                   : _('Add role.'),
                                 },
                 },
 
     'remove_default_role'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy remove_default_role {policy} {role}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy remove_default_role {policy} {role}'),
                     'cmd'   :   '<|object|> <role_name>',
                     '_help' :   {
-                                    'cmd'                   : 'Remove role.',
+                                    'cmd'                   : _('Remove role.'),
                                 },
                 },
     }

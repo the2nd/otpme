@@ -18,36 +18,36 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token add [-r] {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token add [-r] {token}'),
                     'cmd'   :   '-r :replace=True: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'add new token',
-                                    '-r'                    : 'replace existing token and keep its UUID',
+                                    'cmd'                   : _('Add new token.'),
+                                    '-r'                    : _('Replace existing token and keep its UUID.'),
                                 },
                 },
 
     'password'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token password --generate {token} [password]',
+                    '_cmd_usage_help' : _('Usage: otpme-token password --generate {token} [password]'),
                     'cmd'   :   '--generate :auto_password=True: <|object|> [password]',
                     '_help' :   {
-                                    'cmd'                   : 'change token password',
-                                    '--generate'            : 'generate password',
+                                    'cmd'                   : _('Change token password.'),
+                                    '--generate'            : _('Generate password.'),
                                 },
                 },
 
     'enable_mschap'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token enable_mschap {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token enable_mschap {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'enable MSCHAP authentication',
+                                    'cmd'                   : _('Enable MSCHAP authentication.'),
                                 },
                 },
 
     'disable_mschap'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token disable_mschap {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token disable_mschap {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'disable MSCHAP authentication',
+                                    'cmd'                   : _('Disable MSCHAP authentication.'),
                                 },
                 },
     }

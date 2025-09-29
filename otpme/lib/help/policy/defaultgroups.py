@@ -18,33 +18,33 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy add {policy}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy add {policy}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'add new policy',
+                                    'cmd'                   : _('Add new policy'),
                                 },
                 },
 
     'add_group'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy add_group {policy} {group}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy add_group {policy} {group}'),
                     'cmd'   :   '<|object|> <group_name>',
                     '_help' :   {
-                                    'cmd'                   : 'Add group.',
+                                    'cmd'                   : _('Add group.'),
                                 },
                 },
 
     'remove_group'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy remove_group {policy} {group}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy remove_group {policy} {group}'),
                     'cmd'   :   '<|object|> <group_name>',
                     '_help' :   {
-                                    'cmd'                   : 'Remove group.',
+                                    'cmd'                   : _('Remove group.'),
                                 },
                 },
     'default_group'   : {
-                    '_cmd_usage_help' : 'Usage: otpme-policy default_group {policy} {group}',
+                    '_cmd_usage_help' : _('Usage: otpme-policy default_group {policy} {group}'),
                     'cmd'   :   '<|object|> <group_name>',
                     '_help' :   {
-                                    'cmd'                   : 'Set default group.',
+                                    'cmd'                   : _('Set default group.'),
                                 },
                 },
     }

@@ -18,38 +18,38 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     '_include_global_opts'      : True,
-    '_usage_help'               : "Usage: otpme-trash {command}",
+    '_usage_help'               : _("Usage: otpme-trash {command}"),
 
     'show'      : {
-                    '_cmd_usage_help' : 'Usage: otpme-trash show [--fields <field1,field2,field3>] [-z <size_limit>]',
+                    '_cmd_usage_help' : _('Usage: otpme-trash show [--fields <field1,field2,field3>] [-z <size_limit>]'),
                     'cmd'   :   '--fields :output_fields: --raw :header=False: --csv :csv=True: --csv-sep :csv_sep: -z :max_len:',
                     '_help' :   {
-                                    'cmd'                   : 'Show trash.',
+                                    'cmd'                   : _('Show trash.'),
                                 },
                 },
 
     'restore'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-trash restore --objects <object_id_1,object_id_2> {trash_id}',
+                    '_cmd_usage_help' : _('Usage: otpme-trash restore --objects <object_id_1,object_id_2> {trash_id}'),
                     'cmd'   :   '--objects :[objects]: [|object|]',
                     '_help' :   {
-                                    'cmd'                   : 'Restore object(s).',
+                                    'cmd'                   : _('Restore object(s).'),
                                 },
                 },
 
 
     'del'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-trash del {trash_id}',
+                    '_cmd_usage_help' : _('Usage: otpme-trash del {trash_id}'),
                     'cmd'   :   '[|object|]',
                     '_help' :   {
-                                    'cmd'                   : 'Delete entry from trash.',
+                                    'cmd'                   : _('Delete entry from trash.'),
                                 },
                 },
 
     'empty'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-trash empty}',
+                    '_cmd_usage_help' : _('Usage: otpme-trash empty'),
                     'cmd'   :   '[|object|]',
                     '_help' :   {
-                                    'cmd'                   : 'Empty trash.',
+                                    'cmd'                   : _('Empty trash.'),
                                 },
                 },
     }

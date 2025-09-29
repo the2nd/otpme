@@ -18,60 +18,60 @@ def register():
 cmd_help = {
     '_need_command'             : True,
     'add'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token add [-r] {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token add [-r] {token}'),
                     'cmd'   :   '-r :replace=True: <|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'add new token',
-                                    '-r'                    : 'replace existing token and keep its UUID',
+                                    'cmd'                   : _('Add new token.'),
+                                    '-r'                    : _('Replace existing token and keep its UUID.'),
                                 },
                 },
 
     'secret'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token secret {token} [secret]',
+                    '_cmd_usage_help' : _('Usage: otpme-token secret {token} [secret]'),
                     'cmd'   :   '<|object|> [secret]',
                     '_help' :   {
-                                    'cmd'                   : 'change token secret',
+                                    'cmd'                   : _('Change token secret.'),
                                 },
                 },
 
     'show_secret'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token show_secret {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token show_secret {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'show tokens secret',
+                                    'cmd'                   : _('Show token\'s secret.'),
                                 },
                 },
 
     'pin'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token pin {token} [pin]',
+                    '_cmd_usage_help' : _('Usage: otpme-token pin {token} [pin]'),
                     'cmd'   :   '--generate :auto_pin=True: <|object|> ["pin"]',
                     '_help' :   {
-                                    'cmd'                   : 'change token pin',
-                                    '--generate'            : 'generate PIN',
+                                    'cmd'                   : _('Change token PIN.'),
+                                    '--generate'            : _('Generate PIN.'),
                                 },
                 },
 
     'show_pin'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token show_pin {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token show_pin {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'show tokens PIN',
+                                    'cmd'                   : _('Show token\'s PIN.'),
                                 },
                 },
 
     'gen'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token gen {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token gen {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'generate token OTP',
+                                    'cmd'                   : _('Generate token OTP.'),
                                 },
                 },
 
     'gen_mschap'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token gen_mschap {token}',
+                    '_cmd_usage_help' : _('Usage: otpme-token gen_mschap {token}'),
                     'cmd'   :   '<|object|>',
                     '_help' :   {
-                                    'cmd'                   : 'generate MSCHAP challenge/response from token OTP',
+                                    'cmd'                   : _('Generate MSCHAP challenge/response from token OTP.'),
                                 },
                 },
 
@@ -84,18 +84,18 @@ cmd_help = {
     #            },
 
     'validity_time'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token validity_time {token} [int]',
+                    '_cmd_usage_help' : _('Usage: otpme-token validity_time {token} [int]'),
                     'cmd'   :   '<|object|> [validity_time]',
                     '_help' :   {
-                                    'cmd'                   : 'change OTP validity time',
+                                    'cmd'                   : _('Change OTP validity time.'),
                                 },
                 },
 
     'timedrift_tolerance'    : {
-                    '_cmd_usage_help' : 'Usage: otpme-token timedrift_tolerance {token} [int]',
+                    '_cmd_usage_help' : _('Usage: otpme-token timedrift_tolerance {token} [int]'),
                     'cmd'   :   '<|object|> [timedrift_tolerance]',
                     '_help' :   {
-                                    'cmd'                   : 'change OTP timedrift tolerance',
+                                    'cmd'                   : _('Change OTP timedrift tolerance.'),
                                 },
                 },
 
