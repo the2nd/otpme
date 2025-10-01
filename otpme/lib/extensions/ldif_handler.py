@@ -375,9 +375,9 @@ class OTPmeLDIFHandler(object):
 
         if len(missing_attributes) > 0:
             if log_errors:
-                msg = _("Object is missing attributes: {extension_name}: {obj}: {attributes}")
-                msg = msg.format(extension_name=self.name, obj=o, attributes=', '.join(missing_attributes))
-                logger.warning(msg)
+                log_msg = _("Object is missing attributes: {extension_name}: {obj}: {attributes}", log=True)[1]
+                log_msg = log_msg.format(extension_name=self.name, obj=o, attributes=', '.join(missing_attributes))
+                logger.warning(log_msg)
             msg = _("Object is missing the following attributes: {extension_name}: {obj}: {attributes}")
             msg = msg.format(extension_name=self.name, obj=o, attributes=', '.join(missing_attributes))
             return callback.error(msg)

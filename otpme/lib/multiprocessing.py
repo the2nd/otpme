@@ -163,8 +163,8 @@ def signal_handler(_signal, frame):
         return
     # Get logger.
     logger = config.logger
-    msg = _("Received SIGTERM.")
-    logger.info(msg)
+    log_msg = _("Received SIGTERM.", log=True)[1]
+    logger.info(log_msg)
     os._exit(0)
 
 def atfork(keep_locks=False, quiet=True,
@@ -201,9 +201,9 @@ def atfork(keep_locks=False, quiet=True,
     # Get logger.
     logger = config.logger
     if config.debug_level() > 3:
-        msg = _("Process forked: {pid}")
-        msg = msg.format(pid=pid)
-        logger.debug(msg)
+        log_msg = _("Process forked: {pid}", log=True)[1]
+        log_msg = log_msg.format(pid=pid)
+        logger.debug(log_msg)
     # Make sure we do not handle locks of parent process.
     if not keep_locks:
         locking.atfork()
@@ -239,21 +239,21 @@ def cleanup(keep_queues=False):
     try:
         connections.cleanup()
     except Exception as e:
-        msg = _("Connection cleanup failed: {pid}: {e}")
-        msg = msg.format(pid=pid, e=e)
-        logger.critical(msg)
+        log_msg = _("Connection cleanup failed: {pid}: {e}", log=True)[1]
+        log_msg = log_msg.format(pid=pid, e=e)
+        logger.critical(log_msg)
     try:
         locking.cleanup()
     except Exception as e:
-        msg = _("Lock cleanup failed: {pid}: {e}")
-        msg = msg.format(pid=pid, e=e)
-        logger.critical(msg)
+        log_msg = _("Lock cleanup failed: {pid}: {e}", log=True)[1]
+        log_msg = log_msg.format(pid=pid, e=e)
+        logger.critical(log_msg)
     try:
         backend.cleanup()
     except Exception as e:
-        msg = _("Backend cleanup failed: {pid}: {e}")
-        msg = msg.format(pid=pid, e=e)
-        logger.critical(msg)
+        log_msg = _("Backend cleanup failed: {pid}: {e}", log=True)[1]
+        log_msg = log_msg.format(pid=pid, e=e)
+        logger.critical(log_msg)
         config.raise_exception()
     for x in cluster_read_locks:
         x_lock = cluster_read_locks[x]
@@ -480,7 +480,9 @@ def drop_privileges(user=None, group=None, groups=None):
             msg = _("Failed to drop privileges (group)")
             raise OTPmeException(msg)
         if config.debug_level() > 3:
-            logger.debug(f"Changed group to: {group}")
+            log_msg = _("Changed group to: {group}", log=True)[1]
+            log_msg = log_msg.format(group=group)
+            logger.debug(log_msg)
 
     # Drop user privileges.
     if user:
@@ -491,7 +493,9 @@ def drop_privileges(user=None, group=None, groups=None):
             msg = _("Failed to drop privileges (group)")
             raise OTPmeException(msg)
         if config.debug_level() > 3:
-            logger.debug(f"Changed user to: {user}")
+            log_msg = _("Changed user to: {user}", log=True)[1]
+            log_msg = log_msg.format(user=user)
+            logger.debug(log_msg)
         # Change to users home directory to prevent any chdir() problems.
         user_home_dir = os.path.expanduser(f"~{user}")
         if os.path.exists(user_home_dir):
@@ -562,10 +566,10 @@ class OTPmeSyncManager(SyncManager):
     def _run_server(cls, *args, **kwargs):
         from otpme.lib import config
         pid = os.getpid()
-        msg = _("Starting multiprocessing manager: {pid}")
-        msg = msg.format(pid=pid)
         logger = config.logger
-        logger.debug(msg)
+        log_msg = _("Starting multiprocessing manager: {pid}", log=True)[1]
+        log_msg = log_msg.format(pid=pid)
+        logger.debug(log_msg)
         # Set process title..
         if cls._otpme_proc_title:
             setproctitle.setproctitle(cls._otpme_proc_title)
@@ -709,14 +713,14 @@ class MessageQueue(object):
                                             flags=posix_ipc.O_CREAT,
                                             max_message_size=self.max_message_size)
             except posix_ipc.PermissionsError as e:
-                msg = _("Failed to open posix message queue: {queue_name}: {e}")
-                msg = msg.format(queue_name=self.queue_name, e=e)
-                self.logger.critical(msg)
+                log_msg = _("Failed to open posix message queue: {queue_name}: {e}", log=True)[1]
+                log_msg = log_msg.format(queue_name=self.queue_name, e=e)
+                self.logger.critical(log_msg)
                 raise
             except OSError as e:
-                msg = _("Failed to open posix message queue: {queue_name}: {e}")
-                msg = msg.format(queue_name=self.queue_name, e=e)
-                self.logger.critical(msg)
+                log_msg = _("Failed to open posix message queue: {queue_name}: {e}", log=True)[1]
+                log_msg = log_msg.format(queue_name=self.queue_name, e=e)
+                self.logger.critical(log_msg)
                 raise
             self._queue = queue
         return self._queue

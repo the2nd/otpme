@@ -42,9 +42,9 @@ class JsonEncodedData(TypeDecorator):
         try:
             raw_value = json.loads(value)
         except Exception as e:
-            msg = _("Failed to load JSON value: {e}")
-            msg = msg.format(e=e)
-            config.logger.warning(msg)
+            log_msg = _("Failed to load JSON value: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            config.logger.warning(log_msg)
             return
         return raw_value
 

@@ -603,9 +603,9 @@ class MotpToken(Token):
         otp_validity_end_time = validity_times[5]
 
         # Log OTP timerange.
-        msg = _("Verifiying OTP within timerange: start='{start}' end='{end}'.")
-        msg = msg.format(start=otp_validity_start_time, end=otp_validity_end_time)
-        logger.debug(msg)
+        log_msg = _("Verifiying OTP within timerange: start='{start}' end='{end}'.", log=True)[1]
+        log_msg = log_msg.format(start=otp_validity_start_time, end=otp_validity_end_time)
+        logger.debug(log_msg)
         # Verify OTP.
         if motp.verify(epoch_time=otp_epoch_time,
                         validity_range=otp_validity_range,
@@ -671,9 +671,9 @@ class MotpToken(Token):
                             otp_count=otp_validity_range,
                             otp_len=self.otp_len)
 
-        msg = _("Verifiying OTP within timerange: start='{start}' end='{end}'.")
-        msg = msg.format(start=otp_validity_start_time, end=otp_validity_end_time)
-        logger.debug(msg)
+        log_msg = _("Verifiying OTP within timerange: start='{start}' end='{end}'.", log=True)[1]
+        log_msg = log_msg.format(start=otp_validity_start_time, end=otp_validity_end_time)
+        logger.debug(log_msg)
         # Set default return_value.
         failed_return_value = False, False, False
         return_value = None, False, False

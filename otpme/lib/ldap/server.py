@@ -302,9 +302,9 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             parser = StoreParsedLDIF()
             parser.dataReceived(ldif)
         except Exception as e:
-            msg = _("Failed to load LDIF: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to load LDIF: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         entries = parser.seen
 
@@ -325,9 +325,9 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
     def _bind(self, password):
         """ Authenticate user against OTPme. """
         if self.client is None:
-            msg = _("Missing client DC: {dn_text}")
-            msg = msg.format(dn_text=self.dn.getText())
-            self.logger.warning(msg)
+            log_msg = _("Missing client DC: {dn_text}", log=True)[1]
+            log_msg = log_msg.format(dn_text=self.dn.getText())
+            self.logger.warning(log_msg)
             raise ldaperrors.LDAPInvalidCredentials
 
         # Get username from DN.
@@ -350,9 +350,9 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                         handle_user_auth=False,
                                         encrypt_session=False)
         except Exception as e:
-            msg = _("Failed to get authd connection: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get authd connection: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             raise
 
         # Build command args.
@@ -370,17 +370,17 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             binary_data = authd_conn.send(command="verify",
                                 command_args=command_args)
         except Exception as e:
-            msg = _("Failed to authenticate user: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Failed to authenticate user: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             raise ldaperrors.LDAPInvalidCredentials
         finally:
             authd_conn.close()
 
         if status is False:
-            msg = _("Failed to authenticate user: {reply}")
-            msg = msg.format(reply=auth_reply)
-            self.logger.warning(msg)
+            log_msg = _("Failed to authenticate user: {reply}", log=True)[1]
+            log_msg = log_msg.format(reply=auth_reply)
+            self.logger.warning(log_msg)
             raise ldaperrors.LDAPInvalidCredentials
 
         # Set auth token.
@@ -1164,21 +1164,22 @@ def otpme_log_translate(conf):
         loglevel = config.loglevel
 
     if message:
+        log_msg = message
         if debug_message:
             pass
             #if config.loglevel == "DEBUG" or config.debug_enabled:
-            #    self.logger.debug(message)
+            #    self.logger.debug(log_msg)
         else:
             if loglevel == "CRITICAL":
-                logger.critical(message)
+                logger.critical(log_msg)
             if loglevel == "ERROR":
-                logger.error(message)
+                logger.error(log_msg)
             if loglevel == "WARNING":
-                logger.warning(message)
+                logger.warning(log_msg)
             if loglevel == "INFO":
-                logger.info(message)
+                logger.info(log_msg)
             if loglevel == "DEBUG":
-                logger.debug(message)
+                logger.debug(log_msg)
 
 class LDAPServerFactory(protocol.ServerFactory):
     def __init__(self, root):
@@ -1275,8 +1276,8 @@ class LDAPServer(object):
 
     def signal_handler(self, _signal, frame):
         """ Exit on signal. """
-        msg = _("Received SIGTERM.")
-        self.logger.info(msg)
+        log_msg = _("Received SIGTERM.", log=True)[1]
+        self.logger.info(log_msg)
         if config.print_timing_results:
             from otpme.lib import debug
             debug.print_timing_result(print_status=True)

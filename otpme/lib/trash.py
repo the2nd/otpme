@@ -158,17 +158,17 @@ def get_deleted_by(trash_id):
     try:
         fd = open(deleted_by_file, "r")
     except Exception as e:
-        msg = _("Failed to open deleted by file: {deleted_by_file}: {error}")
-        msg = msg.format(deleted_by_file=deleted_by_file, error=e)
-        logger.warning(msg)
+        log_msg = _("Failed to open deleted by file: {deleted_by_file}: {error}", log=True)[1]
+        log_msg = log_msg.format(deleted_by_file=deleted_by_file, error=e)
+        logger.warning(log_msg)
         deleted_by = "Unknown"
     else:
         try:
             deleted_by = fd.read()
         except Exception as e:
-            msg = _("Failed to read deleted by file: {deleted_by_file}: {error}")
-            msg = msg.format(deleted_by_file=deleted_by_file, error=e)
-            logger.warning(msg)
+            log_msg = _("Failed to read deleted by file: {deleted_by_file}: {error}", log=True)[1]
+            log_msg = log_msg.format(deleted_by_file=deleted_by_file, error=e)
+            logger.warning(log_msg)
             deleted_by = "Unknown"
         finally:
             fd.close()

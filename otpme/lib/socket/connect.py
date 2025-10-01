@@ -123,9 +123,9 @@ class ConnectSocket(object):
                     file_content = tmp_files[tmp_file]
                     # Try to create file.
                     if os.path.exists(tmp_file):
-                        msg = _("Cert file '{file}' exists, removing.")
-                        msg = msg.format(file=tmp_file)
-                        self.logger.warning(msg)
+                        log_msg = _("Cert file '{file}' exists, removing.", log=True)[1]
+                        log_msg = log_msg.format(file=tmp_file)
+                        self.logger.warning(log_msg)
 
                     # Create file.
                     fd = open(tmp_file, "w")
@@ -213,9 +213,9 @@ class ConnectSocket(object):
 
         if not quiet:
             if config.debug_level() > 3:
-                msg = _("Connecting to '{uri}' (tmo={connect_timeout}/{timeout})")
-                msg = msg.format(uri=self.socket_uri, connect_timeout=connect_timeout_msg, timeout=timeout_msg)
-                self.logger.debug(msg)
+                log_msg = _("Connecting to '{uri}' (tmo={connect_timeout}/{timeout})", log=True)[1]
+                log_msg = log_msg.format(uri=self.socket_uri, connect_timeout=connect_timeout_msg, timeout=timeout_msg)
+                self.logger.debug(log_msg)
 
         try:
             # Set connect timeout.
@@ -363,9 +363,9 @@ class ConnectSocket(object):
             return
         self.connected = False
         if config.debug_level() > 3:
-            msg = _("Closing connection to '{uri}'")
-            msg = msg.format(uri=self.socket_uri)
-            self.logger.debug(msg)
+            log_msg = _("Closing connection to '{uri}'", log=True)[1]
+            log_msg = log_msg.format(uri=self.socket_uri)
+            self.logger.debug(log_msg)
         self.send("quit", timeout=0.01)
         self._close()
 

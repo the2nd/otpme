@@ -115,9 +115,9 @@ class OTPmeJoinP1(OTPmeServer1):
     def join_realm(self, site, host_type, host_name,
         host_unit, host, callback, force=False):
         """ Try to join given host to realm. """
-        msg = _("Trying to join {host_type}: {host_name}")
-        msg = msg.format(host_type=host_type, host_name=host_name)
-        self.logger.debug(msg)
+        log_msg = _("Trying to join {host_type}: {host_name}", log=True)[1]
+        log_msg = log_msg.format(host_type=host_type, host_name=host_name)
+        self.logger.debug(log_msg)
         # If the user is authenticated (not used an JOTP) and the host already
         # exists we have to verify ACLs when calling join_realm().
         if self.authenticated and host:
@@ -131,9 +131,9 @@ class OTPmeJoinP1(OTPmeServer1):
                 host_class = Host
             if host_type == "node":
                 host_class = Node
-            msg = _("Adding {host_type}: {host_name}")
-            msg = msg.format(host_type=host_type, host_name=host_name)
-            self.logger.debug(msg)
+            log_msg = _("Adding {host_type}: {host_name}", log=True)[1]
+            log_msg = log_msg.format(host_type=host_type, host_name=host_name)
+            self.logger.debug(log_msg)
             host = host_class(name=host_name,
                             unit=host_unit,
                             site=site.name,
@@ -142,10 +142,11 @@ class OTPmeJoinP1(OTPmeServer1):
                 host.add(gen_jotp=True,
                         callback=callback)
             except Exception as e:
-                message = _("Error adding {host_type}: {error}")
+                message, log_msg = _("Error adding {host_type}: {error}", log=True)
                 message = message.format(host_type=host_type, error=e)
+                log_msg = log_msg.format(host_type=host_type, error=e)
+                self.logger.debug(log_msg)
                 status = False
-                self.logger.debug(message)
                 config.raise_exception()
                 return self.build_response(status, message)
 
@@ -210,7 +211,8 @@ class OTPmeJoinP1(OTPmeServer1):
         if host.site_uuid != config.site_uuid:
             cache.clear(host.oid)
 
-        self.logger.debug(_("Selecting objects for join reply..."))
+        log_msg = _("Selecting objects for join reply...", log=True)[1]
+        self.logger.debug(log_msg)
 
         # Build list with initial sync objects.
         sync_objects = []
@@ -385,9 +387,9 @@ class OTPmeJoinP1(OTPmeServer1):
             o = backend.get_object(object_type=object_type, uuid=uuid)
             # Skip orphan objects.
             if not o:
-                msg = _("Unable to get object for join request: {uuid} ({object_type})")
-                msg = msg.format(uuid=uuid, object_type=object_type)
-                self.logger.warning(msg)
+                log_msg = _("Unable to get object for join request: {uuid} ({object_type})", log=True)[1]
+                log_msg = log_msg.format(uuid=uuid, object_type=object_type)
+                self.logger.warning(log_msg)
                 continue
             object_config = o.get_sync_config(peer=host)
             object_id = o.oid.full_oid
@@ -410,15 +412,17 @@ class OTPmeJoinP1(OTPmeServer1):
         # from other sites.
         cache.clear(host.oid)
 
-        self.logger.debug(_("Join phase 1 finished successful."))
+        log_msg = _("Join phase 1 finished successful.", log=True)[1]
+        self.logger.debug(log_msg)
 
         return self.build_response(status, message)
 
     def finish_join(self, host, host_public_key, callback,
         host_cert=None, host_cert_req=None, site_cert_req=None):
         """ Finalize realm join of given host. """
-        msg = f"Trying to finalize realm join: {host.name}"
-        self.logger.debug(msg)
+        log_msg = _("Trying to finalize realm join: {host_name}", log=True)[1]
+        log_msg = log_msg.format(host_name=host.name)
+        self.logger.debug(log_msg)
         # Finalize realm join.
         try:
             host.join_realm(verify_acls=False,
@@ -462,10 +466,14 @@ class OTPmeJoinP1(OTPmeServer1):
         # If this is a master node join we have to enable nodes site.
         if host.site_uuid != config.site_uuid:
             # Set site master node.
-            self.logger.debug(f"Setting site master node: {host.fqdn}")
+            log_msg = _("Setting site master node: {host_fqdn}", log=True)[1]
+            log_msg = log_msg.format(host_fqdn=host.fqdn)
+            self.logger.debug(log_msg)
             # Enable site if needed.
             if not site.enabled:
-                self.logger.debug(f"Enabling site: {site.name}")
+                log_msg = _("Enabling site: {site_name}", log=True)[1]
+                log_msg = log_msg.format(site_name=site.name)
+                self.logger.debug(log_msg)
                 site.enable(force=True,
                             verify_acls=False,
                             run_policies=False,
@@ -474,9 +482,9 @@ class OTPmeJoinP1(OTPmeServer1):
                 try:
                     site._write(callback=callback)
                 except Exception as e:
-                    msg = _("Failed to write site: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.critical(msg)
+                    log_msg = _("Failed to write site: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg)
 
             # Make sure we clean site from cache to prevent issues when joining
             # node from other site because checksums are not updated for objects
@@ -491,7 +499,9 @@ class OTPmeJoinP1(OTPmeServer1):
                                                 uuid=realm.ca)
                 # The common name of the CSR must be the site CA path.
                 common_name = site_ca.path
-                self.logger.debug(f"Generating CA certificate: {common_name}")
+                log_msg = _("Generating CA certificate: {common_name}", log=True)[1]
+                log_msg = log_msg.format(common_name=common_name)
+                self.logger.debug(log_msg)
                 try:
                     cert, key = realm_ca.create_ca_cert(common_name,
                                                         cert_req=site_cert_req,
@@ -499,7 +509,9 @@ class OTPmeJoinP1(OTPmeServer1):
                                                         callback=callback)
                 except Exception as e:
                     cert = None
-                    self.logger.warning(f"Error signing CSR: {e}")
+                    log_msg = _("Error signing CSR: {e}", log=True)[1]
+                    log_msg = log_msg.format(e=e)
+                    self.logger.warning(log_msg)
                 # Add cert to local remote site object.
                 site_ca.set_cert(cert=cert, callback=callback)
 
@@ -507,9 +519,9 @@ class OTPmeJoinP1(OTPmeServer1):
                 try:
                     site_ca._write(callback=callback)
                 except Exception as e:
-                    msg = _("Failed to write site CA: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.critical(msg)
+                    log_msg = _("Failed to write site CA: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg)
                 # Make sure we clean CA from cache to prevent issues when joining
                 # node from other site because checksums are not updated for objects
                 # from other sites.
@@ -523,9 +535,10 @@ class OTPmeJoinP1(OTPmeServer1):
                         verify_acls=False,
                         callback=callback)
         except Exception as e:
-            message = _("Error enabling {host_type}: {error}")
+            message, log_msg = _("Error enabling {host_type}: {error}", log=True)
             message = message.format(host_type=host.type, error=e)
-            self.logger.debug(message)
+            log_msg = log_msg.format(host_type=host.type, error=e)
+            self.logger.debug(log_msg)
             status = False
             return self.build_response(status, message)
 
@@ -535,8 +548,9 @@ class OTPmeJoinP1(OTPmeServer1):
         # Build join message.
         msg = []
         host_desc = f"{host.type[0].upper()}{host.type[1:]}"
-        message_text = _("{host_desc} {host_name} joined successful realm {realm}.")
+        message_text, log_msg = _("{host_desc} {host_name} joined successful realm {realm}.", log=True)
         message_text = message_text.format(host_desc=host_desc, host_name=host.name, realm=config.realm)
+        log_msg = log_msg.format(host_desc=host_desc, host_name=host.name, realm=config.realm)
         msg.append(message_text)
 
         # Only hosts from own site can leave the realm.
@@ -560,8 +574,7 @@ class OTPmeJoinP1(OTPmeServer1):
         # Write changed objects.
         cache.flush()
 
-        self.logger.debug(_("Join phase 2 finished successful."))
-        self.logger.info(msg[0])
+        self.logger.info(log_msg)
         return self.build_response(status, message)
 
     def handle_join_command(self, host_name, host_type,
@@ -652,11 +665,11 @@ class OTPmeJoinP1(OTPmeServer1):
 
             # When finalizing the join process the host must exist.
             if not host:
-                msg = _("Unknown {host_type}: {host_fqdn}")
+                msg, log_msg = _("Unknown {host_type}: {host_fqdn}", log=True)
                 msg = msg.format(host_type=host_type, host_fqdn=host_fqdn)
-                debug_msg = _("Join phase 2 error: {error_msg}")
-                debug_msg = debug_msg.format(error_msg=msg)
-                self.logger.debug(debug_msg)
+                log_msg = log_msg.format(host_type=host_type, host_fqdn=host_fqdn)
+                log_msg = f"Join phase 2 error: {log_msg}"
+                self.logger.debug(log_msg)
                 # Prevent hostname testing for not authenticated users.
                 if not self.authenticated:
                     msg = (_("Access denied."))
@@ -692,10 +705,10 @@ class OTPmeJoinP1(OTPmeServer1):
 
         # If we got a JOTP the host must already exist to proceed.
         if jotp and not host:
-            msg = (_("Access denied."))
-            debug_msg = _("Join phase 1 error: Unknown {host_type}: {host_fqdn}")
-            debug_msg = debug_msg.format(host_type=host_type, host_fqdn=host_fqdn)
-            self.logger.debug(debug_msg)
+            msg, log_msg = _("Join phase 1 error: Unknown {host_type}: {host_fqdn}", log=True)
+            msg = msg.format(host_type=host_type, host_fqdn=host_fqdn)
+            log_msg = log_msg.format(host_type=host_type, host_fqdn=host_fqdn)
+            self.logger.debug(log_msg)
             raise OTPmeException(msg)
 
         # Try to join host.
@@ -711,9 +724,10 @@ class OTPmeJoinP1(OTPmeServer1):
         """ Handle leave command. """
         # When leaving the realm the host must exist. ;)
         if not host:
-            msg = _("Unknown host: {host_fqdn}")
+            msg, log_msg = _("Unknown host: {host_fqdn}", log=True)
             msg = msg.format(host_fqdn=host_fqdn)
-            self.logger.debug(f"Leaving host error: {msg}")
+            log_msg = log_msg.format(host_fqdn=host_fqdn)
+            self.logger.warning(log_msg)
             # Prevent hostname testing for not authenticated users.
             if not self.authenticated:
                 msg = (_("Access denied."))
@@ -725,9 +739,9 @@ class OTPmeJoinP1(OTPmeServer1):
             msg = msg.format(host_type=host.type, host_name=host.name)
             raise OTPmeException(msg)
 
-        msg = _("Trying to leave realm for {host_type}: {host_name}")
-        msg = msg.format(host_type=host.type, host_name=host.name)
-        self.logger.debug(msg)
+        log_msg = _("Trying to leave realm for {host_type}: {host_name}", log=True)[1]
+        log_msg = log_msg.format(host_type=host.type, host_name=host.name)
+        self.logger.debug(log_msg)
 
         # Make sure the given FQDN matches the client cert of the
         # connecting host BEFORE verifying the LOTP.
@@ -799,6 +813,7 @@ class OTPmeJoinP1(OTPmeServer1):
             except Exception as e:
                 msg = _("Error deleting {host_type}: {error}")
                 msg = msg.format(host_type=host.type, error=e)
+                raise OTPmeException(msg)
 
         # Write changed objects.
         cache.flush()
@@ -810,9 +825,10 @@ class OTPmeJoinP1(OTPmeServer1):
         # Build leave response.
         status = True
         host_desc = f"{host.type[0].upper()}{host.type[1:]}"
-        message = _("{host_desc} {host_name} leaved successful realm {realm}.")
+        message, log_msg = _("{host_desc} {host_name} leaved successful realm {realm}.", log=True)
         message = message.format(host_desc=host_desc, host_name=host.name, realm=config.realm)
-        self.logger.info(message)
+        log_msg = log_msg.format(host_desc=host_desc, host_name=host.name, realm=config.realm)
+        self.logger.info(log_msg)
         if host.allow_jotp_rejoin:
             message_add = _("{msg}\nYou can use the following JOTP to re-join the {host_type}: {jotp}")
             message = message_add.format(msg=message, host_type=host.type, jotp=host.jotp)
@@ -858,9 +874,9 @@ class OTPmeJoinP1(OTPmeServer1):
         try:
             host_fqdn = command_args['host_fqdn']
         except:
-            message = (_("JOIN_INCOMPLETE_COMMAND: Missing host FQDN."))
+            message, log_msg = _("JOIN_INCOMPLETE_COMMAND: Missing host FQDN.", log=True)
+            self.logger.warning(log_msg)
             status = False
-            self.logger.warning(message)
             return self.build_response(status, message)
 
         # Load site.
@@ -868,10 +884,11 @@ class OTPmeJoinP1(OTPmeServer1):
                                 realm=config.realm,
                                 name=site)
         if not self.request_site:
-            message = _("Unknown site: {site}")
+            message, log_msg = _("Unknown site: {site}", log=True)
             message = message.format(site=site)
+            log_msg = log_msg.format(site=site)
+            self.logger.warning(log_msg)
             status = False
-            self.logger.warning(message)
             return self.build_response(status, message)
 
         # Get hostname from FQDN.
@@ -915,24 +932,27 @@ class OTPmeJoinP1(OTPmeServer1):
             host = self.get_host(host_name)
         except Exception as e:
             config.raise_exception()
-            message = _("Failed to get {host_type}: {error}")
+            message, log_msg = _("Failed to get {host_type}: {error}", log=True)
             message = message.format(host_type=host_type, error=e)
+            log_msg = log_msg.format(host_type=host_type, error=e)
+            self.logger.debug(log_msg)
             status = False
-            self.logger.debug(message)
             return self.build_response(status, message)
 
         if command == "join" and host:
             if host.site != self.request_site.name:
-                message = _("Cannot join {host_type} from site {site}.")
+                message, log_msg = _("Cannot join {host_type} from site {site}.", log=True)
                 message = message.format(host_type=host_type, site=host.site)
+                log_msg = log_msg.format(host_type=host_type, site=host.site)
+                self.logger.warning(log_msg)
                 status = False
-                self.logger.warning(message)
                 return self.build_response(status, message)
             if host.type != host_type:
-                message = _("{host_type} with name {host_name} already exists.")
+                message, log_msg = _("{host_type} with name {host_name} already exists.", log=True)
                 message = message.format(host_type=host.type, host_name=host_name)
+                log_msg = log_msg.format(host_type=host.type, host_name=host_name)
+                self.logger.warning(log_msg)
                 status = False
-                self.logger.warning(message)
                 return self.build_response(status, message)
 
         # Check if we got an encrypted request.
@@ -954,57 +974,60 @@ class OTPmeJoinP1(OTPmeServer1):
         session_enc_mod = None
         if encrypted:
             if not host:
-                message = _("Unknown {host_type}: {host_name}")
+                message, log_msg = _("Unknown {host_type}: {host_name}", log=True)
                 message = message.format(host_type=host_type, host_name=host_name)
+                log_msg = log_msg.format(host_type=host_type, host_name=host_name)
+                self.logger.debug(log_msg)
                 status = False
-                self.logger.debug(message)
                 return self.build_response(status, message)
             # Make sure host does have a JOTP/LOTP.
             if not self.session_otp:
-                message = _("Permission denied: Host does not have a {otp_type} set")
+                message, log_msg = _("Permission denied: Host does not have a {otp_type} set", log=True)
                 message = message.format(otp_type=self.session_otp_type)
+                log_msg = log_msg.format(otp_type=self.session_otp_type)
+                self.logger.debug(log_msg)
                 status = False
-                self.logger.debug(message)
                 return self.build_response(status, message)
             # Make sure request includes encryption type.
             try:
                 enc_type = command_args['enc_type']
             except:
-                message = _("Got encrypted join request without encryption type.")
+                message, log_msg = _("Got encrypted join request without encryption type.",  log=True)
+                self.logger.debug(log_msg)
                 status = False
-                self.logger.debug(message)
                 return self.build_response(status, message)
             # Make sure request includes key salt.
             try:
                 key_salt = command_args['key_salt']
             except:
-                message = _("Got encrypted join request without key salt.")
+                message, log_msg = _("Got encrypted join request without key salt.", log=True)
+                self.logger.debug(log_msg)
                 status = False
-                self.logger.debug(message)
                 return self.build_response(status, message)
             # Make sure request includes JOTP hash type.
             try:
                 otp_hash_type = command_args['otp_hash_type']
             except:
-                message = _("Got encrypted join request without JOTP hash type.")
+                message, log_msg = _("Got encrypted join request without JOTP hash type.", log=True)
+                self.logger.debug(log_msg)
                 status = False
-                self.logger.debug(message)
                 return self.build_response(status, message)
             # Check if we support the hash type.
             if otp_hash_type not in config.get_hash_types():
-                message = _("Server does not support hash type: {hash_type}")
+                message, log_msg = _("Server does not support hash type: {hash_type}", log=True)
                 message = message.format(hash_type=otp_hash_type)
+                log_msg = log_msg.format(hash_type=otp_hash_type)
+                self.logger.debug(log_msg)
                 status = False
-                self.logger.debug(message)
                 return self.build_response(status, message)
 
             # Try to load session encryption.
             try:
                 session_enc_mod = config.get_encryption_module(enc_type)
             except Exception as e:
-                status = False
                 message = _("Failed to load session encryption: {error}")
                 message = message.format(error=e)
+                status = False
                 return self.build_response(status, message, encrypt=False)
             # Get encryption key from JOTP.
             try:
@@ -1012,10 +1035,11 @@ class OTPmeJoinP1(OTPmeServer1):
                                     salt=key_salt,
                                     hash_type=otp_hash_type)
             except Exception as e:
-                message = _("Failed to generate decryption key: {error}")
+                message, log_msg = _("Failed to generate decryption key: {error}", log=True)
                 message = message.format(error=e)
+                log_msg = log_msg.format(error=e)
+                self.logger.debug(log_msg)
                 status = False
-                self.logger.debug(message)
                 return self.build_response(status, message)
             session_key = x['key']
 
@@ -1027,13 +1051,15 @@ class OTPmeJoinP1(OTPmeServer1):
                                 enc_key=session_key)
         except Exception as e:
             if encrypted:
-                message = _("Failed to decrypt request. Wrong {otp_type}?")
+                message, log_msg = _("Failed to decrypt request. Wrong {otp_type}?", log=True)
                 message = message.format(otp_type=self.session_otp_type.upper())
+                log_msg = log_msg.format(otp_type=self.session_otp_type.upper())
             else:
-                message = _("Failed to decode request: {error}")
+                message, log_msg = _("Failed to decode request: {error}", log=True)
                 message = message.format(error=e)
+                log_msg = log_msg.format(error=e)
+            self.logger.debug(log_msg)
             status = False
-            self.logger.debug(message)
             return self.build_response(status, message)
 
         # For encrypted requests (e.g. JOTP) we have to make sure that request
@@ -1133,9 +1159,9 @@ class OTPmeJoinP1(OTPmeServer1):
             join_access_group = result[0]
             join_acl = f"join:{host_type}"
             if not join_access_group.verify_acl(join_acl):
-                message = (_("Permission denied."))
+                message, log_msg = _("Permission denied.", log=True)
+                self.logger.warning(log_msg)
                 status = False
-                self.logger.warning(message)
                 return self.build_response(status, message)
 
         # Check leave ACL.
@@ -1149,9 +1175,9 @@ class OTPmeJoinP1(OTPmeServer1):
             join_access_group = result[0]
             join_acl = f"leave:{host_type}"
             if not join_access_group.verify_acl(join_acl):
-                message = (_("Permission denied."))
+                message, log_msg = _("Permission denied.", log=True)
+                self.logger.warning(log_msg)
                 status = False
-                self.logger.warning(message)
                 return self.build_response(status, message)
 
         if not self.job_uuid:
@@ -1193,9 +1219,10 @@ class OTPmeJoinP1(OTPmeServer1):
                                                 finish)
             except Exception as e:
                 multiprocessing.running_jobs.pop(self.job_uuid)
-                status = False
                 message = str(e)
-                self.logger.warning(message)
+                log_msg = message
+                self.logger.warning(log_msg)
+                status = False
                 return self.build_response(status, message)
             if finish:
                 multiprocessing.running_jobs.pop(self.job_uuid)
@@ -1210,7 +1237,8 @@ class OTPmeJoinP1(OTPmeServer1):
             except Exception as e:
                 status = False
                 message = str(e)
-                self.logger.warning(message)
+                log_msg = message
+                self.logger.warning(log_msg)
                 multiprocessing.running_jobs.pop(self.job_uuid)
                 return self.build_response(status, message)
             multiprocessing.running_jobs.pop(self.job_uuid)
@@ -1308,9 +1336,9 @@ class OTPmeJoinP1(OTPmeServer1):
                 socket_uri = stuff.get_daemon_socket("clusterd", node_name)
             except Exception as e:
                 socket_uri = None
-                msg = _("Failed to get daemon socket: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Failed to get daemon socket: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
             if socket_uri:
                 try:
                     clusterd_conn = connections.get("clusterd",
@@ -1318,17 +1346,17 @@ class OTPmeJoinP1(OTPmeServer1):
                                                     socket_uri=socket_uri)
                 except Exception as e:
                     clusterd_conn = None
-                    msg = _("Failed to get cluster connection: {node_name}: {error}")
-                    msg = msg.format(node_name=node_name, error=e)
-                    self.logger.warning(msg)
+                    log_msg = _("Failed to get cluster connection: {node_name}: {error}", log=True)[1]
+                    log_msg = log_msg.format(node_name=node_name, error=e)
+                    self.logger.warning(log_msg)
             if clusterd_conn:
                 try:
                     clusterd_conn.write(object_id=node.oid.full_oid,
                                     object_configs=node.object_config.copy())
                 except Exception as e:
-                    msg = _("Failed to update node object: {node}: {error}")
-                    msg = msg.format(node=node, error=e)
-                    self.logger.warning(msg)
+                    log_msg = _("Failed to update node object: {node}: {error}", log=True)[1]
+                    log_msg = log_msg.format(node=node, error=e)
+                    self.logger.warning(log_msg)
                 clusterd_conn.close()
 
     def _close(self):

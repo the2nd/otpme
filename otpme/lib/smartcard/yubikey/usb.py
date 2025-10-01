@@ -53,7 +53,8 @@ def send_reset(dev_path):
         dev_path - The devfs path to the USB device (under /dev/bus/usb/)
                    See get_yubikey for example of how to obtain this.
     """
-    logger.debug("Sending USB reset command to yubikey...")
+    log_msg = _("Sending USB reset command to yubikey...", log=True)[1]
+    logger.debug(log_msg)
     fd = os.open(dev_path, os.O_WRONLY)
     try:
         fcntl.ioctl(fd, USBDEVFS_RESET, 0)

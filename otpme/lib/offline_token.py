@@ -311,8 +311,9 @@ class OfflineToken(object):
             score = hostd_conn.get_pass_strength(password=password,
                                             policy_name=policy_name)
         except Exception as e:
-            msg = f"Failed to get password score from hostd: {e}"
-            self.logger.warning(msg)
+            log_msg = _("Failed to get password score from hostd: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             score = 0
         finally:
             hostd_conn.close()
@@ -355,7 +356,8 @@ class OfflineToken(object):
 
         # Check password strength.
         if not iterations and self.check_pass_strength:
-            self.logger.debug("Requesting password strength score...")
+            log_msg = _("Requesting password strength score...", log=True)[1]
+            self.logger.debug(log_msg)
             policy_name = None
             if self.check_pass_strength != "auto":
                 policy_name = self.check_pass_strength
@@ -365,7 +367,8 @@ class OfflineToken(object):
             iterations = self.iterations_by_score[score]
             # Set iterations to be stored in offline token config.
             self.enc_iterations = iterations
-            self.logger.debug(f"Got password score: {score}")
+            log_msg = _("Got password score: {score}", log=True)[1]
+            self.logger.debug(log_msg)
 
         # Derive encryption key from password.
         try:
@@ -379,9 +382,10 @@ class OfflineToken(object):
                                     hash_type=key_function,
                                     quiet=False)
         except Exception as e:
-            msg = _("Error deriving encryption key for offline token encryption: {error}")
+            msg, log_msg = _("Error deriving encryption key for offline token encryption: {error}", log=True)
             msg = msg.format(error=e)
-            self.logger.critical(msg, exc_info=True)
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg, exc_info=True)
             raise OTPmeException(msg)
 
         # Get key and salt.
@@ -607,7 +611,9 @@ class OfflineToken(object):
                     msg = _("Cannot find second factor token of: {token_path}")
                     msg = msg.format(token_path=login_token.rel_path)
                     raise OTPmeException(msg)
-                self.logger.debug(f"Found offline second factor token: {login_token.sftoken.rel_path}")
+                log_msg = _("Found offline second factor token: {sftoken}", log=True)[1]
+                log_msg = log_msg.format(sftoken=login_token.sftoken.rel_path)
+                self.logger.debug(log_msg)
             return cached_tokens
 
     def load(self):
@@ -708,7 +714,8 @@ class OfflineToken(object):
                 login_age = int((time.time() - login_time))
                 if instance.offline_expiry > 0 \
                 and login_age >= instance.offline_expiry:
-                    self.logger.info("Removing outdated offline tokens...")
+                    log_msg = _("Removing outdated offline tokens...", log=True)[1]
+                    self.logger.info(log_msg)
                     self.clear()
                     break
                 try:
@@ -718,7 +725,8 @@ class OfflineToken(object):
                 unused_age = int((time.time() - last_token_usage))
                 if instance.offline_unused_expiry > 0 \
                 and unused_age >= instance.offline_unused_expiry:
-                    self.logger.info("Removing outdated (unused) offline tokens...")
+                    log_msg = _("Removing outdated (unused) offline tokens...", log=True)[1]
+                    self.logger.info(log_msg)
                     self.clear()
                     break
 
@@ -765,8 +773,9 @@ class OfflineToken(object):
                 msg = _("Error writing token config: {error}")
                 msg = msg.format(error=e)
                 raise OTPmeException(msg)
-            msg = f"Cached token '{instance.rel_path}' for offline logins."
-            self.logger.info(msg)
+            log_msg = _("Cached token '{token_path}' for offline logins.", log=True)[1]
+            log_msg = log_msg.format(token_path=instance.rel_path)
+            self.logger.info(log_msg)
 
     def save_rsp(self, session_id, realm, site, rsp, slp, session_key=None,
         login_time=None, session_timeout=None, session_unused_timeout=None,
@@ -841,9 +850,11 @@ class OfflineToken(object):
         encrypted_rsp = encode(encrypted_rsp, "hex")
 
         if update:
-            self.logger.debug("Updating RSP in session file...")
+            log_msg = _("Updating RSP in session file...", log=True)[1]
+            self.logger.debug(log_msg)
         else:
-            self.logger.debug("Saving RSP to session file...")
+            log_msg = _("Saving RSP to session file...", log=True)[1]
+            self.logger.debug(log_msg)
 
         # Update session data.
         session_config['UPDATE'] = time.time()
@@ -857,9 +868,11 @@ class OfflineToken(object):
             session_config['SESSION_UUID'] = session_uuid
         if offline_session is not None:
             if offline_session:
-                self.logger.info("Offline session keeping is enabled.")
+                log_msg = _("Offline session keeping is enabled.", log=True)[1]
+                self.logger.info(log_msg)
             else:
-                self.logger.info("Offline session keeping is disabled.")
+                log_msg = _("Offline session keeping is disabled.", log=True)[1]
+                self.logger.info(log_msg)
             session_config['OFFLINE'] = offline_session
         if shares is not None:
             session_config['SHARES'] = shares
@@ -876,9 +889,13 @@ class OfflineToken(object):
                                     mode=0o600,
                                     user_acls=self.file_acls)
             if update:
-                self.logger.debug(f"Updated RSP in file: {session_file}")
+                log_msg = _("Updated RSP in file: {session_file}", log=True)[1]
+                log_msg = log_msg.format(session_file=session_file)
+                self.logger.debug(log_msg)
             else:
-                self.logger.debug(f"Saved RSP to file: {session_file}")
+                log_msg = _("Saved RSP to file: {session_file}", log=True)[1]
+                log_msg = log_msg.format(session_file=session_file)
+                self.logger.debug(log_msg)
             # Create the "offline session" link.
             offline_session_link = self.get_session_file()
             if os.path.islink(offline_session_link):
@@ -1008,13 +1025,16 @@ class OfflineToken(object):
         if not remove_session:
             return
 
-        self.logger.debug(f"Removing login session: {session_id}")
+        log_msg = _("Removing login session: {session_id}", log=True)[1]
+        log_msg = log_msg.format(session_id=session_id)
+        self.logger.debug(log_msg)
         try:
             shutil.rmtree(session_dir)
         except Exception as e:
-            msg = _("Error removing offline session: {error}")
+            msg, log_msg = _("Error removing offline session: {error}", log=True)
             msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             raise OTPmeException(msg)
 
     def remove_outdated_session_dirs(self):
@@ -1039,7 +1059,9 @@ class OfflineToken(object):
                     agent_vars = fd.read()
                     fd.close()
                 except Exception as e:
-                    self.logger.warning(f"Unable to read SSH agent PID from file: {e}")
+                    log_msg = _("Unable to read SSH agent PID from file: {e}", log=True)[1]
+                    log_msg = log_msg.format(e=e)
+                    self.logger.warning(log_msg)
             if agent_vars:
                 # Try to get agent variables from file.
                 ssh_agent_name, \
@@ -1050,10 +1072,15 @@ class OfflineToken(object):
                     pids = stuff.get_pid(user=self.username, name=ssh_agent_name)
                     for pid in pids:
                         if str(pid) == str(ssh_agent_pid):
-                            self.logger.debug(f"Killing orphan SSH agent: {ssh_agent_name} ({ssh_agent_pid})")
+                            log_msg = _("Killing orphan SSH agent: {ssh_agent_name} ({ssh_agent_pid})", log=True)[1]
+                            log_msg = log_msg.format(ssh_agent_name=ssh_agent_name,
+                                                    ssh_agent_pid=ssh_agent_pid)
+                            self.logger.debug(log_msg)
                             stuff.kill_pid(ssh_agent_pid, timeout=5)
                             break
-            self.logger.debug(f"Removing outdated session dir: {session_dir}")
+            log_msg = _("Removing outdated session dir: {session_dir}", log=True)[1]
+            log_msg = log_msg.format(session_dir=session_dir)
+            self.logger.debug(log_msg)
             try:
                 shutil.rmtree(session_dir)
             except Exception as e:
@@ -1089,10 +1116,14 @@ class OfflineToken(object):
             unused_age = time.time() - update_time
             # Remove session outdated by timeout.
             if session_age > session_timeout * 60:
-                self.logger.debug(f"Removing outdated session: {session_file}")
+                log_msg = _("Removing outdated session: {session_file}", log=True)[1]
+                log_msg = log_msg.format(session_file=session_file)
+                self.logger.debug(log_msg)
                 filetools.delete(session_file)
             elif unused_age > session_unused_timeout * 60:
-                self.logger.debug(f"Removing outdated (unused) session: {session_file}")
+                log_msg = _("Removing outdated (unused) session: {session_file}", log=True)[1]
+                log_msg = log_msg.format(session_file=session_file)
+                self.logger.debug(log_msg)
                 filetools.delete(session_file)
         # Remove login session if no more server session exists.
         self.remove_session(session_id)
@@ -1168,7 +1199,9 @@ class OfflineToken(object):
                                     user=self.username,
                                     mode=0o600,
                                     user_acls=self.file_acls)
-            self.logger.debug(f"Saved script to file: {script_file}")
+            log_msg = _("Saved script to file: {script_file}", log=True)[1]
+            log_msg = log_msg.format(script_file=script_file)
+            self.logger.debug(log_msg)
         except Exception as e:
             msg = _("Error writing script file: {error}")
             msg = msg.format(error=e)
@@ -1223,9 +1256,10 @@ class OfflineToken(object):
                 try:
                     token_uuid = filetools.read_data_file(config_file, ['UUID'])['UUID']
                 except Exception as e:
-                    msg = _("Error reading token UUID: {error}")
+                    msg, log_msg = _("Error reading token UUID: {error}", log=True)
                     msg = msg.format(error=e)
-                    self.logger.critical(msg)
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg)
                     raise OTPmeException(msg)
                 used_otp_dir = f"{self.used_dir}/{self.user_uuid}/otp/{token_uuid}"
                 token_counter_dir = f"{self.used_dir}/{self.user_uuid}/counter/{token_uuid}"
@@ -1304,8 +1338,9 @@ class OfflineToken(object):
                 msg = _("Failed to decrypt offline token.")
                 raise OTPmeException(msg)
         else:
-            msg = f"Loading offline {object_type} without decrypting: {object_id}"
-            self.logger.debug(msg)
+            log_msg = _("Loading offline {object_type} without decrypting: {object_id}", log=True)[1]
+            log_msg = log_msg.format(object_type=object_type, object_id=object_id)
+            self.logger.debug(log_msg)
             try:
                 object_config = ObjectConfig(object_id, object_config, encrypted=False)
                 object_config = object_config.remove_headers()
@@ -1360,9 +1395,8 @@ class OfflineToken(object):
                 if self.need_encryption:
                     encryption = self.enc_type
                 else:
-                    msg = ("Saving offline data key to unencrypted "
-                            "offline token!!")
-                    self.logger.warning(msg)
+                    log_msg = _("Saving offline data key to unencrypted offline token!",  log=True)[1]
+                    self.logger.warning(log_msg)
                 object_config.add(key='OTPME_OFFLINE_DATA_KEY',
                                     value=offline_data_key,
                                     encryption=encryption)
@@ -1377,8 +1411,8 @@ class OfflineToken(object):
                 if self.need_encryption:
                     encryption = self.enc_type
                 else:
-                    msg = ("Saving session key to unencrypted offline token!!")
-                    self.logger.warning(msg)
+                    log_msg = _("Saving session key to unencrypted offline token!", log=True)[1]
+                    self.logger.warning(log_msg)
                 object_config.add(key='OTPME_SESSION_KEY',
                                 value=session_key,
                                 encryption=encryption)
@@ -1564,7 +1598,8 @@ class OfflineToken(object):
         try:
             shutil.rmtree(self.offline_dir)
         except Exception as e:
-            msg = _("Error removing offline token directory: {error}")
+            msg, log_msg = _("Error removing offline token directory: {error}", log=True)
             msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             raise OTPmeException(msg)

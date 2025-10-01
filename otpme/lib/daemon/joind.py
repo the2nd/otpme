@@ -40,7 +40,7 @@ class JoinDaemon(OTPmeDaemon):
         self.max_conn = 100
         # FIXME: where to configure socket banner?
         # set socket banner.
-        msg = _("{status} {name} {version}")
+        msg = "{status} {name} {version}"
         msg = msg.format(status=status_codes.OK, name=self.full_name, version=config.my_version)
         self.socket_banner = msg
 
@@ -65,16 +65,18 @@ class JoinDaemon(OTPmeDaemon):
                 #    time.sleep(0.001)
                 #    continue
                 except Exception as e:
-                    msg = _("Error receiving daemon message: {error}")
+                    msg, log_msg = _("Error receiving daemon message: {error}", log=True)
                     msg = msg.format(error=e)
-                    self.logger.critical(msg, exc_info=True)
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg, exc_info=True)
                     raise OTPmeException(msg)
 
                 # Check if command can be handled by parent class.
                 try:
                     self._handle_daemon_command(sender, daemon_command, data)
                 except UnknownCommand as e:
-                    self.logger.warning(str(e))
+                    log_msg = str(e)
+                    self.logger.warning(log_msg)
                 except DaemonQuit:
                     break
                 except DaemonReload:
@@ -87,6 +89,6 @@ class JoinDaemon(OTPmeDaemon):
             except (KeyboardInterrupt, SystemExit):
                 pass
             except Exception as e:
-                msg = _("Unhandled error in joind: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Unhandled error in joind: {error}", log=True)
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)

@@ -528,9 +528,8 @@ class OtppushToken(Token):
             return callback.error(msg)
 
         if self.phone_number is None:
-            msg = _("No phone number defined for token. Push script needs to "
-                    "know how to get users phone number.")
-            logger.info(msg)
+            msg, log_msg = _("No phone number defined for token. Push script needs to know how to get users phone number.", log=True)
+            logger.info(log_msg)
             callback.send(msg)
 
         # Get user instance of token owner.
@@ -565,9 +564,9 @@ class OtppushToken(Token):
 
 
         push_script_oid = backend.get_oid(object_type="script", uuid=self.push_script)
-        msg = _("Starting token push script: {script}")
-        msg = msg.format(script=push_script_oid)
-        logger.debug(msg)
+        log_msg = _("Starting token push script: {script}", log=True)[1]
+        log_msg = log_msg.format(script=push_script_oid)
+        logger.debug(log_msg)
 
         # Get groups the user is in.
         owner_groups = owner.get_groups()
@@ -582,16 +581,18 @@ class OtppushToken(Token):
                                         groups=owner_groups)
         except Exception as e:
             config.raise_exception()
-            msg = _("Error running token push script: {error}")
+            msg, log_msg = _("Error running token push script: {error}", log=True)
             msg = msg.format(error=e)
-            logger.warning(msg)
+            log_msg = log_msg.format(error=e)
+            logger.warning(log_msg)
             return callback.error(msg)
 
         # Check auth script return code.
         if not push_script_result:
-            msg = _("Token push script failed: {script}")
+            msg, log_msg = _("Token push script failed: {script}", log=True)
             msg = msg.format(script=push_script_oid)
-            logger.warning(msg)
+            log_msg = log_msg.format(script=push_script_oid)
+            logger.warning(log_msg)
             return callback.error(msg)
 
         return callback.ok()

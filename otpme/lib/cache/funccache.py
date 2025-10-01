@@ -102,9 +102,9 @@ class Cache(object):
         self._stats[cache_name] = [0, 0]
         if config.debug_level("func_cache_adds") > 0 \
         or config.debug_level("func_cache_hits") > 0:
-            msg = _("Initialized cache: {self.name} ({cache_name}): {cache_type}:maxsize={maxsize}")
-            msg = msg.format(self.name, cache_name=cache_name, cache_type=cache_type, maxsize=maxsize)
-            config.logger.debug(msg)
+            log_msg = _("Initialized cache: {self.name} ({cache_name}): {cache_type}:maxsize={maxsize}", log=True)[1]
+            log_msg = log_msg.format(self.name, cache_name=cache_name, cache_type=cache_type, maxsize=maxsize)
+            config.logger.debug(log_msg)
         return new_cache
 
     def get_cache_name(self, func_args, func_kwargs):
@@ -235,11 +235,11 @@ class Cache(object):
                         and self.name not in config.debug_func_caches:
                             log_hit = False
                     if log_hit:
-                        msg = _("Got value from cache: {self.name}: ({cache_name}): {method_name}")
-                        msg = msg.format(self.name, cache_name=cache_name, method_name=method_name)
+                        log_msg = _("Got value from cache: {self.name}: ({cache_name}): {method_name}", log=True)[1]
+                        log_msg = log_msg.format(self.name, cache_name=cache_name, method_name=method_name)
                         if config.debug_level("func_cache_hits") > 2:
-                            msg = f"{msg}: {result}"
-                        config.logger.debug(msg)
+                            log_msg = f"{log_msg}: {result}"
+                        config.logger.debug(log_msg)
                     try:
                         self._stats[cache_name][0] += 1
                     except:
@@ -265,11 +265,11 @@ class Cache(object):
                         and self.name not in config.debug_func_caches:
                             log_hit = False
                     if log_hit:
-                        msg = _("Got value from shared cache: {self.name}: ({cache_name}): {method_name}")
-                        msg = msg.format(self.name, cache_name=cache_name, method_name=method_name)
+                        log_msg = _("Got value from shared cache: {self.name}: ({cache_name}): {method_name}", log=True)[1]
+                        log_msg = log_msg.format(self.name, cache_name=cache_name, method_name=method_name)
                         if config.debug_level("func_cache_hits") > 2:
-                            msg = f"{msg}: {result}"
-                        config.logger.debug(msg)
+                            log_msg = f"{log_msg}: {result}"
+                        config.logger.debug(log_msg)
                     try:
                         self._stats[cache_name][0] += 1
                     except:
@@ -313,11 +313,11 @@ class Cache(object):
                         and self.name not in config.debug_func_caches:
                             log_add = False
                     if log_add:
-                        msg = _("Added value to cache: {self.name}: ({cache_name}): {method_name}")
-                        msg = msg.format(self.name, cache_name=cache_name, method_name=method_name)
+                        log_msg = _("Added value to cache: {self.name}: ({cache_name}): {method_name}", log=True)[1]
+                        log_msg = log_msg.format(self.name, cache_name=cache_name, method_name=method_name)
                         if config.debug_level("func_cache_adds") > 2:
-                            msg = f"{msg}: {result}"
-                        config.logger.debug(msg)
+                            log_msg = f"{log_msg}: {result}"
+                        config.logger.debug(log_msg)
                 except ValueError:
                     # Value too large.
                     pass
@@ -334,11 +334,11 @@ class Cache(object):
                         and self.name not in config.debug_func_caches:
                             log_add = False
                     if log_add:
-                        msg = _("Added value to shared cache: {self.name}: ({cache_name}): {method_name}")
-                        msg = msg.format(self.name, cache_name=cache_name, method_name=method_name)
+                        log_msg = _("Added value to shared cache: {self.name}: ({cache_name}): {method_name}", log=True)[1]
+                        log_msg = log_msg.format(self.name, cache_name=cache_name, method_name=method_name)
                         if config.debug_level("func_cache_adds") > 2:
-                            msg = f"{msg}: {result}"
-                        config.logger.debug(msg)
+                            log_msg = f"{log_msg}: {result}"
+                        config.logger.debug(log_msg)
                 except ValueError:
                     # Value too large.
                     pass
@@ -385,9 +385,9 @@ class Cache(object):
             return
         if config.debug_level("func_cache_adds") > 0 \
         or config.debug_level("func_cache_hits") > 0:
-            msg = _("Clearing cache: {self.name}: ({cache_name})")
-            msg = msg.format(self.name, cache_name=cache_name)
-            config.logger.debug(msg)
+            log_msg = _("Clearing cache: {self.name}: ({cache_name})", log=True)[1]
+            log_msg = log_msg.format(self.name, cache_name=cache_name)
+            config.logger.debug(log_msg)
         # Clear local cache.
         try:
             _cache.clear()

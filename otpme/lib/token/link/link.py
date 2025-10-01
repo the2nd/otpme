@@ -226,15 +226,14 @@ class LinkToken(Token):
             dst_token = backend.get_object(object_type="token",
                                     uuid=self.destination_token)
             if not dst_token:
-                msg = _("Uhhh destination token '{destination_token}' of token '{rel_path}' does "
-                    "not exist!!!")
-                msg = msg.format(destination_token=self.destination_token, rel_path=self.rel_path)
-                logger.critical(msg)
+                log_msg = _("Uhhh destination token '{destination_token}' of token '{rel_path}' does not exist!!!", log=True)[1]
+                log_msg = log_msg.format(destination_token=self.destination_token, rel_path=self.rel_path)
+                logger.critical(log_msg)
             return dst_token
         else:
-            msg = _("No destination token configured for: {rel_path}")
-            msg = msg.format(rel_path=self.rel_path)
-            logger.warning(msg)
+            log_msg = _("No destination token configured for: {rel_path}", log=True)[1]
+            log_msg = log_msg.format(rel_path=self.rel_path)
+            logger.warning(log_msg)
         return None
 
     @object_lock(full_lock=True)

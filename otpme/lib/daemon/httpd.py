@@ -104,9 +104,9 @@ class HttpDaemon(OTPmeDaemon):
             # Try to create file.
             try:
                 if os.path.exists(tmp_file):
-                    msg = _("Cert file '{file}' exists, removing.")
-                    msg = msg.format(file=tmp_file)
-                    self.logger.warning(msg)
+                    log_msg = _("Cert file '{file}' exists, removing.", log=True)[1]
+                    log_msg = log_msg.format(file=tmp_file)
+                    self.logger.warning(log_msg)
                 # Create file.
                 fd = open(tmp_file, "w")
                 # Set permissions.
@@ -166,7 +166,9 @@ class HttpDaemon(OTPmeDaemon):
         # Notify controld that we are ready.
         self.comm_handler.send("controld", command="ready")
 
-        self.logger.info(f"{self.full_name} started")
+        log_msg = _("{full_name} started", log=True)[1]
+        log_msg = log_msg.format(full_name=self.full_name)
+        self.logger.info(log_msg)
 
         # Run in loop unitl we get a signal.
         while True:
@@ -182,16 +184,18 @@ class HttpDaemon(OTPmeDaemon):
                 #    time.sleep(0.001)
                 #    continue
                 except Exception as e:
-                    msg = _("Error receiving daemon message: {error}")
+                    msg, log_msg = _("Error receiving daemon message: {error}", log=True)
                     msg = msg.format(error=e)
-                    self.logger.critical(msg, exc_info=True)
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg, exc_info=True)
                     raise OTPmeException(msg)
 
                 # Check if command can be handled by parent class.
                 try:
                     self._handle_daemon_command(sender, daemon_command, data)
                 except UnknownCommand as e:
-                    self.logger.warning(str(e))
+                    log_msg = str(e)
+                    self.logger.warning(log_msg)
                 except DaemonQuit:
                     break
                 except DaemonReload:
@@ -199,9 +203,9 @@ class HttpDaemon(OTPmeDaemon):
             except (KeyboardInterrupt, SystemExit):
                 pass
             except Exception as e:
-                msg = _("Unhandled error in httpd: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Unhandled error in httpd: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
 
         # Stop flask.
         if config.daemonize:

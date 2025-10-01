@@ -917,9 +917,9 @@ class Node(OTPmeHost):
                                     value=self.vote_script,
                                     return_type="instance")
         if not result:
-            msg = _("Unknown vote script: {vote_script}")
-            msg = msg.format(vote_script=self.vote_script)
-            logger.warning(msg)
+            log_msg = _("Unknown vote script: {vote_script}", log=True)[1]
+            log_msg = log_msg.format(vote_script=self.vote_script)
+            logger.warning(log_msg)
             return 1
 
         vote_script = result[0]
@@ -937,9 +937,9 @@ class Node(OTPmeHost):
                                         user=config.user,
                                         group=config.group)
         except Exception as e:
-            msg = _("Error running node vote script: {e}")
-            msg = msg.format(e=e)
-            logger.warning(msg)
+            log_msg = _("Error running node vote script: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            logger.warning(log_msg)
             return 1
 
         exit_code = vote_script_result[0]

@@ -53,15 +53,18 @@ def instantiate(p):
     """ Module Instantiation.  0 for success, -1 for failure. """
     try:
         config.verify()
-        log(radiusd.L_DBG, _('OTPme config verfied successful.'))
+        log_msg = _('OTPme config verfied successful.', log=True)[1]
+        log(radiusd.L_DBG, log_msg)
     except Exception as e:
-        msg = _('ERROR verifying OTPme config: {e}')
-        msg = msg.format(e=e)
-        log(radiusd.L_ERR, msg)
+        log_msg = _('ERROR verifying OTPme config: {e}', log=True)[1]
+        log_msg = log_msg.format(e=e)
+        log(radiusd.L_ERR, log_msg)
         return -1
 
-    log(radiusd.L_INFO, "Instantiated OTPme module.")
-    logger.info("Instantiated freeradius module.")
+    log_msg = _("Instantiated OTPme module.", log=True)[1]
+    log(radiusd.L_INFO, log_msg)
+    log_msg = _("Instantiated freeradius module.", log=True)[1]
+    logger.info(log_msg)
     return 0
 
 
@@ -115,7 +118,9 @@ def authenticate(authData):
             client_ip = decode(client_ip, "hex")
         elif t[0] == 'EAP-Message':
             eap_message = re.sub('^0x', '', t[1])
-            logger.debug(f"Got EAP-Message: {eap_message}")
+            log_msg = _("Got EAP-Message: {eap_message}", log=True)[1]
+            log_msg = log_msg.format(eap_message=eap_message)
+            logger.debug(log_msg)
         elif t[0] == 'EAP-Type':
                 if t[1] == "MS-CHAP-V2":
                     eap_type = t[1]
@@ -161,14 +166,14 @@ def authenticate(authData):
             auth_type = "mschap"
         else:
             if not username:
-                logger.warning("Invalid request. Request is missing "
-                                "'MS-CHAP-User-Name'.")
+                log_msg = _("Invalid request. Request is missing 'MS-CHAP-User-Name'.", log=True)[1]
+                logger.warning(log_msg)
             if not mschapv2_response:
-                logger.warning("Invalid request. Request is missing "
-                                "'MS-CHAP2-Response'.")
+                log_msg = _("Invalid request. Request is missing 'MS-CHAP2-Response'.", log=True)[1]
+                logger.warning(log_msg)
             if not auth_challenge:
-                logger.warning("Invalid request. Request is missing "
-                                "'MS-CHAP-Challenge'.")
+                log_msg = _("Invalid request. Request is missing 'MS-CHAP-Challenge'.", log=True)[1]
+                logger.warning(log_msg)
 
             # Set request failed.
             request_failed = True
@@ -190,11 +195,14 @@ def authenticate(authData):
             auth_type = "clear-text"
         else:
             if not username:
-                logger.warning("Invalid request. Request is missing 'User-Name'.")
+                log_msg = _("Invalid request. Request is missing 'User-Name'.", log=True)[1]
+                logger.warning(log_msg)
             if not password:
-                logger.warning("Invalid request. Request is missing 'User-Password'.")
+                log_msg = _("Invalid request. Request is missing 'User-Password'.", log=True)[1]
+                logger.warning(log_msg)
             if not nasid and not client_ip:
-                logger.warning("Invalid request. Request is missing NAS-Identifier and NAS-IP-Address.")
+                log_msg = _("Invalid request. Request is missing NAS-Identifier and NAS-IP-Address.", log=True)[1]
+                logger.warning(log_msg)
 
             # Set request_failed.
             request_failed = True
@@ -203,9 +211,9 @@ def authenticate(authData):
 
     # If this is a valid request try to authenticate the user.
     if not request_failed:
-        msg = _("Got valid {auth_type} radius request: user={username},client={nasid},client_ip={client_ip}")
-        msg = msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip)
-        logger.info(msg)
+        log_msg = _("Got valid {auth_type} radius request: user={username},client={nasid},client_ip={client_ip}", log=True)[1]
+        log_msg = log_msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip)
+        logger.info(log_msg)
 
         # Command args for authd request.
         command_args = {
@@ -240,7 +248,8 @@ def authenticate(authData):
                                         interactive=False,
                                         **conn_kwargs)
             # Send auth request.
-            logger.debug("Sending authentication request...")
+            log_msg = _("Sending authentication request...", log=True)[1]
+            logger.debug(log_msg)
             auth_status, \
             status_code, \
             auth_reply, \
@@ -262,9 +271,9 @@ def authenticate(authData):
                                 ('Auth-Type', 'python_otpme'),
                             )
 
-                msg = _("Radius {auth_type} request successful: user={username},client={nasid},client_ip={client_ip}")
-                msg = msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip)
-                logger.info(msg)
+                log_msg = _("Radius {auth_type} request successful: user={username},client={nasid},client_ip={client_ip}", log=True)[1]
+                log_msg = log_msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip)
+                logger.info(log_msg)
 
                 # Set return code.
                 return_code = radiusd.RLM_MODULE_OK
@@ -279,9 +288,9 @@ def authenticate(authData):
                                 ('Auth-Type', 'python_otpme'),
                             )
 
-                msg = _("Radius {auth_type} request failed: user={username},client={nasid},client_ip={client_ip}: {auth_message}")
-                msg = msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip, auth_message=auth_message)
-                logger.info(msg)
+                log_msg = _("Radius {auth_type} request failed: user={username},client={nasid},client_ip={client_ip}: {auth_message}", log=True)[1]
+                log_msg = log_msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip, auth_message=auth_message)
+                logger.info(log_msg)
 
                 # Set return code.
                 return_code = radiusd.RLM_MODULE_REJECT
@@ -316,7 +325,8 @@ def authenticate(authData):
                                         interactive=False,
                                         **conn_kwargs)
             # Send auth request.
-            logger.debug("Sending MSCHAP authentication request...")
+            log_msg = _("Sending MSCHAP authentication request...", log=True)[1]
+            logger.debug(log_msg)
             auth_status, \
             status_code, \
             auth_reply, \
@@ -364,17 +374,19 @@ def authenticate(authData):
                 success_response_hex = encode(success_response, "hex")
 
                 # Debug output.
-                msg = _("adding MS-CHAP2-Success: '{success_response}'")
-                msg = msg.format(success_response=success_response)
-                log(radiusd.L_DBG, msg)
-                msg = _("adding MS-MPPE-Send-Key: '{master_send_key}'")
-                msg = msg.format(master_send_key=master_send_key)
-                log(radiusd.L_DBG, msg)
-                msg = _("adding MS-MPPE-Recv-Key: '{master_recv_key}'")
-                msg = msg.format(master_recv_key=master_recv_key)
-                log(radiusd.L_DBG, msg)
-                log(radiusd.L_DBG, _("adding MS-MPPE-Encryption-Policy: '0x00000001'"))
-                log(radiusd.L_DBG, _("adding MS-MPPE-Encryption-Types: '0x00000006'"))
+                log_msg = _("adding MS-CHAP2-Success: '{success_response}'", log=True)[1]
+                log_msg = log_msg.format(success_response=success_response)
+                log(radiusd.L_DBG, log_msg)
+                log_msg = _("adding MS-MPPE-Send-Key: '{master_send_key}'", log=True)[1]
+                log_msg = log_msg.format(master_send_key=master_send_key)
+                log(radiusd.L_DBG, log_msg)
+                log_msg = _("adding MS-MPPE-Recv-Key: '{master_recv_key}'", log=True)[1]
+                log_msg = log_msg.format(master_recv_key=master_recv_key)
+                log(radiusd.L_DBG, log_msg)
+                log_msg = _("adding MS-MPPE-Encryption-Policy: '0x00000001'", log=True)[1]
+                log(radiusd.L_DBG, log_msg)
+                log_msg = _("adding MS-MPPE-Encryption-Types: '0x00000006'", log=True)[1]
+                log(radiusd.L_DBG, log_msg)
 
                 # Build replyTuple for rlm_python.
                 reply_tuple = (
@@ -387,16 +399,17 @@ def authenticate(authData):
                                 ('MS-MPPE-Recv-Key', f"0x{master_recv_key}"),
                             )
 
-                log(radiusd.L_DBG, "adding Auth-Type: 'MS-CHAP'")
+                log_msg = _("adding Auth-Type: 'MS-CHAP'", log=True)[1]
+                log(radiusd.L_DBG, log_msg)
 
                 # Build configTuple for rlm_python.
                 config_tuple =  (
                                     ('Auth-Type', 'MS-CHAP'),
                                 )
 
-                msg = _("Radius {auth_type} request successful: user={username},client={nasid},client_ip={client_ip}")
-                msg = msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip)
-                logger.info(msg)
+                log_msg = _("Radius {auth_type} request successful: user={username},client={nasid},client_ip={client_ip}", log=True)[1]
+                log_msg = log_msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip)
+                logger.info(log_msg)
 
                 # Set return code.
                 return_code = radiusd.RLM_MODULE_OK
@@ -408,9 +421,9 @@ def authenticate(authData):
                 # https://www.ietf.org/rfc/rfc1994.txt
                 failure_response = str("E=691 R=0")
 
-                msg = _("adding MS-CHAP-Error: '{failure_response}'")
-                msg = msg.format(failure_response=failure_response)
-                log(radiusd.L_DBG, msg)
+                log_msg = _("adding MS-CHAP-Error: '{failure_response}'", log=True)[1]
+                log_msg = log_msg.format(failure_response=failure_response)
+                log(radiusd.L_DBG, log_msg)
 
                 # Build replyTuple for rlm_python.
                 reply_tuple = (
@@ -418,16 +431,17 @@ def authenticate(authData):
                                 ('MS-CHAP-Error', failure_response),
                             )
 
-                log(radiusd.L_DBG, "adding Auth-Type: 'MS-CHAP'")
+                log_msg = _("adding Auth-Type: 'MS-CHAP'", log=True)[1]
+                log(radiusd.L_DBG, log_msg)
 
                 # Build configTuple for rlm_python.
                 config_tuple =  (
                                     ('Auth-Type', 'MS-CHAP'),
                                 )
 
-                msg = _("Radius {auth_type} request failed: user={username},client={nasid},client_ip={client_ip}: {auth_message}")
-                msg = msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip, auth_message=auth_message)
-                logger.info(msg)
+                log_msg = _("Radius {auth_type} request failed: user={username},client={nasid},client_ip={client_ip}: {auth_message}", log=True)[1]
+                log_msg = log_msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip, auth_message=auth_message)
+                logger.info(log_msg)
 
                 # Set return code.
                 return_code = radiusd.RLM_MODULE_REJECT

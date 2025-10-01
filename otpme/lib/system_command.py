@@ -43,8 +43,8 @@ def run(command, user=None, group=True, groups=True, return_proc=False,
     disable_ctrl_c=False, **kwargs):
     """ Run system command. """
     if shell is True:
-        msg = _("Running system command with shell=True is dangerous!!!")
-        logger.warning(msg)
+        log_msg = _("Running system command with shell=True is dangerous!!!", log=True)[1]
+        logger.warning(log_msg)
 
     if user is None:
         user = config.system_user()
@@ -57,9 +57,8 @@ def run(command, user=None, group=True, groups=True, return_proc=False,
             groups = user_groups['groups']
 
     if user and not group:
-        msg = _("Running system command with different user but keeping group "
-                "membership.")
-        logger.warning(msg)
+        log_msg = _("Running system command with different user but keeping group membership.", log=True)[1]
+        logger.warning(log_msg)
 
     if call:
         stdout = None

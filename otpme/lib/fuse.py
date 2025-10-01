@@ -196,22 +196,22 @@ class OTPmeFS(fuse.Operations):
                             msg = msg.format(e=e)
                             raise OSError(errno.EINVAL, msg)
                     node = random.choice(remaining_nodes)
-                    msg = _("Trying connection to node: {node}")
-                    msg = msg.format(node=node)
-                    self.logger.info(msg)
+                    log_msg = _("Trying connection to node: {node}", log=True)[1]
+                    log_msg = log_msg.format(node=node)
+                    self.logger.info(log_msg)
                     try:
                         self.fsd_conn = self.get_fsd_connection(node)
                     except Exception as e:
                         tried_nodes.append(node)
                         self.fsd_conn = None
-                        msg = _("Failed to get fsd connection: {e}")
-                        msg = msg.format(e=e)
-                        self.logger.warning(msg)
+                        log_msg = _("Failed to get fsd connection: {e}", log=True)[1]
+                        log_msg = log_msg.format(e=e)
+                        self.logger.warning(log_msg)
                         #config.raise_exception()
                         if len(tried_nodes) == len(nodes):
-                            msg = _("Nodes failed: {tried_nodes}")
-                            msg = msg.format(tried_nodes=tried_nodes)
-                            self.logger.warning(msg)
+                            log_msg = _("Nodes failed: {tried_nodes}", log=True)[1]
+                            log_msg = log_msg.format(tried_nodes=tried_nodes)
+                            self.logger.warning(log_msg)
                             if command != "fsop_write":
                                 raise OSError(errno.EHOSTUNREACH, _("Server unreachable"))
                         continue
@@ -231,9 +231,9 @@ class OTPmeFS(fuse.Operations):
                                                     encode_request=False,
                                                     compress_request=False)
                     if not mount_status:
-                        msg = _("Failed to mount share: {share}: {mount_response}")
-                        msg = msg.format(share=self.share, mount_response=mount_response)
-                        self.logger.warning(msg)
+                        log_msg = _("Failed to mount share: {share}: {mount_response}", log=True)[1]
+                        log_msg = log_msg.format(share=self.share, mount_response=mount_response)
+                        self.logger.warning(log_msg)
                         if len(tried_nodes) == len(nodes):
                             self.fsd_conn.close()
                             self.fsd_conn = None
@@ -249,23 +249,23 @@ class OTPmeFS(fuse.Operations):
                     try:
                         nodes = mount_response['nodes']
                         if not nodes:
-                            msg = _("Received empty share nodes from fsd: {share}: {node}")
-                            msg = msg.format(share=self.share, node=node)
-                            self.logger.warning(msg)
+                            log_msg = _("Received empty share nodes from fsd: {share}: {node}", log=True)[1]
+                            log_msg = log_msg.format(share=self.share, node=node)
+                            self.logger.warning(log_msg)
                     except KeyError:
                         nodes = None
-                        msg = _("Mount response misses nodes: {share}: {node}")
-                        msg = msg.format(share=self.share, node=node)
-                        self.logger.info(msg)
+                        log_msg = _("Mount response misses nodes: {share}: {node}", log=True)[1]
+                        log_msg = log_msg.format(share=self.share, node=node)
+                        self.logger.info(log_msg)
                     if nodes:
                         self.nodes = nodes
                     if self.encrypted:
                         try:
                             block_size= mount_response['block_size']
                         except KeyError:
-                            msg = _("Mount response misses block size: {share}: {node}")
-                            msg = msg.format(share=self.share, node=node)
-                            self.logger.warning(msg)
+                            log_msg = _("Mount response misses block size: {share}: {node}", log=True)[1]
+                            log_msg = log_msg.format(share=self.share, node=node)
+                            self.logger.warning(log_msg)
                             self.fsd_conn.close()
                             self.fsd_conn = None
                             raise OSError(errno.ENOENT, _("Missing block size"))
@@ -276,9 +276,9 @@ class OTPmeFS(fuse.Operations):
                                 try:
                                     master_password_hash_params= mount_response['master_password_hash_params']
                                 except KeyError:
-                                    msg = _("Mount response misses master password hash parameters: {share}: {node}")
-                                    msg = msg.format(share=self.share, node=node)
-                                    self.logger.warning(msg)
+                                    log_msg = _("Mount response misses master password hash parameters: {share}: {node}", log=True)[1]
+                                    log_msg = log_msg.format(share=self.share, node=node)
+                                    self.logger.warning(log_msg)
                                     self.fsd_conn.close()
                                     self.fsd_conn = None
                                     raise OSError(errno.EACCES, _("No share key received"))
@@ -288,9 +288,9 @@ class OTPmeFS(fuse.Operations):
                                                             **master_password_hash_params)
                                     share_key = hash_data.pop("hash")
                                 except Exception as e:
-                                    msg = _("Failed to derive share key from master password: {share}: {e}")
-                                    msg = msg.format(share=self.share, e=e)
-                                    self.logger.warning(msg)
+                                    log_msg = _("Failed to derive share key from master password: {share}: {e}", log=True)[1]
+                                    log_msg = log_msg.format(share=self.share, e=e)
+                                    self.logger.warning(log_msg)
                                     self.fsd_conn.close()
                                     self.fsd_conn = None
                                     raise OSError(errno.EACCES, _("No share key received"))
@@ -298,9 +298,9 @@ class OTPmeFS(fuse.Operations):
                                 try:
                                     share_key= mount_response['share_key']
                                 except KeyError:
-                                    msg = _("Mount response misses share key: {share}: {node}")
-                                    msg = msg.format(share=self.share, node=node)
-                                    self.logger.warning(msg)
+                                    log_msg = _("Mount response misses share key: {share}: {node}", log=True)[1]
+                                    log_msg = log_msg.format(share=self.share, node=node)
+                                    self.logger.warning(log_msg)
                                     self.fsd_conn.close()
                                     self.fsd_conn = None
                                     raise OSError(errno.EACCES, _("No share key received"))
@@ -311,18 +311,19 @@ class OTPmeFS(fuse.Operations):
                                                                         key_mode=None,
                                                                         encode=False)
                                 except Exception as e:
-                                    msg = _("Failed to decrypt share key: {share}: {e}")
-                                    msg = msg.format(share=self.share, e=e)
-                                    self.logger.warning(msg)
+                                    log_msg = _("Failed to decrypt share key: {share}: {e}", log=True)[1]
+                                    log_msg = log_msg.format(share=self.share, e=e)
+                                    self.logger.warning(log_msg)
                                     self.fsd_conn.close()
                                     self.fsd_conn = None
                                     raise OSError(errno.EACCES, _("Failed to decrypt share key"))
                             try:
                                 self.setup_encryption(share_key)
                             except Exception as e:
-                                msg = _("Failed to setup encryption: {share}: {e}")
+                                msg, log_msg = _("Failed to setup encryption: {share}: {e}", log=True)
                                 msg = msg.format(share=self.share, e=e)
-                                self.logger.warning(msg)
+                                log_msg = log_msg.format(share=self.share, e=e)
+                                self.logger.warning(log_msg)
                                 self.fsd_conn.close()
                                 self.fsd_conn = None
                                 raise OSError(errno.EINVAL, msg)
@@ -332,9 +333,10 @@ class OTPmeFS(fuse.Operations):
                             self.max_name = statfs['f_namemax']
                         except:
                             pass
-                    msg = _("Share mounted: {share} ({node})")
+                    msg, log_msg = _("Share mounted: {share} ({node})", log=True)
                     msg = msg.format(share=self.share, node=node)
-                    self.logger.info(msg)
+                    log_msg = log_msg.format(share=self.share, node=node)
+                    self.logger.info(log_msg)
                     print(msg)
                     # Add share key.
                     if self.add_share_key:
@@ -345,9 +347,9 @@ class OTPmeFS(fuse.Operations):
                                                                     share_key=share_key,
                                                                     key_mode=None)
                         except Exception as e:
-                            msg = _("Failed to encrypt share key: {share}: {e}")
-                            msg = msg.format(share=self.share, e=e)
-                            self.logger.warning(msg)
+                            log_msg = _("Failed to encrypt share key: {share}: {e}", log=True)[1]
+                            log_msg = log_msg.format(share=self.share, e=e)
+                            self.logger.warning(log_msg)
                             self.fsd_conn.close()
                             self.fsd_conn = None
                             raise OSError(errno.EACCES, _("Failed to decrypt share key"))
@@ -384,9 +386,9 @@ class OTPmeFS(fuse.Operations):
             except Exception as e:
                 self.fsd_conn.close()
                 self.fsd_conn = None
-                msg = _("Failed to send data: {command}: {e}")
-                msg = msg.format(command=command, e=e)
-                self.logger.warning(msg)
+                log_msg = _("Failed to send data: {command}: {e}", log=True)[1]
+                log_msg = log_msg.format(command=command, e=e)
+                self.logger.warning(log_msg)
                 if command != "fsop_write":
                     raise OSError(errno.EHOSTUNREACH, _("Server unreachable"))
                 time.sleep(1)
@@ -1178,8 +1180,8 @@ class EncryptedFS(OTPmeFS):
                     offset += self.tag_size
                     blocks_processed += 1
                     continue
-                msg = _("Found invalid block without block len that is not a null block.")
-                self.logger.error(msg)
+                log_msg = _("Found invalid block without block len that is not a null block.", log=True)[1]
+                self.logger.error(log_msg)
                 raise fuse.FuseOSError(errno.EIO)
             # Add block_len and unencrypted_block_len to offset.
             offset += 8

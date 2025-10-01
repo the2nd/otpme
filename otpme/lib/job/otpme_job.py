@@ -93,13 +93,14 @@ class OTPmeJob(object):
 
     def _start(self):
         """ Start the job as thread and manage callback communication. """
-        self.logger.debug(f"Starting job: {self.name}")
+        log_msg = _("Starting job: {self.name}", log=True)[1]
+        self.logger.debug(log_msg)
 
         # Start job as thread.
-        msg = _("Job started: {job_name}")
-        msg = msg.format(job_name=self.name)
+        log_msg = _("Job started: {job_name}", log=True)[1]
+        log_msg = log_msg.format(job_name=self.name)
         if self.timeout is not None:
-            msg = f"{msg} (tmo {self.timeout}s)"
+            log_msg = f"{log_msg} (tmo {self.timeout}s)"
         if self.start_thread:
             self._child = multiprocessing.start_thread(name=self.job_id,
                                                     target=self.start_job,
@@ -115,8 +116,8 @@ class OTPmeJob(object):
 
         if self.start_process:
             self.pid = self._child.pid
-            msg = f"{msg} ({self._child.pid})"
-        self.logger.debug(msg)
+            log_msg = f"{log_msg} ({self._child.pid})"
+        self.logger.debug(log_msg)
 
     def check_timeout(self):
         """ Check if job timeout has been reached. """
@@ -135,9 +136,10 @@ class OTPmeJob(object):
             time.sleep(0.01)
             if not self.check_timeout():
                 continue
-            msg = _("Job timed out: {job_id} ({timeout})")
+            msg, log_msg = _("Job timed out: {job_id} ({timeout})", log=True)
             msg = msg.format(job_id=self.job_id, timeout=self.timeout)
-            self.logger.warning(msg)
+            log_msg = log_msg.format(job_id=self.job_id, timeout=self.timeout)
+            self.logger.warning(log_msg)
             self.callback.stop(False, msg, raise_exception=False)
             exit_message = _("Job '{job_name}' timed out.")
             exit_message = exit_message.format(job_name=self.name)
@@ -164,13 +166,13 @@ class OTPmeJob(object):
                 logger = config.logger
                 self.callback.stop_job = True
                 if config.active_transactions:
-                    msg = _("Job not stoppable at this stage.")
+                    msg, log_msg = _("Job not stoppable at this stage.", log=True)
                     self.callback.error(msg)
-                    logger.warning(msg)
+                    logger.warning(log_msg)
                     return
                 if _signal == 15:
-                    msg = _("Received SIGTERM.")
-                    logger.info(msg)
+                    log_msg = _("Received SIGTERM.", log=True)[1]
+                    logger.info(log_msg)
                     #self.close()
                     os._exit(0)
 
@@ -227,13 +229,15 @@ class OTPmeJob(object):
                     pass
         except OTPmeJobException as e:
             job_error = str(e)
-            self.logger.warning(job_error)
+            log_msg = job_error
+            self.logger.warning(log_msg)
             job_reply.append(job_error)
             job_status = False
         except Exception as e:
-            job_error = _("Job error running command method: {method_name}: {error}")
+            job_error, log_msg = _("Job error running command method: {method_name}: {error}", log=True)
             job_error = job_error.format(method_name=self.target_method.__name__, error=e)
-            self.logger.warning(job_error)
+            log_msg = log_msg.format(method_name=self.target_method.__name__, error=e)
+            self.logger.warning(log_msg)
             job_reply.append(job_error)
             job_log.append(job_error)
             job_status = False
@@ -268,15 +272,17 @@ class OTPmeJob(object):
             job_error = "Job failed for unknown reason."
 
         if job_status:
-            self.logger.debug(f"Job finished successful: {self.name}")
+            log_msg = _("Job finished successful: {name}", log=True)[1]
+            log_msg = log_msg.format(name=self.name)
+            self.logger.debug(log_msg)
         elif job_status is None:
-            msg = _("Job aborted: {job_name}")
-            msg = msg.format(job_name=self.name)
-            self.logger.debug(msg)
+            log_msg = _("Job aborted: {job_name}", log=True)[1]
+            log_msg = log_msg.format(job_name=self.name)
+            self.logger.debug(log_msg)
         else:
-            msg = _("Job failed: {job_name}: {error}")
-            msg = msg.format(job_name=self.name, error=job_error)
-            self.logger.debug(msg)
+            log_msg = _("Job failed: {job_name}: {error}", log=True)[1]
+            log_msg = log_msg.format(job_name=self.name, error=job_error)
+            self.logger.debug(log_msg)
 
         # Print job timings.
         if config.print_timing_results and config.daemon_mode:
@@ -332,18 +338,18 @@ class OTPmeJob(object):
             return
         # Terminate job process.
         if self._child is not None:
-            msg = _("Sending signal to job: {job_name}")
-            msg = msg.format(job_name=self.name)
-            self.logger.info(msg)
+            log_msg = _("Sending signal to job: {job_name}", log=True)[1]
+            log_msg = log_msg.format(job_name=self.name)
+            self.logger.info(log_msg)
             try:
                 stuff.kill_pid(self._child.pid, signal=signal)
             except Exception as e:
                 config.raise_exception()
             while self.job_is_alive():
                 time.sleep(0.01)
-        msg = _("Job stopped: {job_name}")
-        msg = msg.format(job_name=self.name)
-        self.logger.debug(msg)
+        log_msg = _("Job stopped: {job_name}", log=True)[1]
+        log_msg = log_msg.format(job_name=self.name)
+        self.logger.debug(log_msg)
 
         # Check if job finished before we could terminate it.
         if 'exit_status' in self.exit_info:

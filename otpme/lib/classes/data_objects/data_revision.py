@@ -93,9 +93,9 @@ def register_backend():
         data_revision_file = os.path.join(data_revision_dir, config.object_config_file_name)
         if not os.path.exists(data_revision_file):
             return
-        msg = _("Processing {path_id} {data_revision_file}")
-        msg = msg.format(path_id=path_id, data_revision_file=data_revision_file)
-        logger.debug(msg)
+        log_msg = _("Processing {path_id} {data_revision_file}", log=True)[1]
+        log_msg = log_msg.format(path_id=path_id, data_revision_file=data_revision_file)
+        logger.debug(log_msg)
         x_oid = oid_getter(data_revision_dir)
         backend.index_add(object_id=x_oid,
                         object_config="auto",

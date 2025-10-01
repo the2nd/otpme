@@ -315,14 +315,15 @@ class AutodisablePolicy(Policy):
                                     verify_acls=False,
                                     callback=callback)
         except BackendUnavailable as e:
-            msg = _("Unable to update object policy: {e}")
+            msg, log_msg = _("Unable to update object policy: {e}", log=True)
             msg = msg.format(e=e)
-            logger.warning(msg)
+            log_msg = log_msg.format(e=e)
+            logger.warning(log_msg)
             callback.send(msg)
         except Exception as e:
-            msg = _("Error updating object policy: {e}")
-            msg = msg.format(e=e)
-            logger.warning(msg)
+            log_msg = _("Error updating object policy: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            logger.warning(log_msg)
 
     def _check_auto_disable(self, hook_object, policy_add_time=None, **kwargs):
         """ Handle auto disable. """
@@ -344,13 +345,13 @@ class AutodisablePolicy(Policy):
                     exception = e
                     object_disabled = False
                 if object_disabled:
-                    msg = _("{} disabled by policy: {}: {}")
-                    msg = msg.format(hook_object.type, self.name, hook_object.name)
-                    logger.warning(msg)
+                    log_msg = _("{} disabled by policy: {}: {}", log=True)[1]
+                    log_msg = log_msg.format(hook_object.type, self.name, hook_object.name)
+                    logger.warning(log_msg)
                 else:
-                    msg = _("Cannot disable object by policy: {}: {}: {}")
-                    msg = msg.format(self.name, hook_object.rel_path, exception)
-                    logger.critical(msg)
+                    log_msg = _("Cannot disable object by policy: {}: {}: {}", log=True)[1]
+                    log_msg = log_msg.format(self.name, hook_object.rel_path, exception)
+                    logger.critical(log_msg)
                     return False
         return True
 

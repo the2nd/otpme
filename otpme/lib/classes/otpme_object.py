@@ -1088,52 +1088,53 @@ class OTPmeBaseObject(OTPmeLockObject):
         try:
             self._set_variables()
         except Exception as e:
-            msg = (f"Error loading object variables: {self}: {e}")
-            logger.critical(msg, exc_info=True)
+            log_msg = _("Error loading object variables: {self}: {e}", log=True)[1]
+            log_msg = log_msg.format(self=self, e=e)
+            logger.critical(log_msg, exc_info=True)
             config.raise_exception()
             return False
         # Set child class variables.
         try:
             self.set_variables()
         except Exception as e:
-            msg = _("Error to loading child class variables: {obj}: {error}")
-            msg = msg.format(obj=self, error=e)
-            logger.critical(msg, exc_info=True)
+            log_msg = _("Error to loading child class variables: {obj}: {error}", log=True)[1]
+            log_msg = log_msg.format(obj=self, error=e)
+            logger.critical(log_msg, exc_info=True)
             return False
         try:
             self._load_key()
         except Exception as e:
-            msg = _("Failed to load key: {oid}: {error}")
-            msg = msg.format(oid=self.oid, error=e)
-            logger.critical(msg)
+            log_msg = _("Failed to load key: {oid}: {error}", log=True)[1]
+            log_msg = log_msg.format(oid=self.oid, error=e)
+            logger.critical(log_msg)
             return False
         try:
             self._load_cert()
         except Exception as e:
-            msg = _("Failed to load cert: {oid}: {error}")
-            msg = msg.format(oid=self.oid, error=e)
-            logger.critical(msg)
+            log_msg = _("Failed to load cert: {oid}: {error}", log=True)[1]
+            log_msg = log_msg.format(oid=self.oid, error=e)
+            logger.critical(log_msg)
             return False
         try:
             self._load_cert_public_key()
         except Exception as e:
-            msg = _("Failed to load cert public key: {oid}: {error}")
-            msg = msg.format(oid=self.oid, error=e)
-            logger.critical(msg)
+            log_msg = _("Failed to load cert public key: {oid}: {error}", log=True)[1]
+            log_msg = log_msg.format(oid=self.oid, error=e)
+            logger.critical(log_msg)
             return False
         try:
             self._load_private_key()
         except Exception as e:
-            msg = _("Failed to load private key: {oid}: {error}")
-            msg = msg.format(oid=self.oid, error=e)
-            logger.critical(msg)
+            log_msg = _("Failed to load private key: {oid}: {error}", log=True)[1]
+            log_msg = log_msg.format(oid=self.oid, error=e)
+            logger.critical(log_msg)
             return False
         try:
             self._load_public_key()
         except Exception as e:
-            msg = _("Failed to load public key: {oid}: {error}")
-            msg = msg.format(oid=self.oid, error=e)
-            logger.critical(msg)
+            log_msg = _("Failed to load public key: {oid}: {error}", log=True)[1]
+            log_msg = log_msg.format(oid=self.oid, error=e)
+            logger.critical(log_msg)
             return False
 
     @load_object()
@@ -1163,8 +1164,9 @@ class OTPmeBaseObject(OTPmeLockObject):
             try:
                 object_config = read_method(object_id=self.oid)
             except Exception as e:
-                msg = (f"Error reading object config ({read_method}): {self}: {e}")
-                logger.critical(msg, exc_info=True)
+                log_msg = _("Error reading object config ({read_method}): {self}: {e}", log=True)[1]
+                log_msg = log_msg.format(read_method=read_method, self=self, e=e)
+                logger.critical(log_msg, exc_info=True)
                 return False
             # Load object config.
             if object_config:
@@ -1278,9 +1280,9 @@ class OTPmeBaseObject(OTPmeLockObject):
             except KeyError:
                 val = None
             except Exception as e:
-                msg = _("Failed to read attribute from object config: {error}")
-                msg = msg.format(error=e)
-                logger.critical(msg)
+                log_msg = _("Failed to read attribute from object config: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                logger.critical(log_msg)
                 raise
 
         # Make sure we use a copy of the value.
@@ -1288,9 +1290,9 @@ class OTPmeBaseObject(OTPmeLockObject):
             val = stuff.copy_object(val)
             #val = copy.deepcopy(val)
         except TypeError:
-            msg = _("Failed to copy attribute value: {attr}")
-            msg = msg.format(attr=attribute)
-            logger.critical(msg)
+            log_msg = _("Failed to copy attribute value: {attr}", log=True)[1]
+            log_msg = log_msg.format(attr=attribute)
+            logger.critical(log_msg)
             raise
 
         # Zero length strings should be None.
@@ -1379,10 +1381,10 @@ class OTPmeBaseObject(OTPmeLockObject):
                 return
 
             if not type_ok:
-                msg = _("Cannot update. Got wrong value for '{attribute}': "
-                        "{oid}: Wanted: {type_wanted} Got: {val}")
+                msg, log_msg = _("Cannot update. Got wrong value for '{attribute}': {oid}: Wanted: {type_wanted} Got: {val}", log=True)
                 msg = msg.format(oid=self.oid, type_wanted=type_wanted, val=repr(type(val)))
-                logger.warning(msg)
+                log_msg = log_msg.format(oid=self.oid, type_wanted=type_wanted, val=repr(type(val)))
+                logger.warning(log_msg)
                 raise OTPmeException(msg)
 
             # Make sure we set empty value right.
@@ -1444,10 +1446,9 @@ class OTPmeBaseObject(OTPmeLockObject):
 
             if not type_ok:
                 if val is not None:
-                    msg = _("Got wrong value for '{attribute}': "
-                            "{oid}: Wanted: {type_wanted} Got: {val}")
-                    msg = msg.format(oid=self.oid, type_wanted=type_wanted, val=repr(type(val)))
-                    logger.warning(msg)
+                    log_msg = _("Got wrong value for '{attribute}': {oid}: Wanted: {type_wanted} Got: {val}", log=True)[1]
+                    log_msg = log_msg.format(oid=self.oid, type_wanted=type_wanted, val=repr(type(val)))
+                    logger.warning(log_msg)
 
             # Set class variable.
             if val is None:
@@ -1535,14 +1536,17 @@ class OTPmeBaseObject(OTPmeLockObject):
         ):
         """ Write object config to backend. """
         if self.oid is None:
-            msg = (f"Object misses OID: {self}")
+            msg = _("Object misses OID: {self}")
+            msg = msg.format(self=self)
             raise OTPmeException(msg)
         if self.uuid is None:
-            msg = (f"Object misses UUID: {self.oid}")
+            msg = _("Object misses UUID: {oid}")
+            msg = msg.format(oid=self.oid)
             raise OTPmeException(msg)
         if self.type in config.tree_object_types:
             if self.name is None:
-                msg = (f"Object misses name: {self.oid}")
+                msg = _("Object misses name: {oid}")
+                msg = msg.format(oid=self.oid)
                 raise OTPmeException(msg)
 
         if no_transaction is None:
@@ -1589,9 +1593,9 @@ class OTPmeBaseObject(OTPmeLockObject):
         if not self.object_config.modified:
             return
 
-        msg = _("Writing object: {oid}")
-        msg = msg.format(oid=self.oid)
-        logger.debug(msg)
+        log_msg = _("Writing object: {oid}", log=True)[1]
+        log_msg = log_msg.format(oid=self.oid)
+        logger.debug(log_msg)
 
         # Check for replacement method when being offline (e.g. offline tokens).
         write_method = backend.write_config
@@ -1621,13 +1625,14 @@ class OTPmeBaseObject(OTPmeLockObject):
                         acl_journal=acl_journal)
         except Exception as e:
             config.raise_exception()
-            msg = _("Error writing config for {obj_type} '{oid}': {error}")
+            msg, log_msg = _("Error writing config for {obj_type} '{oid}': {error}", log=True)
             msg = msg.format(obj_type=self.type, oid=self.oid, error=e)
+            log_msg = log_msg.format(obj_type=self.type, oid=self.oid, error=e)
             if config.daemon_mode:
                 # When running in daemon mode we never want to raise an exception
                 # but log the error and return the status via callback on write
                 # failure.
-                logger.critical(msg)
+                logger.critical(log_msg)
                 return callback.error(msg, raise_exception=False)
             else:
                 return callback.error(msg)
@@ -1724,9 +1729,9 @@ class OTPmeBaseObject(OTPmeLockObject):
         **kwargs,
         ):
         """ Delete object from backend. """
-        msg = _("Deleting object: {oid}")
-        msg = msg.format(oid=self.oid)
-        logger.debug(msg)
+        log_msg = _("Deleting object: {oid}", log=True)[1]
+        log_msg = log_msg.format(oid=self.oid)
+        logger.debug(log_msg)
         # Make sure this object will not be written on cache.flush().
         self._modified = False
         cache.remove_modified_object(self.oid)
@@ -1749,9 +1754,9 @@ class OTPmeBaseObject(OTPmeLockObject):
         """ Update last_used time for this object. """
         if not self.track_last_used:
             return
-        msg = _("Updating last used timestamp of {obj_type}: {obj}")
-        msg = msg.format(obj_type=self.type, obj=self)
-        logger.debug(msg)
+        log_msg = _("Updating last used timestamp of {obj_type}: {obj}", log=True)[1]
+        log_msg = log_msg.format(obj_type=self.type, obj=self)
+        logger.debug(log_msg)
         self.last_used = int(time.time())
 
     def get_last_used_time(self, return_type: str="epoch"):
@@ -1761,9 +1766,9 @@ class OTPmeBaseObject(OTPmeLockObject):
             try:
                 last_used = datetime.datetime.fromtimestamp(last_used)
             except Exception:
-                msg = _("Invalid last used timestamp: {oid}: {timestamp}")
-                msg = msg.format(oid=self.oid, timestamp=last_used)
-                logger.warning(msg, exc_info=True)
+                log_msg = _("Invalid last used timestamp: {oid}: {timestamp}", log=True)[1]
+                log_msg = log_msg.format(oid=self.oid, timestamp=last_used)
+                logger.warning(log_msg, exc_info=True)
         return last_used
 
     def is_special_object(self, return_true_false: bool=True):
@@ -2104,9 +2109,9 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 object_exists = self._load()
             except Exception as e:
-                msg = _("Failed to read object config: {obj}: {error}")
-                msg = msg.format(obj=self, error=e)
-                logger.critical(msg, exc_info=True)
+                log_msg = _("Failed to read object config: {obj}: {error}", log=True)[1]
+                log_msg = log_msg.format(obj=self, error=e)
+                logger.critical(log_msg, exc_info=True)
                 raise
 
         if self.offline:
@@ -2119,12 +2124,13 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 self.run_policies("exists")
             except BackendUnavailable:
-                msg = ("Unable to run policies. Backend not available.")
-                logger.debug(msg)
+                log_msg = _("Unable to run policies. Backend not available.", log=True)[1]
+                logger.debug(log_msg)
             except Exception as e:
                 config.raise_exception()
-                msg = (f"Error running 'exists' policy hook: {self.oid}: {e}")
-                logger.warning(msg, exc_info=True)
+                log_msg = _("Error running 'exists' policy hook: {oid}: {e}", log=True)[1]
+                log_msg = log_msg.format(oid=self.oid, e=e)
+                logger.warning(log_msg, exc_info=True)
 
         # Check for auto-disable of object.
         self.check_auto_disable()
@@ -2236,7 +2242,8 @@ class OTPmeObject(OTPmeBaseObject):
             return self._cache(callback=callback)
 
         if not isinstance(value, value_type):
-            msg = (f"Parameter <{parameter}> needs to be of type: {value_type}")
+            msg = _("Parameter <{parameter}> needs to be of type: {value_type}")
+            msg = msg.format(value_type=value_type)
             return callback.error(msg)
 
         if valid_values:
@@ -2845,8 +2852,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         for dep_ext in ext.need_extensions:
             if dep_ext not in self.extensions:
-                msg = _("Cannot add extension '{ext_name}' that depends on "
-                        "extension {dep_ext}'.")
+                msg = _("Cannot add extension '{ext_name}' that depends on extension {dep_ext}'.")
                 msg = msg.format(ext_name=ext.name, dep_ext=dep_ext)
                 # FIXME: log user messages?
                 #logger.critical(msg)
@@ -2951,7 +2957,8 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 extension = self._extensions[x]
             except:
-                msg = (f"Cannot update unknown extension: {self.oid}: {x}")
+                msg = _("Cannot update unknown extension: {oid}: {x}")
+                msg = msg.format(oid=self.oid, x=x)
                 return callback.error(msg)
             # Check if we have child objects to update.
             try:
@@ -3009,27 +3016,32 @@ class OTPmeObject(OTPmeBaseObject):
                 try:
                     extension = self._extensions[x]
                 except:
-                    msg = (f"Cannot update unknown extension: {self.oid}: {x}")
+                    msg = _("Cannot update unknown extension: {oid}: {x}")
+                    msg = msg.format(oid=self.oid, x=x)
                     return callback.error(msg)
                 # Get hook.
                 extension_hook = extension.get_hook(self, hook, **kwargs)
                 if not extension_hook:
                     if fail_on_unknown_hook:
-                        msg = (f"Cannot update unknown hook: {self.oid}: {hook} ({extension.name})")
+                        msg = _("Cannot update unknown hook: {oid}: {hook} ({ext_name})")
+                        msg = msg.format(oid=self.oid, hook=hook, ext_name=extension.name)
                         return callback.error(msg)
                     continue
                 # Logging.
-                msg = (f"Updating extension: {self.oid}: {extension.name} ({hook})")
+                msg, log_msg = _("Updating extension: {oid}: {ext_name} ({hook})", log=True)
+                msg = msg.format(oid=self.oid, ext_name=extension.name, hook=hook)
+                log_msg = log_msg.format(oid=self.oid, ext_name=extension.name, hook=hook)
                 if config.debug_level() > 3:
-                    logger.debug(msg)
+                    logger.debug(log_msg)
                 if verbose_level > 2:
                     callback.send(msg)
                 # Run extension hook.
                 try:
                     update_status = extension_hook(self, **kwargs)
                 except Exception as e:
-                    msg = (f"Failed to run extension hook: {extension.name}: {hook}: {e}")
-                    logger.warning(msg)
+                    log_msg = _("Failed to run extension hook: {ext_name}: {hook}: {e}", log=True)[1]
+                    log_msg = log_msg.format(ext_name=extension.name, hook=hook, e=e)
+                    logger.warning(log_msg)
                     config.raise_exception()
         finally:
             self.release_lock(lock_caller="update_extensions")
@@ -3167,7 +3179,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("add:user"):
-                msg = (f"Permission denied: {self}")
+                msg = _("Permission denied: {self}")
+                msg = msg.format(self=self)
                 return callback.error(msg, exception=PermissionDenied)
 
         user = backend.get_object(object_type="user",
@@ -3226,7 +3239,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("remove:user"):
-                msg = (f"Permission denied: {self}")
+                msg = _("Permission denied: {self}")
+                msg = msg.format(self=self)
                 return callback.error(msg, exception=PermissionDenied)
 
         # FIXME: we also need to allow to remove UUIDs of user that do not exists anymore!!!!!       
@@ -3286,7 +3300,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("add:role"):
-                msg = (f"Permission denied: {self}")
+                msg = _("Permission denied: {self}")
+                msg = msg.format(self=self)
                 return callback.error(msg, exception=PermissionDenied)
 
         if role_name:
@@ -3385,7 +3400,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("remove:role"):
-                msg = (f"Permission denied: {self}")
+                msg = ("Permission denied: {self}")
+                msg = msg.format(self=self)
                 return callback.error(msg, exception=PermissionDenied)
 
         # Allow removal of orphan role UUIDs.
@@ -3465,11 +3481,13 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("add:token"):
-                msg = (f"Permission denied: {self}")
+                msg = _("Permission denied: {self}")
+                msg = msg.format(self=self)
                 return callback.error(msg, exception=PermissionDenied)
 
         if "/" not in token_path:
-            msg = (f"Invalid token path: {token_path}")
+            msg = _("Invalid token path: {token_path}")
+            msg = msg.format(token_path=token_path)
             return callback.error(msg)
 
         found_pos = False
@@ -3743,7 +3761,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("remove:token"):
-                msg = (f"Permission denied: {self}")
+                msg = _("Permission denied: {self}")
+                msg = msg.format(self=self)
                 return callback.error(msg, exception=PermissionDenied)
 
         # FIXME: we also need to allow to remove UUIDs of tokens that do not exists anymore!!!!!       
@@ -3753,7 +3772,8 @@ class OTPmeObject(OTPmeBaseObject):
             token = backend.get_object(object_type="token", uuid=token_path)
         else:
             if "/" not in token_path:
-                msg = (f"Invalid token path: {token_path}")
+                msg = _("Invalid token path: {token_path}")
+                msg = msg.format(token_path=token_path)
                 return callback.error(msg)
             # Get token.
             token_user = token_path.split("/")[0]
@@ -3847,7 +3867,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("add:node"):
-                msg = (f"Permission denied: {self}")
+                msg = _("Permission denied: {self}")
+                msg = msg.format(self=self)
                 return callback.error(msg, exception=PermissionDenied)
 
         node = backend.get_object(object_type="node",
@@ -3906,7 +3927,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         if verify_acls:
             if not self.verify_acl("remove:node"):
-                msg = (f"Permission denied: {self}")
+                msg = _("Permission denied: {self}")
+                msg = msg.format(self=self)
                 return callback.error(msg, exception=PermissionDenied)
 
         node = backend.get_object(object_type="node",
@@ -4214,7 +4236,8 @@ class OTPmeObject(OTPmeBaseObject):
                                 site=config.site,
                                 return_type="instance")
         if not result:
-            msg = (f"Unknown policy: {policy_name}")
+            msg = ("Unknown policy: {policy_name}")
+            msg = msg.format(policy_name=policy_name)
             return callback.error(msg)
 
         policy = result[0]
@@ -4431,9 +4454,9 @@ class OTPmeObject(OTPmeBaseObject):
                 raise
             except Exception as e:
                 config.raise_exception()
-                msg = _("Internal server error running policy: {policy_name}")
-                msg = msg.format(policy_name=x.name)
-                logger.critical(msg)
+                log_msg = _("Internal server error running policy: {policy_name}", log=True)[1]
+                log_msg = log_msg.format(policy_name=x.name)
+                logger.critical(log_msg)
                 # For real exceptions we should raise the exception now via our
                 # callback. This will ensure that the exception is raised each
                 # time callback.error() is called. This way we should get a
@@ -4821,7 +4844,8 @@ class OTPmeObject(OTPmeBaseObject):
         # Handle LDIF attributes.
         if verify_acls:
             if not self.verify_acl("view:attribute:" + attribute):
-                msg = (f"Permission denied: {self}")
+                msg = _("Permission denied: {self}")
+                msg = msg.format(self=self)
                 return callback.error(msg, exception=PermissionDenied)
         try:
             val_list = list(self.ldif[attribute])
@@ -4867,14 +4891,14 @@ class OTPmeObject(OTPmeBaseObject):
             if attribute not in ext_attrs:
                 continue
             if verbose_level > 0:
-                msg = _("Using extension '{e_name}' to add attribute "
-                        "'{attribute}' to object.")
+                msg = _("Using extension '{e_name}' to add attribute '{attribute}' to object.")
                 msg = msg.format(e_name=e.name, attribute=attribute)
                 callback.send(msg)
             extension = e
 
         if not extension:
-            msg = (f"Unable to find extension to add attribute to object: {attribute}")
+            msg = _("Unable to find extension to add attribute to object: {attribute}")
+            msg = msg.format(attribute=attribute)
             # FIXME: log user messages?
             #logger.critical(msg)
             return callback.error(msg)
@@ -4945,7 +4969,8 @@ class OTPmeObject(OTPmeBaseObject):
             extension = e
 
         if not extension:
-            msg = (f"Unable to find extension to modify attribute of object: {attribute}")
+            msg = _("Unable to find extension to modify attribute of object: {attribute}")
+            msg = msg.format(attribute=attribute)
             # FIXME: log user messages?
             #logger.critical(msg)
             return callback.error(msg)
@@ -5015,7 +5040,7 @@ class OTPmeObject(OTPmeBaseObject):
                 break
 
         if not extension:
-            msg = "Unable to find extension to delete attribute from object."
+            msg = _("Unable to find extension to delete attribute from object.")
             # FIXME: log user messages?
             #logger.critical(msg)
             return callback.error(msg)
@@ -5172,7 +5197,8 @@ class OTPmeObject(OTPmeBaseObject):
                 if object_class in extension.object_classes[self.type]:
                     break
         if not extension:
-            msg = (f"Failed to get extension to handle object class: {object_class}")
+            msg = _("Failed to get extension to handle object class: {object_class}")
+            msg = msg.format(object_class=object_class)
             return callback.error(msg)
 
         while True:
@@ -5352,8 +5378,8 @@ class OTPmeObject(OTPmeBaseObject):
                                 _caller=_caller,
                                 force=force)
             except Exception as e:
-                msg = str(e)
-                logger.warning(msg)
+                log_msg = str(e)
+                logger.warning(log_msg)
                 return callback.error()
 
         self._enabled = True
@@ -5362,7 +5388,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         if self.auto_disable:
             self.auto_disable_start_time = time.time()
-            msg = (f"Auto-disable active for this object: {self.auto_disable_time}")
+            msg = _("Auto-disable active for this object: {auto_disable_time}")
+            msg = msg.format(auto_disable_time=self.auto_disable_time)
             callback.send(msg)
 
         return self._cache(callback=callback)
@@ -5444,7 +5471,8 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error("Object cannot inherit ACLs.")
 
         if not self.verify_acl("enable:acl_inheritance"):
-            msg = (f"Permission denied: {self}")
+            msg = _("Permission denied: {self}")
+            msg = msg.format(self=self)
             return callback.error(msg, exception=PermissionDenied)
 
         if self.acl_inheritance_enabled:
@@ -5489,7 +5517,8 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error("Object cannot inherit ACLs.")
 
         if not self.verify_acl("disable:acl_inheritance"):
-            msg = (f"Permission denied: {self}")
+            msg = _("Permission denied: {self}")
+            msg = msg.format(self=self)
             return callback.error(msg, exception=PermissionDenied)
 
         if not self.acl_inheritance_enabled:
@@ -5882,9 +5911,10 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 acl = otpme_acl.decode(x)
             except Exception as e:
-                msg = _("Error decoding ACL: {acl}: {exception}")
+                msg, log_msg = _("Error decoding ACL: {acl}: {exception}", log=True)
                 msg = msg.format(acl=acl, exception=e)
-                logger.critical(msg)
+                log_msg = log_msg.format(acl=acl, exception=e)
+                logger.critical(log_msg)
                 return callback.error(msg)
 
             if remove:
@@ -6088,9 +6118,10 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 _acl = otpme_acl.decode(raw_acl)
             except Exception as e:
-                msg = _("Error decoding raw ACL: {raw_acl}: {exception}")
+                msg, log_msg = _("Error decoding raw ACL: {raw_acl}: {exception}", log=True)
                 msg = msg.format(raw_acl=raw_acl, exception=e)
-                logger.critical(msg)
+                log_msg = log_msg.format(raw_acl=raw_acl, exception=e)
+                logger.critical(log_msg)
                 return callback.error(msg)
             owner_type = _acl.owner_type
             owner_uuid = _acl.owner_uuid
@@ -6099,9 +6130,10 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 _acl = otpme_acl.decode(acl)
             except Exception as e:
-                msg = _("Error decoding ACL: {acl}: {exception}")
+                msg, log_msg = _("Error decoding ACL: {acl}: {exception}", log=True)
                 msg = msg.format(acl=acl, exception=e)
-                logger.critical(msg)
+                log_msg = log_msg.format(acl=acl, exception=e)
+                logger.critical(log_msg)
                 return callback.error(msg)
 
             owner_type = _acl.owner_type
@@ -6129,14 +6161,16 @@ class OTPmeObject(OTPmeBaseObject):
                                     realm=self.realm,
                                     site=search_site)
             if not result:
-                msg = _("Unknown {owner_type}: {owner_name}")
+                msg, log_msg = _("Unknown {owner_type}: {owner_name}", log=True)
                 msg = msg.format(owner_type=owner_type, owner_name=owner_name)
-                logger.critical(msg)
+                log_msg = log_msg.format(owner_type=owner_type, owner_name=owner_name)
+                logger.critical(log_msg)
                 return callback.error(msg)
             if len(result) > 1:
-                msg = _("Found multiple objects for '{owner_name}': {result_list}")
+                msg, log_msg = _("Found multiple objects for '{owner_name}': {result_list}", log=True)
                 msg = msg.format(owner_name=owner_name, result_list=', '.join(result))
-                logger.critical(msg)
+                log_msg = log_msg.format(owner_name=owner_name, result_list=', '.join(result))
+                logger.critical(log_msg)
                 return callback.error(msg)
             owner_uuid = result[0]
 
@@ -6149,9 +6183,10 @@ class OTPmeObject(OTPmeBaseObject):
                 if not result:
                     continue
                 if len(result) > 1:
-                    msg = _("Found multiple {t}'s for UUID '{owner_uuid}': {result}")
+                    msg, log_msg = _("Found multiple {t}'s for UUID '{owner_uuid}': {result}", log=True)
                     msg = msg.format(t=t, owner_uuid=owner_uuid, result=", ".join(result))
-                    logger.critical(msg)
+                    log_msg = log_msg.format(t=t, owner_uuid=owner_uuid, result=", ".join(result))
+                    logger.critical(log_msg)
                     return callback.error(msg)
                 owner_type = t
                 break
@@ -6174,9 +6209,10 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 _acl = otpme_acl.decode(raw_acl)
             except Exception as e:
-                msg = _("Error decoding raw ACL: {acl}: {exception}")
+                msg, log_msg = _("Error decoding raw ACL: {acl}: {exception}", log=True)
                 msg = msg.format(acl=acl, exception=e)
-                logger.critical(msg)
+                log_msg = log_msg.format(acl=acl, exception=e)
+                logger.critical(log_msg)
                 return callback.error(msg)
 
         # Check if this object supports the ACL.
@@ -6276,9 +6312,9 @@ class OTPmeObject(OTPmeBaseObject):
                     # Trigger ACL cache clearing.
                     cache.clear_acl_cache(object_uuid=self.uuid)
                 else:
-                    msg = _("Error writing {object_type} config: {object_oid}")
-                    msg = msg.format(object_type=self.type, object_oid=self.oid)
-                    logger.critical(msg)
+                    log_msg = _("Error writing {object_type} config: {object_oid}", log=True)[1]
+                    log_msg = log_msg.format(object_type=self.type, object_oid=self.oid)
+                    logger.critical(log_msg)
                     exception = True
                 # Remove object from list because this list may be passed via
                 # kwargs to different handle_acl() calls e.g. in
@@ -6313,13 +6349,13 @@ class OTPmeObject(OTPmeBaseObject):
                 object_disabled = False
                 config.raise_exception()
             if object_disabled:
-                msg = _("{object_type} auto-disabled: {object_name}")
-                msg = msg.format(object_type=self.type, object_name=self.name)
-                logger.warning(msg)
+                log_msg = _("{object_type} auto-disabled: {object_name}", log=True)[1]
+                log_msg = log_msg.format(object_type=self.type, object_name=self.name)
+                logger.warning(log_msg)
             else:
-                msg = _("Cannot auto-disable object: {object_name}: {exception}")
-                msg = msg.format(object_name=self.name, exception=exception)
-                logger.critical(msg)
+                log_msg = _("Cannot auto-disable object: {object_name}: {exception}", log=True)[1]
+                log_msg = log_msg.format(object_name=self.name, exception=exception)
+                logger.critical(log_msg)
                 return False
         return True
 
@@ -6579,7 +6615,8 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error(msg)
 
         if not _new_unit.exists():
-            msg = (f"Unknown unit: {self}: {new_unit}")
+            msg = _("Unknown unit: {self}: {new_unit}")
+            msg = msg.format(self=self, new_unit=new_unit)
             return callback.error(msg)
 
         add_acl = f"add:{self.type}"
@@ -6685,8 +6722,8 @@ class OTPmeObject(OTPmeBaseObject):
                 exception = exception.format(exception=e)
         else:
             if inherit_acls_message:
-                msg = _("* NOT applying/removing default ACLs of new/old "
-                        f"unit: {inherit_acls_message}")
+                msg = _("* NOT applying/removing default ACLs of new/old unit: {inherit_acls_message}")
+                msg = msg.format(inherit_acls_message=inherit_acls_message)
                 callback.send(msg)
 
         # Clear old object from caches.
@@ -7036,15 +7073,17 @@ class OTPmeObject(OTPmeBaseObject):
         try:
             sig.verify(signer.public_key, sign_data, tags=sign_tags)
         except VerificationFailed as e:
-            msg = _("Got invalid signature: {exception}")
+            msg, log_msg = _("Got invalid signature: {exception}", log=True)
             msg = msg.format(exception=e)
-            logger.warning(msg)
+            log_msg = log_msg.format(exception=e)
+            logger.warning(log_msg)
             return callback.error(msg)
         except Exception as e:
             config.raise_exception()
-            msg = _("Failed to verify signature: {exception}")
+            msg, log_msg = _("Failed to verify signature: {exception}", log=True)
             msg = msg.format(exception=e)
-            logger.critical(msg)
+            log_msg = log_msg.format(exception=e)
+            logger.critical(log_msg)
             msg = _("Failed to verify signature")
             return callback.error(msg)
 
@@ -7124,8 +7163,8 @@ class OTPmeObject(OTPmeBaseObject):
         if self.auto_revoke:
             if config.auth_user.uuid in self.signatures:
                 if sign_id in self.signatures[config.auth_user.uuid]:
-                    msg = ("Auto revoking of signatures enabled.")
-                    logger.debug(msg)
+                    log_msg = _("Auto revoking of signatures enabled.", log=True)[1]
+                    logger.debug(log_msg)
                     # Delete and revoke signature.
                     callback.disable()
                     try:
@@ -7381,7 +7420,8 @@ class OTPmeObject(OTPmeBaseObject):
                                 tags=check_tags)
                     verify_status = True
                 except VerificationFailed as e:
-                    msg = (f"{user.name}: signature verification failed: {sign_info}: {e}")
+                    msg = _("{user_name}: signature verification failed: {sign_info}: {e}")
+                    msg = msg.format(user_name=user_name, sign_info=sign_info, e=e)
                     callback.error(msg)
                     verify_status = False
                     continue
@@ -7928,8 +7968,8 @@ class OTPmeObject(OTPmeBaseObject):
             except Exception as e:
                 config.raise_exception()
                 inherit_status = False
-                inherit_error = _("WARNING: Unable to inherit ACLs from parent "
-                                    f"object: {e}")
+                inherit_error = _("WARNING: Unable to inherit ACLs from parent object: {e}")
+                inherit_error = inherit_error.format(e=e)
             if not inherit_status:
                 return callback.error(inherit_error)
 
@@ -8129,7 +8169,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Make sure all signatures are revoked before deleting the object.
         if self.auto_revoke and len(self.signatures) > 0:
-            logger.debug("Auto revoking of signatures enabled.")
+            log_msg = _("Auto revoking of signatures enabled.", log=True)[1]
+            logger.debug(log_msg)
             for user_uuid in dict(self.signatures):
                 for sign_id in dict(self.signatures[user_uuid]):
                     callback.disable()
@@ -8829,9 +8870,9 @@ class OTPmeClientObject(OTPmeObject):
 
         # Log some useful debug message.
         if login_interface_valid_by:
-            msg = _("Login interface valid by: {login_interface_valid_by}: {login_interface}")
-            msg = msg.format(login_interface_valid_by=login_interface_valid_by, login_interface=login_interface)
-            logger.debug(msg)
+            log_msg = _("Login interface valid by: {login_interface_valid_by}: {login_interface}", log=True)[1]
+            log_msg = log_msg.format(login_interface_valid_by=login_interface_valid_by, login_interface=login_interface)
+            logger.debug(log_msg)
 
         # Check host/node/client policies.
         self.run_policies("authenticate")
@@ -8960,9 +9001,9 @@ class OTPmeDataObject(OTPmeBaseObject):
             try:
                 object_exists = self._load()
             except Exception as e:
-                msg = _("Failed to read object config: {obj}: {error}")
-                msg = msg.format(obj=self, error=e)
-                logger.critical(msg, exc_info=True)
+                log_msg = _("Failed to read object config: {obj}: {error}", log=True)[1]
+                log_msg = log_msg.format(obj=self, error=e)
+                logger.critical(log_msg, exc_info=True)
                 raise
 
         if not object_exists:

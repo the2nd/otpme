@@ -257,9 +257,9 @@ def load(schema_file):
         msg = msg.format(e=e)
         raise Exception(msg)
 
-    msg = _("Loading schema file: {schema_file}")
-    msg = msg.format(schema_file=schema_file)
-    logger.debug(msg)
+    log_msg = _("Loading schema file: {schema_file}", log=True)[1]
+    log_msg = log_msg.format(schema_file=schema_file)
+    logger.debug(log_msg)
     config.ldap_object_class_mappings['objectclass'] = 'objectClass'
     for line in fd:
         if line.startswith("objectclass") or line.startswith("attributetype"):
@@ -299,9 +299,9 @@ def load(schema_file):
                 except:
                     oc_exists = False
                 if oc_exists:
-                    msg = _("Error loading file: {schema_file}: ObjectClass '{name}' already exists.")
-                    msg = msg.format(schema_file=schema_file, name=name)
-                    logger.critical(msg)
+                    log_msg = _("Error loading file: {schema_file}: ObjectClass '{name}' already exists.", log=True)[1]
+                    log_msg = log_msg.format(schema_file=schema_file, name=name)
+                    logger.critical(log_msg)
                 else:
                     object_classes.append(name)
                     config.ldap_object_classes[name] = oc
@@ -317,9 +317,9 @@ def load(schema_file):
                 except:
                     at_exists = False
                 if at_exists:
-                    msg = _("Error loading file: {schema_file}: AttributeType '{name}' already exists.")
-                    msg = msg.format(schema_file=schema_file, name=name)
-                    logger.critical(msg)
+                    log_msg = _("Error loading file: {schema_file}: AttributeType '{name}' already exists.", log=True)[1]
+                    log_msg = log_msg.format(schema_file=schema_file, name=name)
+                    logger.critical(log_msg)
                 else:
                     attribute_types.append(name)
                     config.ldap_attribute_types[name] = at

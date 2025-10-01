@@ -280,13 +280,17 @@ def update_authorized_keys():
             myhost.run_policies("authenticate")
         except PolicyException as e:
             if orphan_authorized_keys:
-                logger.debug(f"Not adding SSH keys: {e}")
+                log_msg = _("Not adding SSH keys: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                logger.debug(log_msg)
             # We need to emtpy all SSH keys if policy check fails.
             all_ssh_keys = {}
         except Exception as e:
             config.raise_exception()
     else:
-        logger.debug(f"Not adding SSH keys: {myhost.type} disabled")
+        log_msg = _("Not adding SSH keys: {host_type} disabled", log=True)[1]
+        log_msg = log_msg.format(host_type=myhost.type)
+        logger.debug(log_msg)
         # We need to emtpy all SSH keys if host is disabled.
         all_ssh_keys = {}
 
@@ -302,21 +306,21 @@ def update_authorized_keys():
         #ssh_key = token_entry['ssh_key']
         #key_opts = token_entry['key_opts']
         #signatures = token_entry['signatures']
-        unknown_token_msg = "Ignoring SSH key from unknown token"
-        unknown_dst_token_msg = "Ignoring unknown linked token"
-        disabled_token_msg = "Ignoring SSH key from disabled token"
-        no_key_token_msg = "Ignoring token without SSH key"
-        no_ssh_token_msg = "Ignoring non-SSH token"
+        unknown_token_msg = _("Ignoring SSH key from unknown token", log=True)[1]
+        unknown_dst_token_msg = _("Ignoring unknown linked token", log=True)[1]
+        disabled_token_msg = _("Ignoring SSH key from disabled token", log=True)[1]
+        no_key_token_msg = _("Ignoring token without SSH key", log=True)[1]
+        no_ssh_token_msg = _("Ignoring non-SSH token", log=True)[1]
 
         # Check if token exists.
         token = backend.get_object(object_type="token", uuid=token_uuid)
         if not token:
-            msg = f"{unknown_token_msg}: {token_path}"
-            logger.warning(msg)
+            log_msg = f"{unknown_token_msg}: {token_path}"
+            logger.warning(log_msg)
             continue
         if not token.enabled:
-            msg = f"{disabled_token_msg}: {token_path}"
-            logger.debug(msg)
+            log_msg = f"{disabled_token_msg}: {token_path}"
+            logger.debug(log_msg)
             continue
 
         # Users to run policies for etc.
@@ -329,8 +333,9 @@ def update_authorized_keys():
 
         # Handle linked tokens.
         if token.token_type == "link":
-            msg = f"Found linked token: {token_path}"
-            logger.debug(msg)
+            log_msg = _("Found linked token: {token_path}", log=True)[1]
+            log_msg = log_msg.format(token_path=token_path)
+            logger.debug(log_msg)
             # Make sure we check the user of the linked token.
             check_users.append(token.owner_uuid)
             # Get destination token.
@@ -339,24 +344,24 @@ def update_authorized_keys():
             except:
                 dst_token = None
             if not dst_token:
-                msg = f"{unknown_dst_token_msg}: {token_path}"
-                logger.warning(msg)
+                log_msg = f"{unknown_dst_token_msg}: {token_path}"
+                logger.warning(log_msg)
                 continue
             if not dst_token.enabled:
-                msg = f"{disabled_token_msg}: {dst_token.rel_path}"
-                logger.debug(msg)
+                log_msg = f"{disabled_token_msg}: {dst_token.rel_path}"
+                logger.debug(log_msg)
                 continue
             verify_token = dst_token
             check_tokens.append(dst_token)
 
         if verify_token.token_type != "ssh":
-            msg = f"{no_ssh_token_msg}: {verify_token}"
-            logger.debug(msg)
+            log_msg = f"{no_ssh_token_msg}: {verify_token}"
+            logger.debug(log_msg)
             continue
 
         if not verify_token.ssh_public_key:
-            msg = f"{no_key_token_msg}: {verify_token}"
-            logger.debug(msg)
+            log_msg = f"{no_key_token_msg}: {verify_token}"
+            logger.debug(log_msg)
             continue
 
         # Make sure user/token owner exists, is enabled and run policies.
@@ -368,24 +373,26 @@ def update_authorized_keys():
             if not x_user:
                 # Make sure we do not process a unknown user more than once.
                 processed_users[uuid] = None
-                msg = f"Ignoring SSH key from unknown user: {uuid}"
-                logger.warning(msg)
+                log_msg = _("Ignoring SSH key from unknown user: {uuid}", log=True)[1]
+                log_msg = log_msg.format(uuid=uuid)
+                logger.warning(log_msg)
                 continue
 
             # Add user to list of processed users.
             processed_users[uuid] = x_user
 
             if not x_user.enabled:
-                msg = f"Ignoring SSH key from disabled user: {x_user.oid}"
-                logger.debug(msg)
+                log_msg = _("Ignoring SSH key from disabled user: {user_oid}", log=True)[1]
+                log_msg = log_msg.format(user_oid=x_user.oid)
+                logger.debug(log_msg)
                 continue
 
             # Check user policies.
             try:
                 x_user.run_policies("authenticate")
             except PolicyException as e:
-                msg = str(e)
-                logger.debug(msg)
+                log_msg = str(e)
+                logger.debug(log_msg)
                 continue
             except Exception as e:
                 config.raise_exception()
@@ -399,13 +406,13 @@ def update_authorized_keys():
             try:
                 x_token.run_policies("authenticate")
             except PolicyException as e:
-                msg = str(e)
-                logger.debug(msg)
+                log_msg = str(e)
+                logger.debug(log_msg)
                 continue
             except Exception as e:
                 config.raise_exception()
-                msg = str(e)
-                logger.debug(msg)
+                log_msg = str(e)
+                logger.debug(log_msg)
                 continue
 
         # Filter SSH authorized_keys options.
@@ -420,8 +427,9 @@ def update_authorized_keys():
                     o = opt
                     option = opt
                 if o not in verify_token.valid_token_options:
-                    msg = f"Ignoring unknown token option: {verify_token.rel_path}: {o}"
-                    logger.warning(msg)
+                    log_msg = _("Ignoring unknown token option: {token_path}: {o}", log=True)[1]
+                    log_msg = log_msg.format(token_path=verify_token.rel_path, o=o)
+                    logger.warning(log_msg)
                     continue
                 key_opts.append(option)
 
@@ -429,12 +437,12 @@ def update_authorized_keys():
         try:
             myhost.authorize_token(token, login_interface="ssh")
         except LoginsLimited as e:
-            msg = str(e)
-            logger.debug(msg)
+            log_msg = str(e)
+            logger.debug(log_msg)
             continue
         except PolicyException as e:
-            msg = str(e)
-            logger.debug(msg)
+            log_msg = str(e)
+            logger.debug(log_msg)
             continue
         except Exception as e:
             config.raise_exception()
@@ -450,8 +458,9 @@ def update_authorized_keys():
             signatures = verify_token.signatures
             # Without signatures the key will not be allowed to login.
             if not signatures:
-                msg = f"Ignoring SSH key without signatures: {token_path}"
-                logger.info(msg)
+                log_msg = _("Ignoring SSH key without signatures: {token_path}", log=True)[1]
+                log_msg = log_msg.format(token_path=token_path)
+                logger.info(log_msg)
                 continue
 
             # Add user tag to make sure the token is assigned to the right user.
@@ -511,8 +520,9 @@ def update_authorized_keys():
         try:
             stuff.check_login_user(user_name=username, user_uuid=user_uuid)
         except Exception as e:
-            msg = f"Not adding SSH key: {e}"
-            denied_users.append(msg)
+            log_msg = _("Not adding SSH key: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            denied_users.append(log_msg)
             continue
 
         # Remove processed user from orphans list.
@@ -530,8 +540,9 @@ def update_authorized_keys():
                 current_keys = current_file_content.split("\n")
                 fd.close()
             except Exception as e:
-                msg = f"Unable to read current authorized_keys file: {e}"
-                logger.critical(msg)
+                log_msg = _("Unable to read current authorized_keys file: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                logger.critical(log_msg)
                 continue
 
             # If nothing changed skip this user.
@@ -555,8 +566,9 @@ def update_authorized_keys():
                                     group=config.group,
                                     mode=0o770)
             except Exception as e:
-                msg = f"Unable to create authorized_keys cache dir: {e}"
-                logger.critical(msg)
+                log_msg = _("Unable to create authorized_keys cache dir: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                logger.critical(log_msg)
                 continue
 
         # Write cache file.
@@ -567,16 +579,21 @@ def update_authorized_keys():
                                 group=config.group,
                                 mode=0o660)
         except Exception as e:
-            msg = f"Unable to create authorized_keys cache file: {e}"
-            logger.critical(msg)
+            log_msg = _("Unable to create authorized_keys cache file: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            logger.critical(log_msg)
             continue
 
         added_keys = len(new_keys)
         if added_keys > 0:
-            logger.info(f"Added {added_keys} SSH key(s) for user {username}.")
+            log_msg = _("Added {added_keys} SSH key(s) for user {username}.", log=True)[1]
+            log_msg = log_msg.format(added_keys=added_keys, username=username)
+            logger.info(log_msg)
         removed_keys = len(current_keys)
         if removed_keys > 0:
-            logger.info(f"Removed {removed_keys} SSH key(s) of user {username}.")
+            log_msg = _("Removed {removed_keys} SSH key(s) of user {username}.", log=True)[1]
+            log_msg = log_msg.format(removed_keys=removed_keys, username=username)
+            logger.info(log_msg)
         authorized_keys_changed = True
 
     # Remove orphan authorized_keys.
@@ -589,29 +606,35 @@ def update_authorized_keys():
             try:
                 os.remove(orphan_keys_file)
             except Exception as e:
-                msg = f"Error removing authorized_keys file: {orphan_keys_file}"
-                logger.warning(msg)
+                log_msg = _("Error removing authorized_keys file: {orphan_keys_file}", log=True)[1]
+                log_msg = log_msg.format(orphan_keys_file=orphan_keys_file)
+                logger.warning(log_msg)
             # Remove token cache file.
             if os.path.exists(orphan_tokens_file):
                 try:
                     os.remove(orphan_tokens_file)
                 except Exception as e:
-                    msg = f"Error removing SSH tokens file: {orphan_tokens_file}"
-                    logger.warning(msg)
+                    log_msg = _("Error removing SSH tokens file: {orphan_tokens_file}", log=True)[1]
+                    log_msg = log_msg.format(orphan_tokens_file=orphan_tokens_file)
+                    logger.warning(log_msg)
             # Remove cache dir.
             try:
                 os.rmdir(orphan_dir)
             except Exception as e:
-                msg = f"Error removing authorized_keys directory: {orphan_dir}"
-                logger.warning(msg)
-            logger.info(f"Removed all SSH keys of user: {username}")
+                log_msg = _("Error removing authorized_keys directory: {orphan_dir}", log=True)[1]
+                log_msg = log_msg.format(orphan_dir=orphan_dir)
+                logger.warning(log_msg)
+            log_msg = _("Removed all SSH keys of user: {username}", log=True)[1]
+            log_msg = log_msg.format(username=username)
+            logger.info(log_msg)
             authorized_keys_changed = True
 
     if authorized_keys_changed:
-        for x in denied_users:
-            logger.warning(x)
+        for log_msg in denied_users:
+            logger.warning(log_msg)
     else:
-        logger.info("SSH authorized_keys up-to-date.")
+        log_msg = _("SSH authorized_keys up-to-date.", log=True)[1]
+        logger.info(log_msg)
 
     # Update directory timestamp to notify probably running
     # otpme-get-authorized-keys that we have finished.

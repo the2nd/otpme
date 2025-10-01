@@ -215,8 +215,8 @@ def init_cache_dir():
 def wait_for_start(timeout=5):
     timeout = timeout * 10
     logger = config.logger
-    msg = _("Waiting for redis to start up...")
-    logger.info(msg)
+    log_msg = _("Waiting for redis to start up...", log=True)[1]
+    logger.info(log_msg)
     counter = 0
     while not status():
         counter += 1
@@ -228,8 +228,8 @@ def wait_for_start(timeout=5):
 def wait_for_shutdown(timeout=5):
     timeout = timeout * 10
     logger = config.logger
-    msg = _("Waiting for redis to shut down...")
-    logger.info(msg)
+    log_msg = _("Waiting for redis to shut down...", log=True)[1]
+    logger.info(log_msg)
     counter = 0
     while status():
         counter += 1
@@ -271,25 +271,25 @@ def start():
         raise AlreadyRunning(msg)
     # Get logger.
     logger = config.logger
-    msg = _("Starting redis...")
-    logger.info(msg)
+    log_msg = _("Starting redis...", log=True)[1]
+    logger.info(log_msg)
     # Make sure cache dir exists.
     if config.redis_persistence:
         init_cache_dir()
     redis_socket = get_socket()
     if os.path.exists(redis_socket):
-        msg = _("Removing stale socket: {socket_path}")
-        msg = msg.format(socket_path=redis_socket)
-        logger.info(msg)
+        log_msg = _("Removing stale socket: {socket_path}", log=True)[1]
+        log_msg = log_msg.format(socket_path=redis_socket)
+        logger.info(log_msg)
         os.remove(redis_socket)
     conf_file = "-"
     echo_conf = True
     if os.path.exists(ETC_CONF_FILE):
         echo_conf = False
         conf_file = ETC_CONF_FILE
-        msg = _("Using config file: {config_file}")
-        msg = msg.format(config_file=ETC_CONF_FILE)
-        logger.debug(msg)
+        log_msg = _("Using config file: {config_file}", log=True)[1]
+        log_msg = log_msg.format(config_file=ETC_CONF_FILE)
+        logger.debug(log_msg)
     start_cmd = [ config.redis_server_bin, conf_file, ]
     proc = system_command.run(command=start_cmd,
                                     user=config.user,
@@ -316,8 +316,8 @@ def stop():
         raise NotRunning(msg)
     # Get logger.
     logger = config.logger
-    msg = _("Stopping redis...")
-    logger.info(msg)
+    log_msg = _("Stopping redis...", log=True)[1]
+    logger.info(log_msg)
     redis_socket = get_socket()
     stop_cmd = [config.redis_cli_bin, "-s", redis_socket, "shutdown"]
     return_code = system_command.run(command=stop_cmd,
@@ -332,8 +332,8 @@ def stop():
 def flushall(raise_exceptions=False):
     # Get logger.
     logger = config.logger
-    msg = _("Flushing redis cache...")
-    logger.debug(msg)
+    log_msg = _("Flushing redis cache...", log=True)[1]
+    logger.debug(log_msg)
     pool = get_pool()
     redis_db = RedisHandler(connection_pool=pool,
                         raise_exceptions=raise_exceptions,
@@ -393,13 +393,14 @@ class RedisHandler(object):
         try:
             return self.redis_ctrl.config_set(*args, **kwargs)
         except (redis.ConnectionError, redis.ResponseError) as e:
-            msg = _("Redis error: {error}")
+            msg, log_msg = _("Redis error: {error}", log=True)
             msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
             if "config_set" in self.raise_exceptions:
                 raise KeyError(msg)
             if not self.connection_error_logged:
                 self.connection_error_logged = True
-                self.logger.critical(msg)
+                self.logger.critical(log_msg)
 
     def scan_iter(self, *args, **kwargs):
         try:
@@ -409,99 +410,107 @@ class RedisHandler(object):
                 result.append(x)
             return result
         except (redis.ConnectionError, redis.ResponseError) as e:
-            msg = _("Redis error: {error}")
+            msg, log_msg = _("Redis error: {error}", log=True)
             msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
             if "scan_iter" in self.raise_exceptions:
                 raise KeyError(msg)
             if not self.connection_error_logged:
                 self.connection_error_logged = True
-                self.logger.critical(msg)
+                self.logger.critical(log_msg)
         return []
 
     def set(self, *args, **kwargs):
         try:
             return self.redis_db.set(*args, **kwargs)
         except (redis.ConnectionError, redis.ResponseError) as e:
-            msg = _("Redis error: {error}")
+            msg, log_msg = _("Redis error: {error}", log=True)
             msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
             if "set" in self.raise_exceptions:
                 raise KeyError(msg)
             if not self.connection_error_logged:
                 self.connection_error_logged = True
-                self.logger.critical(msg)
+                self.logger.critical(log_msg)
 
     def exists(self, *args, **kwargs):
         try:
             return self.redis_db.exists(*args, **kwargs)
         except (redis.ConnectionError, redis.ResponseError) as e:
-            msg = _("Redis error: {error}")
+            msg, log_msg = _("Redis error: {error}", log=True)
             msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
             if "exists" in self.raise_exceptions:
                 raise KeyError(msg)
             if not self.connection_error_logged:
                 self.connection_error_logged = True
-                self.logger.critical(msg)
+                self.logger.critical(log_msg)
         return False
 
     def get(self, *args, **kwargs):
         try:
             return self.redis_db.get(*args, **kwargs)
         except (redis.ConnectionError, redis.ResponseError) as e:
-            msg = _("Redis error: {error}")
+            msg, log_msg = _("Redis error: {error}", log=True)
             msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
             if "get" in self.raise_exceptions:
                 raise KeyError(msg)
             if not self.connection_error_logged:
                 self.connection_error_logged = True
-                self.logger.critical(msg)
+                self.logger.critical(log_msg)
 
     def delete(self, *args, **kwargs):
         try:
             return self.redis_db.delete(*args, **kwargs)
         except (redis.ConnectionError, redis.ResponseError) as e:
-            msg = _("Redis error: {error}")
+            msg, log_msg = _("Redis error: {error}", log=True)
             msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
             if "delete" in self.raise_exceptions:
                 raise KeyError(msg)
             if not self.connection_error_logged:
                 self.connection_error_logged = True
-                self.logger.critical(msg)
+                self.logger.critical(log_msg)
 
     def ttl(self, *args, **kwargs):
         try:
             return self.redis_db.ttl(*args, **kwargs)
         except (redis.ConnectionError, redis.ResponseError) as e:
-            msg = _("Redis error: {error}")
+            msg, log_msg = _("Redis error: {error}", log=True)
             msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
             if "ttl" in self.raise_exceptions:
                 raise KeyError(msg)
             if not self.connection_error_logged:
                 self.connection_error_logged = True
-                self.logger.critical(msg)
+                self.logger.critical(log_msg)
 
     def expire(self, *args, **kwargs):
         try:
             return self.redis_db.expire(*args, **kwargs)
         except (redis.ConnectionError, redis.ResponseError) as e:
-            msg = _("Redis error: {error}")
+            msg, log_msg = _("Redis error: {error}", log=True)
             msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
             if "expire" in self.raise_exceptions:
                 raise KeyError(msg)
             if not self.connection_error_logged:
                 self.connection_error_logged = True
-                self.logger.critical(msg)
+                self.logger.critical(log_msg)
 
     def flushall(self, *args, **kwargs):
         try:
             return self.redis_db.flushall(*args, **kwargs)
         except (redis.ConnectionError, redis.ResponseError) as e:
-            msg = _("Redis error: {error}")
+            msg, log_msg = _("Redis error: {error}", log=True)
             msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
             if "flushall" in self.raise_exceptions:
                 raise KeyError(msg)
             if not self.connection_error_logged:
                 self.connection_error_logged = True
-                self.logger.critical(msg)
+                self.logger.critical(log_msg)
 
 class RedisDict(SharedDict):
     """ A simple redis dict. """

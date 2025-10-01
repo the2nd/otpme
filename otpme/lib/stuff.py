@@ -1191,18 +1191,20 @@ def seed_rng(fork=True, quiet=False):
     # using os.fork()
     # https://github.com/dlitz/pycrypto
     if not quiet:
-        logger.debug("Reinitializing RNG.")
+        log_msg = _("Reinitializing RNG.", log=True)[1]
+        logger.debug(log_msg)
 
     if fork:
         try:
             Random.atfork()
             if not quiet:
-                logger.debug("Reinitializing done.")
+                log_msg = _("Reinitializing done.", log=True)[1]
+                logger.debug(log_msg)
         except Exception as e:
             #config.raise_exception()
-            msg = _("Reinitializing of RNG failed: {e}")
-            msg = msg.format(e=e)
-            logger.critical(msg)
+            log_msg = _("Reinitializing of RNG failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            logger.critical(log_msg)
             status = False
 
     # Seed random number generator after spawning a child process.
@@ -1210,25 +1212,28 @@ def seed_rng(fork=True, quiet=False):
     # https://wiki.openssl.org/index.php/Random_fork-safety
     rand_seed_bytes = 32
     if not quiet:
-        msg = _("Seeding RNG with {rand_seed_bytes} bytes.")
-        msg = msg.format(rand_seed_bytes=rand_seed_bytes)
-        logger.debug(msg)
+        log_msg = _("Seeding RNG with {rand_seed_bytes} bytes.",  log=True)[1]
+        log_msg = log_msg.format(rand_seed_bytes=rand_seed_bytes)
+        logger.debug(log_msg)
     try:
         random_bits = get_random_bytes(rand_seed_bytes)
     except Exception as e:
         random_bits = None
-        msg = _("Seeding RNG failed: Unable to get random bits: {e}")
-        msg = msg.format(e=e)
-        logger.critical(msg)
+        log_msg = _("Seeding RNG failed: Unable to get random bits: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        logger.critical(log_msg)
         status = False
 
     if random_bits is not None:
         try:
             ssl.RAND_add(random_bits, 0.0)
             if not quiet:
-                logger.debug("Seeding finished.")
+                log_msg = _("Seeding finished.", log=True)[1]
+                logger.debug(log_msg)
         except Exception as e:
-            logger.critical(f"Seeding RNG failed: {e}")
+            log_msg = _("Seeding RNG failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            logger.critical(log_msg)
             status = False
     return status
 
@@ -1350,9 +1355,10 @@ def start_otpme_agent(user=None, group=True,
         _user = user
     else:
         _user = config.system_user()
-    msg = _("Starting otpme-agent ({user})...")
+    msg, log_msg = _("Starting otpme-agent ({user})...", log=True)
     msg = msg.format(user=_user)
-    logger.debug(msg)
+    log_msg = log_msg.format(user=_user)
+    logger.debug(log_msg)
     if not quiet:
         message(msg)
     agent_socket = config.get_agent_socket(user).split(":")[1]
@@ -1393,10 +1399,10 @@ def wait_for_agent_socket(user=None, agent_socket=None, quiet=True):
     if os.path.exists(agent_socket):
         return
     logger = config.logger
-    msg = _("Waiting for otpme-agent socket...")
+    msg, log_msg = _("Waiting for otpme-agent socket...", log=True)
     if not quiet:
         message(msg)
-    logger.debug(msg)
+    logger.debug(log_msg)
     while True:
         if count >= socket_wait:
             msg =(_("Timeout waiting for agent socket to appear."))
@@ -1434,7 +1440,8 @@ def start_otpme_daemon():
     daemon_status, pid = control_daemon.status(quiet=True)
     if daemon_status:
         return True
-    logger.debug("Starting OTPme daemons...")
+    log_msg = _("Starting OTPme daemons...", log=True)[1]
+    logger.debug(log_msg)
     otpme_daemon_bin = f'{config.bin_dir}/otpme-controld'
     command = [ otpme_daemon_bin, "start" ]
     daemon_returncode, \
@@ -1462,9 +1469,9 @@ def stop_otpme_daemon(kill=False, timeout=None):
     daemon_status, pid = control_daemon.status(quiet=True)
     if not daemon_status:
         return True
-    msg = _("Stopping OTPme daemons...")
+    msg, log_msg = _("Stopping OTPme daemons...", log=True)
     print(msg)
-    logger.debug(msg)
+    logger.debug(log_msg)
     otpme_daemon_bin = f'{config.bin_dir}/otpme-controld'
     command = [ otpme_daemon_bin, "stop" ]
     if kill:
@@ -1504,9 +1511,9 @@ def get_key_script(username):
         key_script_signs, \
         key_script = command_handler.get_user_key_script(username=username)
     except Exception as e:
-        msg = _("Error getting user key script from server: {e}")
-        msg = msg.format(e=e)
-        logger.debug(msg)
+        log_msg = _("Error getting user key script from server: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        logger.debug(log_msg)
         #raise OTPmeException(msg)
 
     if not key_script:
@@ -1519,9 +1526,10 @@ def get_key_script(username):
             key_script_signs, \
             key_script = offline_token.get_script(script_id="key")
         except Exception as e:
-            msg = _("Unable to get key script from offline tokens: {e}")
+            msg, log_msg = _("Unable to get key script from offline tokens: {e}", log=True)
             msg = msg.format(e=e)
-            logger.debug(msg)
+            log_msg = log_msg.format(e=e)
+            logger.debug(log_msg)
             raise OTPmeException(msg)
 
     if not key_script_path:
@@ -1636,7 +1644,9 @@ def run_key_script(username, script_command, script_options=None,
         msg = msg.format(key_script_path=key_script_path)
         raise OTPmeException(msg)
 
-    logger.debug(f"Using key script: {key_script_path}")
+    log_msg = _("Using key script: {key_script_path}", log=True)[1]
+    log_msg = log_msg.format(key_script_path=key_script_path)
+    logger.debug(log_msg)
 
     # Get a copy of our shell environment.
     script_env = os.environ.copy()

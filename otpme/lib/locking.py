@@ -70,9 +70,9 @@ def oid_lock(write=False):
                                     lock_caller=lock_caller,
                                     write=write)
             except Exception as e:
-                msg = _("Failed to acquire backend lock: {lock_id}: {error}")
-                msg = msg.format(lock_id=lock_id, error=e)
-                config.logger.critical(msg, exc_info=True)
+                log_msg = _("Failed to acquire backend lock: {lock_id}: {error}", log=True)[1]
+                log_msg = log_msg.format(lock_id=lock_id, error=e)
+                config.logger.critical(log_msg, exc_info=True)
                 config.raise_exception()
 
             # Run original function.
@@ -280,8 +280,8 @@ def cleanup():
         if config.debug_level("locking") > 1:
             # Get logger.
             logger = config.logger
-            msg = "Doing process exit cleanup."
-            logger.debug(msg)
+            log_msg = _("Doing process exit cleanup.", log=True)[1]
+            logger.debug(log_msg)
     except:
         pass
     cleanup_fds()
@@ -452,9 +452,9 @@ class OTPmeLock(OTPmeFakeLock):
                 raise LockWaitTimeout()
 
             if config.debug_level("locking") > 1:
-                msg = _("Acquired lock: {lock_id} ({lock_type}): {lock_file}")
-                msg = msg.format(lock_id=self.lock_id, lock_type=self._lock_type, lock_file=self.lock_file)
-                self.logger.debug(msg)
+                log_msg = _("Acquired lock: {lock_id} ({lock_type}): {lock_file}", log=True)[1]
+                log_msg = log_msg.format(lock_id=self.lock_id, lock_type=self._lock_type, lock_file=self.lock_file)
+                self.logger.debug(log_msg)
 
         super(OTPmeLock, self).acquire_lock(lock_caller=lock_caller,
                                         skip_same_caller=skip_same_caller)
@@ -506,6 +506,6 @@ class OTPmeLock(OTPmeFakeLock):
         self.forget_lock()
 
         if config.debug_level("locking") > 1:
-            msg = _("Released lock: {lock_id} ({lock_type}): {lock_file}")
-            msg = msg.format(lock_id=self.lock_id, lock_type=self._lock_type, lock_file=self.lock_file)
-            self.logger.debug(msg)
+            log_msg = _("Released lock: {lock_id} ({lock_type}): {lock_file}", log=True)[1]
+            log_msg = log_msg.format(lock_id=self.lock_id, lock_type=self._lock_type, lock_file=self.lock_file)
+            self.logger.debug(log_msg)

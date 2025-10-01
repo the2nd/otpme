@@ -17,20 +17,21 @@ def detect_smartcard(sc_types=None, detect_only=False, print_devices=False):
     from otpme.lib import config
     from otpme.lib.smartcard import get_class
     logger = config.logger
-    logger.debug("Starting smartcard detection...")
+    log_msg = _("Starting smartcard detection...", log=True)[1]
+    logger.debug(log_msg)
     smartcard = None
     supported_smartcards = config.get_supported_smartcards()
     for s in supported_smartcards:
         try:
             smartcard_class = get_class(s)
         except ImportError as e:
-            msg = _("Missing smartcard support: {error}")
-            msg = msg.format(error=e)
-            logger.debug(msg)
+            log_msg = _("Missing smartcard support: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            logger.debug(log_msg)
         except Exception as e:
-            msg = _("Problem loading smartcard module '{module}': {error}")
-            msg = msg.format(module=s, error=e)
-            logger.warning(msg)
+            log_msg = _("Problem loading smartcard module '{module}': {error}", log=True)[1]
+            log_msg = log_msg.format(module=s, error=e)
+            logger.warning(log_msg)
         # Get smartcard instance.
         smartcard = smartcard_class(autodetect=False)
         # Check if we have to search for smartcard of this type.
@@ -44,16 +45,16 @@ def detect_smartcard(sc_types=None, detect_only=False, print_devices=False):
         if not search_smartcard:
             smartcard = None
             continue
-        msg = _("Searching for smartcard: {type}")
-        msg = msg.format(type=s)
-        logger.debug(msg)
+        log_msg = _("Searching for smartcard: {type}", log=True)[1]
+        log_msg = log_msg.format(type=s)
+        logger.debug(log_msg)
         if print_devices:
             print(msg)
         try:
             smartcard.detect(print_devices=print_devices)
-            msg = _("Detected smartcard: {type}")
-            msg = msg.format(type=smartcard.type)
-            logger.debug(msg)
+            log_msg = _("Detected smartcard: {type}", log=True)[1]
+            log_msg = log_msg.format(type=smartcard.type)
+            logger.debug(log_msg)
             # currently we only support one smartcard at a time
             if not detect_only:
                 break

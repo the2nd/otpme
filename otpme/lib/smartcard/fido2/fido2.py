@@ -76,7 +76,8 @@ class Fido2ClientHandler(object):
                 raise ShowHelp(exception)
 
         # Try to find a locally connected U2F token.
-        self.logger.debug("Trying to detect connected fido2 token...")
+        log_msg = _("Trying to detect connected fido2 token...", log=True)[1]
+        self.logger.debug(log_msg)
         try:
             fido2_token = Fido2()
         except Exception as e:
@@ -228,17 +229,19 @@ class Fido2(object):
         # Locate a device
         dev = next(CtapHidDevice.list_devices(), None)
         if dev is not None:
-            logger.debug("Fido2 smartcard: Use USB HID channel.")
+            log_msg = _("Fido2 smartcard: Use USB HID channel.", log=True)[1]
+            logger.debug(log_msg)
         else:
             try:
                 dev = next(CtapPcscDevice.list_devices(), None)
             except Exception as e:
                 dev = None
-                msg = _("Fido2 smartcard: pcscd search error: {error}")
-                msg = msg.format(error=e)
-                logger.warning(msg)
+                log_msg = _("Fido2 smartcard: pcscd search error: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                logger.warning(log_msg)
             if dev:
-                logger.debug("Fido2 smartcard: Use pcscd channel.")
+                log_msg = _("Fido2 smartcard: Use pcscd channel.", log=True)[1]
+                logger.debug(log_msg)
         if not dev:
             raise NoSmartcardFound("No FIDO device found")
         self.dev = Ctap1(dev)

@@ -122,12 +122,12 @@ def register_backend():
                     counter += 1
                     x_path = os.path.join(failed_pass_dir, x)
                     x_file = os.path.join(x_path, config.object_config_file_name)
-                    msg = _("Processing {path_id} ({counter}/{files_count}): {x_file}")
-                    msg = msg.format(path_id=path_id,
+                    log_msg = _("Processing {path_id} ({counter}/{files_count}): {x_file}", log=True)[1]
+                    log_msg = log_msg.format(path_id=path_id,
                                     counter=counter,
                                     files_count=files_count,
                                     x_file=x_file)
-                    logger.debug(msg)
+                    logger.debug(log_msg)
                     x_oid = oid_getter(x_path)
                     backend.index_add(object_id=x_oid,
                                     object_config="auto",

@@ -70,7 +70,8 @@ class SyncDaemon(OTPmeDaemon):
                 try:
                     self._handle_daemon_command(sender, daemon_command, data)
                 except UnknownCommand as e:
-                    self.logger.warning(str(e))
+                    log_msg = str(e)
+                    self.logger.warning(log_msg)
                 except DaemonQuit:
                     break
                 except DaemonReload:
@@ -84,6 +85,6 @@ class SyncDaemon(OTPmeDaemon):
             except (KeyboardInterrupt, SystemExit):
                 pass
             except Exception as e:
-                msg = _("Unhandled error in syncd: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Unhandled error in syncd: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)

@@ -95,8 +95,8 @@ class OTPmeAuthP1(OTPmeServer1):
                 return self.build_response(status, message)
 
         if command == "get_jwt":
-            msg = _("Processing JWT request.")
-            self.logger.info(msg)
+            log_msg = _("Processing JWT request.", log=True)[1]
+            self.logger.info(log_msg)
 
             if not self.authenticated:
                 message = _("Not logged in.")
@@ -159,9 +159,9 @@ class OTPmeAuthP1(OTPmeServer1):
 
             _jwt = jwt.encode(payload=jwt_data, key=sign_key, algorithm='RS256')
 
-            msg = _("Sigend JWT: user={username} token={token_name} access_group={access_group}, reason={reason}")
-            msg = msg.format(username=self.username, token_name=config.auth_token.name, access_group=jwt_accessgroup, reason=jwt_reason)
-            self.logger.info(msg)
+            log_msg = _("Sigend JWT: user={username} token={token_name} access_group={access_group}, reason={reason}", log=True)[1]
+            log_msg = log_msg.format(username=self.username, token_name=config.auth_token.name, access_group=jwt_accessgroup, reason=jwt_reason)
+            self.logger.info(log_msg)
 
             return self.build_response(True, _jwt)
 
@@ -286,9 +286,9 @@ class OTPmeAuthP1(OTPmeServer1):
 
         # Build incomplete/invalid command response.
         if incomplete_command or invalid_command:
-            msg = _("{command_error}: user={log_username} access_group={log_access_group} client={log_client} client_ip={log_client_ip} auth_mode={log_auth_mode} auth_type={log_auth_type} session={log_session_id}")
-            msg = msg.format(command_error=command_error, log_username=log_username, log_access_group=log_access_group, log_client=log_client, log_client_ip=log_client_ip, log_auth_mode=log_auth_mode, log_auth_type=log_auth_type, log_session_id=log_session_id)
-            self.logger.error(msg)
+            log_msg = _("{command_error}: user={log_username} access_group={log_access_group} client={log_client} client_ip={log_client_ip} auth_mode={log_auth_mode} auth_type={log_auth_type} session={log_session_id}", log=True)[1]
+            log_msg = log_msg.format(command_error=command_error, log_username=log_username, log_access_group=log_access_group, log_client=log_client, log_client_ip=log_client_ip, log_auth_mode=log_auth_mode, log_auth_type=log_auth_type, log_session_id=log_session_id)
+            self.logger.error(log_msg)
             return self.build_response(status, message)
 
         # Check if user exists.
@@ -301,9 +301,9 @@ class OTPmeAuthP1(OTPmeServer1):
             status = False
             command_error = "AUTH_UNKOWN_USER"
             auth_reply = {'message':'AUTH_FAILED', 'status':False}
-            msg = _("{command_error}: user={log_username} access_group={log_access_group} client={log_client} client_ip={log_client_ip} auth_mode={log_auth_mode} auth_type={log_auth_type} session={log_session_id}")
-            msg = msg.format(command_error=command_error, log_username=log_username, log_access_group=log_access_group, log_client=log_client, log_client_ip=log_client_ip, log_auth_mode=log_auth_mode, log_auth_type=log_auth_type, log_session_id=log_session_id)
-            self.logger.warning(msg)
+            log_msg = _("{command_error}: user={log_username} access_group={log_access_group} client={log_client} client_ip={log_client_ip} auth_mode={log_auth_mode} auth_type={log_auth_type} session={log_session_id}", log=True)[1]
+            log_msg = log_msg.format(command_error=command_error, log_username=log_username, log_access_group=log_access_group, log_client=log_client, log_client_ip=log_client_ip, log_auth_mode=log_auth_mode, log_auth_type=log_auth_type, log_session_id=log_session_id)
+            self.logger.warning(log_msg)
             return self.build_response(status, auth_reply)
 
         redirect_connection = False
@@ -321,10 +321,9 @@ class OTPmeAuthP1(OTPmeServer1):
                                             auto_preauth=True,
                                             auto_auth=False)
             except Exception as e:
-                message = _("Failed to get redirect connection")
-                msg = _("{message}: {error}")
-                msg = msg.format(message=message, error=e)
-                self.logger.critical(msg)
+                message, log_msg = _("Failed to get redirect connection", log=True)
+                log_msg = f"{log_msg}: {e}"
+                self.logger.critical(log_msg)
                 status = False
                 return self.build_response(status, message)
 
@@ -336,10 +335,9 @@ class OTPmeAuthP1(OTPmeServer1):
                 binary_data = authd_conn.send(command="verify",
                                         command_args=command_args)
             except Exception as e:
-                message = _("Failed to authenticate user")
-                msg = _("{message}: {error}")
-                msg = msg.format(message=message, error=e)
-                self.logger.critical(msg)
+                message, log_msg = _("Failed to authenticate user", log=True)
+                log_msg = f"{log_msg}: {e}"
+                self.logger.critical(log_msg)
                 status = False
                 return self.build_response(status, message)
             finally:

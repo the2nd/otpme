@@ -303,12 +303,12 @@ def init_otpme(use_backend=None):
                 raise OTPmeException(msg)
 
     if use_backend:
-        msg = _("Doing direct init...")
-        logger.debug(msg)
+        log_msg = _("Doing direct init...", log=True)[1]
+        logger.debug(log_msg)
         do_direct_init()
     else:
-        msg = _("Doing hostd init...")
-        logger.debug(msg)
+        log_msg = _("Doing hostd init...", log=True)[1]
+        logger.debug(log_msg)
         do_hostd_init()
 
     # Reload config after realm/site was set.

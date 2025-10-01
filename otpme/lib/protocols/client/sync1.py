@@ -159,9 +159,9 @@ class OTPmeSyncP1(OTPmeClient1):
                     'checksum'      : checksum,
                     }
         command_args.update(sync_params)
-        msg = _("Updating sync list checksum on peer node: {checksum}")
-        msg = msg.format(checksum=checksum)
-        self.logger.debug(msg)
+        log_msg = _("Updating sync list checksum on peer node: {checksum}", log=True)[1]
+        log_msg = log_msg.format(checksum=checksum)
+        self.logger.debug(log_msg)
         while try_count < max_tries:
             status, \
             status_code, \
@@ -179,12 +179,12 @@ class OTPmeSyncP1(OTPmeClient1):
             if status:
                 return reply
             try_count += 1
-            msg = _("Error sending sync list checksum to peer: {reply}")
-            msg = msg.format(reply=reply)
-            self.logger.error(msg)
-            msg = _("Retrying ({try_count}/{max_tries})")
-            msg = msg.format(try_count=try_count, max_tries=max_tries)
-            self.logger.error(msg)
+            log_msg = _("Error sending sync list checksum to peer: {reply}", log=True)[1]
+            log_msg = log_msg.format(reply=reply)
+            self.logger.error(log_msg)
+            log_msg = _("Retrying ({try_count}/{max_tries})", log=True)[1]
+            log_msg = log_msg.format(try_count=try_count, max_tries=max_tries)
+            self.logger.error(log_msg)
             time.sleep(1)
 
     def get_remote_sync_list(self, realm, site, sync_params):
@@ -196,7 +196,8 @@ class OTPmeSyncP1(OTPmeClient1):
                     'site'              : site,
                     }
         command_args.update(sync_params)
-        self.logger.debug(_("Requesting sync list from peer."))
+        log_msg = _("Requesting sync list from peer.", log=True)[1]
+        self.logger.debug(log_msg)
         while try_count < max_tries:
             status, \
             status_code, \
@@ -213,12 +214,12 @@ class OTPmeSyncP1(OTPmeClient1):
             if status:
                 return reply
             try_count += 1
-            msg = _("Error receiving sync list from peer: {reply}")
-            msg = msg.format(reply=reply)
-            self.logger.error(msg)
-            msg = _("Retrying ({try_count}/{max_tries})")
-            msg = msg.format(try_count=try_count, max_tries=max_tries)
-            self.logger.error(msg)
+            log_msg = _("Error receiving sync list from peer: {reply}", log=True)[1]
+            log_msg = log_msg.format(reply=reply)
+            self.logger.error(log_msg)
+            log_msg = _("Retrying ({try_count}/{max_tries})", log=True)[1]
+            log_msg = log_msg.format(try_count=try_count, max_tries=max_tries)
+            self.logger.error(log_msg)
             time.sleep(1)
 
     def get_last_used_timestamps(self, sync_params):
@@ -227,7 +228,8 @@ class OTPmeSyncP1(OTPmeClient1):
         max_tries = 3
         command_args = {}
         command_args.update(sync_params)
-        self.logger.debug(_("Requesting last used timestamps from peer."))
+        log_msg = _("Requesting last used timestamps from peer.", log=True)[1]
+        self.logger.debug(log_msg)
         while True:
             status, \
             status_code, \
@@ -242,12 +244,12 @@ class OTPmeSyncP1(OTPmeClient1):
             if status:
                 return reply
             try_count += 1
-            msg = _("Error receiving last used timestamps from peer: {reply}")
-            msg = msg.format(reply=reply)
-            self.logger.error(msg)
-            msg = _("Retrying ({try_count}/{max_tries})")
-            msg = msg.format(try_count=try_count, max_tries=max_tries)
-            self.logger.error(msg)
+            log_msg = _("Error receiving last used timestamps from peer: {reply}", log=True)[1]
+            log_msg = log_msg.format(reply=reply)
+            self.logger.error(log_msg)
+            log_msg = _("Retrying ({try_count}/{max_tries})", log=True)[1]
+            log_msg = log_msg.format(try_count=try_count, max_tries=max_tries)
+            self.logger.error(log_msg)
 
             if try_count >= max_tries:
                 msg = _("Failed to receive last used timestamps from peer.")
@@ -271,8 +273,8 @@ class OTPmeSyncP1(OTPmeClient1):
 
     def _sync_last_used(self, realm, site):
         """ Sync last used times. """
-        msg = _("Syncing last used times...")
-        self.logger.info(msg)
+        log_msg = _("Syncing last used times...", log=True)[1]
+        self.logger.info(log_msg)
         # Get sync parameters.
         this_host = backend.get_object(uuid=config.uuid)
         sync_params = this_host.get_sync_parameters(realm, site, self.connection.peer.uuid)
@@ -292,18 +294,18 @@ class OTPmeSyncP1(OTPmeClient1):
         # Process last used timestamps from peer.
         for x_type in remote_last_used:
             if x_type not in sync_object_types:
-                msg = _("Got not requested object type from peer: {x_type}")
-                msg = msg.format(x_type=x_type)
-                self.logger.warning(msg)
+                log_msg = _("Got not requested object type from peer: {x_type}", log=True)[1]
+                log_msg = log_msg.format(x_type=x_type)
+                self.logger.warning(log_msg)
                 continue
             updates = {}
             for x_uuid in remote_last_used[x_type]:
                 try:
                     timestamp = remote_last_used[x_type][x_uuid]
                 except:
-                    msg = _("Remote last used data misses timestamp: {x_uuid}")
-                    msg = msg.format(x_uuid=x_uuid)
-                    self.logger.warning(msg)
+                    log_msg = _("Remote last used data misses timestamp: {x_uuid}", log=True)[1]
+                    log_msg = log_msg.format(x_uuid=x_uuid)
+                    self.logger.warning(log_msg)
                     continue
                 try:
                     local_last_used_time = local_last_used[x_type][x_uuid]
@@ -322,21 +324,21 @@ class OTPmeSyncP1(OTPmeClient1):
                                         value=x_uuid,
                                         return_attributes=return_attrs)
                 if not x_attrs:
-                    msg = _("Got unknown UUID from peer: {x_uuid}")
-                    msg = msg.format(x_uuid=x_uuid)
-                    self.logger.warning(msg)
+                    log_msg = _("Got unknown UUID from peer: {x_uuid}", log=True)[1]
+                    log_msg = log_msg.format(x_uuid=x_uuid)
+                    self.logger.warning(log_msg)
                     continue
                 x_realm = x_attrs[x_uuid]['realm']
                 if x_realm != realm:
-                    msg = _("Got UUID for not requested realm: {x_realm}: {x_uuid}")
-                    msg = msg.format(x_realm=x_realm, x_uuid=x_uuid)
-                    self.logger.warning(msg)
+                    log_msg = _("Got UUID for not requested realm: {x_realm}: {x_uuid}", log=True)[1]
+                    log_msg = log_msg.format(x_realm=x_realm, x_uuid=x_uuid)
+                    self.logger.warning(log_msg)
                     continue
                 x_site = x_attrs[x_uuid]['site']
                 if x_site != site:
-                    msg = _("Got UUID for not requested site: {x_site}: {x_uuid}")
-                    msg = msg.format(x_site=x_site, x_uuid=x_uuid)
-                    self.logger.warning(msg)
+                    log_msg = _("Got UUID for not requested site: {x_site}: {x_uuid}", log=True)[1]
+                    log_msg = log_msg.format(x_site=x_site, x_uuid=x_uuid)
+                    self.logger.warning(log_msg)
                     continue
                 updates[x_uuid] = timestamp
             # Finally set last used times.
@@ -379,17 +381,17 @@ class OTPmeSyncP1(OTPmeClient1):
         received_objects = 0
         sync_success = False
 
-        start_msg = _("Checking for orphan sync cache {realm}/{site}...")
+        log_msg = _("Checking for orphan sync cache {realm}/{site}...", log=True)[1]
         if self.connection:
-            start_msg = _("Starting sync of {realm}/{site} ({socket_uri})")
-            start_msg = start_msg.format(realm=realm, site=site, socket_uri=self.connection.socket_uri)
+            log_msg = _("Starting sync of {realm}/{site} ({socket_uri})", log=True)[1]
+            log_msg = log_msg.format(realm=realm, site=site, socket_uri=self.connection.socket_uri)
         else:
-            start_msg = start_msg.format(realm=realm, site=site)
-        self.logger.info(start_msg)
+            log_msg = log_msg.format(realm=realm, site=site)
+        self.logger.info(log_msg)
 
         if not config.master_key:
-            msg = _("Missing AES master key. Unable to start sync.")
-            self.logger.critical(msg)
+            msg, log_msg = _("Missing AES master key. Unable to start sync.", log=True)
+            self.logger.critical(log_msg)
             raise Exception(msg)
 
         # Our on-disk sync cache (e.g. from last failed sync).
@@ -432,9 +434,9 @@ class OTPmeSyncP1(OTPmeClient1):
             # Pass on exception to calling method.
             raise
         except OTPmeException as e:
-            msg = _("Error getting remote sync list: {e}")
-            msg = msg.format(e=e)
-            self.logger.critical(msg)
+            log_msg = _("Error getting remote sync list: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.critical(log_msg)
             return False
         # Get sync parameters from response.
         sync_params = sync_list_response['sync_params']
@@ -490,9 +492,9 @@ class OTPmeSyncP1(OTPmeClient1):
                 # Pass on exception to calling method.
                 raise
             except Exception as e:
-                msg = _("Error getting remote sync list: {e}")
-                msg = msg.format(e=e)
-                self.logger.critical(msg)
+                log_msg = _("Error getting remote sync list: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.critical(log_msg)
                 config.raise_exception()
                 return False
             remote_sync_list = sync_list_response['sync_list']
@@ -516,21 +518,21 @@ class OTPmeSyncP1(OTPmeClient1):
                 # Pass on exception to calling method.
                 raise
             except Exception as e:
-                msg = _("Error sending sync list to peer: {e}")
-                msg = msg.format(e=e)
-                self.logger.critical(msg)
+                log_msg = _("Error sending sync list to peer: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.critical(log_msg)
                 config.raise_exception()
                 return False
 
         changed_object = False
         while try_count < max_tries:
             try_count += 1
-            msg = _("Config checksums differ: local={local_sync_list_checksum} remote={remote_sync_list_checksum}")
-            msg = msg.format(local_sync_list_checksum=local_sync_list_checksum, remote_sync_list_checksum=remote_sync_list_checksum)
-            self.logger.info(msg)
-            msg = _("Starting sync try {try_count}/{max_tries}")
-            msg = msg.format(try_count=try_count, max_tries=max_tries)
-            self.logger.info(msg)
+            log_msg = _("Config checksums differ: local={local_sync_list_checksum} remote={remote_sync_list_checksum}", log=True)[1]
+            log_msg = log_msg.format(local_sync_list_checksum=local_sync_list_checksum, remote_sync_list_checksum=remote_sync_list_checksum)
+            self.logger.info(log_msg)
+            log_msg = _("Starting sync try {try_count}/{max_tries}", log=True)[1]
+            log_msg = log_msg.format(try_count=try_count, max_tries=max_tries)
+            self.logger.info(log_msg)
 
             # Get new remote sync list. The first call is done outsite this loop
             # because we need to know how many remote objects we will handle to
@@ -547,14 +549,15 @@ class OTPmeSyncP1(OTPmeClient1):
                     # Pass on exception to calling method.
                     raise
                 except Exception as e:
-                    msg = _("Error getting remote sync list: {e}")
-                    msg = msg.format(e=e)
-                    self.logger.critical(msg)
+                    log_msg = _("Error getting remote sync list: {e}", log=True)[1]
+                    log_msg = log_msg.format(e=e)
+                    self.logger.critical(log_msg)
                     config.raise_exception()
                     return False
             remote_sync_list = sync_list_response['sync_list']
 
-            self.logger.info(_("Syncing remote objects..."))
+            log_msg = _("Syncing remote objects...", log=True)[1]
+            self.logger.info(log_msg)
 
             # Get objects to be synced.
             object_count = 0
@@ -628,13 +631,13 @@ class OTPmeSyncP1(OTPmeClient1):
                             value = str(object_config[attribute])
                             checksum = stuff.gen_md5(value)
                             object_checksums[attribute] = checksum
-                        msg = _("Syncing remote object ({object_counter}/{object_count}): {object_id}")
-                        msg = msg.format(object_counter=object_counter, object_count=object_count, object_id=object_id)
+                        log_msg = _("Syncing remote object ({object_counter}/{object_count}): {object_id}", log=True)[1]
+                        log_msg = log_msg.format(object_counter=object_counter, object_count=object_count, object_id=object_id)
                     else:
-                        msg = _("Receiving remote object ({object_counter}/{object_count}): {object_id}")
-                        msg = msg.format(object_counter=object_counter, object_count=object_count, object_id=object_id)
+                        log_msg = _("Receiving remote object ({object_counter}/{object_count}): {object_id}", log=True)[1]
+                        log_msg = log_msg.format(object_counter=object_counter, object_count=object_count, object_id=object_id)
                     if config.debug_level() > 2:
-                        self.logger.debug(msg)
+                        self.logger.debug(log_msg)
                     else:
                         print_processed_msg = False
                         x_count = object_counter / 10
@@ -643,9 +646,9 @@ class OTPmeSyncP1(OTPmeClient1):
                         if object_counter == object_count:
                             print_processed_msg = True
                         if print_processed_msg:
-                            msg = _("Received {object_counter}/{object_count} objects...")
-                            msg = msg.format(object_counter=object_counter, object_count=object_count)
-                            self.logger.info(msg)
+                            log_msg = _("Received {object_counter}/{object_count} objects...", log=True)[1]
+                            log_msg = log_msg.format(object_counter=object_counter, object_count=object_count)
+                            self.logger.info(log_msg)
 
                     command_args = {}
                     command_args['realm'] = realm
@@ -660,17 +663,17 @@ class OTPmeSyncP1(OTPmeClient1):
                     binary_data = self.connection.send("get_object", command_args)
 
                     if not status:
-                        msg = _("Error receiving object {object_id}: {reply}")
-                        msg = msg.format(object_id=object_id, reply=reply)
-                        self.logger.warning(msg)
+                        log_msg = _("Error receiving object {object_id}: {reply}", log=True)[1]
+                        log_msg = log_msg.format(object_id=object_id, reply=reply)
+                        self.logger.warning(log_msg)
                         # Make sure we try again.
                         remote_sync_list_checksum = None
                         continue
 
                     if reply == "SYNC_UNKNOWN_OBJECT":
-                        msg = _("Object deleted on remote site while syncing: {object_id}")
-                        msg = msg.format(object_id=object_id)
-                        self.logger.warning(msg)
+                        log_msg = _("Object deleted on remote site while syncing: {object_id}", log=True)[1]
+                        log_msg = log_msg.format(object_id=object_id)
+                        self.logger.warning(log_msg)
                     else:
                         new_checksum = reply['checksum']
                         new_object_config = reply['object_config']
@@ -678,9 +681,9 @@ class OTPmeSyncP1(OTPmeClient1):
                             # Make sure object has not changed while synching.
                             old_checksum = object_list[object_id]['remote_checksum']
                             if new_checksum != old_checksum:
-                                msg = _("Object changed while syncing: {object_id}")
-                                msg = msg.format(object_id=object_id)
-                                self.logger.warning(msg)
+                                log_msg = _("Object changed while syncing: {object_id}", log=True)[1]
+                                log_msg = log_msg.format(object_id=object_id)
+                                self.logger.warning(log_msg)
                                 self.sync_cache.delete(object_id)
                                 # Make sure we try again.
                                 remote_sync_list_checksum = None
@@ -688,9 +691,9 @@ class OTPmeSyncP1(OTPmeClient1):
                                 continue
                         # Check for object checksum.
                         if "CHECKSUM" not in new_object_config:
-                            msg = _("Object misses checksum: {object_id}")
-                            msg = msg.format(object_id=object_id)
-                            self.logger.warning(msg)
+                            log_msg = _("Object misses checksum: {object_id}", log=True)[1]
+                            log_msg = log_msg.format(object_id=object_id)
+                            self.logger.warning(log_msg)
                             continue
                         # Merge remote/local object config.
                         for attribute in new_object_config:
@@ -702,14 +705,14 @@ class OTPmeSyncP1(OTPmeClient1):
                         # Update object in sync dict.
                         self.sync_cache[object_id] = new_object_config
                         received_objects += 1
-                        #msg = _("Received object: {object_id}")
-                        #msg = msg.format(object_id=object_id)
-                        #self.logger.debug(msg)
+                        #log_msg = _("Received object: {object_id}", log=True)[1]
+                        #log_msg = log_msg.format(object_id=object_id)
+                        #self.logger.debug(log_msg)
 
             if received_objects > 0:
-                msg = _("Received {received_objects} objects from peer.")
-                msg = msg.format(received_objects=received_objects)
-                self.logger.info(msg)
+                log_msg = _("Received {received_objects} objects from peer.", log=True)[1]
+                log_msg = log_msg.format(received_objects=received_objects)
+                self.logger.info(log_msg)
                 received_objects = 0
 
             # We only need to do a re-check with the master node if there was an
@@ -724,16 +727,17 @@ class OTPmeSyncP1(OTPmeClient1):
 
             if not do_recheck:
                 if ignore_changed_objects:
-                    msg = _("Not re-checking sync status with master node "
-                            "(--ignore-changed-objects).")
-                    self.logger.info(msg)
+                    log_msg = _("Not re-checking sync status with master node "
+                            "(--ignore-changed-objects).", log=True)[1]
+                    self.logger.info(log_msg)
                 sync_success = True
                 break
 
             # Do re-check with master node.
             old_remote_sync_list_checksum = remote_sync_list_checksum
             try:
-                self.logger.info(_("Rechecking sync state with peer."))
+                log_msg = _("Rechecking sync state with peer.", log=True)[1]
+                self.logger.info(log_msg)
                 sync_list_response = self.get_remote_sync_list(realm=realm,
                                                             site=site,
                                                             sync_params=sync_params)
@@ -744,9 +748,9 @@ class OTPmeSyncP1(OTPmeClient1):
                 # Pass on exception to calling method.
                 raise
             except Exception as e:
-                msg = _("Error getting remote sync list: {e}")
-                msg = msg.format(e=e)
-                self.logger.critical(msg)
+                log_msg = _("Error getting remote sync list: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.critical(log_msg)
                 config.raise_exception()
                 return False
             # Get sync parameters from response.
@@ -761,9 +765,9 @@ class OTPmeSyncP1(OTPmeClient1):
             self.sync_cache.sync_parameters = sync_params
 
             if old_remote_sync_list_checksum == remote_sync_list_checksum:
-                msg = _("Local sync cache up-to-date with peer: {remote_sync_list_checksum}")
-                msg = msg.format(remote_sync_list_checksum=remote_sync_list_checksum)
-                self.logger.info(msg)
+                log_msg = _("Local sync cache up-to-date with peer: {remote_sync_list_checksum}", log=True)[1]
+                log_msg = log_msg.format(remote_sync_list_checksum=remote_sync_list_checksum)
+                self.logger.info(log_msg)
                 sync_success = True
                 break
 
@@ -790,25 +794,25 @@ class OTPmeSyncP1(OTPmeClient1):
                 if failed_objects_count == 0:
                     # On success we can clear our sync cache.
                     self.sync_cache.clear()
-                    msg = _("Sync finished successful. Synchronized {synced_objects_count} objects.")
-                    msg = msg.format(synced_objects_count=synced_objects_count)
-                    self.logger.info(msg)
+                    log_msg = _("Sync finished successful. Synchronized {synced_objects_count} objects.", log=True)[1]
+                    log_msg = log_msg.format(synced_objects_count=synced_objects_count)
+                    self.logger.info(log_msg)
                 else:
-                    msg = _("Sync finished with errors. Synchronized {synced_objects_count} objects, {failed_objects_count} failed.")
-                    msg = msg.format(synced_objects_count=synced_objects_count, failed_objects_count=failed_objects_count)
-                    self.logger.critical(msg)
+                    log_msg = _("Sync finished with errors. Synchronized {synced_objects_count} objects, {failed_objects_count} failed.", log=True)[1]
+                    log_msg = log_msg.format(synced_objects_count=synced_objects_count, failed_objects_count=failed_objects_count)
+                    self.logger.critical(log_msg)
         else:
             if local_sync_list_checksum == remote_sync_list_checksum:
-                msg = _("Remote config checksum matches local. No sync needed: {local_sync_list_checksum}")
-                msg = msg.format(local_sync_list_checksum=local_sync_list_checksum)
-                self.logger.info(msg)
+                log_msg = _("Remote config checksum matches local. No sync needed: {local_sync_list_checksum}", log=True)[1]
+                log_msg = log_msg.format(local_sync_list_checksum=local_sync_list_checksum)
+                self.logger.info(log_msg)
                 new_local_checksum = local_sync_list_checksum
                 sync_success = True
                 exit_status = None
             else:
-                msg = _("Unable to get consistent sync state with peer after {try_count} tries.")
-                msg = msg.format(try_count=try_count)
-                self.logger.warning(msg)
+                log_msg = _("Unable to get consistent sync state with peer after {try_count} tries.", log=True)[1]
+                log_msg = log_msg.format(try_count=try_count)
+                self.logger.warning(log_msg)
                 new_local_checksum = local_sync_list_checksum
                 exit_status = False
 
@@ -825,9 +829,9 @@ class OTPmeSyncP1(OTPmeClient1):
             # Pass on exception to calling method.
             raise
         except Exception as e:
-            msg = _("Error sending sync list to peer: {e}")
-            msg = msg.format(e=e)
-            self.logger.critical(msg)
+            log_msg = _("Error sending sync list to peer: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.critical(log_msg)
             config.raise_exception()
             return False
 
@@ -858,7 +862,8 @@ class OTPmeSyncP1(OTPmeClient1):
         # Add empty list to add_list dict for each object type.
         for i in add_order: add_list[i] = []
 
-        self.logger.info(_("Started merging of sync cache..."))
+        log_msg = _("Started merging of sync cache...", log=True)[1]
+        self.logger.info(log_msg)
 
         # We have to remove deleted objects before syncing new/changed objects
         # because we need e.g. the token <> group relationship to update e.g.
@@ -894,9 +899,9 @@ class OTPmeSyncP1(OTPmeClient1):
             # synced by HostDaemon().sync_sites().
             if config.host_data['type'] == "host":
                 if object_type == "realm" or object_type == "site":
-                    msg = _("Peer sent us forbidden {object_type} object: {object_id}")
-                    msg = msg.format(object_type=object_type, object_id=object_id)
-                    self.logger.critical(msg)
+                    log_msg = _("Peer sent us forbidden {object_type} object: {object_id}", log=True)[1]
+                    log_msg = log_msg.format(object_type=object_type, object_id=object_id)
+                    self.logger.critical(log_msg)
                     continue
 
             # Add object to add list.
@@ -906,12 +911,12 @@ class OTPmeSyncP1(OTPmeClient1):
         def log_progress(x_oid, child, object_counter, object_count):
             if config.debug_level() > 2:
                 if child.exitcode == 0:
-                    msg = _("Added object ({object_counter}/{object_count}): {x_oid}")
-                    msg = msg.format(object_counter=object_counter, object_count=object_count, x_oid=x_oid)
+                    log_msg = _("Added object ({object_counter}/{object_count}): {x_oid}", log=True)[1]
+                    log_msg = log_msg.format(object_counter=object_counter, object_count=object_count, x_oid=x_oid)
                 else:
-                    msg = _("Updated object ({object_counter}/{object_count}): {x_oid}")
-                    msg = msg.format(object_counter=object_counter, object_count=object_count, x_oid=x_oid)
-                self.logger.debug(msg)
+                    log_msg = _("Updated object ({object_counter}/{object_count}): {x_oid}", log=True)[1]
+                    log_msg = log_msg.format(object_counter=object_counter, object_count=object_count, x_oid=x_oid)
+                self.logger.debug(log_msg)
             else:
                 print_processed_msg = False
                 x_count = object_counter / 10
@@ -920,9 +925,9 @@ class OTPmeSyncP1(OTPmeClient1):
                 if object_counter == object_count:
                     print_processed_msg = True
                 if print_processed_msg:
-                    msg = _("Processed {object_counter}/{object_count} objects.")
-                    msg = msg.format(object_counter=object_counter, object_count=object_count)
-                    self.logger.info(msg)
+                    log_msg = _("Processed {object_counter}/{object_count} objects.", log=True)[1]
+                    log_msg = log_msg.format(object_counter=object_counter, object_count=object_count)
+                    self.logger.info(log_msg)
 
         # Merge all updates.
         object_counter = 0
@@ -942,9 +947,9 @@ class OTPmeSyncP1(OTPmeClient1):
             if not object_list:
                 continue
             if not object_type in valid_object_types:
-                msg = _("Got object type to sync that is not known for this host type. This is most likley a bug: {object_type}")
-                msg = msg.format(object_type=object_type)
-                self.logger.critical(msg)
+                log_msg = _("Got object type to sync that is not known for this host type. This is most likley a bug: {object_type}", log=True)[1]
+                log_msg = log_msg.format(object_type=object_type)
+                self.logger.critical(log_msg)
                 continue
             # Add objects to progress calculation.
             self.update_sync_progress(realm=realm,
@@ -981,9 +986,9 @@ class OTPmeSyncP1(OTPmeClient1):
                             object_counter += 1
                             log_progress(x_oid, child, object_counter, object_count)
                         else:
-                            msg = _("Failed to process object: {x_oid}")
-                            msg = msg.format(x_oid=x_oid)
-                            self.logger.warning(msg)
+                            log_msg = _("Failed to process object: {x_oid}", log=True)[1]
+                            log_msg = log_msg.format(x_oid=x_oid)
+                            self.logger.warning(log_msg)
                     time.sleep(0.01)
                     if prev_object_type != object_type:
                         if len(self.mass_add_procs) > 0:
@@ -1022,9 +1027,9 @@ class OTPmeSyncP1(OTPmeClient1):
                     object_counter += 1
                     log_progress(x_oid, child, object_counter, object_count)
                 else:
-                    msg = _("Failed to process object: {x_oid}")
-                    msg = msg.format(x_oid=x_oid)
-                    self.logger.warning(msg)
+                    log_msg = _("Failed to process object: {x_oid}", log=True)[1]
+                    log_msg = log_msg.format(x_oid=x_oid)
+                    self.logger.warning(log_msg)
             time.sleep(0.01)
             if len(self.mass_add_procs) > 0:
                 continue
@@ -1033,8 +1038,8 @@ class OTPmeSyncP1(OTPmeClient1):
         # Update realm CA data if the master node  received a changed CA.
         if update_realm_ca_data:
             if config.realm_master_node:
-                msg = _("Updating realm CA data...")
-                self.logger.info(msg)
+                log_msg = _("Updating realm CA data...", log=True)[1]
+                self.logger.info(log_msg)
                 realm = backend.get_object(uuid=config.realm_uuid)
                 realm.update_ca_data(verify_acls=False)
 
@@ -1053,15 +1058,15 @@ class OTPmeSyncP1(OTPmeClient1):
             try:
                 parent_object_uuid = object_config.pop('SYNC_PARENT_OBJECT_UUID')
             except Exception as e:
-                msg = _("Failed to get parent object UUID: {object_id}: {e}")
-                msg = msg.format(object_id=object_id, e=e)
-                self.logger.critical(msg)
+                log_msg = _("Failed to get parent object UUID: {object_id}: {e}", log=True)[1]
+                log_msg = log_msg.format(object_id=object_id, e=e)
+                self.logger.critical(log_msg)
                 exit_child(1)
             parent_object = backend.get_object(uuid=parent_object_uuid)
             if not parent_object:
-                msg = _("Unable to sync object with missing parent object: {object_id}: {parent_object_uuid}")
-                msg = msg.format(object_id=object_id, parent_object_uuid=parent_object_uuid)
-                self.logger.warning(msg)
+                log_msg = _("Unable to sync object with missing parent object: {object_id}: {parent_object_uuid}", log=True)[1]
+                log_msg = log_msg.format(object_id=object_id, parent_object_uuid=parent_object_uuid)
+                self.logger.warning(log_msg)
                 exit_child(1)
 
         # Load instance.
@@ -1070,9 +1075,9 @@ class OTPmeSyncP1(OTPmeClient1):
                                                     object_config)
         except Exception as e:
             self.failed_objects.append(object_id)
-            msg = _("Failed to load new object: {object_id}: {e}")
-            msg = msg.format(object_id=object_id, e=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to load new object: {object_id}: {e}", log=True)[1]
+            log_msg = log_msg.format(object_id=object_id, e=e)
+            self.logger.critical(log_msg)
             exit_child(1)
 
         if object_id.object_type == "user":
@@ -1087,9 +1092,9 @@ class OTPmeSyncP1(OTPmeClient1):
                 if not new_object.template_object:
                     if backend.object_exists(local_oid):
                         self.blacklisted_users.append(user_name)
-                        msg = _("User already exists on our site: {object_id}")
-                        msg = msg.format(object_id=object_id)
-                        self.logger.warning(msg)
+                        log_msg = _("User already exists on our site: {object_id}", log=True)[1]
+                        log_msg = log_msg.format(object_id=object_id)
+                        self.logger.warning(log_msg)
                         exit_child(1)
                 # Prevent sync of user with duplicate uidNumber.
                 found_duplicate = False
@@ -1104,12 +1109,12 @@ class OTPmeSyncP1(OTPmeClient1):
                     x_oid = result[0]
                     if x_oid == new_object.oid:
                         continue
-                    msg = _("Cannot sync user with duplicate uidNumber: {x_uidnumber}: {new_object} <> {x_oid}")
-                    msg = msg.format(x_uidnumber=x_uidnumber, new_object=new_object, x_oid=x_oid)
+                    log_msg = _("Cannot sync user with duplicate uidNumber: {x_uidnumber}: {new_object} <> {x_oid}", log=True)[1]
+                    log_msg = log_msg.format(x_uidnumber=x_uidnumber, new_object=new_object, x_oid=x_oid)
                     found_duplicate = True
                     break
                 if found_duplicate:
-                    self.logger.warning(msg)
+                    self.logger.warning(log_msg)
                     exit_child(1)
 
         if object_id.object_type == "group":
@@ -1123,9 +1128,9 @@ class OTPmeSyncP1(OTPmeClient1):
                                     name=group_name)
                 if not new_object.template_object:
                     if backend.object_exists(local_oid):
-                        msg = _("Group already exists on our site: {object_id}")
-                        msg = msg.format(object_id=object_id)
-                        self.logger.warning(msg)
+                        log_msg = _("Group already exists on our site: {object_id}", log=True)[1]
+                        log_msg = log_msg.format(object_id=object_id)
+                        self.logger.warning(log_msg)
                         exit_child(1)
                 # Prevent sync of group with duplicate gidNumber.
                 found_duplicate = False
@@ -1140,12 +1145,12 @@ class OTPmeSyncP1(OTPmeClient1):
                     x_oid = result[0]
                     if x_oid == new_object.oid:
                         continue
-                    msg = _("Cannot sync group with duplicate gidNumber: {x_gidnumber}: {new_object} <> {x_oid}")
-                    msg = msg.format(x_gidnumber=x_gidnumber, new_object=new_object, x_oid=x_oid)
+                    log_msg = _("Cannot sync group with duplicate gidNumber: {x_gidnumber}: {new_object} <> {x_oid}", log=True)[1]
+                    log_msg = log_msg.format(x_gidnumber=x_gidnumber, new_object=new_object, x_oid=x_oid)
                     found_duplicate = True
                     break
                 if found_duplicate:
-                    self.logger.warning(msg)
+                    self.logger.warning(log_msg)
                     exit_child(1)
 
         if object_id.object_type == "token":
@@ -1169,9 +1174,9 @@ class OTPmeSyncP1(OTPmeClient1):
             validate_received_object(site_oid, new_object)
         except Exception as e:
             self.failed_objects.append(object_id)
-            msg = _("Received invalid object: {e}")
-            msg = msg.format(e=e)
-            self.logger.critical(msg)
+            log_msg = _("Received invalid object: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.critical(log_msg)
             exit_child(1)
 
         # We must prevent syncing of duplicate UUIDs between sites.
@@ -1184,9 +1189,9 @@ class OTPmeSyncP1(OTPmeClient1):
         # Check if the object is from an other site.
         if current_object:
             if current_object.site != new_object.site:
-                msg = _("Ignoring duplicate UUID: {new_object_uuid}: {current_object} <> {object_id}")
-                msg = msg.format(new_object_uuid=new_object.uuid, current_object=current_object, object_id=object_id)
-                self.logger.warning(msg)
+                log_msg = _("Ignoring duplicate UUID: {new_object_uuid}: {current_object} <> {object_id}", log=True)[1]
+                log_msg = log_msg.format(new_object_uuid=new_object.uuid, current_object=current_object, object_id=object_id)
+                self.logger.warning(log_msg)
                 exit_child(1)
 
         # Skip new object that is older than the current one.
@@ -1198,9 +1203,9 @@ class OTPmeSyncP1(OTPmeClient1):
                     if realm == own_realm and site == own_site:
                         if current_object.uuid != config.uuid:
                             if current_object.last_modified > new_object.last_modified:
-                                msg = _("Ignoring older object from peer: {object_id}")
-                                msg = msg.format(object_id=object_id)
-                                self.logger.warning(msg)
+                                log_msg = _("Ignoring older object from peer: {object_id}", log=True)[1]
+                                log_msg = log_msg.format(object_id=object_id)
+                                self.logger.warning(log_msg)
                                 exit_child(1)
 
         # Removed old object with different OID (e.g. object was
@@ -1249,9 +1254,9 @@ class OTPmeSyncP1(OTPmeClient1):
             self.synced_objects.append(object_id.read_oid)
         except Exception as e:
             self.failed_objects.append(object_id)
-            msg = _("Error writing object {object_id} to backend: {e}")
-            msg = msg.format(object_id=object_id, e=e)
-            self.logger.critical(msg)
+            log_msg = _("Error writing object {object_id} to backend: {e}", log=True)[1]
+            log_msg = log_msg.format(object_id=object_id, e=e)
+            self.logger.critical(log_msg)
             config.raise_exception()
 
         # Update signers cache.
@@ -1260,32 +1265,32 @@ class OTPmeSyncP1(OTPmeClient1):
                 try:
                     public_key = sign_key_cache.get_cache(object_id)
                 except Exception as e:
-                    msg = _("Unable to read signer cache: {object_id}: {e}")
-                    msg = msg.format(object_id=object_id, e=e)
-                    self.logger.critical(msg)
+                    log_msg = _("Unable to read signer cache: {object_id}: {e}", log=True)[1]
+                    log_msg = log_msg.format(object_id=object_id, e=e)
+                    self.logger.critical(log_msg)
                     public_key = None
                 if new_object.public_key != public_key:
                     try:
                         sign_key_cache.add_cache(object_id, new_object.public_key)
                     except Exception as e:
-                        msg = _("Unable to add signer cache: {object_id}: {e}")
-                        msg = msg.format(object_id=object_id, e=e)
-                        self.logger.critical(msg)
+                        log_msg = _("Unable to add signer cache: {object_id}: {e}", log=True)[1]
+                        log_msg = log_msg.format(object_id=object_id, e=e)
+                        self.logger.critical(log_msg)
             else:
                 try:
                     public_key = sign_key_cache.get_cache(object_id)
                 except Exception as e:
-                    msg = _("Unable to read signer cache: {object_id}: {e}")
-                    msg = msg.format(object_id=object_id, e=e)
-                    self.logger.critical(msg)
+                    log_msg = _("Unable to read signer cache: {object_id}: {e}", log=True)[1]
+                    log_msg = log_msg.format(object_id=object_id, e=e)
+                    self.logger.critical(log_msg)
                     public_key = None
                 if public_key:
                     try:
                         sign_key_cache.del_cache(object_id)
                     except Exception as e:
-                        msg = _("Unable to add signer cache: {object_id}: {e}")
-                        msg = msg.format(object_id=object_id, e=e)
-                        self.logger.critical(msg)
+                        log_msg = _("Unable to add signer cache: {object_id}: {e}", log=True)[1]
+                        log_msg = log_msg.format(object_id=object_id, e=e)
+                        self.logger.critical(log_msg)
         if current_object is None:
             exit_child(0)
         else:
@@ -1295,7 +1300,8 @@ class OTPmeSyncP1(OTPmeClient1):
     def remove_deleted_objects(self, realm, site, local_sync_list,
         remote_sync_list, sync_params):
         """ Remove deleted objects. """
-        self.logger.info(_("Checking for deleted objects..."))
+        log_msg = _("Checking for deleted objects...", log=True)[1]
+        self.logger.info(log_msg)
         del_list = {}
         del_count = 0
         del_order = list(config.object_add_order)
@@ -1332,9 +1338,9 @@ class OTPmeSyncP1(OTPmeClient1):
             if not object_list:
                 continue
             if not object_type in valid_object_types:
-                msg = _("Got object type to sync that is not known for this host type. This is most likley a bug: {object_type}")
-                msg = msg.format(object_type=object_type)
-                self.logger.critical(msg)
+                log_msg = _("Got object type to sync that is not known for this host type. This is most likley a bug: {object_type}", log=True)[1]
+                log_msg = log_msg.format(object_type=object_type)
+                self.logger.critical(log_msg)
                 continue
             # Add objects to progress calculation.
             self.update_sync_progress(realm=realm,
@@ -1377,9 +1383,9 @@ class OTPmeSyncP1(OTPmeClient1):
                         full_oid = oid.get(full_oid)
                         nsscache.update_object(full_oid, "update")
                 # Remove object.
-                msg = _("Removing object ({del_counter}/{del_count}): {object_id}")
-                msg = msg.format(del_counter=del_counter, del_count=del_count, object_id=object_id)
-                self.logger.debug(msg)
+                log_msg = _("Removing object ({del_counter}/{del_count}): {object_id}", log=True)[1]
+                log_msg = log_msg.format(del_counter=del_counter, del_count=del_count, object_id=object_id)
+                self.logger.debug(log_msg)
                 cluster = False
                 if self.host_type == "node":
                     if realm == own_realm:
@@ -1389,9 +1395,9 @@ class OTPmeSyncP1(OTPmeClient1):
                 try:
                     backend.delete_object(object_id, cluster=cluster)
                 except Exception as e:
-                    msg = _("Failed to delete object: {object_id}: {e}")
-                    msg = msg.format(object_id=object_id, e=e)
-                    self.logger.critical(msg)
+                    log_msg = _("Failed to delete object: {object_id}: {e}", log=True)[1]
+                    log_msg = log_msg.format(object_id=object_id, e=e)
+                    self.logger.critical(log_msg)
                     self.removed_objects.append(object_id.read_oid)
 
     def get_token_data(self, data_type, local_objects,
@@ -1409,9 +1415,9 @@ class OTPmeSyncP1(OTPmeClient1):
         if data_type == "counter":
             log_name = "token counter"
 
-        msg = _("Requesting list with {log_name}s from peer: {peer_name}")
-        msg = msg.format(log_name=log_name, peer_name=self.connection.peer.name)
-        self.logger.debug(msg)
+        log_msg = _("Requesting list with {log_name}s from peer: {peer_name}", log=True)[1]
+        log_msg = log_msg.format(log_name=log_name, peer_name=self.connection.peer.name)
+        self.logger.debug(log_msg)
 
         if offline:
             command = "sync_offline_token_data"
@@ -1432,12 +1438,12 @@ class OTPmeSyncP1(OTPmeClient1):
                 if status_code == status_codes.UNKNOWN_OBJECT:
                     raise UnknownObject(reply)
                 try_count += 1
-                msg = _("Error receiving list from peer: {reply}")
-                msg = msg.format(reply=reply)
-                self.logger.error(msg)
-                msg = _("Retrying ({try_count}/{max_tries})")
-                msg = msg.format(try_count=try_count, max_tries=max_tries)
-                self.logger.error(msg)
+                log_msg = _("Error receiving list from peer: {reply}", log=True)[1]
+                log_msg = log_msg.format(reply=reply)
+                self.logger.error(log_msg)
+                log_msg = _("Retrying ({try_count}/{max_tries})", log=True)[1]
+                log_msg = log_msg.format(try_count=try_count, max_tries=max_tries)
+                self.logger.error(log_msg)
                 time.sleep(1)
                 continue
 
@@ -1449,9 +1455,9 @@ class OTPmeSyncP1(OTPmeClient1):
                         objects[t] = {}
                     objects[t][x_oid] = x_config
 
-            msg = _("Received {count} objects from peer.")
-            msg = msg.format(count=len(objects['new_objects']))
-            self.logger.debug(msg)
+            log_msg = _("Received {count} objects from peer.", log=True)[1]
+            log_msg = log_msg.format(count=len(objects['new_objects']))
+            self.logger.debug(log_msg)
             break
 
         return objects
@@ -1488,9 +1494,9 @@ class OTPmeSyncP1(OTPmeClient1):
             log_name = "token counter"
             sync_counter = True
 
-        msg = _("Starting sync of offline {log_name}s...")
-        msg = msg.format(log_name=log_name)
-        self.logger.info(msg)
+        log_msg = _("Starting sync of offline {log_name}s...", log=True)[1]
+        log_msg = log_msg.format(log_name=log_name)
+        self.logger.info(log_msg)
 
         try:
             user_uuids = []
@@ -1499,7 +1505,8 @@ class OTPmeSyncP1(OTPmeClient1):
                     continue
                 user_uuids.append(uuid)
         except:
-            self.logger.debug(_("No offline tokens found."))
+            log_msg = _("No offline tokens found.", log=True)[1]
+            self.logger.debug(log_msg)
             return True
 
         for uuid in user_uuids:
@@ -1513,14 +1520,14 @@ class OTPmeSyncP1(OTPmeClient1):
                 offline_token = OfflineToken()
                 offline_token.set_user(uuid=uuid)
             except UnknownUser:
-                msg = _("Ignoring offline token of unknown user: {uuid}")
-                msg = msg.format(uuid=uuid)
-                self.logger.info(msg)
+                log_msg = _("Ignoring offline token of unknown user: {uuid}", log=True)[1]
+                log_msg = log_msg.format(uuid=uuid)
+                self.logger.info(log_msg)
                 continue
             except Exception as e:
-                msg = _("Error loading offline tokens: {e}")
-                msg = msg.format(e=e)
-                self.logger.critical(msg)
+                log_msg = _("Error loading offline tokens: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.critical(log_msg)
                 config.raise_exception()
                 continue
             # Acquire offline token lock.
@@ -1530,9 +1537,9 @@ class OTPmeSyncP1(OTPmeClient1):
                 offline_token.load()
                 user_tokens = offline_token.get()
             except Exception as e:
-                msg = _("Error getting offline tokens: {username}: {e}")
-                msg = msg.format(username=offline_token.username, e=e)
-                self.logger.critical(msg)
+                log_msg = _("Error getting offline tokens: {username}: {e}", log=True)[1]
+                log_msg = log_msg.format(username=offline_token.username, e=e)
+                self.logger.critical(log_msg)
                 # Release offline token lock.
                 offline_token.unlock()
                 config.raise_exception()
@@ -1550,9 +1557,9 @@ class OTPmeSyncP1(OTPmeClient1):
                     msg = (_("Unable to get server session UUID."))
                     raise OTPmeException(msg)
             except Exception as e:
-                msg = _("Error getting offline session UUID: {username}: {e}")
-                msg = msg.format(username=offline_token.username, e=e)
-                self.logger.critical(msg)
+                log_msg = _("Error getting offline session UUID: {username}: {e}", log=True)[1]
+                log_msg = log_msg.format(username=offline_token.username, e=e)
+                self.logger.critical(log_msg)
                 # Release offline token lock.
                 offline_token.unlock()
                 continue
@@ -1596,9 +1603,9 @@ class OTPmeSyncP1(OTPmeClient1):
                 except UnknownObject:
                     for x_oid, x_object_config in get_method(token.oid):
                         if offline_token.delete_object(x_oid):
-                            msg = _("Removing outdated object: {x_oid}")
-                            msg = msg.format(x_oid=x_oid)
-                            self.logger.info(msg)
+                            log_msg = _("Removing outdated object: {x_oid}", log=True)[1]
+                            log_msg = log_msg.format(x_oid=x_oid)
+                            self.logger.info(log_msg)
                     continue
 
                 # Add remote objects.
@@ -1612,26 +1619,27 @@ class OTPmeSyncP1(OTPmeClient1):
                 # Remove outdated objects.
                 for x_oid in remote_objects['outdated_objects']:
                     if offline_token.delete_object(x_oid):
-                        msg = _("Removed {data_type}: {x_oid}")
-                        msg = msg.format(data_type=data_type, x_oid=x_oid)
-                        self.logger.debug(msg)
+                        log_msg = _("Removed {data_type}: {x_oid}", log=True)[1]
+                        log_msg = log_msg.format(data_type=data_type, x_oid=x_oid)
+                        self.logger.debug(log_msg)
                         self.removed_objects.append(x_oid.read_oid)
 
                 new_object_count = len(self.synced_objects)
-                msg = _("Added {count} new {log_name}s: {rel_path}")
-                msg = msg.format(count=new_object_count, log_name=log_name, rel_path=token.rel_path)
-                self.logger.debug(msg)
+                log_msg = _("Added {count} new {log_name}s: {rel_path}", log=True)[1]
+                log_msg = log_msg.format(count=new_object_count, log_name=log_name, rel_path=token.rel_path)
+                self.logger.debug(log_msg)
 
             # Release offline token lock.
             offline_token.unlock()
 
         all_new_object_count = len(self.synced_objects)
         if all_new_object_count > 0:
-            msg = _("Successfully synchronized {count} offline {log_name}s.")
-            msg = msg.format(count=all_new_object_count, log_name=log_name)
-            self.logger.info(msg)
+            log_msg = _("Successfully synchronized {count} offline {log_name}s.", log=True)[1]
+            log_msg = log_msg.format(count=all_new_object_count, log_name=log_name)
+            self.logger.info(log_msg)
         else:
-            self.logger.info(_("Local token data up-to-date."))
+            log_msg = _("Local token data up-to-date.", log=True)[1]
+            self.logger.info(log_msg)
 
         return exit_status
 
@@ -1649,9 +1657,9 @@ class OTPmeSyncP1(OTPmeClient1):
             log_name = "token counter"
             sync_counter = True
 
-        msg = _("Starting sync of {log_name}s...")
-        msg = msg.format(log_name=log_name)
-        self.logger.info(msg)
+        log_msg = _("Starting sync of {log_name}s...", log=True)[1]
+        log_msg = log_msg.format(log_name=log_name)
+        self.logger.info(log_msg)
 
         if sync_otps:
             result = backend.search(object_type="used_otp",
@@ -1688,24 +1696,25 @@ class OTPmeSyncP1(OTPmeClient1):
         # Remove outdated objects.
         for x_oid in remote_objects['outdated_objects']:
             if backend.delete_object(x_oid):
-                msg = _("Removed {data_type}: {x_oid}")
-                msg = msg.format(data_type=data_type, x_oid=x_oid)
-                self.logger.debug(msg)
+                log_msg = _("Removed {data_type}: {x_oid}", log=True)[1]
+                log_msg = log_msg.format(data_type=data_type, x_oid=x_oid)
+                self.logger.debug(log_msg)
                 self.removed_objects.append(x_oid.read_oid)
             continue
 
         new_object_count = len(self.synced_objects)
-        msg = _("Added {count} new {log_name}s:")
-        msg = msg.format(count=new_object_count, log_name=log_name)
-        self.logger.debug(msg)
+        log_msg = _("Added {count} new {log_name}s:", log=True)[1]
+        log_msg = log_msg.format(count=new_object_count, log_name=log_name)
+        self.logger.debug(log_msg)
 
         all_new_object_count = len(self.synced_objects)
         if all_new_object_count > 0:
-            msg = _("Successfully synchronized {count} {log_name}s.")
-            msg = msg.format(count=all_new_object_count, log_name=log_name)
-            self.logger.info(msg)
+            log_msg = _("Successfully synchronized {count} {log_name}s.", log=True)[1]
+            log_msg = log_msg.format(count=all_new_object_count, log_name=log_name)
+            self.logger.info(log_msg)
         else:
-            self.logger.info(_("Local token data up-to-date."))
+            log_msg = _("Local token data up-to-date.", log=True)[1]
+            self.logger.info(log_msg)
 
         return exit_status
 
@@ -1726,7 +1735,8 @@ class OTPmeSyncP1(OTPmeClient1):
         try_count = 0
         max_tries = 3
 
-        self.logger.info(_("Requesting authorized_keys from peer..."))
+        log_msg = _("Requesting authorized_keys from peer...", log=True)[1]
+        self.logger.info(log_msg)
 
         while try_count < max_tries:
             status, \
@@ -1735,12 +1745,12 @@ class OTPmeSyncP1(OTPmeClient1):
             binary_data = self.connection.send("get_ssh_authorized_keys")
             if not status:
                 try_count += 1
-                msg = _("Error receiving SSH authorized_keys from peer: {reply}")
-                msg = msg.format(reply=reply)
-                self.logger.error(msg)
-                msg = _("Retrying ({try_count}/{max_tries})")
-                msg = msg.format(try_count=try_count, max_tries=max_tries)
-                self.logger.error(msg)
+                log_msg = _("Error receiving SSH authorized_keys from peer: {reply}", log=True)[1]
+                log_msg = log_msg.format(reply=reply)
+                self.logger.error(log_msg)
+                log_msg = _("Retrying ({try_count}/{max_tries})", log=True)[1]
+                log_msg = log_msg.format(try_count=try_count, max_tries=max_tries)
+                self.logger.error(log_msg)
                 time.sleep(1)
                 continue
             received_ssh_keys = reply
@@ -1789,13 +1799,14 @@ class OTPmeSyncP1(OTPmeClient1):
         try:
             cached_ssh_keys = ssh.read_cached_ssh_keys()
         except Exception as e:
-            msg = str(e)
-            self.logger.critical(msg)
+            log_msg = str(e)
+            self.logger.critical(log_msg)
             exit_status = False
         # Write cache file only if SSH keys have changed.
         if exit_status:
             if received_ssh_keys != cached_ssh_keys:
-                self.logger.debug(_("List of assigned SSH tokens changed."))
+                log_msg = _("List of assigned SSH tokens changed.", log=True)[1]
+                self.logger.debug(log_msg)
                 ssh.write_cached_ssh_keys(received_ssh_keys)
 
         return exit_status

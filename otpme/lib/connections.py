@@ -55,23 +55,23 @@ def close_connections(proc_id=None):
                 conn = connections[x_proc_id][daemon][key]
                 if not conn.connected:
                     continue
-                #msg = _("Closing connection: {conn}")
-                #msg = msg.format(conn=conn)
-                #logger.debug(msg)
+                #log_msg = _("Closing connection: {conn}", log=True)[1]
+                #log_msg = log_msg.format(conn=conn)
+                #logger.debug(log_msg)
                 try:
                     conn.cleanup()
                 except Exception as e:
-                    msg = _("Connection cleanup failed: {conn}: {e}")
-                    msg = msg.format(conn=conn, e=e)
-                    logger.warning(msg)
+                    log_msg = _("Connection cleanup failed: {conn}: {e}", log=True)[1]
+                    log_msg = log_msg.format(conn=conn, e=e)
+                    logger.warning(log_msg)
                 try:
                     conn.close()
                 except ConnectionQuit:
                     pass
                 except Exception as e:
-                    msg = _("Failed to close connection: {conn}: {e}")
-                    msg = msg.format(conn=conn, e=e)
-                    logger.warning(msg)
+                    log_msg = _("Failed to close connection: {conn}: {e}", log=True)[1]
+                    log_msg = log_msg.format(conn=conn, e=e)
+                    logger.warning(log_msg)
                 connections[x_proc_id][daemon].pop(key)
 atexit.register(close_connections)
 
@@ -258,7 +258,8 @@ def get(daemon, **kwargs):
 
     # Handle agent connections.
     if daemon == "agent":
-        logger.debug("Trying to get agent connection...")
+        log_msg = _("Trying to get agent connection...", log=True)[1]
+        logger.debug(log_msg)
         # Try to get agent connection
         try:
             agent_conn = AgentConn(user=user,
@@ -310,7 +311,8 @@ def get(daemon, **kwargs):
     if use_agent is None:
         if realm and realm != config.realm:
             if config.use_agent and not config.use_api:
-                logger.warning("Cannot use agent connection for other realms.")
+                log_msg = _("Cannot use agent connection for other realms.", log=True)[1]
+                logger.warning(log_msg)
             use_agent = False
         else:
             use_agent = config.use_agent
@@ -342,7 +344,8 @@ def get(daemon, **kwargs):
                         msg = msg.format(e=e)
                         raise Exception(msg)
                     else:
-                        logger.debug(str(e))
+                        log_msg = str(e)
+                        logger.debug(log_msg)
                         use_agent = False
 
         # Check which name to use as OTPme user
@@ -354,24 +357,23 @@ def get(daemon, **kwargs):
                 # Else use already logged in user from agent if possible
                 if agent_user:
                     username = agent_user
-                    msg = _("Using username '{username}' got from agent as OTPme user.")
-                    msg = msg.format(username=username)
-                    logger.debug(msg)
+                    log_msg = _("Using username '{username}' got from agent as OTPme user.", log=True)[1]
+                    log_msg = log_msg.format(username=username)
+                    logger.debug(log_msg)
                 else:
                     # Set login user to system user as last resort
                     username = config.system_user()
-                    msg = _("Using current system user '{username}' as OTPme user.")
-                    msg = msg.format(username=username)
-                    logger.debug(msg)
+                    log_msg = _("Using current system user '{username}' as OTPme user.", log=True)[1]
+                    log_msg = log_msg.format(username=username)
+                    logger.debug(log_msg)
             if use_agent:
                 # If selected user is not == agent user do not use agent
                 # connection.
                 if not agent_user or username != agent_user:
-                    msg = _("User '{username}' is not logged in. Not using agent "
-                            "connection, trying normal authentication...")
-                    msg = msg.format(username=username)
-                    #raise Exception(msg)
-                    logger.info(msg)
+                    log_msg = _("User '{username}' is not logged in. Not using agent "
+                            "connection, trying normal authentication...", log=True)[1]
+                    log_msg = log_msg.format(username=username)
+                    logger.info(log_msg)
                     use_agent = False
 
     # Set agent parameter.
@@ -464,9 +466,9 @@ def get(daemon, **kwargs):
             connect_addresses = [config.site_address]
 
     if len(connect_addresses) > 1:
-        msg = _("Got multiple addresses from round-robin DNS ({site_fqdn}): {connect_addresses}")
-        msg = msg.format(site_fqdn=site_fqdn, connect_addresses=connect_addresses)
-        logger.info(msg)
+        log_msg = _("Got multiple addresses from round-robin DNS ({site_fqdn}): {connect_addresses}", log=True)[1]
+        log_msg = log_msg.format(site_fqdn=site_fqdn, connect_addresses=connect_addresses)
+        logger.info(log_msg)
 
     connect_exception = None
     for connect_address in connect_addresses:
@@ -475,16 +477,16 @@ def get(daemon, **kwargs):
         # Set socket URI.
         socket_uri = f"tcp://{connect_address}:{daemon_port}"
         conn_kwargs['socket_uri'] = socket_uri
-        msg = _("Trying connection to: {socket_uri}")
-        msg = msg.format(socket_uri=socket_uri)
-        logger.debug(msg)
+        log_msg = _("Trying connection to: {socket_uri}", log=True)[1]
+        log_msg = log_msg.format(socket_uri=socket_uri)
+        logger.debug(log_msg)
         # Get daemon connection.
         try:
             daemon_conn = get_connection(**conn_kwargs)
         except (NoClusterService, ConnectionError) as e:
             connect_exception = e
-            msg = str(connect_exception)
-            logger.warning(msg)
+            log_msg = str(connect_exception)
+            logger.warning(log_msg)
             continue
 
         connect_exception = None
@@ -496,8 +498,8 @@ def get(daemon, **kwargs):
 
     if connect_exception:
         if len(connect_addresses) > 1:
-            msg = _("All round-robin addresses failed.")
-            logger.warning(msg)
+            log_msg = _("All round-robin addresses failed.", log=True)[1]
+            logger.warning(log_msg)
         raise connect_exception
 
     # Cache connection.

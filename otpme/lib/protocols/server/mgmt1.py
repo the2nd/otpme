@@ -131,8 +131,8 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Act only on our own PID.
         if os.getpid() != self.pid:
             return
-        msg = ("Received SIGTERM.")
-        self.logger.info(msg)
+        log_msg = _("Received SIGTERM.", log=True)[1]
+        self.logger.info(log_msg)
 
         for job_uuid in dict(self.jobs):
             job = self.jobs[job_uuid]
@@ -307,9 +307,9 @@ class OTPmeMgmtP1(OTPmeServer1):
             _caller = "CLIENT"
 
         if _caller not in api_callers:
-            msg = _("Request contains invalid API caller: {caller}")
-            msg = msg.format(caller=_caller)
-            logger.warning(msg)
+            log_msg = _("Request contains invalid API caller: {caller}", log=True)[1]
+            log_msg = log_msg.format(caller=_caller)
+            logger.warning(log_msg)
             _caller = "CLIENT"
 
         _method_args['_caller'] = _caller
@@ -557,12 +557,14 @@ class OTPmeMgmtP1(OTPmeServer1):
                 x = backend.get_object(object_type="token",
                                 uuid=config.auth_token.uuid)
                 if x != config.auth_token:
-                    logger.debug("Reloading modified auth token.")
+                    log_msg  = _("Reloading modified auth token.", log=True)[1]
+                    logger.debug(log_msg)
                     config.auth_token = x
                 x = backend.get_object(object_type="user",
                                 uuid=config.auth_user.uuid)
                 if x != config.auth_user:
-                    logger.debug("Reloading modified auth user.")
+                    log_msg = _("Reloading modified auth user.", log=True)[1]
+                    logger.debug(log_msg)
                     config.auth_user = x
 
         return job_status, job_reply
@@ -614,9 +616,9 @@ class OTPmeMgmtP1(OTPmeServer1):
         try:
             oc = class_getter()
         except Exception as e:
-            msg = _("Error loading object class: {type}: {error}")
-            msg = msg.format(type=object_type, error=e)
-            logger.warning(msg)
+            log_msg = _("Error loading object class: {type}: {error}", log=True)[1]
+            log_msg = log_msg.format(type=object_type, error=e)
+            logger.warning(log_msg)
             callback.error(msg)
             sys.exit(1)
         try:
@@ -627,18 +629,18 @@ class OTPmeMgmtP1(OTPmeServer1):
                     site=config.site,
                     template=False)
         except Exception as e:
-            msg = _("Error loading object: {name}: {error}")
-            msg = msg.format(name=object_name, error=e)
-            logger.warning(msg)
+            log_msg = _("Error loading object: {name}: {error}", log=True)[1]
+            log_msg = log_msg.format(name=object_name, error=e)
+            logger.warning(log_msg)
             callback.error(msg)
             sys.exit(1)
         # Add object.
         try:
             add_result = o.add(callback=callback, **kwargs)
         except Exception as e:
-            msg = _("Failed to add object: {name}: {error}")
-            msg = msg.format(name=object_name, error=e)
-            logger.warning(msg)
+            log_msg = _("Failed to add object: {name}: {error}", log=True)[1]
+            log_msg = log_msg.format(name=object_name, error=e)
+            logger.warning(log_msg)
             callback.error(msg)
             sys.exit(1)
         finally:
@@ -647,9 +649,9 @@ class OTPmeMgmtP1(OTPmeServer1):
         if add_result:
             callback.write_modified_objects()
             sys.exit(0)
-        msg = _("Error adding object: {name} (See previous errors)")
-        msg = msg.format(name=object_name)
-        logger.warning(msg)
+        log_msg = _("Error adding object: {name} (See previous errors)", log=True)[1]
+        log_msg = log_msg.format(name=object_name)
+        logger.warning(log_msg)
         callback.error(msg)
         sys.exit(1)
 
@@ -1218,18 +1220,17 @@ class OTPmeMgmtP1(OTPmeServer1):
         try:
             jwt_data = self.verify_cross_site_jwt(src_realm, src_site, jwt)
         except Exception as e:
-            message = _("JWT verification failed")
-            msg = _("{message}: {error}")
-            msg = msg.format(message=message, error=e)
-            self.logger.warning(msg)
+            message, log_msg = _("JWT verification failed", log=True)
+            log_msg = f"{log_msg}: {e}"
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
 
         try:
             objects_enc_key = jwt_data['enc_key']
         except KeyError:
-            message = _("JWT data misses decryption key.")
-            self.logger.warning(message)
+            message, log_msg = _("JWT data misses decryption key.", log=True)
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
 
@@ -1241,11 +1242,10 @@ class OTPmeMgmtP1(OTPmeServer1):
         try:
             site_key = RSAKey(key=_dst_site.key)
         except Exception as e:
-            message = _("Unable to get public key of site certificate: {site}")
+            message, log_msg = _("Unable to get public key of site certificate: {site}", log=True)
             message = message.format(site=_dst_site)
-            msg = _("Error: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = log_msg.format(site=_dst_site)
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
         objects_enc_key = site_key.decrypt(objects_enc_key, encoding="hex")
@@ -1262,9 +1262,10 @@ class OTPmeMgmtP1(OTPmeServer1):
         try:
             self.verify_move_objects(jwt_data, objects)
         except Exception as e:
-            message = _("Move objects verfication failed: {error}")
+            message, log_msg = _("Move objects verfication failed: {error}", log=True)
             message = message.format(error=e)
-            self.logger.warning(message)
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
 
@@ -1480,34 +1481,33 @@ class OTPmeMgmtP1(OTPmeServer1):
         try:
             jwt_data = self.verify_cross_site_jwt(src_realm, src_site, jwt)
         except Exception as e:
-            message = _("JWT verification failed")
-            msg = _("{message}: {error}")
-            msg = msg.format(message=message, error=e)
-            self.logger.warning(msg)
+            message, log_msg = _("JWT verification failed", log=True)
+            log_msg = f"{log_msg}: {e}"
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
 
         try:
             action = jwt_data['action']
         except KeyError:
-            message = _("JWT data misses group action.")
-            self.logger.warning(message)
+            message, log_msg = _("JWT data misses group action.", log=True)
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
 
         try:
             user_name = jwt_data['user_name']
         except KeyError:
-            message = _("JWT data misses user name.")
-            self.logger.warning(message)
+            message, log_msg = _("JWT data misses user name.", log=True)
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
 
         try:
             user_uuid = jwt_data['user_uuid']
         except KeyError:
-            message = _("JWT data misses user UUID.")
-            self.logger.warning(message)
+            message, log_msg = _("JWT data misses user UUID.", log=True)
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
 
@@ -1518,9 +1518,10 @@ class OTPmeMgmtP1(OTPmeServer1):
                                 site=src_site,
                                 return_type="instance")
         if not result:
-            message = _("Unknown user: {name}")
+            message, log_msg = _("Unknown user: {name}", log=True)
             message = message.format(name=user_name)
-            self.logger.warning(message)
+            log_msg = log_msg.format(name=user_name)
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
 
@@ -1546,32 +1547,32 @@ class OTPmeMgmtP1(OTPmeServer1):
         try:
             old_group_name = jwt_data['old_group_name']
         except KeyError:
-            message = _("JWT data misses old group name.")
-            self.logger.warning(message)
+            message, log_msg = _("JWT data misses old group name.", log=True)
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
 
         try:
             old_group_uuid = jwt_data['old_group_uuid']
         except KeyError:
-            message = _("JWT data misses old group UUID.")
-            self.logger.warning(message)
+            message, log_msg = _("JWT data misses old group UUID.", log=True)
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
 
         try:
             new_group_name = jwt_data['new_group_name']
         except KeyError:
-            message = _("JWT data misses new group name.")
-            self.logger.warning(message)
+            message, log_msg = _("JWT data misses new group name.", log=True)
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
 
         try:
             new_group_uuid = jwt_data['new_group_uuid']
         except KeyError:
-            message = _("JWT data misses new group UUID.")
-            self.logger.warning(message)
+            message, log_msg = _("JWT data misses new group UUID.", log=True)
+            self.logger.warning(log_msg)
             status = False
             return self.build_response(status, message)
 
@@ -1584,9 +1585,10 @@ class OTPmeMgmtP1(OTPmeServer1):
                                     site=config.site,
                                     return_type="instance")
             if not result:
-                message = _("Unknown group: {name}")
+                message, log_msg = _("Unknown group: {name}", log=True)
                 message = message.format(name=old_group_name)
-                self.logger.warning(message)
+                log_msg = log_msg.format(name=old_group_name)
+                self.logger.warning(log_msg)
                 status = False
                 return self.build_response(status, message)
 
@@ -1612,9 +1614,10 @@ class OTPmeMgmtP1(OTPmeServer1):
                                     site=config.site,
                                     return_type="instance")
             if not result:
-                message = _("Unknown group: {name}")
+                message, log_msg = _("Unknown group: {name}", log=True)
                 message = message.format(name=new_group_name)
-                self.logger.warning(message)
+                log_msg = log_msg.format(name=new_group_name)
+                self.logger.warning(log_msg)
                 status = False
                 return self.build_response(status, message)
 
@@ -1637,9 +1640,10 @@ class OTPmeMgmtP1(OTPmeServer1):
                 status = new_group.add_default_group_user(user_uuid=user_uuid,
                                                         callback=default_callback)
             except Exception as e:
-                message = _("Failed to add default group user: {error}")
+                message, log_msg = _("Failed to add default group user: {error}", log=True)
                 message = message.format(error=e)
-                self.logger.warning(message)
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 return self.build_response(status, message)
             if status:
                 message = _("Added default group user.")
@@ -1651,9 +1655,10 @@ class OTPmeMgmtP1(OTPmeServer1):
                 status = old_group.remove_default_group_user(user_uuid=user_uuid,
                                                             callback=default_callback)
             except Exception as e:
-                message = _("Failed to remove default group user: {error}")
+                message, log_msg = _("Failed to remove default group user: {error}", log=True)
                 message = message.format(error=e)
-                self.logger.warning(message)
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 return self.build_response(status, message)
             if status:
                 message = _("Removed default group user.")
@@ -1667,9 +1672,10 @@ class OTPmeMgmtP1(OTPmeServer1):
                 status = old_group.remove_default_group_user(user_uuid=user_uuid,
                                                             callback=default_callback)
             except Exception as e:
-                message = _("Failed to remove default group user: {error}")
+                message, log_msg = _("Failed to remove default group user: {error}", log=True)
                 message = message.format(error=e)
-                self.logger.warning(message)
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 return self.build_response(status, message)
             if status:
                 # Add user to new group.
@@ -1677,9 +1683,10 @@ class OTPmeMgmtP1(OTPmeServer1):
                     status = new_group.add_default_group_user(user_uuid=user_uuid,
                                                             callback=default_callback)
                 except Exception as e:
-                    message = _("Failed to add default group user: {error}")
+                    message, log_msg = _("Failed to add default group user: {error}", log=True)
                     message = message.format(error=e)
-                    self.logger.warning(message)
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
                     return self.build_response(status, message)
                 if not status:
                     message = _("Failed to set users default group.")
@@ -1920,9 +1927,9 @@ class OTPmeMgmtP1(OTPmeServer1):
             except Exception as e:
                 #config.raise_exception()
                 response = "Internal server error."
-                msg = _("Unhandled exception running search: {error}")
-                msg = msg.format(error=e)
-                logger.critical(msg)
+                log_msg = _("Unhandled exception running search: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                logger.critical(log_msg)
 
         return self.build_response(status, response)
 
@@ -2486,8 +2493,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                                                 return_type="instance")[0]
                         object_status = "exists"
                     except:
-                        response = _("MGMT_INVALID_SESSION_ID: {id}")
-                        response = response.format(id=object_identifier)
+                        response = f"MGMT_INVALID_SESSION_ID: {object_identifier}"
                 else:
                     # Check if we add a template.
                     template = False

@@ -241,11 +241,11 @@ def start():
     else:
         set_default_config()
     logger = config.logger
-    msg = "Starting mysql..."
-    logger.debug(msg)
-    msg = _("Using config file: {}")
-    msg = msg.format(conf_file)
-    logger.debug(msg)
+    log_msg = _("Starting mysql...", log=True)[1]
+    logger.debug(log_msg)
+    log_msg = _("Using config file: {conf_file}", log=True)[1]
+    log_msg = log_msg.format(conf_file=conf_file)
+    logger.debug(log_msg)
     start_cmd = [config.mysqld_bin,
                 f"--defaults-file={conf_file}",
                 "--skip-networking", ]
@@ -264,8 +264,8 @@ def stop():
         msg = _("Mysql not running.")
         raise NotRunning(msg)
     logger = config.logger
-    msg = "Stopping mysql..."
-    logger.info(msg)
+    log_msg = _("Stopping mysql...", log=True)[1]
+    logger.info(log_msg)
     socket_file = get_socket_file()
     stop_cmd = [ config.mysql_admin_bin,
                 "-u", config.user,
@@ -288,8 +288,8 @@ def _reload():
         msg = _("Mysql not running.")
         raise NotRunning(msg)
     logger = config.logger
-    msg = "Reloading mysql..."
-    logger.debug(msg)
+    log_msg = _("Reloading mysql...", log=True)[1]
+    logger.debug(log_msg)
     socket_file = get_socket_file()
     reload_cmd = [ config.mysql_admin_bin,
                 "-u", config.user,

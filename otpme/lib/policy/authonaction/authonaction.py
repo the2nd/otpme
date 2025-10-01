@@ -399,9 +399,8 @@ class AuthonactionPolicy(Policy):
         """ Handle policy hooks. """
         if "interactive" in config.ignore_policy_tags:
             if config.debug_level() > 3:
-                msg = _("AuthonactionPolicy disabled by "
-                        "<config.ignore_policy_tags>.")
-                logger.debug(msg)
+                log_msg = _("AuthonactionPolicy disabled by <config.ignore_policy_tags>.", log=True)[1]
+                logger.debug(log_msg)
             return callback.ok()
 
         if hook_object.type not in self.hooks:
@@ -427,7 +426,8 @@ class AuthonactionPolicy(Policy):
         if callback.api_mode:
             if config.reauth_callback:
                 callback = config.reauth_callback
-                logger.debug("Using callback from previous call to do reauth.")
+                log_msg = _("Using callback from previous call to do reauth.", log=True)[1]
+                logger.debug(log_msg)
 
         if callback.api_mode:
             return

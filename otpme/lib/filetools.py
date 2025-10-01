@@ -766,16 +766,16 @@ class JsonFile(object):
         try:
             file_content = read_file(self.file_path, compression="auto")
         except Exception as e:
-            msg = _("Failed to read file: {file_path}: {error}")
-            msg = msg.format(file_path=self.file_path, error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to read file: {file_path}: {error}", log=True)[1]
+            log_msg = log_msg.format(file_path=self.file_path, error=e)
+            self.logger.critical(log_msg)
             raise
         try:
             object_config = json.loads(file_content)
         except Exception as e:
-            msg = _("Failed to load file: {file_path}: {error}")
-            msg = msg.format(file_path=self.file_path, error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to load file: {file_path}: {error}", log=True)[1]
+            log_msg = log_msg.format(file_path=self.file_path, error=e)
+            self.logger.critical(log_msg)
             raise
         return object_config
 
@@ -799,9 +799,9 @@ class JsonFile(object):
                         user_acls=user_acls,
                         group_acls=group_acls)
         except Exception as e:
-            msg = _("Failed to write file: {file_path}: {error}")
-            msg = msg.format(file_path=self.file_path, error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to write file: {file_path}: {error}", log=True)[1]
+            log_msg = log_msg.format(file_path=self.file_path, error=e)
+            self.logger.critical(log_msg)
 
     def read(self, parameters=None):
         """ Import bash style config file into dictionary. """

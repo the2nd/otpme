@@ -238,7 +238,8 @@ class ScriptToken(Token):
                 'auth_challenge'    : auth_challenge,
                 'auth_response'     : auth_response,
                 }
-        logger.debug(_("Starting token script..."))
+        log_msg = _("Starting token script...", log=True)[1]
+        logger.debug(log_msg)
         # Run token script.
         try:
             auth_script_result = run_script(script_type="auth_script",
@@ -248,9 +249,9 @@ class ScriptToken(Token):
                                         group=auth_group)
 
         except Exception as e:
-            msg = _("Error running token script: {e}")
-            msg = msg.format(e=e)
-            logger.warning(msg)
+            log_msg = _("Error running token script: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            logger.warning(log_msg)
             return None
 
         return auth_script_result

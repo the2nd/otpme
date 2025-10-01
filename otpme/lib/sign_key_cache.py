@@ -31,9 +31,9 @@ def add_cache(object_id, signer_key):
         return
     user_oid = stuff.resolve_uuid(user_uuid, object_type="user")
     cache_file = os.path.join(config.sign_key_cache_dir, user_uuid)
-    msg = _("Adding signer key to cache: {user_oid}: {file}")
-    msg = msg.format(user_oid=user_oid, file=cache_file)
-    logger.debug(msg)
+    log_msg = _("Adding signer key to cache: {user_oid}: {file}", log=True)[1]
+    log_msg = log_msg.format(user_oid=user_oid, file=cache_file)
+    logger.debug(log_msg)
     filetools.create_file(path=cache_file,
                         content=signer_key,
                         user=config.user,
@@ -60,9 +60,9 @@ def get_cache(object_id=None, user_uuid=None, verbose=False):
         return
     # Read users public key from cache file.
     if verbose:
-        msg = _("Reading signer key from cache: {object_id}: {file}")
-        msg = msg.format(object_id=object_id, file=cache_file)
-        logger.debug(msg)
+        log_msg = _("Reading signer key from cache: {object_id}: {file}", log=True)[1]
+        log_msg = log_msg.format(object_id=object_id, file=cache_file)
+        logger.debug(log_msg)
     try:
         fd = open(cache_file, "r")
         public_key = fd.read().replace("\n", "")
@@ -84,9 +84,9 @@ def del_cache(object_id):
         _transaction.del_sign_cache(object_id, user_uuid)
         return
     cache_file = os.path.join(config.sign_key_cache_dir, user_uuid)
-    msg = _("Removing signer key cache: {object_id}: {file}")
-    msg = msg.format(object_id=object_id, file=cache_file)
-    logger.debug(msg)
+    log_msg = _("Removing signer key cache: {object_id}: {file}", log=True)[1]
+    log_msg = log_msg.format(object_id=object_id, file=cache_file)
+    logger.debug(log_msg)
     if not os.path.exists(cache_file):
         return
     filetools.delete(cache_file)

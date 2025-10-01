@@ -60,16 +60,16 @@ class MemcacheHandler(object):
         return pid
 
     def start(self):
-        msg = _("Starting {name}...")
-        msg = msg.format(name=self.name)
-        self.logger.info(msg)
+        log_msg = _("Starting {name}...", log=True)[1]
+        log_msg = log_msg.format(name=self.name)
+        self.logger.info(log_msg)
         return self.start_function()
 
     def wait_for_start(self, timeout=5):
         timeout = timeout * 10
-        msg = _("Waiting for {name} to start up...")
-        msg = msg.format(name=self.name)
-        self.logger.info(msg)
+        log_msg = _("Waiting for {name} to start up...", log=True)[1]
+        log_msg = log_msg.format(name=self.name)
+        self.logger.info(log_msg)
         counter = 0
         while not self.status():
             counter += 1
@@ -89,9 +89,9 @@ class MemcacheHandler(object):
             msg = _("{name} not running.")
             msg = msg.format(name=self.name)
             raise NotRunning(msg)
-        msg = _("Stopping {name}...")
-        msg = msg.format(name=self.name)
-        self.logger.info(msg)
+        log_msg = _("Stopping {name}...", log=True)[1]
+        log_msg = log_msg.format(name=self.name)
+        self.logger.info(log_msg)
         pid = self.get_pid()
         stuff.kill_pid(pid, timeout=10)
         if not os.path.exists(self.socket):
@@ -100,9 +100,9 @@ class MemcacheHandler(object):
 
     def wait_for_shutdown(self, timeout=5):
         timeout = timeout * 10
-        msg = _("Waiting for {name} to shut down...")
-        msg = msg.format(name=self.name)
-        self.logger.info(msg)
+        log_msg = _("Waiting for {name} to shut down...", log=True)[1]
+        log_msg = log_msg.format(name=self.name)
+        self.logger.info(log_msg)
         counter = 0
         while self.status():
             counter += 1
@@ -183,18 +183,20 @@ class MemcacheClient(object):
             with self.pool.reserve() as mc:
                 value = mc.get(key)
         except pylibmc.Error as e:
+            msg, log_msg = _("Memcache get error: {error}", log=True)
+            msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
             if not self.connection_error_logged:
-                msg = _("Memcache get error: {error}")
-                msg = msg.format(error=e)
                 self.connection_error_logged = True
-                self.logger.critical(msg)
+                self.logger.critical(log_msg)
             raise KeyError(msg)
         except pylibmc.ConnectionError as e:
+            msg, log_msg = _("Memcache connection error: {error}", log=True)
+            msg = msg.format(error=e)
+            log_msg = log_msg.format(error=e)
             if not self.connection_error_logged:
-                msg = _("Memcache connection error: {error}")
-                msg = msg.format(error=e)
                 self.connection_error_logged = True
-                self.logger.critical(msg)
+                self.logger.critical(log_msg)
             raise KeyError(msg)
         if value is None:
             raise KeyError(key)
@@ -231,17 +233,17 @@ class MemcacheClient(object):
         except pylibmc.Error as e:
             if self.connection_error_logged:
                 return
-            msg = _("Memcache set error: {error}")
-            msg = msg.format(error=e)
+            log_msg = _("Memcache set error: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
             self.connection_error_logged = True
-            self.logger.critical(msg)
+            self.logger.critical(log_msg)
         except pylibmc.ConnectionError as e:
             if self.connection_error_logged:
                 return
-            msg = _("Memcache connection error: {error}")
-            msg = msg.format(error=e)
+            log_msg = _("Memcache connection error: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
             self.connection_error_logged = True
-            self.logger.critical(msg)
+            self.logger.critical(log_msg)
 
     def delete(self, key, **kwargs):
         try:
@@ -250,16 +252,16 @@ class MemcacheClient(object):
         except pylibmc.Error as e:
             if self.connection_error_logged:
                 return
-            msg = _("Memcache delete error: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Memcache delete error: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             return
         except pylibmc.ConnectionError as e:
             if self.connection_error_logged:
                 return
-            msg = _("Memcache connection error: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Memcache connection error: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             return
 
 class MemcacheDict(SharedDict):

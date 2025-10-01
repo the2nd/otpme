@@ -104,13 +104,14 @@ class SyncCache(dict):
         self.object_ids = {}
         if not os.path.exists(self.cache_dir):
             return True
-        self.logger.info(_("Clearing sync cache directory..."))
+        log_msg = _("Clearing sync cache directory...", log=True)[1]
+        self.logger.info(log_msg)
         try:
             shutil.rmtree(self.cache_dir)
         except Exception as e:
-            msg = _("Failed to sync cache dir: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to sync cache dir: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
     def get_cache_file(self, object_id):
         """ Get cache file path. """
@@ -125,9 +126,9 @@ class SyncCache(dict):
         try:
             protocol = filetools.read_file(self.protocol_file)
         except Exception as e:
-            msg = _("Error reading protocol version from file: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Error reading protocol version from file: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             return
         return protocol
 
@@ -138,9 +139,9 @@ class SyncCache(dict):
             filetools.create_file(path=self.protocol_file,
                                 content=protocol)
         except Exception as e:
-            msg = _("Error writing sync protocol version to file: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Error writing sync protocol version to file: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             return
 
     @property
@@ -151,17 +152,17 @@ class SyncCache(dict):
         try:
             content = filetools.read_file(self.sync_params_file)
         except Exception as e:
-            msg = _("Error reading sync parameters from file: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Error reading sync parameters from file: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             return
         # Decode sync parameters.
         try:
             sync_parameters = json.decode(content, encoding="base64")
         except Exception as e:
-            msg = _("Error decoding sync parameters: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Error decoding sync parameters: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             return
         return sync_parameters
 
@@ -173,17 +174,17 @@ class SyncCache(dict):
                                             encoding="base64",
                                             compress=True)
         except Exception as e:
-            msg = _("Error encoding sync parameters: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Error encoding sync parameters: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             return
         try:
             filetools.create_file(path=self.sync_params_file,
                                 content=encoded_sync_params)
         except Exception as e:
-            msg = _("Error writing sync parameters to file: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Error writing sync parameters to file: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             return
 
     @property
@@ -213,26 +214,26 @@ class SyncCache(dict):
         try:
             sync_list_file = self.sync_list_files[list_type]
         except:
-            msg = _("Invalid sync list type: {list_type}")
-            msg = msg.format(list_type=list_type)
-            self.logger.warning(msg)
+            log_msg = _("Invalid sync list type: {list_type}", log=True)[1]
+            log_msg = log_msg.format(list_type=list_type)
+            self.logger.warning(log_msg)
             return
         if not os.path.exists(sync_list_file):
             return
         try:
             content = filetools.read_file(sync_list_file)
         except Exception as e:
-            msg = _("Error reading {list_type} sync list from file: {error}")
-            msg = msg.format(list_type=list_type, error=e)
-            self.logger.warning(msg)
+            log_msg = _("Error reading {list_type} sync list from file: {error}", log=True)[1]
+            log_msg = log_msg.format(list_type=list_type, error=e)
+            self.logger.warning(log_msg)
             return
         # Decode sync list.
         try:
             sync_list = json.decode(content, encoding="base64")
         except Exception as e:
-            msg = _("Error decoding {list_type} sync list: {error}")
-            msg = msg.format(list_type=list_type, error=e)
-            self.logger.warning(msg)
+            log_msg = _("Error decoding {list_type} sync list: {error}", log=True)[1]
+            log_msg = log_msg.format(list_type=list_type, error=e)
+            self.logger.warning(log_msg)
             return
         return sync_list
 
@@ -241,26 +242,26 @@ class SyncCache(dict):
         try:
             sync_list_file = self.sync_list_files[list_type]
         except:
-            msg = _("Invalid sync list type: {list_type}")
-            msg = msg.format(list_type=list_type)
-            self.logger.warning(msg)
+            log_msg = _("Invalid sync list type: {list_type}", log=True)[1]
+            log_msg = log_msg.format(list_type=list_type)
+            self.logger.warning(log_msg)
             return
         try:
             encoded_sync_list = json.encode(sync_list,
                                             encoding="base64",
                                             compress=True)
         except Exception as e:
-            msg = _("Error encoding {list_type} sync list: {error}")
-            msg = msg.format(list_type=list_type, error=e)
-            self.logger.warning(msg)
+            log_msg = _("Error encoding {list_type} sync list: {error}", log=True)[1]
+            log_msg = log_msg.format(list_type=list_type, error=e)
+            self.logger.warning(log_msg)
             return
         try:
             filetools.create_file(path=sync_list_file,
                                 content=encoded_sync_list)
         except Exception as e:
-            msg = _("Error writing {list_type} sync list to file: {error}")
-            msg = msg.format(list_type=list_type, error=e)
-            self.logger.warning(msg)
+            log_msg = _("Error writing {list_type} sync list to file: {error}", log=True)[1]
+            log_msg = log_msg.format(list_type=list_type, error=e)
+            self.logger.warning(log_msg)
             return
 
     def add(self, object_id, data):
@@ -304,9 +305,9 @@ class SyncCache(dict):
         try:
             filetools.delete(cache_file)
         except Exception as e:
-            msg = _("Failed to remove cache file: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to remove cache file: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
     def ensure_cache_dir(self):
         """ Make sure we have a cache dir. """
@@ -330,9 +331,9 @@ class SyncCache(dict):
         cache_files = glob.glob(f"{self.cache_dir}/*.json")
         if not cache_files:
             return
-        msg = _("Reading sync cache from directory: {cache_dir}")
-        msg = msg.format(cache_dir=self.cache_dir)
-        self.logger.info(msg)
+        log_msg = _("Reading sync cache from directory: {cache_dir}", log=True)[1]
+        log_msg = log_msg.format(cache_dir=self.cache_dir)
+        self.logger.info(log_msg)
         for cache_file in cache_files:
             cache_file_name = os.path.basename(cache_file)
             object_id = cache_file_name.replace(":", "/")
@@ -358,9 +359,9 @@ class SyncCache(dict):
             object_config = ObjectConfig(object_id, object_config)
             object_config = object_config.decrypt(config.master_key)
         except Exception as e:
-            msg = _("Failed to decrypt object config: {object_id}: {error}")
-            msg = msg.format(object_id=object_id, error=e)
-            self.logger.critical(msg, exc_info=True)
+            log_msg = _("Failed to decrypt object config: {object_id}: {error}", log=True)[1]
+            log_msg = log_msg.format(object_id=object_id, error=e)
+            self.logger.critical(log_msg, exc_info=True)
             return
         return object_config
 

@@ -214,9 +214,9 @@ class OTPmeClusterP1(OTPmeServer1):
 
         # Check if we got a valid command
         if not command in valid_commands:
-            msg = _("Received unknown command {cmd} from client: {client}")
-            msg = msg.format(cmd=command, client=self.client)
-            logger.warning(msg)
+            log_msg = _("Received unknown command {cmd} from client: {client}", log=True)[1]
+            log_msg = log_msg.format(cmd=command, client=self.client)
+            logger.warning(log_msg)
             message = _("Unknown command: {cmd}")
             message = message.format(cmd=command)
             status = False
@@ -224,8 +224,8 @@ class OTPmeClusterP1(OTPmeServer1):
         elif command == "ping":
             message = _("pong")
             status = True
-            msg = _("Received ping.")
-            logger.debug(msg)
+            log_msg = _("Received ping.", log=True)[1]
+            logger.debug(log_msg)
 
         elif command == "get_data_revision":
             status = True
@@ -524,9 +524,9 @@ class OTPmeClusterP1(OTPmeServer1):
                     sync_objects[x_oid.full_oid] = {}
                     sync_objects[x_oid.full_oid]['object_config'] = x_object_config
                 message = sync_objects
-                msg = _("Sending {count} objects to peer: {peer}")
-                msg = msg.format(count=sync_objects_count, peer=self.peer.name)
-                logger.info(msg)
+                log_msg = _("Sending {count} objects to peer: {peer}", log=True)[1]
+                log_msg = log_msg.format(count=sync_objects_count, peer=self.peer.name)
+                logger.info(log_msg)
 
         elif command == "sync_trash":
             status = True
@@ -563,9 +563,9 @@ class OTPmeClusterP1(OTPmeServer1):
                     if x_trash_id not in sync_objects:
                         sync_objects[x_trash_id] = None
                 message = sync_objects
-                msg = _("Sending {count} trash objects to peer: {peer}")
-                msg = msg.format(count=sync_objects_count, peer=self.peer.name)
-                logger.info(msg)
+                log_msg = _("Sending {count} trash objects to peer: {peer}", log=True)[1]
+                log_msg = log_msg.format(count=sync_objects_count, peer=self.peer.name)
+                logger.info(log_msg)
 
         elif command == "object_exists":
             status = True
@@ -648,9 +648,9 @@ class OTPmeClusterP1(OTPmeServer1):
             if status:
                 object_id = oid.get(object_id)
                 checksum = object_config['CHECKSUM']
-                msg = _("Writing object: {id} ({checksum})")
-                msg = msg.format(id=object_id, checksum=checksum)
-                logger.debug(msg)
+                log_msg = _("Writing object: {id} ({checksum})", log=True)[1]
+                log_msg = log_msg.format(id=object_id, checksum=checksum)
+                logger.debug(log_msg)
                 message = "done"
                 try:
                     backend.write_config(object_id=object_id,
@@ -667,9 +667,9 @@ class OTPmeClusterP1(OTPmeServer1):
                                         object_config=object_config)
                 except Exception as e:
                     status = False
-                    message = _("Failed to write object: {id}: {error}")
-                    message = message.format(id=object_id, error=e)
-                    self.logger.warning(message)
+                    log_msg = _("Failed to write object: {id}: {error}", log=True)[1]
+                    log_msg = log_msg.format(id=object_id, error=e)
+                    self.logger.warning(log_msg)
 
                 if status:
                     if last_used:
@@ -722,9 +722,9 @@ class OTPmeClusterP1(OTPmeServer1):
                 new_object_id = oid.get(new_object_id)
                 our_object = backend.get_object(object_id)
                 if our_object.oid.full_oid == object_id.full_oid:
-                    msg = _("Renaming object: {old_id}: {new_id}")
-                    msg = msg.format(old_id=object_id, new_id=new_object_id)
-                    self.logger.debug(msg)
+                    log_msg = _("Renaming object: {old_id}: {new_id}", log=True)[1]
+                    log_msg = log_msg.format(old_id=object_id, new_id=new_object_id)
+                    self.logger.debug(log_msg)
                     try:
                         backend.rename_object(object_id,
                                             new_object_id,
@@ -733,9 +733,9 @@ class OTPmeClusterP1(OTPmeServer1):
                         status = False
                         message = _("Failed to rename object: {id}")
                         message = message.format(id=object_id)
-                        msg = _("Failed to rename object: {id}: {error}")
-                        msg = msg.format(id=object_id, error=e)
-                        self.logger.warning(msg)
+                        log_msg = _("Failed to rename object: {id}: {error}", log=True)[1]
+                        log_msg = log_msg.format(id=object_id, error=e)
+                        self.logger.warning(log_msg)
                     else:
                         message = "done"
 
@@ -765,14 +765,14 @@ class OTPmeClusterP1(OTPmeServer1):
                     status = False
                     message = _("Failed to delete object: {id}")
                     message = message.format(id=object_id)
-                    msg = _("Failed to delete object: {id}: {error}")
-                    msg = msg.format(id=object_id, error=e)
-                    self.logger.warning(msg)
+                    log_msg = _("Failed to delete object: {id}: {error}", log=True)[1]
+                    log_msg = log_msg.format(id=object_id, error=e)
+                    self.logger.warning(log_msg)
                 else:
                     message = "done"
-                    msg = _("Removed object: {id}")
-                    msg = msg.format(id=object_id)
-                    self.logger.debug(msg)
+                    log_msg = _("Removed object: {id}", log=True)[1]
+                    log_msg = log_msg.format(id=object_id)
+                    self.logger.debug(log_msg)
 
                 while True:
                     entry_time = str(time.time_ns())
@@ -832,17 +832,19 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = False
             if status:
                 message = "done"
-                msg = _("Writing trash object: {object_id} ({trash_id})")
-                msg = msg.format(object_id=object_id, trash_id=trash_id)
-                logger.debug(msg)
+                log_msg = _("Writing trash object: {object_id} ({trash_id})", log=True)[1]
+                log_msg = log_msg.format(object_id=object_id, trash_id=trash_id)
+                logger.debug(log_msg)
                 try:
                     trash.write_entry(trash_id,
                                     object_id,
                                     object_data,
                                     deleted_by)
                 except Exception as e:
-                    message = _("Failed to add trash entry: {object_id}: {trash_id}: {error}")
+                    message, log_msg = _("Failed to add trash entry: {object_id}: {trash_id}: {error}", log=True)
                     message = message.format(object_id=object_id, trash_id=trash_id, error=e)
+                    log_msg = log_msg.format(object_id=object_id, trash_id=trash_id, error=e)
+                    logger.warning(log_msg)
                     status = False
 
         elif command == "trash_delete":
@@ -858,14 +860,16 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = False
             if status:
                 message = "done"
-                msg = _("Deleting trash object: {trash_id}")
-                msg = msg.format(trash_id=trash_id)
-                logger.debug(msg)
+                log_msg = _("Deleting trash object: {trash_id}", log=True)[1]
+                log_msg = log_msg.format(trash_id=trash_id)
+                logger.debug(log_msg)
                 try:
                     trash.delete(trash_id=trash_id, cluster=False)
                 except Exception as e:
-                    message = _("Failed to delete trash entry: {trash_id}: {error}")
+                    message, log_msg = _("Failed to delete trash entry: {trash_id}: {error}", log=True)
                     message = message.format(trash_id=trash_id, error=e)
+                    log_msg = log_msg.format(trash_id=trash_id, error=e)
+                    logger.warning(log_msg)
                     status = False
 
         elif command == "trash_empty":
@@ -876,14 +880,17 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = False
             if status:
                 message = "done"
-                msg = _("Trash emptied.")
-                logger.debug(msg)
                 try:
                     trash.empty(cluster=False)
                 except Exception as e:
-                    message = _("Failed to empty trash: {error}")
+                    message, log_msg = _("Failed to empty trash: {error}", log=True)
                     message = message.format(error=e)
+                    log_msg = log_msg.format(error=e)
+                    logger.warning(log_msg)
                     status = False
+                else:
+                    log_msg = _("Trash emptied.", log=True)[1]
+                    logger.debug(log_msg)
 
         elif command == "get_last_used":
             status = True
@@ -901,9 +908,9 @@ class OTPmeClusterP1(OTPmeServer1):
                     message = backend.get_last_used_times(object_types=object_types)
                     status = True
                 except Exception as e:
-                    msg = _("Failed to get last used data from backend: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.warning(msg)
+                    log_msg = _("Failed to get last used data from backend: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
                     message = _("Failed to get last used data from backend.")
                     status = False
 
@@ -1009,16 +1016,16 @@ class OTPmeClusterP1(OTPmeServer1):
         elif command == "deconfigure_floating_ip":
             status = True
             message = _("Floating IP deconfigured.")
-            msg = _("Received request to deconfigure floating IP.")
-            logger.info(msg)
+            log_msg = _("Received request to deconfigure floating IP.", log=True)[1]
+            logger.info(log_msg)
             try:
                 self.comm_handler.send("controld", command="deconfigure_floating_ip")
             except Exception as e:
                 status = False
                 message = _("Failed to send deconfigure floating IP request.")
-                msg = _("Failed to send deconfigure floating IP request: {error}")
-                msg = msg.format(error=e)
-                logger.critical(msg)
+                log_msg = _("Failed to send deconfigure floating IP request: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                logger.critical(log_msg)
 
         elif command == "start_master_failover":
             missing_nodes = []
@@ -1071,13 +1078,14 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = True
                 message = _("Nsscache sync queued.")
             except Exception as e:
-                message = _("Error queueing sync nsscache command: {error}")
+                message, log_msg = _("Error queueing sync nsscache command: {error}", log=True)
                 message = message.format(error=e)
-                logger.warning(message)
+                log_msg = log_msg.format(error=e)
+                logger.warning(log_msg)
                 status = True
             else:
-                msg = _("nsscache sync queued.")
-                logger.info(msg)
+                log_msg = _("nsscache sync queued.", log=True)[1]
+                logger.info(log_msg)
 
         elif command == "do_radius_reload":
             try:
@@ -1089,8 +1097,8 @@ class OTPmeClusterP1(OTPmeServer1):
                 message = message.format(error=e)
                 status = False
             else:
-                msg = _("Freeradius reloaded.")
-                logger.info(msg)
+                log_msg = _("Freeradius reloaded.", log=True)[1]
+                logger.info(log_msg)
 
         elif command == "do_daemon_reload":
             # Reload e.g. after adding new CRL.
@@ -1107,8 +1115,8 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = False
                 message = _("Ongoing master_failover.")
             if status:
-                msg = _("Starting master failover...")
-                logger.info(msg)
+                log_msg = _("Starting master failover...", log=True)[1]
+                logger.info(log_msg)
                 config.master_failover = True
                 config.cluster_status = False
                 result = backend.search(object_type="node",
@@ -1125,23 +1133,23 @@ class OTPmeClusterP1(OTPmeServer1):
                     try:
                         socket_uri = stuff.get_daemon_socket("clusterd", x_node.name)
                     except Exception as e:
-                        msg = _("Failed to get clusterd socket: {node}: {error}")
-                        msg = msg.format(node=x_node.name, error=e)
-                        logger.critical(msg)
+                        log_msg = _("Failed to get clusterd socket: {node}: {error}", log=True)[1]
+                        log_msg = log_msg.format(node=x_node.name, error=e)
+                        logger.critical(log_msg)
                         continue
                     try:
                         clusterd_conn = connections.get("clusterd", socket_uri=socket_uri)
                     except Exception as e:
-                        msg = _("Cluster connection failed: {node}: {error}")
-                        msg = msg.format(node=x_node.name, error=e)
-                        logger.critical(msg)
+                        log_msg = _("Cluster connection failed: {node}: {error}", log=True)[1]
+                        log_msg = log_msg.format(node=x_node.name, error=e)
+                        logger.critical(log_msg)
                         continue
                     try:
                         clusterd_conn.set_master_failover()
                     except Exception as e:
-                        msg = _("Setting master failover status failed: {node}: {error}")
-                        msg = msg.format(node=x_node.name, error=e)
-                        logger.critical(msg)
+                        log_msg = _("Setting master failover status failed: {node}: {error}", log=True)[1]
+                        log_msg = log_msg.format(node=x_node.name, error=e)
+                        logger.critical(log_msg)
                     finally:
                         clusterd_conn.close()
 
@@ -1158,27 +1166,27 @@ class OTPmeClusterP1(OTPmeServer1):
                     try:
                         socket_uri = stuff.get_daemon_socket("clusterd", master_node)
                     except Exception as e:
-                        msg = _("Failed to get clusterd socket: {node}: {error}")
-                        msg = msg.format(node=x_node.name, error=e)
-                        logger.critical(msg)
+                        log_msg = _("Failed to get clusterd socket: {node}: {error}", log=True)[1]
+                        log_msg = log_msg.format(node=x_node.name, error=e)
+                        logger.critical(log_msg)
                         socket_uri = None
                     clusterd_conn = None
                     if socket_uri:
                         try:
                             clusterd_conn = connections.get("clusterd", socket_uri=socket_uri)
                         except Exception as e:
-                            msg = _("Cluster sync connection failed: {node}: {error}")
-                            msg = msg.format(node=x_node.name, error=e)
-                            logger.critical(msg)
+                            log_msg = _("Cluster sync connection failed: {node}: {error}", log=True)[1]
+                            log_msg = log_msg.format(node=x_node.name, error=e)
+                            logger.critical(log_msg)
                     if clusterd_conn:
-                        msg = _("Starting sync of data objects...")
-                        logger.info(msg)
+                        log_msg = _("Starting sync of data objects...", log=True)[1]
+                        logger.info(log_msg)
                         try:
                             clusterd_conn.sync()
                         except Exception as e:
-                            msg = _("Master failover sync failed: {node}: {error}")
-                            msg = msg.format(node=x_node.name, error=e)
-                            logger.critical(msg)
+                            log_msg = _("Master failover sync failed: {node}: {error}", log=True)[1]
+                            log_msg = log_msg.format(node=x_node.name, error=e)
+                            logger.critical(log_msg)
                         finally:
                             clusterd_conn.close()
                     command_handler = CommandHandler()
@@ -1186,9 +1194,9 @@ class OTPmeClusterP1(OTPmeServer1):
                         try:
                             socket_uri = stuff.get_daemon_socket("syncd", master_node)
                         except Exception as e:
-                            msg = _("Failed to get syncd socket: {error}")
-                            msg = msg.format(error=e)
-                            self.logger.warning(msg)
+                            log_msg = _("Failed to get syncd socket: {error}", log=True)[1]
+                            log_msg = log_msg.format(error=e)
+                            self.logger.warning(log_msg)
                             time.sleep(1)
                             continue
                         try:
@@ -1199,9 +1207,9 @@ class OTPmeClusterP1(OTPmeServer1):
                                                                 site=config.site,
                                                                 max_tries=3)
                         except Exception as e:
-                            msg = _("Final sync of objects failed: {error}")
-                            msg = msg.format(error=e)
-                            logger.warning(msg)
+                            log_msg = _("Final sync of objects failed: {error}", log=True)[1]
+                            log_msg = log_msg.format(error=e)
+                            logger.warning(log_msg)
                             sync_status = False
                         if sync_status is not False:
                             status = True
@@ -1218,7 +1226,8 @@ class OTPmeClusterP1(OTPmeServer1):
                         time.sleep(0.01)
                         continue
                     if master_node != self.host_name:
-                        logger.info("Waiting for node to get master node...")
+                        log_msg = _("Waiting for node to get master node...", log=True)[1]
+                        logger.info(log_msg)
                         time.sleep(1)
                         continue
                     break

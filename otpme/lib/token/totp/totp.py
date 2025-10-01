@@ -495,14 +495,15 @@ class TotpToken(OathToken):
         # Get PIN from OTP if needed.
         if otp_includes_pin:
             if len(otp) < (int(self.pin_len) + int(self.otp_len)):
-                logger.debug(_("Token PIN enabled but the given OTP is too short to include a PIN!"))
+                log_msg = _("Token PIN enabled but the given OTP is too short to include a PIN!", log=True)[1]
+                logger.debug(log_msg)
                 return None
             _otp = otp[self.pin_len:]
             try:
                 pin = otp[:self.pin_len]
             except ValueError:
-                msg = _("OTP does not include a PIN.")
-                logger.info(msg)
+                log_msg = _("OTP does not include a PIN.", log=True)[1]
+                logger.info(log_msg)
                 return None
         else:
             _otp = otp
@@ -519,18 +520,18 @@ class TotpToken(OathToken):
                 raise OTPmeException(msg)
 
         # Log OTP time range.
-        msg = _("Verifiying OTP within timerange: start='{start}' end='{end}'.")
-        msg = msg.format(start=otp_validity_start_time, end=otp_validity_end_time)
-        logger.debug(msg)
+        log_msg = _("Verifiying OTP within timerange: start='{start}' end='{end}'.", log=True)[1]
+        log_msg = log_msg.format(start=otp_validity_start_time, end=otp_validity_end_time)
+        logger.debug(log_msg)
         # Verify OTP.
         totp_status = totp.verify_totp(epoch_time, secret=secret, otp=_otp)
         if totp_status:
             # Verify PIN.
             if verify_pin:
                 if pin != self.pin:
-                    msg = _("Got wrong token PIN: {rel_path}")
-                    msg = msg.format(rel_path=self.rel_path)
-                    logger.debug(msg)
+                    log_msg = _("Got wrong token PIN: {rel_path}", log=True)[1]
+                    log_msg = log_msg.format(rel_path=self.rel_path)
+                    logger.debug(log_msg)
                     # FIXME: A wrong PIN is not definitively a failed login
                     #        with this token because it may be used as a
                     #        second factor token (e.g. a password token)
@@ -577,9 +578,9 @@ class TotpToken(OathToken):
 
         # Cannot verify token in mode2.
         if self.mode == "mode2":
-            msg = _("Cannot verify token in mode2: {rel_path}")
-            msg = msg.format(rel_path=self.rel_path)
-            logger.debug(msg)
+            log_msg = _("Cannot verify token in mode2: {rel_path}", log=True)[1]
+            log_msg = log_msg.format(rel_path=self.rel_path)
+            logger.debug(log_msg)
             return return_value
 
         pin = None
@@ -596,9 +597,9 @@ class TotpToken(OathToken):
         # Get list with valid OTPs of this token.
         otp = self.gen_otp(prefix_pin=pin, verify_acls=False)
 
-        msg = _("Verifiying OTP within timerange: start='{start}' end='{end}'.")
-        msg = msg.format(start=otp_validity_start_time, end=otp_validity_end_time)
-        logger.debug(msg)
+        log_msg = _("Verifiying OTP within timerange: start='{start}' end='{end}'.", log=True)[1]
+        log_msg = log_msg.format(start=otp_validity_start_time, end=otp_validity_end_time)
+        logger.debug(log_msg)
 
         # Get NT key from verify().
         status, nt_key = mschap_util.verify(stuff.gen_nt_hash(otp),

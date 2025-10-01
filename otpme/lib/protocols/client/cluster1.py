@@ -329,9 +329,9 @@ class OTPmeClusterP1(OTPmeClient1):
                         continue
             x_config = x_data['object_config']
             x_checksum = x_config['SYNC_CHECKSUM']
-            msg = _("Writing received object: {x_oid} ({x_checksum})")
-            msg = msg.format(x_oid=x_oid, x_checksum=x_checksum)
-            self.logger.debug(msg)
+            log_msg = _("Writing received object: {x_oid} ({x_checksum})", log=True)[1]
+            log_msg = log_msg.format(x_oid=x_oid, x_checksum=x_checksum)
+            self.logger.debug(log_msg)
             x_uuid = x_config['UUID']
             backend.write_config(x_oid,
                                 object_config=x_config,
@@ -341,9 +341,9 @@ class OTPmeClusterP1(OTPmeClient1):
                                 full_acl_update=True,
                                 cluster=False)
             synced_objects.append(x_oid)
-        msg = _("Synced {count} objects from peer: {peer_name}")
-        msg = msg.format(count=len(synced_objects), peer_name=self.peer.name)
-        self.logger.info(msg)
+        log_msg = _("Synced {count} objects from peer: {peer_name}", log=True)[1]
+        log_msg = log_msg.format(count=len(synced_objects), peer_name=self.peer.name)
+        self.logger.info(log_msg)
         if skip_deletions:
             return reply
         # Remove deleted objects.
@@ -359,8 +359,8 @@ class OTPmeClusterP1(OTPmeClient1):
 
     def sync_last_used(self):
         """ Sync last used times. """
-        msg = _("Syncing last used times...")
-        self.logger.info(msg)
+        log_msg = _("Syncing last used times...", log=True)[1]
+        self.logger.info(log_msg)
         object_types = config.get_cluster_object_types()
         # Get timestamps from peer.
         command = "get_last_used"
@@ -373,18 +373,18 @@ class OTPmeClusterP1(OTPmeClient1):
         # Process last used timestamps from peer.
         for x_type in remote_last_used:
             if x_type not in object_types:
-                msg = _("Got not requested object type from peer: {x_type}")
-                msg = msg.format(x_type=x_type)
-                self.logger.warning(msg)
+                log_msg = _("Got not requested object type from peer: {x_type}", log=True)[1]
+                log_msg = log_msg.format(x_type=x_type)
+                self.logger.warning(log_msg)
                 continue
             updates = {}
             for x_uuid in remote_last_used[x_type]:
                 try:
                     timestamp = remote_last_used[x_type][x_uuid]
                 except:
-                    msg = _("Remote last used data misses timestamp: {x_uuid}")
-                    msg = msg.format(x_uuid=x_uuid)
-                    self.logger.warning(msg)
+                    log_msg = _("Remote last used data misses timestamp: {x_uuid}", log=True)[1]
+                    log_msg = log_msg.format(x_uuid=x_uuid)
+                    self.logger.warning(log_msg)
                     continue
                 try:
                     local_last_used_time = local_last_used[x_type][x_uuid]
@@ -416,9 +416,9 @@ class OTPmeClusterP1(OTPmeClient1):
             if reply[x_trash_id] is None:
                 continue
             for x_oid in reply[x_trash_id]:
-                msg = _("Writing received trash object: {x_oid} ({x_trash_id})")
-                msg = msg.format(x_oid=x_oid, x_trash_id=x_trash_id)
-                self.logger.debug(msg)
+                log_msg = _("Writing received trash object: {x_oid} ({x_trash_id})", log=True)[1]
+                log_msg = log_msg.format(x_oid=x_oid, x_trash_id=x_trash_id)
+                self.logger.debug(log_msg)
                 x_object_data = reply[x_trash_id][x_oid]['object_data']
                 x_deleted_by = reply[x_trash_id][x_oid]['deleted_by']
                 try:
@@ -427,9 +427,9 @@ class OTPmeClusterP1(OTPmeClient1):
                                     object_data=x_object_data,
                                     deleted_by=x_deleted_by)
                 except Exception as e:
-                    msg = _("Failed to add trash entry: {x_oid}: {x_trash_id}: {e}")
-                    msg = msg.format(x_oid=x_oid, x_trash_id=x_trash_id, e=e)
-                    self.logger.warning(msg)
+                    log_msg = _("Failed to add trash entry: {x_oid}: {x_trash_id}: {e}", log=True)[1]
+                    log_msg = log_msg.format(x_oid=x_oid, x_trash_id=x_trash_id, e=e)
+                    self.logger.warning(log_msg)
                     config.raise_exception()
                 else:
                     synced_objects.append(x_oid)
@@ -440,12 +440,12 @@ class OTPmeClusterP1(OTPmeClient1):
             try:
                 trash.delete(trash_id=x_trash_id, cluster=False)
             except Exception as e:
-                msg = _("Failed to delete trash ID: {x_trash_id}: {e}")
-                msg = msg.format(x_trash_id=x_trash_id, e=e)
-                self.logger.warning(msg)
-        msg = _("Synced {count} trash objects from peer: {peer_name}")
-        msg = msg.format(count=len(synced_objects), peer_name=self.peer.name)
-        self.logger.info(msg)
+                log_msg = _("Failed to delete trash ID: {x_trash_id}: {e}", log=True)[1]
+                log_msg = log_msg.format(x_trash_id=x_trash_id, e=e)
+                self.logger.warning(log_msg)
+        log_msg = _("Synced {count} trash objects from peer: {peer_name}", log=True)[1]
+        log_msg = log_msg.format(count=len(synced_objects), peer_name=self.peer.name)
+        self.logger.info(log_msg)
         return reply
 
     def deconfigure_floating_ip(self):

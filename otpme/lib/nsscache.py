@@ -64,16 +64,16 @@ def get_last_synced_revision():
     try:
         last_synced_revision = filetools.read_file(config.nsscache_sync_file)
     except Exception as e:
-        msg = _("Failed to read last synced revision: {e}")
-        msg = msg.format(e=e)
-        logger.warning(msg)
+        log_msg = _("Failed to read last synced revision: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        logger.warning(log_msg)
         return
     try:
         last_synced_revision = float(last_synced_revision)
     except Exception as e:
-        msg = _("Invalid revision format, should be float: {e}")
-        msg = msg.format(e=e)
-        logger.warning(msg)
+        log_msg = _("Invalid revision format, should be float: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        logger.warning(log_msg)
         return
     return last_synced_revision
 
@@ -84,9 +84,9 @@ def set_last_synced_revision(last_synced_revision):
         filetools.create_file(path=config.nsscache_sync_file,
                             content=str(last_synced_revision))
     except Exception as e:
-        msg = _("Failed to read last synced revision: {e}")
-        msg = msg.format(e=e)
-        logger.warning(msg)
+        log_msg = _("Failed to read last synced revision: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        logger.warning(log_msg)
         return
     return last_synced_revision
 
@@ -144,9 +144,11 @@ def update_sync_map(lock=None, syncing=False):
             except OTPmeException as e:
                 exception = str(e)
             if exception:
-                logger.warning(exception)
+                log_msg = exception
+                logger.warning(log_msg)
             else:
-                logger.debug(reply)
+                log_msg = reply
+                logger.debug(log_msg)
             return
 
         # Get sync list checksum.
@@ -170,9 +172,11 @@ def update_sync_map(lock=None, syncing=False):
         except OTPmeException as e:
             exception = str(e)
         if exception:
-            logger.warning(exception)
+            log_msg = exception
+            logger.warning(log_msg)
         else:
-            logger.debug(reply)
+            log_msg = reply
+            logger.debug(log_msg)
 
 def update_object(object_id, action):
     """ Add object ID to nsscache spool directory. """
@@ -198,17 +202,17 @@ def update_object(object_id, action):
         obsolete_file = update_file
 
     if os.path.exists(obsolete_file):
-        msg = _("Removing obsolete spool file: {obsolete_file}")
-        msg = msg.format(obsolete_file=obsolete_file)
-        logger.debug(msg)
+        log_msg = _("Removing obsolete spool file: {obsolete_file}", log=True)[1]
+        log_msg = log_msg.format(obsolete_file=obsolete_file)
+        logger.debug(log_msg)
         try:
             filetools.delete(obsolete_file)
         except FileNotFoundError:
             pass
         except Exception as e:
-            msg = _("Failed to remove nsscache file: {obsolete_file}: {e}")
-            msg = msg.format(obsolete_file=obsolete_file, e=e)
-            logger.critical(msg)
+            log_msg = _("Failed to remove nsscache file: {obsolete_file}: {e}", log=True)[1]
+            log_msg = log_msg.format(obsolete_file=obsolete_file, e=e)
+            logger.critical(log_msg)
     # Write file.
     filetools.touch(path=cache_file,
                     user=config.user,
@@ -227,9 +231,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
     # Get logger.
     logger = config.logger
 
-    msg = _("Starting sync of nsscache: {realm}/{site}")
-    msg = msg.format(realm=realm, site=site)
-    logger.info(msg)
+    log_msg = _("Starting sync of nsscache: {realm}/{site}", log=True)[1]
+    log_msg = log_msg.format(realm=realm, site=site)
+    logger.info(log_msg)
 
     if lock is None:
         lock = locking.OTPmeFakeLock(lock_type=LOCK_TYPE, lock_id="fake")
@@ -320,9 +324,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                 continue
 
             counter += 1
-            msg = _("Reading nsscache ({counter}/{update_objects}): {x_oid}")
-            msg = msg.format(counter=counter, update_objects=update_objects, x_oid=x_oid)
-            logger.debug(msg)
+            log_msg = _("Reading nsscache ({counter}/{update_objects}): {x_oid}", log=True)[1]
+            log_msg = log_msg.format(counter=counter, update_objects=update_objects, x_oid=x_oid)
+            logger.debug(log_msg)
 
             x_object = backend.get_object(x_oid)
             if not x_object:
@@ -340,9 +344,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                 try:
                     filetools.delete(file_path)
                 except Exception as e:
-                    msg = _("Failed to remove nsscache file: {file_path}: {e}")
-                    msg = msg.format(file_path=file_path, e=e)
-                    logger.critical(msg)
+                    log_msg = _("Failed to remove nsscache file: {file_path}: {e}", log=True)[1]
+                    log_msg = log_msg.format(file_path=file_path, e=e)
+                    logger.critical(log_msg)
 
             if x_object.type == "group":
                 if x_object.site != config.site:
@@ -355,16 +359,17 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             for role in set(sorted(update_roles)):
                 if role.site != config.site:
                     continue
-                msg = _("Updating group members from role: {role_oid}")
-                msg = msg.format(role_oid=role.oid)
-                logger.info(msg)
+                log_msg = _("Updating group members from role: {role_oid}", log=True)[1]
+                log_msg = log_msg.format(role_oid=role.oid)
+                logger.info(log_msg)
                 callback = config.get_callback()
                 try:
                     updated_groups += role.update_extensions("update_members",
                                                             callback=callback)[1]
                 except Exception as e:
-                    msg = _("Failed to update role members: {role_oid}: {e}")
-                    msg = msg.format(role_oid=role.oid, e=e)
+                    log_msg = _("Failed to update role members: {role_oid}: {e}", log=True)[1]
+                    log_msg = log_msg.format(role_oid=role.oid, e=e)
+                    logger.critical(log_msg)
                 finally:
                     update_objects = False
                     if config.master_node:
@@ -388,8 +393,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                     _group.update_extensions("update_members",
                                             callback=callback)
                 except Exception as e:
-                    msg = _("Failed to update group members: {group_oid}: {e}")
-                    msg = msg.format(group_oid=_group.oid, e=e)
+                    log_msg = _("Failed to update group members: {group_oid}: {e}", log=True)[1]
+                    log_msg = log_msg.format(group_oid=_group.oid, e=e)
+                    logger.critical(log_msg)
                 finally:
                     update_objects = False
                     if config.master_node:
@@ -441,8 +447,8 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
         # No spool dir, no updates ;)
         if not os.path.exists(config.nsscache_objects_dir):
             update_sync_map(lock=lock)
-            msg = _("No nsscache updates found.")
-            logger.info(msg)
+            log_msg = _("No nsscache updates found.", log=True)[1]
+            logger.info(log_msg)
             # Mark current revision as synced.
             if realm == config.realm:
                 if site == config.site:
@@ -471,9 +477,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                 try:
                     filetools.delete(file_path)
                 except Exception as e:
-                    msg = _("Failed to remove nsscache file: {file_path}: {e}")
-                    msg = msg.format(file_path=file_path, e=e)
-                    logger.warning(msg)
+                    log_msg = _("Failed to remove nsscache file: {file_path}: {e}", log=True)[1]
+                    log_msg = log_msg.format(file_path=file_path, e=e)
+                    logger.warning(log_msg)
                 continue
 
             if action == "update":
@@ -494,8 +500,8 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
 
     if len(updated_objects) + len(removed_objects) == 0:
         update_sync_map(lock=lock)
-        msg = _("No nsscache updates found.")
-        logger.info(msg)
+        log_msg = _("No nsscache updates found.", log=True)[1]
+        logger.info(log_msg)
         # Mark current revision as synced.
         if realm == config.realm:
             if site == config.site:
@@ -560,9 +566,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                     continue
             # Get object name.
             object_name = object_attrs[uuid]['name']
-            msg = _("Processing nsscache ({counter}/{object_count}): {object_id}")
-            msg = msg.format(counter=counter, object_count=object_count, object_id=object_id)
-            logger.debug(msg)
+            log_msg = _("Processing nsscache ({counter}/{object_count}): {object_id}", log=True)[1]
+            log_msg = log_msg.format(counter=counter, object_count=object_count, object_id=object_id)
+            logger.debug(log_msg)
             shadow_map_entry = None
             if object_type == "user":
                 try:
@@ -572,30 +578,30 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                 try:
                     uidnumber = object_attrs[uuid]['ldif:uidNumber'][0]
                 except:
-                    msg = _("Cannot create nsscache map: Object is missing uidNumber: {full_oid}")
-                    msg = msg.format(full_oid=full_oid)
-                    logger.warning(msg)
+                    log_msg = _("Cannot create nsscache map: Object is missing uidNumber: {full_oid}", log=True)[1]
+                    log_msg = log_msg.format(full_oid=full_oid)
+                    logger.warning(log_msg)
                     continue
                 try:
                     gidnumber = object_attrs[uuid]['ldif:gidNumber'][0]
                 except:
-                    msg = _("Cannot create nsscache map: Object is missing gidNumber: {full_oid}")
-                    msg = msg.format(full_oid=full_oid)
-                    logger.warning(msg)
+                    log_msg = _("Cannot create nsscache map: Object is missing gidNumber: {full_oid}", log=True)[1]
+                    log_msg = log_msg.format(full_oid=full_oid)
+                    logger.warning(log_msg)
                     continue
                 try:
                     homedir = object_attrs[uuid]['ldif:homeDirectory'][0]
                 except:
-                    msg = _("Cannot create nsscache map: Object is missing homeDirectory: {full_oid}")
-                    msg = msg.format(full_oid=full_oid)
-                    logger.warning(msg)
+                    log_msg = _("Cannot create nsscache map: Object is missing homeDirectory: {full_oid}", log=True)[1]
+                    log_msg = log_msg.format(full_oid=full_oid)
+                    logger.warning(log_msg)
                     continue
                 try:
                     loginshell = object_attrs[uuid]['ldif:loginShell'][0]
                 except:
-                    msg = _("Cannot create nsscache map: Object is missing loginShell: {full_oid}")
-                    msg = msg.format(full_oid=full_oid)
-                    logger.warning(msg)
+                    log_msg = _("Cannot create nsscache map: Object is missing loginShell: {full_oid}", log=True)[1]
+                    log_msg = log_msg.format(full_oid=full_oid)
+                    logger.warning(log_msg)
                     continue
                 # Gen passwd entry.
                 map_entry = passwd.PasswdMapEntry()
@@ -622,9 +628,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                 try:
                     gidnumber = object_attrs[uuid]['ldif:gidNumber'][0]
                 except Exception as e:
-                    msg = _("Cannot create nsscache map: Object is missing gidNumber: {full_oid}")
-                    msg = msg.format(full_oid=full_oid)
-                    logger.warning(msg)
+                    log_msg = _("Cannot create nsscache map: Object is missing gidNumber: {full_oid}", log=True)[1]
+                    log_msg = log_msg.format(full_oid=full_oid)
+                    logger.warning(log_msg)
                     continue
                 try:
                     group_members = object_attrs[uuid]['ldif:memberUid']
@@ -647,7 +653,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
     if resync or cache_resync:
         for object_type in object_types:
             for name in sorted(nsscache_update_entries[object_type]):
-                logger.debug(f"Adding {object_type} to nsscache: {name}")
+                log_msg = _("Adding {object_type} to nsscache: {name}", log=True)[1]
+                log_msg = log_msg.format(object_type=object_type, name=name)
+                logger.debug(log_msg)
                 entry = nsscache_update_entries[object_type][name]
                 nsscache_new_entries[object_type].append(entry)
                 nsscache_adds += 1
@@ -681,14 +689,11 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             # Handle removed entries.
             for name in sorted(nsscache_remove_names[object_type]):
                 if name not in nsscache_current_entries[object_type]:
-                    #msg = _("Deleted OTPme object is missing in nsscache: "
-                    #        f"{object_type}: {name}")
-                    #logger.warning(msg)
                     continue
                 update_needed = True
-                msg = _("Removing {object_type} from nsscache: {name}")
-                msg = msg.format(object_type=object_type, name=name)
-                logger.debug(msg)
+                log_msg = _("Removing {object_type} from nsscache: {name}", log=True)[1]
+                log_msg = log_msg.format(object_type=object_type, name=name)
+                logger.debug(log_msg)
                 nsscache_removes += 1
                 nsscache_current_entries[object_type].pop(name)
 
@@ -715,20 +720,20 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                 except KeyError:
                     current_entry = None
                 if current_entry == x_entry:
-                    msg = _("No update required for {object_type}: {name}")
-                    msg = msg.format(object_type=object_type, name=name)
-                    logger.debug(msg)
+                    log_msg = _("No update required for {object_type}: {name}", log=True)[1]
+                    log_msg = log_msg.format(object_type=object_type, name=name)
+                    logger.debug(log_msg)
                     continue
                 update_needed = True
                 if name in nsscache_current_entries[object_type]:
-                    msg = _("Updating {object_type} in nsscache: {name}")
-                    msg = msg.format(object_type=object_type, name=name)
-                    logger.debug(msg)
+                    log_msg = _("Updating {object_type} in nsscache: {name}", log=True)[1]
+                    log_msg = log_msg.format(object_type=object_type, name=name)
+                    logger.debug(log_msg)
                     nsscache_updates += 1
                 else:
-                    msg = _("Adding {object_type} to nsscache: {name}")
-                    msg = msg.format(object_type=object_type, name=name)
-                    logger.debug(msg)
+                    log_msg = _("Adding {object_type} to nsscache: {name}", log=True)[1]
+                    log_msg = log_msg.format(object_type=object_type, name=name)
+                    logger.debug(log_msg)
                     nsscache_adds += 1
                 nsscache_current_entries[object_type][x_entry.name] = x_entries
 
@@ -750,9 +755,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                     try:
                         filetools.delete(cache_file)
                     except Exception as e:
-                        msg = _("Failed to remove nsscache file: {cache_file}: {e}")
-                        msg = msg.format(cache_file=cache_file, e=e)
-                        logger.critical(msg)
+                        log_msg = _("Failed to remove nsscache file: {cache_file}: {e}", log=True)[1]
+                        log_msg = log_msg.format(cache_file=cache_file, e=e)
+                        logger.critical(log_msg)
             continue
         map_entries = []
         shadow_entries = []
@@ -767,7 +772,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                 shadow_entries.append(shadow_entry)
         map_method = nsscache_map_methods[object_type]
         new_map = map_method(map_entries)
-        logger.debug(f"Writing nsscache: {object_type}")
+        log_msg = _("Writing nsscache: {object_type}", log=True)[1]
+        log_msg = log_msg.format(object_type=object_type)
+        logger.debug(log_msg)
         cache.Write(new_map)
         cache.WriteIndex()
         cache._Commit()
@@ -775,7 +782,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             map_method = nsscache_map_methods['shadow']
             new_map = map_method(shadow_entries)
             shadow_cache = nsscache_caches['shadow']
-            logger.debug(f"Writing nsscache (shadow): {object_type}")
+            log_msg = _("Writing nsscache (shadow): {object_type}", log=True)[1]
+            log_msg = log_msg.format(object_type=object_type)
+            logger.debug(log_msg)
             shadow_cache.Write(new_map)
             shadow_cache.WriteIndex()
             shadow_cache._Commit()
@@ -789,13 +798,13 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
 
     if nsscache_adds > 0 or nsscache_updates > 0 or nsscache_removes > 0:
         cluster_nsscache = True
-        msg = _("Updated nsscache: adds: {nsscache_adds} updates: {nsscache_updates} removes: {nsscache_removes}")
-        msg = msg.format(nsscache_adds=nsscache_adds, nsscache_updates=nsscache_updates, nsscache_removes=nsscache_removes)
-        logger.info(msg)
+        log_msg = _("Updated nsscache: adds: {nsscache_adds} updates: {nsscache_updates} removes: {nsscache_removes}", log=True)[1]
+        log_msg = log_msg.format(nsscache_adds=nsscache_adds, nsscache_updates=nsscache_updates, nsscache_removes=nsscache_removes)
+        logger.info(log_msg)
     else:
         cluster_nsscache = False
-        msg = _("No nsscache update needed.")
-        logger.info(msg)
+        log_msg = _("No nsscache update needed.", log=True)[1]
+        logger.info(log_msg)
 
     # Inform hostd that we are in sync again.
     update_sync_map(lock=lock)
@@ -814,9 +823,9 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
         try:
             filetools.delete(file_path)
         except Exception as e:
-            msg = _("Failed to remove nsscache file: {file_path}: {e}")
-            msg = msg.format(file_path=file_path, e=e)
-            logger.critical(msg)
+            log_msg = _("Failed to remove nsscache file: {file_path}: {e}", log=True)[1]
+            log_msg = log_msg.format(file_path=file_path, e=e)
+            logger.critical(log_msg)
 
     if config.host_data['type'] == "node":
         if not config.master_node:
@@ -851,7 +860,9 @@ def enable():
 
     for link_src in nsscache_links:
         link_dst = nsscache_links[link_src]
-        logger.debug(f"Creating symlink: {link_src} -> {link_dst}")
+        log_msg = _("Creating symlink: {link_src} -> {link_dst}", log=True)[1]
+        log_msg = log_msg.format(link_src=link_src, link_dst=link_dst)
+        logger.debug(log_msg)
         os.symlink(link_src, link_dst)
 
 def disable():
@@ -866,5 +877,7 @@ def disable():
         curr_src = os.path.realpath(link_dst)
         if curr_src != link_src:
             continue
-        logger.debug(f"Removing symlink: {link_src} -> {link_dst}")
+        log_msg = _("Removing symlink: {link_src} -> {link_dst}", log=True)[1]
+        log_msg = log_msg.format(link_src=link_src, link_dst=link_dst)
+        logger.debug(log_msg)
         os.remove(link_dst)

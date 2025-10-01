@@ -1037,9 +1037,10 @@ class Group(OTPmeObject):
         try:
             dst_site_public_key = RSAKey(key=_dst_site._cert.public_key())
         except Exception as e:
-            msg = _("Unable to get public key of site certificate: {dst_site}: {error}")
+            msg, log_msg = _("Unable to get public key of site certificate: {dst_site}: {error}", log=True)
             msg = msg.format(dst_site=dst_site, error=e)
-            logger.warning(msg)
+            log_msg = log_msg.format(dst_site=dst_site, error=e)
+            logger.warning(log_msg)
             return callback.error(msg)
         enc_key_encrypted = dst_site_public_key.encrypt(enc_key, encoding="hex")
 
@@ -1087,9 +1088,10 @@ class Group(OTPmeObject):
                                 key=dst_site_public_key,
                                 algorithm='RS256')
         except Exception as e:
-            msg = _("JWT verification failed: {error}")
+            msg, log_msg = _("JWT verification failed: {error}", log=True)
             msg = msg.format(error=e)
-            logger.warning(msg)
+            log_msg = log_msg.format(error=e)
+            logger.warning(log_msg)
             return callback.error(msg)
 
         # Make sure we only delete objects if all were written on

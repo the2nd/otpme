@@ -69,9 +69,9 @@ def hash_password(password, salt=None, iterations=None,
     logger = config.logger
 
     if not quiet:
-        msg = _("Generating {hash_type} hash...")
-        msg = msg.format(hash_type=hash_type)
-        logger.debug(msg)
+        log_msg = _("Generating {hash_type} hash...", log=True)[1]
+        log_msg = log_msg.format(hash_type=hash_type)
+        logger.debug(log_msg)
 
     # Get hash type function.
     hash_function = config.get_hash_function(hash_type)
@@ -91,7 +91,8 @@ def hash_password(password, salt=None, iterations=None,
     if iterations is None:
         if 'iterations' in default_opts:
             if not quiet:
-                logger.debug("Using default iterations.")
+                log_msg = _("Using default iterations.", log=True)[1]
+                logger.debug(log_msg)
             iterations = default_opts['iterations']
 
     start_time = time.time()
@@ -114,7 +115,8 @@ def hash_password(password, salt=None, iterations=None,
 
     duration = time.time() - start_time
     if not quiet:
-        logger.debug("Duration: %f" % duration)
+        log_msg = _("Duration: %f" % duration, log=True)[1]
+        logger.debug(log_msg)
 
     return result
 

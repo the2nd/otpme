@@ -484,6 +484,8 @@ class OTPmeConfig(object):
         self.register_config_var("locale_dir", str, None)
         self.register_config_var("language", str, 'en',
                                 config_file_parameter="LANGUAGE")
+        self.register_config_var("log_language", str, 'en',
+                                config_file_parameter="LOG_LANGUAGE")
         self.locale_dir = os.path.join(self.base_dir, "locale")
         self.register_config_var("extensions_dir", str, None)
         self.extensions_dir = os.path.join(self.otpme_lib_dir, "extensions")
@@ -845,7 +847,9 @@ class OTPmeConfig(object):
         # Reload config.
         self.load(quiet=quiet, configure_logger=configure_logger)
 
-    def setup_locale(self, language):
+    def setup_locale(self, language, log_language=None):
+        if log_language is None:
+            log_language = self.log_language
         # Init gettext.
         gettext.bindtextdomain('otpme', self.locale_dir)
         gettext.textdomain('otpme')
@@ -853,8 +857,25 @@ class OTPmeConfig(object):
                             self.locale_dir,
                             languages=[language],
                             fallback=True)
-        #t = gettext.translation(b'otpme', self.locale_dir, fallback=True)
-        t.install()
+        #t.install()
+
+        # Init gettext for log messages.
+        gettext.bindtextdomain('otpme', self.locale_dir)
+        t_log = gettext.translation('otpme',
+                                self.locale_dir,
+                                languages=[log_language],
+                                fallback=True)
+
+        def get_locales(s, log=False):
+            u = t.gettext(s)
+            if not log:
+                return u
+            l = t_log.gettext(s)
+            return u, l
+
+        import builtins
+        builtins._ = get_locales
+
 
     def load(self, quiet=False, configure_logger=None):
         """ Load config. """
@@ -2060,15 +2081,21 @@ class OTPmeConfig(object):
         conf_file = self.get_user_conf_file(username)
         _signers_dir = os.path.join(conf_dir, "signers")
         if not os.path.exists(conf_dir):
-            self.logger.debug(f"Creating directory: {conf_dir}")
+            log_msg = _("Creating directory: {conf_dir}", log=True)[1]
+            log_msg = log_msg.format(conf_dir=conf_dir)
+            self.logger.debug(log_msg)
             os.mkdir(conf_dir)
         if not os.path.exists(conf_file):
-            self.logger.debug(f"Creating config file: {conf_file}")
+            log_msg = _("Creating config file: {conf_file}", log=True)[1]
+            log_msg = log_msg.format(conf_file=conf_file)
+            self.logger.debug(log_msg)
             fd = open(conf_file, "w")
             fd.write('#AUTO_SIGN="True"\n')
             fd.close()
         if not os.path.exists(_signers_dir):
-            self.logger.debug(f"Creating directory: {_signers_dir}")
+            log_msg = _("Creating directory: {_signers_dir}", log=True)[1]
+            log_msg = log_msg.format(_signers_dir=_signers_dir)
+            self.logger.debug(log_msg)
             os.mkdir(_signers_dir)
         directories = {
                 conf_dir : 0o700,
@@ -2107,13 +2134,15 @@ class OTPmeConfig(object):
 
         if not quiet:
             if self.user_config_reload:
-                msg = _("Reloading config file '{user_conf_file}'.")
+                msg, log_msg = _("Reloading config file '{user_conf_file}'.", log=True)
                 msg = msg.format(user_conf_file=user_conf_file)
+                log_msg = log_msg.format(user_conf_file=user_conf_file)
             else:
-                msg = _("Loading config file: {user_conf_file}")
+                msg, log_msg = _("Loading config file: {user_conf_file}", log=True)
                 msg = msg.format(user_conf_file=user_conf_file)
+                log_msg = log_msg.format(user_conf_file=user_conf_file)
             if self.logger:
-                self.logger.debug(msg)
+                self.logger.debug(log_msg)
             else:
                 message(msg)
 
@@ -2461,11 +2490,15 @@ class OTPmeConfig(object):
 
         if not quiet:
             if self.config_reload:
-                msg = (f"Reloading config file '{self.config_file}'.")
+                msg, log_msg = _("Reloading config file '{config_file}'.", log=True)
+                msg = msg.format(config_file=self.config_file)
+                log_msg = log_msg.format(config_file=self.config_file)
             else:
-                msg = (f"Loading config file '{self.config_file}'.")
+                msg, log_msg = _("Loading config file '{config_file}'.", log=True)
+                msg = msg.format(config_file=self.config_file)
+                log_msg = log_msg.format(config_file=self.config_file)
             if self.logger:
-                self.logger.debug(msg)
+                self.logger.debug(log_msg)
             else:
                 message(msg)
 

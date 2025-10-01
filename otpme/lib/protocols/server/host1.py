@@ -180,13 +180,13 @@ class OTPmeHostP1(OTPmeServer1):
 
         if command in valid_commands:
             if config.debug_level() > 3:
-                msg = _("Received command {command} from client: {client}")
-                msg = msg.format(command=command, client=self.client)
-                logger.debug(msg)
+                log_msg = _("Received command {command} from client: {client}", log=True)[1]
+                log_msg = log_msg.format(command=command, client=self.client)
+                logger.debug(log_msg)
         else:
-            msg = _("Received unknown command {command} from client: {client}")
-            msg = msg.format(command=command, client=self.client)
-            logger.warning(msg)
+            log_msg = _("Received unknown command {command} from client: {client}", log=True)[1]
+            log_msg = log_msg.format(command=command, client=self.client)
+            logger.warning(log_msg)
 
         # check if we got a valid command
         if command not in valid_commands:
@@ -345,13 +345,13 @@ class OTPmeHostP1(OTPmeServer1):
                 realm_name = command_args['realm']
             except:
                 realm_name = None
-                message = _("INCOMPLETE_COMMAND")
+                message = "INCOMPLETE_COMMAND"
                 status = False
             try:
                 site_name = command_args['site']
             except:
                 site_name = None
-                message = _("INCOMPLETE_COMMAND")
+                message = "INCOMPLETE_COMMAND"
                 status = False
 
             if status:
@@ -372,14 +372,14 @@ class OTPmeHostP1(OTPmeServer1):
             except:
                 realm_name = None
             if not realm_name:
-                message = _("INCOMPLETE_COMMAND")
+                message = "INCOMPLETE_COMMAND"
                 status = False
             try:
                 site_name = command_args['site']
             except:
                 site_name = None
             if not site_name:
-                message = _("INCOMPLETE_COMMAND")
+                message = "INCOMPLETE_COMMAND"
                 status = False
 
             if realm_name and site_name:
@@ -454,7 +454,7 @@ class OTPmeHostP1(OTPmeServer1):
                 user_uuid = command_args['user_uuid']
             except:
                 user_uuid = None
-                message = _("INCOMPLETE_COMMAND")
+                message = "INCOMPLETE_COMMAND"
                 status = False
 
             if user_uuid:
@@ -471,7 +471,7 @@ class OTPmeHostP1(OTPmeServer1):
                 object_id = command_args['object_id']
                 status = True
             except:
-                message = _("INCOMPLETE_COMMAND")
+                message = "INCOMPLETE_COMMAND"
                 status = False
 
             if status:
@@ -480,18 +480,18 @@ class OTPmeHostP1(OTPmeServer1):
                     message = backend.object_exists(object_id)
                 except Exception as e:
                     status = False
-                    message = _("Error checking if object exists: {object_id}")
+                    message, log_msg = _("Error checking if object exists: {object_id}", log=True)
                     message = message.format(object_id=object_id)
-                    msg = _("{message}: {error}")
-                    msg = msg.format(message=message, error=e)
-                    self.logger.warning(msg)
+                    log_msg = log_msg.format(object_id=object_id)
+                    log_msg = f"{log_msg}: {e}"
+                    self.logger.warning(log_msg)
 
         elif command == "get_oid":
             try:
                 object_uuid = command_args['object_uuid']
                 status = True
             except:
-                message = _("INCOMPLETE_COMMAND")
+                message = "INCOMPLETE_COMMAND"
                 status = False
 
             if status:
@@ -511,16 +511,16 @@ class OTPmeHostP1(OTPmeServer1):
                 except Exception as e:
                     status = False
                     message = _("Error getting OID")
-                    msg = _("{message}: {object_uuid}: {error}")
-                    msg = msg.format(message=message, object_uuid=object_uuid, error=e)
-                    logger.warning(msg)
+                    log_msg = _("{message}: {object_uuid}: {error}", log=True)[1]
+                    log_msg = log_msg.format(message=message, object_uuid=object_uuid, error=e)
+                    logger.warning(log_msg)
 
         elif command == "get_uuid":
             try:
                 object_id = command_args['object_id']
                 status = True
             except:
-                message = _("INCOMPLETE_COMMAND")
+                message = "INCOMPLETE_COMMAND"
                 status = False
             if status:
                 object_id = oid.get(object_id=object_id)
@@ -546,7 +546,7 @@ class OTPmeHostP1(OTPmeServer1):
                 token_uuid = command_args['token_uuid']
             except:
                 token_uuid = None
-                message = _("INCOMPLETE_COMMAND")
+                message = "INCOMPLETE_COMMAND"
                 status = False
 
             try:
@@ -567,9 +567,9 @@ class OTPmeHostP1(OTPmeServer1):
                     message = str(e)
                     status = False
                 except Exception as e:
-                    msg = _("Internal server error: {error}")
-                    msg = msg.format(error=e)
-                    logger.critical(msg)
+                    log_msg = _("Internal server error: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    logger.critical(log_msg)
 
         elif command == "get_pass_strength":
             status = True
@@ -595,7 +595,8 @@ class OTPmeHostP1(OTPmeServer1):
                 except Exception as e:
                     message = str(e)
                     status = False
-                    logger.warning(message)
+                    log_msg = message
+                    logger.warning(log_msg)
 
         elif command == "dump_instance_cache":
             try:
@@ -814,12 +815,12 @@ class OTPmeHostP1(OTPmeServer1):
         #    try:
         #        lock_id = command_args['lock_id']
         #    except:
-        #        message = _("INCOMPLETE_COMMAND")
+        #        message = "INCOMPLETE_COMMAND"
         #        status = False
         #    try:
         #        lock_type = command_args['lock_type']
         #    except:
-        #        message = _("INCOMPLETE_COMMAND")
+        #        message = "INCOMPLETE_COMMAND"
         #        status = False
         #    try:
         #        write = command_args['write']
@@ -829,9 +830,9 @@ class OTPmeHostP1(OTPmeServer1):
         #    if lock_type not in valid_agent_lock_types:
         #        status = False
         #        message = "INVALID_LOCK_TYPE"
-        #        msg = ("Failed to acquire lock: Permission denied: %s: %s"
-        #                % (lock_type, lock_id))
-        #        logger.warning(msg)
+        #        log_msg = ("Failed to acquire lock: Permission denied: {lock_type]: {lock_id]", log=True)[1]
+        #        log_msg = log_msg.format(lock_type=lock_type, lock_id=lock_id)
+        #        logger.warning(log_msg)
 
         #    if status:
         #        _lock_id = "proc_lock:%s:%s" % lock_id
@@ -850,12 +851,12 @@ class OTPmeHostP1(OTPmeServer1):
         #    try:
         #        lock_id = command_args['lock_id']
         #    except:
-        #        message = _("INCOMPLETE_COMMAND")
+        #        message = "INCOMPLETE_COMMAND"
         #        status = False
         #    try:
         #        lock_type = command_args['lock_type']
         #    except:
-        #        message = _("INCOMPLETE_COMMAND")
+        #        message = "INCOMPLETE_COMMAND"
         #        status = False
         #    try:
         #        force = command_args['force']
@@ -865,9 +866,8 @@ class OTPmeHostP1(OTPmeServer1):
         #    if lock_type not in valid_agent_lock_types:
         #        status = False
         #        message = "INVALID_LOCK_TYPE"
-        #        msg = ("Failed to release lock: Permission denied: %s: %s"
-        #                % (lock_type, lock_id))
-        #        logger.warning(msg)
+        #        log_msg = _("Failed to release lock: Permission denied: {lock_type}: {lock_id}", log=True)[1]
+        #        logger.warning(log_msg)
 
         #    if status:
         #        try:

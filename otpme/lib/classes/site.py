@@ -2828,9 +2828,10 @@ class Site(OTPmeObject):
             try:
                 script.add(script_base64, verify_acls=False, callback=callback)
             except Exception as e:
-                msg = _("Error adding script: {e}")
+                msg, log_msg = _("Error adding script: {e}", log=True)
                 msg = msg.format(e=e)
-                logger.critical(msg, exc_info=True)
+                log_msg = log_msg.format(e=e)
+                logger.critical(log_msg, exc_info=True)
                 return callback.error(msg)
 
         # Create base groups.

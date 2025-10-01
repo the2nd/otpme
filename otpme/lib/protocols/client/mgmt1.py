@@ -120,9 +120,9 @@ class OTPmeMgmtP1(OTPmeClient1):
 
     def get_role_users(self, role_name, return_type="name"):
         """ Get all users that have a token assigned to role. """
-        msg = _("Requesting role member users: {role_name}")
-        msg = msg.format(role_name=role_name)
-        self.logger.debug(msg)
+        log_msg = _("Requesting role member users: {role_name}", log=True)[1]
+        log_msg = log_msg.format(role_name=role_name)
+        self.logger.debug(log_msg)
         command = "role"
         command_args = {
                         'subcommand'        : 'list_users',
@@ -146,7 +146,8 @@ class OTPmeMgmtP1(OTPmeClient1):
         if not username and not user_uuid:
             msg = (_("Need 'username' or 'user_uuid'."))
             raise OTPmeException(msg)
-        self.logger.debug(_("Requesting users RSA key..."))
+        log_msg = _("Requesting users RSA key...", log=True)[1]
+        self.logger.debug(log_msg)
         command = "user"
         command_args = {}
         command_args['subcommand'] = "dump_key"
@@ -163,7 +164,8 @@ class OTPmeMgmtP1(OTPmeClient1):
 
     def get_user_key_mode(self, username):
         """ Get key key mode (client or server) for the given user. """
-        self.logger.debug(_("Requesting users key mode..."))
+        log_msg = _("Requesting users key mode...", log=True)[1]
+        self.logger.debug(log_msg)
         command = "user"
         command_args = {
                         'subcommand'        : 'get_key_mode',
@@ -181,7 +183,8 @@ class OTPmeMgmtP1(OTPmeClient1):
 
     def get_user_key_script_path(self, username):
         """ Get users key script path and options. """
-        self.logger.debug(_("Selecting user key script..."))
+        log_msg = _("Selecting user key script...", log=True)[1]
+        self.logger.debug(log_msg)
         key_script_path = None
         key_script_opts = None
         command = "user"
@@ -202,7 +205,8 @@ class OTPmeMgmtP1(OTPmeClient1):
 
     def get_user_ssh_script_path(self, username):
         """ Get users SSH agent script name and options. """
-        self.logger.debug(_("Selecting user SSH agent script..."))
+        log_msg = _("Selecting user SSH agent script...", log=True)[1]
+        self.logger.debug(log_msg)
         ssh_script_path = None
         ssh_script_opts = None
         command = "user"
@@ -223,9 +227,9 @@ class OTPmeMgmtP1(OTPmeClient1):
 
     def get_script(self, script_path):
         """ Get script. """
-        msg = _("Requesting script: {script_path}")
-        msg = msg.format(script_path=script_path)
-        self.logger.debug(msg)
+        log_msg = _("Requesting script: {script_path}", log=True)[1]
+        log_msg = log_msg.format(script_path=script_path)
+        self.logger.debug(log_msg)
         command = "script"
         command_args = {}
         command_args['subcommand'] = "dump"
@@ -240,9 +244,9 @@ class OTPmeMgmtP1(OTPmeClient1):
 
     def get_script_sign(self, script_path, username=None, user_uuid=None):
         """ Get script signature(s). """
-        msg = _("Requesting script signatures: {script_path}")
-        msg = msg.format(script_path=script_path)
-        self.logger.debug(msg)
+        log_msg = _("Requesting script signatures: {script_path}", log=True)[1]
+        log_msg = log_msg.format(script_path=script_path)
+        self.logger.debug(log_msg)
         command = "script"
         command_args = {}
         command_args['subcommand'] = "get_sign"
@@ -280,9 +284,9 @@ class OTPmeMgmtP1(OTPmeClient1):
         if force is not None:
             command_args['force'] = force
 
-        msg = _("Sending {key_type} key to server...")
-        msg = msg.format(key_type=key_type)
-        self.logger.debug(msg)
+        log_msg = _("Sending {key_type} key to server...", log=True)[1]
+        log_msg = log_msg.format(key_type=key_type)
+        self.logger.debug(log_msg)
         try:
             self.send_command(command, command_args)
         except Exception as e:

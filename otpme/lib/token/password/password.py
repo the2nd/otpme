@@ -596,14 +596,14 @@ class PasswordToken(Token):
             try:
                 sftoken = self.get_sftoken()
             except Exception as e:
-                msg = _("Error loading second factor token: {error}")
-                msg = msg.format(error=e)
-                logger.critical(msg)
+                log_msg = _("Error loading second factor token: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                logger.critical(log_msg)
                 return None
 
-            msg = _("Verifying second factor token: {path}")
-            msg = msg.format(path=sftoken.rel_path)
-            logger.debug(msg)
+            log_msg = _("Verifying second factor token: {path}", log=True)[1]
+            log_msg = log_msg.format(path=sftoken.rel_path)
+            logger.debug(log_msg)
 
             if sftoken.pass_type == "otp":
                 log_used_otp_warning = True
@@ -638,17 +638,16 @@ class PasswordToken(Token):
 
             elif sftoken.pass_type == "smartcard":
                 if not smartcard_data:
-                    msg = _("Missing smartcard authentication data "
-                            "to verify second factor token: {sftoken}")
-                    msg = msg.format(sftoken=sftoken)
-                    logger.warning(msg)
+                    log_msg = _("Missing smartcard authentication data to verify second factor token: {sftoken}", log=True)[1]
+                    log_msg = log_msg.format(sftoken=sftoken)
+                    logger.warning(log_msg)
                     return None
                 if not sftoken.verify(smartcard_data):
                     return None
 
-            msg = _("Second factor token verified successful: {path}")
-            msg = msg.format(path=sftoken.rel_path)
-            logger.debug(msg)
+            log_msg = _("Second factor token verified successful: {path}", log=True)[1]
+            log_msg = log_msg.format(path=sftoken.rel_path)
+            logger.debug(log_msg)
 
         # Create password hash if none was given.
         if not password_hash:
@@ -663,9 +662,8 @@ class PasswordToken(Token):
             return True
 
         if log_used_otp_warning:
-            msg = _("Added used OTP on failed password verify to "
-                    "prevent brute force attacks.")
-            logger.info(msg)
+            log_msg = _("Added used OTP on failed password verify to prevent brute force attacks.", log=True)[1]
+            logger.info(log_msg)
 
         # Default should be None -> Token hash does not match request.
         return None

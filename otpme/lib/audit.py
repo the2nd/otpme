@@ -67,9 +67,9 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
                     try:
                         audit_logger = get_audit_logger()
                     except Exception as e:
-                        msg = _("Failed to get audit logger: {error}")
-                        msg = msg.format(error=e)
-                        logger.warning(msg)
+                        log_msg = _("Failed to get audit logger: {error}", log=True)[1]
+                        log_msg = log_msg.format(error=e)
+                        logger.warning(log_msg)
                         audit_logger = None
                     else:
                         audit_loggers[proc_id] = audit_logger
@@ -117,10 +117,10 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
                 job_error = "Unknown error"
 
             if result is False:
-                audit_msg = _("[{pid}] Client: {client}: Token: {token}: Job failed ({error}): Data: {func} {self} {args} {kwargs}")
+                audit_msg = _("[{pid}] Client: {client}: Token: {token}: Job failed ({error}): Data: {func} {self} {args} {kwargs}", log=True)[1]
                 audit_msg = audit_msg.format(pid=os.getpid(), client=job_client, token=auth_token, error=job_error, func=func_name, self=self, args=log_args, kwargs=log_kwargs)
             else:
-                audit_msg = _("[{pid}] Client: {client}: Token: {token}: Data: {func} {self} {args} {kwargs}")
+                audit_msg = _("[{pid}] Client: {client}: Token: {token}: Data: {func} {self} {args} {kwargs}", log=True)[1]
                 audit_msg = audit_msg.format(pid=os.getpid(), client=job_client, token=auth_token, func=func_name, self=self, args=log_args, kwargs=log_kwargs)
             audit_logger.info(audit_msg)
             return result
@@ -151,9 +151,9 @@ def spool_record(record):
         except FileExistsError:
             continue
         except Exception as e:
-            msg = _("Failed to create audit log spool file: {file}: {error}")
-            msg = msg.format(file=spool_file, error=e)
-            logger.warning(msg)
+            log_msg = _("Failed to create audit log spool file: {file}: {error}", log=True)[1]
+            log_msg = log_msg.format(file=spool_file, error=e)
+            logger.warning(log_msg)
             return
         break
     # Set ownership.
@@ -169,68 +169,68 @@ def process_spooled_logs():
     try:
         spool_files = os.listdir(spool_dir)
     except Exception as e:
-        msg = _("Failed to read spool dir: {dir}: {error}")
-        msg = msg.format(dir=spool_dir, error=e)
-        logger.warning(msg)
+        log_msg = _("Failed to read spool dir: {dir}: {error}", log=True)[1]
+        log_msg = log_msg.format(dir=spool_dir, error=e)
+        logger.warning(log_msg)
         return
     if not spool_files:
         return
     try:
         audit_logger = get_audit_logger(no_spool=True, exception_on_emit=True)
     except Exception as e:
-        msg = _("Failed to get audit logger: {error}")
-        msg = msg.format(error=e)
-        logger.warning(msg)
+        log_msg = _("Failed to get audit logger: {error}", log=True)[1]
+        log_msg = log_msg.format(error=e)
+        logger.warning(log_msg)
         return
     for x in spool_files:
         spool_file = os.path.join(spool_dir, x)
         try:
             spool_data = filetools.read_file(spool_file)
         except Exception as e:
-            msg = _("Failed to read log spool file: {error}")
-            msg = msg.format(error=e)
-            logger.warning(msg)
+            log_msg = _("Failed to read log spool file: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            logger.warning(log_msg)
             continue
         try:
             spool_data = json.loads(spool_data)
         except Exception as e:
-            msg = _("Failed to load log spool data: {file}: {error}")
-            msg = msg.format(file=spool_file, error=e)
-            logger.warning(msg)
+            log_msg = _("Failed to load log spool data: {file}: {error}", log=True)[1]
+            log_msg = log_msg.format(file=spool_file, error=e)
+            logger.warning(log_msg)
             continue
         try:
             timestamp = spool_data['created']
             loglevel = spool_data['loglevel']
             message = spool_data['message']
         except KeyError:
-            msg = _("Got invalid log entry: {file}")
-            msg = msg.format(file=spool_file)
-            logger.warning(msg)
+            log_msg = _("Got invalid log entry: {file}", log=True)[1]
+            log_msg = log_msg.format(file=spool_file)
+            logger.warning(log_msg)
             continue
         log_message = _("LOG_RESEND: {timestamp}: {message}")
         log_message = log_message.format(timestamp=timestamp, message=message)
         try:
             log_method = getattr(audit_logger, loglevel.lower())
         except:
-            msg = _("Invalid loglevel: {level}: {file}")
-            msg = msg.format(level=loglevel, file=spool_file)
-            logger.warning(msg)
+            log_msg = _("Invalid loglevel: {level}: {file}", log=True)[1]
+            log_msg = log_msg.format(level=loglevel, file=spool_file)
+            logger.warning(log_msg)
             continue
         try:
             log_method(log_message)
         except Exception as e:
-            msg = _("Failed to resend log message: {error}")
-            msg = msg.format(error=e)
-            logger.warning(msg)
+            log_msg = _("Failed to resend log message: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            logger.warning(log_msg)
             if isinstance(e, socket.error):
                 break
             continue
         try:
             os.remove(spool_file)
         except Exception as e:
-            msg = _("Failed to remove spool file: {file}: {error}")
-            msg = msg.format(file=spool_file, error=e)
-            logger.warning(msg)
+            log_msg = _("Failed to remove spool file: {file}: {error}", log=True)[1]
+            log_msg = log_msg.format(file=spool_file, error=e)
+            logger.warning(log_msg)
 
     for handler in audit_logger.handlers:
         try:
@@ -262,19 +262,19 @@ def get_audit_logger(no_spool=False, exception_on_emit=False):
     if use_ssl:
         ca_cert_file = config.audit_log_ca_cert
         if not ca_cert_file:
-            msg = _("Cannot start audit log. Site misses CA cert.")
-            logger.warning(msg)
+            log_msg = _("Cannot start audit log. Site misses CA cert.", log=True)[1]
+            logger.warning(log_msg)
             return
         if config.audit_log_use_client_cert:
             client_cert_file = config.audit_log_cert
             client_key_file = config.audit_log_key
             if not client_cert_file:
-                msg = _("Cannot start audit log. Node misses client cert.")
-                logger.warning(msg)
+                log_msg = _("Cannot start audit log. Node misses client cert.", log=True)[1]
+                logger.warning(log_msg)
                 return
             if not client_key_file:
-                msg = _("Cannot start audit log. Node misses client key.")
-                logger.warning(msg)
+                log_msg = _("Cannot start audit log. Node misses client key.", log=True)[1]
+                logger.warning(log_msg)
                 return
     log_handler = syslog.get_log_handler(address=address,
                                         use_ssl=use_ssl,

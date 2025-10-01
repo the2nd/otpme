@@ -46,9 +46,9 @@ class SSHAgent(object):
             raise OTPmeException("Got no SSH agent script.")
 
         from otpme.lib import script as _script
-        msg = _("Running SSH agent script command: {command}")
-        msg = msg.format(command=command)
-        self.logger.debug(msg)
+        log_msg = _("Running SSH agent script command: {command}", log=True)[1]
+        log_msg = log_msg.format(command=command)
+        self.logger.debug(log_msg)
 
         # Get signers.
         signers = None
@@ -120,22 +120,30 @@ class SSHAgent(object):
 
         # Set env variables if we got them from the agent script.
         if gpg_agent_info:
-            self.logger.debug(f"GPG_AGENT_INFO: {gpg_agent_info}")
+            log_msg = _("GPG_AGENT_INFO: {info}", log=True)[1]
+            log_msg = log_msg.format(info=gpg_agent_info)
+            self.logger.debug(log_msg)
             os.environ['GPG_AGENT_INFO'] = gpg_agent_info
             self.gpg_agent_info = gpg_agent_info
 
         if ssh_auth_sock:
-            self.logger.debug(f"SSH_AUTH_SOCK: {ssh_auth_sock}")
+            log_msg = _("SSH_AUTH_SOCK: {sock}", log=True)[1]
+            log_msg = log_msg.format(sock=ssh_auth_sock)
+            self.logger.debug(log_msg)
             os.environ['SSH_AUTH_SOCK'] = ssh_auth_sock
             self.ssh_auth_sock = ssh_auth_sock
 
         if ssh_agent_pid:
-            self.logger.debug(f"SSH_AGENT_PID: {ssh_agent_pid}")
+            log_msg = _("SSH_AGENT_PID: {pid}", log=True)[1]
+            log_msg = log_msg.format(pid=ssh_agent_pid)
+            self.logger.debug(log_msg)
             os.environ['SSH_AGENT_PID'] = ssh_agent_pid
             self.ssh_agent_pid = ssh_agent_pid
 
         if ssh_agent_name:
-            self.logger.debug(f"SSH_AGENT_NAME: {ssh_agent_name}")
+            log_msg = _("SSH_AGENT_NAME: {name}", log=True)[1]
+            log_msg = log_msg.format(name=ssh_agent_name)
+            self.logger.debug(log_msg)
             os.environ['SSH_AGENT_NAME'] = ssh_agent_name
             self.ssh_agent_name = ssh_agent_name
 
@@ -146,7 +154,8 @@ class SSHAgent(object):
 
     def start(self, verify_signs=None, additional_opts=[]):
         """ Make sure SSH/GPG agent is running and needed variables are set """
-        self.logger.debug("Starting user SSH agent script...")
+        log_msg = _("Starting user SSH agent script...", log=True)[1]
+        self.logger.debug(log_msg)
         # Start SSH agent script.
         self.run_ssh_agent_script(command="start",
                                 verify_signs=verify_signs,

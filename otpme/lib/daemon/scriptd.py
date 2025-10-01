@@ -141,9 +141,9 @@ def handle_script_request(request):
             script_result = None
             script_exception = str(e)
             #config.raise_exception()
-            msg = _("Failed to run script: {error}")
-            msg = msg.format(error=e)
-            logger.warning(msg)
+            log_msg = _("Failed to run script: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            logger.warning(log_msg)
     else:
         script_result = None
         script_exception = _("Invalid script type: {type}")
@@ -175,8 +175,8 @@ class ScriptDaemon(OTPmeDaemon):
         # Act only on our own PID.
         if os.getpid() != self.pid:
             return
-        msg = ("Received SIGTERM.")
-        self.logger.info(msg)
+        log_msg = _("Received SIGTERM.", log=True)[1]
+        self.logger.info(log_msg)
         self.close_childs()
         return super(ScriptDaemon, self).signal_handler(_signal, frame)
 
@@ -191,9 +191,9 @@ class ScriptDaemon(OTPmeDaemon):
         try:
             self.drop_privileges()
         except Exception as e:
-            msg = _("Failed to drop privileges: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to drop privileges: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         scriptd_comm_handler = script_comm_q.get_handler("script-handler")
         # Send ready message to open posix message queue as user otpme!
@@ -232,9 +232,9 @@ class ScriptDaemon(OTPmeDaemon):
             return
 
         if command != "ready":
-            msg = _("Got wrong 'ready' message: {command}")
-            msg = msg.format(command=command)
-            self.logger.critical(msg)
+            log_msg = _("Got wrong 'ready' message: {command}", log=True)[1]
+            log_msg = log_msg.format(command=command)
+            self.logger.critical(log_msg)
             sys.exit(1)
 
         while True:
@@ -290,7 +290,9 @@ class ScriptDaemon(OTPmeDaemon):
         self.script_handler_child = multiprocessing.start_process(name=self.name,
                                                     target=self.run_scripts_handler)
 
-        self.logger.info(f"{self.full_name} started")
+        log_msg = _("{full_name} started", log=True)[1]
+        log_msg = log_msg.format(full_name=self.full_name)
+        self.logger.info(log_msg)
 
         # Notify controld that we are ready.
         self.comm_handler.send("controld", command="ready")
@@ -309,16 +311,18 @@ class ScriptDaemon(OTPmeDaemon):
                 #    time.sleep(0.001)
                 #    continue
                 except Exception as e:
-                    msg = _("Error receiving daemon message: {error}")
+                    msg, log_msg = _("Error receiving daemon message: {error}", log=True)
                     msg = msg.format(error=e)
-                    self.logger.critical(msg, exc_info=True)
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg, exc_info=True)
                     raise OTPmeException(msg)
 
                 # Check if command can be handled by parent class.
                 try:
                     self._handle_daemon_command(sender, daemon_command, data)
                 except UnknownCommand as e:
-                    self.logger.warning(str(e))
+                    log_msg = str(e)
+                    self.logger.warning(log_msg)
                 except DaemonQuit:
                     break
                 except DaemonReload:
@@ -333,8 +337,8 @@ class ScriptDaemon(OTPmeDaemon):
                 pass
             except Exception as e:
                 config.raise_exception()
-                msg = _("Unhandled error in scriptd: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Unhandled error in scriptd: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
 
         self.close_childs()

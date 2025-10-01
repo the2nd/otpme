@@ -141,16 +141,18 @@ def get_signers(signer_type, username=None):
     signers = global_signers
     if force_global_signers:
         if private_signers:
-            msg = (f"Ignoring private signers because of {force_signers_para} config file option.")
-            logger.info(msg)
+            log_msg = _("Ignoring private signers because of {parameter} config file option.", log=True)[1]
+            log_msg = log_msg.format(parameter=force_signers_para)
+            logger.info(log_msg)
     else:
         if private_signers:
             signers = private_signers
 
     for signer in list(signers):
         if not signer.enabled:
-            msg = (f"Ignoring disabled signer: {signer.object_oid}")
-            logger.debug(msg)
+            log_msg = _("Ignoring disabled signer: {signer_oid}", log=True)[1]
+            log_msg = log_msg.format(signer_oid=signer.object_oid)
+            logger.debug(log_msg)
             signers.remove(signer)
             continue
 
@@ -183,20 +185,20 @@ def verify_signatures(signer_type, signers, signatures, sign_data,
                                             sign_data=sign_data,
                                             login_interface="ssh")
                 except VerificationFailed as e:
-                    msg = _("Failed to verify signature: {sign_info}: {e}")
-                    msg = msg.format(sign_info=sign_info, e=e)
-                    logger.warning(msg)
+                    log_msg = _("Failed to verify signature: {sign_info}: {e}", log=True)[1]
+                    log_msg = log_msg.format(sign_info=sign_info, e=e)
+                    logger.warning(log_msg)
                     continue
                 except NoTagsMatch as e:
-                    msg = _("Ignoring signature: {sign_info}: {e}")
-                    msg = msg.format(sign_info=sign_info, e=e)
-                    logger.debug(msg)
+                    log_msg = _("Ignoring signature: {sign_info}: {e}", log=True)[1]
+                    log_msg = log_msg.format(sign_info=sign_info, e=e)
+                    logger.debug(log_msg)
                     continue
                 except Exception as e:
                     config.raise_exception()
-                    msg = _("Error verifying signature: {sign_info}: {e}")
-                    msg = msg.format(sign_info=sign_info, e=e)
-                    logger.warning(msg)
+                    log_msg = _("Error verifying signature: {sign_info}: {e}", log=True)[1]
+                    log_msg = log_msg.format(sign_info=sign_info, e=e)
+                    logger.warning(log_msg)
                     continue
                 found_valid_signature = True
                 if stop_on_fist_match:
@@ -305,8 +307,8 @@ class OTPmeSigner(object):
 
     def load(self):
         """ Load signer(s). """
-        msg = "Loading signer..."
-        self.logger.debug(msg)
+        log_msg = _("Loading signer...", log=True)[1]
+        self.logger.debug(log_msg)
 
         if not stuff.is_uuid(self.object_uuid):
             msg = _("Invalid signer UUID: {uuid}")
@@ -371,8 +373,9 @@ class OTPmeSigner(object):
                     }
             self.signers[x_uuid] = signer
 
-        msg = (f"Loaded {len(role_members)} users from role: {object_id}")
-        self.logger.debug(msg)
+        log_msg = _("Loaded {count} users from role: {object_id}", log=True)[1]
+        log_msg = log_msg.format(count=len(role_members), object_id=object_id)
+        self.logger.debug(log_msg)
 
     def loads(self, data):
         """ Load signer from string. """
@@ -458,8 +461,9 @@ class OTPmeSigner(object):
         try:
             c_signer.load()
         except UnknownObject as e:
-            msg = f"Unable to load object: {e}"
-            self.logger.warning(msg)
+            log_msg = _("Unable to load object: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             config.raise_exception()
             return unknown_val
 
@@ -559,16 +563,18 @@ class OTPmeSigner(object):
 
         tags = resolve_tags(signature.tags)
         tags_str = ", ".join(tags)
-        msg = (f"Verifying signature: {object_oid} ({tags_str})")
-        self.logger.debug(msg)
+        log_msg = _("Verifying signature: {oid} ({tags})", log=True)[1]
+        log_msg = log_msg.format(oid=object_oid, tags=tags_str)
+        self.logger.debug(log_msg)
 
         signature.verify(signer_key,
                         sign_data,
                         tags=check_tags,
                         login_interface=login_interface)
 
-        msg = (f"Found valid signature: {object_oid} ({tags_str})")
-        self.logger.debug(msg)
+        log_msg = _("Found valid signature: {oid} ({tags})", log=True)[1]
+        log_msg = log_msg.format(oid=object_oid, tags=tags_str)
+        self.logger.debug(log_msg)
 
 class OTPmeSignature(object):
     """ OTPme signature class. """
@@ -646,8 +652,8 @@ class OTPmeSignature(object):
 
     def loads(self, signature):
         """ Load signature. """
-        msg = "Loading signature..."
-        self.logger.debug(msg)
+        log_msg = _("Loading signature...", log=True)[1]
+        self.logger.debug(log_msg)
         # Decode signature.
         try:
             sig = json.decode(signature, "base64")
@@ -731,8 +737,9 @@ class OTPmeSignature(object):
         """ Revoke this signature. """
         tags_str = resolve_tags(self.tags)
         tags_str = ", ".join(tags_str)
-        msg = (f"Revoking signature: {self.signer_oid} ({tags_str})")
-        self.logger.debug(msg)
+        log_msg = _("Revoking signature: {signer_oid} ({tags})", log=True)[1]
+        log_msg = log_msg.format(signer_oid=self.signer_oid, tags=tags_str)
+        self.logger.debug(log_msg)
         # Get signature hash.
         signature_hash = self.get_sign_hash()
         # Build revoked object.
@@ -821,8 +828,7 @@ class OTPmeSignature(object):
             verify_tags.remove(x)
 
         if duplicate_login_interfaces_tag:
-            msg = _("Ignoring invalid signature: More than one "
-                    "login_interfaces tag found.")
+            msg = _("Ignoring invalid signature: More than one login_interfaces tag found.")
             raise OTPmeException(msg)
 
         if login_interfaces:

@@ -96,13 +96,16 @@ class OTPmeAgent(UnixDaemon):
             return
 
         if _signal == 2:
-            self.logger.warning("Exiting on Ctrl+C")
+            log_msg = _("Exiting on Ctrl+C", log=True)[1]
+            self.logger.warning(log_msg)
 
         if _signal == 15:
-            self.logger.warning("Exiting on 'SIGTERM'.")
+            log_msg = _("Exiting on 'SIGTERM'.", log=True)[1]
+            self.logger.warning(log_msg)
 
         if _signal == 1:
-            self.logger.warning("Received 'SIGHUP'.")
+            log_msg = _("Received 'SIGHUP'.", log=True)[1]
+            self.logger.warning(log_msg)
             if not self.loading:
                 # Flush method caches.
                 cache.flush()
@@ -112,7 +115,8 @@ class OTPmeAgent(UnixDaemon):
                 self.config_reload = True
             return
 
-        self.logger.info("Received quit, terminating.")
+        log_msg = _("Received quit, terminating.", log=True)[1]
+        self.logger.info(log_msg)
 
         # Get user sessions.
         try:
@@ -134,13 +138,15 @@ class OTPmeAgent(UnixDaemon):
             try:
                 self.comm_queue.close()
             except Exception as e:
-                msg = f"Failed to close comm queue: {self.comm_queue}: {e}"
-                self.logger.critical(msg)
+                log_msg = _("Failed to close comm queue: {comm_queue}: {error}", log=True)[1]
+                log_msg = log_msg.format(comm_queue=self.comm_queue, error=e)
+                self.logger.critical(log_msg)
             try:
                 self.comm_queue.unlink()
             except Exception as e:
-                msg = f"Failed to unlink comm queue: {self.comm_queue}: {e}"
-                self.logger.critical(msg)
+                log_msg = _("Failed to unlink comm queue: {comm_queue}: {error}", log=True)[1]
+                log_msg = log_msg.format(comm_queue=self.comm_queue, error=e)
+                self.logger.critical(log_msg)
 
         # Shutdown multiprocessing manager.
         multiprocessing.manager.shutdown()
@@ -150,8 +156,9 @@ class OTPmeAgent(UnixDaemon):
         try:
             self._shutdown.close()
         except Exception as e:
-            msg = f"Failed to close shared bool: {self._shutdown.name}"
-            self.logger.critical(msg)
+            log_msg = _("Failed to close shared bool: {shutdown_name}", log=True)[1]
+            log_msg = log_msg.format(shutdown_name=self._shutdown.name)
+            self.logger.critical(log_msg)
 
         # Finally exit.
         os._exit(0)
@@ -189,8 +196,9 @@ class OTPmeAgent(UnixDaemon):
         agent_conf_file = self.get_conf_file()
         # Make sure otpme-agent config exists.
         if not os.path.exists(agent_conf_file):
-            msg = f"Creating config file: {agent_conf_file}"
-            self.logger.debug(msg)
+            log_msg = _("Creating config file: {config_file}", log=True)[1]
+            log_msg = log_msg.format(config_file=agent_conf_file)
+            self.logger.debug(log_msg)
             fd = open(agent_conf_file, "w")
             fd.write('#LOGFILE="~/.otpme/otpme-agent.log"\n')
             fd.write('#LOGLEVEL="DEBUG"\n')
@@ -210,8 +218,9 @@ class OTPmeAgent(UnixDaemon):
         agent_conf_file = self.get_conf_file()
         if not os.path.exists(agent_conf_file):
             return
-        msg = f"Loading config file: {agent_conf_file}"
-        self.logger.info(msg)
+        log_msg = _("Loading config file: {config_file}", log=True)[1]
+        log_msg = log_msg.format(config_file=agent_conf_file)
+        self.logger.info(log_msg)
 
         try:
             # Open config file for reading.
@@ -277,8 +286,9 @@ class OTPmeAgent(UnixDaemon):
             self.logger = config.setup_logger(log_file=self.logfile,
                                         existing_logger=config.logger)
         except Exception as e:
-            msg = f"Failed to log to file: {self.logfile}: {e}"
-            self.logger.warning(msg)
+            log_msg = _("Failed to log to file: {logfile}: {error}", log=True)[1]
+            log_msg = log_msg.format(logfile=self.logfile, error=e)
+            self.logger.warning(log_msg)
 
     def wait_for_pid(self, login_pid):
         """ Wait until PID ends and send event to agent main process. """
@@ -289,19 +299,20 @@ class OTPmeAgent(UnixDaemon):
         try:
             proc = psutil.Process(int(login_pid))
         except Exception as e:
-            msg = f"Failed to watch PID: {login_pid}: {e}"
-            self.logger.warning(msg)
+            log_msg = _("Failed to watch PID: {pid}: {error}", log=True)[1]
+            log_msg = log_msg.format(pid=login_pid, error=e)
+            self.logger.warning(log_msg)
             return
         self.watch_pids.append(login_pid)
-        msg = f"Started watching PID with login session: {login_pid}"
-        self.logger.debug(msg)
+        log_msg = _("Started watching PID with login session: {pid}", log=True)[1]
+        log_msg = log_msg.format(pid=login_pid)
+        self.logger.debug(log_msg)
         while proc.is_running():
             try:
                 proc.wait(timeout=2)
             except psutil.TimeoutExpired:
                 pass
             if not proc.is_running():
-                #self.logger.debug("Login PID ended: " + str(login_pid))
                 pid_end_command = f"pid_ended {login_pid}"
                 comm_handler = self.comm_queue.get_handler("wait_for_pid")
                 comm_handler.send(recipient="main_process",
@@ -309,8 +320,9 @@ class OTPmeAgent(UnixDaemon):
                                     timeout=1)
                 comm_handler.close()
             if not login_pid in self.login_sessions:
-                msg = f"Stopped watching PID with no more login sessions: {login_pid}"
-                self.logger.debug(msg)
+                log_msg = _("Stopped watching PID with no more login sessions: {pid}", log=True)[1]
+                log_msg = log_msg.format(pid=login_pid)
+                self.logger.debug(log_msg)
                 break
         try:
             self.watch_pids.remove(login_pid)
@@ -323,7 +335,8 @@ class OTPmeAgent(UnixDaemon):
         # user we can not remove the login session file.
         if login_user != config.system_user():
             return
-        self.logger.debug("Removing offline session...")
+        log_msg = _("Removing offline session...", log=True)[1]
+        self.logger.debug(log_msg)
         # Try to remove offline RSP.
         try:
             # Get offline token handler.
@@ -335,9 +348,11 @@ class OTPmeAgent(UnixDaemon):
             # Try to remove on-disk RSP/session.
             offline_token.remove_session(session_id)
         except NoOfflineSessionFound as e:
-            self.logger.debug(str(e))
+            log_msg = str(e)
+            self.logger.debug(log_msg)
         except Exception as e:
-            self.logger.critical(str(e))
+            log_msg = str(e)
+            self.logger.critical(log_msg)
         finally:
             # Release offline token lock
             offline_token.unlock()
@@ -360,8 +375,9 @@ class OTPmeAgent(UnixDaemon):
         except Exception as e:
             # Release offline token lock
             offline_token.unlock()
-            msg = f"Error removing outdated session directories: {e}"
-            self.logger.critical(msg)
+            log_msg = _("Error removing outdated session directories: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
     def close_user_sessions(self, login_pid):
         """ Close all user sessions. """
@@ -389,18 +405,21 @@ class OTPmeAgent(UnixDaemon):
 
                 # If session is logged in try to logout user.
                 if rsp and not offline:
-                    msg = f"Login process '{login_pid}' ended. Trying to logout user."
-                    self.logger.info(msg)
+                    log_msg = _("Login process '{pid}' ended. Trying to logout user.", log=True)[1]
+                    log_msg = log_msg.format(pid=login_pid)
+                    self.logger.info(log_msg)
                     try:
                         self.logout_user(login_pid, realm, site)
                     except Exception as e:
-                        msg = f"Failed to logout user: {e}"
-                        self.logger.warning(msg)
+                        log_msg = _("Failed to logout user: {error}", log=True)[1]
+                        log_msg = log_msg.format(error=e)
+                        self.logger.warning(log_msg)
                     continue
 
                 if rsp and offline:
-                    msg = f"Login process '{login_pid}' ended. Not sending logout command for offline session."
-                    self.logger.info(msg)
+                    log_msg = _("Login process '{pid}' ended. Not sending logout command for offline session.", log=True)[1]
+                    log_msg = log_msg.format(pid=login_pid)
+                    self.logger.info(log_msg)
                     continue
 
         for login_pid in agent_sessions:
@@ -423,21 +442,25 @@ class OTPmeAgent(UnixDaemon):
                     try:
                         os.system(f"fusermount -z -u {mount_point}")
                     except Exception as e:
-                        msg = f"Failed to unmount share: {mount_point}: {e}"
-                        messages.append(msg)
-                        self.logger.warning(msg)
+                        log_msg = _("Failed to unmount share: {mount_point}: {error}", log=True)[1]
+                        log_msg = log_msg.format(mount_point=mount_point, error=e)
+                        messages.append(log_msg)
+                        self.logger.warning(log_msg)
                 try:
                     os.rmdir(mount_point)
                 except Exception as e:
-                    msg = f"Failed to rmdir mountpoint: {mount_point}: {e}"
-                    self.logger.warning(msg)
+                    log_msg = _("Failed to rmdir mountpoint: {mount_point}: {error}", log=True)[1]
+                    log_msg = log_msg.format(mount_point=mount_point, error=e)
+                    self.logger.warning(log_msg)
                 umounted_shares.append(share_id)
             if umounted_shares:
-                msg = f"Shares unmounted: {umounted_shares}"
-                self.logger.info(msg)
+                log_msg = _("Shares unmounted: {shares}", log=True)[1]
+                log_msg = log_msg.format(shares=umounted_shares)
+                self.logger.info(log_msg)
 
-        msg = f"Login process '{login_pid}' ended. Removing empty session."
-        self.logger.info(msg)
+        log_msg = _("Login process '{pid}' ended. Removing empty session.", log=True)[1]
+        log_msg = log_msg.format(pid=login_pid)
+        self.logger.info(log_msg)
 
         # Close daemon connections.
         self.close_user_conns(login_pid)
@@ -456,8 +479,9 @@ class OTPmeAgent(UnixDaemon):
             login_pid_conns = {}
 
         if len(login_pid_conns) > 0:
-            msg = f"Closing daemon connections for user '{login_user}'."
-            self.logger.info(msg)
+            log_msg = _("Closing daemon connections for user '{user}'.", log=True)[1]
+            log_msg = log_msg.format(user=login_user)
+            self.logger.info(log_msg)
 
         for realm in dict(login_pid_conns):
             for site in dict(login_pid_conns[realm]):
@@ -465,8 +489,9 @@ class OTPmeAgent(UnixDaemon):
                     # Use try/pass as dict may be changed by _conn_proxy()
                     # thread while we are running.
                     try:
-                        msg = f"Closing connection to '{realm}/{site}/{daemon}'."
-                        self.logger.info(msg)
+                        log_msg = _("Closing connection to '{realm}/{site}/{daemon}'.", log=True)[1]
+                        log_msg = log_msg.format(realm=realm, site=site, daemon=daemon)
+                        self.logger.info(log_msg)
                         self.close_daemon_conn(realm, site, daemon, login_pid)
                     except:
                         pass
@@ -484,8 +509,9 @@ class OTPmeAgent(UnixDaemon):
         try:
             session = self.login_sessions[login_pid]['server_sessions'][realm][site]
         except:
-            msg = f"Session does not exist anymore. Cannot calculate reneg: {login_pid}"
-            self.logger.debug(msg)
+            log_msg = _("Session does not exist anymore. Cannot calculate reneg: {pid}", log=True)[1]
+            log_msg = log_msg.format(pid=login_pid)
+            self.logger.debug(log_msg)
             return
 
         # Get session values
@@ -552,8 +578,9 @@ class OTPmeAgent(UnixDaemon):
             login_session['server_sessions'][realm][site] = session
             self.login_sessions[login_pid] = login_session
         except KeyError:
-            msg = f"Session does not exist anymore. Cannot update reneg: {login_pid}"
-            self.logger.debug(msg)
+            log_msg = _("Session does not exist anymore. Cannot update reneg: {pid}", log=True)[1]
+            log_msg = log_msg.format(pid=login_pid)
+            self.logger.debug(log_msg)
             return
 
         # Return time for next reneg/try.
@@ -580,16 +607,18 @@ class OTPmeAgent(UnixDaemon):
 
         # Try to get server session to reneg.
         if not login_pid in self.login_sessions:
-            msg = f"Login session does not exists. Cannot renegotiate: {login_pid}"
-            self.logger.debug(msg)
-            raise Exception(msg)
+            log_msg = _("Login session does not exists. Cannot renegotiate: {pid}", log=True)[1]
+            log_msg = log_msg.format(pid=login_pid)
+            self.logger.debug(log_msg)
+            raise Exception(log_msg)
 
         try:
             session = self.login_sessions[login_pid]['server_sessions'][realm][site]
         except:
-            msg = f"Session does not exists. Cannot renegotiate: {realm}/{site}"
-            self.logger.debug(msg)
-            raise Exception(msg)
+            log_msg = _("Session does not exists. Cannot renegotiate: {realm}/{site}", log=True)[1]
+            log_msg = log_msg.format(realm=realm, site=site)
+            self.logger.debug(log_msg)
+            raise Exception(log_msg)
 
         # Get session values
         session_id = self.login_sessions[login_pid]['session_id']
@@ -607,8 +636,9 @@ class OTPmeAgent(UnixDaemon):
         session_key = session['session_key']
 
         # Try to update session.
-        msg = f"Trying to renegotiate session for user: {login_user}"
-        self.logger.debug(msg)
+        log_msg = _("Trying to renegotiate session for user: {user}", log=True)[1]
+        log_msg = log_msg.format(user=login_user)
+        self.logger.debug(log_msg)
         try:
             auth_conn = connections.get(daemon="authd", realm=realm, site=site,
                                         connect_timeout=self.connect_timeout,
@@ -618,9 +648,10 @@ class OTPmeAgent(UnixDaemon):
                                         allow_untrusted=True, sync_token_data=False,
                                         reneg=True, rsp=rsp)
         except Exception as e:
-            msg = f"Error getting daemon connection for session renegotiation: {e}"
-            self.logger.warning(msg)
-            update_message = msg
+            log_msg = _("Error getting daemon connection for session renegotiation: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+            update_message = log_msg
             try_update = False
 
         if try_update:
@@ -628,9 +659,10 @@ class OTPmeAgent(UnixDaemon):
                 update_message = auth_conn.authenticate()
                 update_status = True
             except AuthFailed as e:
-                msg = f"Authentication failed while doing session renegotiation: {e}"
-                self.logger.warning(msg)
-                update_message = msg
+                log_msg = _("Authentication failed while doing session renegotiation: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                update_message = log_msg
                 update_status = None
             except Exception as e:
                 update_message = str(e)
@@ -668,10 +700,12 @@ class OTPmeAgent(UnixDaemon):
                                             slp=slp,
                                             session_key=session_key,
                                             update=True) is None:
-                        self.logger.debug("No offline session to update found.")
+                        log_msg = _("No offline session to update found.", log=True)[1]
+                        self.logger.debug(log_msg)
                 except Exception as e:
-                    msg = f"Error updating RSP for use with offline tokens: {e}"
-                    self.logger.critical(msg)
+                    log_msg = _("Error updating RSP for use with offline tokens: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg)
                 finally:
                     # Release offline token lock.
                     offline_token.unlock()
@@ -682,17 +716,20 @@ class OTPmeAgent(UnixDaemon):
             session['next_retry'] = None
 
             if session_age > (session_timeout * 60):
-                msg = f"Session renegotiation failed and session timeout ({session_timeout} min.) reached."
-                self.logger.warning(msg)
+                log_msg = _("Session renegotiation failed and session timeout ({timeout} min.) reached.", log=True)[1]
+                log_msg = log_msg.format(timeout=session_timeout)
+                self.logger.warning(log_msg)
                 update_status = None
             else:
                 if reneg_age > session_unused_timeout * 60:
-                    msg = f"Session renegotiation failed and session unused timeout ({session_unused_timeout} min.) reached."
-                    self.logger.warning(msg)
+                    log_msg = _("Session renegotiation failed and session unused timeout ({timeout} min.) reached.", log=True)[1]
+                    log_msg = log_msg.format(timeout=session_unused_timeout)
+                    self.logger.warning(log_msg)
                     update_status = None
                 else:
-                    msg = f"Session renegotiation failed: {update_message}"
-                    self.logger.warning(msg)
+                    log_msg = _("Session renegotiation failed: {message}", log=True)[1]
+                    log_msg = log_msg.format(message=update_message)
+                    self.logger.warning(log_msg)
 
         # Close auth connection.
         if auth_conn:
@@ -753,7 +790,9 @@ class OTPmeAgent(UnixDaemon):
         # FIXME: Should we walk through all sessions and check if ssh_agent_pid is used by other session and if not kill agent and remove session??!
 
         # Try to logout user.
-        self.logger.info(f"Trying to logout user: {login_user}")
+        log_msg = _("Trying to logout user: {user}", log=True)[1]
+        log_msg = log_msg.format(user=login_user)
+        self.logger.info(log_msg)
 
         # Get connection to authd and logout.
         while True:
@@ -785,19 +824,22 @@ class OTPmeAgent(UnixDaemon):
         try:
             logout_message = auth_conn.authenticate()
             if logout_message:
-                msg = f"User logged out successfully: {realm}/{site}"
-                self.logger.info(msg)
+                log_msg = _("User logged out successfully: {realm}/{site}", log=True)[1]
+                log_msg = log_msg.format(realm=realm, site=site)
+                self.logger.info(log_msg)
                 # Try to remove on-disk RSP/session.
                 self.remove_offline_rsp(login_user, session_id)
                 return logout_message
             else:
-                msg = "User logout failed"
-                self.logger.critical(msg)
-                msg = f"{msg}: {logout_message}"
+                log_msg = _("User logout failed", log=True)[1]
+                self.logger.critical(log_msg)
+                msg = _("User logout failed: {message}")
+                msg = msg.format(message=logout_message)
                 raise OTPmeException(msg)
         except Exception as e:
-            msg = f"Error while sending logout request: {e}"
-            self.logger.warning(msg)
+            log_msg = _("Error while sending logout request: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
         finally:
             auth_conn.close()
 
@@ -826,8 +868,9 @@ class OTPmeAgent(UnixDaemon):
             server_sessions = {}
 
         if realm and site:
-            msg = f"Removing session for user '{login_user}: {realm}/{site}"
-            self.logger.info(msg)
+            log_msg = _("Removing session for user '{user}: {realm}/{site}", log=True)[1]
+            log_msg = log_msg.format(user=login_user, realm=realm, site=site)
+            self.logger.info(log_msg)
             if not force:
                 # Wait until session is not in use anymore.
                 conn_lock = self.acquire_connection_lock(login_pid, realm, site)
@@ -845,7 +888,9 @@ class OTPmeAgent(UnixDaemon):
 
             return
 
-        self.logger.info(f"Removing session for user '{login_user}.")
+        log_msg = _("Removing session for user '{user}'.", log=True)[1]
+        log_msg = log_msg.format(user=login_user)
+        self.logger.info(log_msg)
 
         for realm in dict(server_sessions):
             for site in dict(server_sessions[realm]):
@@ -890,8 +935,9 @@ class OTPmeAgent(UnixDaemon):
         login_site = self.login_sessions[login_pid]['site']
 
         daemon = "authd"
-        msg = f"Requesting JWT for cross-site authentication: {login_realm}/{login_site}/{login_user}"
-        self.logger.debug(msg)
+        log_msg = _("Requesting JWT for cross-site authentication: {realm}/{site}/{user}", log=True)[1]
+        log_msg = log_msg.format(realm=login_realm, site=login_site, user=login_user)
+        self.logger.debug(log_msg)
 
         try:
             authd_conn = self.get_daemon_conn(realm=login_realm,
@@ -900,13 +946,15 @@ class OTPmeAgent(UnixDaemon):
                                             login_pid=login_pid,
                                             use_dns=use_dns)
         except AuthFailed as e:
-            msg = f"Authentication failed while sending requesting JWT: '{daemon}'. Closing connection..."
-            self.logger.warning(msg)
+            log_msg = _("Authentication failed while sending requesting JWT: '{daemon}'. Closing connection...", log=True)[1]
+            log_msg = log_msg.format(daemon=daemon)
+            self.logger.warning(log_msg)
             self.close_daemon_conn(login_realm, login_site, daemon, login_pid)
             return
         except Exception as e:
-            msg = f"Unable to request JWT from '{login_realm}/{login_site}/{daemon}: {e}"
-            self.logger.error(msg, exc_info=True)
+            log_msg = _("Unable to request JWT from '{realm}/{site}/{daemon}: {error}", log=True)[1]
+            log_msg = log_msg.format(realm=login_realm, site=login_site, daemon=daemon, error=e)
+            self.logger.error(log_msg, exc_info=True)
             return
         command = "get_jwt"
         command_args = {}
@@ -951,9 +999,10 @@ class OTPmeAgent(UnixDaemon):
             server_sessions = login_session['server_sessions']
             server_session = server_sessions[login_realm][login_site]
         except:
-            msg = f"Session does not exists. Cannot renegotiate: {realm}/{site}"
-            self.logger.debug(msg)
-            raise Exception(msg)
+            log_msg = _("Session does not exists. Cannot renegotiate: {realm}/{site}", log=True)[1]
+            log_msg = log_msg.format(realm=realm, site=site)
+            self.logger.debug(log_msg)
+            raise Exception(log_msg)
         offline = server_session['offline']
         session_key = server_session['session_key']
 
@@ -987,12 +1036,14 @@ class OTPmeAgent(UnixDaemon):
                                 check_login_status=False,
                                 cache_login_tokens=False)
         except ConnectionError as e:
-            msg = f"Login failed: {e}"
-            self.logger.warning(msg)
-            raise OTPmeException(msg)
+            log_msg = _("Login failed: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+            raise OTPmeException(log_msg)
         except Exception as e:
-            msg = f"Login error: {e}"
-            self.logger.critical(msg)
+            log_msg = _("Login error: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             return False
         # Get RSP.
         rsp = login_handler.login_reply['rsp']
@@ -1074,7 +1125,9 @@ class OTPmeAgent(UnixDaemon):
                                     session_unused_timeout=unused_timeout,
                                     offline_session=offline)
             except Exception as e:
-                self.logger.critical(f"Error saving RSP: {e}")
+                log_msg = _("Error saving RSP: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
             finally:
                 # Release offline token lock.
                 offline_token.unlock()
@@ -1115,8 +1168,9 @@ class OTPmeAgent(UnixDaemon):
 
         if daemon_conn:
             if keepalive:
-                msg = f"Sending keepalive message to '{daemon}': {realm}/{site}"
-                self.logger.debug(msg)
+                log_msg = _("Sending keepalive message to '{daemon}': {realm}/{site}", log=True)[1]
+                log_msg = log_msg.format(daemon=daemon, realm=realm, site=site)
+                self.logger.debug(log_msg)
             try:
                 status, \
                 status_code, \
@@ -1129,8 +1183,9 @@ class OTPmeAgent(UnixDaemon):
                 return
 
             if reply != "pong":
-                msg = f"Detected broken connection to '{daemon}'. Trying reconnect..."
-                self.logger.info(msg)
+                log_msg = _("Detected broken connection to '{daemon}'. Trying reconnect...", log=True)[1]
+                log_msg = log_msg.format(daemon=daemon)
+                self.logger.info(log_msg)
                 self.close_daemon_conn(realm, site, daemon, login_pid)
                 #daemon_conn.close()
                 daemon_conn = None
@@ -1141,15 +1196,18 @@ class OTPmeAgent(UnixDaemon):
 
         if daemon_conn:
             if not keepalive:
-                msg = f"Using existing daemon connection to '{daemon}'."
-                self.logger.debug(msg)
+                log_msg = _("Using existing daemon connection to '{daemon}'.", log=True)[1]
+                log_msg = log_msg.format(daemon=daemon)
+                self.logger.debug(log_msg)
         else:
             if broken_conn:
-                msg = f"Trying reconnect to daemon '{daemon}'."
-                self.logger.info(msg)
+                log_msg = _("Trying reconnect to daemon '{daemon}'.", log=True)[1]
+                log_msg = log_msg.format(daemon=daemon)
+                self.logger.info(log_msg)
             else:
-                msg = f"Connecting to daemon '{daemon}'."
-                self.logger.info(msg)
+                log_msg = _("Connecting to daemon '{daemon}'.", log=True)[1]
+                log_msg = log_msg.format(daemon=daemon)
+                self.logger.info(log_msg)
 
             if self.config_reload:
                 return
@@ -1158,15 +1216,15 @@ class OTPmeAgent(UnixDaemon):
             try:
                 login_user = self.login_sessions[login_pid]['login_user']
             except Exception as e:
-                msg = _("Error getting login user.")
-                self.logger.critical(msg)
+                msg, log_msg = _("Error getting login user.", log=True)
+                self.logger.critical(log_msg)
                 raise OTPmeException(msg)
             # Try to get RSP.
             try:
                 rsp = self.login_sessions[login_pid]['server_sessions'][realm][site]['rsp']
             except Exception as e:
-                msg = _("Error getting RSP.")
-                self.logger.critical(msg)
+                msg, log_msg = _("Error getting RSP.", log=True)
+                self.logger.critical(log_msg)
                 raise OTPmeException(msg)
 
             # Connect to daemon.
@@ -1179,14 +1237,16 @@ class OTPmeAgent(UnixDaemon):
                                             auto_auth=True, allow_untrusted=True,
                                             sync_token_data=False)
             except AuthFailed as e:
-                msg = _("Authentication failed while connecting to daemon: {daemon}: {e}")
+                msg, log_msg = _("Authentication failed while connecting to daemon: {daemon}: {e}", log=True)
                 msg = msg.format(daemon=daemon, e=e)
-                self.logger.warning(msg)
+                log_msg = log_msg.format(daemon=daemon, e=e)
+                self.logger.warning(log_msg)
                 raise AuthFailed(msg)
             except Exception as e:
-                msg = _("Error getting daemon connection: {daemon}: {e}")
+                msg, log_msg = _("Error getting daemon connection: {daemon}: {e}", log=True)
                 msg = msg.format(daemon=daemon, e=e)
-                self.logger.warning(msg)
+                log_msg = log_msg.format(daemon=daemon, e=e)
+                self.logger.warning(log_msg)
                 raise OTPmeException(msg)
             finally:
                 # Make sure there is no orphan connection lock.
@@ -1200,11 +1260,13 @@ class OTPmeAgent(UnixDaemon):
             # Add daemon connection to connections dict.
             if daemon_conn:
                 if broken_conn:
-                    msg = f"Connection to daemon '{daemon}' re established."
-                    self.logger.info(msg)
+                    log_msg = _("Connection to daemon '{daemon}' re established.", log=True)[1]
+                    log_msg = log_msg.format(daemon=daemon)
+                    self.logger.info(log_msg)
                 else:
-                    msg = f"Connection to daemon '{daemon}' established."
-                    self.logger.info(msg)
+                    log_msg = _("Connection to daemon '{daemon}' established.", log=True)[1]
+                    log_msg = log_msg.format(daemon=daemon)
+                    self.logger.info(log_msg)
 
                 if login_pid not in self.connections:
                     self.connections[login_pid] = {}
@@ -1222,9 +1284,10 @@ class OTPmeAgent(UnixDaemon):
                     # Update daemon connection in dict.
                     self.connections[login_pid][realm][site][daemon]['connection'] = daemon_conn
                 except Exception as e:
-                    msg = _("Error updating daemon connection: {e}")
+                    msg, log_msg = _("Error updating daemon connection: {e}", log=True)
                     msg = msg.format(e=e)
-                    self.logger.warning(msg)
+                    log_msg = log_msg.format(e=e)
+                    self.logger.warning(log_msg)
                     raise Exception(msg)
 
         if self.config_reload:
@@ -1236,18 +1299,20 @@ class OTPmeAgent(UnixDaemon):
             try:
                 self.connections[login_pid][realm][site][daemon]['last_keepalive'] = time.time()
             except Exception as e:
-                msg = _("Error updating connecton keepalive timestamp: {e}")
+                msg, log_msg = _("Error updating connecton keepalive timestamp: {e}", log=True)
                 msg = msg.format(e=e)
-                self.logger.warning(msg)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
                 raise Exception(msg)
             # Update last used timestamp.
             if not keepalive:
                 try:
                     self.connections[login_pid][realm][site][daemon]['last_used'] = time.time()
                 except Exception as e:
-                    msg = _("Error updating connecton usage timestamp: {e}")
+                    msg, log_msg = _("Error updating connecton usage timestamp: {e}", log=True)
                     msg = msg.format(e=e)
-                    self.logger.warning(msg)
+                    log_msg = log_msg.format(e=e)
+                    self.logger.warning(log_msg)
                     raise Exception(msg)
 
         if self.config_reload:
@@ -1448,8 +1513,9 @@ class OTPmeAgent(UnixDaemon):
             comm_handler.close()
             return status_code, reply
 
-        msg = f"Sending request to daemon: {daemon}: {realm}/{site}"
-        self.logger.debug(msg)
+        log_msg = _("Sending request to daemon: {daemon}: {realm}/{site}", log=True)[1]
+        log_msg = log_msg.format(daemon=daemon, realm=realm, site=site)
+        self.logger.debug(log_msg)
 
         # Get proxy request options.
         command = proxy_request['command']
@@ -1468,7 +1534,9 @@ class OTPmeAgent(UnixDaemon):
         except ConnectionRedirect as e:
             redirect_realm = str(e).split("/")[0]
             redirect_site = str(e).split("/")[1]
-            self.logger.debug(f"Got redirected to: {redirect_realm}/{redirect_site}")
+            log_msg = _("Got redirected to: {realm}/{site}", log=True)[1]
+            log_msg = log_msg.format(realm=redirect_realm, site=redirect_site)
+            self.logger.debug(log_msg)
             # We need to release the original daemon connection because it
             # may be needed by get_jwt() to request a JWT for cross-site
             # authentication.
@@ -1485,9 +1553,11 @@ class OTPmeAgent(UnixDaemon):
                                         use_dns=use_dns)
         except Exception as e:
             self.close_daemon_conn(realm, site, daemon, login_pid)
-            reply = f"Daemon connection broken while sending: {daemon}: {e}"
+            reply = _("Daemon connection broken while sending: {daemon}: {error}")
+            reply = reply.format(daemon=daemon, error=e)
             status_code = status_codes.ERR
-            self.logger.critical(reply)
+            log_msg = reply
+            self.logger.critical(log_msg)
         finally:
             # Release daemon connection.
             self.release_daemon_conn(realm=realm,
@@ -1578,8 +1648,9 @@ class OTPmeAgent(UnixDaemon):
         try:
             self._shutdown = multiprocessing.get_bool(shutdown_name)
         except Exception as e:
-            msg = f"Failed to get shared bool: {e}"
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             raise
 
         # Interprocess communication queue. This queue is used to communicate
@@ -1616,17 +1687,21 @@ class OTPmeAgent(UnixDaemon):
             try:
                 s.listen()
             except Exception as e:
-                msg = f"Error listening on socket: {e}"
-                self.logger.critical(msg)
+                log_msg = _("Error listening on socket: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
 
-        msg = f"{self.full_name}: Connect timeout: {self.connect_timeout}"
-        self.logger.debug(msg)
+        log_msg = _("{name}: Connect timeout: {timeout}", log=True)[1]
+        log_msg = log_msg.format(name=self.full_name, timeout=self.connect_timeout)
+        self.logger.debug(log_msg)
 
-        msg = f"{self.full_name}: Connection timeout: {self.timeout}"
-        self.logger.debug(msg)
+        log_msg = _("{name}: Connection timeout: {timeout}", log=True)[1]
+        log_msg = log_msg.format(name=self.full_name, timeout=self.timeout)
+        self.logger.debug(log_msg)
 
-        msg = f"{self.full_name} started"
-        self.logger.info(msg)
+        log_msg = _("{name} started", log=True)[1]
+        log_msg = log_msg.format(name=self.full_name)
+        self.logger.info(log_msg)
 
         idle_timer = 0
         idle_start = None
@@ -1656,15 +1731,15 @@ class OTPmeAgent(UnixDaemon):
                 pass
 
             if self.config_reload:
-                msg = ("Starting config reload...")
-                self.logger.info(msg)
+                log_msg = _("Starting config reload...", log=True)[1]
+                self.logger.info(log_msg)
                 # Set our status to config loading to prevent another SIGTERM
                 # to initiate another reload which may confuse us.
                 self.loading = True
                 # We need to close all connections on reload (e.g. to reflect
                 # changes of master nodes)
-                msg = ("Closing all connections on config reload...")
-                self.logger.info(msg)
+                log_msg = _("Closing all connections on config reload...", log=True)[1]
+                self.logger.info(log_msg)
                 sessions = dict(self.login_sessions)
                 for login_pid in sessions:
                     self.close_user_conns(login_pid)
@@ -1678,8 +1753,9 @@ class OTPmeAgent(UnixDaemon):
             try:
                 self.rotate_logfile()
             except Exception as e:
-                msg = f"Logfile rotation failed: {e}"
-                self.logger.warning(msg)
+                log_msg = _("Logfile rotation failed: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
 
             # Create copy of dicts because they may be changed by _conn_proxy()
             # thread while we are running.
@@ -1699,8 +1775,9 @@ class OTPmeAgent(UnixDaemon):
                 if session_type == "ssh_key_pass":
                     # Remove SSH agent session if needed.
                     if not stuff.check_pid(login_pid):
-                        msg = f"Agent process '{login_pid}' ended. Removing session."
-                        self.logger.info(msg)
+                        log_msg = _("Agent process '{pid}' ended. Removing session.", log=True)[1]
+                        log_msg = log_msg.format(pid=login_pid)
+                        self.logger.info(log_msg)
                         self.delete_session(login_pid)
                     continue
 
@@ -1758,24 +1835,27 @@ class OTPmeAgent(UnixDaemon):
                             except KeyError as e:
                                 continue
                             except Exception as e:
-                                msg = f"Error reading connection last used timestamp: {e}"
-                                self.logger.critical(msg)
+                                log_msg = _("Error reading connection last used timestamp: {error}", log=True)[1]
+                                log_msg = log_msg.format(error=e)
+                                self.logger.critical(log_msg)
                                 continue
                             try:
                                 last_keepalive = connections[login_pid][realm][site][daemon]['last_keepalive']
                             except KeyError as e:
                                 continue
                             except Exception as e:
-                                msg = f"Error reading connection last keepalive timestamp: {e}"
-                                self.logger.critical(msg)
+                                log_msg = _("Error reading connection last keepalive timestamp: {error}", log=True)[1]
+                                log_msg = log_msg.format(error=e)
+                                self.logger.critical(log_msg)
                                 continue
 
                             conn_age = time.time() - last_used
                             keepalive_age = time.time() - last_keepalive
 
                             if conn_age > config.agent_connection_idle_timeout:
-                                msg = f"Closing unused connection to '{daemon}'."
-                                self.logger.info(msg)
+                                log_msg = _("Closing unused connection to '{daemon}'.", log=True)[1]
+                                log_msg = log_msg.format(daemon=daemon)
+                                self.logger.info(log_msg)
                                 self.close_daemon_conn(realm, site, daemon, login_pid)
                             elif keepalive_age > config.agent_keepalive_interval:
                                 # Make sure connection is up.
@@ -1786,13 +1866,15 @@ class OTPmeAgent(UnixDaemon):
                                                         login_pid=login_pid,
                                                         keepalive=True)
                                 except AuthFailed as e:
-                                    msg = f"Authentication failed while sending keepalive message to '{daemon}'. Closing connection..."
-                                    self.logger.warning(msg)
+                                    log_msg = _("Authentication failed while sending keepalive message to '{daemon}'. Closing connection...", log=True)[1]
+                                    log_msg = log_msg.format(daemon=daemon)
+                                    self.logger.warning(log_msg)
                                     self.close_daemon_conn(realm, site, daemon, login_pid)
                                 except OTPmeException as e:
                                     self.close_daemon_conn(realm, site, daemon, login_pid)
-                                    msg = f"Unable to send keepalive packet to '{realm}/{site}/{daemon}: {e}"
-                                    self.logger.error(msg)
+                                    log_msg = _("Unable to send keepalive packet to '{realm}/{site}/{daemon}: {error}", log=True)[1]
+                                    log_msg = log_msg.format(realm=realm, site=site, daemon=daemon, error=e)
+                                    self.logger.error(log_msg)
                                 # Release daemon connection.
                                 self.release_daemon_conn(realm=realm,
                                                         site=site,
@@ -1828,9 +1910,9 @@ class OTPmeAgent(UnixDaemon):
                     if idle_timer >= self.idle_timeout:
                         # If we are still idle (no sessions) go down.
                         if len(self.login_sessions) == 0:
-                            msg = ("No more login sessions. Terminating on "
-                                    "IDLE timeout...")
-                            self.logger.info(msg)
+                            log_msg = _("No more login sessions. Terminating on "
+                                    "IDLE timeout...", log=True)[1]
+                            self.logger.info(log_msg)
                             os._exit(0)
             else:
                 idle_start = None
@@ -1848,7 +1930,8 @@ class OTPmeAgent(UnixDaemon):
                 # Reset variables.
                 self.loading = False
                 self.config_reload = False
-                self.logger.info("Finished config reload...")
+                log_msg = _("Finished config reload...", log=True)[1]
+                self.logger.info(log_msg)
 
             # FIXME: Changing the sleep time also affects the idle timer!
             time.sleep(1)
@@ -1871,7 +1954,8 @@ class OTPmeAgent(UnixDaemon):
 
     def close_all_sockets(self):
         """ Close all sockets of this agent """
-        self.logger.debug("Closing all sockets...")
+        log_msg = _("Closing all sockets...", log=True)[1]
+        self.logger.debug(log_msg)
         for sock in self.sockets:
             sock.close()
 
@@ -1893,21 +1977,23 @@ class OTPmeAgent(UnixDaemon):
             #obsolete_logs = list(sorted(old_logs, reverse=True))[self.logfile_max_rotate-1:]
             for x in obsolete_logs:
                 old_logfile = x[1]
-                msg = f"Removing outdated logfile: {old_logfile}"
-                self.logger.debug(msg)
+                log_msg = _("Removing outdated logfile: {logfile}", log=True)[1]
+                log_msg = log_msg.format(logfile=old_logfile)
+                self.logger.debug(log_msg)
                 try:
                     os.remove(old_logfile)
                 except Exception as e:
-                    msg = f"Error removing outdate logfile: {e}"
-                    self.logger.warning(msg)
+                    log_msg = _("Error removing outdate logfile: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
 
         # Check if we have to rotate the current logfile.
         logfile_size = int(os.path.getsize(self.logfile) / 1024)
         if logfile_size < self.logfile_rotate_size:
             return
 
-        msg = ("Starting logfile rotation...")
-        self.logger.debug(msg)
+        log_msg = _("Starting logfile rotation...", log=True)[1]
+        self.logger.debug(log_msg)
         tmp_logfile = f"{self.logfile}.tmp"
         count = 0
         now = datetime.datetime.now()
@@ -1954,5 +2040,5 @@ class OTPmeAgent(UnixDaemon):
             msg = msg.format(e=e)
             raise OTPmeException(msg)
 
-        msg = ("Logfile rotation finished successful.")
-        self.logger.debug(msg)
+        log_msg = _("Logfile rotation finished successful.", log=True)[1]
+        self.logger.debug(log_msg)

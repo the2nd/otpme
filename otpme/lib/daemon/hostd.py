@@ -61,9 +61,9 @@ def handle_sync_child():
             try:
                 result = f(self, *f_args, **f_kwargs)
             except Exception as e:
-                msg = _("Unhandled exception in sync child: {function}: {sync_type}: {error}")
-                msg = msg.format(function=f.__name__, sync_type=sync_type, error=e)
-                self.logger.critical(msg)
+                log_msg = _("Unhandled exception in sync child: {function}: {sync_type}: {error}", log=True)[1]
+                log_msg = log_msg.format(function=f.__name__, sync_type=sync_type, error=e)
+                self.logger.critical(log_msg)
                 result = False
                 config.raise_exception()
             finally:
@@ -92,8 +92,8 @@ class HostDaemon(OTPmeDaemon):
         # Act only on our own PID.
         if os.getpid() != self.pid:
             return
-        msg = ("Received SIGTERM.")
-        self.logger.info(msg)
+        log_msg = _("Received SIGTERM.", log=True)[1]
+        self.logger.info(log_msg)
         # Stop resolver runs.
         self.stop_resolvers()
         # Shutdown sync childs.
@@ -124,9 +124,9 @@ class HostDaemon(OTPmeDaemon):
             sync_lock = locking.acquire_lock(lock_type=LOCK_TYPE, lock_id=lock_id)
         except Exception as e:
             sync_lock = None
-            msg = _("Failed to acquire sync lock: {lock_id}: {error}")
-            msg = msg.format(lock_id=lock_id, error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to acquire sync lock: {lock_id}: {error}", log=True)[1]
+            log_msg = log_msg.format(lock_id=lock_id, error=e)
+            self.logger.critical(log_msg)
         return sync_lock
 
     def get_site(self, realm, site):
@@ -177,9 +177,9 @@ class HostDaemon(OTPmeDaemon):
         # Set socket URI.
         socket_uri = f"tcp://{connect_address}:{daemon_port}"
 
-        msg = _("Trying to connect to syncd: {name}")
-        msg = msg.format(name=connect_name)
-        self.logger.debug(msg)
+        log_msg = _("Trying to connect to syncd: {name}", log=True)[1]
+        log_msg = log_msg.format(name=connect_name)
+        self.logger.debug(log_msg)
 
         sync_conn = connections.get(daemon="syncd",
                                 socket_uri=socket_uri,
@@ -201,21 +201,20 @@ class HostDaemon(OTPmeDaemon):
         """ Reload own host object from backend. """
         host_type = self.host_type
         if host_type is None:
-            msg = "Failed to load host object."
-            self.logger.critical(msg)
+            log_msg = "Failed to load host object., log=True"[1]
+            self.logger.critical(log_msg)
             return
         try:
             host = backend.get_object(object_type=host_type,
                                             uuid=config.uuid)
         except LockWaitTimeout:
-            host = None
+            return
         except Exception as e:
-            host = None
-            msg = _("Failed to reload host object: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
-        if host:
-            self.host = host
+            log_msg = _("Failed to reload host object: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+            return
+        self.host = host
 
     def update_realm_data(self):
         """ Update realm data cache. """
@@ -223,9 +222,9 @@ class HostDaemon(OTPmeDaemon):
         try:
             set_realm_site()
         except Exception as e:
-            msg = _("Failed to set realm/site: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to set realm/site: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             return False
         # Update realm data cache file.
         config.update_realm_data()
@@ -288,9 +287,9 @@ class HostDaemon(OTPmeDaemon):
                 # sync but there was no object change on this node while it is
                 # syncing and we do not want to resend a sync notify.
                 if sync_list_checksum == config.SYNCING_STATUS_STRING:
-                    msg = _("Site is currently syncing: {site}")
-                    msg = msg.format(site=x)
-                    self.logger.debug(msg)
+                    log_msg = _("Site is currently syncing: {site}", log=True)[1]
+                    log_msg = log_msg.format(site=x)
+                    self.logger.debug(log_msg)
                 if not sync_list_checksum:
                     add_site = True
                     break
@@ -320,14 +319,14 @@ class HostDaemon(OTPmeDaemon):
         if notify_age < self.notify_limit:
             last_try = datetime.datetime.fromtimestamp(last_sync_notify)
             last_try = last_try.strftime('%H:%M:%S')
-            msg = _("Not sending sync notification: {notify_id}: Last notify sent: {last_try}")
-            msg = msg.format(notify_id=last_notify_id, last_try=last_try)
-            self.logger.debug(msg)
+            log_msg = _("Not sending sync notification: {notify_id}: Last notify sent: {last_try}", log=True)[1]
+            log_msg = log_msg.format(notify_id=last_notify_id, last_try=last_try)
+            self.logger.debug(log_msg)
             return
 
-        msg = _("Sending sync notification: {notify_id}")
-        msg = msg.format(notify_id=last_notify_id)
-        self.logger.info(msg)
+        log_msg = _("Sending sync notification: {notify_id}", log=True)[1]
+        log_msg = log_msg.format(notify_id=last_notify_id)
+        self.logger.info(log_msg)
         # Get sync connection.
         try:
             sync_conn = self.get_sync_connection(realm=realm,
@@ -338,9 +337,9 @@ class HostDaemon(OTPmeDaemon):
                 sync_dst = node
             else:
                 sync_dst = f"{realm}/{site}"
-            msg = _("Error sending sync notification to {dst}: {error}")
-            msg = msg.format(dst=sync_dst, error=e)
-            self.logger.warning(msg)
+            log_msg = _("Error sending sync notification to {dst}: {error}", log=True)[1]
+            log_msg = log_msg.format(dst=sync_dst, error=e)
+            self.logger.warning(log_msg)
             return False
 
         # Get sync parameters.
@@ -354,15 +353,15 @@ class HostDaemon(OTPmeDaemon):
 
         # Handle disabled sites.
         if status_code == status_codes.SYNC_DISABLED:
-            msg = _("Cannot send sync notification to site that disabled sync with us: {realm}/{site}")
-            msg = msg.format(realm=realm, site=site)
-            self.logger.warning(msg)
+            log_msg = _("Cannot send sync notification to site that disabled sync with us: {realm}/{site}", log=True)[1]
+            log_msg = log_msg.format(realm=realm, site=site)
+            self.logger.warning(log_msg)
             return False
 
         if status_code != status_codes.OK:
-            msg = _("Failed to send sync notification to site: {realm}/{site}: {reply}")
-            msg = msg.format(realm=realm, site=site, reply=reply)
-            self.logger.warning(msg)
+            log_msg = _("Failed to send sync notification to site: {realm}/{site}: {reply}", log=True)[1]
+            log_msg = log_msg.format(realm=realm, site=site, reply=reply)
+            self.logger.warning(log_msg)
             return False
 
         # Update snyc status for each site the peer is syncing.
@@ -388,17 +387,19 @@ class HostDaemon(OTPmeDaemon):
             except OTPmeException as e:
                 exception = str(e)
             if exception:
-                self.logger.warning(exception)
+                log_msg = exception
+                self.logger.warning(log_msg)
             else:
-                self.logger.debug(reply)
+                log_msg = reply
+                self.logger.debug(log_msg)
 
         # Close sync connection.
         sync_conn.close()
 
         if not status:
-            msg = _("Error sending sync notification to {realm}/{site}: {reply}")
-            msg = msg.format(realm=realm, site=site, reply=reply)
-            self.logger.warning(msg)
+            log_msg = _("Error sending sync notification to {realm}/{site}: {reply}", log=True)[1]
+            log_msg = log_msg.format(realm=realm, site=site, reply=reply)
+            self.logger.warning(log_msg)
             return False
 
         # Update last notify timestamp.
@@ -416,9 +417,9 @@ class HostDaemon(OTPmeDaemon):
         try:
             self._sync_sites()
         except Exception as e:
-            msg = _("Failed to sync sites: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to sync sites: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         finally:
             sync_lock.release_lock()
 
@@ -434,8 +435,8 @@ class HostDaemon(OTPmeDaemon):
 
         #if config.host_data['type'] == "node":
         #    if not config.cluster_quorum:
-        #        msg = ("Not starting sync of sites: No cluster quorum")
-        #        self.logger.warning(msg)
+        #        log_msg = ("Not starting sync of sites: No cluster quorum", log=True)[1]
+        #        self.logger.warning(log_msg)
         #        return
 
         if config.master_node:
@@ -479,7 +480,8 @@ class HostDaemon(OTPmeDaemon):
             self.update_realm_data()
             return True
 
-        self.logger.debug("Starting sync of realms/sites...")
+        log_msg = _("Starting sync of realms/sites...", log=True)[1]
+        self.logger.debug(log_msg)
 
         sync_sites = {}
         reached_sites = []
@@ -490,9 +492,9 @@ class HostDaemon(OTPmeDaemon):
                 sync_conn = self.get_sync_connection(realm=site.realm,
                                                     site=site.name)
             except Exception as e:
-                msg = _("Error getting sync connection: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Error getting sync connection: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 sync_status = False
                 continue
 
@@ -507,9 +509,9 @@ class HostDaemon(OTPmeDaemon):
             binary_data = sync_conn.send("get_sites", command_args=sync_params)
 
             if status_code != status_codes.OK:
-                msg = _("Error receiving sites list: {site}: {reply}")
-                msg = msg.format(site=site.oid, reply=reply)
-                self.logger.warning(msg)
+                log_msg = _("Error receiving sites list: {site}: {reply}", log=True)[1]
+                log_msg = log_msg.format(site=site.oid, reply=reply)
+                self.logger.warning(log_msg)
                 sync_conn.close()
                 sync_status = False
                 continue
@@ -521,9 +523,9 @@ class HostDaemon(OTPmeDaemon):
             for x in reply:
                 site_oid = oid.get(object_id=x)
                 if site_oid != site.oid:
-                    msg = _("Uuuh received wrong site object from site {site}: {site_oid}")
-                    msg = msg.format(site=site.oid, site_oid=site_oid)
-                    self.logger.critical(msg)
+                    log_msg = _("Uuuh received wrong site object from site {site}: {site_oid}", log=True)[1]
+                    log_msg = log_msg.format(site=site.oid, site_oid=site_oid)
+                    self.logger.critical(log_msg)
                     continue
                 # Will hold all valid site objects.
                 site_objects = []
@@ -540,17 +542,17 @@ class HostDaemon(OTPmeDaemon):
                     try:
                         o = backend.get_instance_from_oid(object_id, object_config)
                     except Exception as e:
-                        msg = _("Failed to load object: {object_id}: {error}")
-                        msg = msg.format(object_id=object_id, error=e)
-                        self.logger.critical(msg)
+                        log_msg = _("Failed to load object: {object_id}: {error}", log=True)[1]
+                        log_msg = log_msg.format(object_id=object_id, error=e)
+                        self.logger.critical(log_msg)
                         continue
                     # Make sure the object is valid.
                     try:
                         validate_received_object(site_oid, o)
                     except Exception as e:
-                        msg = _("Received invalid object: {error}")
-                        msg = msg.format(error=e)
-                        self.logger.critical(msg)
+                        log_msg = _("Received invalid object: {error}", log=True)[1]
+                        log_msg = log_msg.format(error=e)
+                        self.logger.critical(log_msg)
                         continue
                     # Add object to list.
                     site_objects.append(o)
@@ -606,13 +608,13 @@ class HostDaemon(OTPmeDaemon):
                     # Update sync checksum of object.
                     object_config['SYNC_CHECKSUM'] = o.sync_checksum
                     updated_objects += 1
-                    msg = _("Updating object: {oid}")
-                    msg = msg.format(oid=x_oid)
-                    self.logger.info(msg)
+                    log_msg = _("Updating object: {oid}", log=True)[1]
+                    log_msg = log_msg.format(oid=x_oid)
+                    self.logger.info(log_msg)
                 else:
-                    msg = _("Adding new object: {oid}")
-                    msg = msg.format(oid=x_oid)
-                    self.logger.info(msg)
+                    log_msg = _("Adding new object: {oid}", log=True)[1]
+                    log_msg = log_msg.format(oid=x_oid)
+                    self.logger.info(log_msg)
                     added_objects += 1
 
                 # Write object to backend. We cannot use o._write() because this
@@ -624,9 +626,9 @@ class HostDaemon(OTPmeDaemon):
                                     full_index_update=True,
                                     full_ldif_update=True)
                 except Exception as e:
-                    msg = _("Failed to write object: {oid}: {error}")
-                    msg = msg.format(oid=x_oid, error=e)
-                    self.logger.critical(msg)
+                    log_msg = _("Failed to write object: {oid}: {error}", log=True)[1]
+                    log_msg = log_msg.format(oid=x_oid, error=e)
+                    self.logger.critical(log_msg)
                     config.raise_exception()
 
         # Nodes must not delete realms/sites as they are deleted by clusterd.
@@ -653,14 +655,14 @@ class HostDaemon(OTPmeDaemon):
 
                 # The realm master site also must always exist.
                 if site.uuid == config.realm_master_uuid:
-                    msg = ("Uuuhh peer node tells us our master "
-                            "site does not exist anymore.")
-                    self.logger.warning(msg)
+                    log_msg = _("Uuuhh peer node tells us our master "
+                            "site does not exist anymore.", log=True)[1]
+                    self.logger.warning(log_msg)
                     continue
 
-                msg = _("Removing orphan site: {site}")
-                msg = msg.format(site=site.oid)
-                self.logger.info(msg)
+                log_msg = _("Removing orphan site: {site}", log=True)[1]
+                log_msg = log_msg.format(site=site.oid)
+                self.logger.info(log_msg)
 
                 site.delete(force=True, verify_acls=False)
                 removed_objects += 1
@@ -679,9 +681,9 @@ class HostDaemon(OTPmeDaemon):
                                             return_type="full_oid")
                 # If the realm does not have a site anymore we can delete it.
                 if len(realm_sites) == 0:
-                    msg = _("Removing orphan realm: {realm}")
-                    msg = msg.format(realm=realm.oid)
-                    self.logger.info(msg)
+                    log_msg = _("Removing orphan realm: {realm}", log=True)[1]
+                    log_msg = log_msg.format(realm=realm.oid)
+                    self.logger.info(log_msg)
                     realm.delete(force=True, verify_acls=False)
                     removed_objects += 1
 
@@ -689,12 +691,12 @@ class HostDaemon(OTPmeDaemon):
             log_method = self.logger.info
         else:
             log_method = self.logger.debug
-        msg = _("Realms/sites sync finished: adds: {added} "
-                "updates: {updated_objects} removes: {removed_objects}")
-        msg = msg.format(added=added_objects,
+        log_msg = _("Realms/sites sync finished: adds: {added} "
+                "updates: {updated_objects} removes: {removed_objects}", log=True)[1]
+        log_msg = log_msg.format(added=added_objects,
                         updated_objects=updated_objects,
                         removed_objects=removed_objects)
-        log_method(msg)
+        log_method(log_msg)
 
         if sync_status:
             self.update_realm_data()
@@ -728,43 +730,43 @@ class HostDaemon(OTPmeDaemon):
         try:
             site = sync_job['site']
         except KeyError:
-            msg = "Got invalid sync job: Missing site"
-            self.logger.warning(msg)
+            log_msg = _("Got invalid sync job: Missing site", log=True)[1]
+            self.logger.warning(log_msg)
             return
         try:
             realm = sync_job['realm']
         except KeyError:
-            msg = "Got invalid sync job: Missing realm"
-            self.logger.warning(msg)
+            log_msg = _("Got invalid sync job: Missing realm", log=True)[1]
+            self.logger.warning(log_msg)
             return
         try:
             resync = sync_job['resync']
         except KeyError:
-            msg = "Got invalid sync job: Missing resync"
-            self.logger.warning(msg)
+            log_msg = _("Got invalid sync job: Missing resync", log=True)[1]
+            self.logger.warning(log_msg)
             return
         try:
             offline = sync_job['offline']
         except KeyError:
-            msg = "Got invalid sync job: Missing offline"
-            self.logger.warning(msg)
+            log_msg = _("Got invalid sync job: Missing offline", log=True)[1]
+            self.logger.warning(log_msg)
             return
         try:
             sync_type = sync_job['sync_type']
         except KeyError:
-            msg = "Got invalid sync job: Missing sync type"
-            self.logger.warning(msg)
+            log_msg = _("Got invalid sync job: Missing sync type", log=True)[1]
+            self.logger.warning(log_msg)
             return
         try:
             nsscache_resync = sync_job['nsscache_resync']
         except KeyError:
-            msg = "Got invalid sync job: Missing nsscache_resync"
-            self.logger.warning(msg)
+            log_msg = _("Got invalid sync job: Missing nsscache_resync", log=True)[1]
+            self.logger.warning(log_msg)
             return
 
-        msg = _("Starting sync job from queue: {sync_type}")
-        msg = msg.format(sync_type=sync_type)
-        self.logger.debug(msg)
+        log_msg = _("Starting sync job from queue: {sync_type}", log=True)[1]
+        log_msg = log_msg.format(sync_type=sync_type)
+        self.logger.debug(log_msg)
 
         self.start_sync(sync_type=sync_type,
                         queue=False,
@@ -804,9 +806,9 @@ class HostDaemon(OTPmeDaemon):
             # Add sync child.
             self.sync_childs[sync_type] = sync_child
             self._sync_childs[sync_type] = True
-            msg = _("Started sync child: {info} [{pid}]")
-            msg = msg.format(info=sync_child.info, pid=sync_child.pid)
-            self.logger.debug(msg)
+            log_msg = _("Started sync child: {info} [{pid}]", log=True)[1]
+            log_msg = log_msg.format(info=sync_child.info, pid=sync_child.pid)
+            self.logger.debug(log_msg)
             return
 
         # Default sync site is our own site (e.g. to sync token data)
@@ -829,15 +831,15 @@ class HostDaemon(OTPmeDaemon):
                                         return_type="uuid",
                                         realm=realm)
             if not sync_sites:
-                msg = None
+                log_msg = None
                 if realm and site:
-                    msg = _("Got unknown sync site: {realm}/{site}")
-                    msg = msg.format(realm=realm, site=site)
+                    log_msg = _("Got unknown sync site: {realm}/{site}", log=True)[1]
+                    log_msg = log_msg.format(realm=realm, site=site)
                 elif realm:
-                    msg = _("Got unknown sync realm: {realm}")
-                    msg = msg.format(realm=realm)
-                if msg:
-                    self.logger.warning(msg)
+                    log_msg = _("Got unknown sync realm: {realm}", log=True)[1]
+                    log_msg = log_msg.format(realm=realm)
+                if log_msg:
+                    self.logger.warning(log_msg)
 
         # Dont sync objects from own site. This is done by clusterd.
         if self.host_type == "node":
@@ -866,19 +868,19 @@ class HostDaemon(OTPmeDaemon):
             except LockWaitTimeout:
                 continue
             if not site:
-                msg = _("Cannot sync with unknown site: {site_uuid}")
-                msg = msg.format(site_uuid=site_uuid)
-                self.logger.warning(msg)
+                log_msg = _("Cannot sync with unknown site: {site_uuid}", log=True)[1]
+                log_msg = log_msg.format(site_uuid=site_uuid)
+                self.logger.warning(log_msg)
                 continue
             if not site.enabled:
-                msg = _("Ignoring disabled site: {site}")
-                msg = msg.format(site=site.oid)
-                self.logger.info(msg)
+                log_msg = _("Ignoring disabled site: {site}", log=True)[1]
+                log_msg = log_msg.format(site=site.oid)
+                self.logger.info(log_msg)
                 continue
             if not site.sync_enabled:
-                msg = _("Synchronization disabled for site: {site}")
-                msg = msg.format(site=site.oid)
-                self.logger.info(msg)
+                log_msg = _("Synchronization disabled for site: {site}", log=True)[1]
+                log_msg = log_msg.format(site=site.oid)
+                self.logger.info(log_msg)
                 continue
 
             # Check for existing sync child.
@@ -917,9 +919,9 @@ class HostDaemon(OTPmeDaemon):
             # Add sync child.
             self.sync_childs[sync_type] = sync_child
             self._sync_childs[sync_type] = True
-            msg = _("Started sync child: {info} [{pid}]")
-            msg = msg.format(info=sync_child.info, pid=sync_child.pid)
-            self.logger.debug(msg)
+            log_msg = _("Started sync child: {info} [{pid}]", log=True)[1]
+            log_msg = log_msg.format(info=sync_child.info, pid=sync_child.pid)
+            self.logger.debug(log_msg)
 
     @handle_sync_child()
     def _start_sync(self, realm, site, sync_type="objects",
@@ -984,19 +986,20 @@ class HostDaemon(OTPmeDaemon):
                                 force_site_address=force_site_address)
                 can_sync = True
             except HostDisabled as e:
-                msg = _("Host disabled: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Host disabled: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 # Disable ourselves based on peer reply.
                 if self.host.type == "host":
                     if self.host.enabled:
-                        self.logger.info("Disabling ourselves...")
+                        log_msg = _("Disabling ourselves...", log=True)[1]
+                        self.logger.info(log_msg)
                         try:
                             self.host.disable(verify_acls=False, force=True)
                         except Exception as e:
-                            msg = _("Failed to disable host: {error}")
-                            msg = msg.format(error=e)
-                            self.logger.critical(msg)
+                            log_msg = _("Failed to disable host: {error}", log=True)[1]
+                            log_msg = log_msg.format(error=e)
+                            self.logger.critical(log_msg)
                         lock_caller = "hostd_sync"
                         self.host.acquire_lock(lock_caller=lock_caller)
                         self.host._write()
@@ -1013,9 +1016,9 @@ class HostDaemon(OTPmeDaemon):
                 return True
             except Exception as e:
                 sync_conn = None
-                msg = _("Connection to syncd failed: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg, exc_info=True)
+                log_msg = _("Connection to syncd failed: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg, exc_info=True)
                 # Update sync status.
                 config.update_sync_status(realm=realm,
                                         site=site,
@@ -1035,7 +1038,8 @@ class HostDaemon(OTPmeDaemon):
                     # Re-enable host if connection was successful.
                     if self.host.type == "host":
                         if not self.host.enabled:
-                            self.logger.info("Enabling ourselves...")
+                            log_msg = _("Enabling ourselves...", log=True)[1]
+                            self.logger.info(log_msg)
                             self.host.enable(verify_acls=False, force=True)
                             lock_caller = "hostd_sync_objects"
                             self.host.acquire_lock(lock_caller=lock_caller)
@@ -1054,9 +1058,9 @@ class HostDaemon(OTPmeDaemon):
                     sync_cache = SyncCache(realm, site)
                     sync_proto = sync_cache.protocol
                     if sync_proto:
-                        msg = ("Sync connection failed. Trying to merge "
-                                "orphan sync cache.")
-                        self.logger.info(msg)
+                        log_msg = _("Sync connection failed. Trying to merge "
+                                    "orphan sync cache.", log=True)[1]
+                        self.logger.info(log_msg)
 
                 # Cannot sync without protocol version.
                 if not sync_proto:
@@ -1092,9 +1096,9 @@ class HostDaemon(OTPmeDaemon):
                                     sync_last_used=sync_last_used,
                                     ignore_changed_objects=ignore_changed_objects)
                 except SyncDisabled:
-                    msg = _("Synchronization disabled by site: {realm}/{site}")
-                    msg = msg.format(realm=realm, site=site)
-                    self.logger.info(msg)
+                    log_msg = _("Synchronization disabled by site: {realm}/{site}", log=True)[1]
+                    log_msg = log_msg.format(realm=realm, site=site)
+                    self.logger.info(log_msg)
                     # Update sync status.
                     config.update_sync_status(realm=realm,
                                             site=site,
@@ -1104,14 +1108,14 @@ class HostDaemon(OTPmeDaemon):
                     # not a failure.
                     return True
                 except ConnectionQuit as e:
-                    msg = _("Connection lost running sync: {sync_type}: {error}")
-                    msg = msg.format(sync_type=sync_type, error=e)
-                    self.logger.warning(msg, exc_info=True)
+                    log_msg = _("Connection lost running sync: {sync_type}: {error}", log=True)[1]
+                    log_msg = log_msg.format(sync_type=sync_type, error=e)
+                    self.logger.warning(log_msg, exc_info=True)
                     return False
                 except Exception as e:
-                    msg = _("Error running sync: {realm}/{site}: {sync_type}: {error}")
-                    msg = msg.format(realm=realm, site=site, sync_type=sync_type, error=e)
-                    self.logger.critical(msg, exc_info=True)
+                    log_msg = _("Error running sync: {realm}/{site}: {sync_type}: {error}", log=True)[1]
+                    log_msg = log_msg.format(realm=realm, site=site, sync_type=sync_type, error=e)
+                    self.logger.critical(log_msg, exc_info=True)
                     # Update sync status.
                     config.update_sync_status(realm=realm,
                                             site=site,
@@ -1151,10 +1155,10 @@ class HostDaemon(OTPmeDaemon):
         #    data_revision = config.get_data_revision()
         #    age = now - data_revision
         #    if age < min_seconds:
-        #        msg = _("Not starting nsscache sync because last object was "
-        #                "written within the last {min_seconds} seconds.")
-        #        msg = msg.format(min_seconds=min_seconds)
-        #        self.logger.info(msg)
+        #        log_msg = _("Not starting nsscache sync because last object was "
+        #                "written within the last {min_seconds} seconds.", log=True)[1]
+        #        log_msg = log_msg.format(min_seconds=min_seconds)
+        #        self.logger.info(log_msg)
         #        start_nsscache_sync = False
 
         if start_nsscache_sync:
@@ -1193,9 +1197,9 @@ class HostDaemon(OTPmeDaemon):
                                                         lock=sync_lock)
             except Exception as e:
                 nsscache_sync_status = False
-                msg = _("Error updating nsscache: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error updating nsscache: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
                 #config.raise_exception()
             finally:
                 # Release sync lock.
@@ -1216,9 +1220,9 @@ class HostDaemon(OTPmeDaemon):
                     ssh_sync_status = ssh.update_authorized_keys()
                 except Exception as e:
                     ssh_sync_status = False
-                    msg = _("Failed to update SSH authorized_keys: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.critical(msg, exc_info=True)
+                    log_msg = _("Failed to update SSH authorized_keys: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg, exc_info=True)
                 finally:
                     # Release sync lock.
                     sync_lock.release_lock()
@@ -1232,25 +1236,24 @@ class HostDaemon(OTPmeDaemon):
                 notify_sites = self.get_unsync_sites(timeout=self.lock_timeout)
             except LockWaitTimeout:
                 if config.debug_level() > 3:
-                    msg = ("Timeout waiting for lock getting "
-                            "unsync peers.")
-                    self.logger.warning(msg)
+                    log_msg = _("Timeout waiting for lock getting unsync peers.", log=True)[1]
+                    self.logger.warning(log_msg)
                 notify_sites = None
             if notify_sites:
                 notify_status = None
                 for x in notify_sites:
                     # No need to notify sites we disabled sync for.
                     if not x.sync_enabled:
-                        msg = ("Not sending notify to site we disabled sync for.")
-                        self.logger.debug(msg)
+                        log_msg = _("Not sending notify to site we disabled sync for.", log=True)[1]
+                        self.logger.debug(log_msg)
                         continue
                     try:
                         site_status = self.sync_notify(realm=x.realm, site=x.name)
                     except Exception as e:
                         site_status = False
-                        msg = _("Error sending sync notify: {dest}: {error}")
-                        msg = msg.format(dest=x, error=e)
-                        self.logger.warning(msg)
+                        log_msg = _("Error sending sync notify: {dest}: {error}", log=True)[1]
+                        log_msg = log_msg.format(dest=x, error=e)
+                        self.logger.warning(log_msg)
                         config.raise_exception()
 
                     if site_status is False and notify_status is None:
@@ -1261,12 +1264,10 @@ class HostDaemon(OTPmeDaemon):
 
             else:
                 if config.master_node:
-                    msg = ("Not sending sync notification: All peers are "
-                            "in sync")
+                    log_msg = _("Not sending sync notification: All peers are in sync", log=True)[1]
                 else:
-                    msg = ("Not sending sync notification: We are not the "
-                            "master node")
-                self.logger.debug(msg)
+                    log_msg = _("Not sending sync notification: We are not the master node", log=True)[1]
+                self.logger.debug(log_msg)
 
         # Update status of last sync.
         try:
@@ -1276,9 +1277,9 @@ class HostDaemon(OTPmeDaemon):
                                     sync_type=sync_type)
         except Exception as e:
             config.raise_exception()
-            msg = _("Failed to update sync status: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to update sync status: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             sync_status = False
 
         # Make sure we send sync notifications to all non-master nodes.
@@ -1299,9 +1300,9 @@ class HostDaemon(OTPmeDaemon):
                         try:
                             self.sync_notify(realm=realm, site=site, node=node.oid)
                         except Exception as e:
-                            msg = _("Error sending sync notify: {node}: {error}")
-                            msg = msg.format(node=node, error=e)
-                            self.logger.warning(msg)
+                            log_msg = _("Error sending sync notify: {node}: {error}", log=True)[1]
+                            log_msg = log_msg.format(node=node, error=e)
+                            self.logger.warning(log_msg)
                             config.raise_exception()
 
         # Handle exit status.
@@ -1315,9 +1316,9 @@ class HostDaemon(OTPmeDaemon):
         try:
             process_spooled_logs()
         except Exception as e:
-            msg = _("Failed to resend spooled audit log entries: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Failed to resend spooled audit log entries: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
 
     def update_crls(self):
         """ Update CA CRLs. """
@@ -1385,9 +1386,9 @@ class HostDaemon(OTPmeDaemon):
             now = time.time()
             if (now - resolver.last_run) < resolver.sync_interval:
                 continue
-            msg = _("Running resolver: {resolver}")
-            msg = msg.format(resolver=resolver.oid)
-            self.logger.info(msg)
+            log_msg = _("Running resolver: {resolver}", log=True)[1]
+            log_msg = log_msg.format(resolver=resolver.oid)
+            self.logger.info(log_msg)
             callback = config.get_callback()
             callback.disable()
             resolver.run(daemon_run=True,
@@ -1460,9 +1461,9 @@ class HostDaemon(OTPmeDaemon):
                 offline_token = OfflineToken()
                 offline_token.set_user(uuid=uuid)
             except Exception as e:
-                msg = _("Error loading offline tokens: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error loading offline tokens: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
                 continue
             # Acquire offline token lock.
             offline_token.lock()
@@ -1470,9 +1471,9 @@ class HostDaemon(OTPmeDaemon):
             try:
                 offline_token.load()
             except Exception as e:
-                msg = _("Error getting offline tokens: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error getting offline tokens: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
             # Release offline token lock.
             offline_token.unlock()
 
@@ -1533,9 +1534,9 @@ class HostDaemon(OTPmeDaemon):
         try:
             self.configure()
         except Exception as e:
-            msg = _("Failed to configure {name}")
-            msg = msg.format(name=self.name)
-            self.logger.critical(msg)
+            log_msg = _("Failed to configure {name}", log=True)[1]
+            log_msg = log_msg.format(name=self.name)
+            self.logger.critical(log_msg)
         # All protocols we support.
         self.protocols = config.get_otpme_protocols(self.name, server=True)
         # Timestamps of last successful sync.
@@ -1569,9 +1570,9 @@ class HostDaemon(OTPmeDaemon):
         try:
             self.set_connection_handler()
         except Exception as e:
-            msg = _("Failed to set connection handler: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to set connection handler: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # Disable interactive policies (e.g. reauth).
         if not "interactive" in config.ignore_policy_tags:
@@ -1588,27 +1589,27 @@ class HostDaemon(OTPmeDaemon):
                             group=self.group,
                             mode=0o666)
         except Exception as e:
-            msg = _("Failed to add unix socket: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to add unix socket: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # We can drop privileges AFTER sockets are created. This is needed when
         # listening to well known ports (<1024), which requires root privileges.
         try:
             self.drop_privileges()
         except Exception as e:
-            msg = _("Failed to drop privileges: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to drop privileges: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # Start listening on sockets.
         for s in self.sockets:
             try:
                 s.listen()
             except Exception as e:
-                msg = _("Unable to listen on socket: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Unable to listen on socket: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
 
         # Will hold child processes that sync objects from master node.
         self.sync_childs = {}
@@ -1617,42 +1618,44 @@ class HostDaemon(OTPmeDaemon):
         try:
             self._sync_childs = multiprocessing.get_dict("hostd_sync_childs")
         except Exception as e:
-            msg = _("Failed to get shared dict: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared dict: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         # Will hold all sync jobs.
         try:
             self.sync_jobs = multiprocessing.get_list("hostd_sync_jobs")
         except Exception as e:
-            msg = _("Failed to get shared list: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared list: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # Per realm/site/node last sync notify timestamps.
         try:
             self.last_notify = multiprocessing.get_dict("hostd_last_notify")
         except Exception as e:
-            msg = _("Failed to get shared dict: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared dict: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # Notify controld that we are ready.
         try:
             self.comm_handler.send("controld", command="ready")
         except Exception as e:
-            msg = _("Failed to send read message to controld: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to send read message to controld: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # Get our host object.
         try:
             self.reload_host_object()
         except Exception as e:
-            msg = _("Failed to reload host data: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to reload host data: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
-        self.logger.info(f"{self.full_name} started")
+        log_msg = _("{full_name} started", log=True)[1]
+        log_msg = log_msg.format(full_name=self.full_name)
+        self.logger.info(log_msg)
 
         # Run in loop until we get signal.
         recv_timeout = None
@@ -1676,9 +1679,9 @@ class HostDaemon(OTPmeDaemon):
                     sync_start_status = self.start_sync_jobs()
                 except Exception as e:
                     sync_start_status = False
-                    msg = _("Failed to start sync jobs: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.error(msg)
+                    log_msg = _("Failed to start sync jobs: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.error(log_msg)
                 if sync_start_status:
                     init_sync_started = True
 
@@ -1705,9 +1708,10 @@ class HostDaemon(OTPmeDaemon):
                 except TimeoutReached:
                     daemon_command = None
                 except Exception as e:
-                    msg = _("Error receiving daemon message: {error}")
+                    msg, log_msg = _("Error receiving daemon message: {error}", log=True)
                     msg = msg.format(error=e)
-                    self.logger.critical(msg, exc_info=True)
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg, exc_info=True)
                     raise OTPmeException(msg)
 
                 now = time.time()
@@ -1827,13 +1831,13 @@ class HostDaemon(OTPmeDaemon):
                             self.last_failed_sync[sync_type] = time.time()
 
                         if sync_child.exitcode == 0:
-                            msg = _("Sync child finished successful: {info} [{pid}]")
-                            msg = msg.format(info=sync_child.info, pid=sync_child.pid)
-                            self.logger.debug(msg)
+                            log_msg = _("Sync child finished successful: {info} [{pid}]", log=True)[1]
+                            log_msg = log_msg.format(info=sync_child.info, pid=sync_child.pid)
+                            self.logger.debug(log_msg)
                         else:
-                            msg = _("Sync child failed: {info} [{pid}]")
-                            msg = msg.format(info=sync_child.info, pid=sync_child.pid)
-                            self.logger.debug(msg)
+                            log_msg = _("Sync child failed: {info} [{pid}]", log=True)[1]
+                            log_msg = log_msg.format(info=sync_child.info, pid=sync_child.pid)
+                            self.logger.debug(log_msg)
 
                         sync_child.join()
                         self.sync_childs[sync_type] = None
@@ -1906,9 +1910,8 @@ class HostDaemon(OTPmeDaemon):
                                         unsync_sites = self.get_unsync_sites(timeout=self.lock_timeout)
                                     except LockWaitTimeout:
                                         if config.debug_level() > 3:
-                                            msg = ("Timeout waiting for lock getting "
-                                                    "unsync peers.")
-                                            self.logger.warning(msg)
+                                            log_msg = _("Timeout waiting for lock getting unsync peers.", log=True)[1]
+                                            self.logger.warning(log_msg)
                                         unsync_sites = None
                                     # We only need to start a notify job if there are any
                                     # unsynchronized sites/nodes.
@@ -1918,11 +1921,9 @@ class HostDaemon(OTPmeDaemon):
                                 if (time.time() - self.last_sync[sync_type]) > self.sync_interval:
                                     start_sync = True
                         else:
-                            if ((time.time() - self.last_failed_sync[sync_type])
-                                > self.sync_retry_interval):
-                                msg = ("Last sync failed and retry interval "
-                                        "reached. Retrying...")
-                                self.logger.warning(msg)
+                            if ((time.time() - self.last_failed_sync[sync_type]) > self.sync_retry_interval):
+                                log_msg = _("Last sync failed and retry interval reached. Retrying...", log=True)[1]
+                                self.logger.warning(log_msg)
                                 start_sync = True
 
                     # Start sync job.
@@ -1951,13 +1952,14 @@ class HostDaemon(OTPmeDaemon):
             except (KeyboardInterrupt, SystemExit):
                 pass
             except Exception as e:
-                msg = _("Unhandled error in hostd: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg, exc_info=True)
+                log_msg = _("Unhandled error in hostd: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg, exc_info=True)
                 config.raise_exception()
 
         self.shutdown_sync_childs()
-        self.logger.info("Received signal, terminating.")
+        log_msg = _("Received signal, terminating.", log=True)[1]
+        self.logger.info(log_msg)
         # Cleanup multiprocessing.
         multiprocessing.cleanup()
 

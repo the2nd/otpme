@@ -230,7 +230,8 @@ class OTPmeHostP1(OTPmeClient1):
 
     def trigger_token_data_sync(self):
         """ Send sync commands to hostd. """
-        self.logger.debug(_("Calling hostd to trigger resync of token data..."))
+        log_msg = _("Calling hostd to trigger resync of token data...", log=True)[1]
+        self.logger.debug(log_msg)
         # Trigger OTP/counter sync (e.g. push current HOTP counter to server)
         self.connection.send("sync_objects")
         self.connection.send("sync_token_data")

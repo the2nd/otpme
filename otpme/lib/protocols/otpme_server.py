@@ -247,9 +247,9 @@ class OTPmeServer1(object):
             try:
                 cert_revoked = check_crl(issuer_ca.crl, cert_serial)
             except Exception as e:
-                msg = _("Error checking CRL {ca}: {error}")
-                msg = msg.format(ca=issuer_ca, error=e)
-                self.logger.critical(msg, exc_info=True)
+                log_msg = _("Error checking CRL {ca}: {error}", log=True)[1]
+                log_msg = log_msg.format(ca=issuer_ca, error=e)
+                self.logger.critical(log_msg, exc_info=True)
                 raise
             if cert_revoked:
                 msg = _("Certificate revoked by CA: {issuer}: {client_cn}")
@@ -365,7 +365,8 @@ class OTPmeServer1(object):
         if self._site_cert:
             return self._site_cert
         if config.debug_level() > 3:
-            self.logger.debug("Loading site certificate.")
+            log_msg = _("Loading site certificate.", log=True)[1]
+            self.logger.debug(log_msg)
         own_site = backend.get_object(object_type="site",
                                     uuid=config.site_uuid)
         self._site_cert = own_site._cert
@@ -388,7 +389,8 @@ class OTPmeServer1(object):
         # Sing challenge with site cert.
         site_cert = self._get_site_cert()
         if config.debug_level() > 3:
-            self.logger.debug("Signing ident challenge.")
+            log_msg = _("Signing ident challenge.", log=True)[1]
+            self.logger.debug(log_msg)
         try:
             ident_response = site_cert.sign(data=ident_challenge,
                                             encoding="base64")
@@ -428,9 +430,9 @@ class OTPmeServer1(object):
     def process(self, data):
         """ Process command. """
         #if len(data) == 0:
-        #    msg = _("Client '{client}' closed connection.")
-        #    msg = msg.format(client=self.client)
-        #    self.logger.warning(msg)
+        #    log_msg = _("Client '{client}' closed connection.", log=True)[1]
+        #    log_msg = log_msg.format(client=self.client)
+        #    self.logger.warning(log_msg)
         #    message = "Bye bye..."
         #    raise ClientQuit(message)
         if not config.use_api:
@@ -469,7 +471,6 @@ class OTPmeServer1(object):
             status = status_codes.HOST_DISABLED
             message = _("{peer_type} is disabled: {peer_fqdn}")
             message = message.format(peer_type=self.peer.type, peer_fqdn=self.peer.fqdn)
-            #self.logger.warning(message)
             return self.build_response(status, message, encrypt=False)
 
         enc_key = None
@@ -492,9 +493,10 @@ class OTPmeServer1(object):
                                         enc_key=enc_key)
         except Exception as e:
             config.raise_exception()
-            msg = _("Received invalid request: {error}")
+            msg, log_msg = _("Received invalid request: {error}", log=True)
             msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             raise ServerQuit(msg)
 
         # Try to get peer object from client cert.
@@ -503,19 +505,23 @@ class OTPmeServer1(object):
                 self.peer = self.get_peer_from_cert()
             except Exception as e:
                 config.raise_exception()
-                msg = _("Unable to get peer from certificate CN: {error}")
+                msg, log_msg = _("Unable to get peer from certificate CN: {error}", log=True)
                 msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 raise ServerQuit(msg)
 
             if not self.peer:
-                msg = _("Unknown node/host: {client_cn}")
+                msg, log_msg = _("Unknown node/host: {client_cn}", log=True)
                 msg = msg.format(client_cn=self.client_cn)
-                self.logger.warning(msg)
+                log_msg = log_msg.format(client_cn=self.client_cn)
+                self.logger.warning(log_msg)
                 raise ServerQuit(msg)
-            msg = f"Found valid peer {self.peer.type}: {self.peer.name}"
             if config.debug_level() > 3:
-                self.logger.debug(msg)
+                log_msg = _("Found valid peer {peer_type}: {peer_name}", log=True)[1]
+                log_msg = log_msg.format(peer_type=self.peer.type,
+                                        peer_name=self.peer.name)
+                self.logger.debug(log_msg)
 
         # Allow "quit" also for disabled hosts.
         if command == "quit":
@@ -548,18 +554,18 @@ class OTPmeServer1(object):
             except Exception as e:
                 config.raise_exception()
                 message = "Ident command failed: Internal server error"
-                msg = _("Error in OTPmeServer1._ident_site(): {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error in OTPmeServer1._ident_site(): {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
                 status = False
                 return self.build_response(status, message, encrypt=False)
             return self.build_response(ident_status, ident_reply, encrypt=False)
 
         if command == "preauth_check":
-            msg = _("Processing 'preauth_check' command for client: {client}")
-            msg = msg.format(client=self.client_name)
             if config.debug_level() > 3:
-                self.logger.debug(msg)
+                log_msg = _("Processing 'preauth_check' command for client: {client}", log=True)[1]
+                log_msg = log_msg.format(client=self.client_name)
+                self.logger.debug(log_msg)
             try:
                 self.encrypt_session = command_args['encrypt_session']
             except KeyError:
@@ -583,9 +589,9 @@ class OTPmeServer1(object):
                 self._start_preauth(command, command_args)
             except Exception as e:
                 config.raise_exception()
-                msg = _("Error in OTPmeServer1._start_preauth(): {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error in OTPmeServer1._start_preauth(): {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
 
             # Do preauth.
             preauth_result = self.handle_preauth(preauth_request, enc_key=enc_key)
@@ -595,9 +601,9 @@ class OTPmeServer1(object):
                 self._end_preauth(command, command_args, preauth_result)
             except Exception as e:
                 config.raise_exception()
-                msg = _("Error in OTPmeServer1._end_preauth(): {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error in OTPmeServer1._end_preauth(): {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
             # Return result.
             return preauth_result
 
@@ -670,13 +676,13 @@ class OTPmeServer1(object):
                 status = True
             else:
                 if self.require_auth == "user":
-                    message = "Not logged in."
+                    message = _("Not logged in.")
                     status = status_codes.NEED_USER_AUTH
                 elif self.require_auth == "host":
-                    message = "Peer not authenticated."
+                    message = _("Peer not authenticated.")
                     status = status_codes.NEED_HOST_AUTH
                 else:
-                    message = "No auth required"
+                    message = _("No auth required.")
                     status = True
             return self.build_response(status, message)
 
@@ -686,9 +692,9 @@ class OTPmeServer1(object):
                 self._start_host_auth(command, command_args)
             except Exception as e:
                 config.raise_exception()
-                msg = _("Error in OTPmeServer1._start_host_auth(): {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error in OTPmeServer1._start_host_auth(): {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
             # Try to authenticate the host.
             try:
                 host_auth_reply = self.authenticate_host(command, command_args)
@@ -704,9 +710,9 @@ class OTPmeServer1(object):
                                     host_auth_reply)
             except Exception as e:
                 config.raise_exception()
-                msg = _("Error in OTPmeServer1._end_host_auth(): {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error in OTPmeServer1._end_host_auth(): {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
 
             return self.build_response(auth_status, host_auth_reply)
 
@@ -719,25 +725,26 @@ class OTPmeServer1(object):
                 self._start_user_auth(command, command_args)
             except Exception as e:
                 config.raise_exception()
-                msg = _("Error in OTPmeServer1._start_user_auth(): {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error in OTPmeServer1._start_user_auth(): {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
             # Try to authenticate the user.
             try:
                 user_auth_reply = self.authenticate_user(command, command_args)
                 auth_status = True
             except OTPmeException as e:
-                message = _("Error authenticating user: {error}")
+                message, log_msg = _("Error authenticating user: {error}", log=True)
                 message = message.format(error=e)
-                self.logger.critical(message)
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
                 status = False
                 config.raise_exception()
                 return self.build_response(status, message, encrypt=False)
             except Exception as e:
                 config.raise_exception()
-                msg = _("Error in authenticate_user(): {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error in authenticate_user(): {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
                 auth_status = False
                 user_auth_reply = "Internal server error."
             # Notify protocol handler about the auth status.
@@ -748,9 +755,9 @@ class OTPmeServer1(object):
                                     user_auth_reply)
             except Exception as e:
                 config.raise_exception()
-                msg = _("Error in OTPmeServer1._end_user_auth(): {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error in OTPmeServer1._end_user_auth(): {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
 
             return self.build_response(auth_status, user_auth_reply)
 
@@ -761,9 +768,9 @@ class OTPmeServer1(object):
                                     binary_data=binary_data)
         except Exception as e:
             config.raise_exception()
-            msg = _("Error in OTPmeServer1._process(): {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Error in OTPmeServer1._process(): {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             message = "Internal server error."
             status = False
             response = self.build_response(status, message)
@@ -779,18 +786,18 @@ class OTPmeServer1(object):
                 return self.build_response(status, message, encrypt=False)
             # Set encryption mod for reply.
             enc_mod = self.session_enc_mod
-            msg = "Decrypting preauth request key..."
             if config.debug_level() > 3:
-                self.logger.debug(msg)
+                log_msg = _("Decrypting preauth request key...", log=True)[1]
+                self.logger.debug(log_msg)
             try:
                 enc_key = decode(enc_key, "hex")
                 enc_key = self.site_key.decrypt(ciphertext=enc_key,
                                                 algorithm="SHA256",
                                                 cipher='PKCS1_OAEP')
             except Exception as e:
-                msg = _("Failed to decrypt preauth key: {peer}: {error}")
-                msg = msg.format(peer=self.peer, error=e)
-                self.logger.critical(msg)
+                log_msg = _("Failed to decrypt preauth key: {peer}: {error}", log=True)[1]
+                log_msg = log_msg.format(peer=self.peer, error=e)
+                self.logger.critical(log_msg)
                 status = False
                 message = _("Failed to decrypt preauth key: {peer}")
                 message = message.format(peer=self.peer)
@@ -799,36 +806,38 @@ class OTPmeServer1(object):
 
         # Decode/decrypt preauth request.
         if self.encrypt_session:
-            msg = "Decrypting preauth request..."
+            log_msg = _("Decrypting preauth request...", log=True)[1]
         else:
-            msg = "Decoding preauth request..."
+            log_msg = _("Decoding preauth request...", log=True)[1]
         if config.debug_level() > 3:
-            self.logger.debug(msg)
+            self.logger.debug(log_msg)
         try:
             request = json.decode(preauth_request,
                                 encryption=enc_mod,
                                 enc_key=enc_key)
         except Exception as e:
             config.raise_exception()
-            message = _("Unable to decode preauth request: {error}")
+            message, log_msg = _("Unable to decode preauth request: {error}", log=True)
             message = message.format(error=e)
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             status = False
-            self.logger.warning(message)
             return self.build_response(status, message, encrypt=False)
         try:
             preauth_args = request['command_args']
         except:
-            msg = "Received invalid request: Preauth args missing"
+            msg = _("Received invalid request: Preauth args missing")
             raise OTPmeException(msg)
 
         # Do preauth check of protocol handler.
         try:
             self._preauth_check(preauth_args)
         except Exception as e:
-            message = _("Preauth check failed: {error}")
+            message, log_msg = _("Preauth check failed: {error}", log=True)
             message = message.format(error=e)
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             status = False
-            self.logger.warning(message)
             return self.build_response(status, message, encrypt=False)
 
         # Get session DH parameter.
@@ -875,9 +884,9 @@ class OTPmeServer1(object):
             try:
                 self.access_group = self.get_access_group(client=client)
             except Exception as e:
-                msg = _("Failed to get accessgroup of client: {client}: {error}")
-                msg = msg.format(client=client, error=e)
-                self.logger.warning(msg)
+                log_msg = _("Failed to get accessgroup of client: {client}: {error}", log=True)[1]
+                log_msg = log_msg.format(client=client, error=e)
+                self.logger.warning(log_msg)
                 message = _("Unable to get client accessgroup: {client}")
                 message = message.format(client=client)
                 status = False
@@ -886,9 +895,9 @@ class OTPmeServer1(object):
             try:
                 self.access_group = self.get_access_group(client_ip=client_ip)
             except Exception as e:
-                msg = _("Failed to get accessgroup of client: {client}: {error}")
-                msg = msg.format(client=client, error=e)
-                self.logger.warning(msg)
+                log_msg = _("Failed to get accessgroup of client: {client}: {error}", log=True)[1]
+                log_msg = log_msg.format(client=client, error=e)
+                self.logger.warning(log_msg)
                 message = _("Unable to get client accessgroup: {client}")
                 message = message.format(client=client)
                 status = False
@@ -897,9 +906,9 @@ class OTPmeServer1(object):
             try:
                 self.access_group = self.get_access_group(host=self.peer.name)
             except Exception as e:
-                msg = _("Failed to get accessgroup of host: {client}: {error}")
-                msg = msg.format(client=client, error=e)
-                self.logger.warning(msg)
+                log_msg = _("Failed to get accessgroup of host: {client}: {error}", log=True)[1]
+                log_msg = log_msg.format(client=client, error=e)
+                self.logger.warning(log_msg)
                 message = _("Unable to get host accessgroup: {client}")
                 message = message.format(client=client)
                 status = False
@@ -977,7 +986,8 @@ class OTPmeServer1(object):
                 }
 
         if config.debug_level() > 3:
-            self.logger.debug("Sending preauth reply.")
+            log_msg = _("Sending preauth reply.", log=True)[1]
+            self.logger.debug(log_msg)
 
         # The outer request is sent unencrypted!
         return self.build_response(status, reply, encrypt=False)
@@ -992,7 +1002,8 @@ class OTPmeServer1(object):
             # Load site certificate.
             site_cert = self._get_site_cert()
             if config.debug_level() > 3:
-                self.logger.debug("Signing preauth challenge.")
+                log_msg = _("Signing preauth challenge.", log=True)[1]
+                self.logger.debug(log_msg)
             try:
                 preauth_response = site_cert.sign(data=challenge, encoding="base64")
             except Exception as e:
@@ -1005,7 +1016,8 @@ class OTPmeServer1(object):
         if self.encrypt_session:
             # Generate session key via DH.
             if config.debug_level() > 3:
-                self.logger.debug("Generating session key via DH.")
+                log_msg = _("Generating session key via DH.", log=True)[1]
+                self.logger.debug(log_msg)
             try:
                 ecdh_key = ECKey()
                 ecdh_key.gen_key(curve=self.ecdh_curve)
@@ -1055,9 +1067,9 @@ class OTPmeServer1(object):
                         user_site = backend.get_object(object_type="site",
                                                     uuid=self.user.site_uuid)
                         if config.site_uuid not in user_site.trusted_sites:
-                            msg = _("Redirecting authentication for user from other site: {realm}/{site}/{user}")
-                            msg = msg.format(realm=self.user.realm, site=self.user.site, user=self.user.name)
-                            self.logger.debug(msg)
+                            log_msg = _("Redirecting authentication for user from other site: {realm}/{site}/{user}", log=True)[1]
+                            log_msg = log_msg.format(realm=self.user.realm, site=self.user.site, user=self.user.name)
+                            self.logger.debug(log_msg)
                             preauth_reply = self.gen_jwt_auth_reply(self.user,
                                                             login,
                                                             preauth_response,
@@ -1077,9 +1089,9 @@ class OTPmeServer1(object):
                     'preauth_response'      : preauth_response,
                     'ecdh_server_pub'       : ecdh_server_pub_pem,
                     }
-            msg = _("Unknown user: {username}")
-            msg = msg.format(username=username)
-            self.logger.warning(msg)
+            log_msg = _("Unknown user: {username}", log=True)[1]
+            log_msg = log_msg.format(username=username)
+            self.logger.warning(log_msg)
             return preauth_reply
 
         if logout:
@@ -1136,13 +1148,15 @@ class OTPmeServer1(object):
                         'preauth_response'      : preauth_response,
                         'ecdh_server_pub'       : ecdh_server_pub_pem,
                         }
-                self.logger.warning(status_message)
+                log_msg = status_message
+                self.logger.warning(log_msg)
                 return preauth_reply
 
         # If peer requested JWT authentication we need to generate a challenge
         # to send in reply.
         if jwt_auth:
-            self.logger.debug("Peer wants JWT authentication.")
+            log_msg = _("Peer wants JWT authentication.", log=True)[1]
+            self.logger.debug(log_msg)
             preauth_reply = self.gen_jwt_auth_reply(self.user,
                                                     login,
                                                     preauth_response,
@@ -1169,9 +1183,9 @@ class OTPmeServer1(object):
             return
 
         # Get user tokens valid for our access group.
-        msg = _("Selecting valid tokens for accessgroup/user: {access_group}/{user}")
-        msg = msg.format(access_group=self.access_group, user=self.user.name)
-        self.logger.debug(msg)
+        log_msg = _("Selecting valid tokens for accessgroup/user: {access_group}/{user}", log=True)[1]
+        log_msg = log_msg.format(access_group=self.access_group, user=self.user.name)
+        self.logger.debug(log_msg)
 
         # Get all valid tokens for the given access group.
         valid_user_tokens = self.get_valid_tokens(user=self.user, login=login)
@@ -1201,9 +1215,9 @@ class OTPmeServer1(object):
                                                 'fftoken'   : verify_token,
                                                 }
                 except Exception as e:
-                    msg = _("Unable to load second factor token of '{token_path}': {error}")
-                    msg = msg.format(token_path=verify_token.rel_path, error=e)
-                    self.logger.critical(msg)
+                    log_msg = _("Unable to load second factor token of '{token_path}': {error}", log=True)[1]
+                    log_msg = log_msg.format(token_path=verify_token.rel_path, error=e)
+                    self.logger.critical(log_msg)
 
         # Get smartcard options.
         token_options = {}
@@ -1219,9 +1233,9 @@ class OTPmeServer1(object):
             try:
                 token_opts = smartcard_server_handler.handle_preauth(token=verify_token)
             except Exception as e:
-                msg = _("Smarcard handler failed: {token}: {error}")
-                msg = msg.format(token=verify_token, error=e)
-                self.logger.warning(msg)
+                log_msg = _("Smarcard handler failed: {token}: {error}", log=True)[1]
+                log_msg = log_msg.format(token=verify_token, error=e)
+                self.logger.warning(log_msg)
                 continue
             try:
                 pass_required = token_opts['pass_required']
@@ -1240,9 +1254,9 @@ class OTPmeServer1(object):
             token_opts['is_2f_token'] = is_2f_token
             token_options[verify_token.rel_path] = token_opts
             self.smartcard_handlers[verify_token.rel_path] = smartcard_server_handler
-            msg = _("Got valid smartcard type '{token_type}' from token: {token_path}")
-            msg = msg.format(token_type=verify_token.token_type, token_path=verify_token.rel_path)
-            self.logger.debug(msg)
+            log_msg = _("Got valid smartcard type '{token_type}' from token: {token_path}", log=True)[1]
+            log_msg = log_msg.format(token_type=verify_token.token_type, token_path=verify_token.rel_path)
+            self.logger.debug(log_msg)
 
         # Get ssh public keys from valid tokens.
         ssh_public_keys = []
@@ -1289,7 +1303,7 @@ class OTPmeServer1(object):
 
         else:
             self.preauth_status = False
-            message = (_("No token found to authenticate user."))
+            message, log_msg = _("No token found to authenticate user.", log=True)
             preauth_reply = {
                     'realm'                 : config.realm,
                     'site'                  : config.site,
@@ -1299,7 +1313,7 @@ class OTPmeServer1(object):
                     'preauth_response'      : preauth_response,
                     'ecdh_server_pub'       : ecdh_server_pub_pem,
                     }
-            self.logger.warning(message)
+            self.logger.warning(log_msg)
 
         return preauth_reply
 
@@ -1327,7 +1341,8 @@ class OTPmeServer1(object):
                     'reason'        : jwt_reason,
                     'challenge'     : challenge,
                 }
-        self.logger.debug("Generating redirect challenge...")
+        log_msg = _("Generating redirect challenge...", log=True)[1]
+        self.logger.debug(log_msg)
         self.redirect_challenge = jwt.encode(payload=jwt_data,
                                             key=self.site_key,
                                             algorithm='RS256')
@@ -1373,33 +1388,25 @@ class OTPmeServer1(object):
         # If client is not set in this request but client_ip is set try to find
         # client by IP.
         if client_ip:
-            self.logger.debug("Request contains no client name but a client IP. "
-                        "Trying to find client name by IP.")
+            log_msg = _("Request contains no client name but a client IP. Trying to find client name by IP.", log=True)[1]
+            self.logger.debug(log_msg)
             # Try to get client name by IP.
             found_clients = self.get_client_by_ip(self.user.realm,
                                                 self.user.site,
                                                 client_ip)
             if len(found_clients) > 1:
-                msg = _("More than one client has configured IP '{client_ip}': {clients}")
+                msg, log_msg = _("More than one client has configured IP '{client_ip}': {clients}", log=True)
                 msg = msg.format(client_ip=self.client_ip, clients=', '.join(found_clients))
-                self.logger.warning(msg)
-                self.logger.warning("If you have clients that send requests without "
-                                "a client name (e.g. NAS-ID for radius) you can "
-                                "map a client name to this clients by adding "
-                                "the correspondig IP to the client config. But "
-                                "only to one client!")
+                log_msg = log_msg.format(client_ip=self.client_ip, clients=', '.join(found_clients))
+                self.logger.warning(log_msg)
+                log_msg = _("If you have clients that send requests without a client name (e.g. NAS-ID for radius) you can map a client name to this clients by adding the correspondig IP to the client config. But only to one client!", log=True)[1]
+                self.logger.warning(log_msg)
                 raise OTPmeException(msg)
 
             if len(found_clients) == 0:
-                msg = ("Cannot find client of this request. Authentication "
-                        "will fail.")
-                self.logger.warning(msg)
-                raise OTPmeException(msg)
-
-            if len(found_clients) != 1:
-                msg = ("Found multiple clients of this request. Authentication "
-                        "will fail.")
-                self.logger.warning(msg)
+                msg, log_msg = _("Cannot find client of this request. Authentication "
+                                "will fail.", log=True)
+                self.logger.warning(log_msg)
                 raise OTPmeException(msg)
 
             # If we found exactly one client for this IP we can set it.
@@ -1411,36 +1418,34 @@ class OTPmeServer1(object):
                                             name=auth_client,
                                             run_policies=True,
                                             _no_func_cache=True)
-            msg = _("Found client '{client_name}' via IP '{client_ip}'.")
-            msg = msg.format(client_name=auth_client.name, client_ip=client_ip)
-            self.logger.debug(msg)
+            log_msg = _("Found client '{client_name}' via IP '{client_ip}'.", log=True)[1]
+            log_msg = log_msg.format(client_name=auth_client.name, client_ip=client_ip)
+            self.logger.debug(log_msg)
 
         # If client is not enabled authentication must fail.
         if not auth_client.enabled:
-            msg = _("Client '{client}' is disabled.")
-            msg = msg.format(client=self.client)
-            self.logger.warning(msg)
+            log_msg = _("Client '{client}' is disabled.", log=True)[1]
+            log_msg = log_msg.format(client=self.client)
+            self.logger.warning(log_msg)
             raise OTPmeException(msg)
 
         # Try to get access_group of the client.
         access_group = auth_client.access_group
         if not access_group:
-            msg = ("Got no accessgroup from client config. "
-                    "Authentication will fail.")
-            self.logger.warning(msg)
-            raise OTPmeException(msg)
+            log_msg = _("Got no accessgroup from client config. Authentication will fail.", log=True)[1]
+            self.logger.warning(log_msg)
+            raise OTPmeException(log_msg)
 
-        msg = f"Got accessgroup '{access_group}' from client config."
-        self.logger.debug(msg)
+        log_msg = _("Got accessgroup '{access_group}' from client config.", log=True)[1]
+        self.logger.debug(log_msg)
 
         return access_group
 
     def get_peer_from_cert(self):
         """ Try to find OTPme object from peer infos. """
         if not self.client_cn:
-            msg = ("Uuuuuh, we got no peer name (SSL certificate). "
-                    "This should never happen. :(")
-            self.logger.critical(msg)
+            log_msg = _("Uuuuuh, we got no peer name (SSL certificate). This should never happen. :(", log=True)[1]
+            self.logger.critical(log_msg)
             raise CertVerifyFailed("AUTH_CLIENT_CERT_MISSING")
 
         # Try to get peer name etc.
@@ -1450,8 +1455,8 @@ class OTPmeServer1(object):
             peer_site = peer_fqdn.split(".")[1]
             peer_realm = ".".join(peer_fqdn.split(".")[2:])
         except:
-            msg = f"Got invalid client cert CN from client: {self.client_cn}"
-            self.logger.warning(msg)
+            log_msg = _("Got invalid client cert CN from client: {self.client_cn}", log=True)[1]
+            self.logger.warning(log_msg)
             raise CertVerifyFailed("AUTH_INVALID_CERT_CN")
 
         # Try to find OTPme object of peer.
@@ -1538,28 +1543,28 @@ class OTPmeServer1(object):
             try:
                 peer_response = command_args['client_response']
             except:
-                msg = ("Invalid auth command: Missing peer challenge")
-                self.logger.warning(msg)
+                log_msg = _("Invalid auth command: Missing peer challenge", log=True)[1]
+                self.logger.warning(log_msg)
                 raise OTPmeException("AUTH_INVALID_REQUEST")
 
             try:
                 status = self.peer.verify_challenge(self.peer_challenge,
                                                     peer_response)
             except Exception as e:
-                msg = _("Error verifying peer challenge: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Error verifying peer challenge: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 raise OTPmeException("AUTH_INVALID_REQUEST")
 
             if not status:
-                msg = ("Failed to verify peer challenge.")
-                self.logger.warning(msg)
+                log_msg = _("Failed to verify peer challenge.", log=True)[1]
+                self.logger.warning(log_msg)
                 raise OTPmeException("AUTH_FAILED")
 
-            msg = _("Peer response verification successful: {peer_name}")
-            msg = msg.format(peer_name=self.peer.name)
+            log_msg = _("Peer response verification successful: {peer_name}", log=True)[1]
+            log_msg = log_msg.format(peer_name=self.peer.name)
             if config.debug_level() > 3:
-                self.logger.debug(msg)
+                self.logger.debug(log_msg)
 
             self.authenticated = True
             reply = "Host authentication successful."
@@ -1568,15 +1573,15 @@ class OTPmeServer1(object):
         # Verify peer certificate (only on the first request, before we
         # have generated the peer challenge).
         if self.peer.fqdn != self.client_cn:
-            msg = _("Peer certificate CN '{client_cn}' does not match FQDN of {peer_type}: {peer_fqdn}")
-            msg = msg.format(client_cn=self.client_cn, peer_type=self.peer.type, peer_fqdn=self.peer.fqdn)
-            self.logger.warning(msg)
+            log_msg = _("Peer certificate CN '{client_cn}' does not match FQDN of {peer_type}: {peer_fqdn}", log=True)[1]
+            log_msg = log_msg.format(client_cn=self.client_cn, peer_type=self.peer.type, peer_fqdn=self.peer.fqdn)
+            self.logger.warning(log_msg)
             raise OTPmeException(msg)
 
         if config.debug_level() > 3:
-            msg = _("Verified peer certificate CN: {peer_fqdn}")
-            msg = msg.format(peer_fqdn=self.peer.fqdn)
-            self.logger.debug(msg)
+            log_msg = _("Verified peer certificate CN: {peer_fqdn}", log=True)[1]
+            log_msg = log_msg.format(peer_fqdn=self.peer.fqdn)
+            self.logger.debug(log_msg)
 
         # Set proctitle to contain peer name.
         peer_type = self.peer.type[0].upper() + self.peer.type[1:].lower()
@@ -1593,8 +1598,8 @@ class OTPmeServer1(object):
         try:
             server_challenge = command_args['server_challenge']
         except:
-            msg = ("Invalid auth command: Missing server challenge")
-            self.logger.warning(msg)
+            log_msg = _("Invalid auth command: Missing server challenge", log=True)[1]
+            self.logger.warning(log_msg)
             raise OTPmeException("AUTH_INVALID_REQUEST")
 
         # Generate client challenge to be send to peer.
@@ -1677,14 +1682,15 @@ class OTPmeServer1(object):
         try:
             username = command_args.pop('username')
         except:
-            msg = f"Got incomplete command from client: {self.client}: Missing username"
-            self.logger.warning(msg)
+            log_msg = _("Got incomplete command from client: {client}: Missing username", log=True)[1]
+            log_msg = log_msg.format(client=self.client)
+            self.logger.warning(log_msg)
             raise OTPmeException("AUTH_INCOMPLETE_COMMAND")
 
         # Check if user exists.
         if not self.user:
-            msg = "Login failed."
-            self.logger.warning(msg)
+            log_msg = _("Login failed.", log=True)[1]
+            self.logger.warning(log_msg)
             raise OTPmeException("AUTH_FAILED")
 
         # If we are called from a daemon set proctitle to contain username.
@@ -1792,15 +1798,15 @@ class OTPmeServer1(object):
             try:
                 smartcard_server_handler = self.smartcard_handlers[smartcard_token_rel_path]
             except:
-                msg = "Client sent smartcard data for unknown token."
-                self.logger.warning(msg)
+                msg, log_msg = _("Client sent smartcard data for unknown token.", log=True)
+                self.logger.warning(log_msg)
                 raise OTPmeException(msg)
             try:
                 smartcard_data = smartcard_server_handler.prepare_authentication(smartcard_data)
             except Exception as e:
-                msg = _("Smartcard handler exception: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Smartcard handler exception: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 config.raise_exception()
                 raise OTPmeException("SMARTCARD_HANLDER_EXCEPTION")
             try:
@@ -1837,9 +1843,9 @@ class OTPmeServer1(object):
                 return passauth(query_id="password", prompt="Password/OTP:")
 
         elif auth_type == "ssh":
-            msg = _("Selecting SSH token for user: {user}")
-            msg = msg.format(user=self.user.name)
-            self.logger.debug(msg)
+            log_msg = _("Selecting SSH token for user: {user}", log=True)[1]
+            log_msg = log_msg.format(user=self.user.name)
+            self.logger.debug(log_msg)
             # Try to get valid SSH token of the user.
             token, \
             verify_token = self.get_valid_ssh_token(user=self.user,
@@ -1852,9 +1858,9 @@ class OTPmeServer1(object):
             except KeyError:
                 token_challenge = None
             if not token_challenge:
-                msg = _("Doing {auth_type} authentication.")
-                msg = msg.format(auth_type=auth_type)
-                self.logger.debug(msg)
+                log_msg = _("Doing {auth_type} authentication.", log=True)[1]
+                log_msg = log_msg.format(auth_type=auth_type)
+                self.logger.debug(log_msg)
                 # Set challenge and token for this request.
                 token_challenge = verify_token.gen_challenge()
                 self.token_challenges[verify_token.rel_path] = token_challenge
@@ -1865,9 +1871,9 @@ class OTPmeServer1(object):
                 return sshauth(query_id="response", challenge=token_challenge)
 
         if command_args:
-            msg = _("Got unknown command args: {args}")
-            msg = msg.format(args=list(command_args.keys()))
-            self.logger.warning(msg)
+            log_msg = _("Got unknown command args: {args}", log=True)[1]
+            log_msg = log_msg.format(args=list(command_args.keys()))
+            self.logger.warning(log_msg)
 
         if challenge:
             if not self.token_challenges:
@@ -1912,9 +1918,9 @@ class OTPmeServer1(object):
                 raise
             except Exception as e:
                 config.raise_exception()
-                msg = _("Error running User().authenticate(): {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg, exc_info=True)
+                log_msg = _("Error running User().authenticate(): {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg, exc_info=True)
                 raise OTPmeException(_("Internal error while authenticating user."))
             # Get auth status from reply.
             auth_status = auth_reply['status']
@@ -1954,9 +1960,9 @@ class OTPmeServer1(object):
                 raise
             except Exception as e:
                 config.raise_exception()
-                msg = _("Error running User().authenticate(): {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg, exc_info=True)
+                log_msg = _("Error running User().authenticate(): {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg, exc_info=True)
                 raise OTPmeException("Internal error while authenticating user.")
             # Get auth status from reply.
             auth_status = auth_reply['status']
@@ -2014,9 +2020,9 @@ class OTPmeServer1(object):
                     try:
                         second_factor_token = verify_token.get_sftoken()
                     except Exception as e:
-                        msg = _("Unable to load second factor token of '{token_path}': {error}")
-                        msg = msg.format(token_path=verify_token.rel_path, error=e)
-                        self.logger.critical(msg)
+                        log_msg = _("Unable to load second factor token of '{token_path}': {error}", log=True)[1]
+                        log_msg = log_msg.format(token_path=verify_token.rel_path, error=e)
+                        self.logger.critical(log_msg)
                 if second_factor_token:
                     # Add second factor token to reply.
                     object_config = second_factor_token.get_offline_config(second_factor_usage=True)

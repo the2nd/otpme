@@ -218,9 +218,9 @@ class OTPmeAgentP1(object):
         # session we grant access because there is no way to protect the RSP
         # from beeing stolen if the user has e.g. access to /proc/$PID/environ.
         if session['system_user'] == username:
-            msg = _("PID {pid} authorized.")
-            msg = msg.format(pid=pid)
-            self.logger.debug(msg)
+            log_msg = _("PID {pid} authorized.", log=True)[1]
+            log_msg = log_msg.format(pid=pid)
+            self.logger.debug(log_msg)
             return True
 
         # Check session ACLs for the user of the connecting PID.
@@ -237,9 +237,9 @@ class OTPmeAgentP1(object):
                 authorized = True
 
         if authorized:
-            msg = _("User {username} ({pid}) authorized by ACL.")
-            msg = msg.format(username=username, pid=pid)
-            self.logger.debug(msg)
+            log_msg = _("User {username} ({pid}) authorized by ACL.", log=True)[1]
+            log_msg = log_msg.format(username=username, pid=pid)
+            self.logger.debug(log_msg)
             return True
 
         return False
@@ -325,9 +325,9 @@ class OTPmeAgentP1(object):
             status = True
             return self.build_response(status, message)
 
-        #msg = _("PID {pid} called command: {command}")
-        #msg = msg.format(pid=self.client_pid, command=command)
-        #self.logger.debug(msg)
+        #log_msg = _("PID {pid} called command: {command}", log=True)[1]
+        #log_msg = log_msg.format(pid=self.client_pid, command=command)
+        #self.logger.debug(log_msg)
 
         # Check if the requesting process is allowed to access one of the
         # sessions we hold.
@@ -377,9 +377,9 @@ class OTPmeAgentP1(object):
                     continue
                 self.authorized = True
                 self.login_pid = login_pid
-                msg = _("Granted access to SSH key passphrase by PID: {pid}")
-                msg = msg.format(pid=self.client_pid)
-                self.logger.debug(msg)
+                log_msg = _("Granted access to SSH key passphrase by PID: {pid}", log=True)[1]
+                log_msg = log_msg.format(pid=self.client_pid)
+                self.logger.debug(log_msg)
                 break
 
         # Set session.
@@ -470,18 +470,18 @@ class OTPmeAgentP1(object):
                     self.tty = None
 
                 if self.login_user:
-                    msg = _("Adding session for user '{user}' (PID: {pid}).")
-                    msg = msg.format(user=self.login_user, pid=self.login_pid)
-                    self.logger.info(msg)
+                    log_msg = _("Adding session for user '{user}' (PID: {pid}).", log=True)[1]
+                    log_msg = log_msg.format(user=self.login_user, pid=self.login_pid)
+                    self.logger.info(log_msg)
                     # If we got a session ID get login PID from it.
                     if self.session_id:
                         login_pid = self.session_id.split(":")[0]
                         if stuff.check_pid(login_pid):
                             self.login_pid = login_pid
                         else:
-                            msg = _("Login PID from given session ID does not exist: {pid}")
-                            msg = msg.format(pid=login_pid)
-                            self.logger.warning(msg)
+                            log_msg = _("Login PID from given session ID does not exist: {pid}", log=True)[1]
+                            log_msg = log_msg.format(pid=login_pid)
+                            self.logger.warning(log_msg)
                     else:
                         self.session_id = f"{self.login_pid}:{stuff.gen_secret()}"
                     # Lock the session.
@@ -533,15 +533,16 @@ class OTPmeAgentP1(object):
                     try:
                         mount_point = prepare_mount_point(login_user, share_site, share_name)
                     except Exception as e:
-                        msg = _("Failed to prepare mountpoint: {error}")
-                        msg = msg.format(error=e)
-                        self.logger.warning(msg)
+                        log_msg = _("Failed to prepare mountpoint: {error}", log=True)[1]
+                        log_msg = log_msg.format(error=e)
+                        self.logger.warning(log_msg)
                         continue
                     if os.path.ismount(mount_point):
                         status = False
-                        msg = _("Share already mounted: {share_id}: {mount_point}")
+                        msg, log_msg = _("Share already mounted: {share_id}: {mount_point}", log=True)
                         msg = msg.format(share_id=share_id, mount_point=mount_point)
-                        self.logger.info(msg)
+                        log_msg = log_msg.format(share_id=share_id, mount_point=mount_point)
+                        self.logger.info(log_msg)
                         messages.append(msg)
                         continue
                     os.environ['OTPME_LOGIN_SESSION'] = self.session_id
@@ -559,9 +560,10 @@ class OTPmeAgentP1(object):
                                                             daemon=False)
                     mount_proc.join()
                     if mount_proc.exitcode != 0:
-                        msg = _("Failed to mount share: {share_id}")
+                        msg, log_msg = _("Failed to mount share: {share_id}", log=True)
                         msg = msg.format(share_id=share_id)
-                        self.logger.warning(msg)
+                        log_msg = log_msg.format(share_id=share_id)
+                        self.logger.warning(log_msg)
                         messages.append(msg)
                         continue
                     new_mounts[share_id] = shares[share_id]
@@ -569,10 +571,11 @@ class OTPmeAgentP1(object):
                         os.system(f"sudo -n setreadahead {mount_point}")
                     except Exception as e:
                         status = False
-                        msg = _("Failed to run setreadahead: {mount_point}: {error}")
+                        msg, log_msg = _("Failed to run setreadahead: {mount_point}: {error}", log=True)
                         msg = msg.format(mount_point=mount_point, error=e)
+                        log_msg = log_msg.format(mount_point=mount_point, error=e)
+                        self.logger.warning(log_msg)
                         messages.append(msg)
-                        self.logger.warning(msg)
                 try:
                     mounted_shares = self.session['mounted_shares']
                 except KeyError:
@@ -581,9 +584,10 @@ class OTPmeAgentP1(object):
                     mounted_shares[share_id] = new_mounts[share_id]
                 self.session['mounted_shares'] = mounted_shares
                 self.login_sessions[self.login_pid] = self.session
-                msg = _("Shares mounted: {mounts}")
+                msg, log_msg = _("Shares mounted: {mounts}", log=True)
                 msg = msg.format(mounts=new_mounts)
-                self.logger.info(msg)
+                log_msg = log_msg.format(mounts=new_mounts)
+                self.logger.info(log_msg)
                 messages.append(msg)
                 message = "\n".join(messages)
 
@@ -609,16 +613,17 @@ class OTPmeAgentP1(object):
                         try:
                             os.system(f"fusermount -z -u {mount_point}")
                         except Exception as e:
-                            msg = _("Failed to unmount share: {mount_point}: {error}")
+                            msg, log_msg = _("Failed to unmount share: {mount_point}: {error}", log=True)
                             msg = msg.format(mount_point=mount_point, error=e)
+                            log_msg = log_msg.format(mount_point=mount_point, error=e)
+                            self.logger.warning(log_msg)
                             messages.append(msg)
-                            self.logger.warning(msg)
                     try:
                         os.rmdir(mount_point)
                     except Exception as e:
-                        msg = _("Failed to rmdir mountpoint: {mount_point}: {error}")
-                        msg = msg.format(mount_point=mount_point, error=e)
-                        self.logger.warning(msg)
+                        log_msg = _("Failed to rmdir mountpoint: {mount_point}: {error}", log=True)[1]
+                        log_msg = log_msg.format(mount_point=mount_point, error=e)
+                        self.logger.warning(log_msg)
                     umounted_shares.append(share_id)
                 msg = _("Shares unmounted: {shares}")
                 msg = msg.format(shares=umounted_shares)
@@ -704,9 +709,12 @@ class OTPmeAgentP1(object):
             message = _("Not logged in")
             status = status_codes.NOT_FOUND
             if command != "get_user" and command != "del_session":
-                msg = _("Command '{command}' denied: process={proc}({pid}) user={user}")
-                msg = msg.format(command=command, proc=self.client_proc, pid=self.client_pid, user=self.client_user)
-                self.logger.warning(msg)
+                log_msg = _("Command '{command}' denied: process={proc}({pid}) user={user}", log=True)[1]
+                log_msg = log_msg.format(command=command,
+                                        proc=self.client_proc,
+                                        pid=self.client_pid,
+                                        user=self.client_user)
+                self.logger.warning(log_msg)
 
         elif command == "get_session_id":
             message = self.session_id
@@ -797,9 +805,9 @@ class OTPmeAgentP1(object):
                 status = False
 
             if self.login_token:
-                msg = _("Setting login token for user '{user}' (PID: {pid}).")
-                msg = msg.format(user=self.login_user, pid=self.login_pid)
-                self.logger.info(msg)
+                log_msg = _("Setting login token for user '{user}' (PID: {pid}).", log=True)[1]
+                log_msg = log_msg.format(user=self.login_user, pid=self.login_pid)
+                self.logger.info(log_msg)
                 session_lock = self.acquire_session_lock(self.session_id)
                 try:
                     self.session['login_token'] = self.login_token
@@ -830,9 +838,9 @@ class OTPmeAgentP1(object):
                         ssh_agent_proc = None
 
                     if ssh_agent_proc:
-                        msg = _("Adding SSH key passphrase for user '{user}' (PID: {pid}).")
-                        msg = msg.format(user=self.login_user, pid=self.ssh_agent_pid)
-                        self.logger.info(msg)
+                        log_msg = _("Adding SSH key passphrase for user '{user}' (PID: {pid}).", log=True)[1]
+                        log_msg = log_msg.format(user=self.login_user, pid=self.ssh_agent_pid)
+                        self.logger.info(log_msg)
                         # Add new session for the given ssh-agent PID.
                         session_lock = self.acquire_session_lock(self.session_id)
                         try:
@@ -864,16 +872,17 @@ class OTPmeAgentP1(object):
             else:
                 message = "No SSH key passphrase set"
                 status = False
-                self.logger.debug(message)
+                log_msg = message
+                self.logger.debug(log_msg)
 
 
         elif command == "del_ssh_key_pass":
             message = "No SSH key passphrase set"
             status = False
             if self.ssh_agent_pid:
-                msg = _("Removing SSH key passphrase for user '{user}' (PID: {pid}).")
-                msg = msg.format(user=self.login_user, pid=self.ssh_agent_pid)
-                self.logger.info(msg)
+                log_msg = _("Removing SSH key passphrase for user '{user}' (PID: {pid}).", log=True)[1]
+                log_msg = log_msg.format(user=self.login_user, pid=self.ssh_agent_pid)
+                self.logger.info(log_msg)
                 session_lock = self.acquire_session_lock(self.session_id)
                 try:
                     self.login_sessions.pop(self.ssh_agent_pid)
@@ -947,10 +956,11 @@ class OTPmeAgentP1(object):
                 try:
                     key = RSAKey(key=session_key)
                 except Exception as e:
-                    message = _("Failed to load session key: {error}")
+                    message, log_msg = _("Failed to load session key: {error}", log=True)
                     message = message.format(error=e)
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg)
                     status = False
-                    self.logger.critical(message)
                 if status:
                     verify_status = key.verify(rsp_signature,
                                                 message=rsp,
@@ -960,9 +970,12 @@ class OTPmeAgentP1(object):
                         status = False
 
             if status:
-                msg = _("Adding RSP for user '{user}@{realm}/{site}' (PID: {pid}).")
-                msg = msg.format(user=self.login_user, realm=realm, site=site, pid=self.login_pid)
-                self.logger.info(msg)
+                log_msg = _("Adding RSP for user '{user}@{realm}/{site}' (PID: {pid}).", log=True)[1]
+                log_msg = log_msg.format(user=self.login_user,
+                                        realm=realm,
+                                        site=site,
+                                        pid=self.login_pid)
+                self.logger.info(log_msg)
 
                 # Make sure server session exists in dict.
                 if 'server_sessions' not in self.session:
@@ -1026,9 +1039,9 @@ class OTPmeAgentP1(object):
                 except Exception as e:
                     message = str(e)
                     status = False
-                    msg = _("Failed to add RSP: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.warning(msg)
+                    log_msg = _("Failed to add RSP: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
 
         elif command == "add_acl":
             try:
@@ -1055,9 +1068,9 @@ class OTPmeAgentP1(object):
                     message = "ACL exists"
                     status = False
                 else:
-                    msg = _("Adding ACL for user session '{user}' (PID: {pid}).")
-                    msg = msg.format(user=self.login_user, pid=self.login_pid)
-                    self.logger.info(msg)
+                    log_msg = _("Adding ACL for user session '{user}' (PID: {pid}).", log=True)[1]
+                    log_msg = log_msg.format(user=self.login_user, pid=self.login_pid)
+                    self.logger.info(log_msg)
                     user_acls.append(acl)
                     self.session['acls'][username] = user_acls
                     session_lock = self.acquire_session_lock(self.session_id)
@@ -1096,9 +1109,9 @@ class OTPmeAgentP1(object):
                 user_acls = self.session['acls'][username]
 
                 if acl in user_acls:
-                    msg = _("Removing ACL for user session '{user}' (PID: {pid}).")
-                    msg = msg.format(user=self.login_user, pid=self.login_pid)
-                    self.logger.info(msg)
+                    log_msg = _("Removing ACL for user session '{user}' (PID: {pid}).", log=True)[1]
+                    log_msg = log_msg.format(user=self.login_user, pid=self.login_pid)
+                    self.logger.info(log_msg)
                     try:
                         user_acls.remove(acl)
                     except:
@@ -1123,9 +1136,9 @@ class OTPmeAgentP1(object):
 
         elif command == "del_session":
             if self.rsp:
-                msg = _("Received request to delete user session for '{user}'.")
-                msg = msg.format(user=self.login_user)
-                self.logger.info(msg)
+                log_msg = _("Received request to delete user session for '{user}'.", log=True)[1]
+                log_msg = log_msg.format(user=self.login_user)
+                self.logger.info(log_msg)
                 del_request = {
                             'login_pid' : self.login_pid,
                             'realm'     : self.realm,
@@ -1140,9 +1153,9 @@ class OTPmeAgentP1(object):
                     message = str(e)
                     status = False
             else:
-                msg = _("Removing empty session ({pid}) for user '{user}'.")
-                msg = msg.format(pid=self.login_pid, user=self.login_user)
-                self.logger.info(msg)
+                log_msg = _("Removing empty session ({pid}) for user '{user}'.", log=True)[1]
+                log_msg = log_msg.format(pid=self.login_pid, user=self.login_user)
+                self.logger.info(log_msg)
                 try:
                     self.session_ids.pop(self.session_id)
                 except:

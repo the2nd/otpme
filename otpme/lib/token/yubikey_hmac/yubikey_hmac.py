@@ -549,8 +549,10 @@ class YubikeyhmacToken(Token):
         otp_validity_end_time = validity_times[5]
 
         # Log OTP timerange.
-        msg = f"Verifiying OTP within timerange: start='{otp_validity_start_time}' end='{otp_validity_end_time}'."
-        logger.debug(msg)
+        log_msg = _("Verifiying OTP within timerange: start='{otp_validity_start_time}' end='{otp_validity_end_time}'.", log=True)
+        log_msg = log_msg.format(otp_validity_start_time=otp_validity_start_time,
+                                otp_validity_end_time=otp_validity_end_time)
+        logger.debug(log_msg)
         # Verify OTP.
         if motp.verify(epoch_time=otp_epoch_time,
                         validity_range=otp_validity_range,

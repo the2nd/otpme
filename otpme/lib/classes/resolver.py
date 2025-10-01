@@ -881,16 +881,18 @@ class Resolver(OTPmeObject):
         x_resolver = backend.get_object(object_type="resolver",
                                         uuid=resolver_uuid)
         if not x_resolver:
-            msg = _("Adopting {object_type} from orphan resolver: {name}")
+            msg, log_msg = _("Adopting {object_type} from orphan resolver: {name}", log=True)
             msg = msg.format(object_type=object_id.object_type, name=object_id.name)
-            logger.info(msg)
+            log_msg = log_msg.format(object_type=object_id.object_type, name=object_id.name)
+            logger.info(log_msg)
             if interactive:
                 callback.send(msg)
             return "adopt"
 
-        msg = _("Cannot import {object_type} added by other resolver: {object_id}: {resolver_name}")
+        msg, log_msg = _("Cannot import {object_type} added by other resolver: {object_id}: {resolver_name}", log=True)
         msg = msg.format(object_type=object_id.object_type, object_id=object_id, resolver_name=x_resolver.name)
-        logger.critical(msg)
+        log_msg = log_msg.format(object_type=object_id.object_type, object_id=object_id, resolver_name=x_resolver.name)
+        logger.critical(log_msg)
         if interactive:
             callback.send(msg)
 
@@ -927,15 +929,16 @@ class Resolver(OTPmeObject):
             result = self.fetch_objects(object_types=object_types,
                                         callback=callback)
         except Exception as e:
-            msg = _("Failed to fetch objects with resolver: {name}: {error}")
+            msg, log_msg = _("Failed to fetch objects with resolver: {name}: {error}", log=True)
             msg = msg.format(name=self.name, error=e)
-            logger.warning(msg)
+            log_msg = log_msg.format(name=self.name, error=e)
+            logger.warning(log_msg)
             sync_lock.release_lock()
             return callback.error(msg)
 
-        msg = _("Processing objects...")
-        callback.send(msg)
-        logger.info(msg)
+        log_msg = _("Processing objects...", log=True)[1]
+        callback.send(log_msg)
+        logger.info(log_msg)
 
         # Count objects we got.
         all_objects = []
@@ -1088,9 +1091,10 @@ class Resolver(OTPmeObject):
 
                 # Get object name.
                 if not name_attribute in x_attributes:
-                    msg = _("Got no name attribute: {x_name}: {name_attribute}")
+                    msg, log_msg = _("Got no name attribute: {x_name}: {name_attribute}", log=True)
                     msg = msg.format(x_name=x_name, name_attribute=name_attribute)
-                    logger.warning(msg)
+                    log_msg = log_msg.format(x_name=x_name, name_attribute=name_attribute)
+                    logger.warning(log_msg)
                     if interactive:
                         callback.error(msg)
                     failed_objects.append(x_name)
@@ -1112,9 +1116,10 @@ class Resolver(OTPmeObject):
                         x_uid_number = x_attributes.pop(uid_number_attribute)
                         if isinstance(x_uid_number, list):
                             if len(x_uid_number) > 1:
-                                msg = _("Got multiple values for uidNumber: {x_name}: {uid_numbers}")
+                                msg, log_msg = _("Got multiple values for uidNumber: {x_name}: {uid_numbers}", log=True)
                                 msg = msg.format(x_name=x_name, uid_numbers=','.join(x_uid_number))
-                                logger.warning(msg)
+                                log_msg = log_msg.format(x_name=x_name, uid_numbers=','.join(x_uid_number))
+                                logger.warning(log_msg)
                                 if interactive:
                                     callback.error(msg)
                                 failed_objects.append(x_name)
@@ -1127,9 +1132,10 @@ class Resolver(OTPmeObject):
                         x_login_shell = x_attributes[login_shell_attribute]
                         if isinstance(x_login_shell, list):
                             if len(x_login_shell) > 1:
-                                msg = _("Got multiple values for loginShell: {x_name}: {login_shells}")
+                                msg, log_msg = _("Got multiple values for loginShell: {x_name}: {login_shells}", log=True)
                                 msg = msg.format(x_name=x_name, login_shells=','.join(x_login_shell))
-                                logger.warning(msg)
+                                log_msg = log_msg.format(x_name=x_name, login_shells=','.join(x_login_shell))
+                                logger.warning(log_msg)
                                 if interactive:
                                     callback.error(msg)
                                 failed_objects.append(x_name)
@@ -1144,9 +1150,10 @@ class Resolver(OTPmeObject):
                         x_gid_number = x_attributes.pop(gid_number_attribute)
                         if isinstance(x_gid_number, list):
                             if len(x_gid_number) > 1:
-                                msg = _("Got multiple values for gidNumber: {x_name}: {gid_numbers}")
+                                msg, log_msg = _("Got multiple values for gidNumber: {x_name}: {gid_numbers}", log=True)
                                 msg = msg.format(x_name=x_name, gid_numbers=','.join(x_gid_number))
-                                logger.warning(msg)
+                                log_msg = log_msg.format(x_name=x_name, gid_numbers=','.join(x_gid_number))
+                                logger.warning(log_msg)
                                 if interactive:
                                     callback.error(msg)
                                 failed_objects.append(x_name)
@@ -1169,9 +1176,9 @@ class Resolver(OTPmeObject):
                                                     interactive=interactive,
                                                     callback=callback)
                     if not resolver_valid:
-                        msg = _("Skipping object: {x_oid}")
-                        msg = msg.format(x_oid=x_oid)
-                        logger.info(msg)
+                        log_msg = _("Skipping object: {x_oid}", log=True)[1]
+                        log_msg = log_msg.format(x_oid=x_oid)
+                        logger.info(log_msg)
                         skipped_objects.append(x_oid)
                         continue
 
@@ -1207,9 +1214,10 @@ class Resolver(OTPmeObject):
                         failed_objects.append(x_name)
                         sync_status = False
                         object_failed = True
-                        msg = _("Got unsupported object from resolver: {object_type}: {x_name}")
+                        msg, log_msg = _("Got unsupported object from resolver: {object_type}: {x_name}", log=True)
                         msg = msg.format(object_type=object_type, x_name=x_name)
-                        logger.critical(msg)
+                        log_msg = log_msg.format(object_type=object_type, x_name=x_name)
+                        logger.critical(log_msg)
                         if interactive:
                             callback.error(msg)
                         continue
@@ -1244,9 +1252,10 @@ class Resolver(OTPmeObject):
                         failed_objects.append(x_name)
                         sync_status = False
                         object_failed = True
-                        msg = _("Unable to import {object_type}: {x_name}: {error}")
+                        msg, log_msg = _("Unable to import {object_type}: {x_name}: {error}", log=True)
                         msg = msg.format(object_type=object_type, x_name=x_name, error=e)
-                        logger.critical(msg)
+                        log_msg = log_msg.format(object_type=object_type, x_name=x_name, error=e)
+                        logger.critical(log_msg)
                         if interactive:
                             callback.error(msg)
                         continue
@@ -1271,9 +1280,10 @@ class Resolver(OTPmeObject):
                                     failed_objects.append(x_name)
                                     sync_status = False
                                     object_failed = True
-                                    msg = _("UUID conflict: {x_name} <> {oid}: {x_uuid}")
+                                    msg, log_msg = _("UUID conflict: {x_name} <> {oid}: {x_uuid}", log=True)
                                     msg = msg.format(x_name=x_name, oid=u_object.oid, x_uuid=x_uuid)
-                                    logger.critical(msg)
+                                    log_msg = log_msg.format(x_name=x_name, oid=u_object.oid, x_uuid=x_uuid)
+                                    logger.critical(log_msg)
                                     if interactive:
                                         callback.error(msg)
                                     continue
@@ -1282,12 +1292,14 @@ class Resolver(OTPmeObject):
                     if add_object:
                         added_objects.append(x_object.oid)
                         if test:
-                            msg = _("Would add {object_type}: {x_name} ({added_count}/{total_count})")
+                            msg, log_msg = _("Would add {object_type}: {x_name} ({added_count}/{total_count})", log=True)
                             msg = msg.format(object_type=object_type, x_name=x_name, added_count=len(added_objects), total_count=len(all_objects))
+                            log_msg = log_msg.format(object_type=object_type, x_name=x_name, added_count=len(added_objects), total_count=len(all_objects))
                         else:
-                            msg = _("Adding {object_type}: {x_name} ({added_count}/{total_count})")
+                            msg, log_msg = _("Adding {object_type}: {x_name} ({added_count}/{total_count})", log=True)
                             msg = msg.format(object_type=object_type, x_name=x_name, added_count=len(added_objects), total_count=len(all_objects))
-                        logger.info(msg)
+                            log_msg = log_msg.format(object_type=object_type, x_name=x_name, added_count=len(added_objects), total_count=len(all_objects))
+                        logger.info(log_msg)
                         if interactive:
                             callback.send(msg)
                         group = None
@@ -1328,9 +1340,10 @@ class Resolver(OTPmeObject):
                                 failed_objects.append(x_name)
                                 sync_status = False
                                 object_failed = True
-                                msg = _("Unable to add {object_type}: {x_name}: {error}")
+                                msg, log_msg = _("Unable to add {object_type}: {x_name}: {error}", log=True)
                                 msg = msg.format(object_type=object_type, x_name=x_name, error=e)
-                                logger.critical(msg)
+                                log_msg = log_msg.format(object_type=object_type, x_name=x_name, error=e)
+                                logger.critical(log_msg)
                                 if interactive:
                                     callback.error(msg)
                                 continue
@@ -1351,15 +1364,17 @@ class Resolver(OTPmeObject):
 
                 if update_object:
                     if test:
-                        msg = _("Would update {object_type}: {name} ({updated_count}/{total_count})")
+                        msg, log_msg = _("Would update {object_type}: {name} ({updated_count}/{total_count})", log=True)
                         msg = msg.format(object_type=object_type, name=x_object.name, updated_count=len(updated_objects)+1, total_count=len(all_objects))
+                        log_msg = log_msg.format(object_type=object_type, name=x_object.name, updated_count=len(updated_objects)+1, total_count=len(all_objects))
                     else:
-                        msg = _("Updating {object_type}: {name} ({updated_count}/{total_count})")
+                        msg, log_msg = _("Updating {object_type}: {name} ({updated_count}/{total_count})", log=True)
                         msg = msg.format(object_type=object_type, name=x_object.name, updated_count=len(updated_objects)+1, total_count=len(all_objects))
+                        log_msg = log_msg.format(object_type=object_type, name=x_object.name, updated_count=len(updated_objects)+1, total_count=len(all_objects))
                     if interactive:
                         callback.send(msg)
                     else:
-                        logger.info(msg)
+                        logger.info(log_msg)
 
                     # Make sure the object references to us (e.g. after adoption)
                     if not test:
@@ -1377,9 +1392,10 @@ class Resolver(OTPmeObject):
                                 sync_status = False
                                 object_failed = True
                                 failed_objects.append(x_object.oid)
-                                msg = _("Failed to update {object_type} resolver: {name}: {error}")
+                                msg, log_msg = _("Failed to update {object_type} resolver: {name}: {error}", log=True)
                                 msg = msg.format(object_type=object_type, name=x_object.name, error=e)
-                                logger.critical(msg)
+                                log_msg = log_msg.format(object_type=object_type, name=x_object.name, error=e)
+                                logger.critical(log_msg)
                                 if interactive:
                                     callback.error(msg)
                                 continue
@@ -1387,15 +1403,17 @@ class Resolver(OTPmeObject):
                     # Check if we have to rename the object.
                     if x_object.name != x_name:
                         if test:
-                            msg = _("Would rename {object_type}: {old_name} -> {new_name}")
+                            msg, log_msg = _("Would rename {object_type}: {old_name} -> {new_name}", log=True)
                             msg = msg.format(object_type=object_type, old_name=x_object.name, new_name=x_name)
+                            log_msg = log_msg.format(object_type=object_type, old_name=x_object.name, new_name=x_name)
                         else:
-                            msg = _("Renaming {object_type}: {old_name} -> {new_name}")
+                            msg, log_msg = _("Renaming {object_type}: {old_name} -> {new_name}", log=True)
                             msg = msg.format(object_type=object_type, old_name=x_object.name, new_name=x_name)
+                            log_msg = log_msg.format(object_type=object_type, old_name=x_object.name, new_name=x_name)
                         if interactive:
                             callback.send(msg)
                         else:
-                            logger.info(msg)
+                            logger.info(log_msg)
 
                         if not test:
                             # Try to rename object.
@@ -1405,9 +1423,10 @@ class Resolver(OTPmeObject):
                                 sync_status = False
                                 object_failed = True
                                 failed_objects.append(x_object.oid)
-                                msg = _("Failed to rename {object_type}: {name}: {error}")
+                                msg, log_msg = _("Failed to rename {object_type}: {name}: {error}", log=True)
                                 msg = msg.format(object_type=object_type, name=x_object.name, error=e)
-                                logger.critical(msg)
+                                log_msg = log_msg.format(object_type=object_type, name=x_object.name, error=e)
+                                logger.critical(log_msg)
                                 if interactive:
                                     callback.error(msg)
                                 continue
@@ -1443,9 +1462,10 @@ class Resolver(OTPmeObject):
                         except Exception as e:
                             sync_status = False
                             object_failed = True
-                            msg = _("Unable to handle attribute: {oa}: {error}")
+                            msg, log_msg = _("Unable to handle attribute: {oa}: {error}", log=True)
                             msg = msg.format(oa=oa, error=e)
-                            logger.warning(msg)
+                            log_msg = log_msg.format(oa=oa, error=e)
+                            logger.warning(log_msg)
                             if interactive:
                                 callback.error(msg)
                             continue
@@ -1466,18 +1486,20 @@ class Resolver(OTPmeObject):
                     # mandatory attribute afterwards.
                     for av in add_values:
                         if test:
-                            msg = _("Would add attribute: {oa}: {av}")
+                            msg, log_msg = _("Would add attribute: {oa}: {av}", log=True)
                             msg = msg.format(oa=oa, av=av)
+                            log_msg = log_msg.format(oa=oa, av=av)
                         else:
-                            msg = _("Adding attribute: {oa}: {av}")
+                            msg, log_msg = _("Adding attribute: {oa}: {av}", log=True)
                             msg = msg.format(oa=oa, av=av)
+                            log_msg = log_msg.format(oa=oa, av=av)
                             if oa in self.id_attributes:
                                 av = int(av)
                         if interactive:
                             if verbose_level > 1:
                                 callback.send(msg)
                         else:
-                            logger.info(msg)
+                            logger.info(log_msg)
 
                         if not test:
                             try:
@@ -1487,9 +1509,10 @@ class Resolver(OTPmeObject):
                             except Exception as e:
                                 sync_status = False
                                 object_failed = True
-                                msg = _("Unable to add attribute: {a}: {error}")
+                                msg, log_msg = _("Unable to add attribute: {a}: {error}", log=True)
                                 msg = msg.format(a=a, error=e)
-                                logger.warning(msg)
+                                log_msg = log_msg.format(a=a, error=e)
+                                logger.warning(log_msg)
                                 if interactive:
                                     callback.error(msg)
                                 continue
@@ -1501,16 +1524,18 @@ class Resolver(OTPmeObject):
 
                     for dv in del_values:
                         if test:
-                            msg = _("Would remove attribute: {oa}: {dv}")
+                            msg, log_msg = _("Would remove attribute: {oa}: {dv}", log=True)
                             msg = msg.format(oa=oa, dv=dv)
+                            log_msg = log_msg.format(oa=oa, dv=dv)
                         else:
-                            msg = _("Removing attribute: {oa}: {dv}")
+                            msg, log_msg = _("Removing attribute: {oa}: {dv}", log=True)
                             msg = msg.format(oa=oa, dv=dv)
+                            log_msg = log_msg.format(oa=oa, dv=dv)
                         if interactive:
                             if verbose_level > 1:
                                 callback.send(msg)
                         else:
-                            logger.info(msg)
+                            logger.info(log_msg)
 
                         if not test:
                             try:
@@ -1522,9 +1547,10 @@ class Resolver(OTPmeObject):
                             except Exception as e:
                                 sync_status = False
                                 object_failed = True
-                                msg = _("Unable to delete attribute: {oid}: {a}: {error}")
+                                msg, log_msg = _("Unable to delete attribute: {oid}: {a}: {error}", log=True)
                                 msg = msg.format(oid=x_object.oid, a=a, error=e)
-                                logger.warning(msg)
+                                log_msg = log_msg.format(oid=x_object.oid, a=a, error=e)
+                                logger.warning(log_msg)
                                 if interactive:
                                     callback.error(msg)
                                 continue
@@ -1533,16 +1559,18 @@ class Resolver(OTPmeObject):
                     if a not in x_object.ldif_attributes:
                         continue
                     if test:
-                        msg = _("Would remove attribute: {a}")
+                        msg, log_msg = _("Would remove attribute: {a}", log=True)
                         msg = msg.format(a=a)
+                        log_msg = log_msg.format(a=a)
                     else:
-                        msg = _("Removing attribute: {a}")
+                        msg, log_msg = _("Removing attribute: {a}", log=True)
                         msg = msg.format(a=a)
+                        log_msg = log_msg.format(a=a)
                     if interactive:
                         if verbose_level > 1:
                             callback.send(msg)
                     else:
-                        logger.info(msg)
+                        logger.info(log_msg)
                     if not test:
                         try:
                             x_object.del_attribute(attribute=a,
@@ -1552,9 +1580,10 @@ class Resolver(OTPmeObject):
                         except Exception as e:
                             sync_status = False
                             object_failed = True
-                            msg = _("Unable to delete attribute: {oid}: {a}: {error}")
+                            msg, log_msg = _("Unable to delete attribute: {oid}: {a}: {error}", log=True)
                             msg = msg.format(oid=x_object.oid, a=a, error=e)
-                            logger.warning(msg)
+                            log_msg = log_msg.format(oid=x_object.oid, a=a, error=e)
+                            logger.warning(log_msg)
                             if interactive:
                                 callback.error(msg)
                             continue
@@ -1569,7 +1598,8 @@ class Resolver(OTPmeObject):
                 if update_object:
                     updated_objects.append(x_object.oid)
 
-                logger.debug(f"Updating resolver checksum: {x_object.oid}")
+                log_msg = _("Updating resolver checksum: {x_object.oid}", log=True)[1]
+                logger.debug(log_msg)
                 x_object.set_resolver_key(x_resolver_key)
                 x_object.set_resolver_checksum(x_resolver_checksum)
                 x_object._write()
@@ -1594,13 +1624,15 @@ class Resolver(OTPmeObject):
                                 site=config.sitem,
                                 name=x)
                 if test:
-                    msg = _("Would remove {object_type}: {x_oid}")
+                    msg, log_msg = _("Would remove {object_type}: {x_oid}", log=True)
                     msg = msg.format(object_type=object_type, x_oid=x_oid)
+                    log_msg = log_msg.format(object_type=object_type, x_oid=x_oid)
                 else:
-                    msg = _("Removing {object_type}: {x_oid}")
+                    msg, log_msg = _("Removing {object_type}: {x_oid}", log=True)
                     msg = msg.format(object_type=object_type, x_oid=x_oid)
+                    log_msg = log_msg.format(object_type=object_type, x_oid=x_oid)
 
-                logger.info(msg)
+                logger.info(log_msg)
 
                 if interactive:
                     callback.send(msg)
@@ -1616,9 +1648,10 @@ class Resolver(OTPmeObject):
                     removed_objects.append(x_oid)
                 except Exception as e:
                     sync_status = False
-                    msg = _("Failed to delete {object_type}: {x_oid}: {error}")
+                    msg, log_msg = _("Failed to delete {object_type}: {x_oid}: {error}", log=True)
                     msg = msg.format(object_type=object_type, x_oid=x_oid, error=e)
-                    logger.warning(msg)
+                    log_msg = log_msg.format(object_type=object_type, x_oid=x_oid, error=e)
+                    logger.warning(log_msg)
                     if interactive:
                         callback.error(msg)
 
@@ -1632,14 +1665,18 @@ class Resolver(OTPmeObject):
 
         if not added_objects and not updated_objects \
         and not removed_objects and not failed_objects:
-            msg = _("{main_msg}. Nothing changed.")
+            msg, log_msg = _("{main_msg}. Nothing changed.", log=True)
             msg = msg.format(main_msg=main_msg)
+            log_msg = log_msg.format(main_msg=main_msg)
         else:
-            msg = _("{main_msg}: adds: {adds} updates: {updates}: removes: {removes} failed: {failed} skipped: {skipped} unchanged: {unchanged}")
+            msg, log_msg = _("{main_msg}: adds: {adds} updates: {updates}: removes: {removes} failed: {failed} skipped: {skipped} unchanged: {unchanged}", log=True)
             msg = msg.format(main_msg=main_msg, adds=len(added_objects), updates=len(updated_objects),
                            removes=len(removed_objects), failed=len(failed_objects),
                            skipped=len(skipped_objects), unchanged=len(unchanged_objects))
-        logger.info(msg)
+            log_msg = log_msg.format(main_msg=main_msg, adds=len(added_objects), updates=len(updated_objects),
+                           removes=len(removed_objects), failed=len(failed_objects),
+                           skipped=len(skipped_objects), unchanged=len(unchanged_objects))
+        logger.info(log_msg)
 
         if not sync_status:
             return callback.error(msg)
@@ -1853,9 +1890,10 @@ class Resolver(OTPmeObject):
             for uuid in object_list:
                 # Get object.
                 o = backend.get_object(uuid=uuid)
-                msg = _("Deleting {object_type}: {oid}")
+                msg, log_msg = _("Deleting {object_type}: {oid}", log=True)
                 msg = msg.format(object_type=object_type, oid=o.oid)
-                logger.debug(msg)
+                log_msg = log_msg.format(object_type=object_type, oid=o.oid)
+                logger.debug(log_msg)
                 callback.send(msg)
                 deleted_by = f"resolver:{self.name}"
                 try:
@@ -1866,9 +1904,10 @@ class Resolver(OTPmeObject):
                 except Exception as e:
                     config.raise_exception()
                     delete_status = False
-                    msg = _("Failed to delete {object_type}: {oid}: {error}")
+                    msg, log_msg = _("Failed to delete {object_type}: {oid}: {error}", log=True)
                     msg = msg.format(object_type=object_type, oid=o.oid, error=e)
-                    logger.warning(msg)
+                    log_msg = log_msg.format(object_type=object_type, oid=o.oid, error=e)
+                    logger.warning(log_msg)
                     callback.send(msg)
 
                 # Write modified objects (e.g. groups)

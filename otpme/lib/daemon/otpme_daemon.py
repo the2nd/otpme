@@ -113,77 +113,82 @@ class OTPmeDaemon(object):
         try:
             cache.flush(quiet=False)
         except Exception as e:
-            msg = _("Failed to flush caches on 'reload' command: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg, exc_info=True)
+            log_msg = _("Failed to flush caches on 'reload' command: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg, exc_info=True)
         try:
             cache.clear(quiet=False)
         except Exception as e:
-            msg = _("Failed to clear caches on 'reload' command: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg, exc_info=True)
+            log_msg = _("Failed to clear caches on 'reload' command: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg, exc_info=True)
 
     def _preload_modules(self):
         """ Preload modules """
         if config.debug_level("module_loading") > 0:
-            self.logger.debug(_("Preloading modules..."))
+            log_msg = _("Preloading modules...", log=True)[1]
+            self.logger.debug(log_msg)
         count = 0
         for m in preload_modules:
             try:
                 importlib.import_module(m)
                 count += 1
             except Exception as e:
-                msg = _("Failed to preload module: {module}: {error}")
-                msg = msg.format(module=m, error=e)
-                self.logger.critical(msg, exc_info=True)
+                log_msg = _("Failed to preload module: {module}: {error}", log=True)[1]
+                log_msg = log_msg.format(module=m, error=e)
+                self.logger.critical(log_msg, exc_info=True)
         if config.debug_level("module_loading") > 0:
-            msg = _("Preloaded {count} modules...")
-            msg = msg.format(count=count)
-            self.logger.debug(msg)
+            log_msg = _("Preloaded {count} modules...", log=True)[1]
+            log_msg = log_msg.format(count=count)
+            self.logger.debug(log_msg)
 
         if config.debug_level("module_loading") > 0:
-            self.logger.debug(_("Loading token modules..."))
+            log_msg = _("Loading token modules...", log=True)[1]
+            self.logger.debug(log_msg)
         # Preload token modules.
         from otpme.lib.token import utils
         try:
             utils.load_token_modules()
         except Exception as e:
-            msg = _("Failed to preload token modules: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to preload token modules: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         if config.debug_level("module_loading") > 0:
-            self.logger.debug(_("Loading resolver modules..."))
+            log_msg = _("Loading resolver modules...", log=True)[1]
+            self.logger.debug(log_msg)
         # Preload resolver modules.
         from otpme.lib.resolver import utils
         try:
             utils.load_resolver_modules()
         except Exception as e:
-            msg = _("Failed to preload resolver modules: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to preload resolver modules: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         if config.debug_level("module_loading") > 0:
-            self.logger.debug(_("Loading policy modules..."))
+            log_msg = _("Loading policy modules...", log=True)[1]
+            self.logger.debug(log_msg)
         # Preload policy modules.
         from otpme.lib.policy import utils
         try:
             utils.load_policy_modules()
         except Exception as e:
-            msg = _("Failed to preload policy modules: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to preload policy modules: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         if config.debug_level("module_loading") > 0:
-            self.logger.debug(_("Loading protocol modules..."))
+            log_msg = _("Loading protocol modules...", log=True)[1]
+            self.logger.debug(log_msg)
         # Preload protocol modules.
         from otpme.lib.protocols import utils
         try:
             utils.load_protocol_modules()
         except Exception as e:
-            msg = _("Failed to preload protocol modules: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to preload protocol modules: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # Workaround to prevent problem with ldap3 module because twisted (used
         # by ldaptor) replaces the standard socket module.
@@ -205,14 +210,14 @@ class OTPmeDaemon(object):
         try:
             config.reload(configure_logger=True)
         except Exception as e:
-            msg = _("Failed to reload config: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to reload config: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
-        if not self.name in config.default_listen_ports:
-            msg = _("No listen port configured for {name}")
-            msg = msg.format(name=self.full_name)
-            self.logger.info(msg)
+        if self.name not in config.default_listen_ports:
+            log_msg = _("No listen port configured for {name}", log=True)[1]
+            log_msg = log_msg.format(name=self.full_name)
+            self.logger.info(log_msg)
             return
 
         restart = False
@@ -237,21 +242,24 @@ class OTPmeDaemon(object):
 
         if self.cert:
             if self.cert != config.host_data['cert']:
-                self.logger.info(_("Certificate changed."))
+                log_msg = _("Certificate changed.", log=True)[1]
+                self.logger.info(log_msg)
                 restart = True
         else:
             self.cert = config.host_data['cert']
 
         if self.key:
             if self.key != config.host_data['key']:
-                self.logger.info(_("Private key changed."))
+                log_msg = _("Private key changed.", log=True)[1]
+                self.logger.info(log_msg)
                 restart = True
         else:
             self.key = config.host_data['key']
 
         if self.ca_data:
             if self.ca_data != config.host_data['ca_data']:
-                self.logger.info(_("CA certificate chain or CRLs changed."))
+                log_msg = _("CA certificate chain or CRLs changed.", log=True)[1]
+                self.logger.info(log_msg)
                 restart = True
         else:
             self.ca_data = config.host_data['ca_data']
@@ -278,14 +286,16 @@ class OTPmeDaemon(object):
             for socket_uri in c_listen_sockets:
                 if socket_uri in self.listen_sockets:
                     continue
-                self.logger.info(_("Listen address changed."))
+                log_msg = _("Listen address changed.", log=True)[1]
+                self.logger.info(log_msg)
                 restart = True
                 break
 
         self.listen_sockets = c_listen_sockets
 
         if restart:
-            self.logger.info(_("Configuration changed. Going down for reload."))
+            log_msg = _("Configuration changed. Going down for reload.", log=True)[1]
+            self.logger.info(log_msg)
             # Inform controld that we need a restart to reload our config.
             self.comm_handler.send(recipient="controld",
                                 command="reload_shutdown",
@@ -328,9 +338,9 @@ class OTPmeDaemon(object):
             try:
                 s.listen()
             except Exception as e:
-                msg = _("Unable to listen on socket: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Unable to listen on socket: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
 
     def default_startup(self, use_ssl=True, ssl_verify_client=True,
         handler_args={}, dont_drop_privileges=False):
@@ -339,41 +349,43 @@ class OTPmeDaemon(object):
         try:
             self.set_connection_handler(handler_args=handler_args)
         except Exception as e:
-            msg = _("Failed to set connection handler: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to set connection handler: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         # Setup sockets.
         try:
             self.setup_sockets(use_ssl=use_ssl, ssl_verify_client=ssl_verify_client)
         except Exception as e:
-            msg = _("Failed to setup sockets: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to setup sockets: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         # We can drop privileges AFTER sockets are created. This is needed when
         # listening to well known ports (<1024), which requires root privileges.
         if not dont_drop_privileges:
             try:
                 self.drop_privileges()
             except Exception as e:
-                msg = _("Failed to drop privileges: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Failed to drop privileges: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
         # Start listening on sockets.
         try:
             self.listen()
         except Exception as e:
-            msg = _("Failed to listen on sockets: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to listen on sockets: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         # Some logging.
-        self.logger.info(f"{self.full_name} started")
+        log_msg = _("{full_name} started", log=True)[1]
+        log_msg = log_msg.format(full_name=self.full_name)
+        self.logger.info(log_msg)
         # Notify controld that we are ready.
         try:
             self.comm_handler.send(recipient="controld", command="ready", timeout=1)
         except Exception as e:
-            msg = _("Failed to notify controld about daemon startup: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to notify controld about daemon startup: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
     def drop_privileges(self):
         """ Drop privileges. """
@@ -402,16 +414,16 @@ class OTPmeDaemon(object):
         try:
             setproctitle.setproctitle(self.full_name)
         except Exception as e:
-            msg = _("Failed to set proctitle: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to set proctitle: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         # Preload some other modules.
         try:
             self._preload_modules()
         except Exception as e:
-            msg = _("Failed to preload modules: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to preload modules: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         # Run child class method.
         try:
             self._run(**kwargs)
@@ -454,7 +466,8 @@ class OTPmeDaemon(object):
         multiprocessing.cleanup()
         # Run child class cleanup.
         self.cleanup()
-        #self.logger.info("Notifying controld that we got down.")
+        #log_msg = _("Notifying controld that we got down.", log=True)[1]
+        #self.logger.info(log_msg)
         ## Confirm shutdown.
         #self.comm_handler.send(recipient="controld", command="down", timeout=1)
         self.comm_handler.close()

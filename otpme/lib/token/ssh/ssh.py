@@ -702,18 +702,18 @@ class SshToken(Token):
         ):
         """ Verify challenge/response. """
         if not self.ssh_public_key:
-            msg = _("Token '{token_name}' is missing SSH public key.")
-            msg = msg.format(token_name=self.name)
-            logger.warning(msg)
+            log_msg = _("Token '{token_name}' is missing SSH public key.", log=True)[1]
+            log_msg = log_msg.format(token_name=self.name)
+            logger.warning(log_msg)
             return None
 
         if self.second_factor_token_enabled:
             try:
                 sftoken = self.get_sftoken()
             except Exception as e:
-                msg = _("Error loading second factor token: {error}")
-                msg = msg.format(error=e)
-                logger.critical(msg)
+                log_msg = _("Error loading second factor token: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                logger.critical(log_msg)
                 return None
 
             # Check if token PIN is mandatory. by default we dont want a user to
@@ -730,7 +730,8 @@ class SshToken(Token):
                 cutoff_len += sftoken.pin_len
 
             if len(otp) <= cutoff_len:
-                logger.debug(_("Second factor OTP token enabled but password is too short to include a OTP."))
+                log_msg = _("Second factor OTP token enabled but password is too short to include a OTP.", log=True)[1]
+                logger.debug(log_msg)
                 return None
             password = otp[:-cutoff_len]
             otp = otp[-cutoff_len:]
@@ -745,14 +746,15 @@ class SshToken(Token):
         if self.offline and not password:
             public_key_md5 = stuff.gen_md5(self.ssh_public_key)
             if self.offline_challenge != public_key_md5:
-                logger.warning(_("Failed to verify offline challenge."))
+                log_msg = _("Failed to verify offline challenge.", log=True)[1]
+                logger.warning(log_msg)
                 return False
 
         elif password:
             if not self.ssh_private_key:
-                msg = _("Skipping token without SSH private key for password authentication: {rel_path}")
-                msg = msg.format(rel_path=self.rel_path)
-                logger.debug(msg)
+                log_msg = _("Skipping token without SSH private key for password authentication: {rel_path}", log=True)[1]
+                log_msg = log_msg.format(rel_path=self.rel_path)
+                logger.debug(log_msg)
                 return None
             # Try to decrypt private key.
             try:
@@ -771,14 +773,16 @@ class SshToken(Token):
             if not ssh.verify_sign(public_key=ssh_public_key,
                                     data=response,
                                     plaintext=challenge):
-                logger.warning(_("Verifying SSH response failed."))
+                log_msg = _("Verifying SSH response failed.", log=True)[1]
+                logger.warning(log_msg)
                 return False
 
             challenge_time = int(challenge.split(":")[0])
             epoch_time = int(time.time())
             challenge_age = epoch_time - challenge_time
             if challenge_age > 15:
-                logger.warning(_("SSH challenge too old."))
+                log_msg = _("SSH challenge too old.", log=True)[1]
+                logger.warning(log_msg)
                 return False
         else:
             return None
@@ -788,9 +792,9 @@ class SshToken(Token):
             return True
 
         # Verify second factor token.
-        msg = _("Verifying second factor token: {sftoken_rel_path}")
-        msg = msg.format(sftoken_rel_path=sftoken.rel_path)
-        logger.debug(msg)
+        log_msg = _("Verifying second factor token: {sftoken_rel_path}", log=True)[1]
+        log_msg = log_msg.format(sftoken_rel_path=sftoken.rel_path)
+        logger.debug(log_msg)
         if sftoken.verify_otp(otp,
                             session_uuid=session_uuid,
                             otp_includes_pin=otp_includes_pin,

@@ -145,9 +145,9 @@ def decode(acl):
 
         acl = ":".join(acl.split(":")[2:])
 
-    #msg = _("Found malformed ACL: {}")
-    #msg = msg.format(acl)
-    #logger.critical(msg)
+    #log_msg = _("Found malformed ACL: {}", log=True)[1]
+    #log_msg = log_msg.format(acl)
+    #logger.critical(log_msg)
     x = acl.split(":")[0]
 
     if x.startswith("++"):
@@ -273,7 +273,8 @@ def check_access(check_admin_user=True, check_admin_role=True, auth_token=None):
     elif not auth_token:
         # If the user is not authenticated we can not check any ACLs and access
         # should be denied.
-        logger.warning("Access denied: User not authenticated")
+        log_msg = _("Access denied: User not authenticated", log=True)[1]
+        logger.warning(log_msg)
         need_acls = False
     else:
         if check_admin_user:
@@ -331,7 +332,8 @@ def access_granted(acl, object_id=None, uuid=None, check_admin_user=True,
 
     # This point should never be reached. But its saver to return "Failure" in
     # an authorization method if something goes wrong (e.g. a BUG) :)
-    logger.critical("WARNING: You may have hit a BUG in acl.access_granted().")
+    log_msg = _("WARNING: You may have hit a BUG in acl.access_granted().", log=True)[1]
+    logger.critical(log_msg)
     return False
 
 def verify(uuid, acl_list, acl, force_acl_check=False, need_exact_acl=False,

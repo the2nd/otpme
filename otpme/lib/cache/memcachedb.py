@@ -96,8 +96,8 @@ def get_list(*args, **kwargs):
 def flushall():
     # Get logger.
     logger = config.logger
-    msg = _("Flushing memcachedb cache...")
-    logger.debug(msg)
+    log_msg = _("Flushing memcachedb cache...", log=True)[1]
+    logger.debug(log_msg)
     memcache_handler = get_memcache_handler()
     memcache_handler.flushall()
 
@@ -163,9 +163,9 @@ def _start():
     logger = config.logger
     memcachedb_socket = get_socket()
     if os.path.exists(memcachedb_socket):
-        msg = _("Removing stale socket: {}")
-        msg = msg.format(memcachedb_socket)
-        logger.info(msg)
+        log_msg = _("Removing stale socket: {}", log=True)[1]
+        log_msg = log_msg.format(memcachedb_socket)
+        logger.info(log_msg)
         os.remove(memcachedb_socket)
     if config.memcachedb_opts:
         memcachedb_opts = config.memcachedb_opts.split()

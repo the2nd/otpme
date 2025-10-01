@@ -208,7 +208,8 @@ class JoinHandler(object):
             msg = _("Unable to resolve joind address for: {domain_name}")
             msg = msg.format(domain_name=domain)
             raise OTPmeException(msg)
-        logger.debug(f"Got joind socket via DNS: {socket_uri}")
+        log_msg = _("Got joind socket via DNS: {socket_uri}", log=True)[1]
+        logger.debug(log_msg)
 
         # Try to get realm/site we will connect to from DNS.
         try:
@@ -305,7 +306,8 @@ class JoinHandler(object):
             # Save changes.
             cache.flush()
             # Update site certificate on remote site.
-            logger.debug("Sending site certificate to joind...")
+            log_msg = _("Sending site certificate to joind...", log=True)[1]
+            logger.debug(log_msg)
             # Build command.
             #command_args = {}
             #command = f"add_site_cert {self._my_host.fqdn}"
@@ -356,7 +358,8 @@ class JoinHandler(object):
         # Reload CA after node cert generation.
         self._my_site_ca = backend.get_object(object_type="ca", uuid=self._my_site.ca)
 
-        logger.debug("Sending CRL to joind...")
+        log_msg = _("Sending CRL to joind...", log=True)[1]
+        logger.debug(log_msg)
         # Build command.
         #command_args = {}
         #command = f"add_ca_crl {self._my_host.fqdn}"
@@ -403,9 +406,9 @@ class JoinHandler(object):
         # Add empty list to add_list dict for each object type.
         for i in add_order: add_list[i] = {}
 
-        msg = _("Processing base objects from joind...")
+        msg, log_msg = _("Processing base objects from joind...", log=True)
         message(msg)
-        logger.debug(msg)
+        logger.debug(log_msg)
         # Build list with objects to add grouped by object type.
         for x in object_configs:
             object_id = oid.get(object_id=x)
@@ -425,7 +428,8 @@ class JoinHandler(object):
                     current_checksum = current_object_config['CHECKSUM']
                     if current_checksum == new_checksum:
                         continue
-                logger.debug(f"Adding object: {object_id}")
+                log_msg = _("Adding object: {object_id}", log=True)[1]
+                logger.debug(log_msg)
                 # Write object to backend.
                 try:
                     backend.write_config(object_id=object_id,
@@ -446,9 +450,9 @@ class JoinHandler(object):
                         try:
                             sign_key_cache.add_cache(object_id, x_user.public_key)
                         except Exception as e:
-                            msg = _("Unable to add signer cache: {obj_id}: {error}")
-                            msg = msg.format(obj_id=object_id, error=e)
-                            logger.critical(msg)
+                            log_msg = _("Unable to add signer cache: {obj_id}: {error}", log=True)[1]
+                            log_msg = log_msg.format(obj_id=object_id, error=e)
+                            logger.critical(log_msg)
                 # Enable sync and auth for all sites.
                 if object_type == "site":
                     x_site = backend.get_object(object_type="site",
@@ -457,16 +461,16 @@ class JoinHandler(object):
                         try:
                             x_site.enable_sync(verify_acls=False)
                         except Exception as e:
-                            msg = _("Error enabling sync with site: {site}: {error}")
-                            msg = msg.format(site=x_site, error=e)
-                            logger.warning(msg)
+                            log_msg = _("Error enabling sync with site: {site}: {error}", log=True)[1]
+                            log_msg = log_msg.format(site=x_site, error=e)
+                            logger.warning(log_msg)
                     if not x_site.auth_enabled:
                         try:
                             x_site.enable_auth(verify_acls=False)
                         except Exception as e:
-                            msg = _("Error enabling auth of site: {site}: {error}")
-                            msg = msg.format(site=x_site, error=e)
-                            logger.warning(msg)
+                            log_msg = _("Error enabling auth of site: {site}: {error}", log=True)[1]
+                            log_msg = log_msg.format(site=x_site, error=e)
+                            logger.warning(log_msg)
 
                 if object_type == self.host_type:
                     object_name = object_id.name
@@ -484,9 +488,9 @@ class JoinHandler(object):
             msg = msg.format(host_type=self.host_type)
             raise OTPmeException(msg)
 
-        msg = _("Writing {host_type} UUID to file: {uuid_file}")
-        msg = msg.format(host_type=self.host_type, uuid_file=config.uuid_file)
-        logger.debug(msg)
+        log_msg = _("Writing {host_type} UUID to file: {uuid_file}", log=True)[1]
+        log_msg = log_msg.format(host_type=self.host_type, uuid_file=config.uuid_file)
+        logger.debug(log_msg)
         try:
             fd = open(config.uuid_file, "w")
             fd.write(my_uuid)
@@ -524,7 +528,8 @@ class JoinHandler(object):
         command_args['host_fqdn'] = self.host_fqdn
         command = "join"
 
-        logger.debug("Sending realm join request...")
+        log_msg = _("Sending realm join request...", log=True)[1]
+        logger.debug(log_msg)
         # Send join command.
         status, \
         status_code, \
@@ -568,7 +573,8 @@ class JoinHandler(object):
         #command = f"join {self.host_fqdn}"
         command_args['host_fqdn'] = self.host_fqdn
         command = "join"
-        logger.debug("Sending final realm join request...")
+        log_msg = _("Sending final realm join request...", log=True)[1]
+        logger.debug(log_msg)
         # Try to finalize realm join.
         status, \
         status_code, \
@@ -841,7 +847,8 @@ class JoinHandler(object):
             if not domain:
                 domain = config.realm
 
-            logger.debug("Trying to get master node via DNS...")
+            log_msg = _("Trying to get master node via DNS...", log=True)[1]
+            logger.debug(log_msg)
             # Try to get joind URI via DNS.
             if not socket_uri:
                 socket_uri = net.get_daemon_uri("joind", domain)
@@ -885,7 +892,8 @@ class JoinHandler(object):
             leave_request['keep_cert'] = keep_cert
             leave_request['keep_host'] = keep_host
 
-            logger.debug("Sending realm leave request...")
+            log_msg = _("Sending realm leave request...", log=True)[1]
+            logger.debug(log_msg)
             # Send leave command.
             status, \
             status_code, \
@@ -938,7 +946,9 @@ class JoinHandler(object):
             backend.drop()
 
             for x in remove_files:
-                logger.debug(f"Removing file: {x}")
+                log_msg = _("Removing file: {x}", log=True)[1]
+                log_msg = log_msg.formt(x=x)
+                logger.debug(log_msg)
                 if not os.path.exists(x):
                     continue
                 try:
@@ -949,7 +959,9 @@ class JoinHandler(object):
                     raise OTPmeException(msg)
 
             for x in remove_dirs:
-                logger.debug(f"Removing dir: {x}")
+                log_msg = _("Removing dir: {x}", log=True)[1]
+                log_msg = log_msg.format(x=x)
+                logger.debug(log_msg)
                 if not os.path.exists(x):
                     continue
                 try:
@@ -960,7 +972,9 @@ class JoinHandler(object):
                     raise OTPmeException(msg)
 
         if os.path.exists(config.uuid_file):
-            logger.debug(f"Removing UUID file: {config.uuid_file}")
+            log_msg = _("Removing UUID file: {uuid_file}", log=True)[1]
+            log_msg = log_msg.format(uuid_file=config.uuid_file)
+            logger.debug(log_msg)
             try:
                 os.remove(config.uuid_file)
             except Exception as e:

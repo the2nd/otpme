@@ -1274,9 +1274,9 @@ def user_is_blocked(user_uuid, access_group, realm, site):
                             value=access_group,
                             return_attributes=['max_fail', 'max_fail_reset'])
     if not result:
-        msg = _("Unable to get 'max_fail' for accessgroup '{access_group}'")
-        msg = msg.format(access_group=access_group)
-        logger.critical(msg)
+        log_msg = _("Unable to get 'max_fail' for accessgroup '{access_group}'", log=True)[1]
+        log_msg = log_msg.format(access_group=access_group)
+        logger.critical(log_msg)
         return False
 
     for uuid in result:
@@ -1880,9 +1880,10 @@ class User(OTPmeObject):
         try:
             dst_site_public_key = RSAKey(key=_dst_site._cert.public_key())
         except Exception as e:
-            msg = _("Unable to get public key of site certificate: {dst_site}: {e}")
+            msg, log_msg = _("Unable to get public key of site certificate: {dst_site}: {e}", log=True)
             msg = msg.format(dst_site=dst_site, e=e)
-            logger.warning(msg)
+            log_msg = log_msg.format(dst_site=dst_site, e=e)
+            logger.warning(log_msg)
             return callback.error(msg)
 
         # Decode reply JWT.
@@ -1891,9 +1892,10 @@ class User(OTPmeObject):
                                     key=dst_site_public_key,
                                     algorithm='RS256')
         except Exception as e:
-            msg = _("JWT verification failed: {e}")
+            msg, log_msg = _("JWT verification failed: {e}", log=True)
             msg = msg.format(e=e)
-            logger.warning(msg)
+            log_msg = log_msg.format(e=e)
+            logger.warning(log_msg)
             return callback.error(msg)
 
         if reply_jwt_data != jwt_data:
@@ -1967,9 +1969,10 @@ class User(OTPmeObject):
         try:
             dst_site_public_key = RSAKey(key=_dst_site._cert.public_key())
         except Exception as e:
-            msg = _("Unable to get public key of site certificate: {dst_site}: {e}")
+            msg, log_msg = _("Unable to get public key of site certificate: {dst_site}: {e}", log=True)
             msg = msg.format(dst_site=dst_site, e=e)
-            logger.warning(msg)
+            log_msg = log_msg.format(dst_site=dst_site, e=e)
+            logger.warning(log_msg)
             return callback.error(msg)
         enc_key_encrypted = dst_site_public_key.encrypt(enc_key, encoding="hex")
 
@@ -2017,9 +2020,10 @@ class User(OTPmeObject):
                                 key=dst_site_public_key,
                                 algorithm='RS256')
         except Exception as e:
-            msg = _("JWT verification failed: {e}")
+            msg, log_msg = _("JWT verification failed: {e}", log=True)
             msg = msg.format(e=e)
-            logger.warning(msg)
+            log_msg = log_msg.format(e=e)
+            logger.warning(log_msg)
             return callback.error(msg)
 
         # Make sure we only delete objects if all were written on
@@ -2220,9 +2224,9 @@ class User(OTPmeObject):
                 sign_key_cache.add_cache(self.oid, self.public_key)
             except Exception as e:
                 config.raise_exception()
-                msg = _("Unable to add signer cache: {self_oid}: {e}")
-                msg = msg.format(self_oid=self.oid, e=e)
-                logger.critical(msg)
+                log_msg = _("Unable to add signer cache: {self_oid}: {e}", log=True)[1]
+                log_msg = log_msg.format(self_oid=self.oid, e=e)
+                logger.critical(log_msg)
         return super(User, self)._write(**kwargs)
 
     @check_acls(['edit:language'])
@@ -3276,7 +3280,9 @@ class User(OTPmeObject):
         auth_status = auth_handler.authenticate(user=self, **kwargs)
         end_time = time.time()
         duration = float(end_time - start_time)
-        logger.debug(f"Authentication took {duration} seconds.")
+        log_msg = _("Authentication took {duration} seconds.", log=True)[1]
+        log_msg = log_msg.format(duration=duration)
+        logger.debug(log_msg)
         return auth_status
 
     def token(self, token_name: str):
@@ -3475,9 +3481,9 @@ class User(OTPmeObject):
 
             # Append token to list if not already added.
             if not quiet:
-                msg = _("Selecting token '{token_uuid}' based on accessgroup '{access_group_name}'.")
-                msg = msg.format(token_uuid=token_uuid, access_group_name=access_group.name)
-                logger.debug(msg)
+                log_msg = _("Selecting token '{token_uuid}' based on accessgroup '{access_group_name}'.", log=True)[1]
+                log_msg = log_msg.format(token_uuid=token_uuid, access_group_name=access_group.name)
+                logger.debug(log_msg)
             tokens.append(token_uuid)
 
         result = []
@@ -3637,9 +3643,9 @@ class User(OTPmeObject):
             used_expiry = _used[uuid]['expiry'][0]
             # Check if object has expired.
             if time.time() > used_expiry:
-                msg = _("Removing expired used SOTP from backend: {self_name}")
-                msg = msg.format(self_name=self.name)
-                logger.debug(msg)
+                log_msg = _("Removing expired used SOTP from backend: {self_name}", log=True)[1]
+                log_msg = log_msg.format(self_name=self.name)
+                logger.debug(log_msg)
                 used_oid = backend.get_oid(uuid=uuid, instance=True)
                 try:
                     backend.delete_object(used_oid, cluster=True)
@@ -3701,8 +3707,8 @@ class User(OTPmeObject):
         except LockWaitAbort:
             pass
         except OTPmeException as e:
-            msg = "Failed to add used SOTP."
-            logger.warning(msg)
+            log_msg = _("Failed to add used SOTP.", log=True)[1]
+            logger.warning(log_msg)
 
     def remove_outdated_failed_pass_hashes(self, access_group: str):
         """ Remove outdated failed pass hashes of this user. """
@@ -3723,9 +3729,9 @@ class User(OTPmeObject):
         max_failed_pass = self.get_config_parameter("failed_pass_history")
 
         if max_fail > max_failed_pass:
-            msg = _("Config parameter <failed_pass_history> overruled by <max_fail> of accessgroup {access_group}.")
-            msg = msg.format(access_group=access_group)
-            logger.warning(msg)
+            log_msg = _("Config parameter <failed_pass_history> overruled by <max_fail> of accessgroup {access_group}.", log=True)[1]
+            log_msg = log_msg.format(access_group=access_group)
+            logger.warning(log_msg)
             max_failed_pass = max_fail
         # Get failed pass hashes.
         failed_pass_list = backend.search(object_type="failed_pass",
@@ -3788,7 +3794,8 @@ class User(OTPmeObject):
             failed_pass.update_last_used_time()
             return True
 
-        logger.debug("Counting failed login for this request.")
+        log_msg = _("Counting failed login for this request.", log=True)[1]
+        logger.debug(log_msg)
 
         # Write used pass hash config to backend.
         try:
@@ -3797,9 +3804,9 @@ class User(OTPmeObject):
             self.remove_outdated_failed_pass_hashes(access_group)
             return True
         except Exception as e:
-            msg = _("Error counting failed login attempt: {self_oid}: {e}")
-            msg = msg.format(self_oid=self.oid, e=e)
-            logger.critical(msg)
+            log_msg = _("Error counting failed login attempt: {self_oid}: {e}", log=True)[1]
+            log_msg = log_msg.format(self_oid=self.oid, e=e)
+            logger.critical(log_msg)
             return False
 
     def failcount(self, access_group: str):
@@ -5485,9 +5492,9 @@ class User(OTPmeObject):
             try:
                 backend.delete_object(used_oid, cluster=True)
             except Exception as e:
-                msg = _("Error removing used SOTP '{used_object}' from backend: {e}")
-                msg = msg.format(used_object=used_object, e=e)
-                logger.critical(msg)
+                log_msg = _("Error removing used SOTP '{used_object}' from backend: {e}", log=True)[1]
+                log_msg = log_msg.format(used_object=used_object, e=e)
+                logger.critical(log_msg)
 
         # Make sure to remove user from signers cache.
         sign_key_cache.del_cache(self.oid)

@@ -52,12 +52,12 @@ def get(debug=False, print_devices=False):
         raise Exception(msg)
 
     if config.debug_enabled:
-        msg = _("Found Yubikey: {model}")
-        msg = msg.format(model=YK.model)
-        logger.debug(msg)
-        msg = _("Version: {version}")
-        msg = msg.format(version=YK.version())
-        logger.debug(msg)
+        log_msg = _("Found Yubikey: {model}", log=True)[1]
+        log_msg = log_msg.format(model=YK.model)
+        logger.debug(log_msg)
+        log_msg = _("Version: {version}", log=True)[1]
+        log_msg = log_msg.format(version=YK.version())
+        logger.debug(log_msg)
 
     if print_devices:
         msg = _("Found Yubikey: {model}")

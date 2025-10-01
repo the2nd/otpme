@@ -1113,9 +1113,10 @@ class Unit(OTPmeObject):
             try:
                 _acl = otpme_acl.decode(acl)
             except Exception as e:
-                msg = _("Error decoding ACL: {acl}: {error}")
+                msg, log_msg = _("Error decoding ACL: {acl}: {error}", log=True)
                 msg = msg.format(acl=acl, error=e)
-                logger.critical(msg)
+                log_msg = log_msg.format(acl=acl, error=e)
+                logger.critical(log_msg)
                 return callback.error(msg)
             # Skip recursive ACLs which already should be added
             # by _prepare_add().
@@ -1146,9 +1147,10 @@ class Unit(OTPmeObject):
                             callback=callback,
                             **kwargs)
             except Exception as e:
-                msg = _("Error adding ACL: {error}")
+                msg, log_msg = _("Error adding ACL: {error}", log=True)
                 msg = msg.format(error=e)
-                logger.critical(msg)
+                log_msg = log_msg.format(error=e)
+                logger.critical(log_msg)
                 return callback.error(msg)
 
         # Units should inherit ACLs by default.

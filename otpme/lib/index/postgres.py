@@ -276,11 +276,11 @@ def start():
     else:
         set_default_config()
     logger = config.logger
-    msg = "Starting postgresql..."
-    logger.debug(msg)
-    msg = _("Using config file: {}")
-    msg = msg.format(conf_file)
-    logger.debug(msg)
+    log_msg = _("Starting postgresql...", log=True)[1]
+    logger.debug(log_msg)
+    log_msg = _("Using config file: {conf_file}", log=True)[1]
+    log_msg = log_msg.format(conf_file=conf_file)
+    logger.debug(log_msg)
     socket_dir = get_socket_dir()
     postgres_opts = f"-h '' -k {socket_dir} -c config_file={conf_file}"
     start_cmd = [
@@ -307,8 +307,8 @@ def _reload():
         msg = _("Postgres not running.")
         raise NotRunning(msg)
     logger = config.logger
-    msg = "Reloading postgresql..."
-    logger.debug(msg)
+    log_msg = _("Reloading postgresql...", log=True)[1]
+    logger.debug(log_msg)
     reload_cmd = [config.pg_ctl_bin, "-D", INDEX_DIR, "reload"]
     return_code = system_command.run(command=reload_cmd,
                                     user=config.user,
@@ -328,8 +328,8 @@ def stop():
         msg = _("Postgres not running.")
         raise NotRunning(msg)
     logger = config.logger
-    msg = "Stopping postgresql..."
-    logger.info(msg)
+    log_msg = _("Stopping postgresql...", log=True)[1]
+    logger.info(log_msg)
     stop_cmd = [config.pg_ctl_bin, "-D", INDEX_DIR, "-m", "immediate", "stop"]
     return_code = system_command.run(command=stop_cmd,
                                     user=config.user,

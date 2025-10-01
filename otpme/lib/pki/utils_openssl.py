@@ -316,9 +316,9 @@ def revoke_certificate(ca_cert, ca_key, cert=None, serial_number=None,
 
     if major_version < 1:
         if sign_algo is not None:
-            msg = _("Ignoring parameter 'sign_algo' for pyopenssl version '{version}'.")
-            msg = msg.format(version=major_version)
-            logger.info(msg)
+            log_msg = _("Ignoring parameter 'sign_algo' for pyopenssl version '{version}'.", log=True)[1]
+            log_msg = log_msg.format(version=major_version)
+            logger.info(log_msg)
 
     # Make sure we convert strings to int()
     try:

@@ -320,9 +320,9 @@ class OTPmeExtension(OTPmeLDIFHandler):
                                 auto_value=True,
                                 callback=callback)
         if object_modified:
-            msg = _("Updated group members: {}")
-            msg = msg.format(o.oid)
-            logger.info(msg)
+            log_msg = _("Updated group members: {}", log=True)[1]
+            log_msg = log_msg.format(o.oid)
+            logger.info(log_msg)
             o._cache(callback=callback)
 
         # Make sure nsscache gets updated.

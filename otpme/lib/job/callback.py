@@ -112,9 +112,9 @@ class JobCallback(object):
             cache.remove_modified_object(object_id)
             if not o or not o._modified:
                 continue
-            msg = _("Writing modified object (Job): {}")
-            msg = msg.format(o)
-            self.logger.debug(msg)
+            log_msg = _("Writing modified object (Job): {}", log=True)[1]
+            log_msg = log_msg.format(o)
+            self.logger.debug(log_msg)
             o._write(callback=self)
             # Reset modified stuff before adding object to cache.
             o.reset_modified()
@@ -302,9 +302,9 @@ class JobCallback(object):
                         try:
                             self.job.exit_info['last_error'] = exit_info
                         except Exception as e:
-                            msg = _("Error updating jobs last error: {}")
-                            msg = msg.format(e)
-                            self.logger.critical(msg)
+                            log_msg = _("Error updating jobs last error: {}", log=True)[1]
+                            log_msg = log_msg.format(e)
+                            self.logger.critical(log_msg)
 
                     # Add the message to callback channel.
                     if raise_exception is False:
@@ -640,9 +640,9 @@ class JobCallback(object):
                     try:
                         self.job.exit_info['exit_message'] = message
                     except Exception as e:
-                        msg = _("Failed to add exit message: {}")
-                        msg = msg.format(e)
-                        self.logger.critical(msg)
+                        log_msg = _("Failed to add exit message: {}", log=True)[1]
+                        log_msg = log_msg.format(e)
+                        self.logger.critical(log_msg)
             except:
                 pass
 

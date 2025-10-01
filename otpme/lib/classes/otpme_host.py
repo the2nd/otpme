@@ -468,14 +468,14 @@ class OTPmeHost(OTPmeClientObject):
                 try:
                     self.authorize_token(token, login_interface="ssh")
                 except OTPmeException as e:
-                    msg = _("Not adding unauthorized SSH token: {token}: {error}")
-                    msg = msg.format(token=token, error=e)
-                    logger.debug(msg)
+                    log_msg = _("Not adding unauthorized SSH token: {token}: {error}", log=True)[1]
+                    log_msg = log_msg.format(token=token, error=e)
+                    logger.debug(log_msg)
                     continue
                 except Exception as e:
-                    msg = _("Failed to authorize SSH token: {token}: {error}")
-                    msg = msg.format(token=token, error=e)
-                    logger.debug(msg)
+                    log_msg = _("Failed to authorize SSH token: {token}: {error}", log=True)[1]
+                    log_msg = log_msg.format(token=token, error=e)
+                    logger.debug(log_msg)
                     continue
 
                 # Make sure we check destination token for linked tokens.
@@ -494,9 +494,9 @@ class OTPmeHost(OTPmeClientObject):
 
                 # Skip SSH token without public key.
                 if not verify_token.ssh_public_key:
-                    msg = _("Ignoring SSH token without public key: {token_path}")
-                    msg = msg.format(token_path=verify_token.rel_path)
-                    logger.debug(msg)
+                    log_msg = _("Ignoring SSH token without public key: {token_path}", log=True)[1]
+                    log_msg = log_msg.format(token_path=verify_token.rel_path)
+                    logger.debug(log_msg)
                     continue
 
                 entry = {
@@ -819,9 +819,10 @@ class OTPmeHost(OTPmeClientObject):
             utils.verify_cn(self.fqdn, csr=cert_req)
         except Exception as e:
             config.raise_exception()
-            msg = _("Certificate request error: {error}")
+            msg, log_msg = _("Certificate request error: {error}", log=True)
             msg = msg.format(error=e)
-            logger.warning(msg)
+            log_msg = log_msg.format(error=e)
+            logger.warning(log_msg)
             return callback.error(msg)
 
         if run_policies:
@@ -849,8 +850,8 @@ class OTPmeHost(OTPmeClientObject):
             msg = msg.format(site_ca_path=config.site_ca_path)
             return callback.error(msg)
 
-        msg = (_("Generating new certificate..."))
-        logger.debug(msg)
+        msg, log_msg = _("Generating new certificate...", log=True)
+        logger.debug(log_msg)
         if verbose_level > 0:
             callback.send(msg)
             # Wait a moment before starting CPU intensive job to prevent delay
@@ -929,10 +930,11 @@ class OTPmeHost(OTPmeClientObject):
         key_type = "public"
         if private:
             key_type = "private"
-        msg = _("Loading {host_type} {key_type} auth key.")
+        msg, log_msg = _("Loading {host_type} {key_type} auth key.", log=True)
         msg = msg.format(host_type=self.type, key_type=key_type)
+        log_msg = log_msg.format(host_type=self.type, key_type=key_type)
         if config.debug_level() > 3:
-            logger.debug(msg)
+            logger.debug(log_msg)
         try:
             if private:
                 auth_key = config.host_data['auth_key']
@@ -948,7 +950,8 @@ class OTPmeHost(OTPmeClientObject):
     def gen_challenge(self):
         """ Generate host authentication challenge. """
         if config.debug_level() > 3:
-            logger.debug(f"Generating {self.type} auth challenge.")
+            log_msg = _("Generating {self.type} auth challenge.", log=True)[1]
+            logger.debug(log_msg)
         epoch_time = str(int(time.time()))
         nonce = stuff.gen_secret(len=32)
         challenge = f"{epoch_time}:{nonce}"
@@ -958,7 +961,8 @@ class OTPmeHost(OTPmeClientObject):
         """ Sign authentication challenge. """
         auth_key = self.load_auth_key(private=True)
         if config.debug_level() > 3:
-            logger.debug(f"Signing {self.type} auth challenge.")
+            log_msg = _("Signing {self.type} auth challenge.", log=True)[1]
+            logger.debug(log_msg)
         response = auth_key.sign(challenge)
         response = encode(response, "hex")
         return response
@@ -968,7 +972,8 @@ class OTPmeHost(OTPmeClientObject):
         auth_key = self.load_auth_key()
         response = decode(response, "hex")
         if config.debug_level() > 3:
-            logger.debug(f"Verifying {self.type} auth challenge.")
+            log_msg = _("Verifying {self.type} auth challenge.", log=True)[1]
+            logger.debug(log_msg)
         # Verify challenge/response.
         if auth_key.verify(response, challenge):
             epoch_time = int(time.time())
@@ -978,13 +983,13 @@ class OTPmeHost(OTPmeClientObject):
             max_callenge_age = 5
             if challenge_age <= max_callenge_age:
                 return True
-            msg = _("Challenge too old: {fqdn} ({challenge_age}s)")
-            msg = msg.format(fqdn=self.fqdn, challenge_age=challenge_age)
-            logger.warning(msg)
+            log_msg = _("Challenge too old: {fqdn} ({challenge_age}s)", log=True)[1]
+            log_msg = log_msg.format(fqdn=self.fqdn, challenge_age=challenge_age)
+            logger.warning(log_msg)
             return False
-        msg = _("Challenge verification failed: {fqdn}")
-        msg = msg.format(fqdn=self.fqdn)
-        logger.warning(msg)
+        log_msg = _("Challenge verification failed: {fqdn}", log=True)[1]
+        log_msg = log_msg.format(fqdn=self.fqdn)
+        logger.warning(log_msg)
         return False
 
     @check_acls(['join'])
@@ -1022,9 +1027,10 @@ class OTPmeHost(OTPmeClientObject):
             # Check CN.
             cert_cn = _cert.get_cn()
             if cert_cn != self.fqdn:
-                msg = _("Certificate error: CN does not match FQDN: {fqdn}: {cert_cn}")
+                msg, log_msg = _("Certificate error: CN does not match FQDN: {fqdn}: {cert_cn}", log=True)
                 msg = msg.format(fqdn=self.fqdn, cert_cn=cert_cn)
-                logger.warning(msg)
+                log_msg = log_msg.format(fqdn=self.fqdn, cert_cn=cert_cn)
+                logger.warning(log_msg)
                 return callback.error(msg)
             # Check if its a revoked cert.
             issuer_cn = _cert.get_issuer()

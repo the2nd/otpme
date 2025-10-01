@@ -304,12 +304,15 @@ class ControlDaemon(UnixDaemon):
             return
         signal_name = stuff.get_signal_name(_signal)
         if signal_name == "SIGINT":
-            self.logger.warning(_("Exiting on Ctrl+C"))
+            log_msg = _("Exiting on Ctrl+C", log=True)[1]
+            self.logger.warning(log_msg)
             stuff.kill_pid(self.pid)
         if signal_name == "SIGTERM":
-            self.logger.warning(_("Exiting on 'SIGTERM'."))
+            log_msg = _("Exiting on 'SIGTERM'.", log=True)[1]
+            self.logger.warning(log_msg)
         if signal_name == "SIGHUP":
-            self.logger.warning(_("Received 'SIGHUP'."))
+            log_msg = _("Received 'SIGHUP'.", log=True)[1]
+            self.logger.warning(log_msg)
 
         if signal_name == "SIGHUP":
             if not self.loading:
@@ -356,8 +359,8 @@ class ControlDaemon(UnixDaemon):
         # Stop index (e.g. postgresql).
         self._stop_index()
 
-        msg = _("Control daemon shutdown succeeded.")
-        self.logger.info(msg)
+        log_msg = _("Control daemon shutdown succeeded.", log=True)[1]
+        self.logger.info(log_msg)
         self._cleanup_done.value = True
         if os.path.exists(self.status_file):
             os.remove(self.status_file)
@@ -367,99 +370,99 @@ class ControlDaemon(UnixDaemon):
         try:
             self._cleanup_done.close()
         except Exception as e:
-            msg = _("Failed to close shared bool: {name}")
-            msg = msg.format(name=self._cleanup_done.name)
-            self.logger.critical(msg)
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=self._cleanup_done.name)
+            self.logger.critical(log_msg)
         try:
             self.daemon_startup.close()
         except Exception as e:
-            msg = _("Failed to close shared bool: {name}")
-            msg = msg.format(name=config.daemon_startup.name)
-            self.logger.critical(msg)
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=config.daemon_startup.name)
+            self.logger.critical(log_msg)
         try:
             config._daemon_shutdown.close()
         except Exception as e:
-            msg = _("Failed to close shared bool: {name}")
-            msg = msg.format(name=config._daemon_shutdown.name)
-            self.logger.critical(msg)
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=config._daemon_shutdown.name)
+            self.logger.critical(log_msg)
         try:
             config._cluster_quorum.close()
         except Exception as e:
-            msg = _("Failed to close shared bool: {name}")
-            msg = msg.format(name=config._cluster_quorum.name)
-            self.logger.critical(msg)
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=config._cluster_quorum.name)
+            self.logger.critical(log_msg)
         try:
             config._cluster_status.close()
         except Exception as e:
-            msg = _("Failed to close shared bool: {name}")
-            msg = msg.format(name=config._cluster_status.name)
-            self.logger.critical(msg)
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=config._cluster_status.name)
+            self.logger.critical(log_msg)
         try:
             config._cluster_vote_participation.close()
         except Exception as e:
-            msg = _("Failed to close shared bool: {name}")
-            msg = msg.format(name=config._cluster_vote_participation.name)
-            self.logger.critical(msg)
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=config._cluster_vote_participation.name)
+            self.logger.critical(log_msg)
         try:
             config._master_failover.close()
         except Exception as e:
-            msg = _("Failed to close shared bool: {name}")
-            msg = msg.format(name=config._master_failover.name)
-            self.logger.critical(msg)
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=config._master_failover.name)
+            self.logger.critical(log_msg)
         try:
             config._one_node_setup.close()
         except Exception as e:
-            msg = _("Failed to close shared bool: {name}")
-            msg = msg.format(name=config._one_node_setup.name)
-            self.logger.critical(msg)
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=config._one_node_setup.name)
+            self.logger.critical(log_msg)
         try:
             config._two_node_setup.close()
         except Exception as e:
-            msg = _("Failed to close shared bool: {name}")
-            msg = msg.format(name=config._two_node_setup.name)
-            self.logger.critical(msg)
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=config._two_node_setup.name)
+            self.logger.critical(log_msg)
         try:
             config._site_init.close()
         except Exception as e:
-            msg = _("Failed to close shared bool: {name}")
-            msg = msg.format(name=config._site_init.name)
-            self.logger.critical(msg)
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=config._site_init.name)
+            self.logger.critical(log_msg)
         try:
             config._ldap_cache_clear.close()
         except Exception as e:
-            msg = _("Failed to close shared bool: {name}")
-            msg = msg.format(name=config._ldap_cache_clear.name)
-            self.logger.critical(msg)
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=config._ldap_cache_clear.name)
+            self.logger.critical(log_msg)
         try:
             config._ldap_object_changed.close()
         except Exception as e:
-            msg = _("Failed to close shared bool: {name}")
-            msg = msg.format(name=config._ldap_object_changed.name)
-            self.logger.critical(msg)
+            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
+            log_msg = log_msg.format(name=config._ldap_object_changed.name)
+            self.logger.critical(log_msg)
         #try:
         #    multiprocessing.cluster_lock_event.unlink()
         #except Exception as e:
-        #    msg = _("Failed to remove cluster event: {e}")
-        #    msg = msg.format(e=e)
-        #    self.logger.critical(msg)
+        #    log_msg = _("Failed to remove cluster event: {e}", log=True)
+        #    log_msg = log_msg.format(e=e)
+        #    self.logger.critical(log_msg)
         try:
             multiprocessing.cluster_in_event.unlink()
         except Exception as e:
-            msg = _("Failed to remove cluster event: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to remove cluster event: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         try:
             multiprocessing.cluster_out_event.unlink()
         except Exception as e:
-            msg = _("Failed to remove cluster event: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to remove cluster event: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         try:
             multiprocessing.two_node_setup_event.unlink()
         except Exception as e:
-            msg = _("Failed to remove cluster event: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to remove cluster event: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         os._exit(0)
 
     @property
@@ -475,13 +478,16 @@ class ControlDaemon(UnixDaemon):
         try:
             net.configure_floating_ip(address)
         except AddressAlreadyAssigned as e:
-            self.logger.warning(str(e))
+            log_msg = str(e)
+            self.logger.warning(log_msg)
         except AddressAlreadyInUse as e:
-            self.logger.warning(str(e))
+            log_msg = str(e)
+            self.logger.warning(log_msg)
         except Exception as e:
-            msg = _("Unable to configure floating IP for site: {site}: {error}")
+            msg, log_msg = _("Unable to configure floating IP for site: {site}: {error}", log=True)
             msg = msg.format(site=config.site, error=e)
-            self.logger.critical(msg)
+            log_msg = log_msg.format(site=config.site, error=e)
+            self.logger.critical(log_msg)
             raise Exception(msg)
         # Remember address we configured.
         self.floating_address = address
@@ -495,9 +501,10 @@ class ControlDaemon(UnixDaemon):
         try:
             net.deconfigure_floating_ip(address)
         except Exception as e:
-            msg = _("Unable to deconfigure floating IP for site: {site}: {error}")
+            msg, log_msg = _("Unable to deconfigure floating IP for site: {site}: {error}", log=True)
             msg = msg.format(site=config.site, error=e)
-            self.logger.critical(msg)
+            log_msg = log_msg.format(site=config.site, error=e)
+            self.logger.critical(log_msg)
             raise Exception(msg)
 
     def configure(self):
@@ -558,7 +565,8 @@ class ControlDaemon(UnixDaemon):
             if x not in self.childs:
                 continue
             self.childs.pop(x)
-            self.logger.info(_("Removing child daemon."))
+            log_msg = _("Removing child daemon.", log=True)[1]
+            self.logger.info(log_msg)
 
     def run(self):
         """ Start daemon loop. """
@@ -624,9 +632,9 @@ class ControlDaemon(UnixDaemon):
             self.daemon_startup = multiprocessing.get_bool(daemon_startup,
                                                         random_name=False)
         except Exception as e:
-            msg = _("Failed to get shared bool: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         # Mark daemon startup as True.
         self.daemon_startup.value = True
         daemon_shutdown = "otpme-daemon-shutdown"
@@ -634,137 +642,137 @@ class ControlDaemon(UnixDaemon):
             config._daemon_shutdown = multiprocessing.get_bool(daemon_shutdown,
                                                             random_name=False)
         except Exception as e:
-            msg = _("Failed to get shared bool: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         cluster_quorum = "otpme-cluster-quorum"
         try:
             config._cluster_quorum = multiprocessing.get_bool(cluster_quorum,
                                                             random_name=False)
         except Exception as e:
-            msg = _("Failed to get shared bool: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         cluster_status = "otpme-cluster-status"
         try:
             config._cluster_status = multiprocessing.get_bool(cluster_status,
                                                             random_name=False)
         except Exception as e:
-            msg = _("Failed to get shared bool: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         cluster_vote_participation = "otpme-cluster-vote-participation"
         try:
             config._cluster_vote_participation = multiprocessing.get_bool(cluster_vote_participation,
                                                                         random_name=False)
         except Exception as e:
-            msg = _("Failed to get shared bool: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         master_failover = "otpme-master-failover"
         try:
             config._master_failover = multiprocessing.get_bool(master_failover,
                                                             random_name=False)
         except Exception as e:
-            msg = _("Failed to get shared bool: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         one_node_setup = "otpme-one-node-setup"
         try:
             config._one_node_setup = multiprocessing.get_bool(one_node_setup,
                                                             random_name=False)
         except Exception as e:
-            msg = _("Failed to get shared bool: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         two_node_setup = "otpme-two-node-setup"
         try:
             config._two_node_setup = multiprocessing.get_bool(two_node_setup,
                                                             random_name=False)
         except Exception as e:
-            msg = _("Failed to get shared bool: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         cleanup_done_name = f"{self.name}:cleanup_done"
         try:
             self._cleanup_done = multiprocessing.get_bool(cleanup_done_name,
                                                         random_name=False)
         except Exception as e:
-            msg = _("Failed to get shared bool: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         site_init = "otpme-site-init"
         try:
             config._site_init = multiprocessing.get_bool(site_init,
                                                         random_name=False)
         except Exception as e:
-            msg = _("Failed to get shared bool: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         ldap_cache_clear = "ldap-cache-clear"
         try:
             config._ldap_cache_clear = multiprocessing.get_bool(ldap_cache_clear,
                                                             random_name=False)
         except Exception as e:
-            msg = _("Failed to get shared bool: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         ldap_object_changed = "ldap-object-changed"
         try:
             config._ldap_object_changed = multiprocessing.get_bool(ldap_object_changed,
                                                             random_name=False)
         except Exception as e:
-            msg = _("Failed to get shared bool: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # Start index (e.g. postgresql).
         try:
             self._start_index()
         except Exception as e:
-            msg = _("Failed to start index: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to start index: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # Start cache.
         try:
             self._start_cache()
         except Exception as e:
-            msg = _("Failed to start cache: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to start cache: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # Flush cache if configured.
         if config.flush_cache_on_start:
             try:
                 self._flush_cache()
             except Exception as e:
-                msg = _("Failed to flush cache: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Failed to flush cache: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
 
         # Init cache.
         try:
             cache.init()
         except Exception as e:
-            msg = _("Failed to init cache: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to init cache: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         try:
             cache.enable()
         except Exception as e:
-            msg = _("Failed to enable cache: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to enable cache: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # Init OTPme (e.g. get config.host_data).
         try:
             init_otpme()
         except Exception as e:
-            msg = _("Failed to init OTPme: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to init OTPme: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             config.raise_exception()
 
         # Enable file logging if not in debug mode.
@@ -772,9 +780,9 @@ class ControlDaemon(UnixDaemon):
             try:
                 config.reload()
             except Exception as e:
-                msg = _("Failed to reload config: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Failed to reload config: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
 
         # Configure ourselves.
         try:
@@ -782,18 +790,18 @@ class ControlDaemon(UnixDaemon):
         except DaemonRestart:
             pass
         except Exception as e:
-            msg = _("Failed to configure controld: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to configure controld: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             config.raise_exception()
 
         # Interprocess communication queue.
         try:
             self.comm_queue = multiprocessing.InterProcessQueue()
         except Exception as e:
-            msg = _("Failed to init interprocess queue: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to init interprocess queue: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # Set signal handler after we finished initialization.
         signal.signal(signal.SIGTERM, self.signal_handler)
@@ -804,34 +812,34 @@ class ControlDaemon(UnixDaemon):
         try:
             multiprocessing.create_shared_objects()
         except Exception as e:
-            msg = _("Failed to create shared objects: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to create shared objects: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # Set daemon status.
         config.daemon_status = "running"
 
-        msg = _("Updating host data...")
-        self.logger.info(msg)
+        log_msg = _("Updating host data...", log=True)[1]
+        self.logger.info(log_msg)
         try:
             host.update_data()
         except Exception as e:
-            msg = _("Failed to update host data: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to update host data: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             config.raise_exception()
 
         # Load sync status from file.
         try:
             config.load_sync_status()
         except Exception as e:
-            msg = _("Failed to load sync status: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to load sync status: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
-        msg = _("{name} started")
-        msg = msg.format(name=self.full_name)
-        self.logger.info(msg)
+        log_msg = _("{name} started", log=True)[1]
+        log_msg = log_msg.format(name=self.full_name)
+        self.logger.info(log_msg)
 
         # Start process to handle daemon commands. This is needed to prevent
         # problems when child daemons are started from a process of controld.
@@ -839,17 +847,17 @@ class ControlDaemon(UnixDaemon):
             self.daemon_handler_proc = multiprocessing.start_process(name=self.name,
                                                                 target=self._run)
         except Exception as e:
-            msg = _("Failed to start daemon handler process: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to start daemon handler process: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
 
         # Wait for command process to startup child daemons.
         try:
             self.comm_handler.send(self.child_comm_id, command="start_daemons")
         except Exception as e:
-            msg = _("Failed to send daemon start command to handler process: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to send daemon start command to handler process: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         while True:
             try:
                 sender, \
@@ -865,9 +873,9 @@ class ControlDaemon(UnixDaemon):
                 break
             #if startup_message == "quit":
             #    sys.exit()
-            msg = _("Failed to get daemon command: {message}")
-            msg = msg.format(message=startup_message)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get daemon command: {message}", log=True)[1]
+            log_msg = log_msg.format(message=startup_message)
+            self.logger.critical(log_msg)
             sys.exit(1)
 
         last_host_data_reload = 0
@@ -891,9 +899,9 @@ class ControlDaemon(UnixDaemon):
                 host.update_data()
                 last_host_data_reload = time.time()
             except Exception as e:
-                msg = _("Failed to update host data: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Failed to update host data: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
                 config.raise_exception()
 
         self.daemon_handler_proc.join()
@@ -910,9 +918,9 @@ class ControlDaemon(UnixDaemon):
         try:
             setproctitle.setproctitle(proctitle)
         except Exception as e:
-            msg = _("Failed to set proctitle: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to set proctitle: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         self.comm_id = self.child_comm_id
 
         while True:
@@ -923,19 +931,19 @@ class ControlDaemon(UnixDaemon):
             except ExitOnSignal:
                 break
             except EOFError as e:
-                msg = _("EOFError while receiving command: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("EOFError while receiving command: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
                 continue
             except IOError as e:
-                msg = _("IOError while receiving command: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("IOError while receiving command: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
                 continue
             except Exception as e:
-                msg = _("Failed to get daemon command: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg, exc_info=True)
+                log_msg = _("Failed to get daemon command: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg, exc_info=True)
                 continue
 
             if command == "start_daemons":
@@ -943,9 +951,9 @@ class ControlDaemon(UnixDaemon):
                 try:
                     start_status = self.ensure_daemons()
                 except Exception as e:
-                    msg = _("Failed to start daemons: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.critical(msg)
+                    log_msg = _("Failed to start daemons: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg)
                     pass
                 if start_status is False:
                     # Inform main process about failure.
@@ -966,9 +974,9 @@ class ControlDaemon(UnixDaemon):
                 try:
                     self.configure_floating_ip(config.site_address)
                 except Exception as e:
-                    msg = _("Failed to configure floating IP: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.critical(msg)
+                    log_msg = _("Failed to configure floating IP: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg)
                     config.raise_exception()
                 self.comm_handler.send(sender, command="ip_configured")
             elif command == "deconfigure_floating_ip":
@@ -995,9 +1003,9 @@ class ControlDaemon(UnixDaemon):
             return
         if _index.status():
             return
-        msg = _("Index not started.")
+        msg, log_msg = _("Index not started.", log=True)
         error_message(msg)
-        self.logger.critical(msg)
+        self.logger.critical(log_msg)
         sys.exit(1)
 
     def _reload_index(self):
@@ -1031,9 +1039,9 @@ class ControlDaemon(UnixDaemon):
             return
         if _cache.status():
             return
-        msg = _("Cache not started.")
+        msg, log_msg = _("Cache not started.", log=True)
         error_message(msg)
-        self.logger.critical(msg)
+        self.logger.critical(log_msg)
         sys.exit(1)
 
     def _stop_cache(self):
@@ -1087,9 +1095,9 @@ class ControlDaemon(UnixDaemon):
         try:
             daemon = daemon_class(daemon_name, daemon_user, daemon_group)
         except Exception as e:
-            msg = _("Unable to load daemon class: {daemon_class}: {error}")
-            msg = msg.format(daemon_class=daemon_class, error=e)
-            self.logger.critical(msg)
+            log_msg = _("Unable to load daemon class: {daemon_class}: {error}", log=True)[1]
+            log_msg = log_msg.format(daemon_class=daemon_class, error=e)
+            self.logger.critical(log_msg)
             config.raise_exception()
             return
 
@@ -1097,8 +1105,9 @@ class ControlDaemon(UnixDaemon):
             add_result = self.add_child(daemon, reload=reload,
                                         master_node=master_node)
         except Exception as e:
-            msg = _("Failed to start child daemon: {daemon}: {error}")
-            msg = msg.format(daemon=daemon.name, error=e)
+            log_msg = _("Failed to start child daemon: {daemon}: {error}", log=True)[1]
+            log_msg = log_msg.format(daemon=daemon.name, error=e)
+            self.logger.critical(log_msg)
             add_result = False
 
         return add_result
@@ -1120,9 +1129,9 @@ class ControlDaemon(UnixDaemon):
         daemon = self.get_child(daemon_name)
 
         if not daemon:
-            msg = _("Starting {daemon}")
-            msg = msg.format(daemon=daemon_name)
-            self.logger.debug(msg)
+            log_msg = _("Starting {daemon}", log=True)[1]
+            log_msg = log_msg.format(daemon=daemon_name)
+            self.logger.debug(log_msg)
             self.start_daemon(daemon_name)
             return True
 
@@ -1139,9 +1148,9 @@ class ControlDaemon(UnixDaemon):
                 self.childs[daemon_name]['status'] = "ping"
                 heartbeat_sent = True
             except Exception as e:
-                msg = _("Unable to send heartbeat packet to: {daemon}")
-                msg = msg.format(daemon=daemon_name)
-                self.logger.critical(msg, exc_info=True)
+                log_msg = _("Unable to send heartbeat packet to: {daemon}", log=True)[1]
+                log_msg = log_msg.format(daemon=daemon_name)
+                self.logger.critical(log_msg, exc_info=True)
                 heartbeat_sent = False
 
             if heartbeat_sent:
@@ -1156,9 +1165,9 @@ class ControlDaemon(UnixDaemon):
                 except ExitOnSignal:
                     break
                 except Exception as e:
-                    msg = _("Failed to receive heartbeat reply: {daemon}: {error_type}")
-                    msg = msg.format(daemon=daemon_name, error_type=type(e))
-                    self.logger.critical(msg, exc_info=True)
+                    log_msg = _("Failed to receive heartbeat reply: {daemon}: {error_type}", log=True)[1]
+                    log_msg = log_msg.format(daemon=daemon_name, error_type=type(e))
+                    self.logger.critical(log_msg, exc_info=True)
                     ping_reply = None
                 # Check for heartbeat reply.
                 if ping_reply:
@@ -1176,21 +1185,22 @@ class ControlDaemon(UnixDaemon):
                     return True
 
             if retry == retry_count:
-                msg = _("Daemon '{daemon}' is not responding. Trying to restart...")
-                msg = msg.format(daemon=daemon_name)
-                self.logger.critical(msg)
+                log_msg = _("Daemon '{daemon}' is not responding. Trying to restart...", log=True)[1]
+                log_msg = log_msg.format(daemon=daemon_name)
+                self.logger.critical(log_msg)
                 self.stop_child(daemon_name)
                 self.start_daemon(daemon_name)
                 return False
 
-            msg = _("Daemon '{daemon}' is not responding. Retrying in {interval} seconds...")
-            msg = msg.format(daemon=daemon_name, interval=retry_interval)
-            self.logger.critical(msg)
+            log_msg = _("Daemon '{daemon}' is not responding. Retrying in {interval} seconds...", log=True)[1]
+            log_msg = log_msg.format(daemon=daemon_name, interval=retry_interval)
+            self.logger.critical(log_msg)
             time.sleep(retry_interval)
 
     def _reload(self):
         """ Daemon reload. """
-        self.logger.info(_("Starting config reload..."))
+        log_msg = _("Starting config reload...", log=True)[1]
+        self.logger.info(log_msg)
         # Set our status to config loading to prevent another
         # SIGTERM to initiate another reload which may confuse us.
         self.loading = True
@@ -1224,20 +1234,21 @@ class ControlDaemon(UnixDaemon):
 
         # Reset variables.
         self.loading = False
-        self.logger.info(_("Finished config reload..."))
+        log_msg = _("Finished config reload...", log=True)[1]
+        self.logger.info(log_msg)
 
     def _reload_child(self, daemon_name):
         """ Send reload command to child daemon. """
-        msg = _("Sending reload command to child daemon: {daemon}")
-        msg = msg.format(daemon=daemon_name)
-        self.logger.info(msg)
+        log_msg = _("Sending reload command to child daemon: {daemon}", log=True)[1]
+        log_msg = log_msg.format(daemon=daemon_name)
+        self.logger.info(log_msg)
         self.childs[daemon_name]['status'] = "reload"
         try:
             self.comm_handler.send(recipient=daemon_name, command="reload")
         except Exception as e:
-            msg = _("Unable to send reload signal to: {daemon}: {error}")
-            msg = msg.format(daemon=daemon_name, error=e)
-            self.logger.critical(msg)
+            log_msg = _("Unable to send reload signal to: {daemon}: {error}", log=True)[1]
+            log_msg = log_msg.format(daemon=daemon_name, error=e)
+            self.logger.critical(log_msg)
 
         # Max wait for child daemon reload.
         max_wait = 15
@@ -1245,10 +1256,10 @@ class ControlDaemon(UnixDaemon):
         # Wait until we get 'reload_done' reply from child daemon.
         while True:
             if count_wait == max_wait:
-                msg = _("Child daemon '{daemon}' does not respond to "
-                        "reload command. Restarting...")
-                msg = msg.format(daemon=daemon_name)
-                self.logger.info(msg)
+                log_msg = _("Child daemon '{daemon}' does not respond to "
+                        "reload command. Restarting...", log=True)[1]
+                log_msg = log_msg.format(daemon=daemon_name)
+                self.logger.info(log_msg)
                 self.stop_child(daemon_name)
                 self.start_daemon(daemon_name)
                 break
@@ -1260,15 +1271,15 @@ class ControlDaemon(UnixDaemon):
             except ExitOnSignal:
                 break
             except Exception as e:
-                msg = _("Failed to get daemon reload reply: {daemon}: {error}")
-                msg = msg.format(daemon=daemon_name, error=e)
-                self.logger.critical(msg, exc_info=True)
+                log_msg = _("Failed to get daemon reload reply: {daemon}: {error}", log=True)[1]
+                log_msg = log_msg.format(daemon=daemon_name, error=e)
+                self.logger.critical(log_msg, exc_info=True)
                 continue
 
             if reply == "reload_shutdown":
-                msg = _("Child daemon '{daemon}' needs a restart to reload its config.")
-                msg = msg.format(daemon=daemon_name)
-                self.logger.info(msg)
+                log_msg = _("Child daemon '{daemon}' needs a restart to reload its config.", log=True)[1]
+                log_msg = log_msg.format(daemon=daemon_name)
+                self.logger.info(log_msg)
                 master_node = config.master_node
                 self.stop_child(daemon_name)
                 self.start_daemon(daemon_name, reload=True,
@@ -1298,21 +1309,21 @@ class ControlDaemon(UnixDaemon):
             data = self.comm_handler.recv(sender=daemon.name,
                                         timeout=startup_timeout)
         except Exception as e:
-            msg = _("Error getting startup response from {daemon}: {error}")
-            msg = msg.format(daemon=daemon.name, error=e)
-            self.logger.critical(msg, exc_info=True)
+            log_msg = _("Error getting startup response from {daemon}: {error}", log=True)[1]
+            log_msg = log_msg.format(daemon=daemon.name, error=e)
+            self.logger.critical(log_msg, exc_info=True)
             return False
 
         if reply == "ready":
             daemon_status = reply
-            msg = _("Got 'ready' message from {daemon}.")
-            msg = msg.format(daemon=daemon.name)
-            self.logger.info(msg)
+            log_msg = _("Got 'ready' message from {daemon}.", log=True)[1]
+            log_msg = log_msg.format(daemon=daemon.name)
+            self.logger.info(log_msg)
         else:
             daemon_status = False
-            msg = _("Error starting {daemon}: Wrong reply: {reply}")
-            msg = msg.format(daemon=daemon.name, reply=reply)
-            self.logger.critical(msg)
+            log_msg = _("Error starting {daemon}: Wrong reply: {reply}", log=True)[1]
+            log_msg = log_msg.format(daemon=daemon.name, reply=reply)
+            self.logger.critical(log_msg)
 
         if daemon_status is False:
             return
@@ -1341,34 +1352,34 @@ class ControlDaemon(UnixDaemon):
         daemon = self.get_child(daemon_name)
         if not daemon:
             return
-        msg = _("Waiting for child daemon '{daemon} ({pid})' to shutdown.")
-        msg = msg.format(daemon=daemon_name, pid=daemon.pid)
-        self.logger.info(msg)
+        log_msg = _("Waiting for child daemon '{daemon} ({pid})' to shutdown.", log=True)[1]
+        log_msg = log_msg.format(daemon=daemon_name, pid=daemon.pid)
+        self.logger.info(log_msg)
         # Send quit to child daemon.
         #self.comm_handler.send(recipient=daemon.name, command="quit")
         try:
             stuff.kill_pid(daemon.pid)
         except Exception as e:
-            msg = _("Failed to send SIGTERM to daemon '{daemon} ({pid})': {error}")
-            msg = msg.format(daemon=daemon.name, pid=daemon.pid, error=e)
-            self.logger.warning(msg)
+            log_msg = _("Failed to send SIGTERM to daemon '{daemon} ({pid})': {error}", log=True)[1]
+            log_msg = log_msg.format(daemon=daemon.name, pid=daemon.pid, error=e)
+            self.logger.warning(log_msg)
 
         # Wait until we get 'down' reply from child daemon or it dies.
         count = 0
         while daemon.is_alive():
             if count == terminate_wait:
-                msg = _("Child daemon '{daemon} ({pid})' ignored SIGTERM "
-                        "command. Sending SIGKILL.")
-                msg = msg.format(daemon=daemon_name, pid=daemon.pid)
-                self.logger.warning(msg)
+                log_msg = _("Child daemon '{daemon} ({pid})' ignored SIGTERM "
+                        "command. Sending SIGKILL.", log=True)[1]
+                log_msg = log_msg.format(daemon=daemon_name, pid=daemon.pid)
+                self.logger.warning(log_msg)
                 try:
                     stuff.kill_pid(daemon.pid,
                                 recursive=True,
                                 timeout=self.daemon_msg_timeout)
                 except Exception as e:
-                    msg = _("Failed to send SIGKILL to daemon '{daemon} ({pid})': {error}")
-                    msg = msg.format(daemon=daemon.name, pid=daemon.pid, error=e)
-                    self.logger.warning(msg)
+                    log_msg = _("Failed to send SIGKILL to daemon '{daemon} ({pid})': {error}", log=True)[1]
+                    log_msg = log_msg.format(daemon=daemon.name, pid=daemon.pid, error=e)
+                    self.logger.warning(log_msg)
                 break
 
             time.sleep(0.001)
@@ -1377,9 +1388,9 @@ class ControlDaemon(UnixDaemon):
         # Join child daemon process.
         daemon.join()
 
-        msg = _("Child daemon '{daemon}' shutdown succeeded.")
-        msg = msg.format(daemon=daemon_name)
-        self.logger.info(msg)
+        log_msg = _("Child daemon '{daemon}' shutdown succeeded.", log=True)[1]
+        log_msg = log_msg.format(daemon=daemon_name)
+        self.logger.info(log_msg)
 
     def stop_all_childs(self):
         """ Stop all child daemons. """

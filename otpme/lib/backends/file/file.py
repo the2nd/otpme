@@ -278,8 +278,8 @@ def register_object_type(object_type, path_getter, oid_getter,
 # Helper function to do proper logging.
 def log_current_object(x_object):
     log_current_object.counter += 1
-    msg = f"{log_current_object.message} ({log_current_object.counter}/{log_current_object.file_count}): {x_object}"
-    logger.debug(msg)
+    log_msg = f"{log_current_object.message} ({log_current_object.counter}/{log_current_object.file_count}): {x_object}"
+    logger.debug(log_msg)
 
 def clear_index_caches(object_id):
     object_type = object_id.object_type
@@ -424,7 +424,8 @@ def read(object_id, parameters=None, no_lock=False, use_index=True):
     try:
         object_config = filetools.read_data_file(config_file, parameters)
     except Exception as e:
-        logger.critical(str(e))
+        log_msg = str(e)
+        logger.critical(log_msg)
         object_config = None
         config.raise_exception()
 
@@ -2023,9 +2024,10 @@ def index_add(object_id, object_paths=None, object_config=None,
                                                     'CHECKSUM',
                                                     'SYNC_CHECKSUM'])
         except Exception as e:
-            msg = _("Error reading object config: {e}")
+            msg, log_msg = _("Error reading object config: {e}", log=True)
             msg = msg.format(e=e)
-            logger.critical(msg)
+            log_msg = log_msg.format(e=e)
+            logger.critical(log_msg)
             raise OTPmeException(msg)
 
     # Get object data.
@@ -2084,9 +2086,9 @@ def index_add(object_id, object_paths=None, object_config=None,
                     msg = _("Cannot add object to index: Object with same OID exists: {object_id} <> {x_uuid}")
                     msg = msg.format(object_id=object_id, x_uuid=x_uuid)
                     raise OTPmeException(msg)
-            msg = _("Removing orphan object from index: {object_id}")
-            msg = msg.format(object_id=object_id)
-            logger.debug(msg)
+            log_msg = _("Removing orphan object from index: {object_id}", log=True)[1]
+            log_msg = log_msg.format(object_id=object_id)
+            logger.debug(log_msg)
             session.delete(index_object)
             #local_object = session.merge(index_object)
             #session.delete(local_object)
@@ -2582,7 +2584,8 @@ def index_rebuild():
     # Register modules.
     register_modules()
 
-    logger.info("Starting index rebuild...")
+    log_msg = _("Starting index rebuild...", log=True)[1]
+    logger.info(log_msg)
 
     # Get index module.
     _index = config.get_index_module()
@@ -2669,8 +2672,8 @@ def index_rebuild():
     config.use_api = True
     init_otpme()
 
-    msg = _("Searching out of tree objects (OTPs, signatures etc.)...")
-    logger.debug(msg)
+    log_msg = _("Searching out of tree objects (OTPs, signatures etc.)...", log=True)[1]
+    logger.debug(log_msg)
 
     # Rebuild index of in-tree objects.
     for object_type in object_settings:
@@ -2692,7 +2695,8 @@ def index_rebuild():
 
     _index.command("create_db_indices")
 
-    logger.info("Finished index rebuild.")
+    log_msg = _("Finished index rebuild.", log=True)[1]
+    logger.info(log_msg)
     return True
 
 @oid_from_path_cache.cache_function()

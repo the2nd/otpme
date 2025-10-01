@@ -112,9 +112,9 @@ class ListenSocket(object):
                 #       http://stackoverflow.com/questions/4465959/python-errno-98-address-already-in-use
                 self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             except socket.error as e:
-                msg = _("Failed to create socket. Error code: {code}, Error message: {message}")
-                msg = msg.format(code=e[0], message=e[1])
-                self.logger.error(msg)
+                log_msg = _("Failed to create socket. Error code: {code}, Error message: {message}", log=True)[1]
+                log_msg = log_msg.format(code=e[0], message=e[1])
+                self.logger.error(log_msg)
                 return False
             # Remove old socket file.
             if os.path.exists(self.socket):
@@ -145,9 +145,9 @@ class ListenSocket(object):
                 #       http://stackoverflow.com/questions/4465959/python-errno-98-address-already-in-use
                 self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             except socket.error as e:
-                msg = _("Failed to create socket. Error code: {code}, Error message: {message}")
-                msg = msg.format(code=e[0], message=e[1])
-                self.logger.error(msg)
+                log_msg = _("Failed to create socket. Error code: {code}, Error message: {message}", log=True)[1]
+                log_msg = log_msg.format(code=e[0], message=e[1])
+                self.logger.error(log_msg)
                 return False
             # Set send/recv buffer.
             self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, config.socket_receive_buffer)
@@ -230,9 +230,9 @@ class ListenSocket(object):
         try:
             self._shutdown = multiprocessing.get_bool(self.name)
         except Exception as e:
-            msg = _("Failed to get shared bool: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         # Our connections.
         dict_name = f"{self.socket_uri}-connections"
         self.connections = multiprocessing.get_dict(dict_name)
@@ -247,9 +247,9 @@ class ListenSocket(object):
         try:
             init_done.recv()
         except Exception as e:
-            msg = _("Exception waiting for listen process init: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Exception waiting for listen process init: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
         finally:
             init_done.unlink()
 
@@ -308,9 +308,9 @@ class ListenSocket(object):
                     file_content = tmp_files[tmp_file]
                     # try to create file
                     if os.path.exists(tmp_file):
-                        msg = _("Cert file '{file}' exists, removing.")
-                        msg = msg.format(file=tmp_file)
-                        self.logger.warning(msg)
+                        log_msg = _("Cert file '{file}' exists, removing.", log=True)[1]
+                        log_msg = log_msg.format(file=tmp_file)
+                        self.logger.warning(log_msg)
                     # Create file.
                     fd = open(tmp_file, "w")
                     # Set permissions.
@@ -379,25 +379,25 @@ class ListenSocket(object):
 
             if self.use_ssl:
                 if self.ssl_verify_client:
-                    msg = _("Started listening on '{uri}'. SSL client certificate "
-                            "verification enabled.")
-                    msg = msg.format(uri=self.socket_uri)
-                    self.logger.info(msg)
+                    log_msg = _("Started listening on '{uri}'. SSL client certificate "
+                            "verification enabled.", log=True)[1]
+                    log_msg = log_msg.format(uri=self.socket_uri)
+                    self.logger.info(log_msg)
                 else:
-                    msg = _("Started listening on '{uri}'. SSL enabled.")
-                    msg = msg.format(uri=self.socket_uri)
-                    self.logger.info(msg)
+                    log_msg = _("Started listening on '{uri}'. SSL enabled.", log=True)[1]
+                    log_msg = log_msg.format(uri=self.socket_uri)
+                    self.logger.info(log_msg)
             else:
-                msg = _("Started listening on '{uri}'. SSL disabled.")
-                msg = msg.format(uri=self.socket_uri)
-                self.logger.info(msg)
+                log_msg = _("Started listening on '{uri}'. SSL disabled.", log=True)[1]
+                log_msg = log_msg.format(uri=self.socket_uri)
+                self.logger.info(log_msg)
 
             # Notify self.listen() that we finished initialization.
             init_done.send("init_successful")
         except socket.error as e:
-            msg = _("Bind failed. Error: {error}")
-            msg = msg.format(error=e)
-            self.logger.error(msg)
+            log_msg = _("Bind failed. Error: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.error(log_msg)
             init_done.send("init_failed")
             return False
 
@@ -420,12 +420,12 @@ class ListenSocket(object):
             if not new_connection:
                 if exception is not None:
                     if self.use_ssl:
-                        msg = _("Listen: SSL error: {error}")
-                        msg = msg.format(error=exception)
+                        log_msg = _("Listen: SSL error: {error}", log=True)[1]
+                        log_msg = log_msg.format(error=exception)
                     else:
-                        msg = _("Listen: Connection error: {error}")
-                        msg = msg.format(error=exception)
-                    self.logger.warning(msg)
+                        log_msg = _("Listen: Connection error: {error}", log=True)[1]
+                        log_msg = log_msg.format(error=exception)
+                    self.logger.warning(log_msg)
                 time.sleep(0.01)
                 continue
 
@@ -465,14 +465,14 @@ class ListenSocket(object):
                 # Print max conn warning only every 5 seconds.
                 if (time.time() - last_max_conn_warn) > 5:
                     last_max_conn_warn = time.time()
-                    msg = _("Reached max connections ({count}). Refusing client '{client}'.")
-                    msg = msg.format(count=client_count, client=client)
-                    self.logger.warning(msg)
+                    log_msg = _("Reached max connections ({count}). Refusing client '{client}'.", log=True)[1]
+                    log_msg = log_msg.format(count=client_count, client=client)
+                    self.logger.warning(log_msg)
                     if max_conn_warn_count > 1:
-                        msg = _("Suppressed {count} max connections warnings to "
-                                "prevent logfile flooding.")
-                        msg = msg.format(count=max_conn_warn_count)
-                        self.logger.warning(msg)
+                        log_msg = _("Suppressed {count} max connections warnings to "
+                                "prevent logfile flooding.", log=True)[1]
+                        log_msg = log_msg.format(count=max_conn_warn_count)
+                        self.logger.warning(log_msg)
                         max_conn_warn_count = 0
                 continue
 
@@ -481,9 +481,9 @@ class ListenSocket(object):
 
             # Log new connection.
             if config.debug_level() > 3:
-                msg = _("New connection from '{client}'")
-                msg = msg.format(client=client)
-                self.logger.debug(msg)
+                log_msg = _("New connection from '{client}'", log=True)[1]
+                log_msg = log_msg.format(client=client)
+                self.logger.debug(log_msg)
 
             # Start child process to handle new connection.
             p = multiprocessing.start_process(name=self.name,
@@ -494,9 +494,9 @@ class ListenSocket(object):
                             join=True)
             # Add process to dict.
             self.add_connection_pid(client, p.pid)
-        msg = _("Stopped listening on '{uri}'")
-        msg = msg.format(uri=self.socket_uri)
-        self.logger.info(msg)
+        log_msg = _("Stopped listening on '{uri}'", log=True)[1]
+        log_msg = log_msg.format(uri=self.socket_uri)
+        self.logger.info(log_msg)
         # Do multiprocessing cleanup.
         multiprocessing.cleanup()
 
@@ -559,9 +559,9 @@ class ListenSocket(object):
             try:
                 connection.send(f"{self.banner}\n")
             except Exception as e:
-                msg = _("Unable to send banner: {uri}: {error}")
-                msg = msg.format(uri=self.socket_uri, error=e)
-                self.logger.warn(msg)
+                log_msg = _("Unable to send banner: {uri}: {error}", log=True)[1]
+                log_msg = log_msg.format(uri=self.socket_uri, error=e)
+                self.logger.warn(log_msg)
                 multiprocessing.cleanup()
                 config.raise_exception()
                 return False
@@ -579,14 +579,14 @@ class ListenSocket(object):
             try:
                 conn_handler.run()
             except ConnectionQuit as e:
-                msg = _("Error running connection handler: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Error running connection handler: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
             except Exception as e:
                 config.raise_exception()
-                msg = _("Unknown exception running connection handler: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Unknown exception running connection handler: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
         else:
             # Without connection handler we act as simple echo server.
             while True:
@@ -594,17 +594,17 @@ class ListenSocket(object):
                 try:
                     reply = connection.recv()
                 except Exception as e:
-                    msg = _("Error receiving data: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.warning(msg)
+                    log_msg = _("Error receiving data: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
                     break
                 # Send reply.
                 try:
                     connection.send(reply)
                 except Exception as e:
-                    msg = _("Error sending data: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.warning(msg)
+                    log_msg = _("Error sending data: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
                     break
 
             # Close connection.
@@ -614,9 +614,9 @@ class ListenSocket(object):
                 pass
 
         if config.debug_level() > 3:
-            msg = _("Client '{client}' disconnected.")
-            msg = msg.format(client=client)
-            self.logger.debug(msg)
+            log_msg = _("Client '{client}' disconnected.", log=True)[1]
+            log_msg = log_msg.format(client=client)
+            self.logger.debug(log_msg)
 
         # Run connection cleanup (e.g. remove locks).
         if conn_handler:
@@ -676,15 +676,15 @@ class ListenSocket(object):
 
             if not stuff.check_pid(child_pid):
                 continue
-            msg = _("Sending SIGTERM to connection: {name} (PID {pid})")
-            msg = msg.format(name=child_name, pid=child_pid)
-            self.logger.debug(msg)
+            log_msg = _("Sending SIGTERM to connection: {name} (PID {pid})", log=True)[1]
+            log_msg = log_msg.format(name=child_name, pid=child_pid)
+            self.logger.debug(log_msg)
             try:
                 stuff.kill_pid(child_pid, signal=15)
             except Exception as e:
-                msg = _("Failed to send SIGTERM to connection: {name}: {error}")
-                msg = msg.format(name=child_name, error=e)
-                self.logger.warning(msg)
+                log_msg = _("Failed to send SIGTERM to connection: {name}: {error}", log=True)[1]
+                log_msg = log_msg.format(name=child_name, error=e)
+                self.logger.warning(log_msg)
             # Wait for connection process to finish.
             while stuff.check_pid(child_pid):
                 time.sleep(0.01)
@@ -839,9 +839,9 @@ class Connection(object):
         if not self.connected:
             return
         if config.debug_level() > 3:
-            msg = _("Closing connection to '{client}'")
-            msg = msg.format(client=self.client)
-            self.logger.debug(msg)
+            log_msg = _("Closing connection to '{client}'", log=True)[1]
+            log_msg = log_msg.format(client=self.client)
+            self.logger.debug(log_msg)
         self.send("quit", timeout=0.01)
         self.connected = False
         self._close()

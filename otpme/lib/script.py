@@ -108,9 +108,9 @@ def run(script_type, script_path, realm=None, site=None, options=None,
     log_user = user
     log_group = group
     log_groups = ",".join(groups)
-    msg = _("Running script: {script_path}: user={log_user}, group={log_group}, groups={log_groups}")
-    msg = msg.format(script_path=script_path, log_user=log_user, log_group=log_group, log_groups=log_groups)
-    logger.debug(msg)
+    log_msg = _("Running script: {script_path}: user={log_user}, group={log_group}, groups={log_groups}", log=True)[1]
+    log_msg = log_msg.format(script_path=script_path, log_user=log_user, log_group=log_group, log_groups=log_groups)
+    logger.debug(log_msg)
 
     script_name = script_path.split("/")[-1]
 
@@ -218,13 +218,13 @@ def run(script_type, script_path, realm=None, site=None, options=None,
 
     # Warn if script runs as root.
     if user == "root":
-        msg = _("Running script as user root: {script_path}")
-        msg = msg.format(script_path=script_path)
-        logger.warning(msg)
+        log_msg = _("Running script as user root: {script_path}", log=True)[1]
+        log_msg = log_msg.format(script_path=script_path)
+        logger.warning(log_msg)
     if group == "root":
-        msg = _("Running script as group root: {script_path}")
-        msg = msg.format(script_path=script_path)
-        logger.warning(msg)
+        log_msg = _("Running script as group root: {script_path}", log=True)[1]
+        log_msg = log_msg.format(script_path=script_path)
+        logger.warning(log_msg)
 
     # Create temp script file.
     script_file = f"{config.tmp_dir}/{script_name}.{stuff.gen_secret()}"

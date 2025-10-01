@@ -410,9 +410,9 @@ class IdrangePolicy(Policy):
                 range_start = int(r.split("-")[0])
                 range_end = int(r.split("-")[1])
             except:
-                msg = _("Invalid ID range: {self_name}: {x}")
-                msg = msg.format(self_name=self.name, x=x)
-                logger.warning(msg)
+                log_msg = _("Invalid ID range: {self_name}: {x}", log=True)[1]
+                log_msg = log_msg.format(self_name=self.name, x=x)
+                logger.warning(log_msg)
                 continue
 
             random_range = False
@@ -499,9 +499,9 @@ class IdrangePolicy(Policy):
                     range_start = int(r.split("-")[0])
                     range_end = int(r.split("-")[1])
                 except:
-                    msg = _("Invalid ID range: {self_name}: {x}")
-                    msg = msg.format(self_name=self.name, x=x)
-                    logger.warning(msg)
+                    log_msg = _("Invalid ID range: {self_name}: {x}", log=True)[1]
+                    log_msg = log_msg.format(self_name=self.name, x=x)
+                    logger.warning(log_msg)
                     continue
                 new_id = None
                 start_id = None
@@ -530,9 +530,9 @@ class IdrangePolicy(Policy):
                                 x_range_start = int(r.split("-")[0])
                                 x_range_end = int(r.split("-")[1])
                             except:
-                                msg = _("Invalid ID range: {self_name}: {i}")
-                                msg = msg.format(self_name=self.name, i=i)
-                                logger.warning(msg)
+                                log_msg = _("Invalid ID range: {self_name}: {i}", log=True)[1]
+                                log_msg = log_msg.format(self_name=self.name, i=i)
+                                logger.warning(log_msg)
                                 continue
                             if start_id >= x_range_start and start_id <= x_range_end:
                                 found_valid_range = True

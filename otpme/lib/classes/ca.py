@@ -1240,7 +1240,8 @@ class Ca(OTPmeObject):
         if timezone is None:
             timezone = config.timezone
 
-        logger.debug("Building new CRL.")
+        log_msg = _("Building new CRL.", log=True)[1]
+        logger.debug(log_msg)
         for serial in revoked_certs:
             try:
                 revoke_serial, \

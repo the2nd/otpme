@@ -466,9 +466,9 @@ class Fido2Token(Token):
                                 client_param=challenge,
                                 public_key=public_key)
         except Exception as e:
-            msg = _("Fido2 token response verification failed: {error}")
-            msg = msg.format(error=e)
-            logger.critical(msg)
+            log_msg = _("Fido2 token response verification failed: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            logger.critical(log_msg)
             return False
         return True
 

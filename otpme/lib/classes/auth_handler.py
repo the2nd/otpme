@@ -93,9 +93,9 @@ class AuthHandler(object):
         # Session verified successful.
         request_type = verify_reply['type']
         if request_type == "auth":
-            msg = _("Authentication parameters of request matching session '{session_name}'.")
-            msg = msg.format(session_name=session.name)
-            self.logger.debug(msg)
+            log_msg = _("Authentication parameters of request matching session '{session_name}'.", log=True)[1]
+            log_msg = log_msg.format(session_name=session.name)
+            self.logger.debug(log_msg)
             # If we found a session that matches this authentication request set
             # auth_session.
             self.auth_session = session
@@ -111,9 +111,9 @@ class AuthHandler(object):
 
         # Found SLP.
         if request_type == "logout":
-            msg = _("This is a logout request for session '{session_name}'.")
-            msg = msg.format(session_name=session.name)
-            self.logger.debug(msg)
+            log_msg = _("This is a logout request for session '{session_name}'.", log=True)[1]
+            log_msg = log_msg.format(session_name=session.name)
+            self.logger.debug(log_msg)
             # Set this is a session logout-request.
             self.session_logout = True
             # If we found a session that matches this authentication request set
@@ -136,9 +136,9 @@ class AuthHandler(object):
 
         # Found for SRP.
         if request_type == "refresh":
-            msg = _("This is a refresh request for session '{session_name}'.")
-            msg = msg.format(session_name=session.name)
-            self.logger.debug(msg)
+            log_msg = _("This is a refresh request for session '{session_name}'.", log=True)[1]
+            log_msg = log_msg.format(session_name=session.name)
+            self.logger.debug(log_msg)
             # Set this is a session logout-request:
             self.session_refresh = True
             # If we found a session that matches this authentication request set
@@ -182,9 +182,9 @@ class AuthHandler(object):
                 # hash like we do for the REALM session itself.
                 self.password_hash = self.one_iter_hash
 
-            msg = _("Found valid REALM session '{session_name}' for this request (SOTP).")
-            msg = msg.format(session_name=session.name)
-            self.logger.debug(msg)
+            log_msg = _("Found valid REALM session '{session_name}' for this request (SOTP).", log=True)[1]
+            log_msg = log_msg.format(session_name=session.name)
+            self.logger.debug(log_msg)
 
             self.found_sotp = True
             # Add SOTP to list of users used SOTPs.
@@ -218,7 +218,8 @@ class AuthHandler(object):
         """ Make sure token is valid (e.g. group membership etc.) """
         # Check if we have a auth token.
         if not self.auth_token:
-            self.logger.error(_("Found no valid auth token."))
+            log_msg = _("Found no valid auth token.", log=True)[1]
+            self.logger.error(log_msg)
             self.auth_failed = True
             if self.realm_login:
                 self.auth_message = "LOGIN_FAILED_NO_TOKEN"
@@ -230,9 +231,9 @@ class AuthHandler(object):
         if self.auth_token.uuid not in self.user.tokens:
             # We found a token which is not in list of user tokens. This should
             # normally not happen and is probably a configuration error.
-            msg = _("Auth token '{token_name}' is not in token list of user '{user_name}'.")
-            msg = msg.format(token_name=self.auth_token.name, user_name=self.user.name)
-            self.logger.error(msg)
+            log_msg = _("Auth token '{token_name}' is not in token list of user '{user_name}'.", log=True)[1]
+            log_msg = log_msg.format(token_name=self.auth_token.name, user_name=self.user.name)
+            self.logger.error(log_msg)
             # If token is not in list of user tokens we fail.
             self.auth_failed = True
             self.auth_message = "AUTH_CONFIG_ERROR"
@@ -244,17 +245,17 @@ class AuthHandler(object):
             # We found a token which is in list of user tokens but its
             # owner_uuid does not match uuid of this user. This should
             # normally not happen and is probably a configuration error.
-            msg = _("Warning: Token '{token_name}' is in list of tokens for user '{user_name}' but is owned by user '{token_owner}'. Possibly configuration error.")
-            msg = msg.format(token_name=self.auth_token.name, user_name=self.user.name, token_owner=self.auth_token.owner)
-            self.logger.error(msg)
+            log_msg = _("Warning: Token '{token_name}' is in list of tokens for user '{user_name}' but is owned by user '{token_owner}'. Possibly configuration error.", log=True)[1]
+            log_msg = log_msg.format(token_name=self.auth_token.name, user_name=self.user.name, token_owner=self.auth_token.owner)
+            self.logger.error(log_msg)
             # Set auth_failed.
             self.auth_failed = True
             self.auth_message = "AUTH_CONFIG_ERROR"
             return
 
-        msg = _("Token '{token_name}' used at login is a token of user '{user_name}'.")
-        msg = msg.format(token_name=self.auth_token.name, user_name=self.user.name)
-        self.logger.debug(msg)
+        log_msg = _("Token '{token_name}' used at login is a token of user '{user_name}'.", log=True)[1]
+        log_msg = log_msg.format(token_name=self.auth_token.name, user_name=self.user.name)
+        self.logger.debug(log_msg)
 
         # Make sure we use the destination token for linked tokens.
         if self.auth_token.destination_token:
@@ -262,9 +263,9 @@ class AuthHandler(object):
             if self.auth_token.dst_token:
                 self.verify_token = self.auth_token.dst_token
             else:
-                msg = _("Token '{token_name}' is missing its destination token.")
-                msg = msg.format(token_name=self.auth_token.name)
-                self.logger.error(msg)
+                log_msg = _("Token '{token_name}' is missing its destination token.", log=True)[1]
+                log_msg = log_msg.format(token_name=self.auth_token.name)
+                self.logger.error(log_msg)
                 # If redirected token is missing its destination token we must
                 # fail. This should normally not happen and is probably a
                 # configuration error.
@@ -278,15 +279,15 @@ class AuthHandler(object):
         # disabled now.
         if not self.session_logout:
             if not self.auth_token.enabled:
-                msg = _("Token '{token_name}' is disabled. Authentication will fail.")
-                msg = msg.format(token_name=self.auth_token.name)
-                self.logger.debug(msg)
+                log_msg = _("Token '{token_name}' is disabled. Authentication will fail.", log=True)[1]
+                log_msg = log_msg.format(token_name=self.auth_token.name)
+                self.logger.debug(log_msg)
                 self.auth_failed = True
                 return
             if not self.verify_token.enabled:
-                msg = _("Token '{token_path}' is disabled. Authentication will fail.")
-                msg = msg.format(token_path=self.verify_token.rel_path)
-                self.logger.debug(msg)
+                log_msg = _("Token '{token_path}' is disabled. Authentication will fail.", log=True)[1]
+                log_msg = log_msg.format(token_path=self.verify_token.rel_path)
+                self.logger.debug(log_msg)
                 self.auth_failed = True
                 return
 
@@ -295,16 +296,16 @@ class AuthHandler(object):
             try:
                 self.verify_token.run_policies("authenticate")
             except PolicyException as e:
-                msg = str(e)
-                self.logger.warning(msg)
+                log_msg = str(e)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
                 self.auth_message = "AUTH_DENIED_BY_POLICY"
                 return
             except Exception as e:
                 config.raise_exception()
-                msg = _("Internal server error")
-                log_msg = f"{msg}: {e}"
+                log_msg = _("Internal server error", log=True)[1]
+                log_msg = f"{log_msg}: {e}"
                 self.logger.critical(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
@@ -316,9 +317,9 @@ class AuthHandler(object):
         if not self.session_logout:
             if self.require_token_types \
             and not self.verify_token.token_type in self.require_token_types:
-                msg = _("Token '{token_name}' is not a valid token type for this request. Authentication will fail.")
-                msg = msg.format(token_name=self.auth_token.name)
-                self.logger.debug(msg)
+                log_msg = _("Token '{token_name}' is not a valid token type for this request. Authentication will fail.", log=True)[1]
+                log_msg = log_msg.format(token_name=self.auth_token.name)
+                self.logger.debug(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_SESSION_INVALID_TOKEN_TYPE"
                 self.count_fails = False
@@ -326,9 +327,9 @@ class AuthHandler(object):
 
             if self.require_pass_types \
             and not self.verify_token.pass_type in self.require_pass_types:
-                msg = _("Token '{token_name}' pass type is not valid for this request. Authentication will fail.")
-                msg = msg.format(token_name=self.auth_token.name)
-                self.logger.debug(msg)
+                log_msg = _("Token '{token_name}' pass type is not valid for this request. Authentication will fail.", log=True)[1]
+                log_msg = log_msg.format(token_name=self.auth_token.name)
+                self.logger.debug(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_SESSION_INVALID_TOKEN_PASS_TYPE"
                 self.count_fails = False
@@ -338,9 +339,9 @@ class AuthHandler(object):
         if not self.auth_group.is_assigned_token(self.auth_token.uuid):
             # But we want to ignore token group validity for logout requests.
             if not self.session_logout:
-                msg = _("Verification failed because token is not valid for accessgroup '{access_group}'.")
-                msg = msg.format(access_group=self.access_group)
-                self.logger.warning(msg)
+                log_msg = _("Verification failed because token is not valid for accessgroup '{access_group}'.", log=True)[1]
+                log_msg = log_msg.format(access_group=self.access_group)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
                 self.auth_message = "AUTH_NO_VALID_ACCESSGROUP"
@@ -356,9 +357,9 @@ class AuthHandler(object):
                                 run_policies=True,
                                 _no_func_cache=True)
         if not token:
-            msg = _("WARNING: Token '{auth_token}' does not exists anymore. Maybe it was deleted while this sessions exists?")
-            msg = msg.format(auth_token=session.auth_token)
-            self.logger.error(msg)
+            log_msg = _("WARNING: Token '{auth_token}' does not exists anymore. Maybe it was deleted while this sessions exists?", log=True)[1]
+            log_msg = log_msg.format(auth_token=session.auth_token)
+            self.logger.error(log_msg)
             # If the token for this session does not exist anymore auth must
             # fail.
             self.auth_failed = True
@@ -388,9 +389,9 @@ class AuthHandler(object):
         if self.session_refresh:
             # Set auth_failed because we dont want to allow logins using SRPs
             self.auth_failed = True
-            msg = _("Session refresh request. Updating Session '{session_name}'")
-            msg = msg.format(session_name=session.name)
-            self.logger.debug(msg)
+            log_msg = _("Session refresh request. Updating Session '{session_name}'", log=True)[1]
+            log_msg = log_msg.format(session_name=session.name)
+            self.logger.debug(log_msg)
             self.auth_message = "AUTH_SESSION_REFRESH"
             # Update session last used timestamp.
             self.auth_session.update_last_used_time(update_child_sessions=True)
@@ -407,14 +408,14 @@ class AuthHandler(object):
             # But we dont want a logout request to be counted as failed login.
             self.count_fails = False
             if self.realm_logout:
-                msg = _("Realm logout request. Removing session '{session_name}'")
-                msg = msg.format(session_name=session.name)
-                self.logger.info(msg)
+                log_msg = _("Realm logout request. Removing session '{session_name}'", log=True)[1]
+                log_msg = log_msg.format(session_name=session.name)
+                self.logger.info(log_msg)
                 self.auth_message = "REALM_LOGOUT_OK"
             else:
-                msg = _("Logout request. Removing session '{session_name}'")
-                msg = msg.format(session_name=session.name)
-                self.logger.info(msg)
+                log_msg = _("Logout request. Removing session '{session_name}'", log=True)[1]
+                log_msg = log_msg.format(session_name=session.name)
+                self.logger.info(log_msg)
                 self.auth_message = "SESSION_LOGOUT_OK"
             # Delete session if this is a logout request.
             session.delete(force=True, recursive=True, verify_acls=False)
@@ -546,7 +547,8 @@ class AuthHandler(object):
                 verify_sessions.append(session)
 
         if not verify_sessions:
-            self.logger.debug(_("No session found for this request."))
+            log_msg = _("No session found for this request.", log=True)[1]
+            self.logger.debug(log_msg)
 
         # We use just one iteration for SOTPs because of performance
         # reasons (e.g. login and session renegotiation). This should
@@ -582,9 +584,9 @@ class AuthHandler(object):
                     if self.user.is_used_sotp(hash=password_hash):
                         continue
 
-            msg = _("Verifying session '{session_name}'.")
-            msg = msg.format(session_name=session.name)
-            self.logger.debug(msg)
+            log_msg = _("Verifying session '{session_name}'.", log=True)[1]
+            log_msg = log_msg.format(session_name=session.name)
+            self.logger.debug(log_msg)
 
             # FIXME: implement session reneg for non-REALM sessions???
             if session.session_id in realm_session_ids:
@@ -643,7 +645,8 @@ class AuthHandler(object):
 
     def logout_user_session(self, slp):
         """ Try to logout old session by given SLP. """
-        self.logger.debug(_("Trying to logout old user session..."))
+        log_msg = _("Trying to logout old user session...", log=True)[1]
+        self.logger.debug(log_msg)
         # Make sure SLP is string.
         slp = str(slp)
         # Get sessions for this user.
@@ -678,9 +681,9 @@ class AuthHandler(object):
             if request_type == "logout":
                 # Delete session if it matches the given SLP.
                 session.delete(force=True, recursive=True, verify_acls=False)
-                msg = _("Logged out old user session: {session_name}")
-                msg = msg.format(session_name=session.name)
-                self.logger.debug(msg)
+                log_msg = _("Logged out old user session: {session_name}", log=True)[1]
+                log_msg = log_msg.format(session_name=session.name)
+                self.logger.debug(log_msg)
                 return session_status
 
     def check_used(self):
@@ -689,7 +692,8 @@ class AuthHandler(object):
         if not self.password:
             return
 
-        self.logger.debug(_("Checking for used SOTP..."))
+        log_msg = _("Checking for used SOTP...", log=True)[1]
+        self.logger.debug(log_msg)
         if not self.one_iter_hash:
             raise Exception(_("You have to set self.one_iter_hash first."))
 
@@ -705,8 +709,8 @@ class AuthHandler(object):
         # requests as failed logins.
         if not self.allow_sotp_reuse:
             if self.user.is_used_sotp(hash=self.one_iter_hash):
-                self.logger.warning(_("Request contains an already used SOTP. "
-                                    "Authentication will fail."))
+                log_msg = _("Request contains an already used SOTP. Authentication will fail.", log=True)[1]
+                self.logger.warning(log_msg)
                 # If the password from this request is an already used SOTP
                 # authentication must fail.
                 self.auth_failed = True
@@ -737,9 +741,9 @@ class AuthHandler(object):
                 if result:
                     x_host = result[0]
                     if x_host.type != "node" and x_host.type != "host":
-                        msg = _("Unknown host type {host_type}")
-                        msg = msg.format(host_type=self.host_type)
-                        self.logger.warning(msg)
+                        log_msg = _("Unknown host type {host_type}", log=True)[1]
+                        log_msg = log_msg.format(host_type=self.host_type)
+                        self.logger.warning(log_msg)
                         self.auth_failed = True
                         self.auth_message = "AUTH_UNKNOWN_HOST_TYPE"
                         return
@@ -747,9 +751,9 @@ class AuthHandler(object):
                 # No need to verify host (e.g. realm join).
                 if not self.verify_host:
                     return
-                msg = _("Unknown {host_type}: {host}")
-                msg = msg.format(host_type=self.host_type, host=self.host)
-                self.logger.warning(msg)
+                log_msg = _("Unknown {host_type}: {host}", log=True)[1]
+                log_msg = log_msg.format(host_type=self.host_type, host=self.host)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_UNKNOWN_HOST"
                 return
@@ -762,16 +766,16 @@ class AuthHandler(object):
                 try:
                     self.auth_host.run_policies("authenticate")
                 except PolicyException as e:
-                    msg = str(e)
-                    self.logger.warning(msg)
+                    log_msg = str(e)
+                    self.logger.warning(log_msg)
                     self.auth_failed = True
                     self.count_fails = False
                     self.auth_message = "AUTH_DENIED_BY_POLICY"
                     return
                 except Exception as e:
                     config.raise_exception()
-                    msg = _("Internal server error")
-                    log_msg = f"{msg}: {e}"
+                    log_msg = _("Internal server error", log=True)[1]
+                    log_msg = f"{log_msg}: {e}"
                     self.logger.critical(log_msg)
                     self.auth_failed = True
                     self.count_fails = False
@@ -810,17 +814,17 @@ class AuthHandler(object):
         if not self.auth_client:
             # If client does not exist authentication is failed.
             self.auth_failed = True
-            msg = _("Client '{client}' does not exist.")
-            msg = msg.format(client=self.client)
-            self.logger.error(msg)
+            log_msg = _("Client '{client}' does not exist.", log=True)[1]
+            log_msg = log_msg.format(client=self.client)
+            self.logger.error(log_msg)
             self.auth_message = "AUTH_CLIENT_UNKNOWN"
             return
 
         # If client is not enabled authentication must fail.
         if not self.auth_client.enabled and not self.user.allow_disabled_login:
-            msg = _("Client '{client}' is disabled.")
-            msg = msg.format(client=self.client)
-            self.logger.debug(msg)
+            log_msg = _("Client '{client}' is disabled.", log=True)[1]
+            log_msg = log_msg.format(client=self.client)
+            self.logger.debug(log_msg)
             # If client is disabled auth must fail.
             self.auth_failed = True
             self.auth_message = "AUTH_CLIENT_DISABLED"
@@ -830,9 +834,9 @@ class AuthHandler(object):
         if not self.access_group:
             self.access_group = self.auth_client.access_group
             if not self.access_group:
-                msg = _("Client does not have accessgroup set: {client_name}")
-                msg = msg.format(client_name=self.auth_client.name)
-                self.logger.debug(msg)
+                log_msg = _("Client does not have accessgroup set: {client_name}", log=True)[1]
+                log_msg = log_msg.format(client_name=self.auth_client.name)
+                self.logger.debug(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_CLIENT_NO_ACCESSGROUP"
                 return
@@ -842,16 +846,16 @@ class AuthHandler(object):
             try:
                 self.auth_client.run_policies("authenticate")
             except PolicyException as e:
-                msg = str(e)
-                self.logger.warning(msg)
+                log_msg = str(e)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
                 self.auth_message = "AUTH_DENIED_BY_POLICY"
                 return
             except Exception as e:
                 config.raise_exception()
-                msg = _("Internal server error")
-                log_msg = f"{msg}: {e}"
+                log_msg = _("Internal server error", log=True)[1]
+                log_msg = f"{log_msg}: {e}"
                 self.logger.critical(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
@@ -872,9 +876,9 @@ class AuthHandler(object):
                                             _no_func_cache=True)
         # Check if group exists.
         if not self.auth_group:
-            msg = _("Access group '{access_group}' does not exist.")
-            msg = msg.format(access_group=self.access_group)
-            self.logger.warning(msg)
+            log_msg = _("Access group '{access_group}' does not exist.", log=True)[1]
+            log_msg = log_msg.format(access_group=self.access_group)
+            self.logger.warning(log_msg)
             # If group does not exist auth must fail.
             self.auth_failed = True
             self.auth_message = "AUTH_GROUP_UNKNOWN"
@@ -882,9 +886,9 @@ class AuthHandler(object):
 
         # If group is not enabled authentication must fail.
         if not self.auth_group.enabled and not self.user.allow_disabled_login:
-            msg = _("Access group '{access_group}' is disabled.")
-            msg = msg.format(access_group=self.access_group)
-            self.logger.warning(msg)
+            log_msg = _("Access group '{access_group}' is disabled.", log=True)[1]
+            log_msg = log_msg.format(access_group=self.access_group)
+            self.logger.warning(log_msg)
             # If group is disabled auth must fail.
             self.auth_failed = True
             self.auth_message = "AUTH_GROUP_DISABLED"
@@ -900,10 +904,9 @@ class AuthHandler(object):
             # to check for sessions created from access_group parents.
             if not self.auth_group.sessions_enabled:
                 self.create_sessions = False
-                msg = _("Session creation for accessgroup '{access_group}' "
-                        "is disabled. Verification of parent sessions will still be done.")
-                msg = msg.format(access_group=self.access_group)
-                self.logger.debug(msg)
+                log_msg = _("Session creation for accessgroup '{access_group}' is disabled. Verification of parent sessions will still be done.", log=True)[1]
+                log_msg = log_msg.format(access_group=self.access_group)
+                self.logger.debug(log_msg)
 
     def check_user(self):
         """ Check user status. """
@@ -918,9 +921,9 @@ class AuthHandler(object):
             user_realm = backend.get_object(object_type="realm",
                                         uuid=self.user.realm_uuid)
             if not user_realm.auth_enabled:
-                msg = _("Authentication with realm is disabled: {realm_name}")
-                msg = msg.format(realm_name=user_realm.name)
-                self.logger.warning(msg)
+                log_msg = _("Authentication with realm is disabled: {realm_name}", log=True)[1]
+                log_msg = log_msg.format(realm_name=user_realm.name)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
                 self.auth_message = "AUTH_REALM_DISABLED"
@@ -930,9 +933,9 @@ class AuthHandler(object):
             user_site = backend.get_object(object_type="site",
                                     uuid=self.user.site_uuid)
             if not user_site.auth_enabled:
-                msg = _("Authentication with site is disabled: {site_realm}/{site_name}")
-                msg = msg.format(site_realm=user_site.realm, site_name=user_site.name)
-                self.logger.warning(msg)
+                log_msg = _("Authentication with site is disabled: {site_realm}/{site_name}", log=True)[1]
+                log_msg = log_msg.format(site_realm=user_site.realm, site_name=user_site.name)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
                 self.auth_message = "AUTH_SITE_DISABLED"
@@ -944,9 +947,9 @@ class AuthHandler(object):
         and not self.user.allow_disabled_login:
             users_unit = self.user.get_parent_object()
             if not users_unit.enabled:
-                msg = _("Users unit is disabled: {unit_name}")
-                msg = msg.format(unit_name=users_unit.name)
-                self.logger.warning(msg)
+                log_msg = _("Users unit is disabled: {unit_name}", log=True)[1]
+                log_msg = log_msg.format(unit_name=users_unit.name)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
                 self.auth_message = "AUTH_UNIT_DISABLED"
@@ -954,9 +957,9 @@ class AuthHandler(object):
 
         # If user is disabled or locked authentication is failed.
         if not self.user.enabled:
-            msg = _("User '{user_name}' is disabled.")
-            msg = msg.format(user_name=self.user.name)
-            self.logger.warning(msg)
+            log_msg = _("User '{user_name}' is disabled.", log=True)[1]
+            log_msg = log_msg.format(user_name=self.user.name)
+            self.logger.warning(log_msg)
             self.auth_failed = True
             self.auth_message = "AUTH_USER_DISABLED"
             return
@@ -964,9 +967,9 @@ class AuthHandler(object):
         if self.user.is_blocked(self.access_group,
                                 realm=config.realm,
                                 site=config.site):
-            msg = _("User '{user_name}' is blocked for accessgroup '{access_group}'")
-            msg = msg.format(user_name=self.user.name, access_group=self.access_group)
-            self.logger.warning(msg)
+            log_msg = _("User '{user_name}' is blocked for accessgroup '{access_group}'", log=True)[1]
+            log_msg = log_msg.format(user_name=self.user.name, access_group=self.access_group)
+            self.logger.warning(log_msg)
             self.auth_failed = True
             self.auth_message = "AUTH_USER_BLOCKED"
             self.count_fails = False
@@ -976,16 +979,16 @@ class AuthHandler(object):
             try:
                 self.user.run_policies("authenticate")
             except PolicyException as e:
-                msg = str(e)
-                self.logger.warning(msg)
+                log_msg = str(e)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
                 self.auth_message = "AUTH_DENIED_BY_POLICY"
                 return
             except Exception as e:
                 config.raise_exception()
-                msg = _("Internal server error")
-                log_msg = f"{msg}: {e}"
+                log_msg = _("Internal server error", log=True)[1]
+                log_msg = f"{log_msg}: {e}"
                 self.logger.critical(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
@@ -1008,15 +1011,15 @@ class AuthHandler(object):
             if not token:
                 msg = _("Token does not exist: {user_token}")
                 msg = msg.format(user_token=self.user_token)
-                raise Exception(msg)
+                raise OTPmeException(msg)
 
-            msg = _("Verifying token from request: {token_path}")
-            msg = msg.format(token_path=token.rel_path)
-            self.logger.debug(msg)
+            log_msg = _("Verifying token from request: {token_path}", log=True)[1]
+            log_msg = log_msg.format(token_path=token.rel_path)
+            self.logger.debug(log_msg)
             if not self.auth_group.is_assigned_token(token.uuid):
-                msg = _("Token '{token_path}' is not in accessgroup '{access_group}'. Authentication will fail.")
-                msg = msg.format(token_path=token.rel_path, access_group=self.access_group)
-                self.logger.warning(msg)
+                log_msg = _("Token '{token_path}' is not in accessgroup '{access_group}'. Authentication will fail.", log=True)[1]
+                log_msg = log_msg.format(token_path=token.rel_path, access_group=self.access_group)
+                self.logger.warning(log_msg)
                 # If the given token is not in the given accessgroup auth must
                 # fail.
                 self.auth_failed = True
@@ -1026,9 +1029,9 @@ class AuthHandler(object):
             # Make sure we resolve token links.
             if token.destination_token:
                 if not token.dst_token:
-                    msg = _("Token '{token_name}' is missing its destination token.")
-                    msg = msg.format(token_name=token.name)
-                    self.logger.error(msg)
+                    log_msg = _("Token '{token_name}' is missing its destination token.", log=True)[1]
+                    log_msg = log_msg.format(token_name=token.name)
+                    self.logger.error(log_msg)
                     # This should normally not happen and is probably a
                     # configuration error.
                     self.auth_failed = True
@@ -1056,9 +1059,9 @@ class AuthHandler(object):
                 self.valid_user_tokens_otp_push = [ token ]
 
         else:
-            msg = _("Selecting user tokens based on access_group '{access_group}'")
-            msg = msg.format(access_group=self.access_group)
-            self.logger.debug(msg)
+            log_msg = _("Selecting user tokens based on access_group '{access_group}'", log=True)[1]
+            log_msg = log_msg.format(access_group=self.access_group)
+            self.logger.debug(log_msg)
 
             select_static_tokens = True
             select_otp_tokens = True
@@ -1170,7 +1173,8 @@ class AuthHandler(object):
         and not self.valid_user_tokens_smartcard \
         and not self.valid_user_tokens_ssh \
         and not self.user_default_token:
-            self.logger.warning(_("Unable to find a token to verify this request."))
+            log_msg = _("Unable to find a token to verify this request.", log=True)[1]
+            self.logger.warning(log_msg)
             self.auth_failed = True
             self.auth_message = "AUTH_TOKEN_MISSING"
 
@@ -1184,9 +1188,9 @@ class AuthHandler(object):
             try:
                 verify_status = verify_token.verify(temp=True, **token_verify_parms)
             except Exception as e:
-                msg = _("Verification of token '{token_name}' returned error: {error}")
-                msg = msg.format(token_name=token.name, error=e)
-                self.logger.critical(msg)
+                log_msg = _("Verification of token '{token_name}' returned error: {error}", log=True)[1]
+                log_msg = log_msg.format(token_name=token.name, error=e)
+                self.logger.critical(log_msg)
                 config.raise_exception()
         else:
             t_args = {}
@@ -1196,9 +1200,9 @@ class AuthHandler(object):
             try:
                 verify_status = verify_token.verify_temp_password(**t_args)
             except Exception as e:
-                msg = _("Verification of token (temp) '{token_name}' returned error: {error}")
-                msg = msg.format(token_name=token.name, error=e)
-                self.logger.critical(msg)
+                log_msg = _("Verification of token (temp) '{token_name}' returned error: {error}", log=True)[1]
+                log_msg = log_msg.format(token_name=token.name, error=e)
+                self.logger.critical(log_msg)
                 config.raise_exception()
 
         if verify_status is None:
@@ -1212,17 +1216,17 @@ class AuthHandler(object):
     def verify_user_token(self, token):
         """ Verify the given user token. """
         if not token.enabled:
-            msg = _("Not verifying disabled token: {token_name}")
-            msg = msg.format(token_name=token.name)
-            self.logger.debug(msg)
+            log_msg = _("Not verifying disabled token: {token_name}", log=True)[1]
+            log_msg = log_msg.format(token_name=token.name)
+            self.logger.debug(log_msg)
             return None
 
         # Make sure we use the destination token for linked tokens.
         if token.destination_token:
             if not token.dst_token.enabled:
-                msg = _("Not verifying disabled destination token: {token_path}")
-                msg = msg.format(token_path=token.dst_token.rel_path)
-                self.logger.debug(msg)
+                log_msg = _("Not verifying disabled destination token: {token_path}", log=True)[1]
+                log_msg = log_msg.format(token_path=token.dst_token.rel_path)
+                self.logger.debug(log_msg)
                 return None
             _verify_token = token.dst_token
         else:
@@ -1233,9 +1237,9 @@ class AuthHandler(object):
             try:
                 _sftoken = _verify_token.get_sftoken()
             except Exception as e:
-                msg = _("Unable to load second factor token of '{token_path}': {error}")
-                msg = msg.format(token_path=token.rel_path, error=e)
-                self.logger.critical(msg)
+                log_msg = _("Unable to load second factor token of '{token_path}': {error}", log=True)[1]
+                log_msg = log_msg.format(token_path=token.rel_path, error=e)
+                self.logger.critical(log_msg)
                 return None
         else:
             _sftoken = None
@@ -1307,9 +1311,9 @@ class AuthHandler(object):
         # Add session UUID.
         token_verify_parms['session_uuid'] = self.new_session_uuid
 
-        msg = _("Verifying {token_type}-token '{token_path}'.")
-        msg = msg.format(token_type=token.token_type, token_path=token.rel_path)
-        self.logger.debug(msg)
+        log_msg = _("Verifying {token_type}-token '{token_path}'.", log=True)[1]
+        log_msg = log_msg.format(token_type=token.token_type, token_path=token.rel_path)
+        self.logger.debug(log_msg)
 
         # Try to verify token. A status of None means continue to next token.
         verify_status = self.try_temp_pass_auth(_verify_token,
@@ -1319,9 +1323,9 @@ class AuthHandler(object):
             try:
                 verify_status = _verify_token.verify(**token_verify_parms)
             except Exception as e:
-                msg = _("Verification of token '{token_name}' returned error: {error}")
-                msg = msg.format(token_name=token.name, error=e)
-                self.logger.critical(msg)
+                log_msg = _("Verification of token '{token_name}' returned error: {error}", log=True)[1]
+                log_msg = log_msg.format(token_name=token.name, error=e)
+                self.logger.critical(log_msg)
                 config.raise_exception()
 
         if self.auth_type == "mschap":
@@ -1370,16 +1374,16 @@ class AuthHandler(object):
             try:
                 self.verify_token.run_policies("authenticate")
             except PolicyException as e:
-                msg = str(e)
-                self.logger.warning(msg)
+                log_msg = str(e)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
                 self.auth_message = "AUTH_DENIED_BY_POLICY"
                 return False
             except Exception as e:
                 config.raise_exception()
-                msg = _("Internal server error")
-                log_msg = f"{msg}: {e}"
+                log_msg = _("Internal server error", log=True)[1]
+                log_msg = f"{log_msg}: {e}"
                 self.logger.critical(log_msg)
                 self.auth_failed = True
                 self.count_fails = False
@@ -1388,9 +1392,9 @@ class AuthHandler(object):
 
         # otp_push tokens need special handling.
         if self.verify_token.pass_type == "otp_push" and verify_status:
-            msg = _("Token '{token_name}' verified successful. Sending OTP to user...")
-            msg = msg.format(token_name=token.name)
-            self.logger.debug(msg)
+            log_msg = _("Token '{token_name}' verified successful. Sending OTP to user...", log=True)[1]
+            log_msg = log_msg.format(token_name=token.name)
+            self.logger.debug(log_msg)
             # Make sure auth will fail.
             verify_status = False
             # But we dont want this request to be counted as failed login.
@@ -1400,9 +1404,9 @@ class AuthHandler(object):
                 self.verify_token.send_otp()
                 otp_sent = True
             except Exception as e:
-                msg = _("Error sending OTP to user: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Error sending OTP to user: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 otp_sent = False
             # Reset failed login counter for this user/group.
             self.reset_user_fail_counter()
@@ -1480,8 +1484,9 @@ class AuthHandler(object):
                 user_script_parms['auth_otp'] = self.password
 
             auth_script_oid = backend.get_oid(object_type="script", uuid=self.user.auth_script)
-            msg = f"Starting user authorization script: {auth_script_oid}"
-            self.logger.debug(msg)
+            log_msg = _("Starting user authorization script: {auth_script_oid}", log=True)[1]
+            log_msg = log_msg.format(auth_script_oid=auth_script_oid)
+            self.logger.debug(log_msg)
 
             # Get groups the user is in.
             user_groups = self.user.get_groups(return_type="name")
@@ -1495,9 +1500,9 @@ class AuthHandler(object):
                                             group=self.user.group,
                                             groups=user_groups)
             except Exception as e:
-                msg = _("Error running user authorization script: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Error running user authorization script: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 self.auth_message = "USER_AUTH_SCRIPT_ERROR"
                 self.auth_failed = True
                 #config.raise_exception()
@@ -1505,9 +1510,9 @@ class AuthHandler(object):
 
             # Check auth script return code.
             if not auth_script_result:
-                msg = _("User '{user_name}' authenticated successful with token '{token_name}' but user authorization script returned failure.")
-                msg = msg.format(user_name=self.user.name, token_name=self.verify_token.name)
-                self.logger.debug(msg)
+                log_msg = _("User '{user_name}' authenticated successful with token '{token_name}' but user authorization script returned failure.", log=True)[1]
+                log_msg = log_msg.format(user_name=self.user.name, token_name=self.verify_token.name)
+                self.logger.debug(log_msg)
                 self.auth_message = "USER_AUTH_SCRIPT_FAILED"
                 self.auth_failed = True
                 # FIXME: Do we want to allow the auth script to decide
@@ -1545,7 +1550,8 @@ class AuthHandler(object):
                 token_script_parms['auth_response'] = self.response
                 token_script_parms['auth_otp'] = self.password
 
-            self.logger.debug(_("Starting token authorization script..."))
+            log_msg = _("Starting token authorization script...", log=True)[1]
+            self.logger.debug(log_msg)
             # Run auth script.
             try:
                 auth_script_result = run_script(script_type="auth_script",
@@ -1555,18 +1561,18 @@ class AuthHandler(object):
                                             group=self.user.group)
             except Exception as e:
                 config.raise_exception()
-                msg = _("Error running token authorization script: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error running token authorization script: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
                 self.auth_message = "TOKEN_AUTH_SCRIPT_ERROR"
                 self.auth_failed = True
                 return False
 
             # Check auth script return code.
             if not auth_script_result:
-                msg = _("Token '{token_name}' verified successful but token authorization script returned failure.")
-                msg = msg.format(token_name=self.verify_token.name)
-                self.logger.debug(msg)
+                log_msg = _("Token '{token_name}' verified successful but token authorization script returned failure.", log=True)[1]
+                log_msg = log_msg.format(token_name=self.verify_token.name)
+                self.logger.debug(log_msg)
                 self.auth_message = "TOKEN_AUTH_SCRIPT_FAILED"
                 self.auth_failed = True
                 # Return False as we found a valid token but auth script failed.
@@ -1577,9 +1583,9 @@ class AuthHandler(object):
         self.auth_status = True
 
         # Handle non-realm login requests.
-        msg = _("Token '{token_name}' verified successful.")
-        msg = msg.format(token_name=self.auth_token.name)
-        self.logger.debug(msg)
+        log_msg = _("Token '{token_name}' verified successful.", log=True)[1]
+        log_msg = log_msg.format(token_name=self.auth_token.name)
+        self.logger.debug(log_msg)
         if self.auth_mode == "otp":
             if self.verify_token.pass_type == "script_otp":
                 if self.realm_login:
@@ -1665,8 +1671,9 @@ class AuthHandler(object):
                                 key=site_jwt_key,
                                 algorithm='RS256')
         except Exception as e:
-            msg = f"JWT verification failed: {e}"
-            self.logger.warning(msg)
+            log_msg = _("JWT verification failed: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             self.auth_failed = True
             self.auth_message = "AUTH_INVALID_OUTER_JWT"
 
@@ -1675,8 +1682,8 @@ class AuthHandler(object):
             try:
                 jwt_string = outer_jwt_data['challenge']
             except:
-                msg = "JWT data is missing challenge."
-                self.logger.warning(msg)
+                log_msg = _("JWT data is missing challenge.", log=True)[1]
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_CHALLENGE_MISSING"
                 self.count_fails = False
@@ -1686,8 +1693,8 @@ class AuthHandler(object):
             # so if the JWT string does not match the redirect challenge we got
             # from OTPmeServer() authentication must fail.
             if jwt_string != self.redirect_challenge:
-                msg = _("Received wrong redirect challenge.")
-                self.logger.warning(msg)
+                log_msg = _("Received wrong redirect challenge.", log=True)[1]
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_WRONG_JWT_CHALLENGE"
 
@@ -1697,8 +1704,8 @@ class AuthHandler(object):
                 login_token_uuid = outer_jwt_data['login_token']
             except:
                 login_token_uuid = None
-                msg = _("JWT data is missing login token.")
-                self.logger.warning(msg)
+                log_msg = _("JWT data is missing login token.", log=True)[1]
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_TOKEN_MISSING"
                 self.count_fails = False
@@ -1709,8 +1716,8 @@ class AuthHandler(object):
                 auth_accessgroup = outer_jwt_data['accessgroup']
             except:
                 auth_accessgroup = None
-                msg = _("JWT data is missing login accessgroup.")
-                self.logger.warning(msg)
+                log_msg = _("JWT data is missing login accessgroup.", log=True)[1]
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_ACCESSGROUP_MISSING"
                 self.count_fails = False
@@ -1721,8 +1728,8 @@ class AuthHandler(object):
                 auth_reason = outer_jwt_data['reason']
             except:
                 auth_reason = None
-                msg = _("JWT data is missing auth reason.")
-                self.logger.warning(msg)
+                log_msg = _("JWT data is missing auth reason.", log=True)[1]
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_ACCESSGROUP_MISSING"
                 self.count_fails = False
@@ -1730,9 +1737,9 @@ class AuthHandler(object):
         if not self.auth_failed:
             # Verify outer JWT auth accessgroup.
             if auth_accessgroup != self.access_group:
-                msg = _("Outer JWT accessgroup mismatch: {access_group} <> {auth_accessgroup}")
-                msg = msg.format(access_group=self.access_group, auth_accessgroup=auth_accessgroup)
-                self.logger.warning(msg)
+                log_msg = _("Outer JWT accessgroup mismatch: {access_group} <> {auth_accessgroup}", log=True)[1]
+                log_msg = log_msg.format(access_group=self.access_group, auth_accessgroup=auth_accessgroup)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_ACCESSGROUP_MISMATCH"
                 self.count_fails = False
@@ -1740,9 +1747,9 @@ class AuthHandler(object):
         if not self.auth_failed:
             # Verify outer JWT auth reason.
             if auth_reason != required_reason:
-                msg = _("Outer JWT reason mismatch: {required_reason} <> {auth_reason}")
-                msg = msg.format(required_reason=required_reason, auth_reason=auth_reason)
-                self.logger.warning(msg)
+                log_msg = _("Outer JWT reason mismatch: {required_reason} <> {auth_reason}", log=True)[1]
+                log_msg = log_msg.format(required_reason=required_reason, auth_reason=auth_reason)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_REASON_MISMATCH"
                 self.count_fails = False
@@ -1756,9 +1763,9 @@ class AuthHandler(object):
                                     key=self.site_key,
                                     algorithm='RS256')
             except Exception as e:
-                msg = _("Unable to decode inner JWT: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Unable to decode inner JWT: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_INVALID_INNER_JWT"
 
@@ -1770,37 +1777,37 @@ class AuthHandler(object):
             jwt_accessgroup = inner_jwt_data['accessgroup']
 
             if jwt_realm != config.realm:
-                msg = _("Inner JWT realm mismatch: {realm} <> {jwt_site}")
-                msg = msg.format(realm=config.realm, jwt_site=jwt_site)
-                self.logger.warning(msg)
+                log_msg = _("Inner JWT realm mismatch: {realm} <> {jwt_site}", log=True)[1]
+                log_msg = log_msg.format(realm=config.realm, jwt_site=jwt_site)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_REALM_MISMATCH"
 
             if jwt_site != config.site:
-                msg = _("Inner JWT site mismatch: {site} <> {jwt_site}")
-                msg = msg.format(site=config.site, jwt_site=jwt_site)
-                self.logger.warning(msg)
+                log_msg = _("Inner JWT site mismatch: {site} <> {jwt_site}", log=True)[1]
+                log_msg = log_msg.format(site=config.site, jwt_site=jwt_site)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_SITE_MISMATCH"
 
             if jwt_user != self.user.name:
-                msg = _("Inner JWT user mismatch: {user_name} <> {jwt_user}")
-                msg = msg.format(user_name=self.user.name, jwt_user=jwt_user)
-                self.logger.warning(msg)
+                log_msg = _("Inner JWT user mismatch: {user_name} <> {jwt_user}", log=True)[1]
+                log_msg = log_msg.format(user_name=self.user.name, jwt_user=jwt_user)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_USER_MISMATCH"
 
             if jwt_accessgroup != self.access_group:
-                msg = _("Inner JWT accessgroup mismatch: {access_group} <> {jwt_accessgroup}")
-                msg = msg.format(access_group=self.access_group, jwt_accessgroup=jwt_accessgroup)
-                self.logger.warning(msg)
+                log_msg = _("Inner JWT accessgroup mismatch: {access_group} <> {jwt_accessgroup}", log=True)[1]
+                log_msg = log_msg.format(access_group=self.access_group, jwt_accessgroup=jwt_accessgroup)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_ACCESSGROUP_MISMATCH"
 
             if jwt_reason != required_reason:
-                msg = _("Inner JWT reason mismatch: {required_reason} <> {jwt_reason}")
-                msg = msg.format(required_reason=required_reason, jwt_reason=jwt_reason)
-                self.logger.warning(msg)
+                log_msg = _("Inner JWT reason mismatch: {required_reason} <> {jwt_reason}", log=True)[1]
+                log_msg = log_msg.format(required_reason=required_reason, jwt_reason=jwt_reason)
+                self.logger.warning(log_msg)
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_ACCESSGROUP_MISMATCH"
 
@@ -1862,16 +1869,16 @@ class AuthHandler(object):
             return
 
         user_sessions = {}
-        msg = _("Max sessions reached for this accessgroup: {max_sessions}")
-        msg = msg.format(max_sessions=self.auth_group.max_sessions)
-        self.logger.debug(msg)
+        log_msg = _("Max sessions reached for this accessgroup: {max_sessions}", log=True)[1]
+        log_msg = log_msg.format(max_sessions=self.auth_group.max_sessions)
+        self.logger.debug(log_msg)
         # If relogin timeout is set check if there is a session we can
         # replace.
         if (len(session_list) + 1) >= self.auth_group.max_sessions:
             if self.auth_group.relogin_timeout > 0:
-                msg = _("Checking for sessions older than relogin timeout: {relogin_timeout}")
-                msg = msg.format(relogin_timeout=self.auth_group.relogin_timeout)
-                self.logger.debug(msg)
+                log_msg = _("Checking for sessions older than relogin timeout: {relogin_timeout}", log=True)[1]
+                log_msg = log_msg.format(relogin_timeout=self.auth_group.relogin_timeout)
+                self.logger.debug(log_msg)
                 # Walk through session list.
                 for session_x in session_list:
                     # Add sessions to dict with a dict key that starts
@@ -1890,9 +1897,9 @@ class AuthHandler(object):
                     session_age = time.time() - session_x.last_used
                     if session_age < self.auth_group.relogin_timeout:
                         continue
-                    msg = _("Deleting session '{session_name}' based on max_sessions/relogin_timeout configured for this group.")
-                    msg = msg.format(session_name=session_x.name)
-                    self.logger.debug(msg)
+                    log_msg = _("Deleting session '{session_name}' based on max_sessions/relogin_timeout configured for this group.", log=True)[1]
+                    log_msg = log_msg.format(session_name=session_x.name)
+                    self.logger.debug(log_msg)
                     session_x.delete(force=True, recursive=True,
                                     verify_acls=False)
                     session_list.remove(session_x)
@@ -1900,11 +1907,13 @@ class AuthHandler(object):
                     break
                 if not found_obsolete_session:
                     if (len(session_list) + 1) >= self.auth_group.max_sessions:
-                        self.logger.debug(_("Max sessions reached for this accessgroup "
-                                    "and no outdated session found."))
+                        log_msg = _("Max sessions reached for this accessgroup "
+                                    "and no outdated session found.", log=True)[1]
+                        self.logger.debug(log_msg)
             else:
-                self.logger.debug(_("Max sessions reached for this accessgroup and "
-                                    "no relogin allowed."))
+                log_msg = _("Max sessions reached for this accessgroup and "
+                                    "no relogin allowed.", log=True)[1]
+                self.logger.debug(log_msg)
 
         if self.auth_failed:
             # If relogin is disabled or we havent found a obsolete
@@ -1920,9 +1929,9 @@ class AuthHandler(object):
         # Cannot create sessions for script OTP token when doing MSCHAP auth.
         if self.verify_token.pass_type == "script_otp":
             if self.auth_type == "mschap":
-                msg = _("Cannot create sessions for MSCHAP request with token/password type: {pass_type}")
-                msg = msg.format(pass_type=self.verify_token.pass_type)
-                self.logger.warning(msg)
+                log_msg = _("Cannot create sessions for MSCHAP request with token/password type: {pass_type}", log=True)[1]
+                log_msg = log_msg.format(pass_type=self.verify_token.pass_type)
+                self.logger.warning(log_msg)
                 return
 
         # Check if there is a session master for auth_group configured.
@@ -1934,9 +1943,9 @@ class AuthHandler(object):
         # If we found the session master and it has sessions enabled it must be
         # used as session_start_group.
         if session_master and session_master.sessions_enabled:
-            msg = _("Found a valid session master: '{session_master}'")
-            msg = msg.format(session_master=session_master)
-            self.logger.debug(msg)
+            log_msg = _("Found a valid session master: '{session_master}'", log=True)[1]
+            log_msg = log_msg.format(session_master=session_master)
+            self.logger.debug(log_msg)
             self.session_start_group = session_master.name
         else:
             # If there is no session master use accessgroup from request as
@@ -1980,9 +1989,9 @@ class AuthHandler(object):
                 # Add session as child of REALM session if this is a SOTP
                 # request.
                 if self.found_sotp:
-                   msg = _("Adding session '{session_name}' as child session of '{auth_session_name}'.")
-                   msg = msg.format(session_name=session.name, auth_session_name=self.auth_session.name)
-                   self.logger.info(msg)
+                   log_msg = _("Adding session '{session_name}' as child session of '{auth_session_name}'.", log=True)[1]
+                   log_msg = log_msg.format(session_name=session.name, auth_session_name=self.auth_session.name)
+                   self.logger.info(log_msg)
                    self.auth_session.add_child_session(session.uuid)
 
             # Set session created for this request.
@@ -1995,17 +2004,17 @@ class AuthHandler(object):
         fail_count = self.user.failcount(self.access_group)
         if fail_count == 0:
             return
-        msg = _("Resetting login fail count for '{user_name}/{access_group}' from '{fail_count}' to 0.")
-        msg = msg.format(user_name=self.user.name, access_group=self.access_group, fail_count=fail_count)
-        self.logger.info(msg)
+        log_msg = _("Resetting login fail count for '{user_name}/{access_group}' from '{fail_count}' to 0.", log=True)[1]
+        log_msg = log_msg.format(user_name=self.user.name, access_group=self.access_group, fail_count=fail_count)
+        self.logger.info(log_msg)
         try:
             self.user.unblock(self.access_group,
                             verify_acls=False,
                             run_policies=False)
         except Exception as e:
-            msg = _("Error resetting login fail count: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Error resetting login fail count: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             config.raise_exception()
 
     def build_log_message(self):
@@ -2263,26 +2272,24 @@ class AuthHandler(object):
         try:
             self.audit_logger = get_audit_logger()
         except Exception as e:
-            msg = _("Failed to get audit logger: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Failed to get audit logger: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             self.audit_logger = None
 
         if rsp_hash_type:
             if rsp_hash_type not in self.rsp_hash_types:
-                msg = _("Unsupported RSP hash type: {hash_type}")
-                msg = msg.format(hash_type=rsp_hash_type)
-                raise OTPmeException(msg)
+                log_msg = _("Unsupported RSP hash type: {hash_type}", log=True)[1]
+                log_msg = log_msg.format(hash_type=rsp_hash_type)
+                raise OTPmeException(log_msg)
         self.rsp_hash_type = rsp_hash_type
 
         if self.realm_login:
             if self.access_group != config.realm_access_group:
-                msg = _("Realm login requests must have "
-                        "accessgroup 'REALM' set.")
+                msg = _("Realm login requests must have accessgroup 'REALM' set.")
                 raise OTPmeException(msg)
             if not self.host_type or not self.host or not self.host_ip:
-                msg = _("Realm login requests must contain 'host_type', "
-                                "'host' and 'host_ip'.")
+                msg = _("Realm login requests must contain 'host_type', 'host' and 'host_ip'.")
                 raise OTPmeException(msg)
             self.auth_message = "REALM_LOGIN_FAILED"
             self.verify_sessions = False
@@ -2290,12 +2297,10 @@ class AuthHandler(object):
         if self.realm_logout:
             self.count_fails = False
             if self.access_group != config.realm_access_group:
-                msg = _("Realm logout requests must have accessgroup "
-                        "'REALM' set.")
+                msg = _("Realm logout requests must have accessgroup 'REALM' set.")
                 raise OTPmeException(msg)
             if not self.host or not self.host_ip:
-                msg = _("Realm logout requests must contain "
-                        "'host_type', 'host' and 'host_ip'.")
+                msg = _("Realm logout requests must contain 'host_type', 'host' and 'host_ip'.")
                 raise OTPmeException(msg)
             self.auth_message = "REALM_LOGOUT_FAILED"
 
@@ -2303,7 +2308,8 @@ class AuthHandler(object):
         # unlock while login is restricted by policy).
         self.check_policies = True
         if self.unlock:
-            self.logger.info(_("This is a screen unlock request."))
+            log_msg = _("This is a screen unlock request.", log=True)[1]
+            self.logger.info(log_msg)
             self.check_policies = False
         # We do not check policies on realm logout.
         if self.realm_logout:
@@ -2316,7 +2322,8 @@ class AuthHandler(object):
                 raise OTPmeException(msg)
 
         if self.auth_type == "mschap":
-            self.logger.debug(_("Processing MSCHAP authentication request."))
+            log_msg = _("Processing MSCHAP authentication request.", log=True)[1]
+            self.logger.debug(log_msg)
             if self.challenge:
                 if len(self.challenge) != 16:
                     self.auth_message = "AUTH_INVALID_MSCHAP_CHALLENGE"
@@ -2334,13 +2341,15 @@ class AuthHandler(object):
                 self.auth_failed = True
 
         elif self.auth_type == "clear-text":
-            self.logger.debug(_("Processing clear-text authentication request."))
+            log_msg = _("Processing clear-text authentication request.", log=True)[1]
+            self.logger.debug(log_msg)
             if not self.password:
                 self.auth_message = "AUTH_MISSING_PASS"
                 self.auth_failed = True
 
         elif self.auth_type == "ssh":
-            self.logger.debug(_("Processing SSH authentication request."))
+            log_msg = _("Processing SSH authentication request.", log=True)[1]
+            self.logger.debug(log_msg)
             # When doing SSH authentication we cannot verify sessions.
             self.verify_sessions = False
             # We can only create sessions when using SSH tokens to do realm
@@ -2356,7 +2365,8 @@ class AuthHandler(object):
                 self.auth_failed = True
 
         elif self.auth_type == "smartcard":
-            self.logger.debug(_("Processing smartcard authentication request."))
+            log_msg = _("Processing smartcard authentication request.", log=True)[1]
+            self.logger.debug(log_msg)
             # When doing smartcard authentication we cannot verify sessions.
             self.verify_sessions = False
             # We can only create sessions when using smartcard tokens to do realm
@@ -2382,9 +2392,9 @@ class AuthHandler(object):
             self.auth_failed = True
 
         if not self.auth_mode in self.valid_auth_modes:
-            msg = _("Received invalid auth mode: {auth_mode}")
-            msg = msg.format(auth_mode=self.auth_mode)
-            self.logger.warning(msg)
+            log_msg = _("Received invalid auth mode: {auth_mode}", log=True)[1]
+            log_msg = log_msg.format(auth_mode=self.auth_mode)
+            self.logger.warning(log_msg)
             self.auth_message = "AUTH_INVALID_AUTH_MODE"
             self.auth_failed = True
 
@@ -2394,9 +2404,9 @@ class AuthHandler(object):
                 my_site = backend.get_object(object_type="site",
                                             uuid=config.site_uuid)
                 if not my_site.auth_enabled:
-                    msg = _("Authentication disabled for this site: {site_realm}/{site_name}")
-                    msg = msg.format(site_realm=my_site.realm, site_name=my_site.name)
-                    self.logger.debug(msg)
+                    log_msg = _("Authentication disabled for this site: {site_realm}/{site_name}", log=True)[1]
+                    log_msg = log_msg.format(site_realm=my_site.realm, site_name=my_site.name)
+                    self.logger.debug(log_msg)
                     self.auth_failed = True
                     self.count_fails = False
                     self.auth_message = "AUTH_DISABLED"
@@ -2474,13 +2484,15 @@ class AuthHandler(object):
         # Verify default token first.
         if not self.auth_failed and self.auth_status is False:
             if self.user_default_token:
-                self.logger.debug(_("Verifying user default token..."))
+                log_msg = _("Verifying user default token...", log=True)[1]
+                self.logger.debug(log_msg)
                 self.verify_user_tokens(tokens=[self.user_default_token])
 
         # Verify OTP push tokens second.
         if not self.auth_failed and self.auth_status is False:
             if self.valid_user_tokens_otp_push:
-                self.logger.debug(_("Verifying otp_push tokens..."))
+                log_msg = _("Verifying otp_push tokens...", log=True)[1]
+                self.logger.debug(log_msg)
                 self.verify_user_tokens(tokens=self.valid_user_tokens_otp_push)
 
         # Verify OTP tokens
@@ -2492,39 +2504,45 @@ class AuthHandler(object):
         #        verification (not as second factor token) will fail.
         if not self.auth_failed and self.auth_status is False:
             if self.valid_user_tokens_otp:
-                self.logger.debug(_("Verifying OTP tokens..."))
+                log_msg = _("Verifying OTP tokens...", log=True)[1]
+                self.logger.debug(log_msg)
                 self.verify_user_tokens(tokens=self.valid_user_tokens_otp)
 
         # Verify "password" tokens before U2F tokens because they may use a U2F
         # token as second factor token.
         if not self.auth_failed and self.auth_status is False:
             if self.valid_user_tokens_static:
-                self.logger.debug(_("Verifying static password tokens..."))
+                log_msg = _("Verifying static password tokens...", log=True)[1]
+                self.logger.debug(log_msg)
                 self.verify_user_tokens(tokens=self.valid_user_tokens_static)
 
         # Verify SSH tokens before U2F tokens because they may use a U2F token
         # as second factor token.
         if not self.auth_failed and self.auth_status is False:
             if self.valid_user_tokens_ssh:
-                self.logger.debug(_("Verifying SSH tokens..."))
+                log_msg = _("Verifying SSH tokens...", log=True)[1]
+                self.logger.debug(log_msg)
                 self.verify_user_tokens(tokens=self.valid_user_tokens_ssh)
 
         # Verify smartcard tokens.
         if not self.auth_failed and self.auth_status is False:
             if self.valid_user_tokens_smartcard:
-                self.logger.debug(_("Verifying smartcard tokens..."))
+                log_msg = _("Verifying smartcard tokens...", log=True)[1]
+                self.logger.debug(log_msg)
                 self.verify_user_tokens(tokens=self.valid_user_tokens_smartcard)
 
         # Verify script_static tokens.
         if not self.auth_failed and self.auth_status is False:
             if self.valid_user_tokens_script_static:
-                self.logger.debug(_("Verifying script_static tokens..."))
+                log_msg = _("Verifying script_static tokens...", log=True)[1]
+                self.logger.debug(log_msg)
                 self.verify_user_tokens(tokens=self.valid_user_tokens_script_static)
 
         # Verify script_otp tokens.
         if not self.auth_failed and self.auth_status is False:
             if self.valid_user_tokens_script_otp:
-                self.logger.debug(_("Verifying script_otp tokens..."))
+                log_msg = _("Verifying script_otp tokens...", log=True)[1]
+                self.logger.debug(log_msg)
                 self.verify_user_tokens(tokens=self.valid_user_tokens_script_otp)
 
         # Check policies.
@@ -2554,21 +2572,21 @@ class AuthHandler(object):
                     if self.auth_client:
                         self.auth_client.authorize_token(self.auth_token)
                 except PolicyException as e:
-                    msg = str(e)
-                    self.logger.warning(msg)
+                    log_msg = str(e)
+                    self.logger.warning(log_msg)
                     self.auth_failed = True
                     self.count_fails = False
                     self.auth_message = "AUTH_DENIED_BY_POLICY"
                 except LoginsLimited as e:
-                    msg = str(e)
-                    self.logger.warning(msg)
+                    log_msg = str(e)
+                    self.logger.warning(log_msg)
                     self.auth_failed = True
                     self.count_fails = False
                     self.auth_message = "LOGINS_LIMITED"
                 except Exception as e:
                     config.raise_exception()
-                    msg = _("Internal server error")
-                    log_msg = f"{msg}: {e}"
+                    log_msg = _("Internal server error", log=True)[1]
+                    log_msg = f"{log_msg}: {e}"
                     self.logger.critical(log_msg)
                     self.auth_failed = True
                     self.count_fails = False
@@ -2576,9 +2594,10 @@ class AuthHandler(object):
 
         # Log request auth data if enabled.
         if self.log_auth_data and (config.loglevel == "DEBUG" or config.debug_enabled):
-            self.logger.warning(_("Logging of sensitive authentication data is "
+            log_msg = _("Logging of sensitive authentication data is "
                         "enabled. You should disable LOG_AUTH_DATA in "
-                        "production environments!!!"))
+                        "production environments!!!", log=True)[1]
+            self.logger.warning(log_msg)
             self.logger.debug("AUTHENTICATION DATA OF REQUEST:")
             self.logger.debug(f"AUTH_TYPE:        {self.auth_type}")
             self.logger.debug(f"USERNAME:         {self.user.name}")
@@ -2617,7 +2636,8 @@ class AuthHandler(object):
                     raise AuthFailed(msg)
                 # Session creation must be enabled for realm logins.
                 self.create_sessions = True
-                self.logger.debug(_("Generating RSP..."))
+                log_msg = _("Generating RSP...", log=True)[1]
+                self.logger.debug(log_msg)
                 # Generate realm session password.
                 ecdh_key = ECKey()
                 ecdh_key.gen_key(curve=ecdh_curve)
@@ -2664,8 +2684,8 @@ class AuthHandler(object):
                         'message'           : self.auth_message,
                         }
                 # Log final success message.
-                ok_message = self.build_log_message()
-                self.logger.info(ok_message)
+                log_msg = self.build_log_message()
+                self.logger.info(log_msg)
                 return auth_reply
 
             # Build auth reply.
@@ -2786,9 +2806,9 @@ class AuthHandler(object):
             ssh_private_key = None
             if self.verify_token.token_type == "ssh":
                 if self.verify_token._ssh_private_key:
-                    msg = _("Got SSH private key from token: {token_path}")
-                    msg = msg.format(token_path=self.verify_token.rel_path)
-                    self.logger.debug(msg)
+                    log_msg = _("Got SSH private key from token: {token_path}", log=True)[1]
+                    log_msg = log_msg.format(token_path=self.verify_token.rel_path)
+                    self.logger.debug(log_msg)
                     ssh_private_key = self.verify_token._ssh_private_key
             auth_reply['ssh_private_key'] = ssh_private_key
             auth_reply['request_cacheable'] = self.request_cacheable
@@ -2803,13 +2823,14 @@ class AuthHandler(object):
             self.auth_token.update_last_used_time()
 
             if self.realm_login:
-                msg = _("Realm login successful with token '{token_name}'")
-                msg = msg.format(token_name=self.auth_token.name)
-                self.logger.debug(msg)
+                log_msg = _("Realm login successful with token '{token_name}'", log=True)[1]
+                log_msg = log_msg.format(token_name=self.auth_token.name)
+                self.logger.debug(log_msg)
 
             # Log final success message.
             ok_message = self.build_log_message()
-            self.logger.info(ok_message)
+            log_msg = ok_message
+            self.logger.info(log_msg)
 
             # Audit logging.
             if self.audit_logger:
@@ -2861,13 +2882,16 @@ class AuthHandler(object):
         if self.count_fails:
             if self.auth_group:
                 if self.auth_group.max_fail == 0:
-                    self.logger.warning(_("Will not count failed logins because of max_fail=0."))
+                    log_msg = _("Will not count failed logins because of max_fail=0.", log=True)[1]
+                    self.logger.warning(log_msg)
                 self.count_fails = False
             else:
-                self.logger.critical(_("Cannot count failed login without accessgroup."))
+                log_msg = _("Cannot count failed login without accessgroup.", log=True)[1]
+                self.logger.critical(log_msg)
                 self.count_fails = False
             if not self.one_iter_hash:
-                self.logger.debug(_("Cannot count failed login without password hash."))
+                log_msg = _("Cannot count failed login without password hash.", log=True)[1]
+                self.logger.debug(log_msg)
                 self.count_fails = False
 
         # Do not lock out admin user.
@@ -2924,7 +2948,6 @@ class AuthHandler(object):
         return auth_reply
 
         # This point should never be reached.
-        msg = _("WARNING: You may have hit a BUG of "
-               "AuthHandler().authenticate(). Authentication failed.")
-        self.logger.critical(msg)
+        msg, log_msg = _("WARNING: You may have hit a BUG of AuthHandler().authenticate(). Authentication failed.", log=True)
+        self.logger.critical(log_msg)
         raise Exception(msg)

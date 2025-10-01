@@ -183,8 +183,9 @@ def register_backend():
         for session_file in session_files:
             counter += 1
             x_path = os.path.join(SESSIONS_DIR, session_file)
-            msg = (f"Processing session ({counter}/{files_count}): {x_path}")
-            logger.debug(msg)
+            log_msg = _("Processing session ({counter}/{files_count}): {x_path}", log=True)[1]
+            log_msg = log_msg.format(counter=counter, files_count=files_count, x_path=x_path)
+            logger.debug(log_msg)
             x_oid = oid_getter(session_file)
             backend.index_add(object_id=x_oid,
                             object_config="auto",
@@ -494,18 +495,20 @@ class Session(OTPmeLockObject):
         now = time.time()
         expire_time = self.expire_time()
         if now > expire_time:
-            msg = (f"Session '{self.name}' is expired by session timeout. "
-                    "Removing...")
-            logger.debug(msg)
+            log_msg = _("Session '{session_name}' is expired by session timeout. "
+                    "Removing...", log=True)[1]
+            log_msg = log_msg.format(session_name=self.name)
+            logger.debug(log_msg)
             self.delete(force=True, recursive=True, verify_acls=False)
             return False
         # If session is expired remove it and all childs that exist.
         unused_expire_time = self.unused_expire_time()
         if unused_expire_time:
             if now > unused_expire_time:
-                msg = (f"Session '{self.name}' is expired by unused session timeout. "
-                        "Removing...")
-                logger.debug(msg)
+                log_msg = _("Session '{session_name}' is expired by unused session timeout. "
+                        "Removing...", log=True)[1]
+                log_msg = log_msg.format(session_name=self.name)
+                logger.debug(log_msg)
                 self.delete(force=True, recursive=True, verify_acls=False)
                 return False
         return True
@@ -610,9 +613,9 @@ class Session(OTPmeLockObject):
                                 full_data_update=True,
                                 cluster=True)
         except Exception as e:
-            msg = _("Failed to write session: {session_oid}: {error}")
-            msg = msg.format(session_oid=self.oid, error=e)
-            logger.warning(msg)
+            log_msg = _("Failed to write session: {session_oid}: {error}", log=True)[1]
+            log_msg = log_msg.format(session_oid=self.oid, error=e)
+            logger.warning(log_msg)
             config.raise_exception()
             return False
 
@@ -697,7 +700,9 @@ class Session(OTPmeLockObject):
             if last_used_age < 30:
                 return
 
-        logger.debug(f"Updating last used timestamp of session: {self.name}")
+        log_msg = _("Updating last used timestamp of session: {session_name}", log=True)[1]
+        log_msg = log_msg.format(session_name=self.name)
+        logger.debug(log_msg)
         self.last_used = time.time()
 
         if not update_child_sessions:
@@ -720,12 +725,16 @@ class Session(OTPmeLockObject):
                                                 realm=self.realm,
                                                 site=self.site)
             if not session_ag:
-                logger.critical(f"Accessgroup of session '{session.name}' does not exist "
-                                f"anymore: {session.access_group}")
+                log_msg = _("Accessgroup of session '{session_name}' does not exist "
+                                "anymore: {access_group}", log=True)[1]
+                log_msg = log_msg.format(session_name=session.name, access_group=session.access_group)
+                logger.critical(log_msg)
                 continue
             if not session_ag.enabled:
-                logger.debug(f"Not updating timestamp for disabled child "
-                                f"session '{session.name}.'")
+                log_msg = _("Not updating timestamp for disabled child "
+                                "session '{session_name}'.", log=True)[1]
+                log_msg = log_msg.format(session_name=session.name)
+                logger.debug(log_msg)
                 continue
             session.update_last_used_time(update_child_sessions=True,
                                              force=force)
@@ -758,11 +767,15 @@ class Session(OTPmeLockObject):
         self.reneg_started = time.time()
         # Write it to session config.
         if self.write_config():
-            logger.debug(f"Started session renegotiation: {self.name}")
+            log_msg = _("Started session renegotiation: {session_name}", log=True)[1]
+            log_msg = log_msg.format(session_name=self.name)
+            logger.debug(log_msg)
             status = True
         else:
-            logger.critical(f"Error writing renegotiation parameters: "
-                            f"reneg_start: {self.name}")
+            log_msg = _("Error writing renegotiation parameters: "
+                            "reneg_start: {session_name}", log=True)[1]
+            log_msg = log_msg.format(session_name=self.name)
+            logger.critical(log_msg)
             status = False
         return status
 
@@ -782,11 +795,15 @@ class Session(OTPmeLockObject):
         self.reneg_started = False
         # Write new session.
         if self.write_config():
-            logger.debug(f"Session renegotiation successful: {self.name}")
+            log_msg = _("Session renegotiation successful: {session_name}", log=True)[1]
+            log_msg = log_msg.format(session_name=self.name)
+            logger.debug(log_msg)
             status = True
         else:
-            logger.critical(f"Error writing renegotiation parameters: "
-                            f"reneg_finish: {self.name}")
+            log_msg = _("Error writing renegotiation parameters: "
+                            "reneg_finish: {session_name}", log=True)[1]
+            log_msg = log_msg.format(session_name=self.name)
+            logger.critical(log_msg)
             status = False
         return status
 
@@ -848,10 +865,12 @@ class Session(OTPmeLockObject):
         verify_reply = {'status' : None}
 
         if auth_type == "clear-text":
-            logger.debug("Doing clear-text session verification.")
+            log_msg = _("Doing clear-text session verification.", log=True)[1]
+            logger.debug(log_msg)
 
         if auth_type == "mschap":
-            logger.debug("Doing MSCHAP session verification.")
+            log_msg = _("Doing MSCHAP session verification.", log=True)[1]
+            logger.debug(log_msg)
 
         # If the given hash is the old (before renegotiation) session hash
         # we dont need to verify it.
@@ -912,10 +931,13 @@ class Session(OTPmeLockObject):
 
             if sotp_verify_status:
                 if self.reneg_started:
-                    msg = (f"Got repeated renegotiation request: {self.name}")
-                    logger.warning(msg)
+                    log_msg = _("Got repeated renegotiation request: {session_name}", log=True)[1]
+                    log_msg = log_msg.format(session_name=self.name)
+                    logger.warning(log_msg)
 
-                logger.debug(f"Generating new RSP for session: {self.name}")
+                log_msg = _("Generating new RSP for session: {session_name}", log=True)[1]
+                log_msg = log_msg.format(session_name=self.name)
+                logger.debug(log_msg)
                 # FIXME: where to get len of new session password from???
                 # Generate new session hash.
                 new_session_pass = sotp.derive_rsp(secret=srotp,
@@ -952,8 +974,9 @@ class Session(OTPmeLockObject):
                                                             challenge, response)
                 except Exception as e:
                     verify_status = None
-                    msg = (f"Error verifying MSCHAP request (auth): {self.session_id}: {e}")
-                    logger.critical(msg)
+                    log_msg = _("Error verifying MSCHAP request (auth): {session_id}: {error}", log=True)[1]
+                    log_msg = log_msg.format(session_id=self.session_id, error=e)
+                    logger.critical(log_msg)
                 if verify_status:
                     verify_reply = {
                                     'type'      : 'auth',
@@ -986,8 +1009,9 @@ class Session(OTPmeLockObject):
                                                                 response)
                 except Exception as e:
                     verify_status = None
-                    msg = (f"Error verifying MSCHAP request (SLP): {self.session_id}: {e}")
-                    logger.critical(msg)
+                    log_msg = _("Error verifying MSCHAP request (SLP): {session_id}: {error}", log=True)[1]
+                    log_msg = log_msg.format(session_id=self.session_id, error=e)
+                    logger.critical(log_msg)
                 if verify_status:
                     verify_reply = {
                                     'type'      : 'logout',
@@ -1024,8 +1048,9 @@ class Session(OTPmeLockObject):
                                                                         response)
                 except Exception as e:
                     mschap_verify_status = None
-                    msg = (f"Error verifying MSCHAP request (SRP): {self.session_id}: {e}")
-                    logger.critical(msg)
+                    log_msg = _("Error verifying MSCHAP request (SRP): {session_id}: {error}", log=True)[1]
+                    log_msg = log_msg.format(session_id=self.session_id, error=e)
+                    logger.critical(log_msg)
 
                 if mschap_verify_status:
                     verify_reply = {
@@ -1048,9 +1073,9 @@ class Session(OTPmeLockObject):
                                             value=auth_ag,
                                             return_type="uuid")
                     if not result:
-                        msg = _("Unknown accessgroup: {auth_ag}")
-                        msg = msg.format(auth_ag=auth_ag)
-                        logger.critical(msg)
+                        log_msg = _("Unknown accessgroup: {auth_ag}", log=True)[1]
+                        log_msg = log_msg.format(auth_ag=auth_ag)
+                        logger.critical(log_msg)
                         return verify_reply
                     auth_ag_uuid = result[0]
                 # Check if given password matches an SOTP of this session.
@@ -1075,8 +1100,9 @@ class Session(OTPmeLockObject):
                                                 response=response)
                 except Exception as e:
                     verify_status = None
-                    msg = (f"Error verifying MSCHAP request (SOTP): {self.session_id}: {e}")
-                    logger.critical(msg)
+                    log_msg = _("Error verifying MSCHAP request (SOTP): {session_id}: {e}", log=True)[1]
+                    log_msg = log_msg.format(session_id=self.session_id, e=e)
+                    logger.critical(log_msg)
 
                 if sotp_verify_status:
                     verify_reply = {
@@ -1127,7 +1153,9 @@ class Session(OTPmeLockObject):
         if not groups_processed:
             # Add ourselves.
             if not self.exists():
-                logger.debug(f"Adding session '{self.name}'")
+                log_msg = _("Adding session '{session_name}'", log=True)[1]
+                log_msg = log_msg.format(session_name=self.name)
+                logger.debug(log_msg)
                 self.add(offline_data_key=offline_data_key)
                 # Reload session config.
                 self.exists()
@@ -1148,7 +1176,9 @@ class Session(OTPmeLockObject):
 
         # We only create sessions for enabled groups.
         if not ag.enabled:
-            logger.debug(f"Group '{ag.name}' is disabled, will not create sessions.")
+            log_msg = _("Group '{group_name}' is disabled, will not create sessions.", log=True)[1]
+            log_msg = log_msg.format(group_name=ag.name)
+            logger.debug(log_msg)
             return False
 
         # Walk through all child sessions of the current accessgroup.
@@ -1181,7 +1211,9 @@ class Session(OTPmeLockObject):
                                     client_ip=client_ip)
             # Add child session if it does not exist.
             if not child_session.exists():
-                logger.debug(f"Adding child session '{child_session.name}'.")
+                log_msg = _("Adding child session '{session_name}'.", log=True)[1]
+                log_msg = log_msg.format(session_name=child_session.name)
+                logger.debug(log_msg)
                 child_session.add()
 
                 # Check if child sessions should inherit timeouts from parent accessgroup.

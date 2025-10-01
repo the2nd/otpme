@@ -1302,12 +1302,14 @@ class Token(OTPmeObject):
                                         password=self.password_hash,
                                         hash_args=[hash_args])
         except OTPmeException as e:
-            msg = f"Failed to upgrade password hash: {e}"
+            msg = _("Failed to upgrade password hash: {e}")
+            msg = msg.format(e=e)
             return callback.error(msg)
         except Exception as e:
-            msg = f"Failed to upgrade password hash: {e}"
-            logger.critical(msg)
-            msg = "Internal server error."
+            log_msg = _("Failed to upgrade password hash: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            logger.critical(log_msg)
+            msg = _("Internal server error.")
             return callback.error(msg)
         self.password_hash = hash_data.pop('hash')
         self.password_hash_params += hash_data['hash_args']
@@ -1492,8 +1494,9 @@ class Token(OTPmeObject):
                 if not role:
                     continue
                 if not role.enabled:
-                    msg = f"Ignoring access groups of disabled role '{role.name}' for token: {self.rel_path}"
-                    logger.debug(msg)
+                    log_msg = _("Ignoring access groups of disabled role '{role_name}' for token: {token_path}", log=True)[1]
+                    log_msg = log_msg.format(role_name=role.name, token_path=self.rel_path)
+                    logger.debug(log_msg)
                     continue
                 if self.uuid in role.tokens:
                     token_groups.append(group)
@@ -1653,14 +1656,16 @@ class Token(OTPmeObject):
         if self.offline:
             try:
                 get_method = config.offline_methods['get_used_otps'][self.oid.read_oid]
-            except:
-                msg = "Unable to get offline used OTPs method."
+            except KeyError:
+                msg = _("Unable to get offline used OTPs method.")
                 raise OTPmeException(msg)
             try:
                 used_otps = get_method(self.oid)
             except Exception as e:
-                msg = f"Failed to get used OTPs (offline): {e}"
-                logger.critical(msg)
+                log_msg = _("Failed to get used OTPs (offline): {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                logger.critical(log_msg)
+                used_otps = []
         else:
             used_otps = backend.search(object_type="used_otp",
                                         attribute="token_uuid",
@@ -1713,7 +1718,7 @@ class Token(OTPmeObject):
             try:
                 delete_method = config.offline_methods['delete_object'][self.oid.read_oid]
             except:
-                msg = "Unable to get offline delete method."
+                msg = _("Unable to get offline delete method.")
                 raise OTPmeException(msg)
 
         # Indicates if OTP was already used.
@@ -1728,16 +1733,18 @@ class Token(OTPmeObject):
         for used_otp in used_otps:
             # Check if used OTP is expired.
             if time.time() > used_otp.expiry:
-                msg = f"Removing expired used OTP from backend: {self.rel_path}"
-                logger.debug(msg)
+                log_msg = _("Removing expired used OTP from backend: {token_path}", log=True)[1]
+                log_msg = log_msg.format(token_path=self.rel_path)
+                logger.debug(log_msg)
                 try:
                     if self.offline:
                         delete_method(used_otp.oid)
                     else:
                         used_otp.delete()
                 except Exception as e:
-                    msg = f"Error removing used OTP '{used_otp}' from backend: {e}"
-                    logger.critical(msg)
+                    log_msg = _("Error removing used OTP '{used_otp}' from backend: {e}", log=True)[1]
+                    log_msg = log_msg.format(used_otp=used_otp, e=e)
+                    logger.critical(log_msg)
                 # Continue to next used OTP if this one has expired.
                 continue
 
@@ -1750,9 +1757,9 @@ class Token(OTPmeObject):
                 # did not support a sync time.
                 if used_otp.sync_time is not None:
                     if used_otp.sync_time < self.counter_sync_time:
-                        msg = ("Removing outdated (by token sync time) "
-                                f"used OTP from backend: {self.rel_path}")
-                        logger.debug(msg)
+                        log_msg = _("Removing outdated (by token sync time) used OTP from backend: {token_path}", log=True)[1]
+                        log_msg = log_msg.format(token_path=self.rel_path)
+                        logger.debug(log_msg)
                         remove_otp = True
                 if remove_otp:
                     try:
@@ -1761,15 +1768,17 @@ class Token(OTPmeObject):
                         else:
                             used_otp.delete()
                     except Exception as e:
-                        msg = f"Error removing used OTP '{used_otp}' from backend: {e}"
-                        logger.critical(msg)
+                        log_msg = _("Error removing used OTP '{used_otp}' from backend: {e}", log=True)[1]
+                        log_msg = log_msg.format(used_otp=used_otp, e=e)
+                        logger.critical(log_msg)
                     # Continue to next used OTP if this one was outdated.
                     continue
 
             # Check if used OTP sum matches OTP checksum.
             if otp_hash == used_otp.object_hash:
-                msg = f"Found already used OTP: {self.rel_path}"
-                logger.warning(msg)
+                log_msg = _("Found already used OTP: {token_path}", log=True)[1]
+                log_msg = log_msg.format(token_path=self.rel_path)
+                logger.warning(log_msg)
                 otp_was_used = True
                 break
 
@@ -1785,7 +1794,8 @@ class Token(OTPmeObject):
         ):
         """ Add OTP to list of already used OTPs for this token. """
         if not quiet:
-            logger.debug("Adding OTP to list of used OTPs.")
+            log_msg = _("Adding OTP to list of used OTPs.", log=True)[1]
+            logger.debug(log_msg)
 
         # Generate OTP hash.
         otp_hash = self.gen_used_hash(otp)
@@ -1802,19 +1812,21 @@ class Token(OTPmeObject):
             try:
                 add_method = config.offline_methods['add_used_otp'][self.oid.read_oid]
             except:
-                msg = "Unable to get offline add used OTP method."
+                msg = _("Unable to get offline add used OTP method.")
                 raise OTPmeException(msg)
             try:
                 add_method(used_otp)
             except Exception as e:
-                msg = f"Failed to add used OTP (offline): {e}"
-                logger.warning(msg)
+                log_msg = _("Failed to add used OTP (offline): {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                logger.warning(log_msg)
         else:
             try:
                 used_otp.add()
             except Exception as e:
-                msg = f"Failed to add used OTP: {e}"
-                logger.warning(msg)
+                log_msg = _("Failed to add used OTP: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                logger.warning(log_msg)
 
     def _add_token_counter(
         self,
@@ -1845,12 +1857,13 @@ class Token(OTPmeObject):
             try:
                 add_method = config.offline_methods['add_token_counter'][self.oid.read_oid]
             except:
-                msg = "Unable to get offline add token counter method."
+                msg = _("Unable to get offline add token counter method.")
                 raise OTPmeException(msg)
             try:
                 add_method(_token_counter)
             except Exception as e:
-                msg = f"Failed to add offline token counter: {e}"
+                msg = _("Failed to add offline token counter: {e}")
+                msg = msg.format(e=e)
                 raise OTPmeException(msg)
         else:
             try:
@@ -1864,7 +1877,7 @@ class Token(OTPmeObject):
             try:
                 get_method = config.offline_methods['get_token_counter'][self.oid.read_oid]
             except:
-                msg = "Unable to get offline token counter method."
+                msg = _("Unable to get offline token counter method.")
                 raise OTPmeException(msg)
             token_counter =  get_method(self.oid)
         else:
@@ -1881,7 +1894,7 @@ class Token(OTPmeObject):
             try:
                 delete_method = config.offline_methods['delete_object'][self.oid.read_oid]
             except:
-                msg = "Unable to get offline delete token counter method."
+                msg = _("Unable to get offline delete token counter method.")
                 raise OTPmeException(msg)
 
         counter_list = self._get_token_counter()
@@ -2557,7 +2570,7 @@ class Token(OTPmeObject):
         ):
         """ Verify token temp password. """
         if password is None:
-            msg = "Attribute <password> required."
+            msg = _("Attribute <password> required.")
             raise OTPmeException(msg)
         if self.temp_password_hash is None:
             return
@@ -2572,8 +2585,9 @@ class Token(OTPmeObject):
         # Verify temp password.
         if password_hash != self.temp_password_hash:
             return
-        msg = f"Token verified by temp password: {self.rel_path}"
-        logger.info(msg)
+        log_msg = _("Token verified by temp password: {token_path}", log=True)[1]
+        log_msg = log_msg.format(token_path=self.rel_path)
+        logger.info(log_msg)
         config.temp_pass_auth = True
         return True
 
@@ -2588,12 +2602,13 @@ class Token(OTPmeObject):
         from otpme.lib import mschap_util
         # Verify second factor token if enabled.
         if self.second_factor_token_enabled:
-            logger.warning("Cannot verify MSCHAP requests if second factor "
-                            "token is enabled.")
+            log_msg = _("Cannot verify MSCHAP requests if second factor token is enabled.", log=True)[1]
+            logger.warning(log_msg)
             return None, False, False
 
         if not self.mschap_enabled:
-            logger.warning("No MSCHAP authentication enabled for this token.")
+            log_msg = _("No MSCHAP authentication enabled for this token.", log=True)[1]
+            logger.warning(log_msg)
             return None, False, False
 
         if temp:
@@ -2602,7 +2617,8 @@ class Token(OTPmeObject):
             nt_hash = self.nt_hash
 
         if not nt_hash:
-            logger.debug("No NT_HASH set for this token.")
+            log_msg = _("No NT_HASH set for this token.", log=True)[1]
+            logger.debug(log_msg)
             return None, False, False
 
         # Get NT key from verify_mschap()
@@ -2610,8 +2626,9 @@ class Token(OTPmeObject):
         nt_key = mschap_util.verify(nt_hash, challenge, response)
         if status:
             if temp:
-                msg = f"Token verified by temp password: {self.rel_path}"
-                logger.info(msg)
+                log_msg = _("Token verified by temp password: {token_path}", log=True)[1]
+                log_msg = log_msg.format(token_path=self.rel_path)
+                logger.info(log_msg)
                 config.temp_pass_auth = True
             return status, nt_key, nt_hash
 
@@ -2619,8 +2636,7 @@ class Token(OTPmeObject):
         return None, False, False
 
         # This point should never be reached.
-        msg = (_("WARNING: You may have hit a BUG of "
-                "Token().verify_mschap_static()."))
+        msg = _("WARNING: You may have hit a BUG of Token().verify_mschap_static().")
         raise Exception(msg)
 
     @object_lock(full_lock=True)
@@ -2871,13 +2887,16 @@ class Token(OTPmeObject):
 
         self.temp_password_expire = time.time() + duration_seconds
 
-        msg = f"Token temp password set: {self.rel_path}"
+        msg, log_msg = _("Token temp password set: {token_path}", log=True)
+        msg = msg.format(token_path=self.rel_path)
+        log_msg = log_msg.format(token_path=self.rel_path)
         add_info = [f'Duration: {duration}']
         if config.auth_token:
             add_info.append(f'Auth token: {config.auth_token.rel_path}')
         add_info = ", ".join(add_info)
         msg = f"{msg} ({add_info})"
-        logger.info(msg)
+        log_msg = f"{log_msg} ({add_info})"
+        logger.info(log_msg)
         callback.send(msg)
 
         return self._cache(callback=callback)
@@ -3104,9 +3123,10 @@ class Token(OTPmeObject):
         # if this is a token add/del. So we have to acquire no lock.
         user = backend.get_object(object_type="user", uuid=self.owner_uuid)
         if not user:
-            msg = _("Unable to find user with UUID: {owner_uuid}")
+            msg, log_msg = _("Unable to find user with UUID: {owner_uuid}", log=True)
             msg = msg.format(owner_uuid=self.owner_uuid)
-            logger.critical(msg)
+            log_msg = log_msg.format(owner_uuid=self.owner_uuid)
+            logger.critical(log_msg)
             return callback.error(msg)
 
         return super(Token, self).inherit_acls(parent_object=user,

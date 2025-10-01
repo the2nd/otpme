@@ -56,20 +56,20 @@ class ConnHandler(object):
             except ConnectionQuit:
                 self.connection._close()
                 if config.debug_level() > 3:
-                    msg = _("Client closed connection.")
-                    self.logger.debug(msg)
+                    log_msg = _("Client closed connection.", log=True)[1]
+                    self.logger.debug(log_msg)
                 break
             except Exception as e:
-                msg = _("Failed to receive data from client: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Failed to receive data from client: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 self.connection.close()
                 break
 
             if len(data) == 0:
-                msg = _("Received null data from client, closing connection: {client}")
-                msg = msg.format(client=self.client)
-                self.logger.warning(msg)
+                log_msg = _("Received null data from client, closing connection: {client}", log=True)[1]
+                log_msg = log_msg.format(client=self.client)
+                self.logger.warning(log_msg)
                 break
 
             # If we already have a protocol handler use it
@@ -90,9 +90,9 @@ class ConnHandler(object):
                     status = status_codes.CLIENT_QUIT
                     break
                 except Exception as e:
-                    msg = _("Exception in protocol handler: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.critical(msg, exc_info=True)
+                    log_msg = _("Exception in protocol handler: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg, exc_info=True)
                     final_response = _("Internal server error")
                     status = status_codes.SERVER_QUIT
                     config.raise_exception()
@@ -106,9 +106,9 @@ class ConnHandler(object):
                             command_args, \
                             binary_data = self.proto_handler.decode_request(data)
                         except Exception as e:
-                            msg = _("Failed to decode request with protocol handler: {proto_handler}: {error}")
-                            msg = msg.format(proto_handler=self.proto_handler, error=e)
-                            self.logger.critical(msg, exc_info=True)
+                            log_msg = _("Failed to decode request with protocol handler: {proto_handler}: {error}", log=True)[1]
+                            log_msg = log_msg.format(proto_handler=self.proto_handler, error=e)
+                            self.logger.critical(log_msg, exc_info=True)
                             final_response = _("Internal server error")
                             status = status_codes.SERVER_QUIT
                             config.raise_exception()
@@ -117,9 +117,9 @@ class ConnHandler(object):
                         try:
                             command, command_args, binary_data = decode_request(data)
                         except Exception as e:
-                            msg = _("Failed to decode request: {proto_handler}: {error}")
-                            msg = msg.format(proto_handler=self.proto_handler, error=e)
-                            self.logger.critical(msg, exc_info=True)
+                            log_msg = _("Failed to decode request: {proto_handler}: {error}", log=True)[1]
+                            log_msg = log_msg.format(proto_handler=self.proto_handler, error=e)
+                            self.logger.critical(log_msg, exc_info=True)
                             final_response = _("Internal server error")
                             status = status_codes.SERVER_QUIT
                             config.raise_exception()
@@ -163,9 +163,9 @@ class ConnHandler(object):
                                                         logger=self.logger,
                                                         **self.handler_args)
                     except Exception as e:
-                        msg = _("Failed to load protocol handler: {proto_class}: {error}")
-                        msg = msg.format(proto_class=proto_class, error=e)
-                        self.logger.critical(msg, exc_info=True)
+                        log_msg = _("Failed to load protocol handler: {proto_class}: {error}", log=True)[1]
+                        log_msg = log_msg.format(proto_class=proto_class, error=e)
+                        self.logger.critical(log_msg, exc_info=True)
                         final_response = _("Internal server error.")
                         status = status_codes.SERVER_QUIT
                         break
@@ -176,24 +176,24 @@ class ConnHandler(object):
                         response = response.format(protocol=self.protocol)
                         status = True
                     except CertVerifyFailed as e:
-                        msg = _("Client certificate verification failed: {client_ip}: {error}")
-                        msg = msg.format(client_ip=client_ip, error=e)
-                        self.logger.warning(msg)
+                        log_msg = _("Client certificate verification failed: {client_ip}: {error}", log=True)[1]
+                        log_msg = log_msg.format(client_ip=client_ip, error=e)
+                        self.logger.warning(log_msg)
                         final_response = f"{e}"
                         status = status_codes.SERVER_QUIT
                         break
                     except Exception as e:
-                        msg = _("Unknown exception in protocol handler: {proto_class}: {error}")
-                        msg = msg.format(proto_class=proto_class, error=e)
-                        self.logger.critical(msg, exc_info=True)
+                        log_msg = _("Unknown exception in protocol handler: {proto_class}: {error}", log=True)[1]
+                        log_msg = log_msg.format(proto_class=proto_class, error=e)
+                        self.logger.critical(log_msg, exc_info=True)
                         final_response = _("Internal server error.")
                         status = status_codes.SERVER_QUIT
                         #config.raise_exception()
                         break
                     if config.debug_level() > 3:
-                        msg = _("Using protocol {protocol} for client: {client_ip}")
-                        msg = msg.format(protocol=self.protocol, client_ip=client_ip)
-                        self.logger.debug(msg)
+                        log_msg = _("Using protocol {protocol} for client: {client_ip}", log=True)[1]
+                        log_msg = log_msg.format(protocol=self.protocol, client_ip=client_ip)
+                        self.logger.debug(log_msg)
 
                 elif command == "use_proto":
                     # Get proto the client uses.
@@ -235,13 +235,13 @@ class ConnHandler(object):
                 self.connection.send(response, timeout=config.connection_timeout)
             except ConnectionQuit:
                 self.connection._close()
-                msg = _("Client closed connection while sending data.")
-                self.logger.debug(msg)
+                log_msg = _("Client closed connection while sending data.", log=True)[1]
+                self.logger.debug(log_msg)
                 break
             except Exception as e:
-                msg = _("Failed to send response: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Failed to send response: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 break
 
         # Send final response to peer.
@@ -254,12 +254,12 @@ class ConnHandler(object):
                 self.connection.send(final_response)
             except ConnectionQuit:
                 self.connection._close()
-                msg = _("Client closed connection while sending final response.")
-                self.logger.debug(msg)
+                log_msg = _("Client closed connection while sending final response.", log=True)[1]
+                self.logger.debug(log_msg)
             except Exception as e:
-                msg = _("Failed to send final response: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Failed to send final response: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
 
         # Close connection.
         self.connection.close()

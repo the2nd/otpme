@@ -194,8 +194,8 @@ def read_config(
 
     if decrypt and not config.master_key:
         if config.uuid:
-            msg = _("Missing AES master key. Unable to decrypt config data.")
-            logger.warning(msg)
+            log_msg = _("Missing AES master key. Unable to decrypt config data.", log=True)[1]
+            logger.warning(log_msg)
         return
 
     # If we got no object_config from cache try to read from backend.
@@ -203,9 +203,9 @@ def read_config(
         data_type = "data"
         if checksum_only:
             data_type = "checksum"
-        msg = _("Reading object ({data_type}) from backend: {read_oid}")
-        msg = msg.format(data_type=data_type, read_oid=read_oid)
-        logger.debug(msg)
+        log_msg = _("Reading object ({data_type}) from backend: {read_oid}", log=True)[1]
+        log_msg = log_msg.format(data_type=data_type, read_oid=read_oid)
+        logger.debug(log_msg)
 
     if checksum_only:
         # Read only objects checksum from backend if it does not exists in
@@ -214,9 +214,9 @@ def read_config(
             object_config = read(object_id, parameters=['CHECKSUM','SYNC_CHECKSUM'])
         except Exception as e:
             config.raise_exception()
-            msg = _("Failed to read config (checksum) from backend: {object_id}: {e}")
-            msg = msg.format(object_id=object_id, e=e)
-            logger.critical(msg, exc_info=True)
+            log_msg = _("Failed to read config (checksum) from backend: {object_id}: {e}", log=True)[1]
+            log_msg = log_msg.format(object_id=object_id, e=e)
+            logger.critical(log_msg, exc_info=True)
             return
         return object_config
 
@@ -225,9 +225,9 @@ def read_config(
     try:
         object_config = read(object_id, parameters=parameters)
     except Exception as e:
-        msg = _("Failed to read config from backend: {object_id}: {e}")
-        msg = msg.format(object_id=object_id, e=e)
-        logger.critical(msg, exc_info=True)
+        log_msg = _("Failed to read config from backend: {object_id}: {e}", log=True)[1]
+        log_msg = log_msg.format(object_id=object_id, e=e)
+        logger.critical(log_msg, exc_info=True)
         return
 
     if not object_config:
@@ -267,8 +267,8 @@ def write_config(
     # Get logger.
     logger = config.logger
     if not config.master_key:
-        msg = _("Missing AES master key. Unable to encrypt config data.")
-        logger.critical(msg)
+        msg, log_msg = _("Missing AES master key. Unable to encrypt config data.", log=True)
+        logger.critical(log_msg)
         raise OTPmeException(msg)
     if full_index_update and index_journal:
         msg = _("You can use only one of <full_index_update> or <index_journal>.")
@@ -778,7 +778,8 @@ def get_sync_list(
             _skip_list += user_tokens
 
     if not quiet:
-        logger.debug("Generating sync list...")
+        log_msg = _("Generating sync list...", log=True)[1]
+        logger.debug(log_msg)
 
     for t in config.object_types:
         if not t in object_types:
@@ -902,9 +903,9 @@ def get_instance_from_oid(
             try:
                 val = _object_config[conf_arg]
             except:
-                msg = _("Missing object config parameter: {object_id}: {conf_arg}")
-                msg = msg.format(object_id=object_id, conf_arg=conf_arg)
-                logger.critical(msg)
+                log_msg = _("Missing object config parameter: {object_id}: {conf_arg}", log=True)[1]
+                log_msg = log_msg.format(object_id=object_id, conf_arg=conf_arg)
+                logger.critical(log_msg)
                 return
             args[getter_arg] = val
 
@@ -922,9 +923,10 @@ def get_instance_from_oid(
         instance = object_class(object_id=object_id,
                         object_config=object_config)
     except Exception as e:
-        msg = _("Failed to load object class: {object_id}: {e}")
+        msg, log_msg = _("Failed to load object class: {object_id}: {e}", log=True)
         msg = msg.format(object_id=object_id, e=e)
-        logger.critical(msg, exc_info=True)
+        log_msg = log_msg.format(object_id=object_id, e=e)
+        logger.critical(log_msg, exc_info=True)
         config.raise_exception()
         raise OTPmeException(msg)
 
@@ -932,9 +934,10 @@ def get_instance_from_oid(
     try:
         instance._load()
     except Exception as e:
-        msg = _("Failed to load object from OID: {object_id}: {e}")
+        msg, log_msg = _("Failed to load object from OID: {object_id}: {e}", log=True)
         msg = msg.format(object_id=object_id, e=e)
-        logger.critical(msg)
+        log_msg = log_msg.format(object_id=object_id, e=e)
+        logger.critical(log_msg)
         config.raise_exception()
         raise OTPmeException(msg)
 
@@ -1016,7 +1019,9 @@ def get_object(
         except UnknownObject as e:
             return
         except Exception as e:
-            logger.critical(f"Error building full OID: {e}")
+            log_msg = _("Error building full OID: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            logger.critical(log_msg)
             config.raise_exception()
             return
 
@@ -1040,9 +1045,9 @@ def get_object(
         except OTPmeException as e:
             instance = None
         except Exception as e:
-            msg = _("Failed to load object: {object_id}: {e}")
-            msg = msg.format(object_id=object_id, e=e)
-            logger.critical(msg)
+            log_msg = _("Failed to load object: {object_id}: {e}", log=True)[1]
+            log_msg = log_msg.format(object_id=object_id, e=e)
+            logger.critical(log_msg)
             config.raise_exception()
             return
 
@@ -1106,7 +1111,9 @@ def get_object_from_cache(
         except UnknownObject as e:
             return
         except Exception as e:
-            logger.critical(f"Error building read OID: {e}")
+            log_msg = _("Error building read OID: {e}", log=True)
+            log_msg = log_msg.format(e=e)
+            logger.critical(log_msg)
             config.raise_exception()
             return
 

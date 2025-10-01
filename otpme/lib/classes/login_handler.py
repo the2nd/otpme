@@ -140,9 +140,9 @@ class LoginHandler(object):
                                     offline_session_key=offline_session_key,
                                     socket_uri=socket_uri, realm=realm, site=site)
         except ConnectionError as e:
-            msg = _("Login connection failed: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Login connection failed: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             raise
         except Exception as e:
             config.raise_exception()

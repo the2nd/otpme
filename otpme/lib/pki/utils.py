@@ -25,8 +25,6 @@ except:
 from otpme.lib import config
 from otpme.lib.exceptions import *
 
-logger = config.logger
-
 cn_attribute_order = [
                     'country',
                     'state',

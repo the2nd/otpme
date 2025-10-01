@@ -58,16 +58,18 @@ class MgmtDaemon(OTPmeDaemon):
                 #    time.sleep(0.001)
                 #    continue
                 except Exception as e:
-                    msg = _("Error receiving daemon message: {error}")
+                    msg, log_msg = _("Error receiving daemon message: {error}", log=True)
                     msg = msg.format(error=e)
-                    self.logger.critical(msg, exc_info=True)
+                    log_msg = log_msg.format(error=e)
+                    self.logger.critical(log_msg, exc_info=True)
                     raise OTPmeException(msg)
 
                 # Check if command can be handled by parent class.
                 try:
                     self._handle_daemon_command(sender, daemon_command, data)
                 except UnknownCommand as e:
-                    self.logger.warning(str(e))
+                    log_msg = str(e)
+                    self.logger.warning(log_msg)
                 except DaemonQuit:
                     break
                 except DaemonReload:
@@ -82,7 +84,7 @@ class MgmtDaemon(OTPmeDaemon):
             except (KeyboardInterrupt, SystemExit):
                 pass
             except Exception as e:
-                msg = _("Unhandled error in mgmtd: {error}")
-                msg = msg.format(error=e)
-                self.logger.critical(msg, exc_info=True)
+                log_msg = _("Unhandled error in mgmtd: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg, exc_info=True)
                 raise

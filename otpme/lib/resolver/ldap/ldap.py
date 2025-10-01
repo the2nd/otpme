@@ -704,9 +704,10 @@ class LdapResolver(Resolver):
             if not conn.bind():
                 raise Exception(_("Bind failed."))
         except Exception as e:
-            msg = _("Error connecting to server: {server_uri}: {error}")
+            msg, log_msg = _("Error connecting to server: {server_uri}: {error}", log=True)
             msg = msg.format(server_uri=server_uri, error=e)
-            logger.warning(msg)
+            log_msg = log_msg.format(server_uri=server_uri, error=e)
+            logger.warning(log_msg)
             raise Exception(msg)
 
         if use_start_tls:
@@ -895,7 +896,8 @@ class LdapResolver(Resolver):
             except Exception as e:
                 ldap_conn = None
                 error_msg = str(e)
-                logger.warning(error_msg)
+                log_msg = error_msg
+                logger.warning(log_msg)
                 if verbose_level > 0:
                     callback.send(error_msg)
 
@@ -904,9 +906,10 @@ class LdapResolver(Resolver):
                 try:
                     ldap_result = self._fetch_objects(ldap_conn, object_types)
                 except Exception as e:
-                    error_msg = _("Failed to fetch objects: {error}")
+                    error_msg, log_msg = _("Failed to fetch objects: {error}", log=True)
                     error_msg = error_msg.format(error=e)
-                    logger.warning(error_msg)
+                    log_msg = log_msg.format(error=e)
+                    logger.warning(log_msg)
                     if verbose_level > 0:
                         callback.send(error_msg)
                     config.raise_exception()

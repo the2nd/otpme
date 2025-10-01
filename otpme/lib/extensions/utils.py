@@ -52,11 +52,13 @@ def get_value_acls(object_type):
 
 def preload_extensions():
     """ Preload all OTPme extensions. """
-    logger.debug("Preloading extensions...")
+    log_msg = _("Preloading extensions...", log=True)[1]
+    logger.debug(log_msg)
     extensions = load_extensions(config.extensions)
     for e in extensions:
         e.preload()
-    logger.debug(f"Preloaded {len(config.extensions)} extensions.")
+    log_msg = _("Preloaded {len(config.extensions)} extensions.", log=True)[1]
+    logger.debug(log_msg)
 
 def load_schemas():
     """ Load schema files of all OTPme extensions. """
@@ -86,17 +88,19 @@ def load_extensions(extensions, callback=default_callback):
             for dep_ext in _e.need_extensions:
                 _dep_ext = _extensions[dep_ext]
                 if e in _dep_ext.need_extensions:
-                    msg = _("Detected dependency loop: {} <> {}")
+                    msg, log_msg = _("Detected dependency loop: {} <> {}", log=True)
                     msg = msg.format(e, dep_ext)
                     # FIXME: log user messages?
-                    #logger.critical(msg)
-                    return callback.error(_(msg))
+                    #log_msg = log_msg.format(e, dep_ext)
+                    #logger.critical(log_msg)
+                    return callback.error(msg)
                 if not dep_ext in ext_loaded:
                     load_extension = False
                     if not dep_ext in _extensions:
-                        msg = _("Cannot load extension '{}' which depends on extension '.")
+                        msg, log_msg = _("Cannot load extension '{}' which depends on extension '.", log=True)
                         msg = msg.format(e, dep_ext)
-                        logger.critical(msg)
+                        log_msg = log_msg.format(e, dep_ext)
+                        logger.critical(log_msg)
                         callback.send(msg)
                         _extensions.pop(e)
 

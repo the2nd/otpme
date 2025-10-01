@@ -174,15 +174,17 @@ class PamHandler(object):
                 try:
                     arg = x.split("=")[0]
                     val = x.split("=")[1]
-                    self.logger.debug(f"Got option: {arg}={val}")
+                    log_msg = _("Got option: {arg}={val}", log=True)[1]
+                    self.logger.debug(log_msg)
                 except:
-                    msg = _("Ignoring malformed PAM parameter: {param}")
-                    msg = msg.format(param=x)
-                    self.logger.warning(msg)
+                    log_msg = _("Ignoring malformed PAM parameter: {param}", log=True)[1]
+                    log_msg = log_msg.format(param=x)
+                    self.logger.warning(log_msg)
                     continue
             else:
                 arg = x
-                self.logger.debug(f"Got option: {arg}")
+                log_msg = _("Got option: {arg}", log=True)[1]
+                self.logger.debug(log_msg)
 
             if arg == "nullok":
                 self.allow_null_passwords = True
@@ -192,9 +194,9 @@ class PamHandler(object):
                 elif val.lower() == "false":
                     self.send_password = False
                 else:
-                    msg = _("Ignoring unknown value for send_password: {value}")
-                    msg = msg.format(value=val)
-                    self.logger.warning(msg)
+                    log_msg = _("Ignoring unknown value for send_password: {value}", log=True)[1]
+                    log_msg = log_msg.format(value=val)
+                    self.logger.warning(log_msg)
             if arg == "try_first_pass":
                 self.try_first_pass = True
             if arg == "use_first_pass":
@@ -213,9 +215,9 @@ class PamHandler(object):
                 elif val.lower() == "auto":
                     self.use_smartcard = "auto"
                 else:
-                    msg = _("Ignoring unknown value for use_smartcard: {value}")
-                    msg = msg.format(value=val)
-                    self.logger.warning(msg)
+                    log_msg = _("Ignoring unknown value for use_smartcard: {value}", log=True)[1]
+                    log_msg = log_msg.format(value=val)
+                    self.logger.warning(log_msg)
             if arg == "use_ssh_agent":
                 if val.lower() == "true":
                     self.use_ssh_agent = True
@@ -225,9 +227,9 @@ class PamHandler(object):
                 elif val.lower() == "auto":
                     self.use_ssh_agent = "auto"
                 else:
-                    msg = _("Ignoring unknown value for use_ssh_agent: {value}")
-                    msg = msg.format(value=val)
-                    self.logger.warning(msg)
+                    log_msg = _("Ignoring unknown value for use_ssh_agent: {value}", log=True)[1]
+                    log_msg = log_msg.format(value=val)
+                    self.logger.warning(log_msg)
             if arg == "start_ssh_agent":
                 if val.lower() == "auto":
                     self.ensure_ssh_agent = "auto"
@@ -265,9 +267,8 @@ class PamHandler(object):
                             if iterations_by_score:
                                 self.iterations_by_score = iterations_by_score
                         except Exception as e:
-                            msg = ("Malformed options for PAM parameter: "
-                                    "check_offline_pass_strength")
-                            self.logger.warning(msg)
+                            log_msg = _("Malformed options for PAM parameter: check_offline_pass_strength", log=True)[1]
+                            self.logger.warning(log_msg)
                 else:
                     self.check_offline_pass_strength = "auto"
             if arg == "offline_key_func":
@@ -276,16 +277,16 @@ class PamHandler(object):
                     offline_key_func = val.split(";")[0]
                 except:
                     offline_key_func = None
-                    msg = ("Ignoring malformed PAM parameter: offline_key_func")
-                    self.logger.warning(msg)
+                    log_msg = _("Ignoring malformed PAM parameter: offline_key_func", log=True)[1]
+                    self.logger.warning(log_msg)
 
                 if offline_key_func:
                     try:
                         config.get_hash_type_default_otps(offline_key_func)
                     except UnsupportedHashType:
-                        msg = _("Ignoring unknown value for offline_key_func: {func}")
-                        msg = msg.format(func=offline_key_func)
-                        self.logger.warning(msg)
+                        log_msg = _("Ignoring unknown value for offline_key_func: {func}", log=True)[1]
+                        log_msg = log_msg.format(func=offline_key_func)
+                        self.logger.warning(log_msg)
                 # Set offline key derivation function.
                 self.offline_key_func = offline_key_func
                 # Try to get key derivation options.
@@ -299,9 +300,8 @@ class PamHandler(object):
                         if func_opts:
                             self.offline_key_func_opts = func_opts
                     except Exception as e:
-                        msg = ("Malformed options for PAM parameter: "
-                                "offline_key_func")
-                        self.logger.warning(msg)
+                        log_msg = _("Malformed options for PAM parameter: offline_key_func", log=True)[1]
+                        self.logger.warning(log_msg)
 
         # Try to get username.
         try:
@@ -346,19 +346,22 @@ class PamHandler(object):
         if self.use_first_pass:
             password = self.pamh.authtok
             if password is None:
-                self.logger.warning(_("No password received and 'use_first_pass' set. Authentication failed."))
+                log_msg = _("No password received and 'use_first_pass' set. Authentication failed.", log=True)[1]
+                self.logger.warning(log_msg)
                 self.cleanup()
                 return self.pamh.PAM_AUTH_ERR
         elif self.try_first_pass:
             password = self.pamh.authtok
             if password is None:
-                self.logger.debug("No password received and 'try_first_pass' "
-                                "set. Will ask user for password.")
+                log_msg = _("No password received and 'try_first_pass' set. Will ask user for password.", log=True)[1]
+                self.logger.debug(log_msg)
         if password:
-            self.logger.debug("Using password from previous PAM module.")
+            log_msg = _("Using password from previous PAM module.", log=True)[1]
+            self.logger.debug(log_msg)
         else:
             # Try to get password via PAM.
-            self.logger.debug("Trying to get password from PAM...")
+            log_msg = _("Trying to get password from PAM...", log=True)[1]
+            self.logger.debug(log_msg)
             try:
                 pam_msg = self.pamh.Message(self.pamh.PAM_PROMPT_ECHO_OFF, prompt)
                 resp = self.pamh.conversation(pam_msg)
@@ -370,12 +373,14 @@ class PamHandler(object):
             # Check if null passwords are allowed.
             if not password:
                 if self.allow_null_passwords:
-                    self.logger.debug("Got empty password and 'nullok' option "
-                                        "enabled, continuing.")
+                    log_msg = _("Got empty password and 'nullok' option enabled, continuing.", log=True)[1]
+                    self.logger.debug(log_msg)
                 else:
-                    self.logger.warning(_("Got empty password and 'nullok' option not set. Authentication failed."))
+                    log_msg = _("Got empty password and 'nullok' option not set. Authentication failed.", log=True)[1]
+                    self.logger.warning(log_msg)
                     raise AuthFailed(_("Empty passwords are not allowed!"))
-            self.logger.debug("Got password from PAM.")
+            log_msg = _("Got password from PAM.", log=True)[1]
+            self.logger.debug(log_msg)
         self.password = password
         return password
 
@@ -384,13 +389,14 @@ class PamHandler(object):
         agent_conn = self.get_agent_connection()
         try:
             if agent_conn.check_ssh_key_pass():
-                self.logger.debug("Removing SSH key passphrase from agent...")
+                log_msg = _("Removing SSH key passphrase from agent...", log=True)[1]
+                self.logger.debug(log_msg)
                 try:
                     agent_conn.del_ssh_key_pass()
                 except Exception as e:
-                    msg = _("Error removing SSH key passphrase from agent: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.warning(msg)
+                    log_msg = _("Error removing SSH key passphrase from agent: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
         finally:
             agent_conn.close()
         if self.ssh_agent_conn:
@@ -401,7 +407,8 @@ class PamHandler(object):
     def activate_gpg_agent_autoconfirm(self):
         """ Activate gpg-agent auto confirmation of key usage. """
         from otpme.lib.pinentry.pinentry import set_autoconfirm
-        self.logger.debug("Enabling GPG pinentry autoconfirmation.")
+        log_msg = _("Enabling GPG pinentry autoconfirmation.", log=True)[1]
+        self.logger.debug(log_msg)
         # Enable autoconfirm for 30 seconds.
         expiry = str(time.time() + 30)
         set_autoconfirm(self.pinentry_autoconfirm_file,
@@ -437,7 +444,8 @@ class PamHandler(object):
             if self.pamh.tty and self.pamh.tty.startswith(":"):
                 display = self.pamh.tty
         if display:
-            self.logger.debug(f"Got DISPLAY from PAM session: {display}")
+            log_msg = _("Got DISPLAY from PAM session: {display}", log=True)[1]
+            self.logger.debug(log_msg)
             home_dir = self.get_home_dir(self.username)
             if os.path.exists(home_dir):
                 display_file = f"{home_dir}/.display"
@@ -470,12 +478,12 @@ class PamHandler(object):
                 try:
                     self.stop_ssh_agent(verify_signs=False)
                 except Exception as e:
-                    msg = _("Unable to run SSH agent script: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.warning(msg)
+                    log_msg = _("Unable to run SSH agent script: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
         # Stop otpme-agent which does the user logout if required.
-        msg = "Stopping otpme-agent..."
-        self.logger.debug(msg)
+        log_msg = _("Stopping otpme-agent...", log=True)[1]
+        self.logger.debug(log_msg)
         stuff.stop_otpme_agent(user=self.username, wait=False)
         return self.pamh.PAM_SUCCESS
 
@@ -485,16 +493,16 @@ class PamHandler(object):
             return
         if not self.login_token:
             return
-        msg = "Getting dynamic groups from hostd."
-        self.logger.debug(msg)
+        log_msg = _("Getting dynamic groups from hostd.", log=True)[1]
+        self.logger.debug(log_msg)
         # Get connection to hostd.
         try:
             hostd_conn = connections.get("hostd")
         except Exception as e:
             self.cleanup()
-            msg = _("Unable to get connection to hostd: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Unable to get connection to hostd: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             return self.pamh.PAM_SYSTEM_ERR
         # Get dynamics groups of host.
         dynamic_groups = hostd_conn.get_host_dynamic_groups()
@@ -507,9 +515,9 @@ class PamHandler(object):
                 group_id = grp.getgrnam(group)[2]
             except KeyError:
                 continue
-            msg = _("Adding users dynamic group membership: {group_name}")
-            msg = msg.format(group_name=group)
-            self.logger.info(msg)
+            log_msg = _("Adding users dynamic group membership: {group_name}", log=True)[1]
+            log_msg = log_msg.format(group_name=group)
+            self.logger.info(log_msg)
             current_groups.append(group_id)
         current_groups = list(set(current_groups))
         os.setgroups(current_groups)
@@ -567,7 +575,8 @@ class PamHandler(object):
                 # if agent scripts signers are configured.
                 verify_signs = "auto"
 
-        self.logger.debug("Staring ssh-agent...")
+        log_msg = _("Staring ssh-agent...", log=True)[1]
+        self.logger.debug(log_msg)
         # Start SSH agent.
         ssh_auth_sock, \
         ssh_agent_pid, \
@@ -583,9 +592,9 @@ class PamHandler(object):
         if ssh_auth_sock:
             self.pamh.env['SSH_AUTH_SOCK'] = ssh_auth_sock
             #os.environ['SSH_AUTH_SOCK'] = ssh_auth_sock
-            msg = _("SSH agent listening on: {socket}")
-            msg = msg.format(socket=ssh_auth_sock)
-            self.logger.info(msg)
+            log_msg = _("SSH agent listening on: {socket}", log=True)[1]
+            log_msg = log_msg.format(socket=ssh_auth_sock)
+            self.logger.info(log_msg)
 
         if ssh_agent_pid:
             self.pamh.env['SSH_AGENT_PID'] = ssh_agent_pid
@@ -627,16 +636,18 @@ class PamHandler(object):
     def run_login_script(self, verify_signs=None):
         """ Run users login script. """
         if not self.login_script:
-            self.logger.debug("Got no login script.")
+            log_msg = _("Got no login script.", log=True)[1]
+            self.logger.debug(log_msg)
             return
         if not self.login_script_uuid:
-            self.logger.warning(_("Missing login script UUID."))
+            log_msg = _("Missing login script UUID.", log=True)[1]
+            self.logger.warning(log_msg)
             return
         from otpme.lib.classes import signing
         from otpme.lib import script as _script
-        msg = _("Running login script: {path}")
-        msg = msg.format(path=self.login_script_path)
-        self.logger.info(msg)
+        log_msg = _("Running login script: {path}", log=True)[1]
+        log_msg = log_msg.format(path=self.login_script_path)
+        self.logger.info(log_msg)
 
         # Get login script signers.
         login_script_signers = signing.get_signers(signer_type="login_script",
@@ -745,7 +756,8 @@ class PamHandler(object):
             try:
                 dst_token_uuid = self.offline_login_token.destination_token
                 self.offline_verify_token = self.offline_tokens[dst_token_uuid]
-                self.logger.debug(f"Using destination token: {self.offline_verify_token.rel_path}")
+                log_msg = _("Using destination token: {self.offline_verify_token.rel_path}", log=True)[1]
+                self.logger.debug(log_msg)
             except:
                 msg = _("Unable to find destination token: {token}")
                 msg = msg.format(token=self.offline_login_token.destination_token)
@@ -754,9 +766,9 @@ class PamHandler(object):
             self.offline_verify_token = self.offline_login_token
 
         if not reload_token:
-            msg = _("Found offline login token: {path}")
-            msg = msg.format(path=self.offline_login_token.rel_path)
-            self.logger.info(msg)
+            log_msg = _("Found offline login token: {path}", log=True)[1]
+            log_msg = log_msg.format(path=self.offline_login_token.rel_path)
+            self.logger.info(log_msg)
 
     def verify_offline_token(self, login=True):
         """ Verify offline token. """
@@ -778,7 +790,8 @@ class PamHandler(object):
         enc_challenge = self.offline_token.enc_challenge
 
         if need_encryption:
-            self.logger.debug("Offline tokens are encrypted.")
+            log_msg = _("Offline tokens are encrypted.", log=True)[1]
+            self.logger.debug(log_msg)
 
         # Set verify token.
         verify_token = self.offline_verify_token
@@ -795,7 +808,9 @@ class PamHandler(object):
             # Handle U2F second factor token.
             if verify_token.sftoken.pass_type == "smartcard":
                 found_smartcard = verify_token.sftoken
-            self.logger.debug(f"Found offline second factor token: {verify_token.sftoken.rel_path}")
+            log_msg = _("Found offline second factor token: {sftoken_path}", log=True)[1]
+            log_msg = log_msg.format(sftoken_path=verify_token.sftoken.rel_path)
+            self.logger.debug(log_msg)
 
         if verify_token.pass_type == "smartcard":
             found_smartcard = verify_token
@@ -888,7 +903,8 @@ class PamHandler(object):
                 # If the token does not have a private key (e.g. a hardware
                 # token like the yubikey) we check if the token is present
                 # via ssh-agent.
-                self.logger.debug("Getting SSH login key from ssh-agent...")
+                log_msg = _("Getting SSH login key from ssh-agent...", log=True)[1]
+                self.logger.debug(log_msg)
                 if not self.ssh_agent_conn:
                     self.ssh_agent_conn = Agent()
                 # Get available public keys from ssh-agent.
@@ -898,7 +914,8 @@ class PamHandler(object):
                     public_key = key.get_base64()
                     public_keys.append(public_key)
                     agent_keys[public_key] = key
-                self.logger.debug(f"Got {len(agent_keys)} keys from SSH agent.")
+                log_msg = _("Got {len(agent_keys)} keys from SSH agent.", log=True)[1]
+                self.logger.debug(log_msg)
                 # Get SSH agent key instance.
                 try:
                     ssh_login_key = agent_keys[verify_token.ssh_public_key]
@@ -906,9 +923,10 @@ class PamHandler(object):
                     ssh_login_key = None
 
                 if not ssh_login_key:
-                    msg = _("Cannot find SSH public key of token: {path}")
+                    msg, log_msg = _("Cannot find SSH public key of token: {path}", log=True)
                     msg = msg.format(path=verify_token.rel_path)
-                    self.logger.debug(msg)
+                    log_msg = log_msg.format(path=verify_token.rel_path)
+                    self.logger.debug(log_msg)
                     raise AuthFailed(msg)
 
                 # When using a hardware token like the yubikey the encryption
@@ -916,7 +934,8 @@ class PamHandler(object):
                 agent_conn = self.get_agent_connection()
                 try:
                     if not agent_conn.check_ssh_key_pass():
-                        self.logger.debug("Adding SSH key passphrase to otpme-agent...")
+                        log_msg = _("Adding SSH key passphrase to otpme-agent...", log=True)[1]
+                        self.logger.debug(log_msg)
                         try:
                             agent_conn.add_ssh_key_pass(ssh_agent_pid=ssh_agent_pid,
                                                         ssh_key_pass=ssh_key_pass)
@@ -932,7 +951,8 @@ class PamHandler(object):
                         msg = (_("Offline token is missing encryption challenge."))
                         raise OTPmeException(msg)
 
-                    self.logger.debug("Getting encryption response from ssh-agent...")
+                    log_msg = _("Getting encryption response from ssh-agent...", log=True)[1]
+                    self.logger.debug(log_msg)
                     # Derive AES passphrase from challenge+static_pass_part using
                     # ssh-agent signing.
                     # https://github.com/paramiko/paramiko/issues/507
@@ -967,9 +987,10 @@ class PamHandler(object):
         elif verify_token.pass_type == "smartcard":
             pass
         else:
-            msg = _("Unsupported offline token found: {path} token_type: {type}")
+            msg, log_msg = _("Unsupported offline token found: {path} token_type: {type}", log=True)
             msg = msg.format(path=verify_token.rel_path, type=verify_token.token_type)
-            self.logger.warning(msg)
+            log_msg = log_msg.format(path=verify_token.rel_path, type=verify_token.token_type)
+            self.logger.warning(log_msg)
             raise OTPmeException(msg)
 
         reload_offline_token = False
@@ -980,7 +1001,8 @@ class PamHandler(object):
         # Add decryption passphrase to offline tokens.
         if need_encryption:
             reload_offline_token = True
-            self.logger.debug("Setting offline token encryption passphrase...")
+            log_msg = _("Setting offline token encryption passphrase...", log=True)[1]
+            self.logger.debug(log_msg)
             self.offline_token.set_enc_passphrase(passphrase=enc_pass,
                                 key_function=self.offline_key_func,
                                 key_function_opts=self.offline_key_func_opts,
@@ -994,7 +1016,9 @@ class PamHandler(object):
             verify_token = self.offline_verify_token
 
         # Verify offline tokens.
-        self.logger.debug(f"Verifying offline token: {verify_token.rel_path}")
+        log_msg = _("Verifying offline token: {verify_token}", log=True)[1]
+        log_msg = log_msg.format(verify_token=verify_token.rel_path)
+        self.logger.debug(log_msg)
         auth_password = str(auth_password)
         session_uuid = self.offline_token.session_uuid
 
@@ -1018,33 +1042,39 @@ class PamHandler(object):
             self.smartcard = None
 
         if not self.offline_token_verify_status:
-            msg = _("Token verification failed: {path}")
+            msg, log_msg = _("Token verification failed: {path}", log=True)
             msg = msg.format(path=verify_token.rel_path)
-            self.logger.debug(msg)
+            log_msg = log_msg.format(path=verify_token.rel_path)
+            self.logger.debug(log_msg)
             raise AuthFailed(msg)
 
-        self.logger.debug(f"Token verified successful: {verify_token.rel_path}")
+        log_msg = _("Token verified successful: {verify_token}", log=True)[1]
+        log_msg = log_msg.format(verify_token=verify_token.rel_path)
+        self.logger.debug(log_msg)
 
         # Add SSH key to agent.
         if verify_token.token_type == "ssh":
             if verify_token._ssh_private_key:
                 from otpme.lib import ssh
-                self.logger.debug("Adding SSH key to agent...")
+                log_msg = _("Adding SSH key to agent...", log=True)[1]
+                self.logger.debug(log_msg)
                 try:
                     ssh.add_agent_key(verify_token._ssh_private_key)
                 except Exception as e:
-                    msg = _("Unable to add key to SSH agent: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.debug(msg)
+                    log_msg = _("Unable to add key to SSH agent: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.debug(log_msg)
 
         return self.offline_token_verify_status
 
     def offline_auth(self, login=False):
         """ Try to authenticate user via offline tokens. """
         if login:
-            self.logger.info(_("Trying offline login..."))
+            log_msg = _("Trying offline login...", log=True)[1]
+            self.logger.info(log_msg)
         else:
-            self.logger.info(_("Trying offline authentication..."))
+            log_msg = _("Trying offline authentication...", log=True)[1]
+            self.logger.info(log_msg)
 
         # Mark session as offline.
         self.offline_login = True
@@ -1125,12 +1155,14 @@ class PamHandler(object):
             except NoOfflineSessionFound as e:
                 pass
             except Exception as e:
-                msg = _("Error reading offline sessions from file: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Error reading offline sessions from file: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
 
             if self.offline_sessions:
-                self.logger.debug(f"Found {len(self.offline_sessions)} offline sessions.")
+                log_msg = _("Found {offline_sessions} offline sessions.", log=True)[1]
+                log_msg = log_msg.format(offline_sessions=len(self.offline_sessions))
+                self.logger.debug(log_msg)
 
             # Try to get login script.
             try:
@@ -1140,12 +1172,13 @@ class PamHandler(object):
                 self.login_script_signs, \
                 self.login_script = self.offline_token.get_script("login")
             except Exception as e:
-                msg = _("Unable to get login script from offline token: {error}")
-                msg = msg.format(error=e)
-                self.logger.debug(msg)
+                log_msg = _("Unable to get login script from offline token: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.debug(log_msg)
 
             if self.login_script_path:
-                self.logger.debug("Got login script from offline tokens.")
+                log_msg = _("Got login script from offline tokens.", log=True)[1]
+                self.logger.debug(log_msg)
 
             # Update timestamp of login token cache file (used to calculate
             # expiry of offline tokens).
@@ -1155,12 +1188,12 @@ class PamHandler(object):
             try:
                 self.offline_token.update_offline_session(self.login_session_id)
             except NoOfflineSessionFound as e:
-                msg = "Found no offline session to update."
-                self.logger.debug(msg)
+                log_msg = _("Found no offline session to update.", log=True)[1]
+                self.logger.debug(log_msg)
             except Exception as e:
-                msg = _("Unable to update offline session: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Unable to update offline session: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
             finally:
                 self.offline_token.unlock()
 
@@ -1172,9 +1205,9 @@ class PamHandler(object):
                 agent_conn.set_login_token(self.offline_login_token.rel_path,
                                             self.offline_login_token.pass_type)
             except Exception as e:
-                msg = _("Unable to set login token to otpme-agent: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Unable to set login token to otpme-agent: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
 
             # Add RSP from offline session to otpme-agent.
             if self.offline_sessions:
@@ -1192,9 +1225,9 @@ class PamHandler(object):
                                                 unused_timeout=session['session_unused_timeout'],
                                                 offline=session['offline_allowed'])
                         except Exception as e:
-                            msg = _("Unable to add RSP to otpme-agent: {error}")
-                            msg = msg.format(error=e)
-                            self.logger.warning(msg)
+                            log_msg = _("Unable to add RSP to otpme-agent: {error}", log=True)[1]
+                            log_msg = log_msg.format(error=e)
+                            self.logger.warning(log_msg)
                         # Mount shares.
                         try:
                             shares = session['shares']
@@ -1202,10 +1235,11 @@ class PamHandler(object):
                             shares = []
                         if shares:
                             mount_reply = agent_conn.mount_shares(shares=shares)
-                            self.logger.info(mount_reply)
+                            log_msg = mount_reply
+                            self.logger.info(log_msg)
             else:
-                self.logger.debug("No offline session found. Relogin required "
-                                "when servers are available again...")
+                log_msg = _("No offline session found. Relogin required when servers are available again...", log=True)[1]
+                self.logger.debug(log_msg)
 
             # Add ACL for the login user to allow access to otpme-agent login
             # session.
@@ -1221,9 +1255,10 @@ class PamHandler(object):
 
         return auth_message
 
-        msg = _("WARNING: You may have hit a BUG of offline_auth() in '{name}'. Authentication failed.")
+        msg, log_msg = _("WARNING: You may have hit a BUG of offline_auth() in '{name}'. Authentication failed.", log=True)
         msg = msg.format(name=__name__)
-        self.logger.critical(msg)
+        log_msg = log_msg.format(name=__name__)
+        self.logger.critical(log_msg)
         raise OTPmeException(msg)
 
     def online_auth(self, login=False):
@@ -1235,8 +1270,8 @@ class PamHandler(object):
 
         need_ssh_key_pass = True
         if self.offline_token.pinned:
-            msg = "Trying pinned offline token authentication..."
-            self.logger.info(msg)
+            log_msg = _("Trying pinned offline token authentication...", log=True)[1]
+            self.logger.info(log_msg)
             # Acquire offline token lock.
             self.offline_token.lock()
             # Verify offline token.
@@ -1254,9 +1289,9 @@ class PamHandler(object):
             self.offline_token.unlock()
 
             if self.auth_failed:
-                msg = _("Pinned offline token authentication failed: {message}")
-                msg = msg.format(message=self.auth_message)
-                self.logger.info(msg)
+                log_msg = _("Pinned offline token authentication failed: {message}", log=True)[1]
+                log_msg = log_msg.format(message=self.auth_message)
+                self.logger.info(log_msg)
                 return
             need_ssh_key_pass = True
 
@@ -1328,12 +1363,14 @@ class PamHandler(object):
             self.auth_message = str(e)
         except Exception as e:
             if login:
-                self.auth_message = _("Error while sending login request: {error}")
+                self.auth_message, log_msg = _("Error while sending login request: {error}", log=True)
                 self.auth_message = self.auth_message.format(error=e)
+                log_msg = log_msg.format(error=e)
             else:
-                self.auth_message = _("Error while authenticating with server: {error}")
+                self.auth_message, log_msg = _("Error while authenticating with server: {error}", log=True)
                 self.auth_message = self.auth_message.format(error=e)
-            self.logger.warning(self.auth_message, exc_info=True)
+                log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg, exc_info=True)
             return
 
         # Get login reply.
@@ -1388,9 +1425,9 @@ class PamHandler(object):
         try:
             init_otpme(use_backend=False)
         except Exception as e:
-            msg = _("Problem initializing OTPme: {error}")
-            msg = msg.format(error=e)
-            self.logger.critical(msg)
+            log_msg = _("Problem initializing OTPme: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
             self.cleanup()
             return self.pamh.PAM_SYSTEM_ERR
 
@@ -1403,9 +1440,9 @@ class PamHandler(object):
         try:
             stuff.user_exists(self.username)
         except Exception as e:
-            msg = _("User does not exist: {user}")
-            msg = msg.format(user=self.username)
-            self.logger.warning(msg)
+            log_msg = _("User does not exist: {user}", log=True)[1]
+            log_msg = log_msg.format(user=self.username)
+            self.logger.warning(log_msg)
             self.cleanup()
             return self.pamh.PAM_USER_UNKNOWN
 
@@ -1433,7 +1470,8 @@ class PamHandler(object):
             if self.pamh.tty and self.pamh.tty.startswith(":"):
                 self.display = self.pamh.tty
         if self.display:
-            self.logger.debug(f"Got DISPLAY from PAM: {self.display}")
+            log_msg = _("Got DISPLAY from PAM: {self.display}", log=True)[1]
+            self.logger.debug(log_msg)
             os.environ['DISPLAY'] = self.display
             self.pamh.env['DISPLAY'] = self.display
             self.login_interface = "gui"
@@ -1448,7 +1486,8 @@ class PamHandler(object):
             os.environ['GPG_TTY'] = self.tty
             self.pamh.env['GPG_TTY'] = self.tty
 
-        self.logger.debug(f"Got PAM user: {self.username}")
+        log_msg = _("Got PAM user: {self.username}", log=True)[1]
+        self.logger.debug(log_msg)
 
         # Get offline token handler.
         self.offline_token = OfflineToken()
@@ -1458,17 +1497,17 @@ class PamHandler(object):
             self.hostd_conn = connections.get("hostd")
         except Exception as e:
             self.cleanup()
-            msg = _("Unable to get connection to hostd: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Unable to get connection to hostd: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             return self.pamh.PAM_SYSTEM_ERR
 
         # Check host status.
         status, reply = self.hostd_conn.get_host_status()
         if not status:
-            msg = _("Got host status: {status}")
-            msg = msg.format(status=reply)
-            self.logger.warning(msg)
+            log_msg = _("Got host status: {status}", log=True)[1]
+            log_msg = log_msg.format(status=reply)
+            self.logger.warning(log_msg)
             self.cleanup()
             return self.pamh.PAM_AUTH_ERR
 
@@ -1476,9 +1515,9 @@ class PamHandler(object):
         self.user_uuid = self.get_user_uuid()
 
         if not self.user_uuid:
-            msg = _("Unknown user: {user}")
-            msg = msg.format(user=self.username)
-            self.logger.warning(msg)
+            log_msg = _("Unknown user: {user}", log=True)[1]
+            log_msg = log_msg.format(user=self.username)
+            self.logger.warning(log_msg)
             self.cleanup()
             return self.pamh.PAM_USER_UNKNOWN
 
@@ -1487,7 +1526,8 @@ class PamHandler(object):
             stuff.check_login_user(user_name=self.username,
                                     user_uuid=self.user_uuid)
         except Exception as e:
-            self.logger.warning(e)
+            log_msg = str(e)
+            self.logger.warning(log_msg)
             self.cleanup()
             return self.pamh.PAM_AUTH_ERR
 
@@ -1497,7 +1537,8 @@ class PamHandler(object):
         os.environ['OTPME_USER_UUID'] = self.user_uuid
         self.pamh.env['OTPME_USER_UUID'] = self.user_uuid
 
-        self.logger.debug("Configuring logger...")
+        log_msg = _("Configuring logger...", log=True)[1]
+        self.logger.debug(log_msg)
         log_banner = f"{config.log_name}:{self.username}"
         self.logger = config.setup_logger(banner=log_banner,
                                         existing_logger=config.logger)
@@ -1517,9 +1558,9 @@ class PamHandler(object):
             self.offline_token.lock()
             self.offline_token.remove_outdated_session_dirs()
         except Exception as e:
-            msg = _("Error removing outdated session directories: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Error removing outdated session directories: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
         finally:
             self.offline_token.unlock()
 
@@ -1533,9 +1574,9 @@ class PamHandler(object):
         try:
             stuff.start_otpme_agent(user=self.username, wait_for_socket=True)
         except Exception as e:
-            msg = _("Unable to start otpme-agent: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Unable to start otpme-agent: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
             self.cleanup()
             return self.pamh.PAM_SYSTEM_ERR
 
@@ -1565,9 +1606,8 @@ class PamHandler(object):
         # If we are already logged in (e.g. this is a screen unlock request) we
         # just have to verify the given credentials.
         if self.login_status is not False:
-            msg = ("User is already logged in. This is most "
-                    "likely a screen unlock request.")
-            self.logger.info(msg)
+            log_msg = _("User is already logged in. This is most likely a screen unlock request.", log=True)[1]
+            self.logger.info(log_msg)
 
             # Get SSH agent script.
             ssh_agent_script_file = os.path.join(self.login_session_dir, "ssh-agent-script.json")
@@ -1614,9 +1654,9 @@ class PamHandler(object):
                     try:
                         self.stop_ssh_agent(verify_signs=False)
                     except Exception as e:
-                        msg = _("Failed to run SSH agent script: {error}")
-                        msg = msg.format(error=e)
-                        self.logger.warning(msg)
+                        log_msg = _("Failed to run SSH agent script: {error}", log=True)[1]
+                        log_msg = log_msg.format(error=e)
+                        self.logger.warning(log_msg)
                 self.start_ssh_agent()
                 # Try to authenticate user with OTPme servers.
                 self.online_auth(login=False)
@@ -1643,7 +1683,8 @@ class PamHandler(object):
                     self.auth_failed = False
                     # Print auth failure message from online auth attempt.
                     if self.auth_message:
-                        self.logger.warning(self.auth_message)
+                        log_msg = self.auth_message
+                        self.logger.warning(log_msg)
                     # Try to authenticate via offline tokens.
                     try:
                         self.auth_message = self.offline_auth(login=False)
@@ -1710,9 +1751,9 @@ class PamHandler(object):
                     if not self.ssh_agent_status():
                         self.start_ssh_agent()
                 except Exception as e:
-                    msg = _("Cannot start SSH agent: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.warning(msg, exc_info=True)
+                    log_msg = _("Cannot start SSH agent: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg, exc_info=True)
 
             # Try to auth/login user via OTPme servers.
             self.online_auth(login=self.realm_login)
@@ -1724,7 +1765,8 @@ class PamHandler(object):
                     self.offline = True
                     # Print auth failure message from online login attempt.
                     if self.auth_message:
-                        self.logger.warning(self.auth_message)
+                        log_msg = self.auth_message
+                        self.logger.warning(log_msg)
                     # Try logging in via offline tokens.
                     try:
                         self.auth_message = self.offline_auth(login=True)
@@ -1749,7 +1791,8 @@ class PamHandler(object):
                     self.login_message = self.login_message.format(realm=config.realm)
             # Log success message.
             if self.auth_message:
-                self.logger.info(self.auth_message)
+                log_msg = self.auth_message
+                self.logger.info(log_msg)
             # Set PAM stuff.
             self.retval = self.pamh.PAM_SUCCESS
             # Remember if this was a offline login.
@@ -1759,17 +1802,17 @@ class PamHandler(object):
                 self.pamh.env['OTPME_LOGIN_TOKEN'] = self.login_token
                 #os.environ['OTPME_LOGIN_TOKEN'] = self.login_token
             else:
-                msg = "Uuuh, no login token set. This should not happen."
-                self.logger.warning(msg)
+                log_msg = _("Uuuh, no login token set. This should not happen.", log=True)[1]
+                self.logger.warning(log_msg)
 
             # Run login script
             if self.login_status is False:
                 try:
                     self.run_login_script()
                 except Exception as e:
-                    msg = _("Error running login script: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.warning(msg)
+                    log_msg = _("Error running login script: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
             # Save SSH agent script.
             if self.ssh_agent_script:
                 ssh_agent_script_file = os.path.join(self.login_session_dir, "ssh-agent-script.json")
@@ -1796,16 +1839,16 @@ class PamHandler(object):
                     #self.failed_message = self.failed_message.replace("\n", "")
                     fd.close()
                 except Exception as e:
-                    msg = _("Error reading pinentry message file: {file}: {error}")
-                    msg = msg.format(file=self.pinentry_message_file, error=e)
-                    self.logger.error(msg)
+                    log_msg = _("Error reading pinentry message file: {file}: {error}", log=True)[1]
+                    log_msg = log_msg.format(file=self.pinentry_message_file, error=e)
+                    self.logger.error(log_msg)
                 # Remove message file, even if reading failed.
                 try:
                     os.remove(self.pinentry_message_file)
                 except Exception as e:
-                    msg = _("Error removing pinentry message file: {file}: {error}")
-                    msg = msg.format(file=self.pinentry_message_file, error=e)
-                    self.logger.error(msg)
+                    log_msg = _("Error removing pinentry message file: {file}: {error}", log=True)[1]
+                    log_msg = log_msg.format(file=self.pinentry_message_file, error=e)
+                    self.logger.error(log_msg)
 
             # Show errors via PAM message if configured.
             if self.show_errors:
@@ -1815,21 +1858,22 @@ class PamHandler(object):
                     self.login_message = self.auth_message
 
             # Log failed message.
-            msg = f"{self.auth_message}: {self.failed_message}"
-            self.logger.warning(msg)
+            log_msg = f"{self.auth_message}: {self.failed_message}"
+            self.logger.warning(log_msg)
             # Set PAM stuff.
             self.retval = self.pamh.PAM_AUTH_ERR
 
             # If this was a failed login request (no screen unlock) stop users
             # ssh-agent.
             if self.login_status is False:
-                self.logger.debug("Stopping SSH agent after failed login.")
+                log_msg = _("Stopping SSH agent after failed login.", log=True)[1]
+                self.logger.debug(log_msg)
                 try:
                     self.stop_ssh_agent()
                 except Exception as e:
-                    msg = _("Unable to run SSH agent script: {error}")
-                    msg = msg.format(error=e)
-                    self.logger.warning(msg)
+                    log_msg = _("Unable to run SSH agent script: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
 
         # If this is a realm login and cache_login_tokens is enabled
         # otpme-pinentry auto confirmation is deactivated by OTPmeClient()
@@ -1858,27 +1902,29 @@ class PamHandler(object):
             try:
                 self.stop_ssh_agent()
             except Exception as e:
-                msg = _("Failed to stop SSH agent: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Failed to stop SSH agent: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
         if self.ensure_ssh_agent:
             additional_opts = ['--pinentry', config.pinentry]
             try:
                 self.start_ssh_agent(additional_opts=additional_opts)
             except Exception as e:
-                msg = _("Failed to start SSH agent: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Failed to start SSH agent: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
 
         # Close connetions etc.
         self.cleanup()
 
-        self.logger.debug(f"Returning PAM status: {repr(self.retval)}")
+        log_msg = _("Returning PAM status: {retval}", log=True)[1]
+        log_msg = log_msg.format(retval=repr(self.retval))
+        self.logger.debug(log_msg)
 
         # Return PAM status.
         return self.retval
 
-        msg = _("WARNING: You may have hit a BUG of authenticate() in '{name}'. Authentication failed.")
-        msg = msg.format(name=__name__)
-        self.logger.critical(msg)
+        log_msg = _("WARNING: You may have hit a BUG of authenticate() in '{name}'. Authentication failed.", log=True)[1]
+        log_msg = log_msg.format(name=__name__)
+        self.logger.critical(log_msg)
         return self.pamh.PAM_SYSTEM_ERR

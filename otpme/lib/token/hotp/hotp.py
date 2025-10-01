@@ -600,16 +600,15 @@ class HotpToken(OathToken):
         # Get PIN from OTP if needed.
         if otp_includes_pin:
             if len(otp) < (int(self.pin_len) + int(self.otp_len)):
-                msg = _("Token PIN enabled but the given OTP is too "
-                        "short to include a PIN!")
-                logger.debug(msg)
+                log_msg = _("Token PIN enabled but the given OTP is too short to include a PIN!", log=True)[1]
+                logger.debug(log_msg)
                 return None
             _otp = otp[self.pin_len:]
             try:
                 pin = otp[:self.pin_len]
             except ValueError:
-                msg = _("OTP does not include a PIN.")
-                logger.info(msg)
+                log_msg = _("OTP does not include a PIN.", log=True)[1]
+                logger.info(log_msg)
                 return None
         else:
             _otp = otp
@@ -621,9 +620,9 @@ class HotpToken(OathToken):
             secret = self.get_secret(pin=pin, encoding="base32")
 
         # Log token counter range.
-        msg = _("Verifiying OTP within counter range: start='{token_counter_start}' end='{token_counter_end}'.")
-        msg = msg.format(token_counter_start=token_counter_start, token_counter_end=token_counter_end)
-        logger.debug(msg)
+        log_msg = _("Verifiying OTP within counter range: start='{token_counter_start}' end='{token_counter_end}'.", log=True)[1]
+        log_msg = log_msg.format(token_counter_start=token_counter_start, token_counter_end=token_counter_end)
+        logger.debug(log_msg)
 
         # Verify OTP.
         hotp_status, \
@@ -649,7 +648,8 @@ class HotpToken(OathToken):
                     #        here but for this we need to change the concept
                     #        of add_used_otp() here and in User().authenticate()
                     if pin != self.pin:
-                        logger.debug(f"Got wrong token PIN: {self.rel_path}")
+                        log_msg = _("Got wrong token PIN: {self.rel_path}", log=True)[1]
+                        logger.debug(log_msg)
                         return None
 
                 if handle_used_otps:
@@ -703,9 +703,9 @@ class HotpToken(OathToken):
                             prefix_pin=pin,
                             verify_acls=False)
 
-        msg = _("Verifiying OTP within counter range: start='{token_counter_start}' end='{token_counter_end}'.")
-        msg = msg.format(token_counter_start=token_counter_start, token_counter_end=token_counter_end)
-        logger.debug(msg)
+        log_msg = _("Verifiying OTP within counter range: start='{token_counter_start}' end='{token_counter_end}'.", log=True)[1]
+        log_msg = log_msg.format(token_counter_start=token_counter_start, token_counter_end=token_counter_end)
+        logger.debug(log_msg)
 
         # Get secret.
         secret = self.get_secret(pin=pin, encoding="base32")

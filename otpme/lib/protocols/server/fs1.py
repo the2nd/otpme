@@ -86,7 +86,7 @@ class OTPmeFsP1(OTPmeServer1):
         self.encrypted = False
         # Encrypted share blocksize.
         self.block_size = 4096
-        # Get logger.(banner=log_banner,
+        # Get logger.
         self.logger = config.logger
         # Dont compress filesystem data.
         self.compresss_response = False
@@ -112,8 +112,10 @@ class OTPmeFsP1(OTPmeServer1):
         """ Set proctitle to contain sharename. """
         if config.use_api:
             return
-        new_proctitle = _("{proctitle} User: {username} Share: {share}")
-        new_proctitle = new_proctitle.format(proctitle=self.proctitle, username=username, share=share)
+        new_proctitle ="{proctitle} User: {username} Share: {share}"
+        new_proctitle = new_proctitle.format(proctitle=self.proctitle,
+                                            username=username,
+                                            share=share)
         setproctitle.setproctitle(new_proctitle)
 
     @with_root_path
@@ -509,18 +511,20 @@ class OTPmeFsP1(OTPmeServer1):
             if not share.is_assigned_token(token_uuid=config.auth_token.uuid) \
             and not share.is_master_password_token(config.auth_token.rel_path):
                 status = status_codes.PERMISSION_DENIED
-                message = _("No share permissions: {share}")
+                message, log_msg = _("No share permissions: {share}", log=True)
                 message = message.format(share=self.share)
-                self.logger.warning(message)
+                log_msg = log_msg.format(share=self.share)
+                self.logger.warning(log_msg)
                 return self.build_response(status, message)
             try:
                 self.root = os.path.realpath(share.root_dir)
             except Exception as e:
-                message = _("Failed to mount share: {share}")
-                message = message.format(share=share)
                 status = status_codes.UNKNOWN_OBJECT
-                msg = f"{message}: {e}"
-                self.logger.warning(msg)
+                message, log_msg = _("Failed to mount share: {share}", log=True)
+                message = message.format(share=share)
+                log_msg = log_msg.format(share=share)
+                log_msg = f"{log_msg}: {e}"
+                self.logger.warning(log_msg)
                 return self.build_response(status, message)
             if share.force_group_uuid is not None:
                 group = backend.get_object(uuid=share.force_group_uuid)
@@ -555,34 +559,38 @@ class OTPmeFsP1(OTPmeServer1):
                 except AlreadyInitialized:
                     pass
                 except Exception as e:
-                    message = _("Failed to initialize cryptfs: {share_name}")
-                    message = message.format(share_name=share.name)
                     status = status_codes.UNKNOWN_OBJECT
-                    msg = f"{message}: {e}"
-                    self.logger.warning(msg)
+                    message, log_msg = _("Failed to initialize cryptfs: {share_name}", log=True)
+                    message = message.format(share_name=share.name)
+                    log_msg = log_msg.format(share_name=share.name)
+                    log_msg = f"{log_msg}: {e}"
+                    self.logger.warning(log_msg)
                     return self.build_response(status, message)
                 try:
                     fs_data = read_cryptfs_settings(path=self.root)
                 except NotInitialized:
-                    message = _("Cryptfs not initialized: {root}")
-                    message = message.format(root=self.root)
                     status = status_codes.UNKNOWN_OBJECT
-                    self.logger.warning(message)
+                    message, log_msg = _("Cryptfs not initialized: {root}", log=True)
+                    message = message.format(root=self.root)
+                    log_msg = log_msg.format(root=self.root)
+                    self.logger.warning(log_msg)
                     return self.build_response(status, message)
                 except Exception as e:
-                    message = _("Failed to read cryptfs settings: {share_name}")
-                    message = message.format(share_name=share.name)
                     status = status_codes.UNKNOWN_OBJECT
-                    msg = f"{message}: {e}"
-                    self.logger.warning(msg)
+                    message, log_msg = _("Failed to read cryptfs settings: {share_name}", log=True)
+                    message = message.format(share_name=share.name)
+                    log_msg = log_msg.format(share_name=share.name)
+                    log_msg = f"{log_msg}: {e}"
+                    self.logger.warning(log_msg)
                     return self.build_response(status, message)
                 try:
                     self.block_size = fs_data['block_size']
                 except KeyError:
-                    message = _("Cryptfs misses block size: {share_name}")
-                    message = message.format(share_name=share.name)
                     status = status_codes.UNKNOWN_OBJECT
-                    self.logger.warning(message)
+                    message, log_msg = _("Cryptfs misses block size: {share_name}", log=True)
+                    message = message.format(share_name=share.name)
+                    log_msg = log_msg.format(share_name=share.name)
+                    self.logger.warning(log_msg)
                     return self.build_response(status, message)
                 share_key = None
                 master_password_hash_params = None
@@ -593,26 +601,29 @@ class OTPmeFsP1(OTPmeServer1):
                 if master_password_mount:
                     if not share.is_master_password_token(config.auth_token.rel_path):
                         status = status_codes.PERMISSION_DENIED
-                        message = _("Master password mount not allowed: {token_path}")
+                        message, log_msg = _("Master password mount not allowed: {token_path}", log=True)
                         message = message.format(token_path=config.auth_token.rel_path)
-                        self.logger.warning(message)
+                        log_msg = log_msg.format(token_path=config.auth_token.rel_path)
+                        self.logger.warning(log_msg)
                         return self.build_response(status, message)
                     try:
                         master_password_hash_params = fs_data['hash_params']
                     except KeyError:
-                        message = _("Cryptfs misses master password hash parameters: {share_name}")
-                        message = message.format(share_name=share.name)
                         status = status_codes.UNKNOWN_OBJECT
-                        self.logger.warning(message)
+                        message, log_msg = _("Cryptfs misses master password hash parameters: {share_name}", log=True)
+                        message = message.format(share_name=share.name)
+                        log_msg = log_msg.format(share_name=share.name)
+                        self.logger.warning(log_msg)
                         return self.build_response(status, message)
                 else:
                     share_key = share.get_share_key(username=config.auth_user.name,
                                                     verify_acls=False)
                     if not share_key:
                         status = status_codes.PERMISSION_DENIED
-                        message = _("No share key for user: {user_name}")
+                        message, log_msg = _("No share key for user: {user_name}", log=True)
                         message = message.format(user_name=config.auth_user.name)
-                        self.logger.warning(message)
+                        log_msg = log_msg.format(user_name=config.auth_user.name)
+                        self.logger.warning(log_msg)
                         return self.build_response(status, message)
 
             # Get share node FQDNs to reply.
@@ -628,17 +639,19 @@ class OTPmeFsP1(OTPmeServer1):
                 if share.force_group_uuid is not None:
                     if group.name not in groups:
                         status = status_codes.PERMISSION_DENIED
-                        message = _("Force group enabled and user not in group: {group_name}")
+                        message, log_msg = _("Force group enabled and user not in group: {group_name}", log=True)
                         message = message.format(group_name=group.name)
-                        self.logger.warning(message)
+                        log_msg = log_msg.format(group_name=group.name)
+                        self.logger.warning(log_msg)
                         return self.build_response(status, message)
                 try:
                     drop_privileges(user=self.username, group=default_group, groups=groups)
                 except Exception as e:
                     status = status_codes.PERMISSION_DENIED
-                    message = _("Failed to drop privileges: {error}")
+                    message, log_msg = _("Failed to drop privileges: {error}", log=True)
                     message = message.format(error=e)
-                    self.logger.warning(message)
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
                     return self.build_response(status, message)
                 self.privileges_dropped = True
             self.set_proctitle(self.username, share)
@@ -684,15 +697,17 @@ class OTPmeFsP1(OTPmeServer1):
             share = result[0]
             if not share.is_master_password_token(config.auth_token.rel_path):
                 status = status_codes.PERMISSION_DENIED
-                message = _("No share permissions: {share}")
+                message, log_msg = _("No share permissions: {share}", log=True)
                 message = message.format(share=self.share)
-                self.logger.warning(message)
+                log_msg = log_msg.format(share=self.share)
+                self.logger.warning(log_msg)
                 return self.build_response(status, message)
             if not share_key:
                 status = status_codes.UNKNOWN_OBJECT
-                message = _("Got no share key: {user_name}")
+                message, log_msg = _("Got no share key: {user_name}", log=True)
                 message = message.format(user_name=config.auth_user.name)
-                self.logger.warning(message)
+                log_msg = log_msg.format(user_name=config.auth_user.name)
+                self.logger.warning(log_msg)
                 return self.build_response(status, message)
             share.add_token(token_path=config.auth_token.rel_path,
                             share_key=share_key,

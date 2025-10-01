@@ -294,9 +294,11 @@ class OTPmeSyncP1(OTPmeServer1):
             exception = str(e)
 
         if exception:
-            self.logger.warning(exception)
+            log_msg = exception
+            self.logger.warning(log_msg)
         else:
-            self.logger.debug(response)
+            log_msg = response
+            self.logger.debug(log_msg)
         return response
 
     def get_last_used_times(self, object_types):
@@ -306,9 +308,9 @@ class OTPmeSyncP1(OTPmeServer1):
             reply = backend.get_last_used_times(object_types=object_types)
             status = True
         except Exception as e:
-            msg = _("Failed to get last used data from backend: {e}")
-            msg = msg.format(e=e)
-            self.logger.warning(msg)
+            log_msg = _("Failed to get last used data from backend: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             reply = _("Failed to get last used data from backend.")
             status = False
         return status, reply
@@ -321,15 +323,17 @@ class OTPmeSyncP1(OTPmeServer1):
         # Check if a valid object is requested.
         if object_type not in valid_object_types:
             status = False
-            response = _("Permission denied: {object_id}")
+            response, log_msg = _("Permission denied: {object_id}", log=True)
             response = response.format(object_id=object_id)
-            self.logger.warning(response)
+            log_msg = log_msg.format(object_id=object_id)
+            self.logger.warning(log_msg)
             return status, response
         if not backend.object_exists(object_id):
             status = status_codes.UNKNOWN_OBJECT
-            response = _("Unknown object: {object_id}")
+            response, log_msg = _("Unknown object: {object_id}", log=True)
             response = response.format(object_id=object_id)
-            self.logger.warning(response)
+            log_msg = log_msg.format(object_id=object_id)
+            self.logger.warning(log_msg)
             # Hotfix our index.
             backend.index_del(object_id)
             return status, response
@@ -338,9 +342,10 @@ class OTPmeSyncP1(OTPmeServer1):
                                 object_id=object_id)
         if not o:
             status = status_codes.UNKNOWN_OBJECT
-            response = _("Unknown object: {object_id}")
+            response, log_msg = _("Unknown object: {object_id}", log=True)
             response = response.format(object_id=object_id)
-            self.logger.warning(response)
+            log_msg = log_msg.format(object_id=object_id)
+            self.logger.warning(log_msg)
             return status, response
         # Get sync object config.
         try:
@@ -367,9 +372,10 @@ class OTPmeSyncP1(OTPmeServer1):
                 parent_object = o.get_parent_object()
             except:
                 status = False
-                response = _("Unable to get parent object of: {o}")
+                response, log_msg = _("Unable to get parent object of: {o}", log=True)
                 response = response.format(o=o)
-                self.logger.warning(response)
+                log_msg = log_msg.format(o=o)
+                self.logger.warning(log_msg)
                 return status, response
             sync_config['SYNC_PARENT_OBJECT_UUID'] = parent_object.uuid
 
@@ -377,9 +383,9 @@ class OTPmeSyncP1(OTPmeServer1):
         response = {'checksum':object_checksum,'object_config':sync_config}
         o_size = stuff.get_dict_size(sync_config)
         object_size = units.int2size(o_size)
-        msg = _("Sending object ({object_size}): {object_id}")
-        msg = msg.format(object_size=object_size, object_id=object_id)
-        self.logger.debug(msg)
+        log_msg = _("Sending object ({object_size}): {object_id}", log=True)[1]
+        log_msg = log_msg.format(object_size=object_size, object_id=object_id)
+        self.logger.debug(log_msg)
         return status, response
 
     def sync_token_data(self, data_type, remote_objects):
@@ -395,9 +401,9 @@ class OTPmeSyncP1(OTPmeServer1):
             log_name = "token counter"
             sync_counter = True
 
-        msg = _("Reading {log_name}s")
-        msg = msg.format(log_name=log_name)
-        self.logger.debug(msg)
+        log_msg = _("Reading {log_name}s", log=True)[1]
+        log_msg = log_msg.format(log_name=log_name)
+        self.logger.debug(log_msg)
         local_new_objects = []
         local_added_objects = []
         remote_new_objects = {}
@@ -422,18 +428,18 @@ class OTPmeSyncP1(OTPmeServer1):
                 x_config.decrypt()
                 x_config.update_checksums(force=True)
             except Exception as e:
-                msg = _("Failed to decrypt {log_name} from peer: {peer_fqdn}: {x_oid}")
-                msg = msg.format(log_name=log_name, peer_fqdn=self.peer.fqdn, x_oid=x_oid)
-                self.logger.critical(msg)
+                log_msg = _("Failed to decrypt {log_name} from peer: {peer_fqdn}: {x_oid}", log=True)[1]
+                log_msg = log_msg.format(log_name=log_name, peer_fqdn=self.peer.fqdn, x_oid=x_oid)
+                self.logger.critical(log_msg)
                 continue
             try:
                 x_object = TokenCounter(object_id=x_oid,
                                         object_config=x_config)
                 x_object._load()
             except Exception as e:
-                msg = _("Failed to load token counter: {x_oid}: {e}")
-                msg = msg.format(x_oid=x_oid, e=e)
-                self.logger.critical(msg)
+                log_msg = _("Failed to load token counter: {x_oid}: {e}", log=True)[1]
+                log_msg = log_msg.format(x_oid=x_oid, e=e)
+                self.logger.critical(log_msg)
                 continue
             # Handle remote outdated objects.
             remote_outdated_objects[x_oid.full_oid] = None
@@ -442,9 +448,9 @@ class OTPmeSyncP1(OTPmeServer1):
                 try:
                     int(x_object.counter)
                 except Exception as e:
-                    msg = _("Got invalid token counter from peer: {fqdn}: {oid}: {error}")
-                    msg = msg.format(fqdn=self.peer.fqdn, oid=x_oid, error=e)
-                    self.logger.critical(msg)
+                    log_msg = _("Got invalid token counter from peer: {fqdn}: {oid}: {error}", log=True)[1]
+                    log_msg = log_msg.format(fqdn=self.peer.fqdn, oid=x_oid, error=e)
+                    self.logger.critical(log_msg)
                     continue
             # Make sure we got a valid OTP hash.
             if sync_otps:
@@ -453,9 +459,9 @@ class OTPmeSyncP1(OTPmeServer1):
                         msg = (_("Got wrong OTP hash."))
                         raise OTPmeException(msg)
                 except Exception as e:
-                    msg = _("Got invalid OTP hash from peer: {fqdn}: {oid}")
-                    msg = msg.format(fqdn=self.peer.fqdn, oid=x_oid)
-                    self.logger.critical(msg)
+                    log_msg = _("Got invalid OTP hash from peer: {fqdn}: {oid}", log=True)[1]
+                    log_msg = log_msg.format(fqdn=self.peer.fqdn, oid=x_oid)
+                    self.logger.critical(log_msg)
                     continue
 
             if x_oid in local_objects:
@@ -466,9 +472,9 @@ class OTPmeSyncP1(OTPmeServer1):
                 backend.write_config(x_oid, instance=x_object, cluster=True)
                 local_added_objects.append(x_oid)
             except Exception as e:
-                msg = _("Error writing config: {oid}: {error}")
-                msg = msg.format(oid=x_oid, error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error writing config: {oid}: {error}", log=True)[1]
+                log_msg = log_msg.format(oid=x_oid, error=e)
+                self.logger.critical(log_msg)
 
             # Get token.
             result = backend.search(object_type="token",
@@ -512,9 +518,9 @@ class OTPmeSyncP1(OTPmeServer1):
             # Get object config.
             x_config = backend.read_config(x_oid)
             if not x_config:
-                msg = _("Missing object: {oid}: Broken index?")
-                msg = msg.format(oid=x_oid)
-                self.logger.warning(msg)
+                log_msg = _("Missing object: {oid}: Broken index?", log=True)[1]
+                log_msg = log_msg.format(oid=x_oid)
+                self.logger.warning(log_msg)
                 continue
             # Encrypt object config.
             x_config = ObjectConfig(object_id=x_oid,
@@ -527,18 +533,18 @@ class OTPmeSyncP1(OTPmeServer1):
             log_method = self.logger.info
         else:
             log_method = self.logger.debug
-        msg = _("Sending {count} {name}s")
-        msg = msg.format(count=object_count, name=log_name)
-        log_method(msg)
+        log_msg = _("Sending {count} {name}s", log=True)[1]
+        log_msg = log_msg.format(count=object_count, name=log_name)
+        log_method(log_msg)
 
         object_count = len(local_new_objects)
         if object_count > 0:
             log_method = self.logger.info
         else:
             log_method = self.logger.debug
-        msg = _("Added {count} {name}s")
-        msg = msg.format(count=object_count, name=log_name)
-        log_method(msg)
+        log_msg = _("Added {count} {name}s", log=True)[1]
+        log_msg = log_msg.format(count=object_count, name=log_name)
+        log_method(log_msg)
 
         # Build response.
         response = {
@@ -566,17 +572,17 @@ class OTPmeSyncP1(OTPmeServer1):
             token = backend.get_object(object_type="token",
                                     object_id=token_oid)
         except Exception as e:
-            msg = _("Unable to load token: {oid}")
-            msg = msg.format(oid=token_oid)
-            self.logger.critical(msg)
+            log_msg = _("Unable to load token: {oid}", log=True)[1]
+            log_msg = log_msg.format(oid=token_oid)
+            self.logger.critical(log_msg)
             status = False
             response = f"SYNC_UNKNOWN_OBJECT: {token_oid}"
             return status, response
 
         if token is None:
-            msg = _("Unknown token: {oid}")
-            msg = msg.format(oid=token_oid)
-            self.logger.critical(msg)
+            log_msg = _("Unknown token: {oid}", log=True)[1]
+            log_msg = log_msg.format(oid=token_oid)
+            self.logger.critical(log_msg)
             status = False
             response = f"SYNC_UNKNOWN_OBJECT: {token_oid}"
             return status, response
@@ -585,25 +591,25 @@ class OTPmeSyncP1(OTPmeServer1):
             session = backend.get_object(uuid=session_uuid,
                                         object_type="session")
         except Exception as e:
-            msg = _("Unable to load session: {uuid}")
-            msg = msg.format(uuid=session_uuid)
-            self.logger.critical(msg)
+            log_msg = _("Unable to load session: {uuid}", log=True)[1]
+            log_msg = log_msg.format(uuid=session_uuid)
+            self.logger.critical(log_msg)
             status = False
             response = f"SYNC_FAILED_TO_LOAD_SESSION: {session_uuid}"
             return status, response
 
         if not session:
-            msg = _("Unknown session: {uuid}")
-            msg = msg.format(uuid=session_uuid)
-            self.logger.critical(msg)
+            log_msg = _("Unknown session: {uuid}", log=True)[1]
+            log_msg = log_msg.format(uuid=session_uuid)
+            self.logger.critical(log_msg)
             status = status_codes.UNKNOWN_OBJECT
             response = f"SYNC_UNKNOWN_SESSION: {session_uuid}"
             return status, response
 
         offline_data_key = session.offline_data_key
-        msg = _("Reading {name}s: {oid}")
-        msg = msg.format(name=log_name, oid=token_oid)
-        self.logger.debug(msg)
+        log_msg = _("Reading {name}s: {oid}", log=True)[1]
+        log_msg = log_msg.format(name=log_name, oid=token_oid)
+        self.logger.debug(log_msg)
         local_new_objects = []
         local_added_objects = []
         remote_new_objects = {}
@@ -621,18 +627,18 @@ class OTPmeSyncP1(OTPmeServer1):
                 x_config.decrypt(key=offline_data_key)
                 x_config.update_checksums(force=True)
             except Exception as e:
-                msg = _("Failed to decrypt {log_name} from peer: {peer_fqdn}: {x_oid}")
-                msg = msg.format(log_name=log_name, peer_fqdn=self.peer.fqdn, x_oid=x_oid)
-                self.logger.critical(msg)
+                log_msg = _("Failed to decrypt {log_name} from peer: {peer_fqdn}: {x_oid}", log=True)[1]
+                log_msg = log_msg.format(log_name=log_name, peer_fqdn=self.peer.fqdn, x_oid=x_oid)
+                self.logger.critical(log_msg)
                 continue
             try:
                 x_object = TokenCounter(object_id=x_oid,
                                         object_config=x_config)
                 x_object._load()
             except Exception as e:
-                msg = _("Failed to load token counter: {x_oid}: {e}")
-                msg = msg.format(x_oid=x_oid, e=e)
-                self.logger.critical(msg)
+                log_msg = _("Failed to load token counter: {x_oid}: {e}", log=True)[1]
+                log_msg = log_msg.format(x_oid=x_oid, e=e)
+                self.logger.critical(log_msg)
                 continue
             # Handle remote outdated objects.
             remote_outdated_objects[x_oid.full_oid] = None
@@ -641,9 +647,9 @@ class OTPmeSyncP1(OTPmeServer1):
                 try:
                     int(x_object.counter)
                 except Exception as e:
-                    msg = _("Got invalid token counter from peer: {fqdn}: {oid}: {error}")
-                    msg = msg.format(fqdn=self.peer.fqdn, oid=x_oid, error=e)
-                    self.logger.critical(msg)
+                    log_msg = _("Got invalid token counter from peer: {fqdn}: {oid}: {error}", log=True)[1]
+                    log_msg = log_msg.format(fqdn=self.peer.fqdn, oid=x_oid, error=e)
+                    self.logger.critical(log_msg)
                     continue
             # Make sure we got a valid OTP hash.
             if sync_otps:
@@ -652,9 +658,9 @@ class OTPmeSyncP1(OTPmeServer1):
                         msg = (_("Got wrong OTP hash."))
                         raise OTPmeException(msg)
                 except Exception as e:
-                    msg = _("Got invalid OTP hash from peer: {fqdn}: {oid}")
-                    msg = msg.format(fqdn=self.peer.fqdn, oid=x_oid)
-                    self.logger.critical(msg)
+                    log_msg = _("Got invalid OTP hash from peer: {fqdn}: {oid}", log=True)[1]
+                    log_msg = log_msg.format(fqdn=self.peer.fqdn, oid=x_oid)
+                    self.logger.critical(log_msg)
                     continue
 
             if x_oid in local_objects:
@@ -665,9 +671,9 @@ class OTPmeSyncP1(OTPmeServer1):
                 backend.write_config(x_oid, instance=x_object, cluster=True)
                 local_added_objects.append(x_oid)
             except Exception as e:
-                msg = _("Error writing config: {oid}: {error}")
-                msg = msg.format(oid=x_oid, error=e)
-                self.logger.critical(msg)
+                log_msg = _("Error writing config: {oid}: {error}", log=True)[1]
+                log_msg = log_msg.format(oid=x_oid, error=e)
+                self.logger.critical(log_msg)
 
         # Remove outdated objects.
         if sync_otps:
@@ -705,18 +711,18 @@ class OTPmeSyncP1(OTPmeServer1):
             log_method = self.logger.info
         else:
             log_method = self.logger.debug
-        msg = _("Sending {count} {name}s: {oid}")
-        msg = msg.format(count=object_count, name=log_name, oid=token_oid)
-        log_method(msg)
+        log_msg = _("Sending {count} {name}s: {oid}", log=True)[1]
+        log_msg = log_msg.format(count=object_count, name=log_name, oid=token_oid)
+        log_method(log_msg)
 
         object_count = len(local_new_objects)
         if object_count > 0:
             log_method = self.logger.info
         else:
             log_method = self.logger.debug
-        msg = _("Added {count} {name}s: {oid}")
-        msg = msg.format(count=object_count, name=log_name, oid=token_oid)
-        log_method(msg)
+        log_msg = _("Added {count} {name}s: {oid}", log=True)[1]
+        log_msg = log_msg.format(count=object_count, name=log_name, oid=token_oid)
+        log_method(log_msg)
 
         # Build response.
         response = {
@@ -738,9 +744,10 @@ class OTPmeSyncP1(OTPmeServer1):
             response = auth_keys
         else:
             status = False
-            response = _("Unknown {type}: {name}")
+            response, log_msg = _("Unknown {type}: {name}", log=True)
             response = response.format(type=self.peer.type, name=self.peer.name)
-            self.logger.warning(response)
+            log_msg = log_msg.format(type=self.peer.type, name=self.peer.name)
+            self.logger.warning(log_msg)
         return status, response
 
     def start_sync_command(self):
@@ -748,9 +755,10 @@ class OTPmeSyncP1(OTPmeServer1):
         from otpme.lib.classes.command_handler import CommandHandler
         if self.peer.type != "node":
             status = False
-            response = _("Invalid command for host type: {type}")
+            response, log_msg = _("Invalid command for host type: {type}", log=True)
             response = response.format(type=self.peer.type)
-            self.logger.warning(response)
+            log_msg = log_msg.format(type=self.peer.type)
+            self.logger.warning(log_msg)
             return status, response
         # Get command handler.
         command_handler = CommandHandler(interactive=False)
@@ -759,9 +767,9 @@ class OTPmeSyncP1(OTPmeServer1):
         try:
             command_handler.start_sync(sync_type="sites")
         except Exception as e:
-            msg = _("Error queueing sync sites command: {error}")
-            msg = msg.format(error=e)
-            self.logger.warning(msg)
+            log_msg = _("Error queueing sync sites command: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
 
         # Get master site.
         master_site = backend.get_object(object_type="site",
@@ -787,8 +795,9 @@ class OTPmeSyncP1(OTPmeServer1):
         status = True
         sync_type = "objects"
         for site in sync_sites:
-            msg = _("Added sync command to queue: {realm}/{name} ({type})")
+            msg, log_msg = _("Added sync command to queue: {realm}/{name} ({type})", log=True)
             msg = msg.format(realm=site.realm, name=site.name, type=sync_type)
+            log_msg = log_msg.format(realm=site.realm, name=site.name, type=sync_type)
             # Check if we are already syncing.
             sync_status = config.get_sync_status(site.realm, site.name, sync_type)
             # Get data to build sync list.
@@ -814,16 +823,16 @@ class OTPmeSyncP1(OTPmeServer1):
                                             realm=site.realm,
                                             site=site.name)
             except Exception as e:
-                msg = _("Error queueing sync command: {error}")
-                msg = msg.format(error=e)
-                self.logger.warning(msg)
+                log_msg = _("Error queueing sync command: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 status = False
                 # Update sync info.
                 sync_params['status'] = "failed"
                 sync_params['info'] = msg
                 break
             # Log add message.
-            self.logger.info(msg)
+            self.logger.info(log_msg)
 
         return status, response
 
@@ -876,9 +885,9 @@ class OTPmeSyncP1(OTPmeServer1):
 
         if command != "get_object":
             if config.debug_level() > 3:
-                msg = _("Processing sync command: {cmd}")
-                msg = msg.format(cmd=command)
-                self.logger.debug(msg)
+                log_msg = _("Processing sync command: {cmd}", log=True)[1]
+                log_msg = log_msg.format(cmd=command)
+                self.logger.debug(log_msg)
 
         # Check if sync with peer realm is disabled.
         peer_realm = backend.get_object(object_type="realm",
@@ -928,16 +937,18 @@ class OTPmeSyncP1(OTPmeServer1):
         if self.peer.type == "node" \
         and not config.master_node:
             if sync_realm != config.realm:
-                response = _("Permission denied: {realm}/{site}")
+                response, log_msg = _("Permission denied: {realm}/{site}", log=True)
                 response = response.format(realm=sync_realm, site=sync_site)
-                self.logger.warning(response)
+                log_msg = log_msg.format(realm=sync_realm, site=sync_site)
+                self.logger.warning(log_msg)
                 status = status_codes.PERMISSION_DENIED
                 return self.build_response(status, response)
 
             if sync_site != config.site:
-                response = _("Permission denied: {realm}/{site}")
+                response, log_msg = _("Permission denied: {realm}/{site}", log=True)
                 response = response.format(realm=sync_realm, site=sync_site)
-                self.logger.warning(response)
+                log_msg = log_msg.format(realm=sync_realm, site=sync_site)
+                self.logger.warning(log_msg)
                 status = status_codes.PERMISSION_DENIED
                 return self.build_response(status, response)
 
@@ -992,9 +1003,10 @@ class OTPmeSyncP1(OTPmeServer1):
                 response = self.get_sites_command()
                 status = True
             except Exception as e:
-                response = _("Failed to get sites: {error}")
+                response, log_msg = _("Failed to get sites: {error}", log=True)
                 response = response.format(error=e)
-                self.logger.warning(response)
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
                 status = False
             return self.build_response(status, response)
 
@@ -1041,7 +1053,6 @@ class OTPmeSyncP1(OTPmeServer1):
             except:
                 response = _("SYNC_INCOMPLETE_COMMAND: Missing object ID.")
                 status = False
-                self.logger.warning(response)
                 return self.build_response(status, response)
 
             object_id = oid.get(object_id=object_id)
@@ -1057,9 +1068,9 @@ class OTPmeSyncP1(OTPmeServer1):
 
         if command == "get_last_used":
             if self.peer.type != "node":
-                response = _("Permission denied.")
+                response, log_msg = _("Permission denied.", log=True)
                 status = False
-                self.logger.warning(response)
+                self.logger.warning(log_msg)
                 return self.build_response(status, response)
             status, response = self.get_last_used_times(sync_object_types)
             return self.build_response(status, response)
@@ -1069,35 +1080,35 @@ class OTPmeSyncP1(OTPmeServer1):
                 data_type = command_args['data_type']
             except:
                 data_type = None
-                response = _("SYNC_INCOMPLETE_COMMAND: Missing data type.")
+                response, log_msg = _("SYNC_INCOMPLETE_COMMAND: Missing data type.", log=True)
                 status = False
-                self.logger.warning(response)
+                self.logger.warning(log_msg)
                 return self.build_response(status, response)
 
             try:
                 object_id = command_args['token_oid']
             except:
-                response = _("SYNC_INCOMPLETE_COMMAND: Missing object ID.")
+                response, log_msg = _("SYNC_INCOMPLETE_COMMAND: Missing object ID.", log=True)
                 status = False
-                self.logger.warning(response)
+                self.logger.warning(log_msg)
                 return self.build_response(status, response)
 
             try:
                 session_uuid = command_args['session_uuid']
             except:
                 session_uuid = None
-                response = _("SYNC_INCOMPLETE_COMMAND: Missing session UUID.")
+                response, log_msg = _("SYNC_INCOMPLETE_COMMAND: Missing session UUID.", log=True)
                 status = False
-                self.logger.warning(response)
+                self.logger.warning(log_msg)
                 return self.build_response(status, response)
 
             try:
                 remote_objects = command_args['remote_objects']
             except:
                 remote_objects = None
-                response = _("SYNC_INCOMPLETE_COMMAND: Missing list with known OTPs.")
+                response, log_msg = _("SYNC_INCOMPLETE_COMMAND: Missing list with known OTPs.", log=True)
                 status = False
-                self.logger.warning(response)
+                self.logger.warning(log_msg)
                 return self.build_response(status, response)
 
             status, response = self.sync_offline_token_data(data_type,
@@ -1111,18 +1122,18 @@ class OTPmeSyncP1(OTPmeServer1):
                 data_type = command_args['data_type']
             except:
                 data_type = None
-                response = _("SYNC_INCOMPLETE_COMMAND: Missing data type.")
+                response, log_msg = _("SYNC_INCOMPLETE_COMMAND: Missing data type.", log=True)
                 status = False
-                self.logger.warning(response)
+                self.logger.warning(log_msg)
                 return self.build_response(status, response)
 
             try:
                 remote_objects = command_args['remote_objects']
             except:
                 remote_objects = None
-                response = _("SYNC_INCOMPLETE_COMMAND: Missing list with known OTPs.")
+                response, log_msg = _("SYNC_INCOMPLETE_COMMAND: Missing list with known OTPs.", log=True)
                 status = False
-                self.logger.warning(response)
+                self.logger.warning(log_msg)
                 return self.build_response(status, response)
 
             status, response = self.sync_token_data(data_type, remote_objects)

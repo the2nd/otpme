@@ -50,9 +50,9 @@ class AgentConn(object):
             try:
                 self.connect()
             except Exception as e:
-                msg = _("Agent autoconnect failed: {e}")
-                msg = msg.format(e=e)
-                self.logger.warning(msg)
+                log_msg = _("Agent autoconnect failed: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
                 self.close()
                 raise
 
@@ -273,7 +273,9 @@ class AgentConn(object):
             msg = _("Failed to set RSP: {reply}")
             msg = msg.format(reply=reply)
             raise Exception(msg)
-        self.logger.debug(f"Added RSP to otpme-agent: {realm}/{site}")
+        log_msg = _("Added RSP to otpme-agent: {realm}/{site}", log=True)[1]
+        log_msg = log_msg.format(realm=realm, site=site)
+        self.logger.debug(log_msg)
 
     def reneg_session(self, realm=None, site=None):
         """ Send session reneg command to otpme-agent. """

@@ -270,7 +270,8 @@ class CommandHandler(object):
                                         interactive=interactive,
                                         **conn_kwargs)
             # Send auth request.
-            self.logger.debug("Sending authentication request...")
+            log_msg = _("Sending authentication request...", log=True)[1]
+            self.logger.debug(log_msg)
             status, \
             status_code, \
             reply, \
@@ -280,8 +281,9 @@ class CommandHandler(object):
             if status:
                 log_method = self.logger.debug
             auth_message = reply['message']
-            msg = f"Received authentication reply: {auth_message}"
-            log_method(msg)
+            log_msg = _("Received authentication reply: {auth_message}", log=True)[1]
+            log_msg = log_msg.format(auth_message=auth_message)
+            log_method(log_msg)
 
         elif daemon == "syncd":
             # Get connection to syncd.
@@ -290,13 +292,16 @@ class CommandHandler(object):
                                         site=site,
                                         interactive=interactive)
             # Send request.
-            self.logger.debug("Sending request to syncd...")
+            log_msg = _("Sending request to syncd...", log=True)[1]
+            self.logger.debug(log_msg)
             status, \
             status_code, \
             reply, \
             binary_data = daemon_conn.send(command, command_args)
 
-            self.logger.debug(f"Received reply: {reply}")
+            log_msg = _("Received reply: {reply}", log=True)[1]
+            log_msg = log_msg.format(reply=reply)
+            self.logger.debug(log_msg)
 
         # None means user aborted the action.
         if status is None:
@@ -332,8 +337,9 @@ class CommandHandler(object):
         # Can hold function to get default object if none was given.
         self.get_default_object = None
 
-        msg = f"Processing command: {command}: {command_line}"
-        self.logger.debug(msg)
+        log_msg = _("Processing command: {command}: {command_line}", log=True)[1]
+        log_msg = log_msg.format(command=command, command_line=command_line)
+        self.logger.debug(log_msg)
 
         try:
             need_command = self.command_map[command][config.cli_object_type]['_need_command']
@@ -1486,8 +1492,9 @@ class CommandHandler(object):
             try:
                 hostd_conn = connections.get("hostd")
             except Exception as e:
-                msg = f"Failed to get hostd connection: {e}"
-                self.logger.warning(msg)
+                log_msg = _("Failed to get hostd connection: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
                 return
             hostd_conn.send(command="reload_radius")
 
@@ -1798,8 +1805,9 @@ class CommandHandler(object):
         try:
             stuff.stop_otpme_daemon(kill=True, timeout=1)
         except Exception as e:
-            msg = f"Failed to stop OTPme daemons: {e}"
-            logger.critical(msg)
+            log_msg = _("Failed to stop OTPme daemons: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            logger.critical(log_msg)
 
         # Make sure index is running.
         _index = config.get_index_module()
@@ -2765,7 +2773,8 @@ class CommandHandler(object):
             raise OTPmeException(msg)
         if not script_path:
             return None, None, None, None
-        self.logger.debug("Reading users key script...")
+        log_msg = _("Reading users key script...", log=True)[1]
+        self.logger.debug(log_msg)
         # Get key script.
         try:
             script = self.get_script(script_path=script_path, **kwargs)
@@ -2803,7 +2812,8 @@ class CommandHandler(object):
             raise OTPmeException(msg)
         if not script_path:
             return None, None, None, None
-        self.logger.debug("Reading users SSH script...")
+        log_msg = _("Reading users SSH script...", log=True)[1]
+        self.logger.debug(log_msg)
         # Get SSH script.
         try:
             script = self.get_script(script_path=script_path, **kwargs)
@@ -3186,8 +3196,9 @@ class CommandHandler(object):
                                                     lock=None)
             except Exception as e:
                 nsscache_sync_status = False
-                msg = f"Error updating nsscache: {e}"
-                self.logger.critical(msg)
+                log_msg = _("Error updating nsscache: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.critical(log_msg)
                 config.raise_exception()
             return nsscache_sync_status
         # We must run in non API mode when doing a sync.
@@ -3203,13 +3214,15 @@ class CommandHandler(object):
             sync_conn = None
             sync_cache = SyncCache(config.realm, config.site)
             sync_proto = sync_cache.protocol
-            msg = f"Unable to get sync connection: {realm}/{site}: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Unable to get sync connection: {realm}/{site}: {e}", log=True)
+            msg = msg.format(realm=realm, site=site, e=e)
+            log_msg = log_msg.format(realm=realm, site=site, e=e)
+            self.logger.warning(log_msg)
             if not sync_cache_on_failure:
                 return False
             if sync_proto:
-                msg = "Processing sync cache from disk."
-                self.logger.info(msg)
+                log_msg = _("Processing sync cache from disk.", log=True)[1]
+                self.logger.info(log_msg)
             else:
                 raise OTPmeException(msg)
         # Get protocol handler.
@@ -5755,7 +5768,8 @@ class CommandHandler(object):
             full_index_diff = False
 
         def get_node_data(node, data_dict, full=False, full_index=False):
-            msg = f"Reading cluster data from node: {node.name}"
+            msg = _("Reading cluster data from node: {node_name}")
+            msg = msg.format(node_name=node.name)
             print(msg)
             master_node = None
             node_status = data_dict['node_status']
@@ -5768,8 +5782,9 @@ class CommandHandler(object):
                                                 timeout=600)
             except Exception as e:
                 config.raise_exception()
-                msg = f"Failed to get cluster connection: {node.name}: {e}"
-                self.logger.warning(msg)
+                log_msg = _("Failed to get cluster connection: {node_name}: {e}", log=True)[1]
+                log_msg = log_msg.format(node_name=node.name, e=e)
+                self.logger.warning(log_msg)
                 try:
                     node_status[node.name]['status'] = "Offline"
                 except:
@@ -5811,8 +5826,9 @@ class CommandHandler(object):
                 else:
                     node_checksums[node.name] = clusterd_conn.get_checksums()
             except Exception as e:
-                msg = f"Checksum request failed: {e}"
-                self.logger.warning(msg)
+                log_msg = _("Checksum request failed: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
                 node_checksums[node.name] = {}
                 node_checksums[node.name]['objects_checksum'] = f"Request failed: {e}"
                 node_checksums[node.name]['data_checksum'] = f"Request failed: {e}"
@@ -6039,7 +6055,8 @@ class CommandHandler(object):
                                 continue
                             n_missing_objects.append(m_object)
                             already_missed_objects[x_node] = n_missing_objects
-                            msg = f"Object {m_object} missing on node {x_node}."
+                            msg = _("Object {m_object} missing on node {x_node}.")
+                            msg = msg.format(m_object=m_object, x_node=x_node)
                             msg = colored(msg, 'red')
                             missing_objects.append(msg)
                             continue
@@ -6053,7 +6070,11 @@ class CommandHandler(object):
                             continue
                         n_diffed_objects.append(m_object)
                         already_diffed_objects[x_node] = n_diffed_objects
-                        msg = f"Object {m_object} differs on node {x_node}: {m_checksum} <> {n_checksum}"
+                        msg = _("Object {m_object} differs on node {x_node}: {m_checksum} <> {n_checksum}")
+                        msg = msg.format(m_object=m_object,
+                                        x_node=x_node,
+                                        m_checksum=m_checksum,
+                                        n_checksum=n_checksum)
                         msg = colored(msg, 'yellow')
                         diff_objects.append(msg)
 
@@ -6069,7 +6090,8 @@ class CommandHandler(object):
                                 continue
                             m_missing_objects.append(n_object)
                             already_missed_objects[master_node] = m_missing_objects
-                            msg = f"Object {n_object} missing on node {master_node}."
+                            msg = _("Object {n_object} missing on node {master_node}.")
+                            msg = msg.format(n_object=n_object, master_node=master_node)
                             msg = colored(msg, 'red')
                             missing_objects.append(msg)
                             continue
@@ -6089,7 +6111,8 @@ class CommandHandler(object):
                                 continue
                             n_missing_datas.append(m_data)
                             already_missed_datas[x_node] = n_missing_datas
-                            msg = f"Data object {m_data} missing on node {x_node}."
+                            msg = _("Data object {m_data} missing on node {x_node}.")
+                            msg = msg.format(m_data=m_data, x_node=x_node)
                             msg = colored(msg, 'red')
                             missing_objects.append(msg)
                             continue
@@ -6103,7 +6126,11 @@ class CommandHandler(object):
                             continue
                         n_diffed_datas.append(m_data)
                         already_diffed_datas[x_node] = n_diffed_datas
-                        msg = f"Object {m_data} differs on node {x_node}: {m_checksum} <> {n_checksum}"
+                        msg = _("Object {m_data} differs on node {x_node}: {m_checksum} <> {n_checksum}")
+                        msg = msg.format(m_data=m_data,
+                                        x_node=x_node,
+                                        m_checksum=m_checksum,
+                                        n_checksum=n_checksum)
                         msg = colored(msg, 'yellow')
                         diff_objects.append(msg)
 
@@ -6119,7 +6146,8 @@ class CommandHandler(object):
                                 continue
                             m_missing_datas.append(n_data)
                             already_missed_datas[master_node] = m_missing_datas
-                            msg = f"Data object {n_data} missing on node {master_node}."
+                            msg = _("Data object {n_data} missing on node {master_node}.")
+                            msg = msg.format(n_data=n_data, master_node=master_node)
                             msg = colored(msg, 'red')
                             missing_objects.append(msg)
                             continue
@@ -6139,7 +6167,8 @@ class CommandHandler(object):
                                 continue
                             n_missing_sessions.append(m_session)
                             already_missed_sesssions[x_node] = n_missing_sessions
-                            msg = f"Session {m_session} missing on node {x_node}."
+                            msg = _("Session {m_session} missing on node {x_node}.")
+                            msg = msg.format(m_session=m_session, x_node=x_node)
                             msg = colored(msg, 'red')
                             missing_objects.append(msg)
                             continue
@@ -6153,7 +6182,11 @@ class CommandHandler(object):
                             continue
                         n_diffed_sessions.append(m_session)
                         already_diffed_sessions[x_node] = n_diffed_sessions
-                        msg = f"Session {m_session} differs on node {x_node}: {m_checksum} <> {n_checksum}"
+                        msg = _("Session {m_session} differs on node {x_node}: {m_checksum} <> {n_checksum}")
+                        msg = msg.format(m_session=m_session,
+                                        x_node=x_node,
+                                        m_checksum=m_checksum,
+                                        n_checksum=n_checksum)
                         msg = colored(msg, 'yellow')
                         diff_objects.append(msg)
 
@@ -6170,16 +6203,19 @@ class CommandHandler(object):
                                 continue
                             m_missing_sessions.append(n_session)
                             already_missed_sesssions[master_node] = m_missing_sessions
-                            msg = f"Session {n_session} missing on node {master_node}."
+                            msg = _("Session {n_session} missing on node {master_node}.")
+                            msg = msg.format(n_session=n_session, master_node=master_node)
                             msg = colored(msg, 'red')
                             missing_objects.append(msg)
                             continue
 
         diff_details = diff_objects + missing_objects
         if diff_details:
-            msg = f"Misses: {len(missing_objects)}"
+            msg = _("Misses: {missing_objects_len}")
+            msg = msg.format(missing_objects_len=len(missing_objects))
             diff_details.append(msg)
-            msg = f"Diffs: {len(diff_objects)}"
+            msg = _("Diffs: {diff_objects_len}")
+            msg = msg.format(diff_objects_len=len(diff_objects))
             diff_details.append(msg)
             diff_details.append("")
             cluster_status_str = diff_details + cluster_status_str
@@ -6191,96 +6227,118 @@ class CommandHandler(object):
         try:
             hostd_conn = connections.get("hostd")
         except Exception as e:
-            msg = f"Failed to get hostd connection: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get hostd connection: {e}", log=True)
+            msg = msg.format(e=e)
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             raise OTPmeException(msg)
         try:
             socket_uri = hostd_conn.get_daemon_socket("clusterd", node_name)
         except Exception as e:
-            msg = f"Failed to get daemon socket from hostd: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get daemon socket from hostd: {e}", log=True)
+            msg = msg.format(e=e)
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             raise OTPmeException(msg)
         try:
             clusterd_conn = connections.get("clusterd",
                                             timeout=30,
                                             socket_uri=socket_uri)
         except Exception as e:
-            msg = f"Failed to get node connection: {node_name}: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get node connection: {node_name}: {e}", log=True)
+            msg = msg.format(e=e)
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             raise OTPmeException(msg)
         try:
             node_vote = clusterd_conn.get_node_vote()
         except Exception as e:
-            msg = f"Node vote check failed: {node_name}: {e}"
+            msg = _("Node vote check failed: {node_name}: {e}")
+            msg = msg.format(node_name=node_name, e=e)
             raise OTPmeException(msg)
         if node_vote == 0:
-            msg = "Node not ready."
+            msg = _("Node not ready.")
             raise OTPmeException(msg)
 
     def check_node_sync_status(self, node_name):
         try:
             hostd_conn = connections.get("hostd")
         except Exception as e:
-            msg = f"Failed to get hostd connection: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get hostd connection: {e}", log=True)
+            msg = msg.format(e=e)
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             raise OTPmeException(msg)
         try:
             socket_uri = hostd_conn.get_daemon_socket("clusterd", node_name)
         except Exception as e:
-            msg = f"Failed to get daemon socket from hostd: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get daemon socket from hostd: {e}", log=True)
+            msg = msg.format(e=e)
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             raise OTPmeException(msg)
         try:
             clusterd_conn = connections.get("clusterd",
                                             timeout=30,
                                             socket_uri=socket_uri)
         except Exception as e:
-            msg = f"Failed to get node connection: {node_name}: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get node connection: {node_name}: {e}", log=True)
+            msg = msg.format(e=e)
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             raise OTPmeException(msg)
         try:
             master_sync_status = clusterd_conn.get_master_sync_status()
         except Exception as e:
-            msg = f"Master sync check failed: {node_name}: {e}"
+            msg = _("Master sync check failed: {node_name}: {e}")
+            msg = msg.format(node_name=node_name, e=e)
             raise OTPmeException(msg)
         if not master_sync_status:
-            msg = "Node master sync not finished."
+            msg = _("Node master sync not finished.")
             raise OTPmeException(msg)
         try:
             node_sync_status = clusterd_conn.get_node_sync_status()
         except Exception as e:
-            msg = f"Node sync check failed: {node_name}: {e}"
+            msg = _("Node sync check failed: {node_name}: {e}")
+            msg = msg.format(node_name=node_name, e=e)
             raise OTPmeException(msg)
         if not node_sync_status:
-            msg = "Node not in sync."
+            msg = _("Node not in sync.")
             raise OTPmeException(msg)
 
     def start_master_failover(self, node_name):
         try:
             hostd_conn = connections.get("hostd")
         except Exception as e:
-            msg = f"Failed to get hostd connection: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get hostd connection: {e}", log=True)
+            msg = msg.format(e=e)
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             raise OTPmeException(msg)
         try:
             socket_uri = hostd_conn.get_daemon_socket("clusterd", node_name)
         except Exception as e:
-            msg = f"Failed to get daemon socket from hostd: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get daemon socket from hostd: {e}", log=True)
+            msg = msg.format(e=e)
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             raise OTPmeException(msg)
         try:
             clusterd_conn = connections.get("clusterd",
                                             timeout=30,
                                             socket_uri=socket_uri)
         except Exception as e:
-            msg = f"Failed to get master node connection: {node_name}: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get master node connection: {node_name}: {e}", log=True)
+            msg = msg.format(node_name=node_name, e=e)
+            log_msg = log_msg.format(node_name=node_name, e=e)
+            self.logger.warning(log_msg)
             raise OTPmeException(msg)
 
         try:
             clusterd_conn.start_master_failover()
         except Exception as e:
-            msg = f"Failed to start master failover: {node_name}: {e}"
+            msg = _("Failed to start master failover: {node_name}: {e}")
+            msg = msg.format(node_name=node_name, e=e)
             raise OTPmeException(msg)
         finally:
             clusterd_conn.close()
@@ -6290,7 +6348,7 @@ class CommandHandler(object):
         register_module("otpme.lib.classes.realm")
         register_module("otpme.lib.daemon.clusterd")
         if config.system_user() != "root":
-            msg = ("You must be root for this command.")
+            msg = _("You must be root for this command.")
             raise OTPmeException(msg)
         # Init otpme.
         self.init()
@@ -6301,13 +6359,14 @@ class CommandHandler(object):
                                 value=this_node_name,
                                 return_type="instance")
         if not result:
-            msg = f"Unknown node: {this_node_name}"
+            msg = _("Unknown node: {this_node_name}")
+            msg = msg.format(this_node_name=this_node_name)
             msg = colored(msg, 'red')
             raise OTPmeException(msg)
 
         this_node = result[0]
         if not this_node.enabled:
-            msg = "Node disabled."
+            msg = _("Node disabled.")
             msg = colored(msg, 'red')
             raise OTPmeException(msg)
 
@@ -6315,14 +6374,17 @@ class CommandHandler(object):
         try:
             hostd_conn = connections.get("hostd")
         except Exception as e:
-            msg = f"Failed to get hostd connection: {e}"
-            self.logger.warning(msg)
+            log_msg = _("Failed to get hostd connection: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             return
         try:
             socket_uri = hostd_conn.get_daemon_socket("clusterd", this_node.name)
         except Exception as e:
-            msg = f"Failed to get daemon socket from hostd: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get daemon socket from hostd: {e}", log=True)
+            msg = msg.format(e=e)
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             return msg
         # Get connection to node.
         try:
@@ -6331,15 +6393,17 @@ class CommandHandler(object):
                                             socket_uri=socket_uri)
         except Exception as e:
             config.raise_exception()
-            msg = f"Failed to get cluster connection: {this_node.name}: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get cluster connection: {this_node}: {e}", log=True)
+            msg = msg.format(this_node=this_node.name, e=e)
+            log_msg = log_msg.format(this_node=this_node.name, e=e)
+            self.logger.warning(log_msg)
             return msg
         # Set required votes.
         try:
             result = clusterd_conn.set_required_votes(required_votes)
         except Exception as e:
-            msg = str(e)
-            self.logger.warning(msg)
+            log_msg = str(e)
+            self.logger.warning(log_msg)
             config.raise_exception()
             return msg
 
@@ -6353,7 +6417,7 @@ class CommandHandler(object):
         register_module("otpme.lib.classes.realm")
         register_module("otpme.lib.daemon.clusterd")
         if config.system_user() != "root":
-            msg = ("You must be root for this command.")
+            msg = _("You must be root for this command.")
             raise OTPmeException(msg)
         # Init otpme.
         #init_otpme()
@@ -6365,20 +6429,21 @@ class CommandHandler(object):
                                 value=this_node_name,
                                 return_type="instance")
         if not result:
-            msg = f"Unknown node: {this_node_name}"
+            msg = _("Unknown node: {this_node_name}")
+            msg = msg.format(this_node_name=this_node_name)
             msg = colored(msg, 'red')
             raise OTPmeException(msg)
 
         this_node = result[0]
         if not this_node.enabled:
-            msg = "Node disabled."
+            msg = _("Node disabled.")
             msg = colored(msg, 'red')
             raise OTPmeException(msg)
 
         master_node = config.get_master_node()
         if random_node:
             if this_node.name != master_node:
-                msg = "Node not the master node."
+                msg = _("Node not the master node.")
                 msg = colored(msg, 'red')
                 return msg
         elif new_master:
@@ -6388,31 +6453,35 @@ class CommandHandler(object):
                                     realm=config.realm,
                                     site=config.site)
             if not result:
-                msg = f"Unknown node: {new_master}"
+                msg = _("Unknown node: {new_master}")
+                msg = msg.format(new_master=new_master)
                 msg = colored(msg, 'red')
                 return msg
         else:
             if not config.force:
                 if this_node.name == master_node:
-                    msg = "Node already master node."
+                    msg = _("Node already master node.")
                     msg = colored(msg, 'red')
                     return msg
 
-        msg = "Checking for cluster quorum..."
+        msg = _("Checking for cluster quorum...")
         msg = colored(msg, 'green')
         print(msg)
         try:
             hostd_conn = connections.get("hostd")
         except Exception as e:
-            msg = f"Failed to get hostd connection: {e}"
-            self.logger.warning(msg)
+            log_msg = _("Failed to get hostd connection: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             return
 
         try:
             socket_uri = hostd_conn.get_daemon_socket("clusterd", this_node.name)
         except Exception as e:
-            msg = f"Failed to get daemon socket from hostd: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get daemon socket from hostd: {e}", log=True)
+            msg = msg.format(e=e)
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             return msg
         try:
             clusterd_conn = connections.get("clusterd",
@@ -6420,31 +6489,37 @@ class CommandHandler(object):
                                             socket_uri=socket_uri)
         except Exception as e:
             config.raise_exception()
-            msg = f"Failed to get cluster connection: {this_node.name}: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get cluster connection: {this_node}: {e}", log=True)
+            msg = msg.format(this_node=this_node.name, e=e)
+            log_msg = log_msg.format(this_node=this_node.name, e=e)
+            self.logger.warning(log_msg)
             return msg
 
         try:
             this_node_quorum = clusterd_conn.get_cluster_quorum()
         except Exception as e:
-            msg = f"Failed to get cluster quorum: {this_node.name}: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get cluster quorum: {this_node}: {e}", log=True)
+            msg = msg.format(this_node=this_node.name, e=e)
+            log_msg = log_msg.format(this_node=this_node.name, e=e)
+            self.logger.warning(log_msg)
             config.raise_exception()
             return msg
         if not this_node_quorum:
-            msg = "No cluster quorum."
+            msg = _("No cluster quorum.")
             msg = colored(msg, 'red')
             return msg
         if random_node:
-            msg = "Trying to find a node to switch to..."
+            msg = _("Trying to find a node to switch to...")
             msg = colored(msg, 'green')
             print(msg)
             # Get all member nodes
             try:
                 member_nodes = clusterd_conn.get_member_nodes()
             except Exception as e:
-                msg = f"Failed to get cluster nodes: {this_node.name}: {e}"
-                self.logger.warning(msg)
+                msg, log_msg = _("Failed to get cluster nodes: {this_node}: {e}", log=True)
+                msg = msg.format(this_node=this_node.name, e=e)
+                log_msg = log_msg.format(this_node=this_node.name, e=e)
+                self.logger.warning(log_msg)
                 return msg
             try:
                 member_nodes.remove(this_node.name)
@@ -6453,7 +6528,7 @@ class CommandHandler(object):
             # Try to find new master node.
             while True:
                 if len(member_nodes) == 0:
-                    msg = "Master failover failed: Unable to find node to switch to."
+                    msg = _("Master failover failed: Unable to find node to switch to.")
                     msg = colored(msg, 'red')
                     return msg
                 new_master_node = random.choice(member_nodes)
@@ -6462,29 +6537,33 @@ class CommandHandler(object):
                 try:
                     self.check_node_sync_status(new_master_node)
                 except Exception as e:
-                    msg = f"Will not switch to unsync node: {new_master_node}: {e}"
-                    self.logger.debug(msg)
+                    log_msg = _("Will not switch to unsync node: {new_master_node}: {e}", log=True)[1]
+                    log_msg = log_msg.format(new_master_node=new_master_node, e=e)
+                    self.logger.debug(log_msg)
                     continue
                 try:
                     self.check_node_vote_status(new_master_node)
                 except Exception as e:
-                    msg = f"Will not switch to unsync node: {new_master_node}: {e}"
-                    self.logger.debug(msg)
+                    log_msg = _("Will not switch to unsync node: {new_master_node}: {e}", log=True)[1]
+                    log_msg = log_msg.format(new_master_node=new_master_node, e=e)
+                    self.logger.debug(log_msg)
                     continue
                 break
 
-            msg = f"Will switch to node: {new_master_node}"
+            msg = _("Will switch to node: {new_master_node}")
+            msg = msg.format(new_master_node=new_master_node)
             msg = colored(msg, 'green')
             print(msg)
 
             if master_node:
-                msg = f"Setting master failover status on current master node: {master_node}"
+                msg = _("Setting master failover status on current master node: {master_node}")
+                msg = msg.format(master_node)
                 msg = colored(msg, 'green')
                 print(msg)
                 while True:
                     try:
                         self.start_master_failover(master_node)
-                        msg = "Master node ready..."
+                        msg = _("Master node ready...")
                         msg = colored(msg, 'green')
                         print(msg)
                         break
@@ -6496,14 +6575,17 @@ class CommandHandler(object):
                             continue
                         else:
                             return msg
-            msg = f"Trying to switch to new master node: {new_master_node}"
+            msg = _("Trying to switch to new master node: {new_master_node}")
+            msg = msg.format(new_master_node=new_master_node)
             msg = colored(msg, 'green')
             print(msg)
             try:
                 socket_uri = hostd_conn.get_daemon_socket("clusterd", new_master_node)
             except Exception as e:
-                msg = f"Failed to get daemon socket from hostd: {e}"
-                self.logger.warning(msg)
+                msg, log_msg = _("Failed to get daemon socket from hostd: {e}", log=True)
+                msg = msg.format(e=e)
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
                 return msg
             try:
                 clusterd_conn = connections.get("clusterd",
@@ -6511,8 +6593,10 @@ class CommandHandler(object):
                                                 socket_uri=socket_uri)
             except Exception as e:
                 config.raise_exception()
-                msg = f"Failed to get cluster connection: {new_master_node}: {e}"
-                self.logger.warning(msg)
+                msg, log_msg = _("Failed to get cluster connection: {new_master_node}: {e}", log=True)
+                msg = msg.format(new_master_node=new_master_node, e=e)
+                log_msg = log_msg.format(new_master_node=new_master_node, e=e)
+                self.logger.warning(log_msg)
                 return msg
             try:
                 # Do master failover.
@@ -6528,11 +6612,13 @@ class CommandHandler(object):
             new_master_node = new_master
 
         if new_master_node == master_node:
-            msg = f"Node already the master node: {new_master_node}"
+            msg = _("Node already the master node: {new_master_node}")
+            msg = msg.format(new_master_node=new_master_node)
             msg = colored(msg, 'red')
             return msg
 
-        msg = f"Checking node sync status: {new_master_node}"
+        msg = _("Checking node sync status: {new_master_node}")
+        msg = msg.format(new_master_node=new_master_node)
         msg = colored(msg, 'green')
         print(msg)
         while True:
@@ -6540,8 +6626,10 @@ class CommandHandler(object):
                 self.check_node_vote_status(new_master_node)
                 break
             except Exception as e:
-                msg = f"Will not switch to not ready node: {new_master_node}: {e}"
-                self.logger.debug(msg)
+                msg, log_msg = _("Will not switch to not ready node: {new_master_node}: {e}", log=True)
+                msg = msg.format(new_master_node=new_master_node, e=e)
+                log_msg = log_msg.format(new_master_node=new_master_node, e=e)
+                self.logger.debug(log_msg)
                 msg = colored(msg, 'red')
                 if wait:
                     print(msg)
@@ -6552,8 +6640,10 @@ class CommandHandler(object):
                 self.check_node_sync_status(new_master_node)
                 break
             except Exception as e:
-                msg = f"Will not switch to unsync node: {new_master_node}: {e}"
-                self.logger.debug(msg)
+                msg, log_msg = _("Will not switch to unsync node: {new_master_node}: {e}", log=True)
+                msg = msg.format(new_master_node=new_master_node, e=e)
+                log_msg = log_msg.format(new_master_node=new_master_node, e=e)
+                self.logger.debug(log_msg)
                 msg = colored(msg, 'red')
                 if wait:
                     print(msg)
@@ -6563,8 +6653,10 @@ class CommandHandler(object):
         try:
             socket_uri = hostd_conn.get_daemon_socket("clusterd", new_master_node)
         except Exception as e:
-            msg = f"Failed to get daemon socket from hostd: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get daemon socket from hostd: {e}", log=True)
+            msg = msg.format(e=e)
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
             return msg
         try:
             clusterd_conn = connections.get("clusterd",
@@ -6572,17 +6664,20 @@ class CommandHandler(object):
                                             socket_uri=socket_uri)
         except Exception as e:
             config.raise_exception()
-            msg = f"Failed to get cluster connection: {new_master_node}: {e}"
-            self.logger.warning(msg)
+            msg, log_msg = _("Failed to get cluster connection: {new_master_node}: {e}", log=True)
+            msg = msg.format(new_master_node=new_master_node, e=e)
+            log_msg = log_msg.format(new_master_node=new_master_node, e=e)
+            self.logger.warning(log_msg)
             return msg
         if master_node:
-            msg = f"Setting master failover status on current master node: {master_node}"
+            msg = _("Setting master failover status on current master node: {master_node}")
+            msg = msg.format(master_node=master_node)
             msg = colored(msg, 'green')
             print(msg)
             while True:
                 try:
                     self.start_master_failover(master_node)
-                    msg = "Master node ready..."
+                    msg = _("Master node ready...")
                     msg = colored(msg, 'green')
                     print(msg)
                     break
@@ -6594,7 +6689,8 @@ class CommandHandler(object):
                         continue
                     else:
                         return msg
-        msg = f"Trying to switch to new master node: {new_master_node}"
+        msg = _("Trying to switch to new master node: {new_master_node}")
+        msg = msg.format(new_master_node=new_master_node)
         msg = colored(msg, 'green')
         print(msg)
         try:

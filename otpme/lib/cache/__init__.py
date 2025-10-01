@@ -452,9 +452,11 @@ def get_instance(object_id, cache_type=None):
         msg = _("Reading object from {cache_name} cache: {read_oid}")
         msg = msg.format(cache_name=cache_name, read_oid=read_oid)
         if cache_name == "memory":
-            logger.info(msg)
+            log_msg = msg
+            logger.info(log_msg)
         if cache_name == "multiprocessing":
-            logger.warning(msg)
+            log_msg = msg
+            logger.warning(log_msg)
 
     # Get instance from cache entry.
     instance = cache_entry['INSTANCE']
@@ -663,8 +665,8 @@ def flush(commit=True, callback=default_callback, quiet=True):
     logger = config.logger
 
     if not quiet:
-        msg = _("Flushing caches...")
-        logger.debug(msg)
+        log_msg = _("Flushing caches...", log=True)[1]
+        logger.debug(log_msg)
 
     proc_id = multiprocessing.get_id()
     try:
@@ -680,22 +682,22 @@ def flush(commit=True, callback=default_callback, quiet=True):
         if not o or not o._modified:
             continue
         if commit:
-            msg = _("Writing modified object: {o}")
-            msg = msg.format(o=o)
-            logger.debug(msg)
+            log_msg = _("Writing modified object: {o}", log=True)[1]
+            log_msg = log_msg.format(o=o)
+            logger.debug(log_msg)
             o._write(callback=callback)
         else:
-            msg = _("Discarding changes of modified object: {o}")
-            msg = msg.format(o=o)
-            logger.debug(msg)
+            log_msg = _("Discarding changes of modified object: {o}", log=True)[1]
+            log_msg = log_msg.format(o=o)
+            logger.debug(log_msg)
             clear(object_id=o.oid, cache_type=PROCESS_CACHE, keep_modified=False)
 
     # Flush caches.
     for x in caches:
         if config.debug_level() > 5:
-            msg = _("Flushing cache: {x_name}")
-            msg = msg.format(x_name=x.name)
-            logger.debug(msg)
+            log_msg = _("Flushing cache: {x_name}", log=True)[1]
+            log_msg = log_msg.format(x_name=x.name)
+            logger.debug(log_msg)
         x.invalidate()
 
 def clear(object_id=None, cache_type=None,
@@ -706,8 +708,8 @@ def clear(object_id=None, cache_type=None,
     global last_process_cache_clear_time
     logger = config.logger
     if not quiet:
-        msg = _("Clearing caches...")
-        logger.debug(msg)
+        log_msg = _("Clearing caches...", log=True)[1]
+        logger.debug(log_msg)
     clear_cache_types = [
                         MULTIPROCESSING_CACHE,
                         PROCESS_CACHE,
@@ -787,7 +789,7 @@ def clear(object_id=None, cache_type=None,
         if config.debug_level("object_caching") > 2:
             for x_cache in caches_cleared:
                 x_count = caches_cleared[x_cache]
-                msg = _("Cleared {x_count} objects from {x_cache} cache.")
-                msg = msg.format(x_count=x_count, x_cache=x_cache)
-                logger.debug(msg)
+                log_msg = _("Cleared {x_count} objects from {x_cache} cache.", log=True)[1]
+                log_msg = log_msg.format(x_count=x_count, x_cache=x_cache)
+                logger.debug(log_msg)
     return clean_success

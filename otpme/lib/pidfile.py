@@ -51,21 +51,21 @@ def is_running(pidfile):
     try:
         nsscache_pid = filetools.read_file(pidfile)
     except Exception as e:
-        msg = _("Failed to read pidfile: {e}")
-        msg = msg.format(e=e)
-        logger.warning(msg)
+        log_msg = _("Failed to read pidfile: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        logger.warning(log_msg)
         return True
     if stuff.check_pid(nsscache_pid):
         return nsscache_pid
-    msg = _("Removing stale pidfile: {pidfile}")
-    msg = msg.format(pidfile=pidfile)
-    logger.warning(msg)
+    log_msg = _("Removing stale pidfile: {pidfile}", log=True)[1]
+    log_msg = log_msg.format(pidfile=pidfile)
+    logger.warning(log_msg)
     try:
         filetools.delete(pidfile)
     except Exception as e:
-        msg = _("Failed to remove stale pidfile: {e}")
-        msg = msg.format(e=e)
-        logger.warning(msg)
+        log_msg = _("Failed to remove stale pidfile: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        logger.warning(log_msg)
     return False
 
 def create_pidfile(pidfile):
@@ -75,7 +75,7 @@ def create_pidfile(pidfile):
     try:
         filetools.create_file(path=pidfile, content=str(pid))
     except Exception as e:
-        msg = _("Failed to create pidfile: {e}")
-        msg = msg.format(e=e)
-        logger.warning(msg)
+        log_msg = _("Failed to create pidfile: {e}", log=True)[1]
+        log_msg = log_msg.format(e=e)
+        logger.warning(log_msg)
 

@@ -183,11 +183,12 @@ def _register_module(mod):
     if mod in registered_modules:
         return
     if config.debug_level() > 1:
-        msg = _("Registering module: {}")
-        msg = msg.format(mod)
+        msg, log_msg = _("Registering module: {mod}", log=True)
+        msg = msg.format(mod=mod)
+        log_msg = log_msg.format(mod=mod)
         try:
             logger = config.logger
-            logger.debug(msg)
+            logger.debug(log_msg)
         except:
             print(msg)
     #register_str = f"from {mod} import register;register()"

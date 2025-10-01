@@ -15,6 +15,7 @@ from otpme.lib.exceptions import *
 
 Base = None
 classes = {}
+logger = config.logger
 INDEX_DIR = f"{config.data_dir}/index"
 
 def cleanup():
@@ -199,16 +200,16 @@ def create_db_indices(drop=False, desc=False,
         column_list = ",".join(column_names)
         asc_index_name = f"{table_name}_asc_covering_ix"
         if drop:
-            msg = _("Removing DB convering index (ASC) for table: {table_name}")
-            msg = msg.format(table_name=table_name)
+            log_msg = _("Removing DB convering index (ASC) for table: {table_name}", log=True)[1]
+            log_msg = log_msg.format(table_name=table_name)
             asc_index_cmd = f"DROP INDEX {asc_index_name};"
             asc_index_cmd = text(asc_index_cmd)
         else:
-            msg = _("Creating DB convering index (ASC) for table: {table_name}")
-            msg = msg.format(table_name=table_name)
+            log_msg = _("Creating DB convering index (ASC) for table: {table_name}", log=True)[1]
+            log_msg = log_msg.format(table_name=table_name)
             asc_index_cmd = f"CREATE INDEX {asc_index_name} ON {table_name} ({column_list} ASC);"
             asc_index_cmd = text(asc_index_cmd)
-        config.logger.debug(msg)
+        logger.debug(log_msg)
         #print(asc_index_cmd)
         if asc_index_name in index_names:
             msg = _("Index name already used: {asc_index_name}")
@@ -228,13 +229,13 @@ def create_db_indices(drop=False, desc=False,
         if desc:
             desc_index_name = f"{table_name}_desc_covering_ix"
             if drop:
-                msg = _("Removing DB convering index (DESC) for table: {table_name}")
-                msg = msg.format(table_name=table_name)
+                log_msg = _("Removing DB convering index (DESC) for table: {table_name}", log=True)[1]
+                log_msg = log_msg.format(table_name=table_name)
                 desc_index_cmd = f"DROP INDEX {desc_index_name};"
                 desc_index_cmd = text(desc_index_cmd)
             else:
-                msg = _("Creating DB convering index (DESC) for table: {table_name}")
-                msg = msg.format(table_name=table_name)
+                log_msg = _("Creating DB convering index (DESC) for table: {table_name}", log=True)[1]
+                log_msg = log_msg.format(table_name=table_name)
                 desc_index_cmd = f"CREATE INDEX {desc_index_name} ON {table_name} ({column_list} DESC);"
                 desc_index_cmd = text(desc_index_cmd)
             if desc_index_name in index_names:
@@ -242,7 +243,7 @@ def create_db_indices(drop=False, desc=False,
                 msg = msg.format(desc_index_name=desc_index_name)
                 raise OTPmeException(msg)
             index_names.append(desc_index_name)
-            config.logger.debug(msg)
+            logger.debug(log_msg)
             #print(desc_index_cmd)
             try:
                 session.execute(desc_index_cmd)
