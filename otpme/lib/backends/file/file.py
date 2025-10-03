@@ -519,8 +519,9 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
             if object_type in config.tree_object_types:
                 parent_config_dir = os.path.dirname(config_dir)
                 if not os.path.exists(parent_config_dir):
-                    msg = _("Parent object config directory does not exist. "
-                            f"Probably wrong object id: {object_id}: {parent_config_dir}")
+                    msg = _("Parent object config directory does not exist. Probably wrong object id: {object_id}: {parent_config_dir}")
+                    msg = msg.format(object_id=object_id,
+                                    parent_config_dir=parent_config_dir)
                     raise OTPmeException(msg)
         # Get write transaction.
         write_transaction = FileTransaction(transaction_name,
@@ -2782,6 +2783,7 @@ def set_last_used_times(object_type, updates, session=None, **kwargs):
 @handle_transaction
 def set_last_used(object_type, uuid, timestamp,
     session=None, cluster=True, **kwargs):
+    from sqlalchemy import select
     from sqlalchemy import update
     from otpme.lib.daemon.clusterd import cluster_sync_object
     try:
@@ -2796,6 +2798,15 @@ def set_last_used(object_type, uuid, timestamp,
     stmt = update(IndexObject)
     stmt = stmt.where(IndexObject.uuid == uuid)
     stmt = stmt.values(last_used=timestamp)
+    # Check for locked row. This may happen if a user tries
+    # to replace (add -r) the login token and gets asked
+    # for reauthentication.
+    check = select(IndexObject.uuid)
+    check = check.where(IndexObject.uuid == uuid)
+    check = check.with_for_update(skip_locked=True)
+    if not session.execute(check).first():
+      return
+    # Execute statement.
     session.execute(stmt)
     # Commit change.
     session.commit()

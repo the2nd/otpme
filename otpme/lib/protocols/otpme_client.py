@@ -494,7 +494,7 @@ class OTPmeClient(OTPmeClientBase):
             self.peer_site = self.peer_fqdn.split(".")[1]
             self.peer_realm = ".".join(self.peer_fqdn.split(".")[2:])
         except:
-            msg = _("Got invalid client cert CN from client: {cert}", log=True)
+            msg, log_msg = _("Got invalid client cert CN from client: {cert}", log=True)
             msg = msg.format(cert=self.peer_cert)
             log_msg = log_msg.format(cert=self.peer_cert)
             self.logger.warning(log_msg)
@@ -3359,7 +3359,6 @@ class OTPmeClient1(OTPmeClientBase):
             try:
                 auth_message = self.authenticate_user()
             except Exception as login_exception:
-                config.raise_exception()
                 if self.login_redirect and self.login_redirect_status:
                     log_msg = _("Redirected login failed: {login_exception}", log=True)[1]
                     self.logger.warning(log_msg)
@@ -3377,6 +3376,7 @@ class OTPmeClient1(OTPmeClientBase):
                         log_msg = _("Failed to logout user from home site: {e}", log=True)[1]
                         log_msg = log_msg.format(e=e)
                         self.logger.warning(log_msg)
+                config.raise_exception()
                 raise login_exception
 
         # Try host auth if command needs authenticated host.
@@ -4321,7 +4321,7 @@ class OTPmeClient1(OTPmeClientBase):
             # Get token instance.
             instance = offline_tokens[token_uuid]
 
-            log_msg = _("Loaded offline token: {instance.oid}", log=True)[1]
+            log_msg = _("Loaded offline token: {oid}", log=True)[1]
             log_msg = log_msg.format(oid=instance.oid)
             self.logger.info(log_msg)
 

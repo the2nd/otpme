@@ -231,8 +231,7 @@ class OathToken(Token):
 
                 return_message = _("Token switched to mode2.")
             else:
-                msg = _("WARNING: Changing token mode to 'mode2' requires "
-                        "re-deployment of the token!")
+                msg = _("WARNING: Changing token mode to 'mode2' requires re-deployment of the token!")
                 callback.send(msg)
                 if not force:
                     new_pin = None
@@ -291,9 +290,7 @@ class OathToken(Token):
             return True
         if self.mode == "mode2":
             if self.allow_offline:
-                msg = _("WARNING: Offline usage is enabled for this token. "
-                        "Anybody who is able to access the offline token file "
-                        "is able to use it for login.")
+                msg = _("WARNING: Offline usage is enabled for this token. Anybody who is able to access the offline token file is able to use it for login.")
                 callback.send(msg)
         return True
 
@@ -308,14 +305,12 @@ class OathToken(Token):
         """ Handle stuff when changing token secret """
         if self.mode == "mode2":
             if pre:
-                msg = _("WARNING: Changing the secret of a token in mode2 is "
-                    "not supported. The secret changes if you change the PIN.")
+                msg = _("WARNING: Changing the secret of a token in mode2 is not supported. The secret changes if you change the PIN.")
                 callback.send(msg)
                 return callback.error()
         else:
             if pre and not force:
-                msg = _("WARNING: Changing the secret requires a "
-                        "re-deployment of the token.")
+                msg = _("WARNING: Changing the secret requires a re-deployment of the token.")
                 callback.send(msg)
                 answer = callback.ask(_("Change token secret?: "))
                 if answer.lower() == "y":
@@ -357,8 +352,7 @@ class OathToken(Token):
 
         if self.mode == "mode2":
             if not force:
-                msg = _("WARNING: Changing the PIN of a token in mode2 "
-                        "requires a re-deployment of the token.")
+                msg = _("WARNING: Changing the PIN of a token in mode2 requires a re-deployment of the token.")
                 callback.send(msg)
                 answer = callback.ask(_("Change token PIN?: "))
                 if answer.lower() == "y":
@@ -377,9 +371,7 @@ class OathToken(Token):
 
         elif self.server_secret:
             if not force:
-                msg = _("WARNING: This token was previously used in mode2. "
-                        "Changing the PIN requires a re-deployment when "
-                        "changing back to mode2.")
+                msg = _("WARNING: This token was previously used in mode2. Changing the PIN requires a re-deployment when changing back to mode2.")
                 callback.send(msg)
                 answer = callback.ask(_("Change token PIN?: "))
                 if answer.lower() == "y":
@@ -402,16 +394,12 @@ class OathToken(Token):
         """ Handle stuff when enabling offline mode. """
         if pre:
             if self.mode == "mode1":
-                msg = _("WARNING: Anybody who gets access to the offline "
-                        "token file is able to use it for logins and can see "
-                        "your PIN in clear-text!!")
+                msg = _("WARNING: Anybody who gets access to the offline token file is able to use it for logins and can see your PIN in clear-text!!")
                 callback.send(msg)
                 msg = _("You should consider changing token mode to mode2!!")
                 callback.send(msg)
             else:
-                msg = _("INFO: Offline OTP tokens are by design vulnerable "
-                        "for brute force attacks if an attacker is able to "
-                        "steal them (e.g. from a notebook)")
+                msg = _("INFO: Offline OTP tokens are by design vulnerable for brute force attacks if an attacker is able to steal them (e.g. from a notebook)")
                 callback.send(msg)
         return True
 

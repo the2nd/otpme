@@ -51,7 +51,6 @@ write_acls =  [
 
 read_value_acls = {
                 "view"      : [
-                            "password",
                             "mschap",
                             "nt_hash",
                             "auth_script",
@@ -252,7 +251,6 @@ def register_config_parameters():
     """ Registger config parameters. """
     # Default length of static passwords.
     object_types = [
-                        'realm',
                         'site',
                         'unit',
                         'user',
@@ -260,7 +258,7 @@ def register_config_parameters():
     # Allow to rename default token?
     config.register_config_parameter(name="default_static_pass_len",
                                     ctype=int,
-                                    default_value=8,
+                                    default_value=10,
                                     object_types=object_types)
 
 @match_class_typing
@@ -718,21 +716,18 @@ class PasswordToken(Token):
 
         self.change_password(password=new_pass,
                             verify_acls=False,
-                            force=True,
                             callback=callback)
 
         return_message = ""
         if not enable_mschap:
-            return_message = _("NOTE: You may want to add a second factor token "
-                            "(e.g. OTP token) to improve security.")
+            return_message = _("NOTE: You may want to add a second factor token (e.g. OTP token) to improve security.")
 
-        if self.verify_acl("view:password"):
-            token_pass_msg = _("Token password: {password}")
-            token_pass_msg = token_pass_msg.format(password=new_pass)
-            if return_message:
-                return_message = f"{return_message}\n{token_pass_msg}"
-            else:
-                return_message = token_pass_msg
+        token_pass_msg = _("Token password: {password}")
+        token_pass_msg = token_pass_msg.format(password=new_pass)
+        if return_message:
+            return_message = f"{return_message}\n{token_pass_msg}"
+        else:
+            return_message = token_pass_msg
 
         return callback.ok(return_message)
 

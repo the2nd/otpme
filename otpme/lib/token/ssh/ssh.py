@@ -1076,11 +1076,9 @@ class SshToken(Token):
         if public_key:
             self.ssh_public_key = public_key
         else:
-            return_message = _("NOTE: You have to add an SSH public key to "
-                                "this token to make it usable.")
+            return_message = _("NOTE: You have to add an SSH public key to this token to make it usable.")
 
-        sf_note = _("NOTE: You may want to add a second factor token "
-                    "(e.g. OTP token) to improve security.")
+        sf_note = _("NOTE: You may want to add a second factor token (e.g. OTP token) to improve security.")
 
         if return_message:
             return_message = f"{return_message}\n{sf_note}"

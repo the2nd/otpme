@@ -945,8 +945,7 @@ class LdapResolver(Resolver):
                     object_count = found_objects
                     continue
                 if found_objects != object_count:
-                    msg = _("LDAP search result for one or more servers "
-                                    "differs.")
+                    msg = _("LDAP search result for one or more servers differs.")
                     errors.append(msg)
                     break
 

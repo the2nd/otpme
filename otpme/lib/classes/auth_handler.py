@@ -1907,12 +1907,10 @@ class AuthHandler(object):
                     break
                 if not found_obsolete_session:
                     if (len(session_list) + 1) >= self.auth_group.max_sessions:
-                        log_msg = _("Max sessions reached for this accessgroup "
-                                    "and no outdated session found.", log=True)[1]
+                        log_msg = _("Max sessions reached for this accessgroup and no outdated session found.", log=True)[1]
                         self.logger.debug(log_msg)
             else:
-                log_msg = _("Max sessions reached for this accessgroup and "
-                                    "no relogin allowed.", log=True)[1]
+                log_msg = _("Max sessions reached for this accessgroup and no relogin allowed.", log=True)[1]
                 self.logger.debug(log_msg)
 
         if self.auth_failed:
@@ -2594,9 +2592,7 @@ class AuthHandler(object):
 
         # Log request auth data if enabled.
         if self.log_auth_data and (config.loglevel == "DEBUG" or config.debug_enabled):
-            log_msg = _("Logging of sensitive authentication data is "
-                        "enabled. You should disable LOG_AUTH_DATA in "
-                        "production environments!!!", log=True)[1]
+            log_msg = _("Logging of sensitive authentication data is enabled. You should disable LOG_AUTH_DATA in production environments!!!", log=True)[1]
             self.logger.warning(log_msg)
             self.logger.debug("AUTHENTICATION DATA OF REQUEST:")
             self.logger.debug(f"AUTH_TYPE:        {self.auth_type}")

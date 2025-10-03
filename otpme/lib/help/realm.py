@@ -90,14 +90,6 @@ cmd_help = {
                                 },
                 },
 
-    'show_config'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm show_config {realm}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Show realm config parameters'),
-                                },
-                },
-
     'add'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm add {realm} {address}'),
                     'cmd'   :   '<|object|> <address>',
@@ -119,14 +111,6 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Touch realm (e.g. migrate).'),
-                                },
-                },
-
-     'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm config {realm} {param} [value]'),
-                    'cmd'   :   '<|object|> <parameter> [value]',
-                    '_help' :   {
-                                    'cmd'                   : _('Add config parameter to realm.'),
                                 },
                 },
 

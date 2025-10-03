@@ -66,8 +66,7 @@ class ConnectSocket(object):
             try:
                 self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             except socket.error as msg:
-                msg = _("Failed to create socket. Error code: {code}, Error "
-                        "message: {message}")
+                msg = _("Failed to create socket. Error code: {code}, Error message: {message}")
                 msg = msg.format(code=msg[0], message=msg[1])
                 raise OTPmeException(msg)
 

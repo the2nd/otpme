@@ -718,7 +718,6 @@ def register_config_parameters():
     """ Registger config parameters. """
     # Object types our config parameters are valid for.
     object_types = [
-                        'realm',
                         'site',
                         'unit',
                         'user',
@@ -735,7 +734,6 @@ def register_config_parameters():
                                     object_types=object_types)
     # Allow temp passwords?
     object_types = [
-                        'realm',
                         'site',
                         'unit',
                         'user',

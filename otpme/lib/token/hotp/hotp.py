@@ -294,7 +294,6 @@ def register_config_params():
     """ Register config params. """
     # Valid object types for our config parameters..
     object_types = [
-                    'realm',
                     'site',
                     'unit',
                     'user',
@@ -883,8 +882,7 @@ class HotpToken(OathToken):
             return callback.error(msg)
 
         if self.allow_offline:
-            msg = _("Offline usage enabled for token. You "
-                    "should re-login after token resync!")
+            msg = _("Offline usage enabled for token. You should re-login after token resync!")
             callback.send(msg)
 
         msg = _("Token synchronized successful. Current counter: {hotp_count}")

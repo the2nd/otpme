@@ -1046,39 +1046,67 @@ def register_config_parameters():
     """ Registger config parameters. """
     # Object types our config parameters are valid for.
     object_types = [
-                        'realm',
                         'site',
                         'unit',
                     ]
+    def script_setter(script_path):
+        result = backend.search(object_type="script",
+                                attribute="rel_path",
+                                value=script_path,
+                                return_type="uuid")
+        if not result:
+            msg = _("Unknown script: {script_path}")
+            msg = msg.format(script_path=script_path)
+            raise UnknownObject(msg)
+        script_uuid = result[0]
+        return script_uuid
+    def script_getter(script_uuid):
+        result = backend.search(object_type="script",
+                                attribute="uuid",
+                                value=script_uuid,
+                                return_type="rel_path")
+        if not result:
+            msg = _("Unknown script: {script_uuid}")
+            msg = msg.format(script_uuid=script_uuid)
+            raise UnknownObject(msg)
+        script_path = result[0]
+        return script_path
     # Default scripts unit.
     scripts_unit = config.get_default_unit("script")
     # Default key script to add to new users.
     KEY_SCRIPT_PATH = f"{scripts_unit}/{KEY_SCRIPT_NAME}"
     config.register_config_parameter(name="default_key_script",
                                     ctype=str,
+                                    getter=script_getter,
+                                    setter=script_setter,
                                     default_value=KEY_SCRIPT_PATH,
                                     object_types=object_types)
     # Default auth script to add to new users.
     AUTH_SCRIPT_PATH = f"{scripts_unit}/{AUTH_SCRIPT_NAME}"
     config.register_config_parameter(name="default_auth_script",
                                     ctype=str,
+                                    getter=script_getter,
+                                    setter=script_setter,
                                     default_value=AUTH_SCRIPT_PATH,
                                     object_types=object_types)
     # Default agent script to add to new users.
     AGENT_SCRIPT_PATH = f"{scripts_unit}/{AGENT_SCRIPT_NAME}"
     config.register_config_parameter(name="default_agent_script",
                                     ctype=str,
+                                    getter=script_getter,
+                                    setter=script_setter,
                                     default_value=AGENT_SCRIPT_PATH,
                                     object_types=object_types)
     # Default login script to add to new users.
     LOGIN_SCRIPT_PATH = f"{scripts_unit}/{LOGIN_SCRIPT_NAME}"
     config.register_config_parameter(name="default_login_script",
                                     ctype=str,
+                                    getter=script_getter,
+                                    setter=script_setter,
                                     default_value=LOGIN_SCRIPT_PATH,
                                     object_types=object_types)
     # Max failed pass history length
     object_types = [
-                        'realm',
                         'site',
                         'unit',
                         'user',
@@ -1089,7 +1117,6 @@ def register_config_parameters():
                                     object_types=object_types)
     # Add default realm login token on user creation?
     object_types = [
-                        'realm',
                         'site',
                         'unit',
                     ]
@@ -1108,9 +1135,17 @@ def register_config_parameters():
                                     default_value="login",
                                     object_types=object_types)
     # Default token type to add.
+    def default_token_setter(token_type):
+        token_types = config.get_sub_object_types("token")
+        if token_type not in token_types:
+            msg = "Invalid token type: {token_type}"
+            msg = msg.format(token_type=token_type)
+            raise ValueError(msg)
+        return token_type
     config.register_config_parameter(name="default_token_type",
                                     ctype=str,
                                     default_value="hotp",
+                                    setter=default_token_setter,
                                     object_types=object_types)
     # Length for user RSA keys.
     object_types = [
@@ -1119,9 +1154,17 @@ def register_config_parameters():
                         'unit',
                         'user',
                     ]
+    def user_key_len_setter(key_len):
+        valid_key_lens = [2048, 4096]
+        if key_len not in valid_key_lens:
+            msg = "Invalid key len: {key_len}"
+            msg = msg.format(key_len=key_len)
+            raise ValueError(msg)
+        return key_len
     config.register_config_parameter(name="user_key_len",
                                     ctype=int,
                                     default_value=2048,
+                                    setter=user_key_len_setter,
                                     valid_values=VALID_USER_KEY_LENS,
                                     object_types=object_types)
 
@@ -4137,9 +4180,8 @@ class User(OTPmeObject):
         if new_token:
             if password is not None:
                 new_token.change_password(password=password,
-                                    verify_acls=False,
-                                    force=True,
-                                    callback=callback)
+                                        verify_acls=False,
+                                        callback=callback)
         else:
             # Try to create new token instance.
             try:
@@ -4180,7 +4222,9 @@ class User(OTPmeObject):
             msg = "Trying to preserve token ACLs..."
             callback.send(msg)
             for x in cur_token.acls:
-                new_token.add_acl(raw_acl=x, callback=callback)
+                new_token.add_acl(raw_acl=x,
+                                verify_acls=False,
+                                callback=callback)
             new_token.acl_inheritance_enabled = cur_token.acl_inheritance_enabled
             if new_token.allow_offline is not None:
                 new_token.allow_offline = cur_token.allow_offline
@@ -5291,9 +5335,8 @@ class User(OTPmeObject):
                 # Set default token password
                 if password is not None:
                     _default_token.change_password(password=password,
-                                        verify_acls=False,
-                                        force=True,
-                                        callback=callback)
+                                                verify_acls=False,
+                                                callback=callback)
             else:
                 self.add_token(token_name=default_token_name,
                                 token_type=default_token_type,

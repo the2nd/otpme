@@ -436,6 +436,10 @@ def create_file(path, content=None, user=None, group=True, mode=0o660,
     # Get file real path to ensure working locking (e.g. on symlink).
     file_real_path = os.path.realpath(path)
 
+    file_existed = False
+    if os.path.exists(file_real_path):
+        file_existed = True
+
     # Open file.
     fd = AtomicFileLock(path=file_real_path,
                         mode=write_mode,
@@ -447,17 +451,19 @@ def create_file(path, content=None, user=None, group=True, mode=0o660,
     # Write data to file.
     fd.write(content)
     fd.close()
-    # Set ownership.
-    set_fs_ownership(path=file_real_path,
-                    user=user,
-                    group=group,
-                    recursive=False)
-    # Set permissions.
-    set_fs_permissions(path=file_real_path,
-                        mode=mode,
-                        user_acls=user_acls,
-                        group_acls=group_acls,
+
+    if not file_existed:
+        # Set ownership.
+        set_fs_ownership(path=file_real_path,
+                        user=user,
+                        group=group,
                         recursive=False)
+        # Set permissions.
+        set_fs_permissions(path=file_real_path,
+                            mode=mode,
+                            user_acls=user_acls,
+                            group_acls=group_acls,
+                            recursive=False)
     # Release flock.
     fd.release_lock()
 
@@ -663,11 +669,12 @@ def set_fs_permissions(path, mode, user_acls=[], group_acls=[], recursive=False)
         # every directory root because every dir is also listed as root on the
         # next run.
         objects.insert(0,root)
-        for object in objects:
-            object_path = os.path.join(root, object)
+        for o in objects:
+            object_path = os.path.join(root, o)
             os.chmod(object_path, mode)
-            if apply_acls:
-                new_acl.applyto(object_path)
+            if not apply_acls:
+                continue
+            new_acl.applyto(object_path)
 
 def ensure_fs_permissions(directories=None, files=None,
     files_create=None, user=None, group=None):

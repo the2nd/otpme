@@ -235,7 +235,6 @@ def register_policy_object():
     config.register_config_var("supported_pass_strength_checker", list, ['spsc'])
     # Allowed password characters.
     object_types = [
-                        'realm',
                         'site',
                         'unit',
                         'user',

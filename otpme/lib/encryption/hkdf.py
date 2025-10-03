@@ -48,7 +48,6 @@ def register():
                             config_opts=CONFIG_OPTIONS)
     # Object types our config parameters are valid for.
     object_types = [
-                    'realm',
                     'site',
                     'unit',
                     'user',

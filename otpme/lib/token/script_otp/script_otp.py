@@ -270,8 +270,7 @@ class ScriptToken(Token):
 
     def _add(self, callback: JobCallback=default_callback, **kwargs):
         """ Add a token. """
-        msg = _("NOTE: You have to configure an auth script for "
-                    "this token to make it usable.")
+        msg = _("NOTE: You have to configure an auth script for this token to make it usable.")
         return callback.ok(msg)
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):

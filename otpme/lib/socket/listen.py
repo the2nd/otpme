@@ -198,6 +198,28 @@ class ListenSocket(object):
             return
         self._shutdown.value = new_status
 
+    def parse_peer_cert(self, peer_cert):
+        cert = x509.load_der_x509_certificate(peer_cert, default_backend())
+        cert_cn = cert.subject.rfc4514_string()
+        for x in cert_cn.split(","):
+            if not x.startswith("CN="):
+                continue
+            cert_cn = x.split("=")[1]
+            break
+        cert_issuer = cert.issuer.rfc4514_string()
+        for x in cert_issuer.split(","):
+            if not x.startswith("CN="):
+                continue
+            cert_issuer = x.split("=")[1]
+            break
+        cert_serial_number = cert.serial_number
+        peer_cert = {
+                    'cn'            : cert_cn,
+                    'issuer'        : cert_issuer,
+                    'serial_number' : cert_serial_number,
+                    }
+        return peer_cert
+
     def add_connection_pid(self, client, pid):
         """ Send client to client handler. """
         try:
@@ -344,7 +366,7 @@ class ListenSocket(object):
                     ctx.verify_flags = ssl.VERIFY_CRL_CHECK_CHAIN
                     self._socket = ctx.wrap_socket(self._socket,
                                             server_side=True,
-                                            do_handshake_on_connect=True,
+                                            do_handshake_on_connect=False,
                                             suppress_ragged_eofs=True,
                                             server_hostname=None)
                 else:
@@ -364,7 +386,7 @@ class ListenSocket(object):
                     ctx.verify_mode = ssl.CERT_OPTIONAL
                     self._socket = ctx.wrap_socket(self._socket,
                                             server_side=True,
-                                            do_handshake_on_connect=True,
+                                            do_handshake_on_connect=False,
                                             suppress_ragged_eofs=True,
                                             server_hostname=None)
             # Start listening on socket.
@@ -379,8 +401,7 @@ class ListenSocket(object):
 
             if self.use_ssl:
                 if self.ssl_verify_client:
-                    log_msg = _("Started listening on '{uri}'. SSL client certificate "
-                            "verification enabled.", log=True)[1]
+                    log_msg = _("Started listening on '{uri}'. SSL client certificate verification enabled.", log=True)[1]
                     log_msg = log_msg.format(uri=self.socket_uri)
                     self.logger.info(log_msg)
                 else:
@@ -407,8 +428,37 @@ class ListenSocket(object):
                 break
             # Wait for client connection.
             exception = None
+            new_client_socket = None
             try:
                 new_connection, new_client_socket = self._socket.accept()
+                # Perform SSL handshake manually to catch errors with client info
+                if self.use_ssl:
+                    try:
+                        new_connection.do_handshake()
+                    except Exception as ssl_error:
+                        # We have client info now, so log it with the error
+                        if self.protocol == "tcp":
+                            client_address, client_port = new_client_socket
+                            peer_cert = new_connection.getpeercert(binary_form=True)
+                            peer_cn = None
+                            if peer_cert:
+                                peer_cert = self.parse_peer_cert(peer_cert)
+                                peer_cn = peer_cert['cn']
+                            log_msg = _("Listen: SSL handshake failed from {client}:{port}: CN: {cn}: {error}", log=True)[1]
+                            log_msg = log_msg.format(client=client_address,
+                                                    port=client_port,
+                                                    cn=peer_cn,
+                                                    error=ssl_error)
+                        else:
+                            log_msg = _("Listen: SSL handshake failed: {error}", log=True)[1]
+                            log_msg = log_msg.format(error=ssl_error)
+                        self.logger.warning(log_msg)
+                        try:
+                            new_connection.close()
+                        except:
+                            pass
+                        time.sleep(0.01)
+                        continue
             except socket.timeout:
                 time.sleep(0.01)
                 continue
@@ -469,8 +519,7 @@ class ListenSocket(object):
                     log_msg = log_msg.format(count=client_count, client=client)
                     self.logger.warning(log_msg)
                     if max_conn_warn_count > 1:
-                        log_msg = _("Suppressed {count} max connections warnings to "
-                                "prevent logfile flooding.", log=True)[1]
+                        log_msg = _("Suppressed {count} max connections warnings to prevent logfile flooding.", log=True)[1]
                         log_msg = log_msg.format(count=max_conn_warn_count)
                         self.logger.warning(log_msg)
                         max_conn_warn_count = 0
@@ -520,25 +569,7 @@ class ListenSocket(object):
         if self.use_ssl:
             peer_cert = client_conn.getpeercert(binary_form=True)
             if peer_cert:
-                cert = x509.load_der_x509_certificate(peer_cert, default_backend())
-                cert_cn = cert.subject.rfc4514_string()
-                for x in cert_cn.split(","):
-                    if not x.startswith("CN="):
-                        continue
-                    cert_cn = x.split("=")[1]
-                    break
-                cert_issuer = cert.issuer.rfc4514_string()
-                for x in cert_issuer.split(","):
-                    if not x.startswith("CN="):
-                        continue
-                    cert_issuer = x.split("=")[1]
-                    break
-                cert_serial_number = cert.serial_number
-                peer_cert = {
-                            'cn'            : cert_cn,
-                            'issuer'        : cert_issuer,
-                            'serial_number' : cert_serial_number,
-                            }
+                peer_cert = self.parse_peer_cert(peer_cert)
 
         #print(repr(self.client_conn.getpeername()))
         #print(self.client_conn.getpeercert()['subject'])

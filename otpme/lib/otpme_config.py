@@ -1322,7 +1322,8 @@ class OTPmeConfig(object):
                 self.merge_user_configfile_params.append(user_config_file_parameter)
 
     def register_config_parameter(self, name, ctype,
-        default_value=None, valid_values=None, object_types=[]):
+        default_value=None, valid_values=None, object_types=[],
+        getter=None, setter=None):
         """ Register config parameter. """
         if name in self.valid_config_params:
             msg = _("Config parameter already registered: {name}")
@@ -1333,7 +1334,17 @@ class OTPmeConfig(object):
                                             'default'       : default_value,
                                             'valid_values'  : valid_values,
                                             'object_types'  : object_types,
+                                            'getter'        : getter,
+                                            'setter'        : setter,
                                         }
+    def get_config_parameter(self, name):
+        try:
+            parameter_data = self.valid_config_params[name]
+        except KeyError:
+            msg = _("Invalid config parameter: {name}")
+            msg = msg.format(name=name)
+            raise NotRegistered(msg)
+        return parameter_data
 
     def register_smartcard_type(self, smartcard_type, client_handler, server_handler):
         """ Register supported smartcard type. """
@@ -2263,8 +2274,7 @@ class OTPmeConfig(object):
         skip_if_exists=False, force=False):
         """ Generate AES master key from passphrase. """
         if not self.key_command.startswith("file://"):
-            msg = _("KEY_COMMAND is not set to a file. "
-                    "Unable to generate AES key.")
+            msg = _("KEY_COMMAND is not set to a file. Unable to generate AES key.")
             raise OTPmeException(msg)
         from otpme.lib import cli
         from otpme.lib import filetools

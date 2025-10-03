@@ -510,14 +510,12 @@ class ControlDaemon(UnixDaemon):
     def configure(self):
         """ Make sure we are configured correctly. """
         if not "name" in config.host_data or not config.host_data['name']:
-            msg = _("Don't know my hostname. Please make sure {file} "
-                    "points to the correct OTPme object UUID.")
+            msg = _("Don't know my hostname. Please make sure {file} points to the correct OTPme object UUID.")
             msg = msg.format(file=config.uuid_file)
             raise OTPmeException(msg)
 
         if not config.host_data['type']:
-            msg = _("Uuhh, '{hostname}' does not have host type "
-                    "set. This is most likely a result of a broken object configuration.")
+            msg = _("Uuhh, '{hostname}' does not have host type set. This is most likely a result of a broken object configuration.")
             msg = msg.format(hostname=config.host_data['name'])
             raise OTPmeException(msg)
 
@@ -1256,8 +1254,7 @@ class ControlDaemon(UnixDaemon):
         # Wait until we get 'reload_done' reply from child daemon.
         while True:
             if count_wait == max_wait:
-                log_msg = _("Child daemon '{daemon}' does not respond to "
-                        "reload command. Restarting...", log=True)[1]
+                log_msg = _("Child daemon '{daemon}' does not respond to reload command. Restarting...", log=True)[1]
                 log_msg = log_msg.format(daemon=daemon_name)
                 self.logger.info(log_msg)
                 self.stop_child(daemon_name)

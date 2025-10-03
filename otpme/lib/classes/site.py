@@ -855,6 +855,47 @@ def register_config():
     config.register_config_var("sso_user_role", str, SSO_USER_ROLE)
     config.register_base_object("role", SSO_USER_ROLE)
 
+    # Object types our config parameters are valid for.
+    object_types = [
+                    'site',
+                    'unit',
+                    'user',
+                    'token',
+                    ]
+    def hash_type_setter(hash_type):
+        if hash_type not in config.get_hash_types():
+            msg = "Invalid hash type: {hash_type}"
+            msg = msg.format(hash_type=hash_type)
+            raise ValueError(msg)
+        return hash_type
+    # Default password hash algo.
+    config.register_config_parameter(name="default_pw_hash_type",
+                                    ctype=str,
+                                    setter=hash_type_setter,
+                                    default_value="Argon2_i",
+                                    object_types=object_types)
+    # Session password hash algo.
+    config.register_config_parameter(name="session_hash_type",
+                                    ctype=str,
+                                    setter=hash_type_setter,
+                                    default_value="Argon2_i",
+                                    object_types=object_types)
+    # Session config parameters.
+    object_types = [
+                    'site',
+                    'unit',
+                    'host',
+                    'node',
+                    ]
+    config.register_config_parameter(name="static_pass_timeout",
+                                    ctype=int,
+                                    default_value=15,
+                                    object_types=object_types)
+    config.register_config_parameter(name="static_pass_unused_timeout",
+                                    ctype=int,
+                                    default_value=5,
+                                    object_types=object_types)
+
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")
     config.register_auth_on_action_hook("site", "change_address")
@@ -1745,8 +1786,7 @@ class Site(OTPmeObject):
 
         if not force:
             if self.uuid == config.site_uuid:
-                msg = _("Disable authentication for own site? "
-                        "This will disable ALL logins!: ")
+                msg = _("Disable authentication for own site? This will disable ALL logins!: ")
                 answer = callback.ask(msg)
                 if answer.lower() != "y":
                     return callback.abort()
@@ -2916,7 +2956,7 @@ class Site(OTPmeObject):
                             callback=callback)
         sso_access_group._write(callback=callback)
 
-        self.add_object_templates(callback=callback)
+        #self.add_object_templates(callback=callback)
 
         # Run base policies post methods.
         self.add_base_policies(callback=callback)
@@ -3035,6 +3075,14 @@ class Site(OTPmeObject):
                 msg = _("Problem adding user: {e}")
                 msg = msg.format(e=e)
                 raise OTPmeException(msg)
+
+        # Add default config parameters.
+        for parameter in config.valid_config_params:
+            default_value = config.valid_config_params[parameter]['default']
+            self.set_config_param(parameter, default_value)
+
+        # Add template objects.
+        self.add_object_templates(callback=callback)
 
         # Create admin user.
         return self.add_admin_user(callback=callback)

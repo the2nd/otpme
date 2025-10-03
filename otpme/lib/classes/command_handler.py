@@ -457,6 +457,7 @@ class CommandHandler(object):
             if command == "site":
                 register_module("otpme.lib.classes.site")
                 register_module("otpme.lib.cli.site")
+                register_module('otpme.lib.token')
             if command == "unit":
                 register_module("otpme.lib.classes.unit")
                 register_module("otpme.lib.cli.unit")
@@ -472,6 +473,7 @@ class CommandHandler(object):
             if command == "user":
                 register_module("otpme.lib.classes.user")
                 register_module("otpme.lib.cli.user")
+                register_module('otpme.lib.token')
             if command == "group":
                 register_module("otpme.lib.classes.group")
                 register_module("otpme.lib.cli.group")
@@ -6402,7 +6404,8 @@ class CommandHandler(object):
         try:
             result = clusterd_conn.set_required_votes(required_votes)
         except Exception as e:
-            log_msg = str(e)
+            msg = str(e)
+            log_msg = msg
             self.logger.warning(log_msg)
             config.raise_exception()
             return msg

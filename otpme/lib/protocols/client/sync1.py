@@ -727,8 +727,7 @@ class OTPmeSyncP1(OTPmeClient1):
 
             if not do_recheck:
                 if ignore_changed_objects:
-                    log_msg = _("Not re-checking sync status with master node "
-                            "(--ignore-changed-objects).", log=True)[1]
+                    log_msg = _("Not re-checking sync status with master node (--ignore-changed-objects).", log=True)[1]
                     self.logger.info(log_msg)
                 sync_success = True
                 break

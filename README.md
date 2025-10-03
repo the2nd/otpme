@@ -54,7 +54,7 @@ wget https://developers.yubico.com/FIDO/yubico-fido-ca-1.pem
 wget https://developers.yubico.com/FIDO/yubico-fido-ca-2.pem  
 otpme-site add_fido2_ca_cert yoursite yubico-fido-ca-1.pem  
 otpme-site add_fido2_ca_cert yoursite yubico-fido-ca-2.pem  
-otpme-realm config yourrealm.tld check_fido2_attestation_cert True  
+otpme-site config yoursite check_fido2_attestation_cert True  
 
 ## Disable gpg-agent (systemd) to use yubikey/GPG card with the PAM module.
 systemctl --global mask --now gpg-agent.service gpg-agent.socket gpg-agent-ssh.socket gpg-agent-extra.socket gpg-agent-browser.socket  

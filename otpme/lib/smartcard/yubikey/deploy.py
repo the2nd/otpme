@@ -76,8 +76,7 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
     yubikey_default_admin_pin = "12345678"
     pin_min_len = 8
     user_home = os.getenv("HOME")
-    gpg_dir = "{user_home}/.gnupg"
-    gpg_dir = gpg_dir.format(user_home=user_home)
+    gpg_dir = f"{user_home}/.gnupg"
     gpg_sshcontrol_file = os.path.join(gpg_dir, "sshcontrol")
     tmp_dir = "/dev/shm"
     gpg_tmp_home_dir = os.path.join(tmp_dir, ".gnupg")
@@ -134,8 +133,7 @@ def gpg_applet(gpg_backup_file=None, gpg_restore_file=None):
     signal.signal(signal.SIGTERM, signal_handler)
 
     if not config.force:
-        message(_("WARNING!!!!!!! Resetting the yubikey GPG applet will "
-                "destroy all GPG keys on it !!!!"))
+        message(_("WARNING!!!!!!! Resetting the yubikey GPG applet will destroy all GPG keys on it !!!!"))
         cli.user_input(_("Press Ctrl+C to abort or RETURN to continue: "))
 
     # Initialize yubikey GPG applet and set mode

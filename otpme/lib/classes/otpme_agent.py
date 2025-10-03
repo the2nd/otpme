@@ -1910,8 +1910,7 @@ class OTPmeAgent(UnixDaemon):
                     if idle_timer >= self.idle_timeout:
                         # If we are still idle (no sessions) go down.
                         if len(self.login_sessions) == 0:
-                            log_msg = _("No more login sessions. Terminating on "
-                                    "IDLE timeout...", log=True)[1]
+                            log_msg = _("No more login sessions. Terminating on IDLE timeout...", log=True)[1]
                             self.logger.info(log_msg)
                             os._exit(0)
             else:

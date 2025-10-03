@@ -188,15 +188,6 @@ commands = {
                     },
                 },
             },
-    'show_config'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'show_config_parameters',
-                    'oargs'              : [],
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     'del'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -509,15 +500,6 @@ commands = {
                     },
                 },
             },
-    'config'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'set_config_param',
-                    'args'              : ['parameter', 'value'],
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     }
 
 def get_acls(**kwargs):
@@ -636,40 +618,6 @@ def register_config():
     config.register_base_object("user", TOKENSTORE_USER)
     # Register token store user as per site user.
     config.register_per_site_object("user", TOKENSTORE_USER)
-    # Object types our config parameters are valid for.
-    object_types = [
-                    'realm',
-                    'site',
-                    'unit',
-                    'user',
-                    'token',
-                    ]
-    # Default password hash algo.
-    config.register_config_parameter(name="default_pw_hash_type",
-                                    ctype=str,
-                                    default_value="Argon2_i",
-                                    object_types=object_types)
-    # Session password hash algo.
-    config.register_config_parameter(name="session_hash_type",
-                                    ctype=str,
-                                    default_value="Argon2_i",
-                                    object_types=object_types)
-    # Session config parameters.
-    object_types = [
-                    'realm',
-                    'site',
-                    'unit',
-                    'host',
-                    'node',
-                    ]
-    config.register_config_parameter(name="static_pass_timeout",
-                                    ctype=int,
-                                    default_value=15,
-                                    object_types=object_types)
-    config.register_config_parameter(name="static_pass_unused_timeout",
-                                    ctype=int,
-                                    default_value=5,
-                                    object_types=object_types)
 
 def register_oid():
     full_oid_schema = [ 'name' ]
@@ -1463,10 +1411,10 @@ class Realm(OTPmeObject):
         # Write objects.
         cache.flush()
 
-        # Add default config parameters.
-        for parameter in config.valid_config_params:
-            default_value = config.valid_config_params[parameter]['default']
-            self.set_config_param(parameter, default_value)
+        ## Add default config parameters.
+        #for parameter in config.valid_config_params:
+        #    default_value = config.valid_config_params[parameter]['default']
+        #    self.set_config_param(parameter, default_value)
 
         # Write objects.
         cache.flush()

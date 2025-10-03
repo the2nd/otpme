@@ -120,8 +120,7 @@ def update_reload_file():
     except Exception as e:
         msg = _("Error accessing reload file: ") % e
         raise Exception(msg)
-    msg = _("You must wait up to {reload_config_interval} seconds "
-            "for config reload to happen.")
+    msg = _("You must wait up to {reload_config_interval} seconds for config reload to happen.")
     msg = msg.format(reload_config_interval=config.reload_config_interval)
     raise OTPmeException(msg)
 
@@ -1579,8 +1578,7 @@ def verify_key_script(username, key_script=None,
 
     # Without signatures verification must fail.
     if not signatures:
-        msg = _("Key script verification failed: "
-                "No key script signatures found.")
+        msg = _("Key script verification failed: No key script signatures found.")
         raise OTPmeException(msg)
 
     # Verify key script.

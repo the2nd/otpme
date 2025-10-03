@@ -163,7 +163,6 @@ def register_config_parameters():
     """ Registger config parameters. """
     # Object types our config parameters are valid for.
     object_types = [
-                        'realm',
                         'site',
                         'unit',
                         'user',
@@ -346,8 +345,7 @@ class Fido2Token(Token):
             try:
                 ca_cert = own_site.fido2_ca_certs[issuer]
             except KeyError:
-                msg = _("We dont have a fido2 CA cert to verify attestation "
-                        "certificate: {subject}: {issuer}")
+                msg = _("We dont have a fido2 CA cert to verify attestation certificate: {subject}: {issuer}")
                 msg = msg.format(subject=subject, issuer=issuer)
                 return callback.error(msg)
             # Load fido2 CA cert.
@@ -481,8 +479,7 @@ class Fido2Token(Token):
         ):
         """ Add a fido2 token. """
         if _caller == "CLIENT":
-            return_message = _("NOTE: You have to deploy this fido2 token to "
-                                "make it usable.")
+            return_message = _("NOTE: You have to deploy this fido2 token to make it usable.")
             return callback.ok(return_message)
         return callback.ok()
 

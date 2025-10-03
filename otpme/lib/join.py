@@ -947,7 +947,7 @@ class JoinHandler(object):
 
             for x in remove_files:
                 log_msg = _("Removing file: {x}", log=True)[1]
-                log_msg = log_msg.formt(x=x)
+                log_msg = log_msg.format(x=x)
                 logger.debug(log_msg)
                 if not os.path.exists(x):
                     continue

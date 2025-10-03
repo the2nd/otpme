@@ -32,7 +32,7 @@ cmd_help = {
                 },
 
     'status'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-cluster status [--diff] [--full]'),
+                    '_cmd_usage_help' : _('Usage: otpme-cluster status [--diff] [--full] [--full-index]'),
                     'cmd'   :   '--diff :diff_data=True: --full :full_data_diff=True: --full-index :full_index_diff=True:',
                     '_help' :   {
                                     'cmd'                   : _('Get cluster status.'),

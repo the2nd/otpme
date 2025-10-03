@@ -345,7 +345,6 @@ def register_config_parameters():
     """ Register config parameters. """
     # Object types our config parameters are valid for.
     object_types = [
-                    'realm',
                     'site',
                     'unit',
                     'token',
@@ -358,10 +357,18 @@ def register_config_parameters():
     #   - normal (Ask user in important cases e.g. when deleting an object will also
     #     delete child objects)
     #   - paranoid (Ask user for almost anything)
+    valid_confirmation_polies = ['paranoid', 'normal', 'force']
+    def confirmation_policy_setter(confirmation_policy):
+        if confirmation_policy not in valid_confirmation_polies:
+            msg = "Invalid confirmation policy: {policy}"
+            msg = msg.format(policy=confirmation_policy)
+            raise ValueError(msg)
+        return confirmation_policy
     config.register_config_parameter(name="confirmation_policy",
                                     ctype=str,
                                     default_value="paranoid",
-                                    valid_values=['force', 'normal', 'paranoid'],
+                                    setter=confirmation_policy_setter,
+                                    valid_values=valid_confirmation_polies,
                                     object_types=config.tree_object_types)
     # With the auto sign parameter enabled the user gets offered to sign the object she changes.
     config.register_config_parameter(name="auto_sign",
@@ -1316,8 +1323,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         except:
             compression = None
         if compression and compression not in config.supported_compression_types:
-            msg = _("Got unknown compression type '{compression}' "
-                    "for attribute: {attribute}")
+            msg = _("Got unknown compression type '{compression}' for attribute: {attribute}")
             msg = msg.format(compression=compression, attribute=attribute)
             raise OTPmeException(msg)
         # Get encoding tag to add.
@@ -1326,8 +1332,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         except:
             encoding = None
         if encoding and encoding not in config.supported_encoding_types:
-            msg = _("Got unknown encoding type '{encoding}' "
-                    "for attribute: {attribute}")
+            msg = _("Got unknown encoding type '{encoding}' for attribute: {attribute}")
             msg = msg.format(encoding=encoding, attribute=attribute)
             raise OTPmeException(msg)
         # Get encryption tag to add.
@@ -1336,8 +1341,7 @@ class OTPmeBaseObject(OTPmeLockObject):
         except:
             encryption = None
         if encryption and encryption not in config.supported_encryption_types:
-            msg = _("Got unknown encryption type '{encryption} "
-                    "for attribute: {attribute}")
+            msg = _("Got unknown encryption type '{encryption} for attribute: {attribute}")
             msg = msg.format(encryption=encryption, attribute=attribute)
             raise OTPmeException(msg)
 
@@ -2167,24 +2171,32 @@ class OTPmeObject(OTPmeBaseObject):
         auto_disable_time = auto_disable_time.strftime('%d.%m.%Y %H:%M:%S')
         return auto_disable_time
 
-    @property
-    def valid_config_params(self):
-        """ Get valid config parameters. """
-        # Realm does support all config parameters.
-        valid_config_params = []
-        for x in config.valid_config_params:
-            object_types = config.valid_config_params[x]['object_types']
-            if self.type not in object_types:
-                continue
-            valid_config_params.append(x)
-        return valid_config_params
+    #@property
+    #def valid_config_params(self):
+    #    """ Get valid config parameters. """
+    #    valid_config_params = []
+    #    for x in config.valid_config_params:
+    #        object_types = config.valid_config_params[x]['object_types']
+    #        if self.type not in object_types:
+    #            continue
+    #        valid_config_params.append(x)
+    #    return valid_config_params
 
     @config_cache.cache_method()
     def get_config_parameter(self, parameter: str):
         """ Get config parameter. """
+        # Try to get config parameter.
+        parameter_data = config.get_config_parameter(parameter)
+        # Try to get getter.
+        try:
+            para_getter = parameter_data['getter']
+        except:
+            para_getter = None
         # Try to get the default value.
         try:
-            default_value = config.valid_config_params[parameter]['default']
+            default_value = parameter_data['default']
+            if para_getter:
+                default_value = para_getter(default_value)
         except:
             default_value = None
 
@@ -2198,6 +2210,8 @@ class OTPmeObject(OTPmeBaseObject):
         while True:
             try:
                 value = parent_object.config_params[parameter]
+                if para_getter:
+                    value = para_getter(value)
             except:
                 value = None
 
@@ -2223,17 +2237,20 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Set config parameter. """
+        # Try to get config parameter.
         try:
-            value_type = config.valid_config_params[parameter]['type']
-        except:
+            parameter_data = config.get_config_parameter(parameter)
+        except NotRegistered:
             msg = _("Invalid parameter: {obj}: {param}")
             msg = msg.format(obj=self, param=parameter)
             return callback.error(msg)
-
+        # Get value type.
+        value_type = parameter_data['type']
+        # Try to get getter.
         try:
-            valid_values = config.valid_config_params[parameter]['valid_values']
+            para_setter = parameter_data['setter']
         except:
-            valid_values = []
+            para_setter = None
 
         # Delete config parameter.
         if value is None:
@@ -2241,9 +2258,18 @@ class OTPmeObject(OTPmeBaseObject):
             config_cache.invalidate()
             return self._cache(callback=callback)
 
+        # Resolve value.
+        if para_setter:
+            value = para_setter(value)
+
+        try:
+            valid_values = parameter_data['valid_values']
+        except:
+            valid_values = []
+
         if not isinstance(value, value_type):
             msg = _("Parameter <{parameter}> needs to be of type: {value_type}")
-            msg = msg.format(value_type=value_type)
+            msg = msg.format(parameter=parameter, value_type=value_type)
             return callback.error(msg)
 
         if valid_values:
@@ -3352,8 +3378,7 @@ class OTPmeObject(OTPmeBaseObject):
             # FIXME: Maybe we should check role ACLs here? e.g. check if role
             #        has any view:secret, generate:otp or any other "dangerous" ACL
             #        that allows other users to gain permissions for this role!?
-            msg = _("WARNING: Please make sure role ACLs do not allow any "
-                    "privilege escalation when adding a role to a role!")
+            msg = _("WARNING: Please make sure role ACLs do not allow any privilege escalation when adding a role to a role!")
             # Detect role loops.
             child_roles = get_roles(role_uuid=self.uuid,
                                     recursive=True,
@@ -4962,8 +4987,7 @@ class OTPmeObject(OTPmeBaseObject):
             if attribute not in ext_attrs:
                 continue
             if verbose_level > 0:
-                msg = _("Using extension '{e_name}' to modify attribute "
-                        "'{attribute}' of object.")
+                msg = _("Using extension '{e_name}' to modify attribute '{attribute}' of object.")
                 msg = msg.format(e_name=e.name, attribute=attribute)
                 callback.send(msg)
             extension = e
@@ -5032,8 +5056,7 @@ class OTPmeObject(OTPmeBaseObject):
                 if attribute not in ext_attrs:
                     continue
                 if verbose_level > 0:
-                    msg = _("Using extension '{e_name}' to delete attribute "
-                            "'{attribute}' from object.")
+                    msg = _("Using extension '{e_name}' to delete attribute '{attribute}' from object.")
                     msg = msg.format(e_name=e.name, attribute=attribute)
                     callback.send(msg)
                 extension = e
@@ -5128,8 +5151,7 @@ class OTPmeObject(OTPmeBaseObject):
             if self.type in extension.object_types:
                 if object_class in extension.object_classes[self.type]:
                     if verbose_level > 0:
-                        msg = _("Using extension '{extension_name}' to add object class "
-                                "'{object_class}' to object.")
+                        msg = _("Using extension '{extension_name}' to add object class '{object_class}' to object.")
                         msg = msg.format(extension_name=extension.name,
                                         object_class=object_class)
                         callback.send(msg)
@@ -6198,8 +6220,7 @@ class OTPmeObject(OTPmeBaseObject):
         # If we got the required values not as attributes and not from
         # the ACL string we cannot continue.
         if not (owner_type and owner_name) and not owner_uuid:
-            msg = _("Need at least <owner_type> + "
-                    "<owner_name> or <owner_uuid>")
+            msg = _("Need at least <owner_type> + <owner_name> or <owner_uuid>")
             raise OTPmeException(msg)
 
         # Build raw ACL if needed.
@@ -8398,8 +8419,21 @@ class OTPmeObject(OTPmeBaseObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        result = self.config_params.copy()
-        return callback.ok(result)
+        config_params = {}
+        for para in sorted(self.config_params):
+            try:
+                para_data = config.get_config_parameter(para)
+            except NotRegistered:
+                continue
+            try:
+                para_getter = para_data['getter']
+            except:
+                para_getter = None
+            value = self.config_params[para]
+            if para_getter:
+                value = para_getter(value)
+            config_params[para] = value
+        return callback.ok(config_params)
 
     def show_config(
         self,

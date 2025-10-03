@@ -278,8 +278,7 @@ def configure_floating_ip(address, gratuitous_arp=True, ping=False):
     script_returncode = pipe.returncode
 
     if script_returncode != 0:
-        msg = _("Error adding address '{ip}/{netmask}' "
-                "to interface '{interface}': {error}")
+        msg = _("Error adding address '{ip}/{netmask}' to interface '{interface}': {error}")
         msg = msg.format(ip=floating_ip, netmask=floating_ip_netmask, interface=floating_interface, error=script_stderr)
         raise OTPmeException(msg)
 
@@ -332,8 +331,7 @@ def deconfigure_floating_ip(address):
         script_returncode = pipe.returncode
 
         if script_returncode != 0:
-            msg = _("Error removing address '{ip}/{netmask}' "
-                    "from interface '{interface}': {error}")
+            msg = _("Error removing address '{ip}/{netmask}' from interface '{interface}': {error}")
             msg = msg.format(ip=floating_ip, netmask=floating_ip_netmask, interface=floating_interface, error=script_stderr)
             raise OTPmeException(msg)
 

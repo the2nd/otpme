@@ -655,8 +655,7 @@ class HostDaemon(OTPmeDaemon):
 
                 # The realm master site also must always exist.
                 if site.uuid == config.realm_master_uuid:
-                    log_msg = _("Uuuhh peer node tells us our master "
-                            "site does not exist anymore.", log=True)[1]
+                    log_msg = _("Uuuhh peer node tells us our master site does not exist anymore.", log=True)[1]
                     self.logger.warning(log_msg)
                     continue
 
@@ -691,8 +690,7 @@ class HostDaemon(OTPmeDaemon):
             log_method = self.logger.info
         else:
             log_method = self.logger.debug
-        log_msg = _("Realms/sites sync finished: adds: {added} "
-                "updates: {updated_objects} removes: {removed_objects}", log=True)[1]
+        log_msg = _("Realms/sites sync finished: adds: {added} updates: {updated_objects} removes: {removed_objects}", log=True)[1]
         log_msg = log_msg.format(added=added_objects,
                         updated_objects=updated_objects,
                         removed_objects=removed_objects)
@@ -1058,8 +1056,7 @@ class HostDaemon(OTPmeDaemon):
                     sync_cache = SyncCache(realm, site)
                     sync_proto = sync_cache.protocol
                     if sync_proto:
-                        log_msg = _("Sync connection failed. Trying to merge "
-                                    "orphan sync cache.", log=True)[1]
+                        log_msg = _("Sync connection failed. Trying to merge orphan sync cache.", log=True)[1]
                         self.logger.info(log_msg)
 
                 # Cannot sync without protocol version.
@@ -1155,8 +1152,7 @@ class HostDaemon(OTPmeDaemon):
         #    data_revision = config.get_data_revision()
         #    age = now - data_revision
         #    if age < min_seconds:
-        #        log_msg = _("Not starting nsscache sync because last object was "
-        #                "written within the last {min_seconds} seconds.", log=True)[1]
+        #        log_msg = _("Not starting nsscache sync because last object was written within the last {min_seconds} seconds.", log=True)[1]
         #        log_msg = log_msg.format(min_seconds=min_seconds)
         #        self.logger.info(log_msg)
         #        start_nsscache_sync = False

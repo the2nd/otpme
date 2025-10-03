@@ -941,8 +941,7 @@ class Unit(OTPmeObject):
         move_child_units = True
         if object_types:
             if keep_old_unit is not True:
-                msg = _("You must use <keep_old_unit> when moving only specific "
-                        "objects.")
+                msg = _("You must use <keep_old_unit> when moving only specific objects.")
                 return callback.error(msg)
             if "unit" not in object_types:
                 move_child_units = False
@@ -951,8 +950,7 @@ class Unit(OTPmeObject):
         if check_path in new_unit:
             move_child_units = False
             if not keep_old_unit:
-                msg = _("Cannot move unit to sub unit of itself."
-                        " Please use <keep_old_unit>.")
+                msg = _("Cannot move unit to sub unit of itself Please use <keep_old_unit>.")
                 return callback.error(msg)
 
         # Get all unit members.

@@ -135,8 +135,7 @@ def update_ssl_files(host_cert=None, host_key=None,
         ca_data_dir = os.path.dirname(config.ssl_ca_file)
         if not os.path.exists(ca_data_dir):
             if not config.handle_files_dirs:
-                msg = _("Unable to write SSL CA data: "
-                        "No such file or directory: {ca_data_dir}")
+                msg = _("Unable to write SSL CA data: No such file or directory: {ca_data_dir}")
                 msg = msg.format(ca_data_dir=ca_data_dir)
                 raise OTPmeException(msg)
             try:
@@ -162,8 +161,7 @@ def update_ssl_files(host_cert=None, host_key=None,
         site_cert_dir = os.path.dirname(config.ssl_site_cert_file)
         if not os.path.exists(site_cert_dir):
             if not config.handle_files_dirs:
-                msg = _("Unable to write site certficate: "
-                        "No such file or directory: {site_cert_dir}")
+                msg = _("Unable to write site certficate: No such file or directory: {site_cert_dir}")
                 msg = msg.format(site_cert_dir=site_cert_dir)
                 raise OTPmeException(msg)
             try:
@@ -189,8 +187,7 @@ def update_ssl_files(host_cert=None, host_key=None,
         key_dir = os.path.dirname(config.host_key_file)
         if not os.path.exists(key_dir):
             if not config.handle_files_dirs:
-                msg = _("Unable to write host key: "
-                        "No such file or directory: {key_dir}")
+                msg = _("Unable to write host key: No such file or directory: {key_dir}")
                 msg = msg.format(key_dir=key_dir)
                 raise OTPmeException(msg)
             try:
@@ -420,17 +417,14 @@ def update_data(host_cert=None, host_key=None,
                 break
 
     if not myhost:
-        msg = _("Don't know who i am :(. Please make sure {uuid_file} points to the "
-                "correct OTPme object UUID.")
+        msg = _("Don't know who i am :(. Please make sure {uuid_file} points to the correct OTPme object UUID.")
         msg = msg.format(uuid_file=config.uuid_file)
         raise OTPmeException(msg)
     if not myhost.name:
-        msg = _("Uuhh don't know my hostname. This is most likely a result of "
-                "a broken object configuration.")
+        msg = _("Uuhh don't know my hostname. This is most likely a result of a broken object configuration.")
         raise OTPmeException(msg)
     if not myhost.type:
-        msg = _("Uuhh, '{hostname}' does not have host type set. This is most likely "
-                "a result of a broken object configuration.")
+        msg = _("Uuhh, '{hostname}' does not have host type set. This is most likely a result of a broken object configuration.")
         msg = msg.format(hostname=myhost.name)
         raise OTPmeException(msg)
 

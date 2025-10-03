@@ -1353,8 +1353,7 @@ class AccessGroup(OTPmeObject):
         # Check if there is a session master in both session trees.
         if (session_master and child_session_master) \
         and (session_master != child_session_master):
-            msg = _("Cannot add group as child session because both session "
-                    "trees contain a session master.")
+            msg = _("Cannot add group as child session because both session trees contain a session master.")
             return callback.error(msg)
 
         if run_policies:
@@ -1708,8 +1707,7 @@ class AccessGroup(OTPmeObject):
         # Check if there is already a session master in our session tree.
         session_master = self.get_session_master()
         if session_master:
-            msg = _("Cannot enable session master. Session master already "
-                    "exists in session tree: '{session_master}'.")
+            msg = _("Cannot enable session master. Session master already exists in session tree: '{session_master}'.")
             msg = msg.format(session_master=session_master)
             return callback.error(msg)
 

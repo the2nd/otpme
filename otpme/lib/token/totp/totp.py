@@ -261,7 +261,6 @@ def register_config_params():
     """ Register config params. """
     # Object types our config paramters are valid for.
     object_types = [
-                    'realm',
                     'site',
                     'unit',
                     'user',

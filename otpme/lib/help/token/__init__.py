@@ -56,6 +56,14 @@ cmd_help = {
                                 },
                 },
 
+    'deploy'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token deploy --list-token-types'),
+                    '_help' :   {
+                                    'cmd'                       : _('List deployable token types.'),
+                                    '--list-token-types'        : _('List deployable token types.'),
+                                },
+                },
+
     'touch'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token touch {token}'),
                     'cmd'   :   '<|object|>',

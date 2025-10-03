@@ -1111,7 +1111,7 @@ def get_object_from_cache(
         except UnknownObject as e:
             return
         except Exception as e:
-            log_msg = _("Error building read OID: {e}", log=True)
+            log_msg = _("Error building read OID: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             logger.critical(log_msg)
             config.raise_exception()

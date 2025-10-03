@@ -49,7 +49,6 @@ write_acls =  []
 
 read_value_acls = {
                 "view"      : [
-                            "password",
                             "push_script",
                             "push_token",
                             "phone_number",
@@ -206,7 +205,6 @@ def register_token_type():
 def register_config_params():
     """ Register config params. """
     object_types = [
-                    'realm',
                     'site',
                     'unit',
                     'user',
@@ -222,11 +220,35 @@ def register_config_params():
                     'site',
                     'unit',
                 ]
+    def script_setter(script_path):
+        result = backend.search(object_type="script",
+                                attribute="rel_path",
+                                value=script_path,
+                                return_type="uuid")
+        if not result:
+            msg = _("Unknown script: {script_path}")
+            msg = msg.format(script_path=script_path)
+            raise UnknownObject(msg)
+        script_uuid = result[0]
+        return script_uuid
+    def script_getter(script_uuid):
+        result = backend.search(object_type="script",
+                                attribute="uuid",
+                                value=script_uuid,
+                                return_type="rel_path")
+        if not result:
+            msg = _("Unknown script: {script_uuid}")
+            msg = msg.format(script_uuid=script_uuid)
+            raise UnknownObject(msg)
+        script_path = result[0]
+        return script_path
     push_script_name = "push_script.sh"
     scripts_unit = config.get_default_unit("script")
     default_push_script = f"{scripts_unit}/{push_script_name}"
     config.register_config_parameter(name="default_otp_push_script",
                                     ctype=str,
+                                    getter=script_getter,
+                                    setter=script_setter,
                                     default_value=default_push_script,
                                     object_types=object_types)
     # Register push scripot.
@@ -403,8 +425,7 @@ class OtppushToken(Token):
         return None, None, None
 
         # This point should never be reached.
-        msg = _("WARNING: You may have hit a BUG of "
-                "Token().verify_mschap_static().")
+        msg = _("WARNING: You may have hit a BUG of Token().verify_mschap_static().")
         raise Exception(msg)
 
     @check_acls(['edit:push_script'])
@@ -616,9 +637,8 @@ class OtppushToken(Token):
                             force=True,
                             callback=callback)
 
-        if self.verify_acl("view:password"):
-            msg = _("Push password: {password}")
-            return_message = msg.format(password=new_pass)
+        msg = _("Push password: {password}")
+        return_message = msg.format(password=new_pass)
 
         # Set default push script.
         default_push_script = self.get_config_parameter("default_otp_push_script")

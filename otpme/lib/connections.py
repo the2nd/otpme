@@ -370,8 +370,7 @@ def get(daemon, **kwargs):
                 # If selected user is not == agent user do not use agent
                 # connection.
                 if not agent_user or username != agent_user:
-                    log_msg = _("User '{username}' is not logged in. Not using agent "
-                            "connection, trying normal authentication...", log=True)[1]
+                    log_msg = _("User '{username}' is not logged in. Not using agent connection, trying normal authentication...", log=True)[1]
                     log_msg = log_msg.format(username=username)
                     logger.info(log_msg)
                     use_agent = False

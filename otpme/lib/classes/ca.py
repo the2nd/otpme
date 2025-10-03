@@ -546,27 +546,41 @@ def register_config():
     """ Registger config stuff. """
     # Object types our config parameters are valid for.
     object_types = [
-                        'realm',
                         'site',
                         'unit',
                         'ca',
                     ]
     # Length for certificate keys.
+    def key_len_setter(key_len):
+        valid_key_lens = [2048, 4096]
+        if key_len not in valid_key_lens:
+            msg = _("Invalid key len.")
+            raise ValueError(msg)
+        return key_len
     config.register_config_parameter(name="cert_key_len",
                                     ctype=int,
                                     default_value=2048,
+                                    setter=key_len_setter,
                                     valid_values=VALID_CERT_KEY_LENS,
                                     object_types=object_types)
     # Sign algorithm for certificates.
+    def sign_algo_setter(sign_algo):
+        valid_sign_algos = ["sha256", "sha512"]
+        if sign_algo not in valid_sign_algos:
+            msg = _("Invalid sign algo.")
+            raise ValueError(msg)
+        return sign_algo
     config.register_config_parameter(name="cert_sign_algo",
                                     ctype=str,
                                     default_value="sha256",
+                                    setter=sign_algo_setter,
                                     valid_values=VALID_SIGN_ALGOS,
                                     object_types=object_types)
     # Sign algorithm for CRLs.
     config.register_config_parameter(name="crl_sign_algo",
                                     ctype=str,
                                     default_value="sha256",
+                                    setter=sign_algo_setter,
                                     valid_values=VALID_SIGN_ALGOS,
                                     object_types=object_types)
     # Default certificate settings.

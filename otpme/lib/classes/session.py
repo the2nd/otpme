@@ -495,8 +495,7 @@ class Session(OTPmeLockObject):
         now = time.time()
         expire_time = self.expire_time()
         if now > expire_time:
-            log_msg = _("Session '{session_name}' is expired by session timeout. "
-                    "Removing...", log=True)[1]
+            log_msg = _("Session '{session_name}' is expired by session timeout. Removing...", log=True)[1]
             log_msg = log_msg.format(session_name=self.name)
             logger.debug(log_msg)
             self.delete(force=True, recursive=True, verify_acls=False)
@@ -505,8 +504,7 @@ class Session(OTPmeLockObject):
         unused_expire_time = self.unused_expire_time()
         if unused_expire_time:
             if now > unused_expire_time:
-                log_msg = _("Session '{session_name}' is expired by unused session timeout. "
-                        "Removing...", log=True)[1]
+                log_msg = _("Session '{session_name}' is expired by unused session timeout. Removing...", log=True)[1]
                 log_msg = log_msg.format(session_name=self.name)
                 logger.debug(log_msg)
                 self.delete(force=True, recursive=True, verify_acls=False)
@@ -725,14 +723,12 @@ class Session(OTPmeLockObject):
                                                 realm=self.realm,
                                                 site=self.site)
             if not session_ag:
-                log_msg = _("Accessgroup of session '{session_name}' does not exist "
-                                "anymore: {access_group}", log=True)[1]
+                log_msg = _("Accessgroup of session '{session_name}' does not exist anymore: {access_group}", log=True)[1]
                 log_msg = log_msg.format(session_name=session.name, access_group=session.access_group)
                 logger.critical(log_msg)
                 continue
             if not session_ag.enabled:
-                log_msg = _("Not updating timestamp for disabled child "
-                                "session '{session_name}'.", log=True)[1]
+                log_msg = _("Not updating timestamp for disabled child session '{session_name}'.", log=True)[1]
                 log_msg = log_msg.format(session_name=session.name)
                 logger.debug(log_msg)
                 continue
@@ -772,8 +768,7 @@ class Session(OTPmeLockObject):
             logger.debug(log_msg)
             status = True
         else:
-            log_msg = _("Error writing renegotiation parameters: "
-                            "reneg_start: {session_name}", log=True)[1]
+            log_msg = _("Error writing renegotiation parameters: reneg_start: {session_name}", log=True)[1]
             log_msg = log_msg.format(session_name=self.name)
             logger.critical(log_msg)
             status = False
@@ -800,8 +795,7 @@ class Session(OTPmeLockObject):
             logger.debug(log_msg)
             status = True
         else:
-            log_msg = _("Error writing renegotiation parameters: "
-                            "reneg_finish: {session_name}", log=True)[1]
+            log_msg = _("Error writing renegotiation parameters: reneg_finish: {session_name}", log=True)[1]
             log_msg = log_msg.format(session_name=self.name)
             logger.critical(log_msg)
             status = False

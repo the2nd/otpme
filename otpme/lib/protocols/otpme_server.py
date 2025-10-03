@@ -1404,8 +1404,7 @@ class OTPmeServer1(object):
                 raise OTPmeException(msg)
 
             if len(found_clients) == 0:
-                msg, log_msg = _("Cannot find client of this request. Authentication "
-                                "will fail.", log=True)
+                msg, log_msg = _("Cannot find client of this request. Authentication will fail.", log=True)
                 self.logger.warning(log_msg)
                 raise OTPmeException(msg)
 
@@ -1424,7 +1423,8 @@ class OTPmeServer1(object):
 
         # If client is not enabled authentication must fail.
         if not auth_client.enabled:
-            log_msg = _("Client '{client}' is disabled.", log=True)[1]
+            msg, log_msg = _("Client '{client}' is disabled.", log=True)
+            msg = msg.format(client=self.client)
             log_msg = log_msg.format(client=self.client)
             self.logger.warning(log_msg)
             raise OTPmeException(msg)
