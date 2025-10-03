@@ -16,6 +16,10 @@ from otpme.lib import backend
 from otpme.lib.spsc import SPSC
 from otpme.lib import otpme_acl
 from otpme.lib.audit import audit_log
+from otpme.lib.spsc import check_number
+from otpme.lib.spsc import check_special
+from otpme.lib.spsc import check_uppercase
+from otpme.lib.spsc import check_lowercase
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
@@ -67,9 +71,17 @@ write_value_acls = {
                             "strength_checker_opts",
                             ],
                 "enable"    : [
+                            "number",
+                            "uppercase",
+                            "lowercase",
+                            "special",
                             "strength_checker",
                             ],
                 "disable"   : [
+                            "number",
+                            "uppercase",
+                            "lowercase",
+                            "special",
                             "strength_checker",
                             ],
                 }
@@ -104,6 +116,70 @@ commands = {
                 'exists'    : {
                     'method'            : 'change_strength_checker_opts',
                     'args'              : ['options'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'enable_require_number'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_require_number',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'disable_require_number'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_require_number',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'enable_require_upper'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_require_upper',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'disable_require_upper'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_require_upper',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'enable_require_lower'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_require_lower',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'disable_require_lower'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_require_lower',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'enable_require_special'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_require_special',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'disable_require_special'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_require_special',
                     'job_type'          : 'process',
                     },
                 },
@@ -275,6 +351,10 @@ class PasswordPolicy(Policy):
         self.object_types = [ 'user', 'token', 'host', 'node' ]
         self.password_min_len = 8
         self.pin_min_len = 4
+        self.require_number = True
+        self.require_special = True
+        self.require_lowercase = True
+        self.require_uppercase = True
         self.strength_checker = config.default_pass_strength_checker
         self.strength_checker_enabled = True
         #self.strength_checker_opts = {}
@@ -302,9 +382,33 @@ class PasswordPolicy(Policy):
                                             'required'      : False,
                                         },
 
-            'PIN_MIN_LEN'          : {
+            'PIN_MIN_LEN'               : {
                                             'var_name'      : 'pin_min_len',
                                             'type'          : int,
+                                            'required'      : False,
+                                        },
+
+            'REQUIRE_NUMBER'            : {
+                                            'var_name'      : 'require_number',
+                                            'type'          : bool,
+                                            'required'      : False,
+                                        },
+
+            'REQUIRE_UPPERCASE'         : {
+                                            'var_name'      : 'require_uppercase',
+                                            'type'          : bool,
+                                            'required'      : False,
+                                        },
+
+            'REQUIRE_LOWERCASE'         : {
+                                            'var_name'      : 'require_lowercase',
+                                            'type'          : bool,
+                                            'required'      : False,
+                                        },
+
+            'REQUIRE_SPECIAL'           : {
+                                            'var_name'      : 'require_special',
+                                            'type'          : bool,
                                             'required'      : False,
                                         },
 
@@ -396,17 +500,33 @@ class PasswordPolicy(Policy):
             return callback.error(msg)
 
         if not score_only:
-            password_allowed_chars = self.get_config_parameter("password_allowed_chars")
             if len(password) < self.password_min_len:
                 msg = _("Password must be at least {password_min_len} characters long.")
                 msg = msg.format(password_min_len=self.password_min_len)
                 return callback.error(msg, exception=self.policy_exception)
+            password_allowed_chars = self.get_config_parameter("password_allowed_chars")
             password_regex = f'^[{password_allowed_chars}]*$'
             password_re = re.compile(password_regex)
             if not password_re.match(password):
                 msg = _("Password contains invalid character(s). Allowed characters are: {password_allowed_chars}")
                 msg = msg.format(password_allowed_chars=password_allowed_chars)
                 return callback.error(msg, exception=self.policy_exception)
+            if self.require_number:
+                if not check_number(password):
+                    msg = _("Password must contain a number.")
+                    return callback.error(msg, exception=self.policy_exception)
+            if self.require_lowercase:
+                if not check_lowercase(password):
+                    msg = _("Password must contain a lowercase letter.")
+                    return callback.error(msg, exception=self.policy_exception)
+            if self.require_uppercase:
+                if not check_uppercase(password):
+                    msg = _("Password must contain a uppercase letter.")
+                    return callback.error(msg, exception=self.policy_exception)
+            if self.require_special:
+                if not check_special(password):
+                    msg = _("Password must contain a special character.")
+                    return callback.error(msg, exception=self.policy_exception)
             if not self.strength_checker_enabled:
                 return callback.ok()
 
@@ -608,6 +728,254 @@ class PasswordPolicy(Policy):
                 return callback.error(msg)
         return self._cache(callback=callback)
 
+    @check_acls(['enable:number'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def enable_require_number(self, force=True, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Enable check for number in password. """
+        if self.require_number:
+            return callback.error(_("Require number already enabled."))
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_require_number",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        if not force:
+            if self.confirmation_policy == "paranoid":
+                answer = callback.ask("Enable require number?: ")
+                if answer.lower() != "y":
+                    return callback.abort()
+
+        self.require_number = True
+
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:number'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def disable_require_number(self, force=True, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Enable check for number in password. """
+        if not self.require_number:
+            return callback.error(_("Require number already disabled."))
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_require_number",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        if not force:
+            if self.confirmation_policy == "paranoid":
+                answer = callback.ask("Enable require number?: ")
+                if answer.lower() != "y":
+                    return callback.abort()
+
+        self.require_number = False
+
+        return self._cache(callback=callback)
+
+    @check_acls(['enable:uppercase'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def enable_require_upper(self, force=True, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Enable check for uppercase character in password. """
+        if self.require_uppercase:
+            return callback.error(_("Require uppercase already enabled."))
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_require_upper",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        if not force:
+            if self.confirmation_policy == "paranoid":
+                answer = callback.ask("Enable require uppercase?: ")
+                if answer.lower() != "y":
+                    return callback.abort()
+
+        self.require_uppercase = True
+
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:uppercase'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def disable_require_upper(self, force=True, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Enable check for uppercase character in password. """
+        if not self.require_uppercase:
+            return callback.error(_("Require uppercase already disabled."))
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_require_upper",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        if not force:
+            if self.confirmation_policy == "paranoid":
+                answer = callback.ask("Enable require uppercase?: ")
+                if answer.lower() != "y":
+                    return callback.abort()
+
+        self.require_uppercase = False
+
+        return self._cache(callback=callback)
+
+    @check_acls(['enable:lowercase'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def enable_require_lower(self, force=True, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Enable check for lowercase character in password. """
+        if self.require_lowercase:
+            return callback.error(_("Require lowercase already enabled."))
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_require_lower",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        if not force:
+            if self.confirmation_policy == "paranoid":
+                answer = callback.ask("Enable require lowercase?: ")
+                if answer.lower() != "y":
+                    return callback.abort()
+
+        self.require_lowercase = True
+
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:lowercase'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def disable_require_lower(self, force=True, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Enable check for lowercase character in password. """
+        if not self.require_lowercase:
+            return callback.error(_("Require lowercase already disabled."))
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_require_lower",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        if not force:
+            if self.confirmation_policy == "paranoid":
+                answer = callback.ask("Enable require lowercase?: ")
+                if answer.lower() != "y":
+                    return callback.abort()
+
+        self.require_lowercase = False
+
+        return self._cache(callback=callback)
+
+    @check_acls(['enable:special'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def enable_require_special(self, force=True, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Enable check for special character in password. """
+        if self.require_special:
+            return callback.error(_("Require special character already enabled."))
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_require_special",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        if not force:
+            if self.confirmation_policy == "paranoid":
+                answer = callback.ask("Enable require special character?: ")
+                if answer.lower() != "y":
+                    return callback.abort()
+
+        self.require_special = True
+
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:special'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def disable_require_special(self, force=True, run_policies=True,
+        callback=default_callback, _caller="API", **kwargs):
+        """ Enable check for special character in password. """
+        if not self.require_special:
+            return callback.error(_("Require special character already disabled."))
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_require_special",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        if not force:
+            if self.confirmation_policy == "paranoid":
+                answer = callback.ask("Enable require special character?: ")
+                if answer.lower() != "y":
+                    return callback.abort()
+
+        self.require_special = False
+
+        return self._cache(callback=callback)
+
     @check_acls(['enable:strength_checker'])
     @object_lock()
     @backend.transaction
@@ -687,12 +1055,35 @@ class PasswordPolicy(Policy):
             pin_min_len = self.pin_min_len
         lines.append(f'PIN_MIN_LEN="{pin_min_len}"')
 
-        strength_checker = ""
         password_min_len = ""
         if self.verify_acl("view:password_min_len") \
         or self.verify_acl("edit:password_min_len"):
             password_min_len = self.password_min_len
         lines.append(f'PASSWORD_MIN_LEN="{password_min_len}"')
+
+        number = ""
+        if self.verify_acl("enable:number") \
+        or self.verify_acl("disable:number"):
+            number = self.require_number
+        lines.append(f'NUMBER_CHECK="{number}"')
+
+        uppercase = ""
+        if self.verify_acl("enable:uppercase") \
+        or self.verify_acl("disable:uppercase"):
+            uppercase = self.require_uppercase
+        lines.append(f'UPPERCASE_CHECK="{uppercase}"')
+
+        lowercase = ""
+        if self.verify_acl("enable:lowercase") \
+        or self.verify_acl("disable:lowercase"):
+            lowercase = self.require_lowercase
+        lines.append(f'LOWERCASE_CHECK="{lowercase}"')
+
+        special = ""
+        if self.verify_acl("enable:special") \
+        or self.verify_acl("disable:special"):
+            special = self.require_special
+        lines.append(f'SPECIAL_CHAR_CHECK="{special}"')
 
         strength_checker = ""
         if self.verify_acl("view:strength_checker") \

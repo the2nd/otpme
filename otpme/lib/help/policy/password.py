@@ -49,6 +49,74 @@ cmd_help = {
                                 },
                 },
 
+    'enable_require_number'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy enable_require_number {policy}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Enable check for number in password.'),
+                                },
+
+                },
+
+    'disable_require_number'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy disable_require_number {policy}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable check for number in password.'),
+                                },
+                },
+
+    'enable_require_upper'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy enable_require_upper {policy}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Enable check for uppercase character in password.'),
+                                },
+
+                },
+
+    'disable_require_upper'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy disable_require_upper {policy}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable check for uppercase character in password.'),
+                                },
+                },
+
+    'enable_require_lower'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy enable_require_lower {policy}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Enable check for lowercase character in password.'),
+                                },
+
+                },
+
+    'disable_require_lower'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy disable_require_lower {policy}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable check for lowercase character in password.'),
+                                },
+                },
+
+    'enable_require_special'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy enable_require_special {policy}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Enable check for special character in password.'),
+                                },
+
+                },
+
+    'disable_require_special'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-policy disable_require_special {policy}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable check for special character in password.'),
+                                },
+                },
+
     'enable_strength_checker'   : {
                     '_cmd_usage_help' : _('Usage: otpme-policy enable_strength_checker {policy}'),
                     'cmd'   :   '<|object|>',

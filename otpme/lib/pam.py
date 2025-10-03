@@ -175,6 +175,7 @@ class PamHandler(object):
                     arg = x.split("=")[0]
                     val = x.split("=")[1]
                     log_msg = _("Got option: {arg}={val}", log=True)[1]
+                    log_msg = log_msg.format(arg=arg, val=val)
                     self.logger.debug(log_msg)
                 except:
                     log_msg = _("Ignoring malformed PAM parameter: {param}", log=True)[1]
@@ -184,6 +185,7 @@ class PamHandler(object):
             else:
                 arg = x
                 log_msg = _("Got option: {arg}", log=True)[1]
+                log_msg = log_msg.format(arg=arg)
                 self.logger.debug(log_msg)
 
             if arg == "nullok":

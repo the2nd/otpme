@@ -199,26 +199,27 @@ def split_password(password, slice_len=3):
     return slices
 
 def check_uppercase(word):
-    """ Detect repeated chars. """
-    if word.upper() != word:
-        return False
-    return True
+    """ Check if word contains upper chars. """
+    if re.search(r'[A-Z]', word):
+        return True
+    return False
 
 def check_lowercase(word):
-    """ Detect repeated chars. """
-    if word.lower() != word:
-        return False
-    return True
+    """ Check if word contains lower chars. """
+    if re.search(r'[a-z]', word):
+        return True
+    return False
 
 def check_number(word):
-    """ Detect repeated chars. """
-    for x in word:
-        try:
-            int(x)
-        except:
-            continue
-        else:
-            return True
+    """ Check if word contains numbers. """
+    if re.search(r'[0-9]', word):
+        return True
+    return False
+
+def check_special(word):
+    """ check if word contains special chars. """
+    if re.search(r'[^A-Za-z0-9]', word):
+        return True
     return False
 
 def check_common_spellings(word):
@@ -647,17 +648,15 @@ class SPSC(object):
     def get_score(self, password, max_score=10, debug=False):
         """ Calculate password strength score. """
         # Check for lower-/uppercase and numbers.
-        pass_len = len(password)
-        score_override = False
-        if not check_number(password):
-            if pass_len < 10:
-                score_override = True
+        score_add = 0
+        if check_number(password):
+            score_add += 0.5
         if check_lowercase(password):
-            if pass_len < 10:
-                score_override = True
+            score_add += 0.5
         if check_uppercase(password):
-            if pass_len < 10:
-                score_override = True
+            score_add += 0.5
+        if check_special(password):
+            score_add += 0.5
 
         # For performance reasons we just check the first 32 chars of the
         # given password.
@@ -676,9 +675,10 @@ class SPSC(object):
         pass_result['combinations'] = pass_comb
         pass_result['duration'] = pass_check_duration
 
-        if score_override:
-            if pass_result['score'] > 2:
-                pass_result['score'] = 2
+        if score_add:
+            pass_result['score'] += score_add
+        if pass_result['score'] > 10:
+            pass_result['score'] = 10
 
         # Check password against common dictionaries, word guessing etc.
         all_matches, non_guessing_matches = self.get_matches(password)
@@ -722,9 +722,10 @@ class SPSC(object):
         # Add matches to result.
         result['match_result'] = fastest_comb
 
-        if score_override:
-            if result['score'] > 2:
-                result['score'] = 2
+        if score_add:
+            result['score'] += score_add
+        if result['score'] > 10:
+            result['score'] = 10
 
         # If cracking using dictionaries is slower return normal crack time.
         if pass_comb < dict_comb:
