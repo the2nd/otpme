@@ -178,6 +178,8 @@ class OTPmeConfig(object):
         # Socket receive buffer.
         self.register_config_var("socket_receive_buffer", int, 104857600,
                             config_file_parameter="SOCKET_RECEIVE_BUFFER")
+        self.register_config_var("ldap_auth_cache_timeout", int, 300,
+                            config_file_parameter="LDAP_AUTH_CACHE_TIMEOUT")
         # Realm infos.
         self.register_config_var("realm", str, None)
         self.register_config_var("realm_uuid", str, None)
@@ -365,7 +367,7 @@ class OTPmeConfig(object):
         #self.register_config_var("realm_ca_path", str, None)
         #self.register_config_var("site_ca_path", str, None)
         # Users (instance) of the authenticated user.
-        self.register_config_var("auth_user", None, None)
+        self.register_config_var("_auth_user", None, None)
         # Users token (instance) that was used to authenticate the user of the current
         # connection.
         self.register_config_var("auth_token", None, None)
@@ -2023,6 +2025,29 @@ class OTPmeConfig(object):
     @login_user.setter
     def login_user(self, login_user):
         self._login_user = login_user
+
+    @property
+    def auth_user(self):
+        from otpme.lib import backend
+        if not self._auth_user:
+            return
+        result = backend.search(object_type="user",
+                                attribute="uuid",
+                                value=self._auth_user.uuid,
+                                return_attributes=['last_modified'])
+        last_modified = result[0]
+        if self._auth_user.last_modified == last_modified:
+            return self._auth_user
+        result = backend.search(object_type="user",
+                                attribute="uuid",
+                                value=self._auth_user.uuid,
+                                return_type="instance")
+        self._auth_user = result[0]
+        return self._auth_user
+
+    @auth_user.setter
+    def auth_user(self, auth_user):
+        self._auth_user = auth_user
 
     def get_login_user(self):
         """ Get login user. """

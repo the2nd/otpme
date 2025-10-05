@@ -517,11 +517,11 @@ class PasswordPolicy(Policy):
                     return callback.error(msg, exception=self.policy_exception)
             if self.require_lowercase:
                 if not check_lowercase(password):
-                    msg = _("Password must contain a lowercase letter.")
+                    msg = _("Password must contain a lowercase character.")
                     return callback.error(msg, exception=self.policy_exception)
             if self.require_uppercase:
                 if not check_uppercase(password):
-                    msg = _("Password must contain a uppercase letter.")
+                    msg = _("Password must contain a uppercase character.")
                     return callback.error(msg, exception=self.policy_exception)
             if self.require_special:
                 if not check_special(password):

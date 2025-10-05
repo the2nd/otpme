@@ -45,11 +45,13 @@ except:
 
 from otpme.lib import re
 from otpme.lib import oid
+from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib import connections
 from otpme.lib import multiprocessing
+from otpme.lib.audit import get_audit_logger
 from otpme.lib.cache import ldap_search_cache
 from otpme.lib.classes.otpme_object import get_ldif
 from otpme.lib.backends.file.file import get_oid_from_path
@@ -58,6 +60,7 @@ from otpme.lib.backends.file.file import OBJECTS_DIR
 
 from otpme.lib.exceptions import *
 
+auth_cache = {}
 ldap_cache = {}
 ldap_query_cache = {}
 
@@ -324,6 +327,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
     def _bind(self, password):
         """ Authenticate user against OTPme. """
+        global auth_cache
         if self.client is None:
             log_msg = _("Missing client DC: {dn_text}", log=True)[1]
             log_msg = log_msg.format(dn_text=self.dn.getText())
@@ -332,59 +336,97 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
         # Get username from DN.
         username = self.dn.getText().split(",")[0].split("=")[1]
+        # Gen password hash for cached authentication.
+        pass_hash = stuff.gen_md5(password)
 
-        # Get authd connection.
         try:
-            authd_conn = connections.get("authd",
-                                        realm=config.realm,
-                                        site=config.site,
-                                        auto_auth=False,
-                                        do_preauth=False,
-                                        auto_preauth=False,
-                                        interactive=False,
-                                        handle_response=True,
-                                        socket_uri=config.authd_socket_path,
-                                        local_socket=True,
-                                        use_ssl=False,
-                                        handle_host_auth=False,
-                                        handle_user_auth=False,
-                                        encrypt_session=False)
-        except Exception as e:
-            log_msg = _("Failed to get authd connection: {error}", log=True)[1]
-            log_msg = log_msg.format(error=e)
-            self.logger.critical(log_msg)
-            raise
+            do_auth = True
+            cache_time = auth_cache[username]['cache_time']
+            if (time.time() - cache_time) <= config.ldap_auth_cache_timeout:
+                cached_client = auth_cache[username]['client']
+                if cached_client == self.client:
+                    cached_pass_hash = auth_cache[username]['pass_hash']
+                    if pass_hash == cached_pass_hash:
+                        do_auth = False
+                        self.auth_token_uuid = auth_cache[username]['token_uuid']
+                        # Get audit logger.
+                        try:
+                            audit_logger = get_audit_logger()
+                        except Exception as e:
+                            log_msg = _("Failed to get audit logger: {error}", log=True)[1]
+                            log_msg = log_msg.format(error=e)
+                            self.logger.warning(log_msg)
+                        else:
+                            auth_message, log_msg = _("User authenticated to ldapd by cache: {username}", log=True)
+                            auth_message = auth_message.format(username=username)
+                            log_msg = auth_message.format(username=username)
+                            self.logger.info(log_msg)
+                            if audit_logger:
+                                audit_msg = f"{config.daemon_name}: {auth_message}"
+                                audit_logger.info(audit_msg)
+                                for x in audit_logger.handlers:
+                                    x.close()
+        except KeyError:
+            do_auth = True
 
-        # Build command args.
-        command_args = {
-                        'username'  : username,
-                        'password'  : password,
-                        'client'    : self.client,
-                        }
+        if do_auth:
+            # Get authd connection.
+            try:
+                authd_conn = connections.get("authd",
+                                            realm=config.realm,
+                                            site=config.site,
+                                            auto_auth=False,
+                                            do_preauth=False,
+                                            auto_preauth=False,
+                                            interactive=False,
+                                            handle_response=True,
+                                            socket_uri=config.authd_socket_path,
+                                            local_socket=True,
+                                            use_ssl=False,
+                                            handle_host_auth=False,
+                                            handle_user_auth=False,
+                                            encrypt_session=False)
+            except Exception as e:
+                log_msg = _("Failed to get authd connection: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
+                raise
 
-        # Send verify request.
-        try:
-            status, \
-            status_code, \
-            auth_reply, \
-            binary_data = authd_conn.send(command="verify",
-                                command_args=command_args)
-        except Exception as e:
-            log_msg = _("Failed to authenticate user: {error}", log=True)[1]
-            log_msg = log_msg.format(error=e)
-            self.logger.warning(log_msg)
-            raise ldaperrors.LDAPInvalidCredentials
-        finally:
-            authd_conn.close()
+            # Build command args.
+            command_args = {
+                            'username'  : username,
+                            'password'  : password,
+                            'client'    : self.client,
+                            }
 
-        if status is False:
-            log_msg = _("Failed to authenticate user: {reply}", log=True)[1]
-            log_msg = log_msg.format(reply=auth_reply)
-            self.logger.warning(log_msg)
-            raise ldaperrors.LDAPInvalidCredentials
+            # Send verify request.
+            try:
+                status, \
+                status_code, \
+                auth_reply, \
+                binary_data = authd_conn.send(command="verify",
+                                    command_args=command_args)
+            except Exception as e:
+                log_msg = _("Failed to authenticate user: {username}: {error}", log=True)[1]
+                log_msg = log_msg.format(username=username, error=e)
+                self.logger.warning(log_msg)
+                raise ldaperrors.LDAPInvalidCredentials
+            finally:
+                authd_conn.close()
 
-        # Set auth token.
-        self.auth_token_uuid = auth_reply[0]['login_token_uuid']
+            if status is False:
+                log_msg = _("Failed to authenticate user: {username}: {reply}", log=True)[1]
+                log_msg = log_msg.format(username=username, reply=auth_reply)
+                self.logger.warning(log_msg)
+                raise ldaperrors.LDAPInvalidCredentials
+
+            # Set auth token.
+            self.auth_token_uuid = auth_reply[0]['login_token_uuid']
+            auth_cache[username] = {}
+            auth_cache[username]['client'] = self.client
+            auth_cache[username]['pass_hash'] = pass_hash
+            auth_cache[username]['cache_time'] = time.time()
+            auth_cache[username]['token_uuid'] = self.auth_token_uuid
 
         return self
 
@@ -658,14 +700,79 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
         return cache_key
 
+    def get_ldif_attribute(self, attribute):
+        x = attribute.lower()
+        try:
+            ldif_attribute = config.ldap_object_class_mappings[x]
+        except:
+            ldif_attribute = config.ldap_attribute_type_mappings[x]
+        ldif_attribute = f"ldif:{ldif_attribute}"
+        return ldif_attribute
+
+    def decode_ldap_filter(self, filterObject):
+        """ Decode ldap filter object. """
+        less_than = False
+        greater_than = False
+        if isinstance(filterObject, pureldap.LDAPFilter_present):
+            attribute = filterObject.value.decode()
+            value = "*"
+        elif isinstance(filterObject, pureldap.LDAPFilter_equalityMatch):
+            attribute = filterObject.attributeDesc.value.decode()
+            value = filterObject.assertionValue.value.decode()
+        elif isinstance(filterObject, pureldap.LDAPFilter_substrings):
+            attribute = filterObject.type.decode()
+            sub_count = 0
+            for s in filterObject.substrings:
+                s_value = s.value
+                if isinstance(s_value, bytes):
+                    s_value = s_value.decode("utf-8")
+                if isinstance(filterObject.substrings[sub_count],
+                            pureldap.LDAPFilter_substrings_initial):
+                    if not value:
+                        value = f"{s_value}*"
+                    else:
+                        value = f"{value}{value}{s_value}*"
+                elif isinstance(filterObject.substrings[sub_count],
+                                pureldap.LDAPFilter_substrings_any):
+                    if not value:
+                        value = f"*{s_value}*"
+                    else:
+                        if value.endswith("*"):
+                            value = f"{value}{s_value}*"
+                        else:
+                            value = f"{value}*{s_value}*"
+                elif isinstance(filterObject.substrings[sub_count],
+                                pureldap.LDAPFilter_substrings_final):
+                    if not value:
+                        value = f"*{s_value}"
+                    else:
+                        if value.endswith("*"):
+                            value = f"{value}{s_value}"
+                        else:
+                            value = f"{value}*{s_value}"
+                sub_count += 1
+
+        elif isinstance(filterObject, pureldap.LDAPFilter_greaterOrEqual):
+            attribute = filterObject.attributeDesc.value
+            greater_than = str(int(filterObject.assertionValue.value) - 1)
+        elif isinstance(filterObject, pureldap.LDAPFilter_lessOrEqual):
+            attribute = filterObject.attributeDesc.value
+            less_than = str(int(filterObject.assertionValue.value) + 1)
+        elif isinstance(filterObject, pureldap.LDAPFilter_not):
+            attribute = filterObject.value.attributeDesc.value
+            value = f'[^{filterObject.value.assertionValue.value}]'
+        else:
+            raise (ldapsyntax.MatchNotImplemented, filterObject)
+        return attribute, value, greater_than, less_than
+
     def search_otpme(self, filterText=None, filterObject=None,
         attributes=(), sizeLimit=0, timeLimit=0, typesOnly=0, **kwargs):
         """ Search OTPme backend. """
         result_uuids = []
         value = None
+        attribute = None
         less_than = False
         greater_than = False
-        attribute = None
 
         if filterObject is None and filterText is None:
             filterObject = pureldap.LDAPFilterMatchAll
@@ -682,85 +789,44 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             pass
 
         if isinstance(filterObject, pureldap.LDAPFilter_and):
-            counter = 0
+            attributes = {}
             for f in filterObject:
-                search_result = self.search_otpme(filterText=None,
-                                                filterObject=f,
-                                                attributes=(),
-                                                #sizeLimit=sizeLimit,
-                                                #timeLimit=timeLimit,
-                                                typesOnly=typesOnly,
-                                                **kwargs)
-                if counter == 0:
-                    result_uuids = search_result
-                else:
-                    for o in list(result_uuids):
-                        if o not in search_result:
-                            result_uuids.remove(o)
-                counter += 1
+                attribute, \
+                value, \
+                greater_than, \
+                less_than = self.decode_ldap_filter(f)
+                try:
+                    ldif_attribute = self.get_ldif_attribute(attribute)
+                except Exception as e:
+                    msg = _("Invalid attribute: {attribute}")
+                    msg = msg.format(attribute=attribute)
+                    raise (ldapsyntax.MatchNotImplemented, filterObject)
+                # Set attribute.
+                try:
+                    attr_values = attributes[ldif_attribute]['values']
+                except KeyError:
+                    attr_values = []
+                    attributes[ldif_attribute] = {}
+                    attributes[ldif_attribute]['values'] = attr_values
+                attr_values.append(value)
+            # Search objects.
+            result_uuids = self._search_otpme(attributes=attributes)
 
         elif isinstance(filterObject, pureldap.LDAPFilter_or):
             for f in filterObject:
                 result_uuids += self.search_otpme(filterText=None,
                                                 filterObject=f,
-                                                attributes=(),
+                                                attributes=attributes,
+                                                #attributes=(),
                                                 #sizeLimit=sizeLimit,
                                                 #timeLimit=timeLimit,
                                                 typesOnly=typesOnly,
                                                 **kwargs)
         else:
-            if isinstance(filterObject, pureldap.LDAPFilter_present):
-                attribute = filterObject.value.decode()
-                value = "*"
-            elif isinstance(filterObject, pureldap.LDAPFilter_equalityMatch):
-                attribute = filterObject.attributeDesc.value.decode()
-                value = filterObject.assertionValue.value.decode().lower()
-            elif isinstance(filterObject, pureldap.LDAPFilter_substrings):
-
-                attribute = filterObject.type.decode()
-                sub_count = 0
-                for s in filterObject.substrings:
-                    s_value = s.value
-                    if isinstance(s_value, bytes):
-                        s_value = s_value.decode("utf-8")
-                    if isinstance(filterObject.substrings[sub_count],
-                                pureldap.LDAPFilter_substrings_initial):
-                        if not value:
-                            value = f"{s_value}*"
-                        else:
-                            value = f"{value}{value}{s_value}*"
-                    elif isinstance(filterObject.substrings[sub_count],
-                                    pureldap.LDAPFilter_substrings_any):
-                        if not value:
-                            value = f"*{s_value}*"
-                        else:
-                            if value.endswith("*"):
-                                value = f"{value}{s_value}*"
-                            else:
-                                value = f"{value}*{s_value}*"
-                    elif isinstance(filterObject.substrings[sub_count],
-                                    pureldap.LDAPFilter_substrings_final):
-                        if not value:
-                            value = f"*{s_value}"
-                        else:
-                            if value.endswith("*"):
-                                value = f"{value}{s_value}"
-                            else:
-                                value = f"{value}*{s_value}"
-                    sub_count += 1
-
-            elif isinstance(filterObject, pureldap.LDAPFilter_greaterOrEqual):
-                attribute = filterObject.attributeDesc.value
-                greater_than = str(int(filterObject.assertionValue.value) - 1)
-            elif isinstance(filterObject, pureldap.LDAPFilter_lessOrEqual):
-                attribute = filterObject.attributeDesc.value
-                less_than = str(int(filterObject.assertionValue.value) + 1)
-            elif isinstance(filterObject, pureldap.LDAPFilter_not):
-                attribute = filterObject.value.attributeDesc.value
-                value = f'[^{filterObject.value.assertionValue.value}]'
-            else:
-                raise (ldapsyntax.MatchNotImplemented, filterObject)
-
+            attribute, \
+            value, \
+            greater_than, \
+            less_than = self.decode_ldap_filter(filterObject)
             if isinstance(attribute, bytes):
                 attribute = attribute.decode("utf-8")
             if isinstance(value, bytes):
@@ -771,23 +837,18 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                             or value is not None):
 
                 # Try to get case sensitive attribute name.
-                x = attribute.lower()
                 try:
-                    ldif_attribute = config.ldap_object_class_mappings[x]
-                except:
-                    try:
-                        ldif_attribute = config.ldap_attribute_type_mappings[x]
-                    except:
-                        return result_uuids
-                ldif_attribute = f"ldif:{ldif_attribute}"
+                    ldif_attribute = self.get_ldif_attribute(attribute)
+                except Exception:
+                    return result_uuids
 
                 # Search objects.
                 result_uuids = self._search_otpme(attribute=ldif_attribute,
-                                            value=value,
-                                            less_than=less_than,
-                                            greater_than=greater_than,
-                                            size_limit=sizeLimit,
-                                            **kwargs)
+                                                value=value,
+                                                less_than=less_than,
+                                                greater_than=greater_than,
+                                                size_limit=sizeLimit,
+                                                **kwargs)
         if sizeLimit > 0:
             result_uuids = result_uuids[:sizeLimit]
         return result_uuids
@@ -917,13 +978,13 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
         return object_data
 
     @ldap_search_cache.cache_method()
-    def _search_otpme(self, attribute, value, object_type=None,
-        less_than=None, greater_than=None, size_limit=1024, scope="one"):
+    def _search_otpme(self, attribute=None, value=None, attributes=None,
+        object_type=None, less_than=None, greater_than=None,
+        size_limit=1024, scope="one"):
         """ Search OTPme objects. """
         global global_ldif_cache
         global uuid_to_oid
         search_attributes = {
-                                attribute  : {'value':value,},
                                 #'l'     : {'value':"Sitename",},
                                 'acl'  : {
                                             'values' : [
@@ -945,6 +1006,15 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                         },
                                 'template'  : {'value':False,},
                             }
+        # Add attribute and value.
+        if attribute and value:
+            search_attributes[attribute] = {'value':value}
+
+        # Add attributes and values.
+        if attributes:
+            for attr in attributes:
+                vals = attributes[attr]
+                search_attributes[attr] = vals
 
         ldap_settings = config.get_ldap_settings(self.otpme_oid.object_type)
         if ldap_settings:

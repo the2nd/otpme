@@ -562,8 +562,8 @@ def get_db_engine():
             msg = msg.format(postgres_driver)
             raise OTPmeException(msg)
 
-        #from sqlalchemy.pool import QueuePool
         #from sqlalchemy.pool import NullPool
+        from sqlalchemy.pool import QueuePool
         engine = create_engine(db_uri,
                             #isolation_level="SERIALIZABLE",
                             #isolation_level="READ UNCOMMITTED",
@@ -571,10 +571,11 @@ def get_db_engine():
                             #isolation_level="REPEATABLE READ",
                             connect_args={'sslmode':'disable'},
                             #convert_unicode=True,
-                            #pool_recycle=3600,
-                            #pool_size=20,
-                            #max_overflow=10,
-                            #poolclass=QueuePool,
+                            #poolclass=NullPool,
+                            poolclass=QueuePool,
+                            pool_recycle=60,
+                            pool_size=4,
+                            max_overflow=2,
                             pool_pre_ping=False,
                             echo=False)
 

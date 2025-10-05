@@ -1044,6 +1044,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     """ Search index. """
     # Import modules here to speedup import time.
     from sqlalchemy import or_
+    #from sqlalchemy import and_
     from sqlalchemy import cast
     from sqlalchemy import desc
     from sqlalchemy import func
@@ -1327,16 +1328,16 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     if query_args:
         q = q.filter_by(**query_args)
 
-    attribute_table_joined = False
+    #attribute_table_joined = False
     # Handle search for a list of values (e.g. token UUIDs).
     if values:
         if attribute in config.otpme_base_attributes:
             q = q.filter(getattr(IndexObject, attribute).in_(values))
             q = q.options(contains_eager(IndexObject.attributes))
-        else:
-            attribute_table_joined = True
-            q = q.join(IndexObject.attributes)
-            q = q.filter(IndexObjectAttribute.value.in_(values))
+        #else:
+        #    attribute_table_joined = True
+        #    q = q.join(IndexObject.attributes)
+        #    q = q.filter(IndexObjectAttribute.value.in_(values))
 
     # Handle "normal" search by attribute and value.
     for attr in search_attributes:
@@ -1416,10 +1417,12 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             if isinstance(value, bool):
                 q = q.filter(IndexObject.attributes.any(name=attr, value=value))
             elif values is not None:
-                if not attribute_table_joined:
-                    q = q.join(IndexObject.attributes)
-                    attribute_table_joined = True
-                q = q.filter(IndexObjectAttribute.value.in_(values))
+                #if not attribute_table_joined:
+                #    q = q.join(IndexObject.attributes)
+                #    attribute_table_joined = True
+                #q = q.filter(IndexObjectAttribute.name==attr, IndexObjectAttribute.value.in_(values))
+                for val in values:
+                    q = q.filter(IndexObject.attributes.any(name=attr, value=val))
             elif value is not None:
                 like_query = False
                 sql_like = str(value)

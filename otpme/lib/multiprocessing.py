@@ -526,7 +526,11 @@ def start_process(name, target, target_args=None,
         new_proc.start()
         # Start daemon thread to join process on exit.
         if join:
-            start_thread(name=name, target=new_proc.join, daemon=True)
+            def join_and_close(proc):
+                proc.join()
+                proc.close()
+            start_thread(name=name, target=join_and_close,
+                        target_args=(new_proc,), daemon=True)
     return new_proc
 
 def start_thread(name, target, target_args=None,

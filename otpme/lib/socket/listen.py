@@ -220,10 +220,10 @@ class ListenSocket(object):
                     }
         return peer_cert
 
-    def add_connection_pid(self, client, pid):
+    def add_connection_proc(self, client, proc):
         """ Send client to client handler. """
         try:
-            self.connections[client] = pid
+            self.connections[client] = proc
         except:
             pass
         # Cleanup old connection PIDs.
@@ -233,7 +233,7 @@ class ListenSocket(object):
             return
         for c in dict(connections):
             try:
-                pid = self.connections[c]
+                pid = self.connections[c].pid
             except:
                 continue
             if stuff.check_pid(pid):
@@ -242,6 +242,24 @@ class ListenSocket(object):
                 self.connections.pop(c)
             except:
                 pass
+
+    def close_conn_procs(self):
+        """ Make sure connection procs are closed. """
+        while True:
+            if self.shutdown:
+                break
+            for proc in self.connections:
+                print("CCC", proc)
+                if proc.is_alive():
+                    continue
+                print("ccc", proc)
+                proc.join()
+                proc.close()
+                try:
+                    self.connections.pop(proc)
+                except KeyError:
+                    pass
+            time.sleep(0.01)
 
     def listen(self, **kwargs):
         """
@@ -422,6 +440,10 @@ class ListenSocket(object):
             init_done.send("init_failed")
             return False
 
+        # Start thread to handle connection procs.
+        multiprocessing.start_thread(name=self.name,
+                            target=self.close_conn_procs)
+
         # Run in loop to accept connections:
         while True:
             if self.shutdown:
@@ -540,9 +562,11 @@ class ListenSocket(object):
                             target_args=(new_connection,
                                         client,
                                         self.connection_handler),
-                            join=True)
+                            join=False)
+            # Close connection in parent process to avoid file descriptor leak.
+            new_connection.close()
             # Add process to dict.
-            self.add_connection_pid(client, p.pid)
+            self.add_connection_proc(client, p)
         log_msg = _("Stopped listening on '{uri}'", log=True)[1]
         log_msg = log_msg.format(uri=self.socket_uri)
         self.logger.info(log_msg)

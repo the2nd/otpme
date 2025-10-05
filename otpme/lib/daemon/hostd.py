@@ -1354,10 +1354,11 @@ class HostDaemon(OTPmeDaemon):
         if self.resolver_run_child:
             if self.resolver_run_child.is_alive():
                 return
+            self.resolver_run_child.join()
+            self.resolver_run_child.close()
         # Create child process.
         child = multiprocessing.start_process(name=self.name,
-                            target=self._run_resolvers,
-                            join=True)
+                            target=self._run_resolvers)
         self.resolver_run_child = child
 
     def _run_resolvers(self):
@@ -1399,10 +1400,11 @@ class HostDaemon(OTPmeDaemon):
         if self.clear_outdated_cache_objects_child:
             if self.clear_outdated_cache_objects_child.is_alive():
                 return
+            self.clear_outdated_cache_objects_child.join()
+            self.clear_outdated_cache_objects_child.close()
         # Create child process.
         child = multiprocessing.start_process(name=self.name,
-                            target=self._clear_outdated_cache_objects,
-                            join=True)
+                            target=self._clear_outdated_cache_objects)
         self.clear_outdated_cache_objects_child = child
 
     def _clear_outdated_cache_objects(self):
@@ -1422,10 +1424,11 @@ class HostDaemon(OTPmeDaemon):
         if self.remove_outdated_tokens_child:
             if self.remove_outdated_tokens_child.is_alive():
                 return
+            self.remove_outdated_tokens_child.join()
+            self.remove_outdated_tokens_child.close()
         # Create child process.
         child = multiprocessing.start_process(name=self.name,
-                            target=self._remove_outdated_tokens,
-                            join=True)
+                            target=self._remove_outdated_tokens)
         self.remove_outdated_tokens_child = child
 
     def _remove_outdated_tokens(self):
@@ -1983,6 +1986,10 @@ class HostDaemon(OTPmeDaemon):
             # Join sync child process.
             try:
                 sync_child.join()
+            except OSError:
+                pass
+            try:
+                sync_child.close()
             except OSError:
                 pass
             # We need to remove child from sync childs because this
