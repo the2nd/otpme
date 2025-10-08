@@ -388,6 +388,30 @@ cmd_help = {
                                 },
                 },
 
+    'enable_auth_cache'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-client enable_auth_cache {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Enable auth cache for this client.'),
+                                },
+                },
+
+    'disable_auth_cache'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-client disable_auth_cache {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable auth cache for this client.'),
+                                },
+                },
+
+    'auth_cache_timeout'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-client auth_cache_timeout {client} {timeout}'),
+                    'cmd'   :   '<|object|> <timeout>',
+                    '_help' :   {
+                                    'cmd'                   : _('Set auth cache timeout for this client.'),
+                                },
+                },
+
     'enable_sso'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client enable_sso {client}'),
                     'cmd'   :   '<|object|>',

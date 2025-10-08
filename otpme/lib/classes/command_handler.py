@@ -5319,6 +5319,7 @@ class CommandHandler(object):
         parser.add_argument("--foreground", dest="foreground", action="store_true", help="Run in foreground")
         parser.add_argument("--list", dest="list_shares", action="store_true", help="List shares")
         parser.add_argument('--nodes', dest='nodes')
+        parser.add_argument("--hard", dest="hard", action="store_true", help="Hold write requests on connection failure")
         parser.add_argument("--encrypted", dest="encrypted", action="store_true", help="Share is encrypted")
         parser.add_argument("--add-share-key", dest="add_share_key", action="store_true", help="Add share key to share")
         parser.add_argument("--master-password-mount", dest="master_password_mount", action="store_true", help="Use master password to mount encrypted share.")
@@ -5334,8 +5335,11 @@ class CommandHandler(object):
                 msg = "You must be root for --add-share-key."
                 raise OTPmeException(msg)
         self.init(use_backend=False)
+        hard = False
         nodes = None
         encrypted = None
+        if args.hard:
+            hard = True
         if args.nodes:
             nodes = args.nodes.split(",")
         if args.encrypted:
@@ -5399,6 +5403,7 @@ class CommandHandler(object):
                         mount_point,
                         nodes,
                         encrypted,
+                        hard=hard,
                         master_password=master_password,
                         add_share_key=args.add_share_key,
                         foreground=args.foreground)
@@ -5409,6 +5414,7 @@ class CommandHandler(object):
                                                     target_kwargs={
                                                                     'master_password'   : master_password,
                                                                     'add_share_key'     : args.add_share_key,
+                                                                    'hard'              : hard,
                                                                     'foreground'        : False,
                                                                 },
                                                     daemon=False)

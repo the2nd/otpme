@@ -29,6 +29,8 @@ table_headers = [
                 "tokens",
                 "logins",
                 "addresses",
+                "auth_cache",
+                "auth_cache_timeout",
                 "policies",
                 "inherit",
                 "description",
@@ -46,6 +48,8 @@ def register():
                         'description',
                         'accessgroup',
                         'logins_limited',
+                        'auth_cache_enabled',
+                        'auth_cache_timeout',
                         'acl_inheritance_enabled',
                         ]
     read_acls, write_acls = get_acls(split=True)
@@ -85,6 +89,14 @@ def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
             addresses = client_data[client_uuid]['address']
         except:
             addresses = None
+        try:
+            auth_cache_enabled = client_data[client_uuid]['auth_cache_enabled']
+        except:
+            auth_cache_enabled = False
+        try:
+            auth_cache_timeout = client_data[client_uuid]['auth_cache_timeout'][0]
+        except:
+            auth_cache_timeout = "Not set"
         try:
             logins_limited = client_data[client_uuid]['logins_limited'][0]
         except:
@@ -295,6 +307,25 @@ def row_getter(realm, site, client_order, client_data, acls, max_tokens=5,
                     row.append("\n".join(addresses))
                 else:
                     row.append("")
+            else:
+                row.append("-")
+        # Auth cache status.
+        if "auth_cache" in output_fields:
+            if check_acl("view:auth_cache") \
+            or check_acl("add:auth_cache") \
+            or check_acl("remove:auth_cache"):
+                if auth_cache_enabled:
+                    row.append(_("Enabled"))
+                else:
+                    row.append(_("Disabled"))
+            else:
+                row.append("-")
+        # Auth cache timeout.
+        if "auth_cache_timeout" in output_fields:
+            if check_acl("view:auth_cache_timeout") \
+            or check_acl("add:auth_cache_timeout") \
+            or check_acl("remove:auth_cache_timeout"):
+                row.append(auth_cache_timeout)
             else:
                 row.append("-")
         # Policies.

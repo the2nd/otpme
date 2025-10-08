@@ -798,7 +798,8 @@ class HostDaemon(OTPmeDaemon):
 
             # Create child process that will do the sync.
             sync_child = multiprocessing.start_process(name=self.name,
-                                                target=self.sync_sites)
+                                                target=self.sync_sites,
+                                                join=True)
             # Add info.
             sync_child.info = sync_type
             # Add sync child.
@@ -909,7 +910,8 @@ class HostDaemon(OTPmeDaemon):
                                                         resync,
                                                         nsscache_resync,
                                                         offline,),
-                                                target_kwargs=kwargs)
+                                                target_kwargs=kwargs,
+                                                join=True)
             # Add realm/site.
             child_info = sync_type
             child_info = f"{child_info} ({site})"
@@ -1838,7 +1840,9 @@ class HostDaemon(OTPmeDaemon):
                             log_msg = log_msg.format(info=sync_child.info, pid=sync_child.pid)
                             self.logger.debug(log_msg)
 
-                        sync_child.join()
+                        # Close sync child.
+                        sync_child.close()
+
                         self.sync_childs[sync_type] = None
                         self._sync_childs[sync_type] = None
 
@@ -1983,11 +1987,6 @@ class HostDaemon(OTPmeDaemon):
             if sync_child.is_alive():
                 sync_child.terminate()
 
-            # Join sync child process.
-            try:
-                sync_child.join()
-            except OSError:
-                pass
             try:
                 sync_child.close()
             except OSError:

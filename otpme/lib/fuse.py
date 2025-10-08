@@ -129,11 +129,13 @@ class OTPmeFS(fuse.Operations):
         share_site,
         logger,
         nodes,
+        hard=False,
         ):
         self.use_ns = True
         self.share = share
         self.share_site = share_site
         self.nodes = nodes
+        self.hard = hard
         self.fsd_conn = None
         self.max_name = 255
         self.username = None
@@ -185,7 +187,12 @@ class OTPmeFS(fuse.Operations):
                 while True:
                     remaining_nodes = list(set(nodes) - set(tried_nodes))
                     if not remaining_nodes:
+                        raise_exception = False
+                        if not self.hard:
+                            raise_exception = True
                         if command != "fsop_write":
+                            raise_exception = True
+                        if raise_exception:
                             raise OSError(errno.EHOSTUNREACH, _("Server unreachable"))
                         break
                     if self.username is None:
@@ -198,6 +205,7 @@ class OTPmeFS(fuse.Operations):
                     node = random.choice(remaining_nodes)
                     log_msg = _("Trying connection to node: {node}", log=True)[1]
                     log_msg = log_msg.format(node=node)
+                    print(log_msg)
                     self.logger.info(log_msg)
                     try:
                         self.fsd_conn = self.get_fsd_connection(node)
@@ -212,7 +220,12 @@ class OTPmeFS(fuse.Operations):
                             log_msg = _("Nodes failed: {tried_nodes}", log=True)[1]
                             log_msg = log_msg.format(tried_nodes=tried_nodes)
                             self.logger.warning(log_msg)
+                            raise_exception = False
+                            if not self.hard:
+                                raise_exception = True
                             if command != "fsop_write":
+                                raise_exception = True
+                            if raise_exception:
                                 raise OSError(errno.EHOSTUNREACH, _("Server unreachable"))
                         continue
                     tried_nodes.append(node)
@@ -237,7 +250,12 @@ class OTPmeFS(fuse.Operations):
                         if len(tried_nodes) == len(nodes):
                             self.fsd_conn.close()
                             self.fsd_conn = None
+                            raise_exception = False
+                            if not self.hard:
+                                raise_exception = True
                             if command != "fsop_write":
+                                raise_exception = True
+                            if raise_exception:
                                 if mount_response_code == status_codes.UNKNOWN_OBJECT:
                                     raise OSError(errno.ENOENT, mount_response)
                                 elif mount_response_code == status_codes.PERMISSION_DENIED:
@@ -389,7 +407,12 @@ class OTPmeFS(fuse.Operations):
                 log_msg = _("Failed to send data: {command}: {e}", log=True)[1]
                 log_msg = log_msg.format(command=command, e=e)
                 self.logger.warning(log_msg)
+                raise_exception = False
+                if not self.hard:
+                    raise_exception = True
                 if command != "fsop_write":
+                    raise_exception = True
+                if raise_exception:
                     raise OSError(errno.EHOSTUNREACH, _("Server unreachable"))
                 time.sleep(1)
                 continue
@@ -1990,8 +2013,8 @@ def mount_share_proc(share, share_site, mount, nodes, encrypted, **kwargs):
     mount_share(share, share_site, mount, nodes, encrypted, **kwargs)
 
 def mount_share(share, share_site, mount, nodes, encrypted=False,
-    master_password=None, add_share_key=False, foreground=True,
-    logger=None):
+    hard=False, master_password=None, add_share_key=False,
+    foreground=True, logger=None):
     if add_share_key and not master_password:
         msg = _("Need <master_password> with <add_share_key>")
         raise OTPmeException(msg)
@@ -2005,14 +2028,20 @@ def mount_share(share, share_site, mount, nodes, encrypted=False,
     print(msg)
     logger.info(msg)
     if encrypted:
-        fuse.FUSE(EncryptedFS(share, share_site, logger, nodes, master_password, add_share_key),
+        fuse.FUSE(EncryptedFS(share,
+                            share_site,
+                            logger,
+                            nodes,
+                            hard=hard,
+                            master_password=master_password,
+                            add_share_key=add_share_key),
                         mount,
                         foreground=foreground,
                         nothreads=True,
                         fsname=fsname,
                         )
     else:
-        fuse.FUSE(OTPmeFS(share, share_site, logger, nodes=nodes),
+        fuse.FUSE(OTPmeFS(share, share_site, logger, nodes=nodes, hard=hard),
                         mount,
                         foreground=foreground,
                         nothreads=True,

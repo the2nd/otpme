@@ -5,7 +5,7 @@
   <h1>Sign In</h1>
   <form action="" method="post" name="login">
       {{ form.hidden_tag() }}
-      <p> 
+      <p>
           Username:<br>
           {{ form.username(size=80) }}<br>
           {% for error in form.username.errors %}

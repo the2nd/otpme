@@ -56,8 +56,10 @@ read_value_acls =    {
                                 "accessgroup",
                                 "secret",
                                 "login_url",
+                                "auth_cache",
+                                "auth_cache_timeout",
                                 "sso_enabled",
-                                "sso_popup_enabled",
+                                "sso_popup",
                                 "sso_name",
                                 "helper_url",
                                 "address",
@@ -79,10 +81,12 @@ write_value_acls = {
                     "enable"    : [
                                 "sso",
                                 "sso_popup",
+                                "auth_cache",
                                 ],
                     "disable"   : [
                                 "sso",
                                 "sso_popup",
+                                "auth_cache",
                                 ],
                     "edit"      : [
                                 "config",
@@ -91,6 +95,7 @@ write_value_acls = {
                                 "login_url",
                                 "helper_url",
                                 "sso_name",
+                                "auth_cache_timeout",
                                 ],
                 }
 
@@ -187,6 +192,31 @@ commands = {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
                     'oargs'              : [],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'auth_cache_timeout'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_auth_cache_timeout',
+                    'args'              : ['timeout'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'enable_auth_cache'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_auth_cache',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_auth_cache'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_auth_cache',
                     'job_type'          : 'thread',
                     },
                 },
@@ -688,6 +718,8 @@ def register():
     # Register index attributes.
     config.register_index_attribute("address")
     config.register_index_attribute("sso_enabled")
+    config.register_index_attribute("auth_cache_enabled")
+    config.register_index_attribute("auth_cache_timeout")
 
 def register_hooks():
     config.register_auth_on_action_hook("client", "add_token")
@@ -695,6 +727,9 @@ def register_hooks():
     config.register_auth_on_action_hook("client", "add_address")
     config.register_auth_on_action_hook("client", "del_address")
     config.register_auth_on_action_hook("client", "change_secret")
+    config.register_auth_on_action_hook("client", "enable_auth_cache")
+    config.register_auth_on_action_hook("client", "disable_auth_cache")
+    config.register_auth_on_action_hook("client", "change_auth_cache_timeout")
     config.register_auth_on_action_hook("client", "change_login_url")
     config.register_auth_on_action_hook("client", "add_sso_logo")
     config.register_auth_on_action_hook("client", "del_sso_logo")
@@ -822,6 +857,8 @@ class Client(OTPmeClientObject):
         self.sso_popup = False
         self.login_url = None
         self.helper_url = None
+        self.auth_cache_timeout = 60
+        self.auth_cache_enabled = False
 
         self._sync_fields = {
                     'node'  : {
@@ -877,6 +914,16 @@ class Client(OTPmeClientObject):
                                                         'type'      : str,
                                                         'required'  : False,
                                                         'encryption': config.disk_encryption,
+                                                    },
+                        'AUTH_CACHE_ENABLED'        : {
+                                                        'var_name'  : 'auth_cache_enabled',
+                                                        'type'      : bool,
+                                                        'required'  : False,
+                                                    },
+                        'AUTH_CACHE_TIMEOUT'        : {
+                                                        'var_name'  : 'auth_cache_timeout',
+                                                        'type'      : int,
+                                                        'required'  : False,
                                                     },
                         'SSO_LOGO'                  : {
                                                         'var_name'  : 'sso_logo',
@@ -1059,6 +1106,96 @@ class Client(OTPmeClientObject):
             self.del_index('accessgroup')
 
         return self._cache(callback=callback)
+
+    @check_acls(['edit:auth_cache_timeout'])
+    @object_lock()
+    @audit_log()
+    def change_auth_cache_timeout(
+        self,
+        timeout: int=60,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Enable auth cache. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_auth_cache_timeout",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.auth_cache_timeout = timeout
+        self.update_index("auth_cache_timeout", self.auth_cache_timeout)
+
+        return self._write(callback=callback)
+
+    @check_acls(['enable:auth_cache'])
+    @object_lock()
+    @audit_log()
+    def enable_auth_cache(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Enable auth cache. """
+        if self.auth_cache_enabled:
+            msg = (_("Auth cache already enabled."))
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_auth_cache",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.auth_cache_enabled = True
+        self.update_index("auth_cache_enabled", self.auth_cache_enabled)
+
+        return self._write(callback=callback)
+
+    @check_acls(['disable:auth_cache'])
+    @object_lock()
+    @audit_log()
+    def disable_auth_cache(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Disable auth cache. """
+        if not self.auth_cache_enabled:
+            msg = (_("Auth cache already disabled."))
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_auth_cache",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.auth_cache_enabled = False
+        self.update_index("auth_cache_enabled", self.auth_cache_enabled)
+
+        return self._write(callback=callback)
 
     @check_acls(['add:sso_logo'])
     @object_lock()
@@ -1619,6 +1756,13 @@ class Client(OTPmeClientObject):
 
         lines.append(f'TOKENS="{token_list}"')
 
+        auth_cache_enabled = ""
+        if self.verify_acl("view:auth_cacahe") \
+        or self.verify_acl("enable:auth_cacahe") \
+        or self.verify_acl("disable:auth_cacahe"):
+            auth_cache_enabled = self.auth_cache_enabled
+        lines.append(f'AUTH_CACHE_ENABLED="{auth_cache_enabled}"')
+
         sso_name = ""
         if self.verify_acl("view:sso_name"):
             sso_name = self.sso_name
@@ -1628,6 +1772,11 @@ class Client(OTPmeClientObject):
         if self.verify_acl("view:sso_enabled"):
             sso_enabled = self.sso_enabled
         lines.append(f'SSO_ENABLED="{sso_enabled}"')
+
+        sso_popup = ""
+        if self.verify_acl("view:sso_popup"):
+            sso_popup = self.sso_popup
+        lines.append(f'SSO_POPUP="{sso_popup}"')
 
         login_url = ""
         if self.verify_acl("view:login_url"):

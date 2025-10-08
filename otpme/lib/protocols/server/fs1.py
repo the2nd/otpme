@@ -9,6 +9,7 @@ import struct
 import orjson
 import setproctitle
 from typing import Any
+from functools import wraps
 from typing import Optional
 
 try:
@@ -43,19 +44,21 @@ PROTOCOL_VERSION = "OTPme-fs-1.0"
 def register():
     config.register_otpme_protocol("fsd", PROTOCOL_VERSION, server=True)
 
-def with_root_path(func):
-    def wrapper(self, path, *args, **kwargs):
-        path = self.root + path
-        # Get absolut path to prevent break out of root dir.
-        path = os.path.abspath(path)
-        if not path.startswith(self.root):
-            raise OSError(errno.ENOENT, "No such file or directory")
-        return func(self, path, *args, **kwargs)
-    return wrapper
-
-def static_with_root_path(func):
-    def wrapper(self, path, *args, **kwargs):
-        return func(self.root + path, *args, **kwargs)
+def with_root_path(allow_symlinks=False):
+    def wrapper(f):
+        @wraps(f)
+        def wrapped(self, path, *args, **kwargs):
+            path = self.root + path
+            # Get absolut path to prevent break out of root dir.
+            path = os.path.abspath(path)
+            if not path.startswith(self.root):
+                raise OSError(errno.ENOENT, "No such file or directory")
+            if not allow_symlinks:
+                path = os.path.realpath(path)
+                if not path.startswith(self.root):
+                    raise OSError(errno.ENOENT, "No such file or directory")
+            return f(self, path, *args, **kwargs)
+        return wrapped
     return wrapper
 
 class OTPmeFsP1(OTPmeServer1):
@@ -118,14 +121,10 @@ class OTPmeFsP1(OTPmeServer1):
                                             share=share)
         setproctitle.setproctitle(new_proctitle)
 
-    @with_root_path
+    @with_root_path()
     def chmod(self, path: str, mode: int) -> int:
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
-        if os.path.islink(path):
-            path = os.path.realpath(path)
-            if not os.path.exists(path):
-                return 0
         if self.create_mode:
             if os.path.isfile(path):
                 raise PermissionError(errno.EACCES, "Permission denied")
@@ -134,7 +133,7 @@ class OTPmeFsP1(OTPmeServer1):
                 raise PermissionError(errno.EACCES, "Permission denied")
         return os.chmod(path, mode)
 
-    @with_root_path
+    @with_root_path(allow_symlinks=True)
     def chown(self, path: str, uid: int, gid: int) -> int:
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
@@ -142,12 +141,10 @@ class OTPmeFsP1(OTPmeServer1):
             if gid != -1:
                 raise PermissionError(errno.EACCES, "Permission denied")
         if os.path.islink(path):
-            path = os.path.realpath(path)
-            if not os.path.exists(path):
-                return 0
+            return os.lchown(path, uid, gid)
         return os.chown(path, uid, gid)
 
-    @with_root_path
+    @with_root_path()
     def create(self, path: str, mode, fi=None) -> int:
         global filehandlers
         if self.read_only:
@@ -165,7 +162,7 @@ class OTPmeFsP1(OTPmeServer1):
             os.chown(path, -1, self.force_group_gid)
         return 0
 
-    @with_root_path
+    @with_root_path(allow_symlinks=True)
     def getattr(self, path: str, fh: Optional[int] = None) -> dict[str, Any]:
         st = os.lstat(path)
         return {
@@ -187,7 +184,7 @@ class OTPmeFsP1(OTPmeServer1):
             )
         }
 
-    @with_root_path
+    @with_root_path()
     def mkdir(self, path: str, mode: int) -> int:
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
@@ -198,34 +195,34 @@ class OTPmeFsP1(OTPmeServer1):
             os.chown(path, -1, self.force_group_gid)
         return mkdir_result
 
-    @with_root_path
+    @with_root_path()
     def readdir(self, path: str) -> list:
         result = ['.', '..', *os.listdir(path)]
         return result
 
-    @with_root_path
+    @with_root_path(allow_symlinks=True)
     def readlink(self, path: str) -> str:
         return os.readlink(path)
 
-    @with_root_path
+    @with_root_path(allow_symlinks=True)
     def rename(self, old: str, new: str):
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
         return os.rename(old, self.root + new)
 
-    @with_root_path
+    @with_root_path()
     def rmdir(self, path: str) -> int:
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
         return os.rmdir(path)
 
-    @with_root_path
+    @with_root_path(allow_symlinks=True)
     def symlink(self, target: str, source: str):
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
         return os.symlink(source, target)
 
-    @with_root_path
+    @with_root_path()
     def truncate(self, path: str, length: int, fh: Optional[int] = None) -> int:
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
@@ -233,23 +230,19 @@ class OTPmeFsP1(OTPmeServer1):
             f.truncate(length)
         return 0
 
-    @with_root_path
+    @with_root_path(allow_symlinks=True)
     def unlink(self, path: str) -> int:
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
         return os.unlink(path)
 
-    @with_root_path
+    @with_root_path(allow_symlinks=True)
     def utimens(self, path: str, times: Optional[tuple[int, int]] = None) -> int:
-        if os.path.islink(path):
-            path = os.path.realpath(path)
-            if not os.path.exists(path):
-                return 0
         now = time.time_ns()
         os.utime(path, ns=times or (now, now))
         return 0
 
-    @with_root_path
+    @with_root_path()
     def open(self, path: str, flags) -> int:
         global filehandlers
         if flags & os.O_WRONLY:
@@ -272,7 +265,7 @@ class OTPmeFsP1(OTPmeServer1):
             fhs[flag_type] = fh
         return 0
 
-    @with_root_path
+    @with_root_path()
     def read(self, path: str, size: int, offset: int) -> bytes:
         global filehandlers
         try:
@@ -290,7 +283,7 @@ class OTPmeFsP1(OTPmeServer1):
         #os.close(fh)
         return data
 
-    @with_root_path
+    @with_root_path()
     def write(self, path: str, data, offset: int) -> int:
         global filehandlers
         if self.read_only:
@@ -310,7 +303,7 @@ class OTPmeFsP1(OTPmeServer1):
         #os.fsync(fh)
         return write_status
 
-    @with_root_path
+    @with_root_path()
     def release(self, path: str) -> int:
         global filehandlers
         try:
@@ -331,31 +324,31 @@ class OTPmeFsP1(OTPmeServer1):
             os.close(write_fh)
         return 0
 
-    @with_root_path
+    @with_root_path(allow_symlinks=True)
     def access(self, path: str, amode: int) -> int:
         if not os.access(path, amode):
             raise PermissionError(errno.EACCES, "Permission denied")
         return 0
 
-    @with_root_path
+    @with_root_path()
     def link(self, target: str, source: str):
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
         return os.link(self.root + source, target)
 
-    @with_root_path
+    @with_root_path(allow_symlinks=True)
     def exists(self, path: str) -> int:
         return os.path.exists(path)
 
-    @with_root_path
+    @with_root_path()
     def get_mtime(self, path: str) -> int:
         return os.path.getmtime(path)
 
-    @with_root_path
+    @with_root_path()
     def get_ctime(self, path: str) -> int:
         return os.path.getctime(path)
 
-    @with_root_path
+    @with_root_path()
     def getxattr(self, path: str, name: str, position: int = 0) -> bytes:
         """Get extended attributes (including POSIX ACLs)"""
         try:
@@ -367,7 +360,7 @@ class OTPmeFsP1(OTPmeServer1):
                 raise OSError(errno.ENODATA, "No such attribute")
             raise
 
-    @with_root_path
+    @with_root_path()
     def setxattr(self, path: str, name: str, value: bytes, options: int, position: int = 0) -> int:
         """Set extended attributes (including POSIX ACLs)"""
         if self.read_only:
@@ -383,7 +376,7 @@ class OTPmeFsP1(OTPmeServer1):
         except OSError as e:
             raise
 
-    @with_root_path
+    @with_root_path()
     def listxattr(self, path: str) -> list:
         """List all extended attributes"""
         try:
@@ -393,7 +386,7 @@ class OTPmeFsP1(OTPmeServer1):
                 return []
             raise
 
-    @with_root_path
+    @with_root_path()
     def removexattr(self, path: str, name: str) -> int:
         """Remove extended attributes"""
         if self.read_only:
@@ -406,7 +399,7 @@ class OTPmeFsP1(OTPmeServer1):
                 raise OSError(errno.ENODATA, "No such attribute")
             raise
 
-    @with_root_path
+    @with_root_path()
     def statfs(self, path: str) -> dict[str, int]:
         stv = os.statvfs(path)
         return {

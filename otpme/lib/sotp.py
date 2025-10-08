@@ -34,8 +34,8 @@ def register_config():
     config.register_config_var("sotp_len", int, 16)
     # An SOTP is verified 30 seconds in the past and the future (timestep is in 10
     # seconds)
-    config.register_config_var("sotp_timedrift_tolerance", int, 3)
-    config.register_config_var("sotp_validity_time", int, 3)
+    config.register_config_var("sotp_timedrift_tolerance", int, 30)
+    config.register_config_var("sotp_validity_time", int, 60)
 
 def derive_rsp(secret, hash_type, salt, rsp_len=None):
     """ Derive RSP from secret. """
@@ -48,16 +48,14 @@ def derive_rsp(secret, hash_type, salt, rsp_len=None):
     rsp = result['hash'][0:rsp_len]
     return rsp
 
-def verify(password_hash, epoch_time=None, validity_range=None, reneg=False,
-    password=None, challenge=None, response=None,
+def verify(password_hash, epoch_time=None, validity_range=None,
+    reneg=False, password=None, challenge=None, response=None,
     sotp_len=None, access_group=None):
     """ Verify session OTP. """
     if sotp_len is None:
         sotp_len = config.sotp_len
 
     if not epoch_time:
-        # Get epoch time (10 second timestep).
-        #epoch_time = int(str(int(time.time()))[:-1])
         # We need SOTPs in 1 second timestep because fuse mount
         # and key script sends OTPs one after another.
         epoch_time = int(str(int(time.time())))
@@ -83,8 +81,11 @@ def verify(password_hash, epoch_time=None, validity_range=None, reneg=False,
     # If we got a password from a clear-text request we have to verify it
     # against all possible SOTPs for the given validity range.
     if password:
-        for o in motp.generate(epoch_time=epoch_time, secret=secret,
-                            otp_count=validity_range, otp_len=sotp_len):
+        valid_otps = motp.generate(epoch_time=epoch_time,
+                                    secret=secret,
+                                    otp_count=validity_range,
+                                    otp_len=sotp_len)
+        for o in valid_otps:
             if o == password:
                 return True
         return False
@@ -105,8 +106,6 @@ def gen(epoch_time=None, password_hash=None, sotp_len=None,
     reneg=False, rsp_hash_type=None, access_group=None):
     """ Generate session OTP. """
     if not epoch_time:
-        # get epoch time (10 second timestep)
-        #epoch_time = int(str(int(time.time()))[:-1])
         # We need SOTPs in 1 second timestep because fuse mount
         # and key script sends OTPs one after another.
         epoch_time = int(str(int(time.time())))

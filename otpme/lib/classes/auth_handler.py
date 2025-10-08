@@ -793,6 +793,8 @@ class AuthHandler(object):
             client_result = backend.search(object_type="client",
                                         attribute="address",
                                         value=self.client_ip,
+                                        realm=config.realm,
+                                        site=config.site,
                                         return_type="name")
             if client_result:
                 self.client = client_result[0]
@@ -1532,7 +1534,7 @@ class AuthHandler(object):
                     'auth_token'        : self.verify_token.name,
                     'auth_client'       : self.client,
                     'auth_client_ip'    : self.client_ip,
-                                }
+                    }
 
             if self.auth_mode == "otp":
                 token_script_parms['auth_otp'] = self.password

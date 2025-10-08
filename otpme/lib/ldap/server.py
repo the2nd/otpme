@@ -45,10 +45,10 @@ except:
 
 from otpme.lib import re
 from otpme.lib import oid
-from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
+from otpme.lib import auth_cache
 from otpme.lib import connections
 from otpme.lib import multiprocessing
 from otpme.lib.audit import get_audit_logger
@@ -60,7 +60,6 @@ from otpme.lib.backends.file.file import OBJECTS_DIR
 
 from otpme.lib.exceptions import *
 
-auth_cache = {}
 ldap_cache = {}
 ldap_query_cache = {}
 
@@ -327,7 +326,6 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
     def _bind(self, password):
         """ Authenticate user against OTPme. """
-        global auth_cache
         if self.client is None:
             log_msg = _("Missing client DC: {dn_text}", log=True)[1]
             log_msg = log_msg.format(dn_text=self.dn.getText())
@@ -336,38 +334,55 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
         # Get username from DN.
         username = self.dn.getText().split(",")[0].split("=")[1]
-        # Gen password hash for cached authentication.
-        pass_hash = stuff.gen_md5(password)
 
-        try:
-            do_auth = True
-            cache_time = auth_cache[username]['cache_time']
-            if (time.time() - cache_time) <= config.ldap_auth_cache_timeout:
-                cached_client = auth_cache[username]['client']
-                if cached_client == self.client:
-                    cached_pass_hash = auth_cache[username]['pass_hash']
-                    if pass_hash == cached_pass_hash:
-                        do_auth = False
-                        self.auth_token_uuid = auth_cache[username]['token_uuid']
-                        # Get audit logger.
-                        try:
-                            audit_logger = get_audit_logger()
-                        except Exception as e:
-                            log_msg = _("Failed to get audit logger: {error}", log=True)[1]
-                            log_msg = log_msg.format(error=e)
-                            self.logger.warning(log_msg)
-                        else:
-                            auth_message, log_msg = _("User authenticated to ldapd by cache: {username}", log=True)
-                            auth_message = auth_message.format(username=username)
-                            log_msg = auth_message.format(username=username)
-                            self.logger.info(log_msg)
-                            if audit_logger:
-                                audit_msg = f"{config.daemon_name}: {auth_message}"
-                                audit_logger.info(audit_msg)
-                                for x in audit_logger.handlers:
-                                    x.close()
-        except KeyError:
-            do_auth = True
+        result = backend.search(object_type="client",
+                                attribute="name",
+                                value=self.client,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="instance")
+
+        if not result:
+            log_msg = _("Unknown client: {client}", log=True)[1]
+            log_msg = log_msg.format(client=self.client)
+            self.logger.warning(log_msg)
+            raise ldaperrors.LDAPInvalidCredentials
+
+        do_auth = True
+        cache_auth = False
+        auth_client = result[0]
+        if auth_client.auth_cache_enabled:
+            cache_auth = True
+            try:
+                auth_cache_timeout = auth_client.auth_cache_timeout
+                self.auth_token_uuid = auth_cache.verify(self.client,
+                                                        username,
+                                                        password,
+                                                        auth_cache_timeout)
+                # Get audit logger.
+                try:
+                    audit_logger = get_audit_logger()
+                except Exception as e:
+                    log_msg = _("Failed to get audit logger: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
+                else:
+                    log_msg = _("User authenticated to ldapd by cache: {username}", log=True)[1]
+                    log_msg = log_msg.format(username=username)
+                    self.logger.info(log_msg)
+                    if audit_logger:
+                        audit_msg = f"{config.daemon_name}: {log_msg}"
+                        audit_logger.info(audit_msg)
+                        for x in audit_logger.handlers:
+                            x.close()
+                do_auth = False
+            except AuthFailed:
+                do_auth = True
+            except Exception as e:
+                do_auth = True
+                log_msg = _("Auth cache failed: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
 
         if do_auth:
             # Get authd connection.
@@ -422,11 +437,9 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
             # Set auth token.
             self.auth_token_uuid = auth_reply[0]['login_token_uuid']
-            auth_cache[username] = {}
-            auth_cache[username]['client'] = self.client
-            auth_cache[username]['pass_hash'] = pass_hash
-            auth_cache[username]['cache_time'] = time.time()
-            auth_cache[username]['token_uuid'] = self.auth_token_uuid
+            # Cache authentication.
+            if cache_auth:
+                auth_cache.add(self.client, username, password, self.auth_token_uuid)
 
         return self
 

@@ -65,31 +65,25 @@ def get_validity_times(validity_time, timedrift_tolerance=0,
     # Get epoch time in 10 second timestep.
     if not epoch_time and not full_epoch_time:
         epoch_time = int(str(int(time.time()))[:-1])
-    # Calculate epoch time to verify OTP:
-    #   - epoch time must be reduced by timedrift_tolerance to allow clock
-    #     timedrifts of the client in the past.
-    #   - offset (e.g. timezone) must be multiplied with 6 (offset is in minutes,
-    #     timestep is 10 seconds) and added to epoch time.
     if full_epoch_time:
-        otp_epoch_time = full_epoch_time - timedrift_tolerance + (offset * 6)
-    elif epoch_time:
-        otp_epoch_time = epoch_time - timedrift_tolerance + (offset * 6)
-    # Add (timedrift_tolerance * 2) to validity_range because we had to
-    # substract if from epoch_time to allow backward timedrifts and also
-    # want to allow forward timedrifts.
-    otp_validity_range = validity_time + (timedrift_tolerance * 2)
-    # Calculate times and timestamps of OTP validity start/end times.
+        otp_epoch_time = int(int(full_epoch_time) - validity_time + offset)
+    else:
+        otp_epoch_time = int((epoch_time * 10) - validity_time + offset)
+    start_timestamp = otp_epoch_time - timedrift_tolerance
+    end_timestamp = otp_epoch_time + validity_time + timedrift_tolerance
     if full_epoch_time:
-        start_timestamp = full_epoch_time
-        end_timestamp = float(otp_epoch_time + otp_validity_range)
-    elif epoch_time:
-        start_timestamp = float(str(otp_epoch_time) + "0")
-        end_timestamp = float(str(otp_epoch_time + otp_validity_range) + "0")
-    start_time = str(datetime.fromtimestamp(start_timestamp))
-    end_time = str(datetime.fromtimestamp(end_timestamp))
-    return otp_epoch_time, \
-            otp_validity_range, \
-            start_timestamp, \
-            end_timestamp, \
-            start_time, \
-            end_time
+        otp_validity_range = ((end_timestamp - start_timestamp) * 2)
+    else:
+        otp_validity_range = (((end_timestamp - start_timestamp) / 10) * 2)
+    if epoch_time:
+        epoch_time = int(otp_epoch_time[:-1])
+    start_time = datetime.fromtimestamp(start_timestamp)
+    end_time = datetime.fromtimestamp(end_timestamp)
+    start_time = str(start_time)
+    end_time = str(end_time)
+    return (otp_epoch_time,
+            otp_validity_range,
+            start_timestamp,
+            end_timestamp,
+            start_time,
+            end_time)

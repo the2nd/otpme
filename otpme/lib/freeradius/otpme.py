@@ -9,6 +9,10 @@ import sys
 # automatically created.
 #from otpme.lib.freeradius import radiusd
 
+# Import radius module that is created by rlm_python when loading the otpme
+# module.
+import radiusd
+
 import otpme.lib
 from otpme.lib import init_otpme
 from otpme.lib.otpme_config import OTPmeConfig
@@ -17,9 +21,11 @@ otpme.lib.config = config
 # Init OTPme.
 init_otpme()
 
-# Import radius module that is created by rlm_python when loading the otpme
-# module.
-import radiusd
+from otpme.lib import backend
+from otpme.lib import auth_cache
+from otpme.lib.audit import get_audit_logger
+
+from otpme.lib.exceptions import *
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -240,21 +246,75 @@ def authenticate(authData):
 
         # Try to authenticate the user using clear-text password.
         if auth_type == "clear-text":
-            # Try to authenticate user.
-            daemon_conn = connections.get("authd",
+            if nasid:
+                result = backend.search(object_type="client",
+                                        attribute="name",
+                                        value=nasid,
                                         realm=config.realm,
                                         site=config.site,
-                                        socket_uri=socket_uri,
-                                        interactive=False,
-                                        **conn_kwargs)
-            # Send auth request.
-            log_msg = _("Sending authentication request...", log=True)[1]
-            logger.debug(log_msg)
-            auth_status, \
-            status_code, \
-            auth_reply, \
-            binary_data = daemon_conn.send("verify", command_args)
-            auth_message = auth_reply['message']
+                                        return_type="instance")
+            elif client_ip:
+                result = backend.search(object_type="client",
+                                        attribute="address",
+                                        value=client_ip,
+                                        realm=config.realm,
+                                        site=config.site,
+                                        return_type="instance")
+            do_auth = True
+            cache_auth = False
+            if result:
+                auth_client = result[0]
+                if auth_client.auth_cache_enabled:
+                    cache_auth = True
+                    try:
+                        auth_cache_timeout = auth_client.auth_cache_timeout
+                        auth_cache.verify(auth_client.name,
+                                        username,
+                                        password,
+                                        auth_cache_timeout)
+                        auth_message, log_msg = _("User authenticated for {client} (radius) by cache: {username}", log=True)
+                        auth_message = auth_message.format(client=auth_client.name, username=username)
+                        log_msg = auth_message.format(username=username)
+                        logger.info(log_msg)
+                        # Get audit logger.
+                        try:
+                            audit_logger = get_audit_logger()
+                        except Exception as e:
+                            log_msg = _("Failed to get audit logger: {error}", log=True)[1]
+                            log_msg = log_msg.format(error=e)
+                            logger.warning(log_msg)
+                        else:
+                            if audit_logger:
+                                audit_msg = f"{config.daemon_name}: {log_msg}"
+                                audit_logger.info(audit_msg)
+                                for x in audit_logger.handlers:
+                                    x.close()
+                        do_auth = False
+                        auth_status = True
+                    except AuthFailed:
+                        do_auth = True
+                    except Exception as e:
+                        do_auth = True
+                        log_msg = _("Auth cache failed: {error}", log=True)[1]
+                        log_msg = log_msg.format(error=e)
+                        logger.warning(log_msg)
+
+            if do_auth:
+                # Try to authenticate user.
+                daemon_conn = connections.get("authd",
+                                            realm=config.realm,
+                                            site=config.site,
+                                            socket_uri=socket_uri,
+                                            interactive=False,
+                                            **conn_kwargs)
+                # Send auth request.
+                log_msg = _("Sending authentication request...", log=True)[1]
+                logger.debug(log_msg)
+                auth_status, \
+                status_code, \
+                auth_reply, \
+                binary_data = daemon_conn.send("verify", command_args)
+                auth_message = auth_reply['message']
 
             # Check if user was authenticated successful.
             if auth_status:
@@ -274,6 +334,10 @@ def authenticate(authData):
                 log_msg = _("Radius {auth_type} request successful: user={username},client={nasid},client_ip={client_ip}", log=True)[1]
                 log_msg = log_msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip)
                 logger.info(log_msg)
+
+                # Cache auth request.
+                if cache_auth:
+                    auth_cache.add(auth_client.name, username, password)
 
                 # Set return code.
                 return_code = radiusd.RLM_MODULE_OK

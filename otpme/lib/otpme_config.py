@@ -178,8 +178,6 @@ class OTPmeConfig(object):
         # Socket receive buffer.
         self.register_config_var("socket_receive_buffer", int, 104857600,
                             config_file_parameter="SOCKET_RECEIVE_BUFFER")
-        self.register_config_var("ldap_auth_cache_timeout", int, 300,
-                            config_file_parameter="LDAP_AUTH_CACHE_TIMEOUT")
         # Realm infos.
         self.register_config_var("realm", str, None)
         self.register_config_var("realm_uuid", str, None)

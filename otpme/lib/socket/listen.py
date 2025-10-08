@@ -91,6 +91,7 @@ class ListenSocket(object):
         self.ca_data_file = None
         self.listen_process = None
         self._shutdown = None
+        self.connection_closed_event = None
 
         # Save proctitle for later use (e.g. new client connection)
         if proctitle is None:
@@ -187,7 +188,6 @@ class ListenSocket(object):
                                             recursive=False)
     @property
     def shutdown(self):
-        #return self._shutdown[0]
         if not self._shutdown:
             return
         return self._shutdown.value
@@ -222,10 +222,8 @@ class ListenSocket(object):
 
     def add_connection_proc(self, client, proc):
         """ Send client to client handler. """
-        try:
-            self.connections[client] = proc
-        except:
-            pass
+        # Add connection proc.
+        self.connections[client] = proc
         # Cleanup old connection PIDs.
         try:
             connections = self.connections.copy()
@@ -246,20 +244,23 @@ class ListenSocket(object):
     def close_conn_procs(self):
         """ Make sure connection procs are closed. """
         while True:
+            self.connection_closed_event.wait()
             if self.shutdown:
                 break
-            for proc in self.connections:
-                print("CCC", proc)
+            time.sleep(0.1)
+            for client in dict(self.connections):
+                try:
+                    proc = self.connections[client]
+                except KeyError:
+                    continue
                 if proc.is_alive():
                     continue
-                print("ccc", proc)
                 proc.join()
                 proc.close()
                 try:
-                    self.connections.pop(proc)
+                    self.connections.pop(client)
                 except KeyError:
                     pass
-            time.sleep(0.01)
 
     def listen(self, **kwargs):
         """
@@ -273,9 +274,8 @@ class ListenSocket(object):
             log_msg = _("Failed to get shared bool: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
-        # Our connections.
-        dict_name = f"{self.socket_uri}-connections"
-        self.connections = multiprocessing.get_dict(dict_name)
+        # Connection closed event.
+        self.connection_closed_event = multiprocessing.Event()
         # Create queue to get init done info from self._listen()
         init_done = multiprocessing.MessageQueue("listensocket-initq")
         # Start listenting in new process.
@@ -561,19 +561,24 @@ class ListenSocket(object):
                             target=self.handle_connection,
                             target_args=(new_connection,
                                         client,
-                                        self.connection_handler),
+                                        self.connection_handler,
+                                        self.connection_closed_event),
                             join=False)
             # Close connection in parent process to avoid file descriptor leak.
             new_connection.close()
             # Add process to dict.
             self.add_connection_proc(client, p)
+
+        if self.connection_closed_event:
+            self.connection_closed_event.set()
+
         log_msg = _("Stopped listening on '{uri}'", log=True)[1]
         log_msg = log_msg.format(uri=self.socket_uri)
         self.logger.info(log_msg)
         # Do multiprocessing cleanup.
         multiprocessing.cleanup()
 
-    def handle_connection(self, client_conn, client, handler):
+    def handle_connection(self, client_conn, client, handler, close_event):
         """ Handle a connection. """
         # Handle multiprocessing stuff.
         multiprocessing.atfork(quiet=True)
@@ -662,12 +667,6 @@ class ListenSocket(object):
                     self.logger.warning(log_msg)
                     break
 
-            # Close connection.
-            try:
-                connection.close()
-            except:
-                pass
-
         if config.debug_level() > 3:
             log_msg = _("Client '{client}' disconnected.", log=True)[1]
             log_msg = log_msg.format(client=client)
@@ -683,14 +682,10 @@ class ListenSocket(object):
         except:
             pass
 
-        # Remove client PID.
-        try:
-            self.connections.pop(client)
-        except:
-            pass
-
         # Cleanup locks etc.
         multiprocessing.cleanup(keep_queues=True)
+        # Notify master process about closed connection.
+        close_event.set()
 
         return True
 
@@ -778,6 +773,11 @@ class ListenSocket(object):
         # Close shared bool.
         if self._shutdown:
             self._shutdown.close()
+
+        # Close/unlink event.
+        if self.connection_closed_event:
+            self.connection_closed_event.close()
+            self.connection_closed_event.unlink()
 
 class Connection(object):
     """ Class to handle send/recv data. """

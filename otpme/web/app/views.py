@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
-import time
 import socket
 
 from flask import g
@@ -199,11 +198,11 @@ def get_apps():
         if client_ag.uuid not in user_ags:
             continue
         client_data = {
-                    'app_ag':client_ag.name,
-                    'app_name':client.sso_name,
-                    'login_url':client.login_url,
-                    'helper_url':client.helper_url,
-                    'sso_popup':client.sso_popup,
+                    'app_ag'    : client_ag.name,
+                    'app_name'  : client.sso_name,
+                    'login_url' : client.login_url,
+                    'helper_url': client.helper_url,
+                    'sso_popup' : client.sso_popup,
                     }
         if client.sso_logo:
             client_data['logo_type'] = client.sso_logo['image_type']
@@ -247,8 +246,6 @@ def get_sotp():
     if not result:
         return jsonify(sotp_data)
     auth_ag_uuid = result[0]
-    epoch_time = int(str(int(time.time()))[:-1])
-    sotp_data = sotp.gen(epoch_time=epoch_time,
-                        password_hash=sotp_secret,
+    sotp_data = sotp.gen(password_hash=sotp_secret,
                         access_group=auth_ag_uuid)
     return jsonify(sotp_data)

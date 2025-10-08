@@ -1316,9 +1316,11 @@ class Session(OTPmeLockObject):
         # Get all child sessions.
         child_sessions = {}
         if self.child_sessions:
-            for c in self.child_sessions:
-                result = backend.get_sessions(session_id=c,
-                                            return_type="instance")
+            for session_uuid in self.child_sessions:
+                result = backend.search(object_id="session",
+                                        attribute="uuid",
+                                        value=session_uuid,
+                                        return_type="instance")
                 if not result:
                     continue
                 s = result[0]
@@ -1349,8 +1351,8 @@ class Session(OTPmeLockObject):
 
         # Remove child sessions.
         if recursive:
-            for s in child_sessions:
-                session = child_sessions[s]
+            for x in child_sessions:
+                session = child_sessions[x]
                 session.delete(recursive=recursive,
                                 force=True,
                                 verify_acls=verify_acls)

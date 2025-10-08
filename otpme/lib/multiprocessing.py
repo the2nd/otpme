@@ -303,6 +303,8 @@ def get_bool(name, default=False, random_name=True, init=True):
                 random_string = stuff.gen_secret(32)
                 name = f"{name}-{random_string}"
             self.name = name
+            self.shmem = None
+            self._value = None
             self.default_value = default
             if init:
                 self.init()
@@ -325,12 +327,17 @@ def get_bool(name, default=False, random_name=True, init=True):
             except ValueError:
                 pass
         def close(self):
-            self._value.close()
-            self.shmem.close_fd()
             try:
-                self.shmem.unlink()
-            except posix_ipc.ExistentialError:
+                if self._value:
+                    self._value.close()
+            except ValueError:
                 pass
+            if self.shmem:
+                self.shmem.close_fd()
+                try:
+                    self.shmem.unlink()
+                except posix_ipc.ExistentialError:
+                    pass
     shared_bool = SharedBool(name=name,
                         default=default,
                         random_name=random_name,
@@ -508,7 +515,7 @@ def drop_privileges(user=None, group=None, groups=None):
 
 def start_process(name, target, target_args=None,
     target_kwargs=None, daemon=False,
-    join=False, start=True):
+    start=True, join=False, close=False):
     """ Start new process. """
     proc_kwargs = {}
     if target_args:
@@ -525,10 +532,12 @@ def start_process(name, target, target_args=None,
         # Start process.
         new_proc.start()
         # Start daemon thread to join process on exit.
-        if join:
+        if join or close:
             def join_and_close(proc):
-                proc.join()
-                proc.close()
+                if join:
+                    proc.join()
+                if close:
+                    proc.close()
             start_thread(name=name, target=join_and_close,
                         target_args=(new_proc,), daemon=True)
     return new_proc
