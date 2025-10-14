@@ -72,10 +72,10 @@ class OTPmeClusterP1(OTPmeServer1):
         """ Handle signals """
         if _signal != 15:
             return
-        for lock in multiprocessing.cluster_write_locks:
-            lock.release_lock()
-        for lock in multiprocessing.cluster_read_locks:
-            lock.release_lock()
+        #for lock in multiprocessing.cluster_write_locks:
+        #    lock.release_lock()
+        #for lock in multiprocessing.cluster_read_locks:
+        #    lock.release_lock()
         OTPmeServer1.signal_handler(self, _signal, frame)
 
     def _pre_init(self, *args, **kwargs):

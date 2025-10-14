@@ -6,6 +6,7 @@ import time
 import socket
 import psutil
 import setproctitle
+from multiprocessing import Event
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 
@@ -245,22 +246,28 @@ class ListenSocket(object):
         """ Make sure connection procs are closed. """
         while True:
             self.connection_closed_event.wait()
-            if self.shutdown:
-                break
             time.sleep(0.1)
+            procs_alive = False
             for client in dict(self.connections):
                 try:
                     proc = self.connections[client]
                 except KeyError:
                     continue
                 if proc.is_alive():
+                    procs_alive = True
                     continue
                 proc.join()
-                proc.close()
+                # Prevent exception on daemon shutdown.
+                if not self.shutdown:
+                    proc.close()
                 try:
                     self.connections.pop(client)
                 except KeyError:
                     pass
+            if procs_alive:
+                continue
+            if self.shutdown:
+                break
 
     def listen(self, **kwargs):
         """
@@ -275,7 +282,8 @@ class ListenSocket(object):
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
         # Connection closed event.
-        self.connection_closed_event = multiprocessing.Event()
+        #self.connection_closed_event = multiprocessing.Event()
+        self.connection_closed_event = Event()
         # Create queue to get init done info from self._listen()
         init_done = multiprocessing.MessageQueue("listensocket-initq")
         # Start listenting in new process.
@@ -750,6 +758,12 @@ class ListenSocket(object):
             pass
         # Close client connections.
         self.close_connections()
+        # Attempt graceful SSL shutdown.
+        if hasattr(self._socket, 'unwrap'):
+            try:
+                self._socket.unwrap()
+            except ValueError:
+                pass
         # Stop listening on socket.
         self._socket.close()
 
@@ -774,10 +788,10 @@ class ListenSocket(object):
         if self._shutdown:
             self._shutdown.close()
 
-        # Close/unlink event.
-        if self.connection_closed_event:
-            self.connection_closed_event.close()
-            self.connection_closed_event.unlink()
+        ## Close/unlink event.
+        #if self.connection_closed_event:
+        #    self.connection_closed_event.close()
+        #    self.connection_closed_event.unlink()
 
 class Connection(object):
     """ Class to handle send/recv data. """

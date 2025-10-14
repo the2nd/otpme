@@ -305,11 +305,16 @@ class ObjectConfig(object):
         self.checksum = object_checksum
 
         handle_sync_checksum = False
-        if self.object_id.site == config.site:
-            if config.host_data['type'] == "node":
-                handle_sync_checksum = True
-        if self.object_id.object_type == "realm":
-            if self.object_id.name == config.realm:
+        if not config.realm_init:
+            if self.object_id.site == config.site:
+                if config.host_data['type'] == "node":
+                    handle_sync_checksum = True
+            if self.object_id.object_type == "realm":
+                if self.object_id.name == config.realm:
+                    if config.host_data['type'] == "node":
+                        if config.realm_master_node:
+                            handle_sync_checksum = True
+            if self.object_id.object_type == "site":
                 if config.host_data['type'] == "node":
                     if config.realm_master_node:
                         handle_sync_checksum = True

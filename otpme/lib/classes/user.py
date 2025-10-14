@@ -3438,6 +3438,7 @@ class User(OTPmeObject):
             add_token = False
 
             token_name = token_data[uuid]['name']
+            token_rel_path = token_data[uuid]['rel_path']
             token_enabled = token_data[uuid]['enabled'][0]
 
             if skip_disabled:
@@ -3524,8 +3525,8 @@ class User(OTPmeObject):
 
             # Append token to list if not already added.
             if not quiet:
-                log_msg = _("Selecting token '{token_uuid}' based on accessgroup '{access_group_name}'.", log=True)[1]
-                log_msg = log_msg.format(token_uuid=token_uuid, access_group_name=access_group.name)
+                log_msg = _("Selecting token '{token_path}' based on accessgroup '{access_group_name}'.", log=True)[1]
+                log_msg = log_msg.format(token_path=token_rel_path, access_group_name=access_group.name)
                 logger.debug(log_msg)
             tokens.append(token_uuid)
 

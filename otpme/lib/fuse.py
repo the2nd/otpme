@@ -2020,7 +2020,7 @@ def mount_share(share, share_site, mount, nodes, encrypted=False,
         raise OTPmeException(msg)
     #if config.debug_enabled:
     #    logging.basicConfig(level=logging.DEBUG)
-    fsname = f"OTPmeFS:/{share}"
+    fsname = f"OTPmeFS:/{share_site}/{share}"
     if logger is None:
         logger = config.logger
     msg = _("Got nodes: {share}: {nodes}")

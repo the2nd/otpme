@@ -795,7 +795,7 @@ class ControlDaemon(UnixDaemon):
 
         # Interprocess communication queue.
         try:
-            self.comm_queue = multiprocessing.InterProcessQueue()
+            self.comm_queue = multiprocessing.InterProcessQueue("otpme-controld-commq")
         except Exception as e:
             log_msg = _("Failed to init interprocess queue: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
@@ -982,11 +982,32 @@ class ControlDaemon(UnixDaemon):
                 self.comm_handler.send(sender, command="ip_deconfigured")
                 #self.need_restart = True
             elif command == "reload":
-                self._reload()
+                try:
+                    daemon_name = data['daemon']
+                except KeyError:
+                    daemon_name = None
+                if daemon_name:
+                    if daemon_name in self.daemons:
+                        self._reload_child(daemon_name)
+                else:
+                    self._reload()
+            elif command == "restart":
+                try:
+                    daemon_name = data['daemon']
+                except KeyError:
+                    continue
+                if daemon_name not in self.daemons:
+                    continue
+                if config.master_node and daemon_name == "clusterd":
+                    log_msg = _("Not restarting clusterd on master node.", log=True)[1]
+                    self.logger.warning(log_msg)
+                    continue
+                self.stop_child(daemon_name)
+                self.start_daemon(daemon_name)
             else:
-                msg = _("Unknown daemon command: {command}")
-                msg = msg.format(command=command) 
-                raise OTPmeException(msg)
+                log_msg = _("Unknown daemon command: {command}", log=True)[1]
+                log_msg = log_msg.format(command=command)
+                self.logger.warning(log_msg)
 
     def _start_index(self):
         """ Start index. """

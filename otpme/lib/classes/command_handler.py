@@ -277,13 +277,11 @@ class CommandHandler(object):
             reply, \
             binary_data = daemon_conn.send(command, command_args)
 
-            log_method = self.logger.warning
             if status:
-                log_method = self.logger.debug
-            auth_message = reply['message']
-            log_msg = _("Received authentication reply: {auth_message}", log=True)[1]
-            log_msg = log_msg.format(auth_message=auth_message)
-            log_method(log_msg)
+                auth_message = reply['message']
+                log_msg = _("Received authentication reply: {auth_message}", log=True)[1]
+                log_msg = log_msg.format(auth_message=auth_message)
+                self.logger.debug(log_msg)
 
         elif daemon == "syncd":
             # Get connection to syncd.
@@ -823,11 +821,20 @@ class CommandHandler(object):
 
     def handle_daemon_command(self, command_line, command, subcommand):
         """ Handle daemon command. """
+        register_module('otpme.lib.multiprocessing')
+        from otpme.lib import multiprocessing
         from otpme.lib.daemon.controld import ControlDaemon
         control_daemon = ControlDaemon(config.controld_pidfile)
         ## Init cache.
         #cache.init()
         #cache.enable()
+
+        def send_daemon_command(daemon, command):
+            comm_queue = multiprocessing.InterProcessQueue("otpme-controld-commq")
+            comm_handler = comm_queue.get_handler("cli")
+            comm_handler.send(recipient="controld",
+                            command=command,
+                            data={'daemon':daemon})
 
         if subcommand == "start":
             control_daemon.start()
@@ -863,11 +870,25 @@ class CommandHandler(object):
             return ""
 
         if subcommand == "restart":
-            control_daemon.restart()
+            try:
+                daemon = command_line[0]
+            except IndexError:
+                daemon = None
+            if daemon:
+                send_daemon_command(daemon=daemon, command="restart")
+            else:
+                control_daemon.restart()
             return ""
 
         if subcommand == "reload":
-            control_daemon.reload()
+            try:
+                daemon = command_line[0]
+            except IndexError:
+                daemon = None
+            if daemon:
+                send_daemon_command(daemon=daemon, command="reload")
+            else:
+                control_daemon.reload()
             return ""
 
         if subcommand == "status":

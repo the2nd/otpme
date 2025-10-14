@@ -178,8 +178,7 @@ class AuthHandler(object):
                         return None
 
             if self.auth_type == "clear-text":
-                # For REALM session childs (SOTP reauth) we use a one iteration
-                # hash like we do for the REALM session itself.
+                # For session childs with SOTP reauth we use a one iteration hash.
                 self.password_hash = self.one_iter_hash
 
             log_msg = _("Found valid REALM session '{session_name}' for this request (SOTP).", log=True)[1]
@@ -290,6 +289,24 @@ class AuthHandler(object):
                 self.logger.debug(log_msg)
                 self.auth_failed = True
                 return
+
+        # Make sure login to child accessgroups of SSO accessgroup are not allowed
+        # if the token is assigned to the SSO accessgroup.
+        if not self.found_sotp and not self.auth_session:
+            session_master = self.auth_group.parents(recursive=True,
+                                                    session_master=True,
+                                                    return_type="instance")
+            if session_master:
+                if session_master.name == config.sso_access_group:
+                    if self.verify_token.uuid in session_master.tokens:
+                        log_msg = _("Token {token} is assigned to SSO accessgroup. Auth will fail.", log=True)[1]
+                        log_msg = log_msg.format(token=self.verify_token.rel_path)
+                        self.logger.warning(log_msg)
+                        self.auth_failed = True
+                        self.count_fails = False
+                        self.auth_message
+                        self.auth_message = "AUTH_FAILED"
+                        return
 
         # Check token policies.
         if self.check_policies:
@@ -473,6 +490,7 @@ class AuthHandler(object):
         # Get realm sessions that have the requested accessgroup as child.
         verify_sessions = []
         realm_session_ids = []
+        realm_sessions_childs = []
         for session_uuid in user_realm_sessions:
             # Get session instance.
             session_id = user_realm_sessions[session_uuid]['session_id'][0]
@@ -487,6 +505,8 @@ class AuthHandler(object):
             except LockWaitAbort:
                 continue
             realm_session_ids.append(session_id)
+            # Add realm session childs to list.
+            realm_sessions_childs += session.child_sessions
             session_ag_uuid = user_realm_sessions[session_uuid]['accessgroup'][0]
             session_ag = backend.get_object(uuid=session_ag_uuid)
             session_ag_childs = session_ag.childs(recursive=True)
@@ -499,29 +519,25 @@ class AuthHandler(object):
         session_master = self.auth_group.parents(recursive=True,
                                                 session_master=True,
                                                 return_type="instance")
-        session_master_session_ids = []
+        session_masters = []
+        session_master_childs = []
         if session_master:
-            session_master_sessions = backend.get_sessions(user=self.user.uuid,
+            master_sessions = backend.get_sessions(user=self.user.uuid,
                                                 access_group=session_master.uuid,
                                                 return_attributes=return_attributes,
                                                 session_type=self.auth_type)
-            for session_uuid in session_master_sessions:
+            for session_uuid in master_sessions:
                 # Get session instance.
-                session_id = session_master_sessions[session_uuid]['session_id'][0]
+                session_id = master_sessions[session_uuid]['session_id'][0]
                 session = backend.get_object(object_type="session",
                                             uuid=session_uuid)
                 if not session:
                     continue
-                # Outdate expired session.
-                try:
-                    if not session.exists(outdate=True):
-                        continue
-                except LockWaitAbort:
-                    continue
                 if session in verify_sessions:
                     continue
                 verify_sessions.append(session)
-                session_master_session_ids.append(session_id)
+                session_masters.append(session)
+                session_master_childs += session.child_sessions
 
         # Get sessions for this user/accessgroup.
         if self.auth_group.uuid != realm_access_group_uuid:
@@ -529,6 +545,15 @@ class AuthHandler(object):
                                             access_group=self.auth_group.uuid,
                                             return_attributes=return_attributes,
                                             session_type=self.auth_type)
+            # For clear-text requests we have to check JWT sessions too because
+            # this may be an SLP request for a JWT session.
+            if self.auth_type == "clear-text":
+                jwt_sessions = backend.get_sessions(user=self.user.uuid,
+                                                access_group=self.auth_group.uuid,
+                                                return_attributes=return_attributes,
+                                                session_type="jwt")
+                for x in jwt_sessions:
+                    group_session_ids[x] = jwt_sessions[x]
             for session_uuid in group_session_ids:
                 # Get session instance.
                 session_id = group_session_ids[session_uuid]['session_id'][0]
@@ -536,26 +561,16 @@ class AuthHandler(object):
                                             uuid=session_uuid)
                 if not session:
                     continue
-                # Outdate expired session.
-                try:
-                    if not session.exists(outdate=True):
-                        continue
-                except LockWaitAbort:
-                    continue
                 if session in verify_sessions:
                     continue
                 verify_sessions.append(session)
+                if session.uuid not in realm_sessions_childs:
+                    continue
+                realm_session_ids.append(session.session_id)
 
         if not verify_sessions:
             log_msg = _("No session found for this request.", log=True)[1]
             self.logger.debug(log_msg)
-
-        # We use just one iteration for SOTPs because of performance
-        # reasons (e.g. login and session renegotiation). This should
-        # not be a problem because everyone with access to the OTPme
-        # server can still do bad stuff and the RSP itself changes on
-        # each login or renegotiation.
-        password_hash = self.one_iter_hash
 
         # Check users sessions.
         processed_sessions = []
@@ -567,7 +582,7 @@ class AuthHandler(object):
             check_for_used_sotp = False
             if session.session_id in realm_session_ids:
                 check_for_used_sotp = True
-            if session.session_id in session_master_session_ids:
+            if session in session_masters:
                 check_for_used_sotp = True
             if self.allow_sotp_reuse:
                 check_for_used_sotp = False
@@ -581,17 +596,21 @@ class AuthHandler(object):
                     # the child session this OTP created still exists and
                     # must be verified. We can NOT use self.check_used()
                     # here because this will make this request fail.
-                    if self.user.is_used_sotp(hash=password_hash):
+                    if self.user.is_used_sotp(hash=self.one_iter_hash):
                         continue
 
             log_msg = _("Verifying session '{session_name}'.", log=True)[1]
             log_msg = log_msg.format(session_name=session.name)
             self.logger.debug(log_msg)
 
-            # FIXME: implement session reneg for non-REALM sessions???
+            password_hash = None
             if session.session_id in realm_session_ids:
-                # Add realm session childs to list.
-                realm_session_ids += session.child_sessions
+                # We use just one iteration for SOTPs because of performance
+                # reasons (e.g. login and session renegotiation). This should
+                # not be a problem because everyone with access to the OTPme
+                # server can still do bad stuff and the RSP itself changes on
+                # each login or renegotiation.
+                password_hash = self.one_iter_hash
                 if session.access_group == config.realm_access_group:
                     check_auth = False
                     check_sotp = True
@@ -606,9 +625,6 @@ class AuthHandler(object):
                     check_sotp = False
                     do_reneg = False
             else:
-                # Make sure we have a password hash.
-                self.gen_pass_hash(hash_params=session.pass_hash_params)
-                password_hash = self.password_hash
                 do_reneg = False
                 check_auth = True
                 check_sotp = False
@@ -617,6 +633,14 @@ class AuthHandler(object):
                 if session_master:
                     if session_master.name == config.sso_access_group:
                         check_sotp = True
+                        # For SSO session childs we use the one iter hash
+                        # because it was created by an SOTP.
+                        if session.uuid in session_master_childs:
+                            password_hash = self.one_iter_hash
+                if not password_hash:
+                    if not self.password_hash:
+                        self.gen_pass_hash(hash_params=session.pass_hash_params)
+                    password_hash = self.password_hash
 
             if self.session_reneg is not None:
                 do_reneg = self.session_reneg
@@ -635,6 +659,13 @@ class AuthHandler(object):
 
             if self.access_group != config.realm_access_group:
                 kwargs['auth_ag'] = self.access_group
+
+            # Outdate expired session.
+            try:
+                if not session.exists(outdate=True):
+                    continue
+            except LockWaitAbort:
+                continue
 
             # Try to verify session.
             if self.verify_session(session, **kwargs) is not None:
@@ -1662,9 +1693,12 @@ class AuthHandler(object):
         site_jwt_key = site._cert_public_key
 
         # The JWT reason we need to check.
-        required_reason = "REALM_AUTH"
-        if self.realm_login:
-            required_reason = "REALM_LOGIN"
+        if self.jwt_reason:
+            required_reason = self.jwt_reason
+        else:
+            required_reason = "REALM_AUTH"
+            if self.realm_login:
+                required_reason = "REALM_LOGIN"
 
         # Verify outer JWT. This JWT must be signed by the users site
         # certificate to indicate an authenticated user.
@@ -1678,42 +1712,43 @@ class AuthHandler(object):
             self.logger.warning(log_msg)
             self.auth_failed = True
             self.auth_message = "AUTH_INVALID_OUTER_JWT"
+            return
 
-        if not self.auth_failed:
-            # Get JWT challenge.
-            try:
-                jwt_string = outer_jwt_data['challenge']
-            except:
-                log_msg = _("JWT data is missing challenge.", log=True)[1]
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_JWT_CHALLENGE_MISSING"
-                self.count_fails = False
+        # Get JWT challenge.
+        try:
+            jwt_string = outer_jwt_data['challenge']
+        except:
+            log_msg = _("JWT data is missing challenge.", log=True)[1]
+            self.logger.warning(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_JWT_CHALLENGE_MISSING"
+            self.count_fails = False
+            return
 
-        if not self.auth_failed:
-            # Make sure we got the correct JWT. The JWT includes a challenge,
-            # so if the JWT string does not match the redirect challenge we got
-            # from OTPmeServer() authentication must fail.
-            if jwt_string != self.redirect_challenge:
-                log_msg = _("Received wrong redirect challenge.", log=True)[1]
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_WRONG_JWT_CHALLENGE"
+        # Make sure we got the correct JWT. The JWT includes a challenge,
+        # so if the JWT string does not match the redirect challenge we got
+        # from OTPmeServer() authentication must fail.
+        if jwt_string != self.redirect_challenge:
+            log_msg = _("Received wrong redirect challenge.", log=True)[1]
+            self.logger.warning(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_WRONG_JWT_CHALLENGE"
+            return
 
-        if not self.auth_failed:
-            # Get login token.
-            try:
-                login_token_uuid = outer_jwt_data['login_token']
-            except:
-                login_token_uuid = None
-                log_msg = _("JWT data is missing login token.", log=True)[1]
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_JWT_TOKEN_MISSING"
-                self.count_fails = False
+        # Get login token.
+        try:
+            login_token_uuid = outer_jwt_data['login_token']
+        except:
+            login_token_uuid = None
+            log_msg = _("JWT data is missing login token.", log=True)[1]
+            self.logger.warning(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_JWT_TOKEN_MISSING"
+            self.count_fails = False
+            return
 
-        if not self.auth_failed:
-            # Get auth accessgroup.
+        # Get auth accessgroup.
+        if self.verify_jwt_ag:
             try:
                 auth_accessgroup = outer_jwt_data['accessgroup']
             except:
@@ -1723,20 +1758,8 @@ class AuthHandler(object):
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_ACCESSGROUP_MISSING"
                 self.count_fails = False
+                return
 
-        if not self.auth_failed:
-            # Get auth reason.
-            try:
-                auth_reason = outer_jwt_data['reason']
-            except:
-                auth_reason = None
-                log_msg = _("JWT data is missing auth reason.", log=True)[1]
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_JWT_ACCESSGROUP_MISSING"
-                self.count_fails = False
-
-        if not self.auth_failed:
             # Verify outer JWT auth accessgroup.
             if auth_accessgroup != self.access_group:
                 log_msg = _("Outer JWT accessgroup mismatch: {access_group} <> {auth_accessgroup}", log=True)[1]
@@ -1745,104 +1768,117 @@ class AuthHandler(object):
                 self.auth_failed = True
                 self.auth_message = "AUTH_JWT_ACCESSGROUP_MISMATCH"
                 self.count_fails = False
+                return
 
-        if not self.auth_failed:
-            # Verify outer JWT auth reason.
-            if auth_reason != required_reason:
-                log_msg = _("Outer JWT reason mismatch: {required_reason} <> {auth_reason}", log=True)[1]
-                log_msg = log_msg.format(required_reason=required_reason, auth_reason=auth_reason)
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_JWT_REASON_MISMATCH"
-                self.count_fails = False
+        # Get auth reason.
+        try:
+            auth_reason = outer_jwt_data['reason']
+        except:
+            auth_reason = None
+            log_msg = _("JWT data is missing auth reason.", log=True)[1]
+            self.logger.warning(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_JWT_ACCESSGROUP_MISSING"
+            self.count_fails = False
+            return
+
+        # Verify outer JWT auth reason.
+        if auth_reason != required_reason:
+            log_msg = _("Outer JWT reason mismatch: {required_reason} <> {auth_reason}", log=True)[1]
+            log_msg = log_msg.format(required_reason=required_reason, auth_reason=auth_reason)
+            self.logger.warning(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_JWT_REASON_MISMATCH"
+            self.count_fails = False
+            return
 
         # Decode inner JWT. This is the JWT we sent to the client in the
         # preauth_check phase. It must be signed by our site cert and
         # include our site/realm in its payload.
-        if not self.auth_failed:
-            try:
-                inner_jwt_data = jwt.decode(jwt=jwt_string,
-                                    key=self.site_key,
-                                    algorithm='RS256')
-            except Exception as e:
-                log_msg = _("Unable to decode inner JWT: {error}", log=True)[1]
-                log_msg = log_msg.format(error=e)
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_INVALID_INNER_JWT"
+        try:
+            inner_jwt_data = jwt.decode(jwt=jwt_string,
+                                key=self.site_key,
+                                algorithm='RS256')
+        except Exception as e:
+            log_msg = _("Unable to decode inner JWT: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_INVALID_INNER_JWT"
+            return
 
-            # Get inner JWT data.
-            jwt_reason = inner_jwt_data['reason']
-            jwt_realm = inner_jwt_data['realm']
-            jwt_site = inner_jwt_data['site']
-            jwt_user = inner_jwt_data['user']
-            jwt_accessgroup = inner_jwt_data['accessgroup']
+        # Get inner JWT data.
+        jwt_reason = inner_jwt_data['reason']
+        jwt_realm = inner_jwt_data['realm']
+        jwt_site = inner_jwt_data['site']
+        jwt_user = inner_jwt_data['user']
 
-            if jwt_realm != config.realm:
-                log_msg = _("Inner JWT realm mismatch: {realm} <> {jwt_site}", log=True)[1]
-                log_msg = log_msg.format(realm=config.realm, jwt_site=jwt_site)
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_JWT_REALM_MISMATCH"
+        if jwt_realm != config.realm:
+            log_msg = _("Inner JWT realm mismatch: {realm} <> {jwt_site}", log=True)[1]
+            log_msg = log_msg.format(realm=config.realm, jwt_site=jwt_site)
+            self.logger.warning(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_JWT_REALM_MISMATCH"
+            return
 
-            if jwt_site != config.site:
-                log_msg = _("Inner JWT site mismatch: {site} <> {jwt_site}", log=True)[1]
-                log_msg = log_msg.format(site=config.site, jwt_site=jwt_site)
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_JWT_SITE_MISMATCH"
+        if jwt_site != config.site:
+            log_msg = _("Inner JWT site mismatch: {site} <> {jwt_site}", log=True)[1]
+            log_msg = log_msg.format(site=config.site, jwt_site=jwt_site)
+            self.logger.warning(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_JWT_SITE_MISMATCH"
+            return
 
-            if jwt_user != self.user.name:
-                log_msg = _("Inner JWT user mismatch: {user_name} <> {jwt_user}", log=True)[1]
-                log_msg = log_msg.format(user_name=self.user.name, jwt_user=jwt_user)
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_JWT_USER_MISMATCH"
+        if jwt_user != self.user.name:
+            log_msg = _("Inner JWT user mismatch: {user_name} <> {jwt_user}", log=True)[1]
+            log_msg = log_msg.format(user_name=self.user.name, jwt_user=jwt_user)
+            self.logger.warning(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_JWT_USER_MISMATCH"
+            return
 
-            if jwt_accessgroup != self.access_group:
-                log_msg = _("Inner JWT accessgroup mismatch: {access_group} <> {jwt_accessgroup}", log=True)[1]
-                log_msg = log_msg.format(access_group=self.access_group, jwt_accessgroup=jwt_accessgroup)
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_JWT_ACCESSGROUP_MISMATCH"
+        if jwt_reason != required_reason:
+            log_msg = _("Inner JWT reason mismatch: {required_reason} <> {jwt_reason}", log=True)[1]
+            log_msg = log_msg.format(required_reason=required_reason, jwt_reason=jwt_reason)
+            self.logger.warning(log_msg)
+            self.auth_failed = True
+            self.auth_message = "AUTH_JWT_ACCESSGROUP_MISMATCH"
+            return
 
-            if jwt_reason != required_reason:
-                log_msg = _("Inner JWT reason mismatch: {required_reason} <> {jwt_reason}", log=True)[1]
-                log_msg = log_msg.format(required_reason=required_reason, jwt_reason=jwt_reason)
-                self.logger.warning(log_msg)
-                self.auth_failed = True
-                self.auth_message = "AUTH_JWT_ACCESSGROUP_MISMATCH"
+        # Get user token used to request JWT from his site.
+        self.auth_token = backend.get_object(object_type="token",
+                                            uuid=login_token_uuid,
+                                            run_policies=True,
+                                            _no_func_cache=True)
+        if not self.auth_token:
+            self.auth_failed = True
+            self.auth_message = "AUTH_JWT_UNKNOWN_TOKEN"
+            return
 
-        if not self.auth_failed:
-            # Get user token used to request JWT from his site.
-            self.auth_token = backend.get_object(object_type="token",
-                                                uuid=login_token_uuid,
-                                                run_policies=True,
-                                                _no_func_cache=True)
-            if not self.auth_token:
-                self.auth_failed = True
-                self.auth_message = "AUTH_JWT_UNKNOWN_TOKEN"
+        if self.auth_token.realm != site.realm:
+            self.auth_failed = True
+            self.auth_message = "AUTH_JWT_INVALID_TOKEN_REALM"
+            return
 
-        if not self.auth_failed:
-            if self.auth_token.realm != site.realm:
-                self.auth_failed = True
-                self.auth_message = "AUTH_JWT_INVALID_TOKEN_REALM"
-
-        if not self.auth_failed:
-            if self.auth_token.site != site.name:
-                self.auth_failed = True
-                self.auth_message = "AUTH_JWT_INVALID_TOKEN_SITE"
+        if self.auth_token.site != site.name:
+            self.auth_failed = True
+            self.auth_message = "AUTH_JWT_INVALID_TOKEN_SITE"
+            return
 
         # Verify auth token (group membership etc.)
-        if not self.auth_failed:
-            self.verify_auth_token()
+        self.verify_auth_token()
 
-        if not self.auth_failed:
-            self.auth_status = True
-            if self.realm_login:
-                self.auth_message = "LOGIN_OK_JWT"
-            else:
-                self.auth_message = "AUTH_OK_JWT"
+        if self.auth_failed:
+            return
+
+        self.auth_status = True
+        if self.realm_login:
+            self.auth_message = "LOGIN_OK_JWT"
+        else:
+            self.auth_message = "AUTH_OK_JWT"
+        # For JWT auth we use the redirect response as password
+        # because we need a password hash for the session/SLP.
+        self.password = self.redirect_response
 
     def check_max_sessions(self):
         """ Check for max_sessions. """
@@ -1862,6 +1898,8 @@ class AuthHandler(object):
                 if not session_x.exists(outdate=True):
                     continue
             except LockWaitAbort:
+                continue
+            if session_x.auth_token != self.auth_token.uuid:
                 continue
             session_list.append(session_x)
 
@@ -1914,6 +1952,7 @@ class AuthHandler(object):
             else:
                 log_msg = _("Max sessions reached for this accessgroup and no relogin allowed.", log=True)[1]
                 self.logger.debug(log_msg)
+                self.auth_failed = True
 
         if self.auth_failed:
             # If relogin is disabled or we havent found a obsolete
@@ -1953,12 +1992,12 @@ class AuthHandler(object):
             self.session_start_group = self.access_group
 
         if not self.auth_failed:
+            # Make sure we have a valid password hash.
+            if not self.password_hash:
+                self.gen_pass_hash()
             if self.verify_token.pass_type == "static":
                 session_logout_pass = slp.gen(self.new_session_uuid)
             else:
-                # Make sure we have a valid password hash.
-                if not self.realm_login:
-                    self.gen_pass_hash()
                 session_logout_pass = slp.gen(self.one_iter_hash)
             # Create parent session instance.
             client_uuid = None
@@ -2064,7 +2103,7 @@ class AuthHandler(object):
         require_pass_types=None, redirect_challenge=None,
         allow_sotp_reuse=False, redirect_response=None, gen_jwt=None,
         jwt_challenge=None, rsp_ecdh_client_pub=None, verify_host=True,
-        client_offline_enc_type=None):
+        client_offline_enc_type=None, jwt_reason=None, verify_jwt_ag=True):
         """
         Try to authenticate user:
             auth_type can be clear-text, mschap or ssh:
@@ -2136,6 +2175,7 @@ class AuthHandler(object):
         self.response = string_vars['response']
         self.auth_type = string_vars['auth_type']
         self.auth_mode = string_vars['auth_mode']
+        self.verify_jwt_ag = verify_jwt_ag
         self.smartcard_data = smartcard_data
         self.realm_login = realm_login
         self.realm_logout = realm_logout
@@ -2154,9 +2194,10 @@ class AuthHandler(object):
         self.redirect_challenge = redirect_challenge
         self.redirect_response = redirect_response
         self.jwt = None
-        self.client_offline_enc_type = string_vars['client_offline_enc_type']
+        self.jwt_reason = jwt_reason
         self.jwt_challenge = jwt_challenge
         self.request_cacheable = False
+        self.client_offline_enc_type = string_vars['client_offline_enc_type']
         if gen_jwt is None:
             if self.jwt_challenge:
                 self.gen_jwt = True
@@ -2388,6 +2429,9 @@ class AuthHandler(object):
                 self.auth_failed = True
 
         else:
+            log_msg = _("Received invalid auth type: {auth_type}", log=True)[1]
+            log_msg = log_msg.format(auth_type=self.auth_type)
+            self.logger.warning(log_msg)
             self.auth_message = "AUTH_INVALID_AUTH_TYPE"
             self.auth_failed = True
 
@@ -2444,16 +2488,8 @@ class AuthHandler(object):
             # Verify sessions.
             self.verify_user_sessions()
 
-        # Handle JWT (cross-site) authentication.
-        if self.auth_type == "jwt":
-            # No need to count failed logins for JWT requests.
-            self.count_fails = False
-            self.verify_jwt()
-
         if not self.realm_logout:
-            if not self.auth_failed and self.auth_status is False:
-                # Get user tokens that are valid for this request.
-                self.get_user_tokens()
+            if not self.auth_failed:
                 # Create session UUID for a new session that may be
                 # added. This is needed before verifying user tokens
                 # because the session UUID will be added to any used
@@ -2461,6 +2497,15 @@ class AuthHandler(object):
                 # We need this to handle offline token data sync in a
                 # secure manner (see offline_data_key below).
                 self.new_session_uuid = stuff.gen_uuid()
+            if not self.auth_failed and self.auth_status is False:
+                # Get user tokens that are valid for this request.
+                self.get_user_tokens()
+
+        # Handle JWT (cross-site) authentication.
+        if self.auth_type == "jwt":
+            # No need to count failed logins for JWT requests.
+            self.count_fails = False
+            self.verify_jwt()
 
         if self.client_offline_enc_type:
             # Generate key used to encrypt used OTPs/token counters
@@ -2468,7 +2513,6 @@ class AuthHandler(object):
             # also added to the server session and used by syncd to
             # en-/decrypt objects when syncing with client hosts.
             try:
-                #enc_mod = encryption.get_module(self.client_offline_enc_type)
                 enc_mod = config.get_encryption_module(self.client_offline_enc_type)
             except Exception as e:
                 msg = _("Unable to load offline encryption: {error}")
@@ -2813,9 +2857,6 @@ class AuthHandler(object):
             if self.auth_session:
                 auth_reply['slp'] = self.auth_session.slp
 
-            if self.access_group == config.sso_access_group:
-                auth_reply['session_hash'] = self.auth_session.pass_hash
-
             # Update last used timestamps for user and token.
             self.user.update_last_used_time()
             self.auth_token.update_last_used_time()
@@ -2929,7 +2970,10 @@ class AuthHandler(object):
         # Audit logging.
         if self.audit_logger:
             audit_msg = f"{config.daemon_name}: {failed_message}"
-            self.audit_logger.warning(audit_msg)
+            if self.session_logout:
+                self.audit_logger.info(audit_msg)
+            else:
+                self.audit_logger.warning(audit_msg)
             for x in self.audit_logger.handlers:
                 x.close()
 

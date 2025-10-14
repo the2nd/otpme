@@ -349,6 +349,8 @@ class JoinHandler(object):
         self._my_site.add_base_objects(callback=callback)
         self._my_site.add_base_groups(callback=callback)
         self._my_site.add_per_site_objects(callback=callback)
+        # Gen mgmt fqdn cert/key.
+        self._my_site.gen_mgmt_cert()
 
         # Finish node join and create node cert.
         self._my_host.join_realm(verify_acls=False,

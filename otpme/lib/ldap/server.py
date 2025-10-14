@@ -439,7 +439,11 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             self.auth_token_uuid = auth_reply[0]['login_token_uuid']
             # Cache authentication.
             if cache_auth:
-                auth_cache.add(self.client, username, password, self.auth_token_uuid)
+                try:
+                    session_uuid= auth_reply[0]['session']
+                except KeyError:
+                    session_uuid = None
+                auth_cache.add(self.client, username, password, session_uuid, self.auth_token_uuid)
 
         return self
 

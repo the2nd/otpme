@@ -26,7 +26,6 @@ from otpme.lib.fuse import get_mount_point
 from otpme.lib.fuse import mount_share_proc
 #from otpme.lib.encoding.base import encode
 #from otpme.lib.encoding.base import decode
-from otpme.lib.encryption.rsa import RSAKey
 from otpme.lib.protocols import status_codes
 from otpme.lib.fuse import prepare_mount_point
 from otpme.lib.protocols.request import decode_request
@@ -585,8 +584,8 @@ class OTPmeAgentP1(object):
                 self.session['mounted_shares'] = mounted_shares
                 self.login_sessions[self.login_pid] = self.session
                 msg, log_msg = _("Shares mounted: {mounts}", log=True)
-                msg = msg.format(mounts=new_mounts)
-                log_msg = log_msg.format(mounts=new_mounts)
+                msg = msg.format(mounts=list(new_mounts.keys()))
+                log_msg = log_msg.format(mounts=list(new_mounts.keys()))
                 self.logger.info(log_msg)
                 messages.append(msg)
                 message = "\n".join(messages)
@@ -939,36 +938,14 @@ class OTPmeAgentP1(object):
             try:
                 session_key = command_args['session_key']
             except:
-                session_key = None
-            try:
-                rsp_signature = command_args['rsp_signature']
-            except:
-                rsp_signature = None
+                status = False
+                message = "Missing session key."
 
             if status:
                 if realm == self.realm and site == self.site:
                     if self.rsp:
                         message = "RSP already set"
                         status = False
-
-            # Make sure we get a valid session key.
-            if status and session_key:
-                try:
-                    key = RSAKey(key=session_key)
-                except Exception as e:
-                    message, log_msg = _("Failed to load session key: {error}", log=True)
-                    message = message.format(error=e)
-                    log_msg = log_msg.format(error=e)
-                    self.logger.critical(log_msg)
-                    status = False
-                if status:
-                    verify_status = key.verify(rsp_signature,
-                                                message=rsp,
-                                                encoding="hex")
-                    if not verify_status:
-                        message = "RSP signature verification failed"
-                        status = False
-
             if status:
                 log_msg = _("Adding RSP for user '{user}@{realm}/{site}' (PID: {pid}).", log=True)[1]
                 log_msg = log_msg.format(user=self.login_user,

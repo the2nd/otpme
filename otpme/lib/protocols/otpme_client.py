@@ -2040,8 +2040,8 @@ class OTPmeClient1(OTPmeClientBase):
         offline_key_func_opts=None, sync_token_data=False, request_jwt=None,
         verify_jwt=None, jwt_challenge=None, jwt_key=None, jwt_auth=False,
         check_login_status=True, allow_untrusted=False, do_preauth=True,
-        check_connected_site=True, offline_session_key=None,
-        verify_preauth=None, login_redirect=False, **kwargs):
+        check_connected_site=True, verify_preauth=None,
+        login_redirect=False, **kwargs):
         # Init parent class.
         super(OTPmeClient1, self).__init__(daemon, **kwargs)
 
@@ -2252,7 +2252,7 @@ class OTPmeClient1(OTPmeClientBase):
         # Will hold class to handle offline tokens.
         self._offline_token = offline_token
         # Will hold key to save offline sessions.
-        self.offline_session_key = offline_session_key
+        self.offline_session_key = None
         # Offline token key derivation function to use.
         if offline_key_derivation_func is None:
             self.offline_key_derivation_func = config.offline_token_hash_type
@@ -2582,7 +2582,7 @@ class OTPmeClient1(OTPmeClientBase):
         if self.verify_preauth:
             need_site_cert = True
             if not self.realm or not self.site:
-                msg = (_("Need <realm> and <site> to verfiy preauth reply."))
+                msg = (_("Need <realm> and <site> to verify preauth reply."))
                 raise OTPmeException(msg)
 
         # If no JWT key was given we need to get it from our site cert.
@@ -3522,6 +3522,11 @@ class OTPmeClient1(OTPmeClientBase):
                     self.cleanup()
                     raise AuthFailed(msg)
 
+            # Get offline session key (e.g. to be forwarded on login redirect).
+            if not self._offline_token.session_key_private:
+                self._offline_token.gen_session_key()
+            self.offline_session_key = self._offline_token.session_key_public
+
             # Get SLPs of old offline sessions we will try to logout.
             try:
                 self.old_sessions = self._offline_token.get_old_offline_sessions(self.realm,
@@ -3789,25 +3794,14 @@ class OTPmeClient1(OTPmeClientBase):
                     pass
                 else:
                     log_msg = _("Received the following shares: {shares}")
-                    log_msg = log_msg.format(shares=self.shares)
+                    log_msg = log_msg.format(shares=list(self.shares))
                     self.logger.debug(log_msg)
                     mount_reply = self.agent_conn.mount_shares(shares=self.shares)
                     self.message_method(mount_reply)
 
-            # If this is a realm login try to get offline tokens etc. from
-            # response.
             if self.add_login_session:
-                offline_tokens = self.auth_reply['offline_tokens']
-                if offline_tokens:
-                    # Get offline session key (e.g. to be forwarded on login redirect).
-                    if not self._offline_token.session_key_private:
-                        self._offline_token.gen_session_key()
-                    self.offline_session_key = self._offline_token.session_key_private
-
-                # Get SLP for this session.
-                slp = self.auth_reply['slp']
                 # Add login session to agent, handle offline tokens etc.
-                self._add_login_session(slp)
+                self._add_login_session()
 
             elif self.reneg:
                 if reply_message == "AUTH_SESSION_RENEG_START":
@@ -4003,8 +3997,7 @@ class OTPmeClient1(OTPmeClientBase):
             self.cleanup()
             raise AuthFailed(msg)
 
-        peer_type = (self.peer.type[0].upper() 
-                    + self.peer.type[1:].lower())
+        peer_type = (self.peer.type[0].upper() + self.peer.type[1:].lower())
         response, log_msg = _("{peer_type} response verification successful: {fqdn}", log=True)
         response = response.format(peer_type=peer_type, fqdn=self.peer.fqdn)
         log_msg = log_msg.format(peer_type=peer_type, fqdn=self.peer.fqdn)
@@ -4013,10 +4006,12 @@ class OTPmeClient1(OTPmeClientBase):
 
         return response
 
-    def _add_login_session(self, slp):
+    def _add_login_session(self):
         """ Create login session file and add RSP to otpme-agent. """
         # Indicates if we have to cache offline tokens.
         cache_offline_tokens = False
+        # Get SLP for this session.
+        slp = self.auth_reply['slp']
 
         # Set login token to otpme-agent.
         login_token = self.auth_reply['login_token']
@@ -4139,20 +4134,6 @@ class OTPmeClient1(OTPmeClientBase):
                 keep_offline_session = False
                 config.raise_exception()
 
-        # Load session key.
-        try:
-            key = RSAKey(key=self.offline_session_key)
-        except Exception as e:
-            msg = _("Failed to load offline session key: {error}")
-            msg = msg.format(error=e)
-            raise OTPmeException(msg)
-
-        # Get public key to add to agent and offline token.
-        offline_session_pubkey = key.public_key_base64
-
-        # Sign RSP to be verified by otpme-agent.
-        rsp_signature = key.sign(self.rsp, encoding="hex")
-
         # Add RSP to otpme-agent.
         agent_conn = connections.get("agent",
                         user=self.otpme_agent_user)
@@ -4161,8 +4142,7 @@ class OTPmeClient1(OTPmeClientBase):
                             site=self.site,
                             rsp=self.rsp,
                             slp=slp,
-                            rsp_signature=rsp_signature,
-                            session_key=offline_session_pubkey,
+                            session_key=self.offline_session_key,
                             login_time=login_time,
                             timeout=session_timeout,
                             unused_timeout=session_unused_timeout,
@@ -4189,7 +4169,7 @@ class OTPmeClient1(OTPmeClientBase):
                                 session_timeout=session_timeout,
                                 session_unused_timeout=session_unused_timeout,
                                 offline_session=keep_offline_session,
-                                session_key=offline_session_pubkey)
+                                session_key=self.offline_session_key)
             except Exception as e:
                 log_msg = _("Error saving RSP: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)

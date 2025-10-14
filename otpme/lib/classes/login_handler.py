@@ -54,9 +54,8 @@ class LoginHandler(object):
         jwt_method=None, message_method=None, error_message_method=None, connect_timeout=3,
         timeout=30, node=None, offline_key_derivation_func=None, offline_token=None,
         mount_shares=False, offline_key_func_opts={}, check_offline_pass_strength=False,
-        offline_iterations_by_score={}, offline_session_key=None,
-        login_session_id=None, add_agent_acl=False, cleanup_method=None,
-        socket_uri=None, login_use_dns=False, use_dns=False):
+        offline_iterations_by_score={}, login_session_id=None, add_agent_acl=False,
+        cleanup_method=None, socket_uri=None, login_use_dns=False, use_dns=False):
         """ Send realm login request. """
         login = True
         exception = None
@@ -137,7 +136,6 @@ class LoginHandler(object):
                                     offline_key_func_opts=offline_key_func_opts,
                                     check_offline_pass_strength=check_offline_pass_strength,
                                     offline_iterations_by_score=offline_iterations_by_score,
-                                    offline_session_key=offline_session_key,
                                     socket_uri=socket_uri, realm=realm, site=site)
         except ConnectionError as e:
             log_msg = _("Login connection failed: {error}", log=True)[1]

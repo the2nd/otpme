@@ -12,16 +12,18 @@ except:
     pass
 
 from otpme.lib import stuff
+from otpme.lib import backend
 
 from otpme.lib.exceptions import *
 
 auth_cache = {}
 
-def add(client, username, password, token_uuid=None):
+def add(client, username, password, session=None, token_uuid=None):
     global auth_cache
     pass_hash = stuff.gen_sha512(password)
     auth_cache[username] = {}
     auth_cache[username]['client'] = client
+    auth_cache[username]['session'] = session
     auth_cache[username]['pass_hash'] = pass_hash
     auth_cache[username]['cache_time'] = time.time()
     auth_cache[username]['token_uuid'] = token_uuid
@@ -47,6 +49,14 @@ def verify(client, username, password, cache_timeout):
     pass_hash = stuff.gen_sha512(password)
     if pass_hash != cached_pass_hash:
         raise AuthFailed()
+    try:
+        session_uuid = auth_cache[username]['session']
+    except KeyError:
+        session_uuid = None
+    if session_uuid:
+        session_oid = backend.get_oid(session_uuid)
+        if not session_oid:
+            raise AuthFailed()
     try:
         auth_token_uuid = auth_cache[username]['token_uuid']
     except KeyError:

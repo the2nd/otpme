@@ -299,6 +299,7 @@ def authenticate(authData):
                         log_msg = log_msg.format(error=e)
                         logger.warning(log_msg)
 
+            session_uuid = None
             if do_auth:
                 # Try to authenticate user.
                 daemon_conn = connections.get("authd",
@@ -315,6 +316,10 @@ def authenticate(authData):
                 auth_reply, \
                 binary_data = daemon_conn.send("verify", command_args)
                 auth_message = auth_reply['message']
+                try:
+                    session_uuid = auth_reply['session']
+                except KeyError:
+                    session_uuid = None
 
             # Check if user was authenticated successful.
             if auth_status:
@@ -337,7 +342,7 @@ def authenticate(authData):
 
                 # Cache auth request.
                 if cache_auth:
-                    auth_cache.add(auth_client.name, username, password)
+                    auth_cache.add(auth_client.name, username, password, session_uuid)
 
                 # Set return code.
                 return_code = radiusd.RLM_MODULE_OK
@@ -395,8 +400,8 @@ def authenticate(authData):
             status_code, \
             auth_reply, \
             binary_data = daemon_conn.send("verify_mschap", command_args)
+            # Get auth message.
             auth_message = auth_reply['message']
-
             # Get password hash.
             password_hash = auth_reply['password_hash']
 

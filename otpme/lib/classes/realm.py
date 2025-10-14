@@ -1447,6 +1447,9 @@ class Realm(OTPmeObject):
         master_site.add_base_groups(callback=callback)
         master_site.add_per_site_objects(callback=callback)
 
+        # Gen mgmt fqdn cert/key.
+        master_site.gen_mgmt_cert()
+
         # Write objects.
         cache.flush()
 

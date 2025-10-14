@@ -515,16 +515,34 @@ def drop_privileges(user=None, group=None, groups=None):
 
 def start_process(name, target, target_args=None,
     target_kwargs=None, daemon=False,
-    start=True, join=False, close=False):
+    start=True, join=False, close=False,
+    new_process_group=False):
     """ Start new process. """
+    # Wrapper to set new process group if requested.
+    def _target_wrapper(target, target_args, target_kwargs):
+        if new_process_group:
+            os.setpgrp()
+        if target_args and target_kwargs:
+            return target(*target_args, **target_kwargs)
+        if target_args:
+            return target(*target_args)
+        if target_kwargs:
+            return target(**target_kwargs)
+        return target()
+
     proc_kwargs = {}
-    if target_args:
-        proc_kwargs['args'] = target_args
-    if target_kwargs:
-        proc_kwargs['kwargs'] = target_kwargs
+    if new_process_group:
+        proc_kwargs['args'] = (target, target_args, target_kwargs)
+        actual_target = _target_wrapper
+    else:
+        if target_args:
+            proc_kwargs['args'] = target_args
+        if target_kwargs:
+            proc_kwargs['kwargs'] = target_kwargs
+        actual_target = target
 
     new_proc = multiprocessing.Process(name=name,
-                                    target=target,
+                                    target=actual_target,
                                     **proc_kwargs)
     if daemon:
         new_proc.daemon = daemon
@@ -650,6 +668,8 @@ class Event(object):
         try:
             os.chown(sem_path, uid, gid)
         except FileNotFoundError:
+            pass
+        except PermissionError:
             pass
         if semaphore.name not in posix_semaphores:
             posix_semaphores[semaphore.name] = semaphore

@@ -152,12 +152,14 @@ class OTPmeSyncP1(OTPmeServer1):
                                             uuid=site.realm_uuid)
             object_config = site_realm.get_sync_config(peer=self.peer)
             encoded_config = json.encode(object_config, encoding="hex")
-            site_objects.append([site_realm.oid.full_oid, encoded_config])
+            sync_checksum = backend.get_sync_checksum(site_realm.oid)
+            site_objects.append([site_realm.oid.full_oid, encoded_config, sync_checksum])
 
         # Get sites object config.
         object_config = site.get_sync_config(peer=self.peer)
         encoded_config = json.encode(object_config, encoding="hex")
-        site_objects.append([site.oid.full_oid, encoded_config])
+        sync_checksum = backend.get_sync_checksum(site.oid)
+        site_objects.append([site.oid.full_oid, encoded_config, sync_checksum])
 
         # Get all nodes.
         all_site_nodes = backend.search(object_type="node",
@@ -175,10 +177,12 @@ class OTPmeSyncP1(OTPmeServer1):
                 unit = backend.get_object(object_type="unit", uuid=unit_uuid)
                 object_config = unit.get_sync_config(peer=self.peer)
                 encoded_config = json.encode(object_config, encoding="hex")
-                site_objects.append([unit.oid.full_oid, encoded_config])
+                sync_checksum = backend.get_sync_checksum(unit.oid)
+                site_objects.append([unit.oid.full_oid, encoded_config, sync_checksum])
                 unit_uuid = unit.unit_uuid
             # Add master node config.
-            site_objects.append([node.oid.full_oid, node_config])
+            sync_checksum = backend.get_sync_checksum(node.oid)
+            site_objects.append([node.oid.full_oid, node_config, sync_checksum])
 
         return site_objects
 

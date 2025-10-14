@@ -13,6 +13,9 @@ except:
 class OTPmeException(Exception):
     pass
 
+class AccessDenied(OTPmeException):
+    pass
+
 class PermissionDenied(OTPmeException):
     pass
 

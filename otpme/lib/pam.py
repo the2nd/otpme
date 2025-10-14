@@ -1220,7 +1220,6 @@ class PamHandler(object):
                             agent_conn.add_rsp(realm=realm, site=site,
                                                 rsp=session['rsp'],
                                                 slp=session['slp'],
-                                                rsp_signature=session['rsp_signature'],
                                                 session_key=session['session_key'],
                                                 login_time=session['login_time'],
                                                 timeout=session['session_timeout'],

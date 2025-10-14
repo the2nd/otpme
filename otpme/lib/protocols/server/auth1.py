@@ -14,13 +14,17 @@ except:
 
 from otpme.lib import log
 from otpme.lib import jwt
+from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import connections
 from otpme.lib import multiprocessing
+from otpme.lib.audit import get_audit_logger
 
 from otpme.lib.protocols import status_codes
 from otpme.lib.protocols.otpme_server import OTPmeServer1
+
+from otpme.lib.exceptions import *
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
@@ -69,12 +73,48 @@ class OTPmeAuthP1(OTPmeServer1):
                                         existing_logger=config.logger,
                                         pid=True)
 
+    def gen_jwt(self, username, token, reason, challenge, access_group=None):
+        if access_group:
+            token_accessgroups = token.get_access_groups()
+            if access_group not in token_accessgroups:
+                msg = _("Access denied")
+                raise AccessDenied(msg)
+
+        # Load JWT signing key.
+        user_site = backend.get_object(uuid=token.site_uuid)
+        sign_key = user_site._key
+        if not sign_key:
+            msg = _("Access denied")
+            raise AccessDenied(msg)
+
+        # Build JWT.
+        jwt_data = {
+                'realm'             : config.realm,
+                'site'              : config.site,
+                'reason'            : reason,
+                'message'           : "JWT signed by authd.",
+                'challenge'         : challenge,
+                'login_time'        : time.time(),
+                'login_token'       : token.uuid,
+                'auth_type'         : config.auth_type,
+                'accessgroup'       : access_group,
+                }
+
+        _jwt = jwt.encode(payload=jwt_data, key=sign_key, algorithm='RS256')
+
+        log_msg = _("Sigend JWT: user={username} token={token_name} access_group={access_group}, reason={reason}", log=True)[1]
+        log_msg = log_msg.format(username=username, token_name=token.name, access_group=access_group, reason=reason)
+        self.logger.info(log_msg)
+        return _jwt
+
     def _process(self, command, command_args, **kwargs):
         """ Handle authentication data received from auth_handler. """
         # All valid commands.
         valid_commands = [
                             "verify",
                             "get_jwt",
+                            "token_verify",
+                            "token_verify_mschap",
                             "verify_static",
                             "verify_mschap",
                         ]
@@ -124,44 +164,18 @@ class OTPmeAuthP1(OTPmeServer1):
             try:
                 jwt_accessgroup = command_args['jwt_accessgroup']
             except:
+                jwt_accessgroup = None
+
+            try:
+                _jwt = self.gen_jwt(username=config.auth_token.owner,
+                                    token=config.auth_token,
+                                    reason=jwt_reason,
+                                    challenge=jwt_challenge,
+                                    access_group=jwt_accessgroup)
+            except AccessDenied:
                 status = False
-                message = _("AUTHD_INCOMPLETE_COMMAND")
+                message = _("Unable to gen JWT.")
                 return self.build_response(status, message)
-
-            token_accessgroups = config.auth_token.get_access_groups()
-            if jwt_accessgroup not in token_accessgroups:
-                status = False
-                message = _("AUTHD_PERMISSION_DENIED")
-                return self.build_response(status, message)
-
-            # Load JWT signing key.
-            user_site = backend.get_object(uuid=config.auth_token.site_uuid)
-            sign_key = user_site._key
-
-            # Redirect user if we do not have the required site key.
-            if not sign_key:
-               message = f"{user_site.realm}/{user_site.name}"
-               status = status_codes.CONNECTION_REDIRECT
-               return self.build_response(status, message)
-
-            # Build JWT.
-            jwt_data = {
-                    'realm'             : config.realm,
-                    'site'              : config.site,
-                    'reason'            : jwt_reason,
-                    'message'           : "JWT signed by authd.",
-                    'challenge'         : jwt_challenge,
-                    'login_time'        : time.time(),
-                    'login_token'       : config.auth_token.uuid,
-                    'auth_type'         : config.auth_type,
-                    'accessgroup'       : jwt_accessgroup,
-                    }
-
-            _jwt = jwt.encode(payload=jwt_data, key=sign_key, algorithm='RS256')
-
-            log_msg = _("Sigend JWT: user={username} token={token_name} access_group={access_group}, reason={reason}", log=True)[1]
-            log_msg = log_msg.format(username=self.username, token_name=config.auth_token.name, access_group=jwt_accessgroup, reason=jwt_reason)
-            self.logger.info(log_msg)
 
             return self.build_response(True, _jwt)
 
@@ -233,12 +247,19 @@ class OTPmeAuthP1(OTPmeServer1):
             access_group = None
 
         # Set auth mode.
-        if command == "verify" or command == "verify_mschap":
+        if command == "verify" \
+        or command == "verify_mschap" \
+        or command == "token_verify" \
+        or command == "token_verify_mschap":
             auth_mode = "auto"
 
         # Set auth type.
         if command == "verify":
             auth_type = "clear-text"
+        if command == "token_verify":
+            auth_type = "clear-text"
+        if command == "token_verify_mschap":
+            auth_type = "mschap"
         if command == "verify_mschap":
             auth_type = "mschap"
 
@@ -309,8 +330,13 @@ class OTPmeAuthP1(OTPmeServer1):
         redirect_connection = False
         if user.realm != config.realm:
             redirect_connection = True
-        if user.site != config.site:
-            redirect_connection = True
+
+        if not redirect_connection:
+            if user.site != config.site:
+                try:
+                    stuff.get_site_trust_status(user.realm, user.site)
+                except SiteNotTrusted:
+                    redirect_connection = True
 
         if redirect_connection:
             # Get authd connection.
@@ -326,14 +352,44 @@ class OTPmeAuthP1(OTPmeServer1):
                 self.logger.critical(log_msg)
                 status = False
                 return self.build_response(status, message)
-
+            # Gen JWT to be signed by other site.
+            my_site = backend.get_object(object_type="site",
+                                        uuid=config.site_uuid)
+            site_key = my_site._key
+            jwt_reason = "AUTH"
+            challenge = stuff.gen_secret(len=32)
+            jwt_data = {
+                        'user'          : user.name,
+                        'realm'         : config.realm,
+                        'site'          : config.site,
+                        'reason'        : jwt_reason,
+                        'challenge'     : challenge,
+                    }
+            redirect_challenge = jwt.encode(payload=jwt_data,
+                                            key=site_key,
+                                            algorithm='RS256')
+            # Get JWT from other site.
+            verify_args = {
+                            'username'          : username,
+                            'password'          : password,
+                            'mschap_challenge'  : mschap_challenge,
+                            'mschap_response'   : mschap_response,
+                            'host'              : config.host_data['name'],
+                            'jwt_reason'        : jwt_reason,
+                            'jwt_challenge'     : redirect_challenge,
+                            #'jwt_accessgroup'   : config.sso_access_group,
+                        }
             # Send verify request.
+            if auth_type == "mschap":
+                verify_command = "token_verify_mschap"
+            else:
+                verify_command = "token_verify"
             try:
                 status, \
                 status_code, \
                 auth_reply, \
-                binary_data = authd_conn.send(command="verify",
-                                        command_args=command_args)
+                binary_data = authd_conn.send(command=verify_command,
+                                            command_args=verify_args)
             except Exception as e:
                 message, log_msg = _("Failed to authenticate user", log=True)
                 log_msg = f"{log_msg}: {e}"
@@ -343,6 +399,55 @@ class OTPmeAuthP1(OTPmeServer1):
             finally:
                 authd_conn.close()
 
+            if not status:
+                message, log_msg = _("Remote authentication failed: {user}", log=True)
+                log_msg = log_msg.format(user=user.name)
+                message = message.format(user=user.name)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
+
+            try:
+                redirect_response = auth_reply['jwt']
+            except KeyError:
+                status = False
+                message = _("Auth reply misses JWT.")
+                return self.build_response(status, message)
+
+            nt_key = None
+            if auth_type == "mschap":
+                try:
+                    nt_key = auth_reply['nt_key']
+                except KeyError:
+                    status = False
+                    message = _("Auth reply misses NT_KEY.")
+                    return self.build_response(status, message)
+
+            # Try local JWT auth.
+            auth_reply = user.authenticate(auth_type="jwt",
+                                        client=client,
+                                        client_ip=client_ip,
+                                        realm_login=False,
+                                        realm_logout=False,
+                                        jwt_reason=jwt_reason,
+                                        verify_jwt_ag=False,
+                                        redirect_challenge=redirect_challenge,
+                                        redirect_response=redirect_response)
+            auth_status = auth_reply['status']
+            if not auth_status:
+                status = False
+                message = _("JWT authentication failed.")
+                return self.build_response(status, message)
+
+            # Add NT_KEY to reply.
+            if auth_type == "mschap":
+                auth_reply['nt_key'] = nt_key
+
+            # We will not send auth token instance to peer.
+            try:
+                auth_reply.pop('token')
+            except KeyError:
+                pass
+
             return self.build_response(status, auth_reply)
 
         # Indicates if authentication was successful.
@@ -351,35 +456,127 @@ class OTPmeAuthP1(OTPmeServer1):
         # Set proctitle to contain username.
         self.set_proctitle(username)
 
-        # Build auth request.
-        kwargs = {
-                    'auth_mode'     : auth_mode,
-                    'auth_type'     : auth_type,
-                    'access_group'  : access_group,
-                    'challenge'     : mschap_challenge,
-                    'response'      : mschap_response,
-                    'password'      : password,
-                    'host'          : host,
-                    'host_type'     : host_type,
-                    'host_ip'       : host_ip,
-                    'client'        : client,
-                    'client_ip'     : client_ip,
-                    'ecdh_curve'    : self.ecdh_curve,
-                }
-        # Do authentication.
-        auth_reply = user.authenticate(**kwargs)
-        # Get auth status and message from reply.
-        auth_status = auth_reply['status']
-        # We will not send auth token instance to peer.
-        try:
-            auth_reply.pop('token')
-        except KeyError:
-            pass
+        if command == "token_verify" or command == "token_verify_mschap":
+            if self.peer.type != "node":
+                status = status_codes.PERMISSION_DENIED
+                message = _("Access denied.")
+                return self.build_response(status, message)
+            try:
+                jwt_reason = command_args['jwt_reason']
+            except:
+                jwt_reason = None
+            try:
+                jwt_challenge = command_args['jwt_challenge']
+            except:
+                jwt_challenge = None
+            # Get audit logger.
+            try:
+                audit_logger = get_audit_logger()
+            except Exception as e:
+                log_msg = _("Failed to get audit logger: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                audit_logger = None
+            if command == "token_verify":
+                token_verify_parms = {
+                        'auth_type'         : "clear-text",
+                        'password'          : password,
+                        'otp'               : password,
+                        }
+            if command == "token_verify_mschap":
+                token_verify_parms = {
+                        'auth_type' : "mschap",
+                        'challenge' : mschap_challenge,
+                        'response'  : mschap_response,
+                        }
+            auth_token = None
+            for x_token in user.get_tokens(return_type="instance"):
+                if command == "token_verify_mschap":
+                    if not x_token.mschap_enabled:
+                        continue
+                try:
+                    verify_status = x_token.verify(**token_verify_parms)
+                except Exception as e:
+                    log_msg = _("Verification of token '{token_name}' returned error: {error}", log=True)[1]
+                    log_msg = log_msg.format(token_name=x_token.name, error=e)
+                    self.logger.critical(log_msg)
+                    continue
+                if verify_status is None:
+                    continue
+                auth_token = x_token
+                break
 
-        # Set connection status to authenticated.
-        if auth_status:
-            self.authenticated = True
-            self.username = username
+            _jwt = None
+            auth_status = False
+            if auth_token:
+                auth_status = True
+                try:
+                    _jwt = self.gen_jwt(username=auth_token.owner,
+                                        token=auth_token,
+                                        reason=jwt_reason,
+                                        challenge=jwt_challenge)
+                except AccessDenied:
+                    status = False
+                    message = _("Unable to gen JWT.")
+                    return self.build_response(status, message)
+                nt_key = None
+                if command == "token_verify_mschap":
+                    nt_key = verify_status[1]
+                auth_reply = {
+                            'status'        : auth_status,
+                            'login_token'   : auth_token.rel_path,
+                            'message'       : "Token successfully verified.",
+                            'nt_key'        : nt_key,
+                            'jwt'           : _jwt,
+                            }
+                log_msg = _("Token verified successful: {token}", log=True)[1]
+                log_msg = log_msg.format(token=auth_token.rel_path)
+                self.logger.info(log_msg)
+                # Audit logging.
+                if audit_logger:
+                    audit_msg = f"{config.daemon_name}: {log_msg}"
+                    self.audit_logger.info(audit_msg)
+                    for x in self.audit_logger.handlers:
+                        x.close()
+            else:
+                auth_reply = {
+                            'status'    : auth_status,
+                            'message'   : "Auth failed.",
+                            }
+                log_msg = _("Token verification failed: {user}", log=True)[1]
+                log_msg = log_msg.format(user=user.name)
+                self.logger.warning(log_msg)
+                # Audit logging.
+                if audit_logger:
+                    audit_msg = f"{config.daemon_name}: {log_msg}"
+                    self.audit_logger.warning(audit_msg)
+                    for x in self.audit_logger.handlers:
+                        x.close()
+        else:
+            # Build auth request.
+            kwargs = {
+                        'auth_mode'     : auth_mode,
+                        'auth_type'     : auth_type,
+                        'access_group'  : access_group,
+                        'challenge'     : mschap_challenge,
+                        'response'      : mschap_response,
+                        'password'      : password,
+                        'host'          : host,
+                        'host_type'     : host_type,
+                        'host_ip'       : host_ip,
+                        'client'        : client,
+                        'client_ip'     : client_ip,
+                        'ecdh_curve'    : self.ecdh_curve,
+                    }
+            # Do authentication.
+            auth_reply = user.authenticate(**kwargs)
+            # Get auth status and message from reply.
+            auth_status = auth_reply['status']
+            # We will not send auth token instance to peer.
+            try:
+                auth_reply.pop('token')
+            except KeyError:
+                pass
 
         # Build reply message.
         message = auth_reply

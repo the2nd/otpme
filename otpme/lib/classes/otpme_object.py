@@ -124,7 +124,6 @@ global_write_value_acls = {
                     "delete"    : [
                                 "object",
                                 "attribute",
-                                "config",
                                 "acl",
                                 ],
                     "add"       : [
@@ -2227,7 +2226,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         return value
 
-    @check_acls(acls=['edit:config'])
+    @check_acls(acls=['add:config'])
     @audit_log()
     def set_config_param(
         self,

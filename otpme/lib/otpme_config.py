@@ -100,11 +100,11 @@ class OTPmeConfig(object):
                             config_file_parameter="AUDIT_LOG_SERVER")
         self.register_config_var("audit_log_protocol", str, None,
                             config_file_parameter="AUDIT_LOG_PROTOCOL")
-        self.register_config_var("audit_log_use_tls", str, None,
+        self.register_config_var("audit_log_use_tls", bool, None,
                             config_file_parameter="AUDIT_LOG_USE_TLS")
         self.register_config_var("audit_log_ca_cert", str, None,
                             config_file_parameter="AUDIT_LOG_CA_CERT")
-        self.register_config_var("audit_log_use_client_cert", str, None,
+        self.register_config_var("audit_log_use_client_cert", bool, None,
                             config_file_parameter="AUDIT_LOG_USE_CLIENT_CERT")
         self.register_config_var("audit_log_cert", str, None,
                             config_file_parameter="AUDIT_LOG_CERT")
@@ -119,11 +119,11 @@ class OTPmeConfig(object):
                             config_file_parameter="SYSLOG_SERVER")
         self.register_config_var("syslog_protocol", str, None,
                             config_file_parameter="SYSLOG_PROTOCOL")
-        self.register_config_var("syslog_use_tls", str, None,
+        self.register_config_var("syslog_use_tls", bool, None,
                             config_file_parameter="SYSLOG_USE_TLS")
         self.register_config_var("syslog_ca_cert", str, None,
                             config_file_parameter="SYSLOG_CA_CERT")
-        self.register_config_var("syslog_use_client_cert", str, None,
+        self.register_config_var("syslog_use_client_cert", bool, None,
                             config_file_parameter="SYSLOG_USE_CLIENT_CERT")
         self.register_config_var("syslog_cert", str, None,
                             config_file_parameter="SYSLOG_CERT")
@@ -337,8 +337,6 @@ class OTPmeConfig(object):
         self.register_config_var("use_systemd_log", bool, use_systemd_log)
         # Enable logging to file.
         self.register_config_var("file_logging", bool, False)
-        # Path to logfile.
-        self.register_config_var("log_file", str, None)
         # Override logfile path (-l).
         self.register_config_var("force_logfile", None, None)
         # Host UUID.
@@ -750,7 +748,7 @@ class OTPmeConfig(object):
             return object.__setattr__(self, name, value)
         if name in self.properties:
             return object.__setattr__(self, name, value)
-        if hasattr(self, name):
+        if hasattr(OTPmeConfig, name):
             return object.__setattr__(self, name, value)
         if hasattr(self, "config_var_types") and value is not None:
             try:

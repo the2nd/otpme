@@ -4,8 +4,10 @@ import os
 import ssl
 #import time
 import signal
-from gevent.pywsgi import WSGIServer
-from gevent import sleep as gevent_sleep
+#from gevent.pywsgi import WSGIServer
+#from gevent import sleep as gevent_sleep
+from gunicorn.glogging import Logger
+from gunicorn.app.base import BaseApplication
 from otpme.lib.pki.utils import check_ssl_cert_key
 
 try:
@@ -41,7 +43,12 @@ class HttpDaemon(OTPmeDaemon):
     def signal_handler(self, _signal, frame):
         """ Handle signals """
         if _signal != 15:
-            return
+            if _signal != 2:
+                return
+        # Stop gunicorn.
+        self.gunicorn_child.terminate()
+        self.gunicorn_child.join()
+        self.gunicorn_child.close()
         # Remove cert/key files.
         if os.path.exists(self.cert_file):
             os.remove(self.cert_file)
@@ -53,6 +60,7 @@ class HttpDaemon(OTPmeDaemon):
         """ Start daemon loop. """
         # Setup logger.
         self.logger = log.setup_logger(pid=True)
+        self.gunicorn_child = None
 
         # Configure ourselves (e.g. certificates etc.)
         self.configure()
@@ -80,8 +88,8 @@ class HttpDaemon(OTPmeDaemon):
             ssl_cert = own_site.sso_cert
             ssl_key = own_site.sso_key
         else:
-            ssl_cert = own_site.cert
-            ssl_key = own_site.key
+            ssl_cert = own_site.mgmt_cert
+            ssl_key = own_site.mgmt_key
 
         # Encrypt cert private key with password.
         key_pass = stuff.gen_secret(len=32)
@@ -125,11 +133,6 @@ class HttpDaemon(OTPmeDaemon):
             except:
                 raise
 
-        # Start run method in extra thread.
-        multiprocessing.start_thread(name=self.name,
-                                    target=self.__run,
-                                    daemon=True)
-
         # Configure flask app.
         own_site = backend.get_object(uuid=config.site_uuid)
         #app.config.from_object('config')
@@ -140,27 +143,59 @@ class HttpDaemon(OTPmeDaemon):
             SECRET_KEY = own_site.sso_secret,
             )
 
-        # Load SSL context with encrypted key.
-        context = ssl.SSLContext(ssl_version=ssl.PROTOCOL_SSLv23)
-        context.load_cert_chain(certfile=self.cert_file,
-                                keyfile=self.key_file,
-                                password=key_pass)
-        # Start http server.
-        http_server = WSGIServer(('0.0.0.0', 443), app, ssl_context=context)
+        class GunicornApp(BaseApplication):
+            def __init__(self, app, options=None):
+                self.options = options or {}
+                self.application = app
+                super().__init__()
 
-        #app.run(host="0.0.0.0", debug=True, use_reloader=False)
-        #http_server = WSGIServer(("0.0.0.0", 443), app,
-        #                        keyfile=self.key_file,
-        #                        certfile=self.cert_file)
-        #http_server.serve_forever()
-        http_server.start()
+            def load_config(self):
+                for key, value in self.options.items():
+                    self.cfg.set(key.lower(), value)
 
-        # We can drop privileges AFTER sockets are created. This is needed when
-        # listening to well known ports (<1024), which requires root privileges.
-        self.drop_privileges()
+            def load(self):
+                return self.application
 
-        while True:
-            gevent_sleep(60)
+        def create_ssl_context(config, default_ssl_context_factory):
+            context = ssl.SSLContext(ssl_version=ssl.PROTOCOL_SSLv23)
+            context.load_cert_chain(certfile=self.cert_file,
+                                    keyfile=self.key_file,
+                                    password=key_pass)
+            #context.minimum_version = ssl.TLSVersion.TLSv1_2
+            return context
+
+        gunicorn_logger = self.logger
+        class CustomLogger(Logger):
+            def __init__(self, cfg):
+                super().__init__(cfg)
+                self.error_log = gunicorn_logger
+                self.access_log = gunicorn_logger
+
+        # Gunicorn options
+        options = {
+          'bind': '0.0.0.0:443',
+          'workers': 4,
+          'worker_class': 'gevent',
+          'worker_connections': 1000,
+          'timeout': 30,
+          'keepalive': 5,
+          'certfile': self.cert_file,
+          'keyfile': self.key_file,
+          'ssl_context': create_ssl_context,
+          'user': self.user,
+          'group': self.group,
+          'proc_name': 'otpme-httpd',
+          'logger_class': CustomLogger,
+        }
+
+        # Start Gunicorn.
+        gunicorn_app = GunicornApp(app, options)
+        self.gunicorn_child = multiprocessing.start_process(name="gunicorn",
+                                                target=gunicorn_app.run,
+                                                new_process_group=True)
+
+        # Start main loop.
+        self.__run()
 
     def __run(self, **kwargs):
         # Notify controld that we are ready.
@@ -206,10 +241,3 @@ class HttpDaemon(OTPmeDaemon):
                 log_msg = _("Unhandled error in httpd: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
                 self.logger.critical(log_msg)
-
-        # Stop flask.
-        if config.daemonize:
-            # Send SIGTERM.
-            mypid = os.getpid()
-            stuff.kill_pid(mypid)
-

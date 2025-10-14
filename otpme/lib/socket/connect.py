@@ -376,6 +376,12 @@ class ConnectSocket(object):
             self._socket.shutdown(socket.SHUT_RDWR)
         except IOError:
             pass
+        # Attempt graceful SSL shutdown.
+        if hasattr(self._socket, 'unwrap'):
+            try:
+                self._socket.unwrap()
+            except ValueError:
+                pass
         # Close socket.
         self._socket.close()
         self.remove_cert_files()

@@ -76,14 +76,14 @@ cmd_help = {
                 },
 
     'restart'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-controld restart'),
+                    '_cmd_usage_help' : _('Usage: otpme-controld restart [daemon]'),
                     '_help' :   {
                                     'cmd'                   : _('Restart OTPme daemons'),
                                 },
                 },
 
     'reload'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-controld reload'),
+                    '_cmd_usage_help' : _('Usage: otpme-controld reload [daemon]'),
                     '_help' :   {
                                     'cmd'                   : _('Send SIGHUP to daemon for config reload'),
                                 },

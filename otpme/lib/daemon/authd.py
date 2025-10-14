@@ -58,7 +58,7 @@ class AuthDaemon(OTPmeDaemon):
         self.socket_banner = f"{status_codes.OK} {self.full_name} {config.my_version}"
 
         # Disable interactive policies (e.g. reauth).
-        if not "interactive" in config.ignore_policy_tags:
+        if "interactive" not in config.ignore_policy_tags:
             config.ignore_policy_tags.append("interactive")
 
         # Add default connection handler.

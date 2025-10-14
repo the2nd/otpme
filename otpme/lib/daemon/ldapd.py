@@ -14,6 +14,7 @@ except:
 from otpme.lib import log
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib import backend
 from otpme.lib import filetools
 from otpme.lib import multiprocessing
 from otpme.lib.ldap.server import LDAPServer
@@ -53,8 +54,12 @@ class LdapDaemon(OTPmeDaemon):
             #_cert = SSLCert(key=ssl_key)
             #ssl_key = _cert.encrypt_key(key=ssl_key, algo="blowfish", passphrase=passphrase)
 
-            ssl_cert = config.host_data['cert']
-            ssl_key = config.host_data['key']
+            #ssl_cert = config.host_data['cert']
+            #ssl_key = config.host_data['key']
+
+            own_site = backend.get_object(uuid=config.site_uuid)
+            ssl_cert = own_site.mgmt_cert
+            ssl_key = own_site.mgmt_key
 
             # Temp file paths.
             self.cert_file = os.path.join(config.tmp_dir, f"{stuff.gen_secret(32)}-cert.pem")

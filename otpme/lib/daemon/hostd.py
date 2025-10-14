@@ -538,6 +538,7 @@ class HostDaemon(OTPmeDaemon):
                     # Get object config.
                     encoded_config = x[1]
                     object_config = json.decode(encoded_config, encoding="hex")
+                    object_checksum = x[2]
                     # Load instance.
                     try:
                         o = backend.get_instance_from_oid(object_id, object_config)
@@ -555,7 +556,7 @@ class HostDaemon(OTPmeDaemon):
                         self.logger.critical(log_msg)
                         continue
                     # Add object to list.
-                    site_objects.append(o)
+                    site_objects.append((o, object_checksum))
 
                 # Add site objects.
                 if site_objects:
@@ -578,7 +579,7 @@ class HostDaemon(OTPmeDaemon):
         for site_oid in sync_sites:
             # Add site and objects we need to start the sync (e.g. master
             # node).
-            for o in sync_sites[site_oid]:
+            for o, object_checksum in sync_sites[site_oid]:
                 # Get OID.
                 x_oid = o.oid
                 # Get object config to write to backend.
@@ -590,7 +591,7 @@ class HostDaemon(OTPmeDaemon):
                     object_type = o.type
                     # No need to update object if checksum matches.
                     sync_checksum = backend.get_sync_checksum(x_oid)
-                    if sync_checksum == o.sync_checksum:
+                    if sync_checksum == object_checksum:
                         continue
                     if config.master_node:
                         # Realm/site objects need some special handling (e.g.
@@ -1356,11 +1357,11 @@ class HostDaemon(OTPmeDaemon):
         if self.resolver_run_child:
             if self.resolver_run_child.is_alive():
                 return
-            self.resolver_run_child.join()
             self.resolver_run_child.close()
         # Create child process.
         child = multiprocessing.start_process(name=self.name,
-                            target=self._run_resolvers)
+                            target=self._run_resolvers,
+                            join=True)
         self.resolver_run_child = child
 
     def _run_resolvers(self):
@@ -1402,11 +1403,11 @@ class HostDaemon(OTPmeDaemon):
         if self.clear_outdated_cache_objects_child:
             if self.clear_outdated_cache_objects_child.is_alive():
                 return
-            self.clear_outdated_cache_objects_child.join()
             self.clear_outdated_cache_objects_child.close()
         # Create child process.
         child = multiprocessing.start_process(name=self.name,
-                            target=self._clear_outdated_cache_objects)
+                            target=self._clear_outdated_cache_objects,
+                            join=True)
         self.clear_outdated_cache_objects_child = child
 
     def _clear_outdated_cache_objects(self):
@@ -1426,11 +1427,11 @@ class HostDaemon(OTPmeDaemon):
         if self.remove_outdated_tokens_child:
             if self.remove_outdated_tokens_child.is_alive():
                 return
-            self.remove_outdated_tokens_child.join()
             self.remove_outdated_tokens_child.close()
         # Create child process.
         child = multiprocessing.start_process(name=self.name,
-                            target=self._remove_outdated_tokens)
+                            target=self._remove_outdated_tokens,
+                            join=True)
         self.remove_outdated_tokens_child = child
 
     def _remove_outdated_tokens(self):
@@ -1987,6 +1988,10 @@ class HostDaemon(OTPmeDaemon):
             if sync_child.is_alive():
                 sync_child.terminate()
 
+            try:
+                sync_child.join()
+            except OSError:
+                pass
             try:
                 sync_child.close()
             except OSError:

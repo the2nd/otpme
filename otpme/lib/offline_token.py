@@ -962,8 +962,6 @@ class OfflineToken(object):
             # Remove salt from RSP.
             rsp = salt_rsp.replace(salt, "")
             offline_allowed = session_config['OFFLINE']
-            # Sign RSP to be verified by otpme-agent.
-            rsp_signature = key.sign(rsp, encoding="hex")
 
             if realm not in server_sessions:
                 server_sessions[realm] = {}
@@ -972,7 +970,6 @@ class OfflineToken(object):
             # Add session.
             server_sessions[realm][site]['rsp'] = rsp
             server_sessions[realm][site]['slp'] = slp
-            server_sessions[realm][site]['rsp_signature'] = rsp_signature
             server_sessions[realm][site]['session_key'] = session_key
             server_sessions[realm][site]['login_time'] = login_time
             server_sessions[realm][site]['shares'] = shares
