@@ -373,6 +373,13 @@ class Session(OTPmeLockObject):
         # Set our OID.
         self.set_oid()
 
+    def __str__(self):
+        if not self.oid:
+            msg = _("Sesssion without OID: {obj_type}: {obj_id}")
+            msg = msg.format(obj_type=self.type, obj_id=id(self))
+            return msg
+        return self.oid.read_oid
+
     @property
     def checksum(self):
         """ Get object checksum from backend. """

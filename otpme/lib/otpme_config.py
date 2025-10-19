@@ -40,6 +40,8 @@ class OTPmeConfig(object):
         self.extensions = []
         self.default_extensions = {}
         self.dn_attributes = {}
+        self.default_acls = {}
+        self.recursive_default_acls = {}
         # Method hooks to be handled by auth_on_action policy.
         self.auth_on_action_hooks = {}
         # Valid config parameter than can be added to objects
@@ -175,6 +177,9 @@ class OTPmeConfig(object):
         self.register_config_var("_posix_msgsize_max", None, 8192,
                             config_file_parameter="POSIX_MSGSIZE_MAX")
         self.register_config_var("posix_msgsize_max", None, 8192)
+        # Socket send buffer.
+        self.register_config_var("socket_send_buffer", int, 104857600,
+                            config_file_parameter="SOCKET_SEND_BUFFER")
         # Socket receive buffer.
         self.register_config_var("socket_receive_buffer", int, 104857600,
                             config_file_parameter="SOCKET_RECEIVE_BUFFER")
@@ -1254,6 +1259,44 @@ class OTPmeConfig(object):
                 level = 0
             return level
         self.debug_levels[slot] = new_level
+
+    def register_default_acl(self, object_type, acl):
+        try:
+            default_acls = self.default_acls[object_type]
+        except KeyError:
+            default_acls = []
+            self.default_acls[object_type] = default_acls
+        if acl in default_acls:
+            msg = _("ACL already registered: {acl}")
+            msg = msg.format(acl=acl)
+            raise AlreadyRegistered(msg)
+        default_acls.append(acl)
+
+    def register_recursive_default_acl(self, object_type, acl):
+        try:
+            recursive_default_acls = self.recursive_default_acls[object_type]
+        except KeyError:
+            recursive_default_acls = []
+            self.recursive_default_acls[object_type] = recursive_default_acls
+        if acl in recursive_default_acls:
+            msg = _("ACL already registered: {acl}")
+            msg = msg.format(acl=acl)
+            raise AlreadyRegistered(msg)
+        recursive_default_acls.append(acl)
+
+    def get_default_acls(self, object_type):
+        try:
+            default_acls = self.default_acls[object_type]
+        except KeyError:
+            return []
+        return default_acls
+
+    def get_recursive_default_acls(self, object_type):
+        try:
+            recursive_default_acls = self.recursive_default_acls[object_type]
+        except KeyError:
+            return []
+        return recursive_default_acls
 
     def register_auth_on_action_hook(self, object_type, hook):
         try:

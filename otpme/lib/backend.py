@@ -406,7 +406,7 @@ def outdate_object(object_id: oid.OTPmeOid, cache_type: Union[str,None]=None):
     # Make sure we notify ldapd about changed objects (e.g. clear ldap search cache).
     if config.daemon_mode:
         if config.get_ldap_settings(object_type):
-            config.ldap_object_changed = True
+            config.ldap_cache_clear = True
 
 @match_typing
 def import_config(
@@ -1204,6 +1204,7 @@ def search(
     site: Union[str,None]=None,
     return_attributes: List=None,
     verify_acls: List=None,
+    return_acls: List=None,
     return_query_count: bool=False,
     **kwargs
     ) -> Union[List,dict]:
@@ -1218,6 +1219,13 @@ def search(
             raise OTPmeException(msg)
         _verify_acls = otpme_acl.get_raw_acls(verify_acls, config.auth_token)
 
+    _return_acls = None
+    if return_acls:
+        if not config.auth_token:
+            msg = _("Unable to return ACLs: config.auth_token is None")
+            raise OTPmeException(msg)
+        _return_acls = otpme_acl.get_raw_acls(return_acls, config.auth_token)
+
     if return_type == "instance":
         search_return_type = "oid"
     else:
@@ -1227,6 +1235,7 @@ def search(
     _result = index_search(realm=realm,
                             site=site,
                             verify_acls=_verify_acls,
+                            return_acls=_return_acls,
                             attributes=attributes,
                             attribute=attribute,
                             value=value,

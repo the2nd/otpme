@@ -1125,12 +1125,19 @@ class ClusterDaemon(OTPmeDaemon):
             try:
                 clusterd_conn = connections.get("clusterd",
                                                 timeout=3,
+                                                auto_auth=False,
                                                 quiet_autoconnect=True,
                                                 compress_request=False)
-            except HostDisabled as e:
+            except Exception as e:
+                log_msg = _("Connection to master node failed: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
                 time.sleep(1)
                 continue
-            except Exception as e:
+            # Check if node is disabled.
+            try:
+                clusterd_conn.authenticate()
+            except HostDisabled as e:
                 time.sleep(1)
                 continue
             else:

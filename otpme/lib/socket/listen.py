@@ -152,7 +152,7 @@ class ListenSocket(object):
                 self.logger.error(log_msg)
                 return False
             # Set send/recv buffer.
-            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, config.socket_receive_buffer)
+            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, config.socket_send_buffer)
             self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, config.socket_receive_buffer)
 
         if not self.blocking:

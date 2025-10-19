@@ -248,32 +248,17 @@ def do_jwt_auth(user, password, client_ip):
                                 allow_untrusted=True,
                                 auto_preauth=True,
                                 auto_auth=False)
-    # Send auth request.
-    auth_type = "clear-text"
-    command_args = {
-                    'username'          : user.name,
-                    'password'          : password,
-                    'auth_type'         : auth_type,
-                }
-    auth_status, \
-    status_code, \
-    auth_reply, \
-    binary_data = authd_conn.send(command="do_auth",
-                            command_args=command_args)
-    if not auth_status:
-        msg = "Authentication failed: {auth_reply}"
-        raise AuthFailed(msg)
+
     # Gen JWT to be signed by other site.
     my_site = backend.get_object(object_type="site",
                                 uuid=config.site_uuid)
     site_key = my_site._key
-    jwt_reason = "SSO_LOGIN"
+    jwt_reason = "AUTH"
     challenge = stuff.gen_secret(len=32)
     jwt_data = {
                 'user'          : user.name,
                 'realm'         : config.realm,
                 'site'          : config.site,
-                'accessgroup'   : config.sso_access_group,
                 'reason'        : jwt_reason,
                 'challenge'     : challenge,
             }
@@ -281,20 +266,43 @@ def do_jwt_auth(user, password, client_ip):
                                     key=site_key,
                                     algorithm='RS256')
     # Get JWT from other site.
-    command_args = {
+    verify_args = {
+                    'username'          : user.name,
+                    'password'          : password,
                     'host'              : config.host_data['name'],
                     'jwt_reason'        : jwt_reason,
                     'jwt_challenge'     : redirect_challenge,
-                    #'jwt_accessgroup'   : config.sso_access_group,
                 }
+    # Send verify request.
     try:
         auth_status, \
         status_code, \
-        redirect_response, \
-        binary_data = authd_conn.send(command="get_jwt",
-                                command_args=command_args)
+        auth_reply, \
+        binary_data = authd_conn.send(command="token_verify",
+                                    command_args=verify_args)
+    except Exception as e:
+        message, log_msg = _("Failed to authenticate user: {user_name}", log=True)
+        log_msg = log_msg.format(user_name=user.name)
+        log_msg = f"{log_msg}: {e}"
+        logger.critical(log_msg)
+        message = message.format(user_name=user.name)
+        raise AuthFailed(message)
     finally:
         authd_conn.close()
+
+    if not auth_status:
+        message, log_msg = _("Remote authentication failed: {user}", log=True)
+        log_msg = log_msg.format(user=user.name)
+        message = message.format(user=user.name)
+        logger.warning(log_msg)
+        raise AuthFailed(message)
+
+    try:
+        redirect_response = auth_reply['jwt']
+    except KeyError:
+        message = _("Auth reply misses JWT.")
+        raise AuthFailed(message)
+
     # Try local JWT auth.
     auth_reply = user.authenticate(auth_type="jwt",
                                 client=config.sso_client_name,
@@ -302,6 +310,7 @@ def do_jwt_auth(user, password, client_ip):
                                 realm_login=False,
                                 realm_logout=False,
                                 jwt_reason=jwt_reason,
+                                verify_jwt_ag=False,
                                 redirect_challenge=redirect_challenge,
                                 redirect_response=redirect_response)
     auth_status = auth_reply['status']

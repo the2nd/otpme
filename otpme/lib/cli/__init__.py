@@ -1138,7 +1138,7 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
 
     object_acls = None
     if verify_acls:
-        object_acls = result['acls']
+        object_acls = result['matching_acls']
         result = result['objects']
 
     object_order = list(result)
@@ -1380,10 +1380,17 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
 
     # Default sorting should be "newest on top" but sorted(reverse=True) is the
     # other way around. So we have to invert it.
-    if reverse_sort:
-        reverse_sort = False
-    else:
-        reverse_sort = True
+    reverse_sort_fix_fields = [
+            "creation_time",
+            "expiration_time",
+            "unused_expiration_time",
+            "last_login",
+            ]
+    if sort_by in reverse_sort_fix_fields:
+        if reverse_sort:
+            reverse_sort = False
+        else:
+            reverse_sort = True
 
     # Tree level must be negative for reverse sorting.
     if reverse_sort:

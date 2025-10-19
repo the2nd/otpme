@@ -707,6 +707,7 @@ def get_default_acls():
     """ Get all supported object default ACLs """
     otpme_host_default_acls = _get_default_acls()
     _acls = otpme_acl.merge_acls(default_acls, otpme_host_default_acls)
+    _acls += config.get_default_acls("node")
     return _acls
 
 def get_recursive_default_acls():
@@ -714,6 +715,7 @@ def get_recursive_default_acls():
     otpme_host_recursive_default_acls = _get_recursive_default_acls()
     _acls = otpme_acl.merge_acls(recursive_default_acls,
                                 otpme_host_recursive_default_acls)
+    _acls += config.get_recursive_default_acls("node")
     return _acls
 
 REGISTER_BEFORE = []
@@ -729,6 +731,9 @@ def register():
     register_sync_settings()
     register_commands("node", commands)
     config.register_index_attribute("node")
+    config.register_recursive_default_acl("site", "+node")
+    config.register_default_acl("unit", "+node")
+    config.register_recursive_default_acl("unit", "+node")
 
 def register_object_unit():
     """ Register default unit for this object type. """

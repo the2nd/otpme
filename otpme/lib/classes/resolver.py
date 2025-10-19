@@ -420,10 +420,14 @@ def get_value_acls(**kwargs):
     return _get_value_acls(read_value_acls, write_value_acls, **kwargs)
 
 def get_default_acls(**kwargs):
-    return _get_default_acls(default_acls, **kwargs)
+    acls = _get_default_acls(default_acls, **kwargs)
+    acls += config.get_default_acls("resolver")
+    return acls
 
 def get_recursive_default_acls(**kwargs):
-    return _get_recursive_default_acls(recursive_default_acls, **kwargs)
+    acls = _get_recursive_default_acls(recursive_default_acls, **kwargs)
+    acls += config.get_recursive_default_acls("resolver")
+    return acls
 
 DEFAULT_UNIT = "resolvers"
 REGISTER_BEFORE = []
@@ -437,6 +441,9 @@ def register():
     register_sync_settings()
     register_commands("resolver", commands)
     locking.register_lock_type(LOCK_TYPE, module=__file__)
+    config.register_recursive_default_acl("site", "+resolver")
+    config.register_default_acl("unit", "+resolver")
+    config.register_recursive_default_acl("unit", "+resolver")
 
 def register_hooks():
     config.register_auth_on_action_hook("resolver", "run")

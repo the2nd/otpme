@@ -410,8 +410,6 @@ class HostDaemon(OTPmeDaemon):
     @handle_sync_child()
     def sync_sites(self, **kwargs):
         """ Make sure our sites list is in sync with the master site. """
-        if config.realm_master_node:
-            return
         # Acquire sync lock.
         sync_lock = self.acquire_sync_lock("objects")
         try:
@@ -440,14 +438,21 @@ class HostDaemon(OTPmeDaemon):
         #        return
 
         if config.master_node:
-            # Master nodes of non-master sites must connect to master site.
-            master_site = backend.get_object(object_type="site",
-                                    uuid=config.realm_master_uuid)
-            if not master_site:
-                msg = _("Cannot find master site: {uuid}")
-                msg = msg.format(uuid=config.realm_master_uuid)
-                raise OTPmeException(msg)
-            connect_sites = [master_site]
+            # Realm master nodes must connect to each site.
+            if config.realm_master_node:
+                connect_sites = backend.search(object_type="site",
+                                                attribute="uuid",
+                                                value="*",
+                                                return_type="instance")
+            else:
+                # Master nodes of non-master sites must connect to master site.
+                master_site = backend.get_object(object_type="site",
+                                        uuid=config.realm_master_uuid)
+                if not master_site:
+                    msg = _("Cannot find master site: {uuid}")
+                    msg = msg.format(uuid=config.realm_master_uuid)
+                    raise OTPmeException(msg)
+                connect_sites = [master_site]
         else:
             # Non-master nodes must always connect to the master node of their
             # own site.
@@ -624,6 +629,7 @@ class HostDaemon(OTPmeDaemon):
                     backend.write_config(object_id=x_oid,
                                     object_config=object_config,
                                     full_data_update=True,
+                                    full_acl_update=True,
                                     full_index_update=True,
                                     full_ldif_update=True)
                 except Exception as e:

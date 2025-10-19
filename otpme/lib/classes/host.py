@@ -773,6 +773,7 @@ def get_default_acls():
     """ Get all supported object default ACLs """
     otpme_host_default_acls = _get_default_acls()
     _acls = otpme_acl.merge_acls(default_acls, otpme_host_default_acls)
+    _acls += config.get_default_acls("host")
     return _acls
 
 def get_recursive_default_acls():
@@ -780,6 +781,7 @@ def get_recursive_default_acls():
     otpme_host_recursive_default_acls = _get_recursive_default_acls()
     _acls = otpme_acl.merge_acls(recursive_default_acls,
                                 otpme_host_recursive_default_acls)
+    _acls += config.get_recursive_default_acls("host")
     return _acls
 
 #REGISTER_BEFORE = ['otpme.lib.policy']
@@ -797,6 +799,9 @@ def register():
     register_object_unit()
     register_sync_settings()
     register_commands("host", commands)
+    config.register_recursive_default_acl("site", "+host")
+    config.register_default_acl("unit", "+host")
+    config.register_recursive_default_acl("unit", "+host")
 
 def register_template():
     config.register_object_template("host", HOST_TEMPLATE)

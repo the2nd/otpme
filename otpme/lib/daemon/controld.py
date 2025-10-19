@@ -241,23 +241,6 @@ def register():
                             getx=ldap_cache_clear_getter,
                             setx=ldap_cache_clear_setter)
     config.register_config_var("_ldap_cache_clear", None, False)
-    # Register ldap object changed property.
-    def ldap_object_changed_getter(self):
-        if isinstance(config._ldap_object_changed, bool):
-            return config._ldap_object_changed
-        try:
-            return config._ldap_object_changed.value
-        except AttributeError:
-            return False
-    def ldap_object_changed_setter(self, new_status):
-        if isinstance(config._ldap_object_changed, bool):
-            config._ldap_object_changed = new_status
-            return
-        config._ldap_object_changed.value = new_status
-    config.register_property(name="ldap_object_changed",
-                            getx=ldap_object_changed_getter,
-                            setx=ldap_object_changed_setter)
-    config.register_config_var("_ldap_object_changed", None, False)
     # Register sync status stuff.
     def sync_status_getter(self):
         from otpme.lib.multiprocessing import sync_status
@@ -432,12 +415,6 @@ class ControlDaemon(UnixDaemon):
         except Exception as e:
             log_msg = _("Failed to close shared bool: {name}", log=True)[1]
             log_msg = log_msg.format(name=config._ldap_cache_clear.name)
-            self.logger.critical(log_msg)
-        try:
-            config._ldap_object_changed.close()
-        except Exception as e:
-            log_msg = _("Failed to close shared bool: {name}", log=True)[1]
-            log_msg = log_msg.format(name=config._ldap_object_changed.name)
             self.logger.critical(log_msg)
         #try:
         #    multiprocessing.cluster_lock_event.unlink()
@@ -710,15 +687,6 @@ class ControlDaemon(UnixDaemon):
         ldap_cache_clear = "ldap-cache-clear"
         try:
             config._ldap_cache_clear = multiprocessing.get_bool(ldap_cache_clear,
-                                                            random_name=False)
-        except Exception as e:
-            log_msg = _("Failed to get shared bool: {error}", log=True)[1]
-            log_msg = log_msg.format(error=e)
-            self.logger.critical(log_msg)
-
-        ldap_object_changed = "ldap-object-changed"
-        try:
-            config._ldap_object_changed = multiprocessing.get_bool(ldap_object_changed,
                                                             random_name=False)
         except Exception as e:
             log_msg = _("Failed to get shared bool: {error}", log=True)[1]

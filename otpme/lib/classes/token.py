@@ -605,10 +605,14 @@ def get_value_acls(**kwargs):
     return _get_value_acls(read_value_acls, write_value_acls, **kwargs)
 
 def get_default_acls(**kwargs):
-    return _get_default_acls(default_acls, **kwargs)
+    acls = _get_default_acls(default_acls, **kwargs)
+    acls += config.get_default_acls("token")
+    return acls
 
 def get_recursive_default_acls(**kwargs):
-    return _get_recursive_default_acls(recursive_default_acls, **kwargs)
+    acls = _get_recursive_default_acls(recursive_default_acls, **kwargs)
+    acls += config.get_recursive_default_acls("token")
+    return acls
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = [
@@ -632,6 +636,10 @@ def register():
     register_module("otpme.lib.classes.role")
     register_module("otpme.lib.classes.data_objects.used_otp")
     config.register_config_var("temp_pass_auth", bool, False)
+    config.register_recursive_default_acl("site", "+token")
+    config.register_default_acl("unit", "+token")
+    config.register_recursive_default_acl("unit", "+token")
+    config.register_default_acl("user", "+token")
 
 def register_hooks():
     config.register_auth_on_action_hook("token", "move")

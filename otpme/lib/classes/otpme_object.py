@@ -5810,7 +5810,8 @@ class OTPmeObject(OTPmeBaseObject):
                                         callback=callback,
                                         **kwargs)
                 if not add_status:
-                    exception = True
+                    exception = "Failed to add recursive ACL: {acl}"
+                    exception = exception.format(acl=acl.id)
             except Exception as e:
                 if not exception:
                     exception = str(e)
@@ -5825,7 +5826,8 @@ class OTPmeObject(OTPmeBaseObject):
                                         callback=callback,
                                         **kwargs)
                 if not add_status:
-                    exception = True
+                    exception = "Failed to add ACL: {acl}"
+                    exception = exception.format(acl=acl.id)
             except Exception as e:
                 if not exception:
                     exception = str(e)
@@ -5946,7 +5948,7 @@ class OTPmeObject(OTPmeBaseObject):
                                                 callback=callback,
                                                 **kwargs)
                 if not status:
-                    exception = True
+                    exception = _("Failed to disinherit ACLs.")
             else:
                 status = self.inherit_default_acl(acl=acl,
                                                 force=force,
@@ -5955,7 +5957,7 @@ class OTPmeObject(OTPmeBaseObject):
                                                 callback=callback,
                                                 **kwargs)
                 if not status:
-                    exception = True
+                    exception = _("Failed to inherit ACLs.")
 
         if exception:
             return callback.error(exception)
@@ -6174,7 +6176,7 @@ class OTPmeObject(OTPmeBaseObject):
                     search_site = None
                 else:
                     search_attribute = "name"
-                    search_site = self.site
+                    search_site = config.site
 
             result = backend.search(attribute=search_attribute,
                                     value=owner_name,
@@ -6341,6 +6343,7 @@ class OTPmeObject(OTPmeBaseObject):
                 # inherit_default_acl().
                 _acl_objects.remove(o)
 
+        self._cache(callback=callback)
         return callback.ok()
 
     def check_auto_disable(self, **kwargs):

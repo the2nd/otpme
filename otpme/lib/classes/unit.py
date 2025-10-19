@@ -82,7 +82,6 @@ write_value_acls = {
                                 ],
                     }
 
-# FIXME: make this list a register method???
 default_acls = [
                     "all",
                     "rename",
@@ -98,23 +97,24 @@ default_acls = [
                     "import",
                     "export",
                     "+unit",
-                    "+user",
-                    "+group",
-                    "+accessgroup",
-                    "+client",
-                    "+node",
-                    "+host",
-                    "+role",
-                    "+ca",
-                    "+script",
-                    "+token",
-                    "+policy",
-                    "+resolver",
-                    "+dictionary",
                     ]
 
-recursive_default_acls = default_acls
-
+recursive_default_acls = [
+                    "all",
+                    "rename",
+                    "edit",
+                    "add",
+                    "remove",
+                    "delete",
+                    "enable",
+                    "disable",
+                    "view_all",
+                    "view_public",
+                    "view",
+                    "import",
+                    "export",
+                    "+unit",
+                    ]
 commands = {
     'add'   : {
             'OTPme-mgmt-1.0'    : {
@@ -525,6 +525,7 @@ def get_default_acls(**kwargs):
                 if default_acl in _default_acls:
                     continue
                 _default_acls.append(default_acl)
+    _default_acls += config.get_default_acls("unit")
     return _default_acls
 
 def get_recursive_default_acls(**kwargs):
@@ -543,6 +544,7 @@ def get_recursive_default_acls(**kwargs):
                 if default_acl in _recursive_default_acls:
                     continue
                 _recursive_default_acls.append(default_acl)
+    _recursive_default_acls += config.get_recursive_default_acls("unit")
     return _recursive_default_acls
 
 REGISTER_BEFORE = []
@@ -556,6 +558,8 @@ def register():
     register_ldap_object()
     register_sync_settings()
     register_commands("unit", commands)
+    config.register_default_acl("site", "+unit")
+    config.register_recursive_default_acl("site", "+unit")
 
 def register_dn():
     """ Register DN attribute. """
@@ -721,7 +725,6 @@ class Unit(OTPmeObject):
         ):
         """ Method to call inherit_default_acl() for all member objects. """
         exception = None
-
         if action == "add":
             inherit_method = "inherit_default_acl"
         else:
@@ -796,8 +799,8 @@ class Unit(OTPmeObject):
                             exception = True
         if exception:
             return callback.error()
-        else:
-            return callback.ok()
+
+        return callback.ok()
 
     @members_cache.cache_method()
     def get_members(

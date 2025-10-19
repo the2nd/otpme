@@ -138,7 +138,6 @@ default_acls = [
                     "view",
                     "import",
                     "export",
-                    "+unit",
                 ]
 
 recursive_default_acls = [
@@ -155,16 +154,6 @@ recursive_default_acls = [
                     "view",
                     "import",
                     "export",
-                    "+unit",
-                    "+user",
-                    "+group",
-                    "+accessgroup",
-                    "+client",
-                    "+node",
-                    "+host",
-                    "+role",
-                    "+ca",
-                    "+token",
                 ]
 
 commands = {
@@ -386,7 +375,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'add_acl',
-                    'args'              : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls', 'object_types'],
+                    'oargs'             : ['owner_type', 'owner_name', 'acl', 'recursive_acls', 'apply_default_acls', 'object_types'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -802,10 +791,14 @@ def get_value_acls(**kwargs):
     return _get_value_acls(read_value_acls, write_value_acls, **kwargs)
 
 def get_default_acls(**kwargs):
-    return _get_default_acls(default_acls, **kwargs)
+    acls = _get_default_acls(default_acls, **kwargs)
+    acls += config.get_default_acls("site")
+    return acls
 
 def get_recursive_default_acls(**kwargs):
-    return _get_recursive_default_acls(recursive_default_acls, **kwargs)
+    acls = _get_recursive_default_acls(recursive_default_acls, **kwargs)
+    acls += config.get_recursive_default_acls("site")
+    return acls
 
 REGISTER_BEFORE = []
 REGISTER_AFTER = [
@@ -2695,6 +2688,78 @@ class Site(OTPmeObject):
         return self._write(callback=callback)
 
     @object_lock(full_lock=True)
+    def add_acls(
+        self,
+        callback: JobCallback=default_callback
+        ):
+        """ Add default ACLs. """
+        callback.send(_("Adding default ACLs..."))
+
+        # Add default ACLs to allow view of some objects for realm users.
+        view_objects = ['site']
+        for acl in self._recursive_default_acls:
+            if not acl.startswith("+"):
+                continue
+            object_type = acl.replace("+", "")
+            view_objects.append(object_type)
+
+        # Get realm user role.
+        realm_user_role = backend.get_object(uuid=self.user_role_uuid)
+        for o in view_objects:
+            acl = f"role:{realm_user_role.uuid}:++{o}:view_public"
+            self.add_acl(acl=acl,
+                        recursive_acls=True,
+                        apply_default_acls=True,
+                        object_types=view_objects,
+                        verify_acls=False,
+                        verbose_level=1,
+                        callback=callback)
+
+        # Add ACLs to view LDIF attributes.
+        view_objects = [ "site", "unit", "user", "group" ]
+        for o in view_objects:
+            acl = f"role:{realm_user_role.uuid}:++{o}:view:attribute"
+            self.add_acl(acl=acl,
+                        recursive_acls=True,
+                        apply_default_acls=True,
+                        object_types=view_objects,
+                        verify_acls=False,
+                        verbose_level=1,
+                        callback=callback)
+
+        # Get site admin role.
+        site_admin_role = backend.get_object(uuid=self.admin_role_uuid)
+        # Add ACLs to view public site infos.
+        view_roles = [ realm_user_role, site_admin_role ]
+        for r in view_roles:
+            acl = f"role:{r.uuid}:view_public"
+            self.add_acl(acl=acl,
+                        recursive_acls=False,
+                        apply_default_acls=False,
+                        verify_acls=False,
+                        verbose_level=1,
+                        callback=callback)
+
+        # Add "dump" ACLs for default scripts.
+        acl = f"role:{realm_user_role.uuid}:dump"
+        for script_name in os.listdir(config.script_dir):
+            _script = backend.search(object_type="script",
+                                    attribute="name",
+                                    value=script_name,
+                                    return_type="instance",
+                                    realm=self.realm,
+                                    site=self.name)[0]
+            _script.add_acl(acl=acl,
+                        recursive_acls=False,
+                        apply_default_acls=False,
+                        verify_acls=False,
+                        verbose_level=1,
+                        callback=callback)
+        # Write objects.
+        callback.write_modified_objects()
+        cache.flush()
+
+    @object_lock(full_lock=True)
     def add_early_objects(
         self,
         id_ranges: Union[str,None]=None,
@@ -2997,7 +3062,6 @@ class Site(OTPmeObject):
                                             callback=callback)
             # Set site admin role.
             if role.name == config.site_admin_role:
-                site_admin_role = role
                 self.admin_role_uuid = role.uuid
             # Set realm users role.
             if role.name == config.realm_user_role:
@@ -3054,76 +3118,8 @@ class Site(OTPmeObject):
         callback.write_modified_objects()
         cache.flush()
 
-        callback.send(_("Adding default ACLs..."))
-
-        # Add default ACLs to allow view of some objects for realm users.
-        # FIXME: Make this list a register method (e.g. get all unit default ACLs.)
-        view_objects = [
-			"unit",
-			"user",
-			"role",
-			"group",
-			"accessgroup",
-			"script",
-			"ca",
-			"client",
-			"host",
-			"node",
-			"policy",
-			"dictionary",
-			"resolver",
-			]
-        for o in view_objects:
-            acl = f"role:{realm_user_role.uuid}:++{o}:view_public"
-            self.add_acl(acl=acl,
-                        recursive_acls=True,
-                        apply_default_acls=True,
-                        object_types=view_objects,
-                        verify_acls=False,
-                        verbose_level=1,
-                        callback=callback)
-
-        # Add ACLs to view LDIF attributes.
-        view_objects = [ "unit", "user", "group" ]
-        for o in view_objects:
-            acl = f"role:{realm_user_role.uuid}:++{o}:view:attribute"
-            self.add_acl(acl=acl,
-                        recursive_acls=True,
-                        apply_default_acls=True,
-                        object_types=view_objects,
-                        verify_acls=False,
-                        verbose_level=1,
-                        callback=callback)
-
-        # Add ACLs to view public site infos.
-        view_roles = [ realm_user_role, site_admin_role ]
-        for r in view_roles:
-            acl = f"role:{r.uuid}:view_public"
-            self.add_acl(acl=acl,
-                        recursive_acls=False,
-                        apply_default_acls=False,
-                        verify_acls=False,
-                        verbose_level=1,
-                        callback=callback)
-
-        # Add "dump" ACLs for default scripts.
-        acl = f"role:{realm_user_role.uuid}:dump"
-        for script_name in os.listdir(config.script_dir):
-            _script = backend.search(object_type="script",
-                                    attribute="name",
-                                    value=script_name,
-                                    return_type="instance",
-                                    realm=self.realm,
-                                    site=self.name)[0]
-            _script.add_acl(acl=acl,
-                        recursive_acls=False,
-                        apply_default_acls=False,
-                        verify_acls=False,
-                        verbose_level=1,
-                        callback=callback)
-        # Write objects.
-        callback.write_modified_objects()
-        cache.flush()
+        # Add default ACLs.
+        self.add_acls(callback=callback)
 
         # Add internal users.
         internal_users = config.get_internal_objects("user")

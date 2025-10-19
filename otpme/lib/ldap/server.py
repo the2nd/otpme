@@ -45,6 +45,7 @@ except:
 
 from otpme.lib import re
 from otpme.lib import oid
+from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
@@ -90,9 +91,24 @@ def register_config():
                             name=config.ldap_client_name,
                             attributes=client_attrs)
 
+def clear_caches():
+    global ldap_cache
+    global user_ldif_cache
+    global ldap_query_cache
+    global global_ldif_cache
+    ldap_cache.clear()
+    user_ldif_cache.clear()
+    ldap_query_cache.clear()
+    global_ldif_cache.clear()
+    ldap_search_cache.invalidate()
+
 def get_ldap_cache(auth_token, client, object_id):
     """ Get cached entry. """
     global ldap_cache
+    if config.ldap_cache_clear:
+        clear_caches()
+        config.ldap_cache_clear = False
+        return
     read_oid = object_id.read_oid
     try:
         cache_time = ldap_cache[auth_token.uuid][client][read_oid]['TIME']
@@ -130,11 +146,9 @@ def update_ldap_cache(auth_token, client, object_id, ldap_entry, checksum):
 
 def get_ldap_search_cache(auth_token, client, cache_key):
     """ Get cached entry. """
-    global ldap_cache
     global ldap_query_cache
     if config.ldap_cache_clear:
-        ldap_cache.clear()
-        ldap_query_cache.clear()
+        clear_caches()
         config.ldap_cache_clear = False
         return
     try:
@@ -144,9 +158,6 @@ def get_ldap_search_cache(auth_token, client, cache_key):
         return
     cache_age = time.time() - cache_time
     if cache_age >= 300:
-        if config.ldap_object_changed:
-            ldap_query_cache.clear()
-            config.ldap_object_changed = False
         return
     #cache_entry = copy.deepcopy(cache_entry)
     return cache_entry
@@ -701,16 +712,21 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
 
             elif isinstance(filterObject, pureldap.LDAPFilter_greaterOrEqual):
                 cache_key += "+greaterOrEqual="
-                cache_key += filterObject.attributeDesc.value
+                cache_key += filterObject.attributeDesc.value.decode()
                 cache_key += str(int(filterObject.assertionValue.value) - 1)
             elif isinstance(filterObject, pureldap.LDAPFilter_lessOrEqual):
                 cache_key += "+lessOrEqual="
-                cache_key += filterObject.attributeDesc.value
+                cache_key += filterObject.attributeDesc.value.decode()
                 cache_key += str(int(filterObject.assertionValue.value) + 1)
             elif isinstance(filterObject, pureldap.LDAPFilter_not):
-                cache_key += "+not="
-                cache_key += filterObject.value.attributeDesc.value
-                cache_key += f'[^{filterObject.value.assertionValue.value}]'
+                if isinstance(filterObject.value, pureldap.LDAPFilter_present):
+                    msg = _("Invalid search filter: not filter with '*'")
+                    raise ldapsyntax.MatchNotImplemented(msg)
+                if isinstance(filterObject.value, pureldap.LDAPFilter_substrings):
+                    cache_key += self.gen_cache_key(filterObject.value)
+                else:
+                    cache_key += "+not="
+                    cache_key += f'!{filterObject.value.assertionValue.value.decode()}'
 
         cache_key += f"{sizeLimit}"
         cache_key += f"{timeLimit}"
@@ -720,27 +736,101 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
     def get_ldif_attribute(self, attribute):
         x = attribute.lower()
         try:
-            ldif_attribute = config.ldap_object_class_mappings[x]
-        except:
-            ldif_attribute = config.ldap_attribute_type_mappings[x]
+            try:
+                ldif_attribute = config.ldap_object_class_mappings[x]
+            except:
+                ldif_attribute = config.ldap_attribute_type_mappings[x]
+        except Exception as e:
+            msg = _("Invalid attribute: {attribute}")
+            msg = msg.format(attribute=attribute)
+            raise ldapsyntax.MatchNotImplemented(msg)
         ldif_attribute = f"ldif:{ldif_attribute}"
         return ldif_attribute
 
+    def decode_and_filter(self, filterObject, search_attributes={}):
+        for f in filterObject:
+            if isinstance(f, pureldap.LDAPFilter_and):
+                search_attributes = self.decode_and_filter(f, search_attributes)
+                continue
+            if isinstance(f, pureldap.LDAPFilter_or):
+                search_attributes = self.decode_or_filter(f, search_attributes)
+                continue
+            attribute, \
+            value, \
+            greater_than, \
+            less_than = self.decode_ldap_filter(f)
+            ldif_attribute = self.get_ldif_attribute(attribute)
+            try:
+                attr_data = search_attributes[ldif_attribute]
+            except KeyError:
+                attr_data = {}
+                search_attributes[ldif_attribute] = attr_data
+            try:
+                and_values = attr_data['values']
+            except KeyError:
+                and_values = []
+                attr_data['values'] = and_values
+            if less_than is not None or greater_than is not None:
+                if less_than is not None:
+                    and_values.append({'less_than':less_than})
+                if greater_than is not None:
+                    and_values.append({'greater_than':greater_than})
+            else:
+                and_values.append(value)
+        return search_attributes
+
+    def decode_or_filter(self, filterObject, search_attributes={}):
+        for f in filterObject:
+            if isinstance(f, pureldap.LDAPFilter_or):
+                search_attributes = self.decode_or_filter(f, search_attributes)
+                continue
+            if isinstance(f, pureldap.LDAPFilter_and):
+                search_attributes = self.decode_and_filter(f, search_attributes)
+                continue
+            attribute, \
+            value, \
+            greater_than, \
+            less_than = self.decode_ldap_filter(f)
+            ldif_attribute = self.get_ldif_attribute(attribute)
+            # Set attribute.
+            try:
+                attr_data = search_attributes[ldif_attribute]
+            except:
+                attr_data = {}
+                search_attributes[ldif_attribute] = attr_data
+            try:
+                or_values = attr_data['or_values']
+            except KeyError:
+                or_values = []
+                attr_data['or_values'] = or_values
+            if less_than is not None or greater_than is not None:
+                if less_than is not None:
+                    or_values.append({'less_than':less_than})
+                if greater_than is not None:
+                    or_values.append({'greater_than':greater_than})
+            else:
+                or_values.append(value)
+        return search_attributes
+
     def decode_ldap_filter(self, filterObject):
         """ Decode ldap filter object. """
-        less_than = False
-        greater_than = False
+        value = None
+        less_than = None
+        attribute = None
+        greater_than = None
         if isinstance(filterObject, pureldap.LDAPFilter_present):
             attribute = filterObject.value.decode()
             value = "*"
         elif isinstance(filterObject, pureldap.LDAPFilter_equalityMatch):
             attribute = filterObject.attributeDesc.value.decode()
             value = filterObject.assertionValue.value.decode()
+            value = stuff.string_to_type(value)
         elif isinstance(filterObject, pureldap.LDAPFilter_substrings):
-            attribute = filterObject.type.decode()
+            value = None
             sub_count = 0
-            for s in filterObject.substrings:
-                s_value = s.value
+            attribute = filterObject.type.decode()
+            for f in filterObject.substrings:
+                s_value = f.value
                 if isinstance(s_value, bytes):
                     s_value = s_value.decode("utf-8")
                 if isinstance(filterObject.substrings[sub_count],
@@ -768,106 +858,75 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                         else:
                             value = f"{value}*{s_value}"
                 sub_count += 1
-
         elif isinstance(filterObject, pureldap.LDAPFilter_greaterOrEqual):
-            attribute = filterObject.attributeDesc.value
-            greater_than = str(int(filterObject.assertionValue.value) - 1)
+            attribute = filterObject.attributeDesc.value.decode()
+            greater_than = int(filterObject.assertionValue.value) - 1
         elif isinstance(filterObject, pureldap.LDAPFilter_lessOrEqual):
-            attribute = filterObject.attributeDesc.value
-            less_than = str(int(filterObject.assertionValue.value) + 1)
+            attribute = filterObject.attributeDesc.value.decode()
+            less_than = int(filterObject.assertionValue.value) + 1
         elif isinstance(filterObject, pureldap.LDAPFilter_not):
-            attribute = filterObject.value.attributeDesc.value
-            value = f'[^{filterObject.value.assertionValue.value}]'
+            if isinstance(filterObject.value, pureldap.LDAPFilter_present):
+                msg = _("Invalid search filter: not filter with '*'")
+                raise ldapsyntax.MatchNotImplemented(msg)
+            if isinstance(filterObject.value, pureldap.LDAPFilter_substrings):
+                attribute, \
+                value, \
+                greater_than, \
+                less_than = self.decode_ldap_filter(filterObject.value)
+                value = f"!{value}"
+            else:
+                attribute = filterObject.value.attributeDesc.value.decode()
+                value = f'!{filterObject.value.assertionValue.value.decode()}'
         else:
-            raise (ldapsyntax.MatchNotImplemented, filterObject)
+            msg = "Invalid ldap filter: {filterObject}"
+            msg = msg.format(filterObject=type(filterObject))
+            raise OTPmeException(msg)
         return attribute, value, greater_than, less_than
 
     def search_otpme(self, filterText=None, filterObject=None,
         attributes=(), sizeLimit=0, timeLimit=0, typesOnly=0, **kwargs):
         """ Search OTPme backend. """
-        result_uuids = []
-        value = None
-        attribute = None
-        less_than = False
-        greater_than = False
+        #if filterObject is None and filterText is None:
+        #    filterObject = pureldap.LDAPFilterMatchAll
 
-        if filterObject is None and filterText is None:
-            filterObject = pureldap.LDAPFilterMatchAll
+        ## Whats ldapfilter?????
+        ##elif filterObject is None and filterText is not None:
+        ##    filterObject = ldapfilter.parseFilter(filterText)
 
-        # Whats ldapfilter?????
-        #elif filterObject is None and filterText is not None:
-        #    filterObject = ldapfilter.parseFilter(filterText)
+        ##elif filterObject is not None and filterText is not None:
+        ##    f = ldapfilter.parseFilter(filterText)
+        ##    filterObject=pureldap.LDAPFilter_and((f, filterObject))
 
-        #elif filterObject is not None and filterText is not None:
-        #    f = ldapfilter.parseFilter(filterText)
-        #    filterObject=pureldap.LDAPFilter_and((f, filterObject))
-
-        elif filterObject is not None and filterText is None:
-            pass
+        #elif filterObject is not None and filterText is None:
+        #    pass
 
         if isinstance(filterObject, pureldap.LDAPFilter_and):
-            attributes = {}
-            for f in filterObject:
-                attribute, \
-                value, \
-                greater_than, \
-                less_than = self.decode_ldap_filter(f)
-                try:
-                    ldif_attribute = self.get_ldif_attribute(attribute)
-                except Exception as e:
-                    msg = _("Invalid attribute: {attribute}")
-                    msg = msg.format(attribute=attribute)
-                    raise (ldapsyntax.MatchNotImplemented, filterObject)
-                # Set attribute.
-                try:
-                    attr_values = attributes[ldif_attribute]['values']
-                except KeyError:
-                    attr_values = []
-                    attributes[ldif_attribute] = {}
-                    attributes[ldif_attribute]['values'] = attr_values
-                attr_values.append(value)
-            # Search objects.
-            result_uuids = self._search_otpme(attributes=attributes)
-
+            search_attributes = {}
+            search_attributes = self.decode_and_filter(filterObject, search_attributes)
+            result_uuids = self._search_otpme(attributes=search_attributes,
+                                            size_limit=sizeLimit,
+                                            **kwargs)
         elif isinstance(filterObject, pureldap.LDAPFilter_or):
-            for f in filterObject:
-                result_uuids += self.search_otpme(filterText=None,
-                                                filterObject=f,
-                                                attributes=attributes,
-                                                #attributes=(),
-                                                #sizeLimit=sizeLimit,
-                                                #timeLimit=timeLimit,
-                                                typesOnly=typesOnly,
-                                                **kwargs)
+            search_attributes = {}
+            search_attributes = self.decode_or_filter(filterObject, search_attributes)
+            result_uuids = self._search_otpme(attributes=search_attributes,
+                                            size_limit=sizeLimit,
+                                            **kwargs)
         else:
             attribute, \
             value, \
             greater_than, \
             less_than = self.decode_ldap_filter(filterObject)
-            if isinstance(attribute, bytes):
-                attribute = attribute.decode("utf-8")
-            if isinstance(value, bytes):
-                value = value.decode("utf-8")
-            if attribute and (value is not None
-                            or less_than is not None
-                            or greater_than is not None
-                            or value is not None):
-
-                # Try to get case sensitive attribute name.
-                try:
-                    ldif_attribute = self.get_ldif_attribute(attribute)
-                except Exception:
-                    return result_uuids
-
-                # Search objects.
-                result_uuids = self._search_otpme(attribute=ldif_attribute,
-                                                value=value,
-                                                less_than=less_than,
-                                                greater_than=greater_than,
-                                                size_limit=sizeLimit,
-                                                **kwargs)
+            ldif_attribute = self.get_ldif_attribute(attribute)
+            result_uuids = self._search_otpme(attribute=ldif_attribute,
+                                            value=value,
+                                            less_than=less_than,
+                                            greater_than=greater_than,
+                                            size_limit=sizeLimit,
+                                            **kwargs)
         if sizeLimit > 0:
             result_uuids = result_uuids[:sizeLimit]
+
         return result_uuids
 
     def get_object(self, object_id, verify_acls=None, fake_dc=None):
@@ -1023,9 +1082,14 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                                         },
                                 'template'  : {'value':False,},
                             }
-        # Add attribute and value.
-        if attribute and value:
+
+        # Add attribute and values.
+        if attribute and value is not None:
             search_attributes[attribute] = {'value':value}
+        if attribute and less_than is not None:
+            search_attributes[attribute] = {'less_than':less_than}
+        if attribute and greater_than is not None:
+            search_attributes[attribute] = {'greater_than':greater_than}
 
         # Add attributes and values.
         if attributes:
@@ -1039,9 +1103,12 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             default_scope = ldap_settings['default_scope']
             if scope not in object_scopes:
                 scope = default_scope
-            if scope == "one":
-                object_type = self.otpme_oid.object_type
-                search_attributes['name'] = {'value':self.otpme_oid.name}
+        if scope == "one":
+            object_type = self.otpme_oid.object_type
+            search_attributes['name'] = {'value':self.otpme_oid.name}
+        if scope == "sub":
+            path = f"{self.otpme_oid.path}/*"
+            search_attributes['path'] = {'value':path}
 
         return_attributes = ['read_oid', 'name', 'object_type', 'ldif', 'checksum']
 

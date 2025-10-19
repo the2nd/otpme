@@ -1034,13 +1034,14 @@ def get_config_paths(object_id, object_uuid=None, use_index=True, no_lock=False)
 @handle_transaction
 @index_search_cache.cache_function()
 def index_search(realm=None, site=None, attribute=None, value=None, values=None,
-    order_by=None, reverse_order=False, attributes={}, less_than=None,
-    greater_than=None, join_object_type=None, join_search_attr=None,
-    join_search_val=None, join_attribute=None, return_type="uuid",
-    return_attributes=None, case_sensitive=True, object_type=None,
-    object_types=None, verify_acls=None, return_acls=None,
-    return_raw_acls=False, max_results=0, size_limit=0, template=None,
-    return_query_count=False, session=None, _debug=False, **kwargs):
+    or_values=None, order_by=None, reverse_order=False, attributes={},
+    less_than=None, greater_than=None, join_object_type=None,
+    join_search_attr=None, join_search_val=None, join_attribute=None,
+    return_type="uuid", return_attributes=None, case_sensitive=True,
+    object_type=None, object_types=None, verify_acls=None, return_acls=False,
+    return_raw_acls=False, max_results=0, size_limit=0,
+    template=None, return_query_count=False,
+    session=None, _debug=False, **kwargs):
     """ Search index. """
     # Import modules here to speedup import time.
     from sqlalchemy import or_
@@ -1065,9 +1066,9 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             msg = _("Need <return_type> or <return_attributes>.")
             raise SearchException(msg)
 
-    if value is None and values is None and less_than is None \
-    and greater_than is None and not attributes:
-        msg = _("Need <value>, <values>, <greater_than>, <less_than> or <attributes>.")
+    if value is None and values is None and or_values is None \
+    and less_than is None and greater_than is None and not attributes:
+        msg = _("Need <value>, <values>, <or_values>, <greater_than>, <less_than> or <attributes>.")
         raise SearchException(msg)
 
     # Search for object types if none was given.
@@ -1079,7 +1080,13 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     search_attributes = {}
     if attributes:
         search_attributes = dict(attributes)
-    if attribute:
+    elif values:
+        search_attributes[attribute] = {}
+        search_attributes[attribute]['values'] = values
+    elif or_values:
+        search_attributes[attribute] = {}
+        search_attributes[attribute]['or_values'] = or_values
+    elif attribute:
         search_attributes[attribute] = {}
         search_attributes[attribute]['value'] = value
         search_attributes[attribute]['less_than'] = less_than
@@ -1096,6 +1103,10 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         except:
             x_values = None
         try:
+            x_or_values = search_attributes[x_attr]['or_values']
+        except:
+            x_or_values = None
+        try:
             x_less_than = search_attributes[x_attr]['less_than']
         except:
             x_less_than = None
@@ -1107,9 +1118,9 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             msg = _("Cannot search for attribute {x_attr}: Not in index")
             msg = msg.format(x_attr=x_attr)
             raise SearchException(msg)
-        if x_value is None and x_values is None and x_less_than is None \
-        and x_greater_than is None and values is None:
-            msg = _("Need <value>, <values>, <less_than> or <greater_than>.")
+        if x_value is None and x_values is None and x_or_values is None \
+        and x_less_than is None and x_greater_than is None and values is None:
+            msg = _("Need <value>, <values>, <or_values>, <less_than> or <greater_than>.")
             raise SearchException(msg)
 
     # Make sure objects UUID is the at first position in query result.
@@ -1140,6 +1151,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                                     attribute=attribute,
                                     value=value,
                                     values=values,
+                                    or_values=or_values,
                                     attributes=attributes,
                                     less_than=less_than,
                                     greater_than=greater_than,
@@ -1186,7 +1198,54 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     max_q_values = 10240000
     if config.index_type == "sqlite3":
         max_q_values = 800
-    if values is not None and len(values) > max_q_values:
+    if or_values is not None and len(or_values) > max_q_values:
+        if order_by is not None:
+            msg = _("Cannot order results if <or_values> >= {max_q_values}")
+            msg = msg.format(max_q_values=max_q_values)
+            raise SearchException(msg)
+        v_result = None
+        v_query_count = 0
+        or_values = stuff.split_list(or_values, max_q_values)
+        for x_list in or_values:
+            x_result = index_search(realm=realm,
+                                    site=site,
+                                    attribute=attribute,
+                                    value=value,
+                                    or_values=x_list,
+                                    attributes=attributes,
+                                    less_than=less_than,
+                                    greater_than=greater_than,
+                                    order_by=order_by,
+                                    reverse_order=reverse_order,
+                                    return_type=return_type,
+                                    return_attributes=return_attributes,
+                                    join_search_val=join_search_val,
+                                    join_search_attr=join_search_attr,
+                                    join_object_type=join_object_type,
+                                    case_sensitive=case_sensitive,
+                                    object_type=object_type,
+                                    verify_acls=verify_acls,
+                                    return_acls=return_acls,
+                                    return_raw_acls=return_raw_acls,
+                                    return_query_count=return_query_count,
+                                    max_results=max_results,
+                                    size_limit=size_limit)
+            if return_query_count:
+                x_query_count, x_result = x_result
+                v_query_count += x_query_count
+            if isinstance(x_result, list):
+                if not v_result:
+                    v_result = []
+                v_result += x_result
+            if isinstance(x_result, dict):
+                if not v_result:
+                    v_result = {}
+                for x in x_result:
+                    v_result[x] = x_result[x]
+            if size_limit != 0 and len(v_result) >= size_limit:
+                raise SizeLimitExceeded("Size limit exceeded.")
+        return v_query_count, v_result
+    elif values is not None and len(values) > max_q_values:
         if order_by is not None:
             msg = _("Cannot order results if <values> >= {max_q_values}")
             msg = msg.format(max_q_values=max_q_values)
@@ -1328,18 +1387,128 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     if query_args:
         q = q.filter_by(**query_args)
 
-    #attribute_table_joined = False
-    # Handle search for a list of values (e.g. token UUIDs).
-    if values:
-        if attribute in config.otpme_base_attributes:
-            q = q.filter(getattr(IndexObject, attribute).in_(values))
-            q = q.options(contains_eager(IndexObject.attributes))
-        #else:
-        #    attribute_table_joined = True
-        #    q = q.join(IndexObject.attributes)
-        #    q = q.filter(IndexObjectAttribute.value.in_(values))
+    ## Handle search for a list of values (e.g. token UUIDs).
+    #if or_values:
+    #    if attribute in config.otpme_base_attributes:
+    #        or_filter_parts = []
+    #        plain_vals = []
+    #        for val in or_values:
+    #            sql_like = str(val)
+    #            if "*" in sql_like:
+    #                sql_like = sql_like.replace("*", "%")
+    #                if "_" in sql_like:
+    #                    sql_like = sql_like.replace("_", "!_")
+    #                if case_sensitive:
+    #                    or_filter_parts.append(getattr(IndexObject, attribute).like(sql_like, escape="!"))
+    #                else:
+    #                    or_filter_parts.append(getattr(IndexObject, attribute).ilike(sql_like, escape="!"))
+    #            else:
+    #                plain_vals.append(val)
+    #        if plain_vals:
+    #            or_filter_parts.append(getattr(IndexObject, attribute).in_(plain_vals))
+    #        if or_filter_parts:
+    #            q = q.filter(or_(*or_filter_parts))
+    #        q = q.options(contains_eager(IndexObject.attributes))
+    #    else:
+    #        if "*" in or_values:
+    #            q = q.filter(IndexObject.attributes.any(IndexObjectAttribute.name==attribute))
+    #        else:
+    #            or_filter_parts = []
+    #            plain_vals = []
+    #            for val in or_values:
+    #                sql_like = str(val)
+    #                if "*" in sql_like:
+    #                    sql_like = sql_like.replace("*", "%")
+    #                    if "_" in sql_like:
+    #                        sql_like = sql_like.replace("_", "!_")
+    #                    if case_sensitive:
+    #                        like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+    #                        or_filter_parts.append(IndexObject.attributes.any(like_filter, name=attribute))
+    #                    else:
+    #                        like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+    #                        or_filter_parts.append(IndexObject.attributes.any(like_filter, name=attribute))
+    #                else:
+    #                    plain_vals.append(val)
+    #            if plain_vals:
+    #                or_filter_parts.append(IndexObject.attributes.any((IndexObjectAttribute.name==attribute) & (IndexObjectAttribute.value.in_(plain_vals))))
+    #            if or_filter_parts:
+    #                q = q.filter(or_(*or_filter_parts))
+    #elif values:
+    #    if attribute in config.otpme_base_attributes:
+    #        pos_vals = []
+    #        neg_vals = []
+    #        for val in values:
+    #            if str(val).startswith("!"):
+    #                val_stripped = str(val)[1:]
+    #                if "*" in val_stripped:
+    #                    sql_like = val_stripped.replace("*", "%")
+    #                    if "_" in sql_like:
+    #                        sql_like = sql_like.replace("_", "!_")
+    #                    if case_sensitive:
+    #                        q = q.filter(~getattr(IndexObject, attribute).like(sql_like, escape="!"))
+    #                    else:
+    #                        q = q.filter(~getattr(IndexObject, attribute).ilike(sql_like, escape="!"))
+    #                else:
+    #                    neg_vals.append(val_stripped)
+    #            else:
+    #                sql_like = str(val)
+    #                if "*" in sql_like:
+    #                    sql_like = sql_like.replace("*", "%")
+    #                    if "_" in sql_like:
+    #                        sql_like = sql_like.replace("_", "!_")
+    #                    if case_sensitive:
+    #                        q = q.filter(getattr(IndexObject, attribute).like(sql_like, escape="!"))
+    #                    else:
+    #                        q = q.filter(getattr(IndexObject, attribute).ilike(sql_like, escape="!"))
+    #                else:
+    #                    pos_vals.append(val)
+    #        if pos_vals:
+    #            q = q.filter(getattr(IndexObject, attribute).in_(pos_vals))
+    #        if neg_vals:
+    #            q = q.filter(~getattr(IndexObject, attribute).in_(neg_vals))
+    #        q = q.options(contains_eager(IndexObject.attributes))
+    #    else:
+    #        if "*" in values:
+    #            q = q.filter(IndexObject.attributes.any(IndexObjectAttribute.name==attribute))
+    #        else:
+    #            pos_vals = []
+    #            neg_vals = []
+    #            for val in values:
+    #                if str(val).startswith("!"):
+    #                    val_stripped = str(val)[1:]
+    #                    if "*" in val_stripped:
+    #                        sql_like = val_stripped.replace("*", "%")
+    #                        if "_" in sql_like:
+    #                            sql_like = sql_like.replace("_", "!_")
+    #                        if case_sensitive:
+    #                            like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+    #                            q = q.filter(~IndexObject.attributes.any(like_filter, name=attribute))
+    #                        else:
+    #                            like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+    #                            q = q.filter(~IndexObject.attributes.any(like_filter, name=attribute))
+    #                    else:
+    #                        neg_vals.append(val_stripped)
+    #                else:
+    #                    sql_like = str(val)
+    #                    if "*" in sql_like:
+    #                        sql_like = sql_like.replace("*", "%")
+    #                        if "_" in sql_like:
+    #                            sql_like = sql_like.replace("_", "!_")
+    #                        if case_sensitive:
+    #                            like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+    #                            q = q.filter(IndexObject.attributes.any(like_filter, name=attribute))
+    #                        else:
+    #                            like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+    #                            q = q.filter(IndexObject.attributes.any(like_filter, name=attribute))
+    #                    else:
+    #                        pos_vals.append(val)
+    #            if pos_vals:
+    #                q = q.filter(IndexObject.attributes.any((IndexObjectAttribute.name==attribute) & (IndexObjectAttribute.value.in_(pos_vals))))
+    #            if neg_vals:
+    #                q = q.filter(~IndexObject.attributes.any((IndexObjectAttribute.name==attribute) & (IndexObjectAttribute.value.in_(neg_vals))))
 
     # Handle "normal" search by attribute and value.
+    or_filters = []
     for attr in search_attributes:
         try:
             value = search_attributes[attr]['value']
@@ -1349,6 +1518,10 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             values = search_attributes[attr]['values']
         except:
             values = None
+        try:
+            or_values = search_attributes[attr]['or_values']
+        except:
+            or_values = None
         try:
             less_than = search_attributes[attr]['less_than']
         except:
@@ -1360,6 +1533,11 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
 
         if values is not None and len(values) > max_q_values:
             msg = _("Too many <values> for attribute '{attr}'.")
+            msg = msg.format(attr=attr)
+            raise SearchException(msg)
+
+        if or_values is not None and len(or_values) > max_q_values:
+            msg = _("Too many <or_values> for attribute '{attr}'.")
             msg = msg.format(attr=attr)
             raise SearchException(msg)
 
@@ -1387,9 +1565,72 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         elif attr in config.otpme_base_attributes:
             if isinstance(value, bool):
                 q = q.filter(getattr(IndexObject, attr).is_(value))
-            if values is not None:
-                q = q.filter(getattr(IndexObject, attr).in_(values))
-                q = q.options(contains_eager(IndexObject.attributes))
+            elif or_values is not None or values is not None:
+                if or_values:
+                    if "*" in or_values:
+                        or_filters.append(getattr(IndexObject, attr).isnot(None))
+                    else:
+                        neg_vals = []
+                        plain_vals = []
+                        or_filter_parts = []
+                        for val in or_values:
+                            if str(val).startswith("!"):
+                                neg_vals.append(str(val)[1:])
+                                continue
+                            sql_like = str(val)
+                            if "*" in sql_like:
+                                sql_like = sql_like.replace("*", "%")
+                                if "_" in sql_like:
+                                    sql_like = sql_like.replace("_", "!_")
+                                if case_sensitive:
+                                    or_filter_parts.append(getattr(IndexObject, attr).like(sql_like, escape="!"))
+                                else:
+                                    or_filter_parts.append(getattr(IndexObject, attr).ilike(sql_like, escape="!"))
+                            else:
+                                plain_vals.append(val)
+                        if plain_vals:
+                            or_filter_parts.append(getattr(IndexObject, attr).in_(plain_vals))
+                        if or_filter_parts:
+                            or_filters.append(or_(*or_filter_parts))
+                        if neg_vals:
+                            or_filters.append(~getattr(IndexObject, attr).in_(neg_vals))
+                if values is not None:
+                    if "*" in values:
+                        q = q.filter(getattr(IndexObject, attr).isnot(None))
+                        q = q.options(contains_eager(IndexObject.attributes))
+                    else:
+                        pos_vals = []
+                        neg_vals = []
+                        for val in values:
+                            if str(val).startswith("!"):
+                                val_stripped = str(val)[1:]
+                                if "*" in val_stripped:
+                                    sql_like = val_stripped.replace("*", "%")
+                                    if "_" in sql_like:
+                                        sql_like = sql_like.replace("_", "!_")
+                                    if case_sensitive:
+                                        q = q.filter(~getattr(IndexObject, attr).like(sql_like, escape="!"))
+                                    else:
+                                        q = q.filter(~getattr(IndexObject, attr).ilike(sql_like, escape="!"))
+                                else:
+                                    neg_vals.append(val_stripped)
+                            else:
+                                sql_like = str(val)
+                                if "*" in sql_like:
+                                    sql_like = sql_like.replace("*", "%")
+                                    if "_" in sql_like:
+                                        sql_like = sql_like.replace("_", "!_")
+                                    if case_sensitive:
+                                        q = q.filter(getattr(IndexObject, attr).like(sql_like, escape="!"))
+                                    else:
+                                        q = q.filter(getattr(IndexObject, attr).ilike(sql_like, escape="!"))
+                                else:
+                                    pos_vals.append(val)
+                        if pos_vals:
+                            q = q.filter(getattr(IndexObject, attr).in_(pos_vals))
+                        if neg_vals:
+                            q = q.filter(~getattr(IndexObject, attr).in_(neg_vals))
+                        q = q.options(contains_eager(IndexObject.attributes))
             elif value is not None:
                 sql_like = str(value)
                 if "*" in sql_like:
@@ -1416,14 +1657,110 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         else:
             if isinstance(value, bool):
                 q = q.filter(IndexObject.attributes.any(name=attr, value=value))
-            elif values is not None:
-                #if not attribute_table_joined:
-                #    q = q.join(IndexObject.attributes)
-                #    attribute_table_joined = True
-                #q = q.filter(IndexObjectAttribute.name==attr, IndexObjectAttribute.value.in_(values))
-                for val in values:
-                    q = q.filter(IndexObject.attributes.any(name=attr, value=val))
+            elif or_values is not None or values is not None:
+                if or_values is not None:
+                    if "*" in or_values:
+                        or_filters.append(IndexObject.attributes.any(IndexObjectAttribute.name==attr))
+                    else:
+                        neg_vals = []
+                        plain_vals = []
+                        or_filter_parts = []
+                        for val in or_values:
+                            if isinstance(val, dict):
+                                if "less_than" in val:
+                                    int_filter = cast(IndexObjectAttribute.value, Integer)
+                                    int_filter = IndexObject.attributes.any(int_filter < val['less_than'], name=attr)
+                                    or_filters.append(int_filter)
+                                elif "greater_than" in val:
+                                    int_filter = cast(IndexObjectAttribute.value, Integer)
+                                    int_filter = IndexObject.attributes.any(int_filter > val['greater_than'], name=attr)
+                                    or_filters.append(int_filter)
+                                else:
+                                    msg = "Unsupported or-values filter."
+                                    raise OTPmeException(msg)
+                            if str(val).startswith("!"):
+                                neg_vals.append(str(val)[1:])
+                                continue
+                            sql_like = str(val)
+                            if "*" in sql_like:
+                                sql_like = sql_like.replace("*", "%")
+                                if "_" in sql_like:
+                                    sql_like = sql_like.replace("_", "!_")
+                                if case_sensitive:
+                                    like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+                                    or_filter_parts.append(IndexObject.attributes.any(like_filter, name=attr))
+                                else:
+                                    like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+                                    or_filter_parts.append(IndexObject.attributes.any(like_filter, name=attr))
+                            else:
+                                plain_vals.append(val)
+                        if plain_vals:
+                            or_filter_parts.append(IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(plain_vals))))
+                        if or_filter_parts:
+                            or_filters.append(or_(*or_filter_parts))
+                        if neg_vals:
+                            or_filters.append(~IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(neg_vals))))
+                if values is not None:
+                    if "*" in values:
+                        q = q.filter(IndexObject.attributes.any(IndexObjectAttribute.name==attr))
+                    else:
+                        pos_vals = []
+                        neg_vals = []
+                        for val in values:
+                            if isinstance(val, dict):
+                                if "less_than" in val:
+                                    int_filter = cast(IndexObjectAttribute.value, Integer)
+                                    int_filter = IndexObject.attributes.any(int_filter < val['less_than'], name=attr)
+                                    q = q.filter(int_filter)
+                                elif "greater_than" in val:
+                                    int_filter = cast(IndexObjectAttribute.value, Integer)
+                                    int_filter = IndexObject.attributes.any(int_filter > val['greater_than'], name=attr)
+                                    q = q.filter(int_filter)
+                                else:
+                                    msg = "Unsupported values filter."
+                                    raise OTPmeException(msg)
+                                continue
+                            if str(val).startswith("!"):
+                                val_stripped = str(val)[1:]
+                                if "*" in val_stripped:
+                                    sql_like = val_stripped.replace("*", "%")
+                                    if "_" in sql_like:
+                                        sql_like = sql_like.replace("_", "!_")
+                                    if case_sensitive:
+                                        like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+                                        q = q.filter(~IndexObject.attributes.any(like_filter, name=attr))
+                                    else:
+                                        like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+                                        q = q.filter(~IndexObject.attributes.any(like_filter, name=attr))
+                                else:
+                                    neg_vals.append(val_stripped)
+                            else:
+                                sql_like = str(val)
+                                if "*" in sql_like:
+                                    sql_like = sql_like.replace("*", "%")
+                                    if "_" in sql_like:
+                                        sql_like = sql_like.replace("_", "!_")
+                                    if case_sensitive:
+                                        like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
+                                        q = q.filter(IndexObject.attributes.any(like_filter, name=attr))
+                                    else:
+                                        like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
+                                        q = q.filter(IndexObject.attributes.any(like_filter, name=attr))
+                                else:
+                                    pos_vals.append(val)
+                        if pos_vals:
+                            q = q.filter(IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(pos_vals))))
+                        if neg_vals:
+                            q = q.filter(~IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(neg_vals))))
+                        #q = q.filter(IndexObject.attributes.any((IndexObjectAttribute.name==attr) & (IndexObjectAttribute.value.in_(values))))
+                    #q = q.filter(IndexObjectAttribute.name==attr, IndexObjectAttribute.value.in_(values))
+                    #for val in values:
+                    #    q = q.filter(IndexObject.attributes.any(name=attr, value=val))
             elif value is not None:
+                negate_filter = False
+                if str(value).startswith("!"):
+                    negate_filter = True
+                    value = str(value)[1:]
                 like_query = False
                 sql_like = str(value)
                 if "*" in sql_like:
@@ -1431,17 +1768,27 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                     sql_like = sql_like.replace("*", "%")
                     if "_" in sql_like:
                         sql_like = sql_like.replace("_", "!_")
+
                 if like_query:
                     if case_sensitive:
                         like_filter = IndexObjectAttribute.value.like(sql_like, escape="!")
                         like_filter = IndexObject.attributes.any(like_filter, name=attr)
-                        q = q.filter(like_filter)
+                        if negate_filter:
+                            q = q.filter(~like_filter)
+                        else:
+                            q = q.filter(like_filter)
                     else:
                         like_filter = IndexObjectAttribute.value.ilike(sql_like, escape="!")
                         like_filter = IndexObject.attributes.any(like_filter, name=attr)
-                        q = q.filter(like_filter)
+                        if negate_filter:
+                            q = q.filter(~like_filter)
+                        else:
+                            q = q.filter(like_filter)
                 else:
-                    q = q.filter(IndexObject.attributes.any(name=attr, value=value))
+                    if negate_filter:
+                        q = q.filter(~IndexObject.attributes.any(name=attr, value=value))
+                    else:
+                        q = q.filter(IndexObject.attributes.any(name=attr, value=value))
             if less_than is not None:
                 int_filter = cast(IndexObjectAttribute.value, Integer)
                 int_filter = IndexObject.attributes.any(int_filter < less_than, name=attr)
@@ -1450,6 +1797,10 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                 int_filter = cast(IndexObjectAttribute.value, Integer)
                 int_filter = IndexObject.attributes.any(int_filter > greater_than, name=attr)
                 q = q.filter(int_filter)
+
+    # Apply OR filters if any were collected.
+    if or_filters:
+        q = q.filter(or_(*or_filters))
 
     # Make sure we query only requested attributes.
     x_attrs = []
@@ -1519,11 +1870,6 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
         if config.dogpile_caching:
             acl_q = acl_q.options(FromCache(cache_region))
 
-        # Query result build from ACLs query.
-        query_result = []
-        # ACLs for each object returned by query.
-        object_acls = {}
-
         # Query to return all given ACLs of selected objects.
         sub_query = acl_q.with_entities(IndexObject.id)
         acl_q = session.query(IndexObjectACL)
@@ -1549,10 +1895,15 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
             else:
                 acl_q = acl_q.order_by(order_by)
 
-        # Query objects.
+        # Object counter.
         object_count = []
-        acl_result = acl_q.all()
-        for x in acl_result:
+        # Query objects.
+        matching_acls = {}
+        # Query result build from ACLs query.
+        query_result = []
+        # ACLs for each object returned by query.
+        object_acls = {}
+        for x in acl_q.all():
             x_id = x[0]
             if x_id not in object_count:
                 object_count.append(x_id)
@@ -1579,6 +1930,26 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                 x_acls = []
             x_acls.append(acl_id)
             object_acls[x_uuid] = list(set(x_acls))
+            if not return_acls:
+                continue
+            all_acl_q = session.query(IndexObject)
+            all_acl_q = all_acl_q.filter(IndexObject.uuid == x_uuid)
+            all_acl_q = all_acl_q.join(IndexObjectACL, IndexObjectACL.ioid == IndexObject.id)
+            all_acl_q = all_acl_q.with_entities(IndexObjectACL.value)
+            for x in all_acl_q.all():
+                x_raw_acl = x[0]
+                if x_raw_acl not in return_acls:
+                    continue
+                # Decode ACL to get ACL ID.
+                _acl = otpme_acl.decode(x_raw_acl)
+                acl_id = _acl.apply_id
+                # Build list with ACLs.
+                try:
+                    x_acls = matching_acls[x_uuid]
+                except:
+                    x_acls = []
+                x_acls.append(acl_id)
+                matching_acls[x_uuid] = list(set(x_acls))
     else:
         # Query only requested attributes.
         q = q.with_entities(*entities)
@@ -1665,8 +2036,9 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     if not return_attributes:
         if return_acls or return_raw_acls:
             result = {
-                    'objects'   : result,
-                    'acls'      : object_acls,
+                    'objects'       : result,
+                    'acls'          : object_acls,
+                    'matching_acls' : matching_acls,
                     }
         if return_query_count:
             result = query_count, result
@@ -1762,8 +2134,9 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
 
     if return_acls or return_raw_acls:
         result = {
-                'objects'   : result,
-                'acls'      : object_acls,
+                'objects'       : result,
+                'acls'          : object_acls,
+                'matching_acls' : matching_acls,
                 }
     if return_query_count:
         result = query_count, result
