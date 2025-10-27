@@ -431,6 +431,7 @@ class JoinHandler(object):
                     if current_checksum == new_checksum:
                         continue
                 log_msg = _("Adding object: {object_id}", log=True)[1]
+                log_msg = log_msg.format(object_id=object_id)
                 logger.debug(log_msg)
                 # Write object to backend.
                 try:
@@ -706,7 +707,7 @@ class JoinHandler(object):
                 host_cert_req, host_key = self.gen_host_cert_req(key_len=host_key_len)
 
         # Generate host auth key.
-        host_private_key = self._my_host.gen_auth_key()
+        host_auth_key = self._my_host.gen_auth_key()
 
         # Make sure changes get committed.
         self._my_host._cache()
@@ -757,7 +758,8 @@ class JoinHandler(object):
         # because we need the users group available via nsswitch.
         host.update_data(host_cert=host_cert,
                         host_key=host_key,
-                        host_auth_key=host_private_key)
+                        host_auth_key=host_auth_key)
+        host.set_ssl_file_perms()
 
         # Close all connections.
         connections.close_connections()

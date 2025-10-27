@@ -79,6 +79,7 @@ from otpme.lib.backends.file.file import get_config_paths
 from otpme.lib.backends.file.file import register_data_dir
 from otpme.lib.backends.file.file import config_path_getter
 from otpme.lib.backends.file.file import register_object_dir
+from otpme.lib.backends.file.file import index_rebuild_object
 from otpme.lib.backends.file.file import rebuild_object_index
 from otpme.lib.backends.file.file import get_object_path_settings
 from otpme.lib.backends.file.transaction import transaction

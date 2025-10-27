@@ -80,6 +80,9 @@ write_value_acls = {
                             "session_keep",
                             "mschap",
                             ],
+                "remove"  : [
+                            "nt_hash",
+                            ],
                 "generate"  : [
                             "mschap",
                             ],
@@ -160,7 +163,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'enable_mschap',
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -168,7 +171,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable_mschap',
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -176,7 +179,15 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'gen_mschap',
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'remove_nt_hash'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_nt_hash',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -710,7 +721,15 @@ class PasswordToken(Token):
 
         pass_len = self.get_config_parameter("default_static_pass_len")
         if password is None:
-            new_pass = stuff.gen_password(pass_len)
+            owner = backend.get_object(uuid=self.owner_uuid)
+            result = owner.get_policies(policy_type="password",
+                                            return_type="instance")
+            symbols = False
+            if result:
+                pass_policy = result[0]
+                if pass_policy.require_special:
+                    symbols = True
+            new_pass = stuff.gen_password(pass_len, symbols=symbols)
         else:
             new_pass = password
 

@@ -93,7 +93,9 @@ def register_backend():
         config_paths['remove_on_delete'] = [config_file]
         config_paths['rmdir_on_delete'] = [config_dir]
         return config_paths
-    def index_rebuild():
+    def index_rebuild(object_dir=None):
+        if object_dir:
+            object_dir = object_dir.rstrip("/")
         for user_uuid in filetools.list_dir(used_dir):
             if not stuff.is_uuid(user_uuid):
                 continue
@@ -108,6 +110,9 @@ def register_backend():
                 for x in token_counter_files:
                     counter += 1
                     x_path = os.path.join(token_counter_dir, x)
+                    if object_dir:
+                        if x_path != object_dir:
+                            continue
                     x_file = os.path.join(x_path, config.object_config_file_name)
                     log_msg = _("Processing {path_id} ({counter}/{files_count}): {x_file}", log=True)[1]
                     log_msg = log_msg.format(path_id=path_id,

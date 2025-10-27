@@ -88,7 +88,7 @@ def register_backend():
         return object_site
     oid.register_site_getter(object_type="data_revision",
                         getter=site_getter)
-    def index_rebuild():
+    def index_rebuild(*args):
         data_revision_dir = backend.get_data_dir(path_id)
         data_revision_file = os.path.join(data_revision_dir, config.object_config_file_name)
         if not os.path.exists(data_revision_file):

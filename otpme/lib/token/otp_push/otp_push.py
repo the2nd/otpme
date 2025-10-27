@@ -70,6 +70,9 @@ write_value_acls = {
                 "disable"   : [
                             "auth_script",
                             ],
+                "remove"   : [
+                            "nt_hash",
+                            ],
 }
 
 default_acls = []
@@ -125,7 +128,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'enable_mschap',
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -133,7 +136,15 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'disable_mschap',
-                    'job_type'          : 'process',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'remove_nt_hash'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_nt_hash',
+                    'job_type'          : 'thread',
                     },
                 },
             },

@@ -5208,18 +5208,18 @@ class User(OTPmeObject):
         if not add_result:
             return add_result
 
-        # Make sure user has displayName attribute.
-        self.add_attribute(attribute="displayName",
-                        verify_acls=verify_acls,
-                        callback=callback)
-
         # Internal users (e.g. TOKENSTORE) do not need any scripts etc.
         internal_users = config.get_internal_objects("user")
         if self.name in internal_users:
             return callback.ok()
 
+        # Make sure user has displayName attribute.
+        self.add_attribute(attribute="displayName",
+                        verify_acls=verify_acls,
+                        callback=callback)
+
         # Set default key script.
-        if template:
+        if template and template.key_script:
             result = backend.search(object_type="script",
                                     attribute="uuid",
                                     value=template.key_script,
@@ -5240,8 +5240,9 @@ class User(OTPmeObject):
         self.change_key_script(default_key_script,
                                 verify_acls=False,
                                 callback=callback)
+
         # Set default agent script.
-        if template:
+        if template and template.agent_script:
             result = backend.search(object_type="script",
                                     attribute="uuid",
                                     value=template.agent_script,
@@ -5264,7 +5265,7 @@ class User(OTPmeObject):
                                 callback=callback)
 
         # Set default login script.
-        if template:
+        if template and template.login_script:
             result = backend.search(object_type="script",
                                     attribute="uuid",
                                     value=template.login_script,
@@ -5293,7 +5294,7 @@ class User(OTPmeObject):
                 else:
                     self.disable_login_script()
         # Set default auth script.
-        if template:
+        if template and template.auth_script:
             result = backend.search(object_type="script",
                                     attribute="uuid",
                                     value=template.auth_script,

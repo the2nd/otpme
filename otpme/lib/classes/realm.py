@@ -1544,6 +1544,9 @@ class Realm(OTPmeObject):
         # Enable nsscache symlinks.
         nsscache.enable()
 
+        # Make sure file permissions are sane.
+        host.set_ssl_file_perms()
+
         msg = _("Realm initialized successful.")
         return callback.ok(msg)
 

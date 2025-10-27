@@ -101,7 +101,9 @@ def register_backend():
         config_paths['remove_on_delete'] = [config_file]
         config_paths['rmdir_on_delete'] = [config_dir]
         return config_paths
-    def index_rebuild():
+    def index_rebuild(object_dir=None):
+        if object_dir:
+            object_dir = object_dir.rstrip("/")
         revoked_sign_dir = backend.get_data_dir(path_id)
         for realm_dir in filetools.list_dir(revoked_sign_dir):
             realm_dir = os.path.join(revoked_sign_dir, realm_dir)
@@ -117,6 +119,9 @@ def register_backend():
                     for x in revoked_sign_files:
                         counter += 1
                         x_path = os.path.join(revoked_signs_dir, x)
+                        if object_dir:
+                            if x_path != x_path:
+                                continue
                         x_file = os.path.join(x_path, config.object_config_file_name)
                         log_msg = _("Processing {path_id} ({counter}/{files_count}): {x_file}", log=True)[1]
                         log_msg = log_msg.format(path_id=path_id,

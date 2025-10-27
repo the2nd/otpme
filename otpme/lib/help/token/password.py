@@ -71,9 +71,6 @@ cmd_help = {
                                 },
                 },
 
-
-
-
     'enable_mschap'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token enable_mschap {token}'),
                     'cmd'   :   '<|object|>',
@@ -81,7 +78,6 @@ cmd_help = {
                                     'cmd'                   : _('Enable MSCHAP authentication.'),
                                 },
                 },
-
 
     'disable_mschap'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token disable_mschap {token}'),
@@ -91,6 +87,13 @@ cmd_help = {
                                 },
                 },
 
+    'remove_nt_hash'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token remove_nt_hash {token}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove NT hash used for MSCHAP authentication.'),
+                                },
+                },
 
     'gen_mschap'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token gen_mschap {token}'),

@@ -2382,7 +2382,6 @@ class Site(OTPmeObject):
 
     def add_per_site_objects(self, callback: JobCallback=default_callback):
         """ Add per site objects. """
-        #self.add_object_templates(callback=callback)
         self.add_per_site_users(callback=callback)
 
     def add_per_site_users(self, callback: JobCallback=default_callback):
@@ -2808,8 +2807,8 @@ class Site(OTPmeObject):
         ):
         """ Add site base objects. """
         from otpme.lib.classes.unit import Unit
-        all_units = []
         # Create early base units.
+        all_units = []
         early_units = config.get_base_objects("unit", early=True)
         for u in early_units:
             unit_path = f"/{self.realm}/{self.name}/{u}"
@@ -2977,6 +2976,7 @@ class Site(OTPmeObject):
             #access_group = base_clients[c]['attributes']['accessgroup']
             #client.change_access_group(access_group=access_group,
             #                            verify_acls=False)
+
         # Create scripts.
         from otpme.lib.classes.script import Script
         for script_name in os.listdir(config.script_dir):
@@ -3089,7 +3089,17 @@ class Site(OTPmeObject):
                             callback=callback)
         sso_access_group._write(callback=callback)
 
-        #self.add_object_templates(callback=callback)
+        # Write objects.
+        callback.write_modified_objects()
+        cache.flush()
+
+        # Add default config parameters.
+        for parameter in config.valid_config_params:
+            default_value = config.valid_config_params[parameter]['default']
+            self.set_config_param(parameter, default_value)
+
+        # Add template objects.
+        self.add_object_templates(callback=callback)
 
         # Run base policies post methods.
         self.add_base_policies(callback=callback)
@@ -3140,14 +3150,6 @@ class Site(OTPmeObject):
                 msg = _("Problem adding user: {e}")
                 msg = msg.format(e=e)
                 raise OTPmeException(msg)
-
-        # Add default config parameters.
-        for parameter in config.valid_config_params:
-            default_value = config.valid_config_params[parameter]['default']
-            self.set_config_param(parameter, default_value)
-
-        # Add template objects.
-        self.add_object_templates(callback=callback)
 
         # Create admin user.
         return self.add_admin_user(callback=callback)

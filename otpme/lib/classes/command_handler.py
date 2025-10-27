@@ -1428,6 +1428,17 @@ class CommandHandler(object):
         config.reload()
         _index = config.get_index_module()
         command = command_line[0]
+        try:
+            config_dir = command_line[1]
+        except IndexError:
+            config_dir = None
+        if config_dir:
+            if not os.path.isdir(config_dir):
+                msg = _("Path must be a directory.")
+                raise OTPmeException(msg)
+            self.init()
+            backend.init()
+            return backend.index_rebuild_object(config_dir)
         _index.command(command)
 
     def handle_index_backup(self):
@@ -1623,6 +1634,7 @@ class CommandHandler(object):
     def handle_join_command(self, object_identifier, command_args):
         """ Handle realm join command. """
         from otpme.lib import filetools
+        from otpme.lib import multiprocessing
         from otpme.lib.register import register_modules
         from otpme.lib.backends.file.index import INDEX_DIR
         # Register modules.
@@ -1710,6 +1722,8 @@ class CommandHandler(object):
                         check_site_cert=site_cert_fingerprint)
         if create_db_indexes:
             filetools.touch(index_created_file)
+        # Make sure audit loggers are closed.
+        multiprocessing.cleanup()
         return result
 
     def handle_login_command(self, command, subcommand, command_line):
@@ -1830,7 +1844,7 @@ class CommandHandler(object):
         except Exception as e:
             log_msg = _("Failed to stop OTPme daemons: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
-            logger.critical(log_msg)
+            self.logger.critical(log_msg)
 
         # Make sure index is running.
         _index = config.get_index_module()

@@ -1080,17 +1080,22 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
     search_attributes = {}
     if attributes:
         search_attributes = dict(attributes)
-    elif values:
-        search_attributes[attribute] = {}
-        search_attributes[attribute]['values'] = values
-    elif or_values:
-        search_attributes[attribute] = {}
-        search_attributes[attribute]['or_values'] = or_values
-    elif attribute:
-        search_attributes[attribute] = {}
-        search_attributes[attribute]['value'] = value
-        search_attributes[attribute]['less_than'] = less_than
-        search_attributes[attribute]['greater_than'] = greater_than
+    if attribute:
+        try:
+            attr_data = search_attributes[attribute]
+        except KeyError:
+            attr_data = {}
+            search_attributes[attribute] = attr_data
+        if value is not None:
+            attr_data['value'] = value
+        if less_than is not None:
+            attr_data['less_than'] = less_than
+        if greater_than is not None:
+            attr_data['greater_than'] = greater_than
+        if values is not None:
+            attr_data['values'] = values
+        if or_values is not None:
+            attr_data['or_values'] = or_values
 
     # Check if we got valid search parameters.
     for x_attr in search_attributes:
@@ -1574,6 +1579,17 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                         plain_vals = []
                         or_filter_parts = []
                         for val in or_values:
+                            if isinstance(val, dict):
+                                if "less_than" in val:
+                                    int_filter = (getattr(IndexObject, attr) < val['less_than'])
+                                    or_filters.append(int_filter)
+                                elif "greater_than" in val:
+                                    int_filter = (getattr(IndexObject, attr) > val['greater_than'])
+                                    or_filters.append(int_filter)
+                                else:
+                                    msg = "Unsupported or-values filter."
+                                    raise OTPmeException(msg)
+                                continue
                             if str(val).startswith("!"):
                                 neg_vals.append(str(val)[1:])
                                 continue
@@ -1602,6 +1618,17 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                         pos_vals = []
                         neg_vals = []
                         for val in values:
+                            if isinstance(val, dict):
+                                if "less_than" in val:
+                                    int_filter = (getattr(IndexObject, attr) < val['less_than'])
+                                    q = q.filter(int_filter)
+                                elif "greater_than" in val:
+                                    int_filter = (getattr(IndexObject, attr) > val['greater_than'])
+                                    q = q.filter(int_filter)
+                                else:
+                                    msg = "Unsupported values filter."
+                                    raise OTPmeException(msg)
+                                continue
                             if str(val).startswith("!"):
                                 val_stripped = str(val)[1:]
                                 if "*" in val_stripped:
@@ -1678,6 +1705,7 @@ def index_search(realm=None, site=None, attribute=None, value=None, values=None,
                                 else:
                                     msg = "Unsupported or-values filter."
                                     raise OTPmeException(msg)
+                                continue
                             if str(val).startswith("!"):
                                 neg_vals.append(str(val)[1:])
                                 continue
@@ -2380,8 +2408,14 @@ def index_add(object_id, object_paths=None, object_config=None,
         object_site = object_id.site
 
     # Get object paths.
+    re_read_object_paths = False
     if object_paths is None:
-        object_paths = get_config_paths(object_id, use_index=False)
+        if not uuid:
+            re_read_object_paths = True
+        object_paths = get_config_paths(object_id=object_id,
+                                        object_uuid=uuid,
+                                        use_index=False)
+
     # Get config file path.
     config_file = object_paths['config_file']
 
@@ -2399,7 +2433,8 @@ def index_add(object_id, object_paths=None, object_config=None,
                                                     'LDIF',
                                                     'TEMPLATE',
                                                     'CHECKSUM',
-                                                    'SYNC_CHECKSUM'])
+                                                    'SYNC_CHECKSUM',
+                                                    'LAST_MODIFIED'])
         except Exception as e:
             msg, log_msg = _("Error reading object config: {e}", log=True)
             msg = msg.format(e=e)
@@ -2414,35 +2449,40 @@ def index_add(object_id, object_paths=None, object_config=None,
         if uuid is None:
             try:
                 uuid = object_config['UUID']
-            except:
+            except KeyError:
                 uuid = None
         # Get object checksum.
         if checksum is None:
             try:
                 checksum = object_config['CHECKSUM']
-            except:
+            except KeyError:
                 checksum = None
         # Get object sync checksum.
         if sync_checksum is None:
             try:
                 sync_checksum = object_config['SYNC_CHECKSUM']
-            except:
+            except KeyError:
                 sync_checksum = None
         # Get object template status.
         try:
             template = object_config['TEMPLATE']
-        except:
+        except KeyError:
             template = False
         # Get object LDIF.
         try:
             object_ldif = object_config['LDIF']
-        except:
+        except KeyError:
             object_ldif = {}
         # Get last modified timestamp.
         try:
             last_modified = object_config['LAST_MODIFIED']
-        except:
+        except KeyError:
             last_modified = None
+
+    if re_read_object_paths:
+        object_paths = get_config_paths(object_id=object_id,
+                                        object_uuid=uuid,
+                                        use_index=False)
 
     # Check if the object already exists in the index DB.
     q = session.query(IndexObject)
@@ -2501,10 +2541,21 @@ def index_add(object_id, object_paths=None, object_config=None,
             pairs_to_delete = existing_pairs - new_pairs
             pairs_to_add = new_pairs - existing_pairs
             if pairs_to_delete:
-                del_q = session.query(IndexObjectAttribute)
-                del_q = del_q.filter(IndexObjectAttribute.ioid == index_object.id)
-                del_q = del_q.filter(tuple_(IndexObjectAttribute.name, IndexObjectAttribute.value).in_(pairs_to_delete))
-                del_q.delete(synchronize_session=False)
+                start = 0
+                end = 1000
+                pairs_end = len(pairs_to_delete)
+                while True:
+                    if end > pairs_end:
+                        end = pairs_end
+                    x_pairs = list(pairs_to_delete)[start:end]
+                    if len(x_pairs) == 0:
+                        break
+                    del_q = session.query(IndexObjectAttribute)
+                    del_q = del_q.filter(IndexObjectAttribute.ioid == index_object.id)
+                    del_q = del_q.filter(tuple_(IndexObjectAttribute.name, IndexObjectAttribute.value).in_(x_pairs))
+                    del_q.delete(synchronize_session=False)
+                    start = end
+                    end = start + 1000
             if pairs_to_add:
                 for x in pairs_to_add:
                     x_name = x[0]
@@ -2614,10 +2665,21 @@ def index_add(object_id, object_paths=None, object_config=None,
             acls_to_delete = existing_acls - new_acls
             acls_to_add = new_acls - existing_acls
             if acls_to_delete:
-                del_q = session.query(IndexObjectACL)
-                del_q = del_q.filter(IndexObjectACL.ioid == index_object.id)
-                del_q = del_q.filter(IndexObjectACL.value.in_(acls_to_delete))
-                del_q.delete(synchronize_session=False)
+                start = 0
+                end = 1000
+                acls_end = len(acls_to_delete)
+                while True:
+                    if end > acls_end:
+                        end = acls_end
+                    x_acls = list(acls_to_delete)[start:end]
+                    if len(x_acls) == 0:
+                        break
+                    del_q = session.query(IndexObjectACL)
+                    del_q = del_q.filter(IndexObjectACL.ioid == index_object.id)
+                    del_q = del_q.filter(IndexObjectACL.value.in_(x_acls))
+                    del_q.delete(synchronize_session=False)
+                    start = end
+                    end = start + 1000
             if acls_to_add:
                 for raw_acl in acls_to_add:
                     a = IndexObjectACL(realm=object_realm,
@@ -2952,6 +3014,27 @@ def rebuild_object_index(object_type, objects, after=[]):
                 full_acl_update=True)
     objects.pop(object_type)
 
+def index_rebuild_object(config_dir):
+    log_current_object.counter = 0
+    log_current_object.file_count = 1
+    object_id = get_oid_from_path(config_dir)
+    object_type = object_id.object_type
+    object_paths = get_config_paths(object_id, use_index=False)
+    config_file = object_paths['config_file']
+    objects = {object_type:[(object_id, config_file)]}
+    try:
+        rebuild_function = object_settings[object_type]['index_rebuild']['tree']
+    except KeyError:
+        pass
+    else:
+        return rebuild_function(objects)
+    try:
+        rebuild_function = object_settings[object_type]['index_rebuild']['flat']
+    except:
+        pass
+    else:
+        return rebuild_function(config_dir)
+
 def index_rebuild():
     """ Rebuild index. """
     from otpme.lib import init_otpme
@@ -3052,7 +3135,7 @@ def index_rebuild():
     log_msg = _("Searching out of tree objects (OTPs, signatures etc.)...", log=True)[1]
     logger.debug(log_msg)
 
-    # Rebuild index of in-tree objects.
+    # Rebuild index of out of tree objects.
     for object_type in object_settings:
         try:
             rebuild_function = object_settings[object_type]['index_rebuild']['flat']
@@ -3078,6 +3161,7 @@ def index_rebuild():
 
 @oid_from_path_cache.cache_function()
 def get_oid_from_path(path):
+    path = path.rstrip("/")
     oid_getters = []
     for object_type in object_settings:
         x_getter = object_settings[object_type]['oid_getter']

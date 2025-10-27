@@ -53,7 +53,6 @@ def get_file_owner_group():
             config.ssl_key_file         : file_mode,
             config.ssl_ca_file          : file_mode,
             config.ssl_site_cert_file   : file_mode,
-            config.host_key_file        : 0o600,
             }
     # File owner.
     file_owner = config.user
@@ -70,7 +69,13 @@ def set_ssl_file_perms():
     filetools.ensure_fs_permissions(files=files,
                                     user=file_owner,
                                     group=file_group)
-
+    # Handle special permissions of hostkey file.
+    files = {
+            config.host_key_file        : 0o600,
+            }
+    filetools.ensure_fs_permissions(files=files,
+                                    user=config.user,
+                                    group=config.group)
 
 def update_ssl_files(host_cert=None, host_key=None,
     ca_data=None, site_cert=None, host_auth_key=None):
@@ -201,15 +206,15 @@ def update_ssl_files(host_cert=None, host_key=None,
         try:
             filetools.create_file(path=config.host_key_file,
                                     content=host_auth_key,
-                                    user=file_owner,
-                                    group=file_group,
+                                    user="root",
+                                    group="root",
                                     mode=file_mode)
         except IOError as e:
             if e.errno != e.errno.EACCES:
                 raise
 
-    # Make sure files have sane permissions.
-    set_ssl_file_perms()
+    ## Make sure files have sane permissions.
+    #set_ssl_file_perms()
 
 
 def load_data(ignore_missing=False):
@@ -458,8 +463,8 @@ def update_data(host_cert=None, host_key=None,
             site_cert = mysite.cert
             update_ssl_files(site_cert=site_cert)
 
-    # Make sure files have sane permissions.
-    set_ssl_file_perms()
+    ## Make sure files have sane permissions.
+    #set_ssl_file_perms()
 
     host_name = myhost.name
     host_fqdn = myhost.fqdn

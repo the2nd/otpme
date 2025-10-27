@@ -2118,6 +2118,38 @@ class Token(OTPmeObject):
                 return callback.error()
 
         self.mschap_enabled = False
+        return self._cache(callback=callback)
+
+    @check_acls(['remove:nt_hash'])
+    @object_lock()
+    @audit_log()
+    def remove_nt_hash(
+        self,
+        run_policies: bool=True,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Remove NT hash. """
+        if not self.nt_hash:
+            return callback.error(_("No NT hash set for this token."))
+
+        if self.mschap_enabled:
+            msg = _("You have to disable MSCHAP first.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_mschap",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
         self.nt_hash = None
 
         return self._cache(callback=callback)

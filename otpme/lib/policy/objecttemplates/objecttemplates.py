@@ -253,8 +253,9 @@ class ObjecttemplatesPolicy(Policy):
                                 attributes=search_attrs,
                                 return_type="instance")
         if not result:
-            msg = _("Unknown {} template: {}")
-            msg = msg.format(object_type, template_uuid)
+            msg = _("Unknown {object_type} template: {template_uuid}")
+            msg = msg.format(object_type=object_type,
+                            template_uuid=template_uuid)
             raise UnknownTemplate(msg)
         object_template = result[0]
         return object_template
@@ -355,8 +356,9 @@ class ObjecttemplatesPolicy(Policy):
                                 realm=config.realm,
                                 site=config.site)
         if not result:
-            msg = _("Unknown {} template: {}")
-            msg = msg.format(object_type, object_name)
+            msg = _("Unknown {object_type} template: {object_name}")
+            msg = msg.format(object_type=object_type,
+                            object_name=object_name)
             return callback.error(msg)
 
         template_uuid = result[0]

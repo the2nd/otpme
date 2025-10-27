@@ -50,4 +50,12 @@ cmd_help = {
                                     'cmd'                   : _('Disable MSCHAP authentication.'),
                                 },
                 },
+
+    'remove_nt_hash'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token remove_nt_hash {token}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove NT hash used for MSCHAP authentication.'),
+                                },
+                },
     }

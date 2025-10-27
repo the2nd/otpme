@@ -628,11 +628,11 @@ class OTPmeSyncP1(OTPmeServer1):
             # Decrypt object config..
             try:
                 x_config = ObjectConfig(x_oid, x_config)
-                x_config.decrypt(key=offline_data_key)
+                x_config.decrypt(key=offline_data_key, check_encrypted=['OBJECT_HASH', 'COUNTER'])
                 x_config.update_checksums(force=True)
             except Exception as e:
-                log_msg = _("Failed to decrypt {log_name} from peer: {peer_fqdn}: {x_oid}", log=True)[1]
-                log_msg = log_msg.format(log_name=log_name, peer_fqdn=self.peer.fqdn, x_oid=x_oid)
+                log_msg = _("Failed to decrypt {log_name} from peer: {peer_fqdn}: {x_oid}: {e}", log=True)[1]
+                log_msg = log_msg.format(log_name=log_name, peer_fqdn=self.peer.fqdn, x_oid=x_oid, e=e)
                 self.logger.critical(log_msg)
                 continue
             try:

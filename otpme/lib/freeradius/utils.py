@@ -147,8 +147,8 @@ def create_freeradius_conf():
     }
 
     security {
-        user = otpme
-        group = otpme
+        user = ''' + config.user + '''
+        group = ''' + config.group + '''
         allow_core_dumps = no
         max_attributes = 200
         reject_delay = 1

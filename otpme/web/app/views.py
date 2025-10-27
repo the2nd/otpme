@@ -130,9 +130,7 @@ def login():
                                         realm_login=False,
                                         realm_logout=False,
                                         password=password)
-            session_uuid = auth_reply['session']
             auth_status = auth_reply['status']
-            auth_token = auth_reply['token']
         except Exception as e:
             log_msg = _("Authentication failed: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
@@ -140,6 +138,14 @@ def login():
             flash("Internal error while authenticating user.")
             return redirect(url_for('login', _external=True, _scheme='https'))
     if not auth_status:
+        flash("Login failed.")
+        return redirect(url_for('login', _external=True, _scheme='https'))
+    try:
+        auth_token = auth_reply['token']
+        session_uuid = auth_reply['session']
+    except KeyError:
+        log_msg = _("Invalid auth reply.", log=True)[1]
+        logger.warning(log_msg)
         flash("Login failed.")
         return redirect(url_for('login', _external=True, _scheme='https'))
     config.auth_token = auth_token

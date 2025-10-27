@@ -611,7 +611,7 @@ class ObjectConfig(object):
 
         return encrypted_config
 
-    def decrypt_object_config(self, object_config, enc_key=None):
+    def decrypt_object_config(self, object_config, check_encrypted=[], enc_key=None):
         """ Decrypt object config. """
         decrypted_config = dict(object_config)
         for p in dict(object_config):
@@ -621,6 +621,10 @@ class ObjectConfig(object):
             value = self.get_encryption_type(val)
             # Skip not encrypted values.
             if status is not True:
+                if p in check_encrypted:
+                    msg = _("Found unencrypted parameteer: {p}")
+                    msg = msg.format(p=p)
+                    raise OTPmeException(msg)
                 continue
             if encryption == "NEED_ENC":
                 # Get original encryption header.
@@ -704,12 +708,13 @@ class ObjectConfig(object):
         self.encrypted_config = encrypted_oc
         return self.encrypted_config
 
-    def decrypt(self, key=None):
+    def decrypt(self, key=None, check_encrypted=[]):
         encrypted_oc = dict(self.encrypted_config)
         # Decrypt config.
         try:
             decrypted_oc = self.decrypt_object_config(object_config=encrypted_oc,
-                                                        enc_key=key)
+                                                    check_encrypted=check_encrypted,
+                                                    enc_key=key)
         except Exception as e:
             msg = _("Failed to decrypt object config: {error}")
             msg = msg.format(error=e)

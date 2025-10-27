@@ -1992,8 +1992,12 @@ class AuthHandler(object):
             self.session_start_group = self.access_group
 
         if not self.auth_failed:
-            # Make sure we have a valid password hash.
-            if not self.password_hash:
+            # For SSO accessgroup we have to create a random password
+            # to prevent login with the same OTP.
+            if self.access_group == config.sso_access_group:
+                self.password = stuff.gen_password(32)
+                self.gen_pass_hash()
+            elif not self.password_hash:
                 self.gen_pass_hash()
             if self.verify_token.pass_type == "static":
                 session_logout_pass = slp.gen(self.new_session_uuid)

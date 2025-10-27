@@ -105,7 +105,9 @@ def register_backend():
         config_paths['remove_on_delete'] = [config_file]
         config_paths['rmdir_on_delete'] = [config_dir]
         return config_paths
-    def index_rebuild():
+    def index_rebuild(object_dir=None):
+        if object_dir:
+            object_dir = object_dir.rstrip("/")
         failed_dir = backend.get_data_dir(path_id)
         for user_uuid in filetools.list_dir(failed_dir):
             if not stuff.is_uuid(user_uuid):
@@ -115,6 +117,9 @@ def register_backend():
                 if not stuff.is_uuid(ag_uuid):
                     continue
                 failed_pass_dir = os.path.join(user_failed_dir, ag_uuid)
+                if object_dir:
+                    if failed_pass_dir != object_dir:
+                        continue
                 failed_pass_files = filetools.list_dir(failed_pass_dir)
                 counter = 0
                 files_count = len(failed_pass_files)

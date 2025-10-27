@@ -4923,8 +4923,6 @@ class OTPmeObject(OTPmeBaseObject):
         if not extension:
             msg = _("Unable to find extension to add attribute to object: {attribute}")
             msg = msg.format(attribute=attribute)
-            # FIXME: log user messages?
-            #logger.critical(msg)
             return callback.error(msg)
 
         # Try to add attribute.

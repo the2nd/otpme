@@ -368,6 +368,7 @@ class OfflineToken(object):
             # Set iterations to be stored in offline token config.
             self.enc_iterations = iterations
             log_msg = _("Got password score: {score}", log=True)[1]
+            log_msg = log_msg.format(score=score)
             self.logger.debug(log_msg)
 
         # Derive encryption key from password.
