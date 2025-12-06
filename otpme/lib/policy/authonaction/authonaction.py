@@ -476,6 +476,8 @@ class AuthonactionPolicy(Policy):
 
         if config.use_api:
             do_reauth = False
+        if config.socket_auth:
+            do_reauth = False
 
         if do_reauth:
             msg = _("You need to re-authenticate for this action.")

@@ -32,7 +32,7 @@ cmd_help = {
 
 
     'verify_mschap'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-auth verify_mschap {[--socket] username} {challenge} {response} [client] [ipaddr]'),
+                    '_cmd_usage_help' : _('Usage: otpme-auth verify_mschap [--socket] {username} {challenge} {response} [client] [ipaddr]'),
                     'cmd'   :   '--socket :use_socket=True: <username> <mschap_challenge> <mschap_response> [client] [client_ip]',
                     '_help' :   {
                                     'cmd'                   : _('Verify mschap challenge/response against valid tokens of user'),

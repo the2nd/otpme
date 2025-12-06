@@ -41,6 +41,29 @@ class MgmtDaemon(OTPmeDaemon):
         # FIXME: Where to configure socket banner?
         # Set socket banner.
         self.socket_banner = f"{status_codes.OK} {self.full_name} {config.my_version}"
+
+        # Add default connection handler.
+        try:
+            self.set_connection_handler()
+        except Exception as e:
+            log_msg = _("Failed to set connection handler: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+
+        # Add mgmtd unix socket.
+        self.socket_path = config.mgmtd_socket_path
+        try:
+            self.add_socket(self.socket_path,
+                            handler=self.conn_handler,
+                            banner=self.socket_banner,
+                            user=self.user,
+                            group=self.group,
+                            mode=0o666)
+        except Exception as e:
+            log_msg = _("Failed to add unix socket: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            self.logger.critical(log_msg)
+
         # Do default startup (e.g. drop privileges, listen on sockets etc.).
         self.default_startup()
 

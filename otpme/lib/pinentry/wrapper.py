@@ -76,6 +76,14 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
             raise Exception(msg)
         command += pinentry_opts
 
+    try:
+        gpg_tty = os.environ['GPG_TTY']
+    except KeyError:
+        pass
+    else:
+        command.append("-T")
+        command.append(gpg_tty)
+
     # Print greeting.
     sys.stdout.write("OK Pleased to meet you\n")
     sys.stdout.flush()

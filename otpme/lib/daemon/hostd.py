@@ -489,7 +489,6 @@ class HostDaemon(OTPmeDaemon):
         self.logger.debug(log_msg)
 
         sync_sites = {}
-        reached_sites = []
         removed_objects = 0
         for site in connect_sites:
             # Connect to site master node.
@@ -552,6 +551,15 @@ class HostDaemon(OTPmeDaemon):
                         log_msg = log_msg.format(object_id=object_id, error=e)
                         self.logger.critical(log_msg)
                         continue
+                    # Check for valid object type.
+                    if o.type != "realm":
+                        if o.type != "site":
+                            if o.type != "unit":
+                                if o.type != "node":
+                                    log_msg = _("Rececived not permitted object from sites sync: {object_id}", log=True)[1]
+                                    log_msg = log_msg.format(object_id=o.oid)
+                                    self.logger.critical(log_msg)
+                                    continue
                     # Make sure the object is valid.
                     try:
                         validate_received_object(site_oid, o)
@@ -566,9 +574,6 @@ class HostDaemon(OTPmeDaemon):
                 # Add site objects.
                 if site_objects:
                     sync_sites[site_oid] = site_objects
-            # Remember all sites we reached. We use this to prevent deleting
-            # unreachable sites below.
-            reached_sites.append(site.oid)
 
         # If we got no sync sites (e.g. realm master node with no other sites)
         # we have nothing to do.

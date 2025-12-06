@@ -1747,6 +1747,13 @@ class AuthHandler(object):
             self.count_fails = False
             return
 
+        # Check if user authenticated via socket on remote site.
+        # This is used to disable authonaction policy for this request.
+        try:
+            config.socket_auth = outer_jwt_data['socket_auth']
+        except KeyError:
+            pass
+
         # Get auth accessgroup.
         if self.verify_jwt_ag:
             try:
@@ -1863,6 +1870,11 @@ class AuthHandler(object):
         if self.auth_token.site != site.name:
             self.auth_failed = True
             self.auth_message = "AUTH_JWT_INVALID_TOKEN_SITE"
+            return
+
+        if self.auth_token.site == config.site:
+            self.auth_failed = True
+            self.auth_message = "AUTH_JWT_TOKEN_SITE_IS_OWN_SITE"
             return
 
         # Verify auth token (group membership etc.)
@@ -2104,7 +2116,7 @@ class AuthHandler(object):
         smartcard_data=None, client=None, client_ip=None, access_group=None,
         user_token=None, count_fails=None, host_type=None, host=None,
         host_ip=None, replace_sessions=None, require_token_types=None,
-        require_pass_types=None, redirect_challenge=None,
+        require_pass_types=None, redirect_challenge=None, jwt_auth=False,
         allow_sotp_reuse=False, redirect_response=None, gen_jwt=None,
         jwt_challenge=None, rsp_ecdh_client_pub=None, verify_host=True,
         client_offline_enc_type=None, jwt_reason=None, verify_jwt_ag=True):
@@ -2198,6 +2210,7 @@ class AuthHandler(object):
         self.redirect_challenge = redirect_challenge
         self.redirect_response = redirect_response
         self.jwt = None
+        self.jwt_auth = jwt_auth
         self.jwt_reason = jwt_reason
         self.jwt_challenge = jwt_challenge
         self.request_cacheable = False
@@ -2491,6 +2504,17 @@ class AuthHandler(object):
         if not self.auth_failed and self.verify_sessions:
             # Verify sessions.
             self.verify_user_sessions()
+
+        # If session verification did not succeed and this is not a JWT auth,
+        # check for user from other site.
+        if not self.auth_status and not self.auth_failed and not self.jwt_auth:
+            if self.user.site_uuid != config.site_uuid and not self.session_reneg:
+                user_site = backend.get_object(object_type="site",
+                                            uuid=self.user.site_uuid)
+                if config.site_uuid not in user_site.trusted_sites:
+                    # If we do not have users secrets/tokens auth must fail.
+                    self.auth_failed = True
+                    self.auth_message = "AUTH_FAILED_WRONG_SITE_AUTH"
 
         if not self.realm_logout:
             if not self.auth_failed:

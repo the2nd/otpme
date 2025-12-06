@@ -974,8 +974,6 @@ class OTPmeAgentP1(object):
                 session['srp'] = _srp
                 # Gen SLP.
                 session['slp'] = slp
-                # Add session public key.
-                session['session_key'] = session_key
                 # Add login time.
                 session['login_time'] = login_time
                 # For sessions with offline flag set no logout command
@@ -994,6 +992,8 @@ class OTPmeAgentP1(object):
                 # Add realm/site.
                 self.session['realm'] = realm
                 self.session['site'] = site
+                # Add session public key.
+                self.session['session_key'] = session_key
                 # Update login session.
                 session_lock = self.acquire_session_lock(self.session_id)
                 try:

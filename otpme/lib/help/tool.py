@@ -548,9 +548,12 @@ cmd_help = {
 
     'backup'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool backup -d <backup_dir>'),
-                    'cmd'   :   '-d :backup_dir:',
+                    'cmd'   :   '-d :backup_dir: --remove-older-than :remove_older_than: --dry-run :dry_run=True:',
                     '_help' :   {
-                                    'cmd'                   : _('Write backup to backup directory.'),
+                                    'cmd'                           : _('Write backup to backup directory.'),
+                                    '-d <backup_dir>'               : _('Write backup to directory <backup_dir>.'),
+                                    '--remove-older-than <time>'    : _('Remove backups older than <time> from <backup_dir>.'),
+                                    '--dry-run'                     : _('Dont remove backups, just show what would be removed.'),
                                 },
                 },
     'restore'    : {

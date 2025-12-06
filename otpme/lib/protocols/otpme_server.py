@@ -122,6 +122,11 @@ class OTPmeServer1(object):
 
         self.session_reneg = False
 
+        self.client_proc = None
+        self.client_pid = None
+        self.client_user = None
+        self.client_cn = None
+
         # Client infos.
         self.client = client
         self.client_name = client
@@ -426,6 +431,36 @@ class OTPmeServer1(object):
 
         return wrapper
 
+    def handle_socket_auth(self):
+        """ Handle auth via user from socket. """
+        result = backend.search(object_type="user",
+                                attribute="name",
+                                value=self.client_user,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown user: {user}")
+            msg = msg.format(user=self.client_user)
+            raise OTPmeException(msg)
+        user = result[0]
+        valid_user = False
+        if user.realm == config.realm:
+            if user.site == config.site:
+                valid_user = True
+        if not valid_user:
+            msg = _("Permission denied: {user}")
+            msg = msg.format(user=self.client_user)
+            raise OTPmeException(msg)
+        try:
+            default_token = user.get_default_token()
+        except Exception as e:
+            msg = str(e)
+            raise OTPmeException(msg)
+        self.authenticated = True
+        self.username = self.client_user
+        config.auth_user = user
+        config.auth_token = default_token
+        config.socket_auth = True
+
     @handle_start_stop
     def process(self, data):
         """ Process command. """
@@ -594,7 +629,16 @@ class OTPmeServer1(object):
                 self.logger.critical(log_msg)
 
             # Do preauth.
-            preauth_result = self.handle_preauth(preauth_request, enc_key=enc_key)
+            try:
+                preauth_result = self.handle_preauth(preauth_request,
+                                                    enc_key=enc_key)
+            except Exception as e:
+                status = False
+                message = _("Preauth failed.")
+                log_msg = _("Error in OTPmeServer1.handle_preauth(): {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
+                return self.build_response(status, message, encrypt=False)
 
             # Notify protocol handler about the preauth end.
             try:
@@ -856,6 +900,11 @@ class OTPmeServer1(object):
         except:
             username = None
 
+        if not username and self.require_auth == "user":
+            status = False
+            message = "User authentication required."
+            return self.build_response(status, message, encrypt=False)
+
         if username and self.require_auth == "host":
             status = False
             message = "User authentication not allowed."
@@ -1024,7 +1073,7 @@ class OTPmeServer1(object):
                 ecdh_server_pub_pem = ecdh_key.export_public_key()
                 ecdh_client_pub = ecdh_key.load_public_key(ecdh_client_pub)
                 ecdh_shared_secret = ecdh_key.dhexchange(ecdh_client_pub)
-                # FIXME: Does we get any implications using the server DH public
+                # FIXME: Do we get any implications using the server DH public
                 #       key as salt?
                 session_key = self.session_enc_mod.derive_key(ecdh_shared_secret,
                                                     salt=ecdh_server_pub_pem,
@@ -1888,7 +1937,10 @@ class OTPmeServer1(object):
 
         # If we got a password try to auth user.
         if auth_type == "clear-text" or auth_type == "jwt":
-            # Verify clear-text request.
+            jwt_auth = False
+            if auth_type == "jwt":
+                jwt_auth = True
+            # Verify JWT or clear-text request.
             try:
                 auth_reply = self.user.authenticate(auth_mode=auth_mode,
                                             auth_type=auth_type,
@@ -1901,6 +1953,7 @@ class OTPmeServer1(object):
                                             host=login_host,
                                             host_ip=login_host_ip,
                                             redirect_challenge=self.redirect_challenge,
+                                            jwt_auth=jwt_auth,
                                             jwt_challenge=jwt_challenge,
                                             redirect_response=redirect_response,
                                             rsp_ecdh_client_pub=rsp_ecdh_client_pub,

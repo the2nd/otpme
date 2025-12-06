@@ -23,6 +23,7 @@ from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
 from otpme.lib.classes.object_config import ObjectConfig
 from otpme.lib.protocols.otpme_server import OTPmeServer1
+from otpme.lib.classes.data_objects.used_otp import UsedOTP
 from otpme.lib.classes.data_objects.token_counter import TokenCounter
 
 from otpme.lib.exceptions import *
@@ -400,10 +401,15 @@ class OTPmeSyncP1(OTPmeServer1):
         if data_type == "otp":
             log_name = "used OTP"
             sync_otps = True
-
-        if data_type == "counter":
+            object_class = UsedOTP
+        elif data_type == "counter":
             log_name = "token counter"
             sync_counter = True
+            object_class = TokenCounter
+        else:
+             msg = _("Unknown data type: {data_type}")
+             msg = msg.format(data_type=data_type)
+             raise OTPmeException(msg)
 
         log_msg = _("Reading {log_name}s", log=True)[1]
         log_msg = log_msg.format(log_name=log_name)
@@ -437,8 +443,8 @@ class OTPmeSyncP1(OTPmeServer1):
                 self.logger.critical(log_msg)
                 continue
             try:
-                x_object = TokenCounter(object_id=x_oid,
-                                        object_config=x_config)
+                x_object = object_class(object_id=x_oid,
+                                    object_config=x_config)
                 x_object._load()
             except Exception as e:
                 log_msg = _("Failed to load token counter: {x_oid}: {e}", log=True)[1]
@@ -566,10 +572,15 @@ class OTPmeSyncP1(OTPmeServer1):
         if data_type == "otp":
             log_name = "used OTP"
             sync_otps = True
-
-        if data_type == "counter":
+            object_class = UsedOTP
+        elif data_type == "counter":
             log_name = "token counter"
             sync_counter = True
+            object_class = TokenCounter
+        else:
+             msg = _("Unknown data type: {data_type}")
+             msg = msg.format(data_type=data_type)
+             raise OTPmeException(msg)
 
         token_oid = oid.get(object_id=object_id)
         try:
@@ -617,7 +628,6 @@ class OTPmeSyncP1(OTPmeServer1):
         local_new_objects = []
         local_added_objects = []
         remote_new_objects = {}
-        remote_outdated_objects = {}
 
         # Get local objects.
         local_objects = self.get_local_token_data(token, data_type)
@@ -636,16 +646,14 @@ class OTPmeSyncP1(OTPmeServer1):
                 self.logger.critical(log_msg)
                 continue
             try:
-                x_object = TokenCounter(object_id=x_oid,
-                                        object_config=x_config)
+                x_object = object_class(object_id=x_oid,
+                                    object_config=x_config)
                 x_object._load()
             except Exception as e:
                 log_msg = _("Failed to load token counter: {x_oid}: {e}", log=True)[1]
                 log_msg = log_msg.format(x_oid=x_oid, e=e)
                 self.logger.critical(log_msg)
                 continue
-            # Handle remote outdated objects.
-            remote_outdated_objects[x_oid.full_oid] = None
             # Make sure we got a valid token counter.
             if sync_counter:
                 try:
@@ -694,19 +702,15 @@ class OTPmeSyncP1(OTPmeServer1):
 
         status = True
         for x_oid in local_objects:
-            # Handle list of outdated objects.
-            if x_oid.full_oid in remote_outdated_objects:
-                remote_outdated_objects.pop(x_oid.full_oid)
             if x_oid in local_added_objects:
                 local_new_objects.append(x_oid)
             if x_oid in remote_objects:
                 continue
             # Get object config.
             x_config = backend.read_config(x_oid)
-            # Encrypt object config.
-            x_config = ObjectConfig(object_id=x_oid,
-                                    object_config=x_config,
-                                    encrypted=False)
+            # Skip missing objects.
+            if not x_config:
+                continue
             x_config = x_config.encrypt(key=offline_data_key)
             remote_new_objects[x_oid.full_oid] = x_config.copy()
 
@@ -731,7 +735,6 @@ class OTPmeSyncP1(OTPmeServer1):
         # Build response.
         response = {
                 'new_objects'       : remote_new_objects,
-                'outdated_objects'  : remote_outdated_objects,
                 }
         return status, response
 

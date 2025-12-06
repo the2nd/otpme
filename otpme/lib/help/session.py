@@ -37,8 +37,8 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-session list [-a] [username]'),
-                    'cmd'   :   '-a :show_all=True: [username]',
+                    '_cmd_usage_help' : _('Usage: otpme-session list [-a] [search_regex]'),
+                    'cmd'   :   '-a :show_all=True: [search_regex]',
                     '_help' :   {
                                     'cmd'                   : _('List sessions.'),
                                     '-a'                    : _('List all sessions.'),

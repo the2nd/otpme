@@ -93,7 +93,8 @@ class OTPmeJob(object):
 
     def _start(self):
         """ Start the job as thread and manage callback communication. """
-        log_msg = _("Starting job: {self.name}", log=True)[1]
+        log_msg = _("Starting job: {job_name}", log=True)[1]
+        log_msg = log_msg.format(job_name=self.name)
         self.logger.debug(log_msg)
 
         # Start job as thread.

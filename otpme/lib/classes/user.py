@@ -2097,7 +2097,7 @@ class User(OTPmeObject):
                 if x_oid.object_type != object_type:
                     continue
                 try:
-                    backend.delete_object(x_oid, cluster=True)
+                    backend.delete_object(x_oid, update_nsscache=False, cluster=True)
                 except UnknownObject:
                     pass
                 except Exception as e:
@@ -3332,6 +3332,17 @@ class User(OTPmeObject):
         log_msg = log_msg.format(duration=duration)
         logger.debug(log_msg)
         return auth_status
+
+    def get_default_token(self):
+        if not self.default_token:
+            msg = _("No default token set.")
+            raise OTPmeException(msg)
+        default_token = backend.get_object(uuid=self.default_token)
+        if not default_token:
+            msg = _("Unknown default token: {token_uuid}")
+            msg = msg.format(token_uuid=self.default_token)
+            raise OTPmeException(msg)
+        return default_token
 
     def token(self, token_name: str):
         """ Return token instance. """
@@ -5219,116 +5230,126 @@ class User(OTPmeObject):
                         callback=callback)
 
         # Set default key script.
-        if template and template.key_script:
-            result = backend.search(object_type="script",
-                                    attribute="uuid",
-                                    value=template.key_script,
-                                    return_type="rel_path",
-                                    realm=config.realm,
-                                    site=config.site)
-            if not result:
-                msg = _("Unable to find template key script: {template_key_script}")
-                msg = msg.format(template_key_script=template.key_script)
-                return callback.error(msg)
-            default_key_script = result[0]
+        default_key_script = None
+        if template:
+            if template.key_script:
+                result = backend.search(object_type="script",
+                                        attribute="uuid",
+                                        value=template.key_script,
+                                        return_type="rel_path",
+                                        realm=config.realm,
+                                        site=config.site)
+                if not result:
+                    msg = _("Unable to find template key script: {template_key_script}")
+                    msg = msg.format(template_key_script=template.key_script)
+                    return callback.error(msg)
+                default_key_script = result[0]
         else:
             default_key_script = self.get_config_parameter("default_key_script")
-        if verbose_level > 0:
-            msg = _("Setting default key script: {default_key_script}")
-            msg = msg.format(default_key_script=default_key_script)
-            callback.send(msg)
-        self.change_key_script(default_key_script,
-                                verify_acls=False,
-                                callback=callback)
+        if default_key_script:
+            if verbose_level > 0:
+                msg = _("Setting default key script: {default_key_script}")
+                msg = msg.format(default_key_script=default_key_script)
+                callback.send(msg)
+            self.change_key_script(default_key_script,
+                                    verify_acls=False,
+                                    callback=callback)
 
         # Set default agent script.
-        if template and template.agent_script:
-            result = backend.search(object_type="script",
-                                    attribute="uuid",
-                                    value=template.agent_script,
-                                    return_type="rel_path",
-                                    realm=config.realm,
-                                    site=config.site)
-            if not result:
-                msg = _("Unable to find template agent script: {template_agent_script}")
-                msg = msg.format(template_agent_script=template.agent_script)
-                return callback.error(msg)
-            default_agent_script = result[0]
+        default_agent_script = None
+        if template:
+            if template.agent_script:
+                result = backend.search(object_type="script",
+                                        attribute="uuid",
+                                        value=template.agent_script,
+                                        return_type="rel_path",
+                                        realm=config.realm,
+                                        site=config.site)
+                if not result:
+                    msg = _("Unable to find template agent script: {template_agent_script}")
+                    msg = msg.format(template_agent_script=template.agent_script)
+                    return callback.error(msg)
+                default_agent_script = result[0]
         else:
             default_agent_script = self.get_config_parameter("default_agent_script")
-        if verbose_level > 0:
-            msg = _("Setting default agent script: {default_agent_script}")
-            msg = msg.format(default_agent_script=default_agent_script)
-            callback.send(msg)
-        self.change_agent_script(default_agent_script,
-                                verify_acls=False,
-                                callback=callback)
+        if default_agent_script:
+            if verbose_level > 0:
+                msg = _("Setting default agent script: {default_agent_script}")
+                msg = msg.format(default_agent_script=default_agent_script)
+                callback.send(msg)
+            self.change_agent_script(default_agent_script,
+                                    verify_acls=False,
+                                    callback=callback)
 
         # Set default login script.
-        if template and template.login_script:
-            result = backend.search(object_type="script",
-                                    attribute="uuid",
-                                    value=template.login_script,
-                                    return_type="rel_path",
-                                    realm=config.realm,
-                                    site=config.site)
-            if not result:
-                msg = _("Unable to find template login script: {template_login_script}")
-                msg = msg.format(template_login_script=template.login_script)
-                return callback.error(msg)
-            default_login_script = result[0]
+        default_login_script = None
+        if template:
+            if template.login_script:
+                result = backend.search(object_type="script",
+                                        attribute="uuid",
+                                        value=template.login_script,
+                                        return_type="rel_path",
+                                        realm=config.realm,
+                                        site=config.site)
+                if not result:
+                    msg = _("Unable to find template login script: {template_login_script}")
+                    msg = msg.format(template_login_script=template.login_script)
+                    return callback.error(msg)
+                default_login_script = result[0]
         else:
             default_login_script = self.get_config_parameter("default_login_script")
-        if verbose_level > 0:
-            msg = _("Setting default login script: {default_login_script}")
-            msg = msg.format(default_login_script=default_login_script)
-            callback.send(msg)
-        self.change_login_script(default_login_script,
-                                verify_acls=False,
-                                callback=callback)
-        # Set login script enabled status.
-        if template:
-            if template.login_script_enabled != self.login_script_enabled:
+        if default_login_script:
+            if verbose_level > 0:
+                msg = _("Setting default login script: {default_login_script}")
+                msg = msg.format(default_login_script=default_login_script)
+                callback.send(msg)
+            self.change_login_script(default_login_script,
+                                    verify_acls=False,
+                                    callback=callback)
+            # Set login script enabled status.
+            if template and template.login_script_enabled != self.login_script_enabled:
                 if template.login_script_enabled:
                     self.enable_login_script()
                 else:
                     self.disable_login_script()
+
         # Set default auth script.
-        if template and template.auth_script:
-            result = backend.search(object_type="script",
-                                    attribute="uuid",
-                                    value=template.auth_script,
-                                    return_type="rel_path",
-                                    realm=config.realm,
-                                    site=config.site)
-            if not result:
-                msg = _("Unable to find template auth script: {template_auth_script}")
-                msg = msg.format(template_auth_script=template.auth_script)
-                return callback.error(msg)
-            default_auth_script = result[0]
+        default_auth_script = None
+        if template:
+            if template.auth_script:
+                result = backend.search(object_type="script",
+                                        attribute="uuid",
+                                        value=template.auth_script,
+                                        return_type="rel_path",
+                                        realm=config.realm,
+                                        site=config.site)
+                if not result:
+                    msg = _("Unable to find template auth script: {template_auth_script}")
+                    msg = msg.format(template_auth_script=template.auth_script)
+                    return callback.error(msg)
+                default_auth_script = result[0]
         else:
             default_auth_script = self.get_config_parameter("default_auth_script")
-        if verbose_level > 0:
-            msg = _("Setting default auth script: {default_auth_script}")
-            msg = msg.format(default_auth_script=default_auth_script)
-            callback.send(msg)
-        self.change_auth_script(default_auth_script,
-                                verify_acls=False,
-                                callback=callback)
-        # Set auth script enabled status.
-        if template:
-            if template.auth_script_enabled != self.auth_script_enabled:
+        if default_auth_script:
+            if verbose_level > 0:
+                msg = _("Setting default auth script: {default_auth_script}")
+                msg = msg.format(default_auth_script=default_auth_script)
+                callback.send(msg)
+            self.change_auth_script(default_auth_script,
+                                    verify_acls=False,
+                                    callback=callback)
+            if template and template.auth_script_enabled != self.auth_script_enabled:
                 if template.auth_script_enabled:
                     self.enable_auth_script()
                 else:
                     self.disable_auth_script()
 
-            # Handle auto sign setting
-            if template.autosign_enabled != self.autosign_enabled:
-                if template.autosign_enabled:
-                    self.disable_autosign(force=True, callback=callback)
-                else:
-                    self.enable_autosign(force=True, callback=callback)
+        # Handle auto sign setting
+        if template and template.autosign_enabled != self.autosign_enabled:
+            if template.autosign_enabled:
+                self.disable_autosign(force=True, callback=callback)
+            else:
+                self.enable_autosign(force=True, callback=callback)
 
         self._cache(callback=callback)
 

@@ -841,7 +841,8 @@ def rename(object_id, new_object_id, no_lock=False,
 
 def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
     no_index_writes=False, config_paths=None, no_exists_check=False,
-    cluster=False, no_transaction=False, transaction_replay=False):
+    cluster=False, no_transaction=False,
+    transaction_replay=False, update_nsscache=True):
     """ Delete object. """
     # Name of the file transaction.
     transaction_name = f"delete:{object_id}"
@@ -940,14 +941,15 @@ def delete(object_id, no_lock=False, commit_files=None, object_uuid=None,
                         no_transaction=no_transaction)
 
     # Update nsscache.
-    if object_type in NSSCACHE_OBJECT_TYPES:
-        # Get object template status.
-        try:
-            template = object_config['TEMPLATE']
-        except:
-            template = False
-        if not template:
-            del_transaction.update_nsscache(object_id, "remove")
+    if update_nsscache:
+        if object_type in NSSCACHE_OBJECT_TYPES:
+            # Get object template status.
+            try:
+                template = object_config['TEMPLATE']
+            except:
+                template = False
+            if not template:
+                del_transaction.update_nsscache(object_id, "remove")
 
     if cluster:
         if object_uuid:

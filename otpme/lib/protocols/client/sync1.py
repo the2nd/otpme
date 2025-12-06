@@ -1615,14 +1615,6 @@ class OTPmeSyncP1(OTPmeClient1):
                                             encrypt=False):
                         self.synced_objects.append(x_oid.read_oid)
 
-                # Remove outdated objects.
-                for x_oid in remote_objects['outdated_objects']:
-                    if offline_token.delete_object(x_oid):
-                        log_msg = _("Removed {data_type}: {x_oid}", log=True)[1]
-                        log_msg = log_msg.format(data_type=data_type, x_oid=x_oid)
-                        self.logger.debug(log_msg)
-                        self.removed_objects.append(x_oid.read_oid)
-
                 new_object_count = len(self.synced_objects)
                 log_msg = _("Added {count} new {log_name}s: {rel_path}", log=True)[1]
                 log_msg = log_msg.format(count=new_object_count, log_name=log_name, rel_path=token.rel_path)

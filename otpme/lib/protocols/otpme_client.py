@@ -1561,6 +1561,7 @@ class OTPmeClient(OTPmeClientBase):
 
     def move_objects(self, command_dict):
         """ Handle objects move. """
+        from otpme.lib.classes.mgmt_client import OTPmeMgmtClient
         # Get sign request.
         object_data = command_dict['object_data']
         objects = object_data['objects']
@@ -1599,51 +1600,37 @@ class OTPmeClient(OTPmeClientBase):
                 response = {'status':False, 'reply':'Object move aborted by user.'}
                 return response
 
-        username = self.username
-        try:
-            mgmt_conn = connections.get(daemon="mgmtd",
-                                    username=username,
-                                    auto_auth=False,
-                                    realm=dst_realm,
-                                    site=dst_site)
-        except ConnectionError as e:
-            status = False
-            reply = _("Site connection failed: {error}")
-            reply = reply.format(error=e)
-            response = {'status':status, 'reply':reply}
-            return response
-        except Exception as e:
-            status = False
-            reply = _("Unable to connect to mgmt daemon: {error}")
-            reply = reply.format(error=e)
-            response = {'status':status, 'reply':reply}
-            return response
-
+        # Get mgmt client.
+        login_data = {
+                    config.realm : {
+                                'username' : self.username,
+                                },
+                    }
+        mgmt_client = OTPmeMgmtClient(login_data=login_data,
+                                    interactive=self.interactive)
+        # Send command.
         command_args = {
-                        'subcommand'    : 'user',
                         'src_realm'     : src_realm,
                         'src_site'      : src_site,
                         'objects'       : objects,
                         'jwt'           : jwt,
                     }
-
         try:
             status, \
-            status_code, \
-            reply, \
-            binary_data = mgmt_conn.send(command="move_object",
-                                        command_args=command_args)
+            reply = mgmt_client.send(command="move_object",
+                                    command_args=command_args,
+                                    realm=dst_realm,
+                                    site=dst_site)
         except Exception as e:
             status = False
             reply = str(e)
         finally:
             try:
-                mgmt_conn.close()
+                mgmt_client.close()
             except Exception as e:
                 log_msg = _("Failed to close connection to mgmtd: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)
-
 
         response = {'status':status, 'reply':reply}
 
@@ -1651,6 +1638,7 @@ class OTPmeClient(OTPmeClientBase):
 
     def change_user_default_group(self, command_dict):
         """ Change user default group. """
+        from otpme.lib.classes.mgmt_client import OTPmeMgmtClient
         # Get sign request.
         object_data = command_dict['object_data']
         action = object_data['action']
@@ -1700,45 +1688,32 @@ class OTPmeClient(OTPmeClientBase):
                 response = {'status':False, 'reply':reply}
                 return response
 
-        username = self.username
-        try:
-            mgmt_conn = connections.get(daemon="mgmtd",
-                                    username=username,
-                                    auto_auth=False,
-                                    realm=dst_realm,
-                                    site=dst_site)
-        except ConnectionError as e:
-            status = False
-            reply = _("Site connection failed: {error}")
-            reply = reply.format(error=e)
-            response = {'status':status, 'reply':reply}
-            return response
-        except Exception as e:
-            status = False
-            reply = _("Unable to connect to mgmt daemon: {error}")
-            reply = reply.format(error=e)
-            response = {'status':status, 'reply':reply}
-            return response
-
+        # Get mgmt client.
+        login_data = {
+                    config.realm : {
+                                'username' : self.username,
+                                },
+                    }
+        mgmt_client = OTPmeMgmtClient(login_data=login_data,
+                                    interactive=self.interactive)
+        # Send command.
         command_args = {
-                        'subcommand'    : 'user',
                         'src_realm'     : src_realm,
                         'src_site'      : src_site,
                         'jwt'           : jwt,
                     }
-
         try:
             status, \
-            status_code, \
-            reply, \
-            binary_data = mgmt_conn.send(command="change_user_default_group",
-                                        command_args=command_args)
+            reply = mgmt_client.send(command="change_user_default_group",
+                                    command_args=command_args,
+                                    realm=dst_realm,
+                                    site=dst_site)
         except Exception as e:
             status = False
             reply = str(e)
         finally:
             try:
-                mgmt_conn.close()
+                mgmt_client.close()
             except Exception as e:
                 log_msg = _("Failed to close connection to mgmtd: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
@@ -2423,7 +2398,7 @@ class OTPmeClient1(OTPmeClientBase):
             conn_type = "login"
 
         log_msg = _("Starting redirected {conn_type} to: {realm}/{site}", log=True)[1]
-        log_msg = log_msg.fomrat(conn_type=conn_type, realm=realm, site=site)
+        log_msg = log_msg.format(conn_type=conn_type, realm=realm, site=site)
         self.logger.info(log_msg)
         # Send login request to users home site.
         redirect_connection = connections.get(daemon=self.daemon,

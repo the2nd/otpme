@@ -57,6 +57,7 @@ commands = {
                     'method'            : cli.list_sessions,
                     'oargs'             : [
                                         'show_all',
+                                        'search_regex',
                                         ],
                     'job_type'          : None,
                     },
@@ -64,6 +65,7 @@ commands = {
                     'method'            : cli.list_sessions,
                     'oargs'             : [
                                         'show_all',
+                                        'search_regex',
                                         ],
                     'job_type'          : None,
                     },

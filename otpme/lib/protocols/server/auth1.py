@@ -98,6 +98,7 @@ class OTPmeAuthP1(OTPmeServer1):
                 'login_token'       : token.uuid,
                 'auth_type'         : config.auth_type,
                 'accessgroup'       : access_group,
+                'socket_auth'       : config.socket_auth,
                 }
 
         _jwt = jwt.encode(payload=jwt_data, key=sign_key, algorithm='RS256')
@@ -137,6 +138,15 @@ class OTPmeAuthP1(OTPmeServer1):
         if command == "get_jwt":
             log_msg = _("Processing JWT request.", log=True)[1]
             self.logger.info(log_msg)
+
+            # Try to auth socket user.
+            if not self.authenticated and self.client_user:
+                try:
+                    self.handle_socket_auth()
+                except Exception as e:
+                    status = False
+                    message = str(e)
+                    return self.build_response(status, message)
 
             if not self.authenticated:
                 message = _("Not logged in.")

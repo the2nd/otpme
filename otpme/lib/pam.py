@@ -1353,8 +1353,8 @@ class PamHandler(object):
                                 offline_key_derivation_func=offline_key_derivation_func,
                                 offline_key_func_opts=offline_key_func_opts,
                                 check_offline_pass_strength=check_offline_pass_strength,
-                                offline_iterations_by_score=offline_iterations_by_score,
-                                cleanup_method=self.deactivate_gpg_agent_autoconfirm)
+                                offline_iterations_by_score=offline_iterations_by_score)
+                                #cleanup_method=self.deactivate_gpg_agent_autoconfirm)
             self.auth_status = True
         except AuthFailed as e:
             self.auth_failed = True
@@ -1886,8 +1886,6 @@ class PamHandler(object):
         or not self.realm_login \
         or not self.cache_login_tokens \
         or self.offline:
-            # Deactivate otpme-pinentry auto confirmation.
-            self.deactivate_gpg_agent_autoconfirm()
             # Trigger sync.
             self.hostd_conn.trigger_token_data_sync()
 
@@ -1898,6 +1896,9 @@ class PamHandler(object):
             except self.pamh.exception:
                 self.cleanup()
                 return self.pamh.PAM_SYSTEM_ERR
+
+        # Deactivate otpme-pinentry auto confirmation.
+        self.deactivate_gpg_agent_autoconfirm()
 
         if self.ssh_agent_status():
             try:

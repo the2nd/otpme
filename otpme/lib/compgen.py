@@ -558,4 +558,3 @@ def show_compgen():
                 print(objects)
         else:
             print(objects)
-

@@ -551,8 +551,14 @@ class OTPmeConfig(object):
 
         self.register_config_var("nsscache_pidfile", str, None)
 
+        self.register_config_var("use_mgmtd_socket", bool, False,
+                                config_file_parameter="USE_MGMTD_SOCKET")
+        self.register_config_var("use_socket", bool, False)
+        self.register_config_var("socket_auth", bool, False)
+
         self.register_config_var("controld_pidfile", str, None)
         self.register_config_var("authd_socket_path", str, None)
+        self.register_config_var("mgmtd_socket_path", str, None)
         self.register_config_var("hostd_socket_path", str, None)
         self.register_config_var("clusterd_socket_path", str, None)
         self.register_config_var("key_command", str, None,
@@ -1021,6 +1027,7 @@ class OTPmeConfig(object):
         self.nsscache_pidfile = os.path.join(self.pidfile_dir, "nsscache-sync.pid")
 
         self.authd_socket_path = f"socket://{self.sockets_dir}/otpme-authd"
+        self.mgmtd_socket_path = f"socket://{self.sockets_dir}/otpme-mgmtd"
         self.hostd_socket_path = f"socket://{self.sockets_dir}/otpme-hostd"
         self.clusterd_socket_path = f"socket://{self.sockets_dir}/otpme-clusterd"
 

@@ -329,6 +329,8 @@ def get(daemon, **kwargs):
         need_user = False
     if daemon == "clusterd":
         need_user = False
+    if config.use_socket:
+        username = config.system_user()
 
     # Check if we should use a running agent
     if need_user:

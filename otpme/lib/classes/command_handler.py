@@ -117,11 +117,17 @@ class CommandHandler(object):
     def get_mgmt_client(self, username=None, password=None):
         """ Get OTPme management client connection. """
         from otpme.lib.classes.mgmt_client import OTPmeMgmtClient
-        # In API mode no login is required.
-        if not config.use_api and config.use_agent:
-            login_status = self.get_login_status()
-            if not login_status:
-                raise OTPmeException(_("Not logged in."))
+        # In API and socket mode no login is required.
+        if config.use_mgmtd_socket:
+            if not config.use_api and config.use_agent:
+                login_status = self.get_login_status()
+                if not login_status:
+                    config.use_socket = True
+        else:
+            if not config.use_api and not config.use_socket and config.use_agent:
+                login_status = self.get_login_status()
+                if not login_status:
+                    raise OTPmeException(_("Not logged in."))
 
         # Return existing mgmt client.
         if self.mgmt_client:
@@ -233,8 +239,13 @@ class CommandHandler(object):
         if daemon == "mgmtd":
             if config.use_api:
                 username = config.system_user()
+
+            if config.use_socket:
+                self.init(use_backend=False)
+
             # Get management client.
-            mgmt_client = self.get_mgmt_client(username, password)
+            mgmt_client = self.get_mgmt_client(username=username,
+                                            password=password)
             status, \
             reply = mgmt_client.send(command=command,
                                     subcommand=subcommand,
@@ -1017,6 +1028,75 @@ class CommandHandler(object):
             raise OTPmeException(reply)
         return reply
 
+    def remove_old_backups(self, backup_dir, older_than, dry_run=False):
+        import shutil
+        from datetime import datetime
+        from datetime import timedelta
+        from otpme.lib import filetools
+
+        msg = _("Unknown time delta: {older_than}")
+        msg = msg.format(older_than=older_than)
+        if older_than.endswith("m"):
+            try:
+                older_than = int(older_than[:-1])
+            except ValueError:
+                raise OTPmeException(msg)
+            delta = timedelta(minutes=older_than)
+        elif older_than.endswith("h"):
+            try:
+                older_than = int(older_than[:-1])
+            except ValueError:
+                raise OTPmeException(msg)
+            delta = timedelta(hours=older_than)
+        elif older_than.endswith("d"):
+            try:
+                older_than = int(older_than[:-1])
+            except ValueError:
+                raise OTPmeException(msg)
+            delta = timedelta(days=older_than)
+        elif older_than.endswith("w"):
+            try:
+                older_than = int(older_than[:-1])
+            except ValueError:
+                raise OTPmeException(msg)
+            delta = timedelta(weeks=older_than)
+        elif older_than.endswith("M"):
+            try:
+                older_than = int(older_than[:-1])
+            except ValueError:
+                raise OTPmeException(msg)
+            older_than = older_than * 30
+            delta = timedelta(days=older_than)
+        elif older_than.endswith("Y"):
+            try:
+                older_than = int(older_than[:-1])
+            except ValueError:
+                raise OTPmeException(msg)
+            older_than = older_than * 365
+            delta = timedelta(days=older_than)
+        else:
+            raise OTPmeException(msg)
+
+        now = datetime.now()
+        backup_dirs = filetools.list_dir(backup_dir, sort_by="ctime")
+        for x_dir in backup_dirs:
+            x_path = os.path.join(backup_dir, x_dir)
+            if not os.path.isdir(x_path):
+                continue
+            try:
+                date_obj = datetime.strptime(x_dir, "%Y-%m-%d_%H:%M:%S")
+            except ValueError:
+                continue
+            diff = now - date_obj
+            if diff < delta:
+                continue
+            if dry_run:
+                msg = _("Would remove: {x_path}")
+                msg = msg.format(x_path=x_path)
+                print(msg)
+                continue
+            shutil.rmtree(x_path)
+
     def handle_tool_command(self, command, subcommand, command_line):
         """ Handle tool command. """
         # FIXME: use cli.get_opts() for all -tool commands!
@@ -1275,6 +1355,16 @@ class CommandHandler(object):
                 backup_dir = command_args['backup_dir']
             except KeyError:
                 return self.get_help()
+            try:
+                remove_older_than = command_args['remove_older_than']
+            except KeyError:
+                remove_older_than = None
+            if remove_older_than:
+                try:
+                    dry_run = command_args['dry_run']
+                except KeyError:
+                    dry_run = False
+                return self.remove_old_backups(backup_dir, remove_older_than, dry_run)
             return self.do_backup(backup_dir)
 
         if subcommand == "unpin_offline_token":

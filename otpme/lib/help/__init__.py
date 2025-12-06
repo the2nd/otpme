@@ -92,6 +92,7 @@ register_global_opt("--use-agent [y|n|auto]", "Use otpme-agent login session to 
 register_global_opt("--use-ssh-agent [y|n]", "Use ssh-agent for authentication")
 register_global_opt("--use-smartcard [y|n]", "Use smartcard for authentication")
 register_global_opt("--stdin-pass", "Read passphrase from stdin")
+register_global_opt("--socket", "Use mgmtd socket.")
 register_global_opt("--api", "Use direct API calls instead of connecting to a daemon")
 register_global_opt("--auth-token [token]", "Emulate login with [token] in API mode")
 register_global_opt("--print-raw-sign-data", "Print raw data to sign instead of sign info")
@@ -524,6 +525,9 @@ def get_main_opts(clear_cache=False, mod_name=None):
         elif sys.argv[0] == "--keep-floating-ip":
             sys.argv.pop(0)
             main_opts['keep_floating_ip'] = True
+        elif sys.argv[0] == "--socket":
+            sys.argv.pop(0)
+            main_opts['use_socket'] = True
         elif sys.argv[0] == "--stdin-pass":
             sys.argv.pop(0)
             main_opts['read_stdin_pass'] = True

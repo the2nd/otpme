@@ -1124,7 +1124,7 @@ class Group(OTPmeObject):
                 if x_oid.object_type != object_type:
                     continue
                 try:
-                    backend.delete_object(x_oid, cluster=True)
+                    backend.delete_object(x_oid, update_nsscache=False, cluster=True)
                 except UnknownObject:
                     pass
                 except Exception as e:

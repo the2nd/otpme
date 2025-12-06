@@ -437,8 +437,8 @@ class JobCallback(object):
         try:
             jwt_key = RSAKey(key=site_cert.public_key())
         except Exception as e:
-            msg = _("Unable to get public key of site certificate: {}: {}")
-            msg = msg.format(user.site, e)
+            msg = _("Unable to get public key of site certificate: {user_site}: e{}")
+            msg = msg.format(user_site=user.site, e=e)
             raise OTPmeException(msg)
         try:
             jwt_data = _jwt.decode(jwt=jwt,

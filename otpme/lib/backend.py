@@ -351,7 +351,8 @@ def rename_object(
 def delete_object(
     object_id: oid.OTPmeOid,
     no_transaction: bool=False,
-    cluster: bool=False
+    cluster: bool=False,
+    update_nsscache: bool=True,
     ):
     """ Delete object. """
     # Replay any leftover transaction.
@@ -368,7 +369,10 @@ def delete_object(
             msg = msg.format(object_id=object_id)
             raise UnknownObject(msg)
     # Remove object from backend.
-    delete(object_id, no_transaction=no_transaction, cluster=cluster)
+    delete(object_id=object_id,
+        no_transaction=no_transaction,
+        update_nsscache=update_nsscache,
+        cluster=cluster)
     # Outdate object.
     outdate_object(object_id, cache_type="all")
     return True

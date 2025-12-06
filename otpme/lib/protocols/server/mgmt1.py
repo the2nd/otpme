@@ -2087,6 +2087,15 @@ class OTPmeMgmtP1(OTPmeServer1):
             message = message.format(cmd=command)
             return self.build_response(status, message)
 
+        # Try to auth socket user.
+        if not self.authenticated and self.client_user:
+            try:
+                self.handle_socket_auth()
+            except Exception as e:
+                status = False
+                message = str(e)
+                return self.build_response(status, message)
+
         # mgmtd does require an authenticated user.
         if not self.authenticated or not self.username or not config.auth_token:
             if config.daemon_mode:

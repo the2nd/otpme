@@ -623,6 +623,9 @@ class OTPmeAgent(UnixDaemon):
         # Get session values
         session_id = self.login_sessions[login_pid]['session_id']
         login_user = self.login_sessions[login_pid]['login_user']
+        # Get session key to encrypt new RSP.
+        session_key = self.login_sessions[login_pid]['session_key']
+
         login_time = session['login_time']
         rsp = session['rsp']
         slp = session['slp']
@@ -631,9 +634,6 @@ class OTPmeAgent(UnixDaemon):
         session_unused_timeout = session['session_unused_timeout']
         last_reneg = session['last_reneg']
         reneg_age = time.time() - last_reneg
-
-        # Get session key to encrypt new RSP.
-        session_key = session['session_key']
 
         # Try to update session.
         log_msg = _("Trying to renegotiate session for user: {user}", log=True)[1]
@@ -993,18 +993,18 @@ class OTPmeAgent(UnixDaemon):
         login_user = login_session['login_user']
         login_realm = login_session['realm']
         login_site = login_session['site']
+        session_key = login_session['session_key']
         #offline = login_session['server_sessions']
         #offline = offline[login_realm][login_site]['offline']
         try:
             server_sessions = login_session['server_sessions']
             server_session = server_sessions[login_realm][login_site]
-        except:
+        except KeyError:
             log_msg = _("Session does not exists. Cannot renegotiate: {realm}/{site}", log=True)[1]
             log_msg = log_msg.format(realm=realm, site=site)
             self.logger.debug(log_msg)
             raise Exception(log_msg)
         offline = server_session['offline']
-        session_key = server_session['session_key']
 
         if use_dns is None:
             use_dns = config.use_dns
@@ -1241,6 +1241,14 @@ class OTPmeAgent(UnixDaemon):
                 msg = msg.format(daemon=daemon, e=e)
                 log_msg = log_msg.format(daemon=daemon, e=e)
                 self.logger.warning(log_msg)
+                if have_session:
+                    self.delete_session(login_pid, force=True, realm=realm, site=site)
+                    return self.get_daemon_conn(realm=realm,
+                                                site=site,
+                                                daemon=daemon,
+                                                login_pid=login_pid,
+                                                keepalive=keepalive,
+                                                use_dns=use_dns)
                 raise AuthFailed(msg)
             except Exception as e:
                 msg, log_msg = _("Error getting daemon connection: {daemon}: {e}", log=True)
@@ -1982,7 +1990,7 @@ class OTPmeAgent(UnixDaemon):
                 try:
                     os.remove(old_logfile)
                 except Exception as e:
-                    log_msg = _("Error removing outdate logfile: {error}", log=True)[1]
+                    log_msg = _("Error removing outdated logfile: {error}", log=True)[1]
                     log_msg = log_msg.format(error=e)
                     self.logger.warning(log_msg)
 

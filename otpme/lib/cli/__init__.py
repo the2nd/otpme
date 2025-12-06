@@ -2023,7 +2023,7 @@ def list_objects(object_type, show_all=False, reverse=False,
 
     return response
 
-def list_sessions(show_all=False, **kwargs):
+def list_sessions(search_regex=None, show_all=False, **kwargs):
     """ Handle 'session list' command. """
     from otpme.lib import backend
     write_acls = [
@@ -2057,47 +2057,42 @@ def list_sessions(show_all=False, **kwargs):
     if config.use_api and not config.auth_token:
         verify_acls = None
 
+    if search_regex is None:
+        search_regex = "*"
+
     # Get users based on ACLs.
     user_list = backend.search(realm=config.realm,
                             site=config.site,
                             object_type="user",
-                            attribute="uuid",
-                            value="*",
+                            attribute="name",
+                            value=search_regex,
                             return_type="uuid",
                             order_by="name",
                             verify_acls=verify_acls)
 
-    # Get tokens based on ACLs.
-    user_list += backend.search(realm=config.realm,
-                            site=config.site,
-                            object_type="token",
-                            attribute="uuid",
-                            value="*",
-                            return_attributes=["owner_uuid"],
-                            order_by="name",
-                            verify_acls=verify_acls)
     user_list = list(set(user_list))
 
     # Get all sessions.
     session_ids = []
-    search_attrs = {}
-    search_attrs['owner_uuid'] = {'values':user_list}
-    return_attributes = ['session_id', 'user_uuid']
-    session_list = backend.search(object_type="session",
-                                sort_by="owner_uuid",
-                                attributes=search_attrs,
-                                return_type="uuid",
-                                return_attributes=return_attributes)
-    # Check for each session if user is allowed to view/list it.
-    for session_uuid in session_list:
-        user_uuid = session_list[session_uuid]['user_uuid'][0]
-        session_id = session_list[session_uuid]['session_id'][0]
-        u = backend.get_object(object_type="user",
-                                realm=config.realm,
-                                uuid=user_uuid)
-        if not u.verify_acl("view:session"):
-            if not u.verify_acl("delete:session"):
-                continue
-        session_ids.append(session_id)
+    if user_list:
+        search_attrs = {}
+        search_attrs['user_uuid'] = {'values':user_list}
+        return_attributes = ['session_id', 'user_uuid']
+        session_list = backend.search(object_type="session",
+                                    sort_by="user_uuid",
+                                    attributes=search_attrs,
+                                    return_type="uuid",
+                                    return_attributes=return_attributes)
+        # Check for each session if user is allowed to view/list it.
+        for session_uuid in session_list:
+            user_uuid = session_list[session_uuid]['user_uuid'][0]
+            session_id = session_list[session_uuid]['session_id'][0]
+            u = backend.get_object(object_type="user",
+                                    realm=config.realm,
+                                    uuid=user_uuid)
+            if not u.verify_acl("view:session"):
+                if not u.verify_acl("delete:session"):
+                    continue
+            session_ids.append(session_id)
     response = "\n".join(session_ids)
     return response

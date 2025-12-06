@@ -13,6 +13,19 @@ import sys
 # module.
 import radiusd
 
+# Add PYTHONPATH.
+PYTHONPATH_FILE = "/etc/otpme/PYTHONPATH"
+if os.path.exists(PYTHONPATH_FILE):
+    fd = open(PYTHONPATH_FILE, "r")
+    try:
+        for x in fd.readlines():
+            x = x.replace("\n", "")
+            if x in sys.path:
+                continue
+            sys.path.insert(0, x)
+    finally:
+        fd.close()
+
 import otpme.lib
 from otpme.lib import init_otpme
 from otpme.lib.otpme_config import OTPmeConfig
