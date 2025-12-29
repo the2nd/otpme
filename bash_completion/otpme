@@ -1,18 +1,24 @@
 _otpme() {
 	local COUNT="0"
 	export _OTPME_OPTS=""
+	export _OTPME_REALM_OPT=""
+	export _OTPME_SITE_OPT=""
 	for WORD in ${COMP_WORDS[@]} ; do
 		if [ "$COUNT" -gt "0" ] ; then
 			if [[ $WORD == -* ]] ; then
 				if [[ $WORD == -s ]] ; then
-					_OTPME_SITE="${COMP_WORDS[$[$COUNT+1]]}"
+					_OTPME_SITE_OPT="-s ${COMP_WORDS[$[$COUNT+1]]}"
 				fi
 				if [[ $WORD == -r ]] ; then
-					_OTPME_REALM="${COMP_WORDS[$[$COUNT+1]]}"
+					_OTPME_REALM_OPT=" -r${COMP_WORDS[$[$COUNT+1]]}"
 				fi
 				# set --api command line switch for all commands if given
 				if [[ $WORD == --api ]] ; then
 					_OTPME_OPTS="$_OTPME_OPTS$IFS--api"
+				fi
+				# set --socket command line switch for all commands if given
+				if [[ $WORD == --socket ]] ; then
+					_OTPME_OPTS="$_OTPME_OPTS$IFS--socket"
 				fi
 				# set --type command line switch for all commands if given
 				if [[ $WORD == --type ]] ; then
@@ -38,8 +44,9 @@ _otpme() {
 	#cur=${COMP_WORDS[COMP_CWORD]}
 	#test="$command $_OTPME_OPTS --compgen --comp-words \"$_COMP_WORDS\" --comp-cword \"$_COMP_CWORD\" --cur \"$cur\""
 	#echo $test
-	COMP_CMD="$command $_OTPME_OPTS --compgen --comp-words \"$_COMP_WORDS\" --comp-cword "$_COMP_CWORD" --cur "$cur""
-	COMP_LIST="$($command $_OTPME_OPTS --compgen --comp-words "$_COMP_WORDS" --comp-cword "$_COMP_CWORD" --cur "$cur")"
+	#COMP_CMD="$command $_OTPME_OPTS $_OTPME_REALM_OPT $_OTPME_SITE_OPT --compgen --comp-words \"$_COMP_WORDS\" --comp-cword "$_COMP_CWORD" --cur "$cur""
+	#echo $COMP_CMD
+	COMP_LIST="$($command $_OTPME_OPTS $_OTPME_REALM_OPT $_OTPME_SITE_OPT --compgen --comp-words "$_COMP_WORDS" --comp-cword "$_COMP_CWORD" --cur "$cur")"
 	#COMP_LIST="$($command $_OTPME_OPTS --compgen --comp-words "$_COMP_WORDS" --comp-cword "$_COMP_CWORD" --cur "$cur")"
 	if [ "$COMP_LIST" = "" ] ; then
 		COMPREPLY=()
@@ -51,4 +58,4 @@ _otpme() {
 }
 
 
-complete -o bashdefault -o default -F _otpme otpme-controld otpme-agent otpme-user otpme-group otpme-accessgroup otpme-client otpme-realm otpme-token otpme-session otpme-cluster otpme-tool otpme-auth otpme-site otpme-node otpme-host otpme-unit otpme-role otpme-ca otpme-script otpme-policy otpme-resolver otpme-dictionary otpme-trash otpme-share otpme-pool
+complete -o bashdefault -o default -F _otpme otpme-controld otpme-agent otpme-user otpme-group otpme-accessgroup otpme-client otpme-realm otpme-token otpme-session otpme-cluster otpme-tool otpme-auth otpme-site otpme-node otpme-host otpme-unit otpme-role otpme-ca otpme-script otpme-policy otpme-resolver otpme-dictionary otpme-trash otpme-share otpme-job otpme-pool
