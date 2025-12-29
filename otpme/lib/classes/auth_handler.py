@@ -85,13 +85,13 @@ class AuthHandler(object):
     def verify_session(self, session, **kwargs):
         """ Try to verify session. """
         # Try to verify session:
-        verify_reply = session.verify(**kwargs)
-        session_status = verify_reply['status']
+        verify_response = session.verify(**kwargs)
+        session_status = verify_response['status']
         if session_status is None:
             return session_status
 
         # Session verified successful.
-        request_type = verify_reply['type']
+        request_type = verify_response['type']
         if request_type == "auth":
             log_msg = _("Authentication parameters of request matching session '{session_name}'.", log=True)[1]
             log_msg = log_msg.format(session_name=session.name)
@@ -106,7 +106,7 @@ class AuthHandler(object):
             self.password_hash = session.pass_hash
             if self.auth_type == "mschap":
                 # Set NT_KEY
-                self.nt_key = verify_reply['nt_key']
+                self.nt_key = verify_response['nt_key']
             return session_status
 
         # Found SLP.
@@ -122,12 +122,12 @@ class AuthHandler(object):
             # If we have a session no need to create a new one.
             self.create_sessions = False
             # Set auth_slp which will be used later (log auth data).
-            self.auth_slp = verify_reply['slp']
+            self.auth_slp = verify_response['slp']
             if self.auth_type == "mschap":
                 # Set NT hash of SLP.
-                self.password_hash = verify_reply['slp_hash']
+                self.password_hash = verify_response['slp_hash']
                 # Set NT_KEY.
-                self.nt_key = verify_reply['nt_key']
+                self.nt_key = verify_response['nt_key']
                 # Gen one iter hash used to add SLP to used list.
                 self.one_iter_hash = self.get_one_iter_hash(self.auth_slp)
             else:
@@ -147,12 +147,12 @@ class AuthHandler(object):
             # If we have a session no need to create a new one.
             self.create_sessions = False
             # Set auth_srp which will be used later (log auth data!)
-            self.auth_srp = verify_reply['srp']
+            self.auth_srp = verify_response['srp']
             if self.auth_type == "mschap":
                 # Set SRP password hash.
-                self.password_hash = verify_reply['srp_hash']
+                self.password_hash = verify_response['srp_hash']
                 # Set NT_KEY.
-                self.nt_key = verify_reply['nt_key']
+                self.nt_key = verify_response['nt_key']
             else:
                 self.password_hash = self.one_iter_hash
             return session_status
@@ -162,13 +162,13 @@ class AuthHandler(object):
             # For MSCHAP requests we can now check for an already used SOTP.
             if self.auth_type == "mschap":
                 # Get SOTP.
-                self.auth_sotp = verify_reply['sotp']
+                self.auth_sotp = verify_response['sotp']
                 # Gen one iter hash used to add SOTP to used list.
                 self.one_iter_hash = self.get_one_iter_hash(self.auth_sotp)
                 # Set NT hash from SOTP.
-                self.password_hash = verify_reply['sotp_hash']
+                self.password_hash = verify_response['sotp_hash']
                 # Set NT_KEY
-                self.nt_key = verify_reply['nt_key']
+                self.nt_key = verify_response['nt_key']
                 # If we found an already used SOTP and this sessions is the
                 # REALM session, authentication is not done but also not failed
                 # because one of the child sessions may have been created by
@@ -215,17 +215,6 @@ class AuthHandler(object):
 
     def verify_auth_token(self):
         """ Make sure token is valid (e.g. group membership etc.) """
-        # Check if we have a auth token.
-        if not self.auth_token:
-            log_msg = _("Found no valid auth token.", log=True)[1]
-            self.logger.error(log_msg)
-            self.auth_failed = True
-            if self.realm_login:
-                self.auth_message = "LOGIN_FAILED_NO_TOKEN"
-            else:
-                self.auth_message = "AUTH_FAILED_NO_TOKEN"
-            return
-
         # Check if auth token is in list of users tokens.
         if self.auth_token.uuid not in self.user.tokens:
             # We found a token which is not in list of user tokens. This should
@@ -258,7 +247,6 @@ class AuthHandler(object):
 
         # Make sure we use the destination token for linked tokens.
         if self.auth_token.destination_token:
-            self.auth_token.dst_token = self.auth_token.get_destination_token()
             if self.auth_token.dst_token:
                 self.verify_token = self.auth_token.dst_token
             else:
@@ -696,18 +684,18 @@ class AuthHandler(object):
             except LockWaitAbort:
                 continue
             # Try to verify session.
-            verify_reply = session.verify(password=slp,
+            verify_response = session.verify(password=slp,
                                         check_auth=False,
                                         check_srp=False,
                                         do_reneg=False,
                                         check_sotp=False,
                                         check_slp=True)
 
-            session_status = verify_reply['status']
+            session_status = verify_response['status']
             if session_status is None:
                 continue
 
-            request_type = verify_reply['type']
+            request_type = verify_response['type']
             # Found SLP.
             if request_type == "logout":
                 # Delete session if it matches the given SLP.
@@ -1681,7 +1669,6 @@ class AuthHandler(object):
             # False means token verification failed.
             if token_status is False:
                 return False
-
         # Default should be None (e.g. no valid token found)
         return None
 
@@ -2617,6 +2604,16 @@ class AuthHandler(object):
                 self.logger.debug(log_msg)
                 self.verify_user_tokens(tokens=self.valid_user_tokens_script_otp)
 
+        # Check if we have a auth token.
+        if not self.auth_token and not self.auth_failed:
+            log_msg = _("Found no valid auth token.", log=True)[1]
+            self.logger.error(log_msg)
+            self.auth_failed = True
+            if self.realm_login:
+                self.auth_message = "LOGIN_FAILED_NO_TOKEN"
+            else:
+                self.auth_message = "AUTH_FAILED_NO_TOKEN"
+
         # Check policies.
         if not self.auth_failed:
             authorize_token = False
@@ -2747,7 +2744,7 @@ class AuthHandler(object):
 
             # On session refresh/reneg we are done here.
             if self.session_reneg or self.session_refresh:
-                auth_reply = {
+                auth_response = {
                         'status'            : True,
                         'token'             : self.auth_token,
                         'jwt'               : self.jwt,
@@ -2756,10 +2753,10 @@ class AuthHandler(object):
                 # Log final success message.
                 log_msg = self.build_log_message()
                 self.logger.info(log_msg)
-                return auth_reply
+                return auth_response
 
-            # Build auth reply.
-            auth_reply = {
+            # Build auth response.
+            auth_response = {
                 'status'            : True,
                 'login_time'        : time.time(),
                 'message'           : self.auth_message,
@@ -2772,8 +2769,8 @@ class AuthHandler(object):
                 }
 
             if self.auth_type == "mschap":
-                auth_reply['password_hash'] = self.password_hash
-                auth_reply['nt_key'] = self.nt_key
+                auth_response['password_hash'] = self.password_hash
+                auth_response['nt_key'] = self.nt_key
 
 
             # Handle session creation.
@@ -2783,8 +2780,8 @@ class AuthHandler(object):
             self.create_user_sessions()
 
             if self.auth_session:
-                auth_reply['session'] = self.auth_session.uuid
-                auth_reply['offline_data_key'] = self.offline_data_key
+                auth_response['session'] = self.auth_session.uuid
+                auth_response['offline_data_key'] = self.offline_data_key
 
             # Reset failed login counter for this user/group.
             self.reset_user_fail_counter()
@@ -2793,7 +2790,7 @@ class AuthHandler(object):
             login_token_uuid = None
             if self.auth_token:
                 login_token_uuid = self.auth_token.uuid
-            auth_reply['login_token_uuid'] = login_token_uuid
+            auth_response['login_token_uuid'] = login_token_uuid
 
             if self.realm_login:
                 # Get users login script.
@@ -2812,11 +2809,11 @@ class AuthHandler(object):
                         login_script_opts = self.user.login_script_options
                         login_script_signs = x.signatures.copy()
 
-                auth_reply['login_script'] = login_script
-                auth_reply['login_script_uuid'] = login_script_uuid
-                auth_reply['login_script_path'] = login_script_path
-                auth_reply['login_script_opts'] = login_script_opts
-                auth_reply['login_script_signs'] = login_script_signs
+                auth_response['login_script'] = login_script
+                auth_response['login_script_uuid'] = login_script_uuid
+                auth_response['login_script_path'] = login_script_path
+                auth_response['login_script_opts'] = login_script_opts
+                auth_response['login_script_signs'] = login_script_signs
 
                 # Get users key script.
                 key_script = None
@@ -2834,11 +2831,11 @@ class AuthHandler(object):
                         key_script_opts = self.user.key_script_options.copy()
                         key_script_signs = x.signatures.copy()
 
-                auth_reply['key_script'] = key_script
-                auth_reply['key_script_uuid'] = key_script_uuid
-                auth_reply['key_script_path'] = key_script_path
-                auth_reply['key_script_opts'] = key_script_opts
-                auth_reply['key_script_signs'] = key_script_signs
+                auth_response['key_script'] = key_script
+                auth_response['key_script_uuid'] = key_script_uuid
+                auth_response['key_script_path'] = key_script_path
+                auth_response['key_script_opts'] = key_script_opts
+                auth_response['key_script_signs'] = key_script_signs
                 # Get shares to mount on client.
                 if self.user.auto_mount:
                     search_attrs = {
@@ -2870,7 +2867,7 @@ class AuthHandler(object):
                         shares[share_id]['site'] = share.site
                         shares[share_id]['nodes'] = node_fqdns
                         shares[share_id]['encrypted'] = share.encrypted
-                    auth_reply['shares'] = shares
+                    auth_response['shares'] = shares
 
             # Get SSH private key from token.
             ssh_private_key = None
@@ -2880,10 +2877,10 @@ class AuthHandler(object):
                     log_msg = log_msg.format(token_path=self.verify_token.rel_path)
                     self.logger.debug(log_msg)
                     ssh_private_key = self.verify_token._ssh_private_key
-            auth_reply['ssh_private_key'] = ssh_private_key
-            auth_reply['request_cacheable'] = self.request_cacheable
+            auth_response['ssh_private_key'] = ssh_private_key
+            auth_response['request_cacheable'] = self.request_cacheable
             if self.auth_session:
-                auth_reply['slp'] = self.auth_session.slp
+                auth_response['slp'] = self.auth_session.slp
 
             # Update last used timestamps for user and token.
             self.user.update_last_used_time()
@@ -2907,7 +2904,7 @@ class AuthHandler(object):
                     x.close()
 
             # Finally return.
-            return auth_reply
+            return auth_response
 
         if self.realm_logout:
             # Update last used timestamps for user and token.
@@ -2927,17 +2924,17 @@ class AuthHandler(object):
                 for x in self.audit_logger.handlers:
                     x.close()
 
-            # Logout reply.
-            auth_reply = {
+            # Logout response.
+            auth_response = {
                     'status'        : False,
                     'login_time'    : time.time(),
                     }
             if self.realm_logout:
-                auth_reply['message'] = self.auth_message
+                auth_response['message'] = self.auth_message
             else:
-                auth_reply['message'] = "AUTH_FAILED"
+                auth_response['message'] = "AUTH_FAILED"
             # Finally return.
-            return auth_reply
+            return auth_response
 
         # We want a failed auth request to be counted as failed login, but only
         # if self.count_fails was not modified before.
@@ -2951,7 +2948,7 @@ class AuthHandler(object):
                 if self.auth_group.max_fail == 0:
                     log_msg = _("Will not count failed logins because of max_fail=0.", log=True)[1]
                     self.logger.warning(log_msg)
-                self.count_fails = False
+                    self.count_fails = False
             else:
                 log_msg = _("Cannot count failed login without accessgroup.", log=True)[1]
                 self.logger.critical(log_msg)
@@ -3006,16 +3003,16 @@ class AuthHandler(object):
                 x.close()
 
         # Authentication failed!!
-        auth_reply = {
+        auth_response = {
                 'status'        : False,
                 'login_time'    : time.time(),
                 }
         if self.realm_logout:
-            auth_reply['message'] = self.auth_message
+            auth_response['message'] = self.auth_message
         else:
-            auth_reply['message'] = "AUTH_FAILED"
+            auth_response['message'] = "AUTH_FAILED"
         # Finally return.
-        return auth_reply
+        return auth_response
 
         # This point should never be reached.
         msg, log_msg = _("WARNING: You may have hit a BUG of AuthHandler().authenticate(). Authentication failed.", log=True)

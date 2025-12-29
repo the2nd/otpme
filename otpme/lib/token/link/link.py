@@ -185,16 +185,14 @@ class LinkToken(Token):
         # Run parent class method that may override default values with those
         # read from config.
         Token.set_variables(self)
-
         # Check for destination token attributes we need to inherit.
-        dest_token = self.get_destination_token()
-        if dest_token:
+        if self.dst_token:
             # If self.allow_offline was not modified yet, check if our destination
             # token supports offline usage.
-            if self.allow_offline == None:
+            if self.allow_offline is None:
                 # If destination token allows offline usage (!= None) set our
                 # default to disabled (False).
-                if dest_token.allow_offline is not None:
+                if self.dst_token.allow_offline is not None:
                     self.allow_offline = False
 
     def get_offline_config(self, second_factor_usage: bool=False):
@@ -204,11 +202,15 @@ class LinkToken(Token):
         # Get a copy of our object config.
         offline_config = self.object_config.copy()
         # Get offline encryption setting from destination token.
-        dest_token = self.get_destination_token()
-        dest_token_offline_config = dest_token.get_offline_config()
+        dest_token_offline_config = self.dst_token.get_offline_config()
         need_encryption = dest_token_offline_config['NEED_OFFLINE_ENCRYPTION']
         offline_config['NEED_OFFLINE_ENCRYPTION'] = need_encryption
         return offline_config
+
+    @property
+    def dst_token(self):
+        dst_token = self.get_destination_token()
+        return dst_token
 
     def test(
         self,
@@ -217,8 +219,7 @@ class LinkToken(Token):
         **kwargs,
         ):
         """ Test if destination token can be verified. """
-        dst_token = self.get_destination_token()
-        return dst_token.test(password=password, callback=callback, **kwargs)
+        return self.dst_token.test(password=password, callback=callback, **kwargs)
 
     def get_destination_token(self):
         """ Get destination token instance. """

@@ -3746,7 +3746,7 @@ class ClusterDaemon(OTPmeDaemon):
             msg = _("Received wrong command: {command}")
             msg = msg.format(command=command)
             raise OTPmeException(msg)
-        # Reply keepalive packet.
+        # Response keepalive packet.
         self.comm_handler.send("controld", "pong")
 
         if self.node_disabled:

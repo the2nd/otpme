@@ -153,10 +153,10 @@ class OTPmeAgentP1(object):
                                 command=command,
                                 data=request,
                                 timeout=timeout)
-        # Receive reply.
-        sender, command, reply = self.comm_handler.recv(timeout=timeout)
-        message = reply['message']
-        status_code = reply['status_code']
+        # Receive response.
+        sender, command, response = self.comm_handler.recv(timeout=timeout)
+        message = response['message']
+        status_code = response['status_code']
         status = None
         if status_code == status_codes.OK:
             status = True

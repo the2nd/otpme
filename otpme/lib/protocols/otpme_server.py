@@ -353,7 +353,7 @@ class OTPmeServer1(object):
         """ Override in protocol handler. """
         pass
 
-    def _end_host_auth(self, command, command_args, auth_status, auth_reply):
+    def _end_host_auth(self, command, command_args, auth_status, auth_response):
         """ Override in protocol handler. """
         pass
 
@@ -361,7 +361,7 @@ class OTPmeServer1(object):
         """ Override in protocol handler. """
         pass
 
-    def _end_user_auth(self, command, command_args, auth_status, auth_reply):
+    def _end_user_auth(self, command, command_args, auth_status, auth_response):
         """ Override in protocol handler. """
         pass
 
@@ -404,10 +404,10 @@ class OTPmeServer1(object):
             msg = _("Failed to sign ident challenge: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg)
-        ident_reply = {}
-        ident_reply['site_cert'] = site_cert.cert
-        ident_reply['ident_response'] = ident_response
-        return ident_reply
+        ident_response = {}
+        ident_response['site_cert'] = site_cert.cert
+        ident_response['ident_response'] = ident_response
+        return ident_response
 
     def check_cluster_status(self):
         check_cluster_status()
@@ -584,7 +584,7 @@ class OTPmeServer1(object):
             # Make sure challenge is "bytes".
             ident_challenge = ident_challenge.encode()
             try:
-                ident_reply = self._ident_site(ident_challenge)
+                ident_response = self._ident_site(ident_challenge)
                 ident_status = True
             except Exception as e:
                 config.raise_exception()
@@ -594,7 +594,7 @@ class OTPmeServer1(object):
                 self.logger.critical(log_msg)
                 status = False
                 return self.build_response(status, message, encrypt=False)
-            return self.build_response(ident_status, ident_reply, encrypt=False)
+            return self.build_response(ident_status, ident_response, encrypt=False)
 
         if command == "preauth_check":
             if config.debug_level() > 3:
@@ -741,24 +741,24 @@ class OTPmeServer1(object):
                 self.logger.critical(log_msg)
             # Try to authenticate the host.
             try:
-                host_auth_reply = self.authenticate_host(command, command_args)
+                host_auth_response = self.authenticate_host(command, command_args)
                 auth_status = True
             except Exception as e:
                 auth_status = False
-                host_auth_reply = str(e)
+                host_auth_response = str(e)
             # Notify protocol handler about the host auth status.
             try:
                 self._end_host_auth(command,
                                     command_args,
                                     auth_status,
-                                    host_auth_reply)
+                                    host_auth_response)
             except Exception as e:
                 config.raise_exception()
                 log_msg = _("Error in OTPmeServer1._end_host_auth(): {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
                 self.logger.critical(log_msg)
 
-            return self.build_response(auth_status, host_auth_reply)
+            return self.build_response(auth_status, host_auth_response)
 
         if command == "do_auth" \
         or command == "auth_login" \
@@ -774,7 +774,7 @@ class OTPmeServer1(object):
                 self.logger.critical(log_msg)
             # Try to authenticate the user.
             try:
-                user_auth_reply = self.authenticate_user(command, command_args)
+                user_auth_response = self.authenticate_user(command, command_args)
                 auth_status = True
             except OTPmeException as e:
                 message, log_msg = _("Error authenticating user: {error}", log=True)
@@ -790,20 +790,20 @@ class OTPmeServer1(object):
                 log_msg = log_msg.format(error=e)
                 self.logger.critical(log_msg)
                 auth_status = False
-                user_auth_reply = "Internal server error."
+                user_auth_response = "Internal server error."
             # Notify protocol handler about the auth status.
             try:
                 self._end_user_auth(command,
                                     command_args,
                                     auth_status,
-                                    user_auth_reply)
+                                    user_auth_response)
             except Exception as e:
                 config.raise_exception()
                 log_msg = _("Error in OTPmeServer1._end_user_auth(): {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
                 self.logger.critical(log_msg)
 
-            return self.build_response(auth_status, user_auth_reply)
+            return self.build_response(auth_status, user_auth_response)
 
         # If we found no command to handle pass it on to our child class.
         try:
@@ -828,7 +828,7 @@ class OTPmeServer1(object):
                 status = False
                 message = (_("Preauth request misses encryption key."))
                 return self.build_response(status, message, encrypt=False)
-            # Set encryption mod for reply.
+            # Set encryption mod for response.
             enc_mod = self.session_enc_mod
             if config.debug_level() > 3:
                 log_msg = _("Decrypting preauth request key...", log=True)[1]
@@ -1001,9 +1001,9 @@ class OTPmeServer1(object):
             need_token = preauth_args['need_token']
         except:
             need_token = False
-        # Build preauth reply.
+        # Build preauth response.
         try:
-            preauth_reply = self.build_preauth_reply(challenge=challenge,
+            preauth_response = self.build_preauth_response(challenge=challenge,
                                 ecdh_client_pub=ecdh_client_pub,
                                 username=username,
                                 need_token=need_token,
@@ -1014,37 +1014,37 @@ class OTPmeServer1(object):
         except Exception as e:
             config.raise_exception()
             status = False
-            message = (_("Failed to build preauth reply."))
+            message = (_("Failed to build preauth response."))
             return self.build_response(status, message, encrypt=False)
 
-        # Encode/encrypt preauth reply.
+        # Encode/encrypt preauth response.
         try:
-            preauth_reply = json.encode(preauth_reply,
+            preauth_response = json.encode(preauth_response,
                                         encryption=enc_mod,
                                         enc_key=enc_key,
                                         encoding="base64")
         except Exception as e:
             config.raise_exception()
-            msg = (_("Failed to encrypt preauth reply."))
+            msg = (_("Failed to encrypt preauth response."))
             raise OTPmeException(msg)
 
-        # Build reply.
-        reply = {
+        # Build response.
+        response = {
                 'type'          : 'preauth',
-                'preauth_reply' : preauth_reply,
+                'preauth_response' : preauth_response,
                 }
 
         if config.debug_level() > 3:
-            log_msg = _("Sending preauth reply.", log=True)[1]
+            log_msg = _("Sending preauth response.", log=True)[1]
             self.logger.debug(log_msg)
 
         # The outer request is sent unencrypted!
-        return self.build_response(status, reply, encrypt=False)
+        return self.build_response(status, response, encrypt=False)
 
-    def build_preauth_reply(self, challenge=None, ecdh_client_pub=None,
+    def build_preauth_response(self, challenge=None, ecdh_client_pub=None,
         username=None, login=False, logout=False,
         jwt_auth=False, need_token=False):
-        """ Build preauth reply. """
+        """ Build preauth response. """
         # Sign preauth challenge.
         preauth_response = None
         if challenge:
@@ -1099,7 +1099,7 @@ class OTPmeServer1(object):
             if preauth_done:
                 self.preauth_status = True
                 if not username:
-                    preauth_reply = {
+                    preauth_response = {
                             'realm'                 : config.realm,
                             'site'                  : config.site,
                             'time'                  : time.time(),
@@ -1108,7 +1108,7 @@ class OTPmeServer1(object):
                             'preauth_response'      : preauth_response,
                             'ecdh_server_pub'       : ecdh_server_pub_pem,
                             }
-                    return preauth_reply
+                    return preauth_response
 
                 if self.user:
                     # If user is from an other site we have to do redirected authentication.
@@ -1119,17 +1119,17 @@ class OTPmeServer1(object):
                             log_msg = _("Redirecting authentication for user from other site: {realm}/{site}/{user}", log=True)[1]
                             log_msg = log_msg.format(realm=self.user.realm, site=self.user.site, user=self.user.name)
                             self.logger.debug(log_msg)
-                            preauth_reply = self.gen_jwt_auth_reply(self.user,
+                            preauth_response = self.gen_jwt_auth_response(self.user,
                                                             login,
                                                             preauth_response,
                                                             ecdh_server_pub_pem,
                                                             redirect=True)
-                            return preauth_reply
+                            return preauth_response
 
         # Check if user exists.
         if username and not self.user:
             self.preauth_status = False
-            preauth_reply = {
+            preauth_response = {
                     'realm'                 : config.realm,
                     'site'                  : config.site,
                     'time'                  : time.time(),
@@ -1141,12 +1141,12 @@ class OTPmeServer1(object):
             log_msg = _("Unknown user: {username}", log=True)[1]
             log_msg = log_msg.format(username=username)
             self.logger.warning(log_msg)
-            return preauth_reply
+            return preauth_response
 
         if logout:
             self.preauth_status = True
             message = (_("Preauth done for logout request."))
-            preauth_reply = {
+            preauth_response = {
                     'realm'                 : config.realm,
                     'site'                  : config.site,
                     'time'                  : time.time(),
@@ -1155,7 +1155,7 @@ class OTPmeServer1(object):
                     'preauth_response'      : preauth_response,
                     'ecdh_server_pub'       : ecdh_server_pub_pem,
                     }
-            return preauth_reply
+            return preauth_response
 
         # Check if authentication is disabled.
         if not logout and not self.user.is_admin():
@@ -1188,7 +1188,7 @@ class OTPmeServer1(object):
 
             if auth_disabled:
                 self.preauth_status = False
-                preauth_reply = {
+                preauth_response = {
                         'realm'                 : config.realm,
                         'site'                  : config.site,
                         'time'                  : time.time(),
@@ -1199,23 +1199,23 @@ class OTPmeServer1(object):
                         }
                 log_msg = status_message
                 self.logger.warning(log_msg)
-                return preauth_reply
+                return preauth_response
 
         # If peer requested JWT authentication we need to generate a challenge
-        # to send in reply.
+        # to send in response.
         if jwt_auth:
             log_msg = _("Peer wants JWT authentication.", log=True)[1]
             self.logger.debug(log_msg)
-            preauth_reply = self.gen_jwt_auth_reply(self.user,
+            preauth_response = self.gen_jwt_auth_response(self.user,
                                                     login,
                                                     preauth_response,
                                                     ecdh_server_pub_pem)
-            return preauth_reply
+            return preauth_response
 
         # If we do not need to check for valid user tokens we are done.
         if not need_token:
             self.preauth_status = True
-            preauth_reply = {
+            preauth_response = {
                     'realm'                 : config.realm,
                     'site'                  : config.site,
                     'time'                  : time.time(),
@@ -1225,7 +1225,7 @@ class OTPmeServer1(object):
                     'ecdh_server_pub'       : ecdh_server_pub_pem,
                     'valid_auth_types'      : [],
                     }
-            return preauth_reply
+            return preauth_response
 
         if self.require_auth == "host":
             self.preauth_status = True
@@ -1244,7 +1244,7 @@ class OTPmeServer1(object):
         for token in valid_user_tokens:
             # Make sure we resolve token links.
             if token.destination_token:
-                verify_token = token.get_destination_token()
+                verify_token = token.dst_token
             else:
                 verify_token = token
 
@@ -1333,7 +1333,7 @@ class OTPmeServer1(object):
                 agent_script_options = None
                 agent_script_signs = None
 
-            preauth_reply = {
+            preauth_response = {
                     'realm'                 : config.realm,
                     'site'                  : config.site,
                     'time'                  : time.time(),
@@ -1353,7 +1353,7 @@ class OTPmeServer1(object):
         else:
             self.preauth_status = False
             message, log_msg = _("No token found to authenticate user.", log=True)
-            preauth_reply = {
+            preauth_response = {
                     'realm'                 : config.realm,
                     'site'                  : config.site,
                     'time'                  : time.time(),
@@ -1364,9 +1364,9 @@ class OTPmeServer1(object):
                     }
             self.logger.warning(log_msg)
 
-        return preauth_reply
+        return preauth_response
 
-    def gen_jwt_auth_reply(self, user, login, preauth_response, ecdh_server_pub_pem, redirect=False):
+    def gen_jwt_auth_response(self, user, login, preauth_response, ecdh_server_pub_pem, redirect=False):
         # Generate JWT challenge. We use a signed JWT with the username
         # of the authenticating user and our realm/site as payload. This way
         # we can make sure that OTPmeClient() send a JWT only to the site
@@ -1396,7 +1396,7 @@ class OTPmeServer1(object):
                                             key=self.site_key,
                                             algorithm='RS256')
         self.preauth_status = True
-        preauth_reply = {
+        preauth_response = {
                 'status'                : status,
                 'realm'                 : config.realm,
                 'site'                  : config.site,
@@ -1408,7 +1408,7 @@ class OTPmeServer1(object):
                 'preauth_response'      : preauth_response,
                 'ecdh_server_pub'       : ecdh_server_pub_pem,
                 }
-        return preauth_reply
+        return preauth_response
 
     def get_client_by_ip(self, realm, site, client_ip):
         """ Gets client by IP. """
@@ -1574,7 +1574,7 @@ class OTPmeServer1(object):
         for _token in valid_user_tokens_ssh:
             # Make sure we use linked token if needed.
             if _token.destination_token:
-                _verify_token = _token.get_destination_token()
+                _verify_token = _token.dst_token
             else:
                 _verify_token = _token
             if _verify_token.ssh_public_key != ssh_auth_key:
@@ -1616,8 +1616,8 @@ class OTPmeServer1(object):
                 self.logger.debug(log_msg)
 
             self.authenticated = True
-            reply = "Host authentication successful."
-            return reply
+            response = "Host authentication successful."
+            return response
 
         # Verify peer certificate (only on the first request, before we
         # have generated the peer challenge).
@@ -1658,12 +1658,12 @@ class OTPmeServer1(object):
         my_host = self._get_host()
         server_response = my_host.sign_challenge(server_challenge)
 
-        reply = {
+        response = {
                 'client_challenge'  : self.peer_challenge,
                 'server_response'   : server_response,
                 }
 
-        return reply
+        return response
 
     def authenticate_user(self, command, command_args):
         """ Authenticate user. """
@@ -1874,7 +1874,7 @@ class OTPmeServer1(object):
                     raise OTPmeException(msg)
             if is_2f_token:
                 if not password:
-                    return passauth(query_id="password", prompt="Password/OTP:")
+                    return passauth(message_id="password", prompt="Password/OTP:")
             else:
                 verify_token_result = backend.search(object_type="token",
                                                     attribute="rel_path",
@@ -1889,7 +1889,7 @@ class OTPmeServer1(object):
             auth_type = auth_mode
         elif auth_type == "clear-text":
             if not password:
-                return passauth(query_id="password", prompt="Password/OTP:")
+                return passauth(message_id="password", prompt="Password/OTP:")
 
         elif auth_type == "ssh":
             log_msg = _("Selecting SSH token for user: {user}", log=True)[1]
@@ -1917,7 +1917,7 @@ class OTPmeServer1(object):
                 self.token = token
             # If we have no response yet request it.
             if not response:
-                return sshauth(query_id="response", challenge=token_challenge)
+                return sshauth(message_id="response", challenge=token_challenge)
 
         if command_args:
             log_msg = _("Got unknown command args: {args}", log=True)[1]
@@ -1942,7 +1942,7 @@ class OTPmeServer1(object):
                 jwt_auth = True
             # Verify JWT or clear-text request.
             try:
-                auth_reply = self.user.authenticate(auth_mode=auth_mode,
+                auth_response = self.user.authenticate(auth_mode=auth_mode,
                                             auth_type=auth_type,
                                             client=client,
                                             realm_login=realm_login,
@@ -1975,15 +1975,15 @@ class OTPmeServer1(object):
                 log_msg = log_msg.format(error=e)
                 self.logger.critical(log_msg, exc_info=True)
                 raise OTPmeException(_("Internal error while authenticating user."))
-            # Get auth status from reply.
-            auth_status = auth_reply['status']
+            # Get auth status from response.
+            auth_status = auth_response['status']
         else:
             user_token = None
             if self.token:
                 user_token = self.token.name
             # Try to authenticate user.
             try:
-                auth_reply = self.user.authenticate(auth_mode=auth_mode,
+                auth_response = self.user.authenticate(auth_mode=auth_mode,
                                             auth_type=auth_type,
                                             client=client,
                                             realm_login=realm_login,
@@ -2017,15 +2017,15 @@ class OTPmeServer1(object):
                 log_msg = log_msg.format(error=e)
                 self.logger.critical(log_msg, exc_info=True)
                 raise OTPmeException("Internal error while authenticating user.")
-            # Get auth status from reply.
-            auth_status = auth_reply['status']
+            # Get auth status from response.
+            auth_status = auth_response['status']
 
         if auth_status:
-            # Get auth token from reply.
-            auth_token = auth_reply.pop('token')
+            # Get auth token from response.
+            auth_token = auth_response.pop('token')
             # Make sure we use destination token for linked tokens.
             if auth_token.destination_token:
-                verify_token = auth_token.get_destination_token()
+                verify_token = auth_token.dst_token
             else:
                 verify_token = auth_token
 
@@ -2039,22 +2039,22 @@ class OTPmeServer1(object):
             # Set username of authenticated user.
             self.username = username
 
-        # Set auth reply type.
-        auth_reply['type'] = "auth"
+        # Set auth response type.
+        auth_response['type'] = "auth"
 
         try:
-            temp_pass_auth = auth_reply['temp_pass_auth']
+            temp_pass_auth = auth_response['temp_pass_auth']
         except:
             temp_pass_auth = False
 
         # Set login token also for auth requests (e.g. ldap server authentication).
         if auth_status:
-            auth_reply['login_token_uuid'] = auth_token.uuid
+            auth_response['login_token_uuid'] = auth_token.uuid
 
         # For realm logins we return RSP, offline tokens etc.
         if auth_status and realm_login:
             offline_tokens = []
-            # Add offline tokens to reply if enabled.
+            # Add offline tokens to response if enabled.
             if auth_token.allow_offline \
             and verify_token.allow_offline \
             and not temp_pass_auth:
@@ -2077,7 +2077,7 @@ class OTPmeServer1(object):
                         log_msg = log_msg.format(token_path=verify_token.rel_path, error=e)
                         self.logger.critical(log_msg)
                 if second_factor_token:
-                    # Add second factor token to reply.
+                    # Add second factor token to response.
                     object_config = second_factor_token.get_offline_config(second_factor_usage=True)
                     object_config['OID'] = second_factor_token.oid.full_oid
                     offline_tokens.append(object_config)
@@ -2086,18 +2086,18 @@ class OTPmeServer1(object):
             if auth_token.keep_session and verify_token.keep_session:
                 keep_session = True
 
-            # Add offline tokens etc. to auth reply.
-            auth_reply['login_token'] = auth_token.rel_path
-            auth_reply['login_pass_type'] = verify_token.pass_type
-            auth_reply['offline_tokens'] = offline_tokens
-            auth_reply['keep_session'] = keep_session
+            # Add offline tokens etc. to auth response.
+            auth_response['login_token'] = auth_token.rel_path
+            auth_response['login_pass_type'] = verify_token.pass_type
+            auth_response['offline_tokens'] = offline_tokens
+            auth_response['keep_session'] = keep_session
 
         # Print authentication timings.
         if config.print_timing_results:
             from otpme.lib import debug
             debug.print_timing_result(print_status=True)
 
-        return auth_reply
+        return auth_response
 
     def decode_request(self, *args, **kwargs):
         return decode_request(*args, **kwargs)

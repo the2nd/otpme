@@ -90,6 +90,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
                             "core.schema",
                             "cosine.schema",
                             "inetorgperson.schema",
+                            "misc.schema",
                             ]
 
         for f in list(self.schema_files):
@@ -105,7 +106,7 @@ class OTPmeExtension(OTPmeLDIFHandler):
                             'unit' : [ 'organizationalUnit' ],
                             'host' : [ 'account' ],
                             'node' : [ 'account' ],
-                            'user' : [ 'organizationalPerson', 'person', 'inetOrgPerson' ],
+                            'user' : [ 'organizationalPerson', 'person', 'inetOrgPerson', 'inetLocalMailRecipient', 'nisMailAlias' ],
                             'role' : [ 'organizationalRole' ],
                             'group' : [],
                         }

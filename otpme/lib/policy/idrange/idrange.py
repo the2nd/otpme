@@ -296,6 +296,11 @@ class IdrangePolicy(Policy):
                                             'type'          : bool,
                                             'required'      : False,
                                         },
+            'LAST_ASSIGNED_IDS'         : {
+                                            'var_name'      : 'last_assigned_ids',
+                                            'type'          : dict,
+                                            'required'      : False,
+                                        },
             }
 
         # Use parent class method to merge policy configs.
@@ -545,8 +550,8 @@ class IdrangePolicy(Policy):
                 if self.verify_new_id or random_range or restart_on_end:
                     try:
                         ldif_attribute = f"ldif:{attribute}"
-                        msg = _("Searching free ID for attribute: {attribute}")
-                        msg = msg.format(attribute=attribute)
+                        msg = _("Searching free ID for attribute: {attribute} (range {id_range})")
+                        msg = msg.format(attribute=attribute, id_range=x)
                         callback.send(msg)
                         new_id = self.find_free_number(object_type=object_type,
                                                         attribute=ldif_attribute,

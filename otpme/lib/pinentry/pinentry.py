@@ -515,51 +515,51 @@ def start_pinentry_wrapper(pinentry_bin, pinentry_opts,
                 debug_log.write(msg)
             raise
 
-        # Handle reply.
+        # Handle response.
         if debug_log:
-            debug_log.write("Reading reply from original pinentry...\n")
+            debug_log.write("Reading response from original pinentry...\n")
 
         try:
             r = proc.stdout.readline()
         except Exception as e:
             if debug_log:
-                msg = _("Error reading reply from original pinentry: {e}\n")
+                msg = _("Error reading response from original pinentry: {e}\n")
                 msg = msg.format(e=e)
                 debug_log.write(msg)
             raise
 
-        reply = r
+        response = r
         while not r.lower().startswith("ok") \
         and not r.lower().startswith("err"):
             if debug_log:
-                debug_log.write("Reading reply from original pinentry...\n")
+                debug_log.write("Reading response from original pinentry...\n")
             try:
                 r = proc.stdout.readline()
             except Exception as e:
                 if debug_log:
-                    debug_log.write(f"Error reading reply from original pinentry: {e}\n")
+                    debug_log.write(f"Error reading response from original pinentry: {e}\n")
                 raise
             if r == "":
                 if debug_log:
                     debug_log.write(f"Error running original pinentry: {proc.stderr.read()}")
                 sys.exit(1)
                 break
-            reply += r
+            response += r
 
         if len(command_history) == 0:
             try:
-                sys.stdout.write(reply)
+                sys.stdout.write(response)
                 sys.stdout.flush()
             except Exception as e:
                 if line.lower() != "bye\n":
                     if debug_log:
-                        msg = _("Error writing reply to stdout: {line}\n")
+                        msg = _("Error writing response to stdout: {line}\n")
                         msg = msg.format(line=line)
                         debug_log.write(msg)
                     raise
 
         if line.lower().startswith("bye ") or line.lower() == "bye\n":
-            if reply.lower().startswith("ok "):
+            if response.lower().startswith("ok "):
                 break
         # Iteration sleep to prevent running wild if something goes wrong.
         time.sleep(0.01)

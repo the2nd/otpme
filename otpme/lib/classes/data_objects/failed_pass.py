@@ -165,3 +165,5 @@ class FailedPass(UsedHash):
         self.type = "failed_pass"
         # Call parent class init.
         super(FailedPass, self).__init__(**kwargs)
+        # Track last used for failed password hashes.
+        self.track_last_used = True

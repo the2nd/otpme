@@ -124,13 +124,13 @@ def login():
             return redirect(url_for('login', _external=True, _scheme='https'))
     else:
         try:
-            auth_reply = user.authenticate(auth_type="clear-text",
+            auth_response = user.authenticate(auth_type="clear-text",
                                         client=config.sso_client_name,
                                         client_ip=client_ip,
                                         realm_login=False,
                                         realm_logout=False,
                                         password=password)
-            auth_status = auth_reply['status']
+            auth_status = auth_response['status']
         except Exception as e:
             log_msg = _("Authentication failed: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
@@ -141,10 +141,10 @@ def login():
         flash("Login failed.")
         return redirect(url_for('login', _external=True, _scheme='https'))
     try:
-        auth_token = auth_reply['token']
-        session_uuid = auth_reply['session']
+        auth_token = auth_response['token']
+        session_uuid = auth_response['session']
     except KeyError:
-        log_msg = _("Invalid auth reply.", log=True)[1]
+        log_msg = _("Invalid auth response.", log=True)[1]
         logger.warning(log_msg)
         flash("Login failed.")
         return redirect(url_for('login', _external=True, _scheme='https'))
@@ -283,7 +283,7 @@ def do_jwt_auth(user, password, client_ip):
     try:
         auth_status, \
         status_code, \
-        auth_reply, \
+        auth_response, \
         binary_data = authd_conn.send(command="token_verify",
                                     command_args=verify_args)
     except Exception as e:
@@ -304,13 +304,13 @@ def do_jwt_auth(user, password, client_ip):
         raise AuthFailed(message)
 
     try:
-        redirect_response = auth_reply['jwt']
+        redirect_response = auth_response['jwt']
     except KeyError:
-        message = _("Auth reply misses JWT.")
+        message = _("Auth response misses JWT.")
         raise AuthFailed(message)
 
     # Try local JWT auth.
-    auth_reply = user.authenticate(auth_type="jwt",
+    auth_response = user.authenticate(auth_type="jwt",
                                 client=config.sso_client_name,
                                 client_ip=client_ip,
                                 realm_login=False,
@@ -319,11 +319,11 @@ def do_jwt_auth(user, password, client_ip):
                                 verify_jwt_ag=False,
                                 redirect_challenge=redirect_challenge,
                                 redirect_response=redirect_response)
-    auth_status = auth_reply['status']
+    auth_status = auth_response['status']
     if not auth_status:
         msg = "JWT authentication failed."
         raise AuthFailed(msg)
-    sesssion_uuid = auth_reply['session']
-    login_token_uuid = auth_reply['login_token_uuid']
+    sesssion_uuid = auth_response['session']
+    login_token_uuid = auth_response['login_token_uuid']
     auth_token = backend.get_object(uuid=login_token_uuid)
     return auth_status, auth_token, sesssion_uuid

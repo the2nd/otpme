@@ -149,15 +149,20 @@ def restore_object(object_data, callback=default_callback, **kwargs):
         msg = msg.format(object_id=object_id, e=e)
         return callback.error(msg)
     if object_id.object_type == "user":
-        user_group_uuid = object_data['user_group']
-        user_group = backend.get_object(uuid=user_group_uuid)
-        if not user_group:
-            msg = _("Unknown group: {user_group_uuid}")
-            msg = msg.format(user_group_uuid=user_group_uuid)
-            return callback.error(msg)
-        user_group.add_default_group_user(user_uuid=object_uuid,
-                                            callback=callback,
-                                            verify_acls=False)
+        try:
+            user_group_uuid = object_data['user_group']
+        except KeyError:
+            msg = _("Backup data of user does not contain users default group.")
+            callback.error(msg)
+        else:
+            user_group = backend.get_object(uuid=user_group_uuid)
+            if not user_group:
+                msg = _("Unknown group: {user_group_uuid}")
+                msg = msg.format(user_group_uuid=user_group_uuid)
+                return callback.error(msg)
+            user_group.add_default_group_user(user_uuid=object_uuid,
+                                                callback=callback,
+                                                verify_acls=False)
     if object_id.object_type == "token":
         token_groups = object_data['token_groups']
         for x in token_groups:

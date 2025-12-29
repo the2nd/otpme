@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import functools
+from functools import wraps
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -15,6 +16,7 @@ except:
 
 from otpme.lib import stuff
 from otpme.lib import config
+from otpme.lib import locking
 from otpme.lib import multiprocessing
 from otpme.lib.protocols.utils import ask
 from otpme.lib.protocols.utils import sign
@@ -31,9 +33,28 @@ from otpme.lib.protocols.utils import gen_share_key
 from otpme.lib.protocols.utils import gen_user_keys
 from otpme.lib.protocols.utils import send_keepalive
 from otpme.lib.protocols.utils import reencrypt_share_key
+from otpme.lib.protocols.utils import create_remote_job
 from otpme.lib.protocols.utils import change_user_default_group
 
 from otpme.lib.exceptions import *
+
+CALLBACK_LOCK_TYPE = "callback"
+
+locking.register_lock_type(CALLBACK_LOCK_TYPE, module=__file__)
+def callback_lock(write=True, timeout=None):
+    """ Decorator to handle entry lock. """
+    def wrapper(f):
+        @wraps(f)
+        def wrapped(self, *f_args, **f_kwargs):
+            self.lock(write=write)
+            # Call given class method.
+            try:
+                result = f(self, *f_args, **f_kwargs)
+            finally:
+                self.release()
+            return result
+        return wrapped
+    return wrapper
 
 class JobCallback(object):
     """ Class to handle user messages from job child processes. """
@@ -84,9 +105,27 @@ class JobCallback(object):
         self.logger = config.logger
         # Time the callback was last used.
         self.last_used = time.time()
+        self._lock = None
 
     def __str__(self):
         return self.name
+
+    def lock(self, write=False):
+        self._lock = locking.acquire_lock(lock_type=CALLBACK_LOCK_TYPE,
+                                        lock_id=self.name,
+                                        write=write)
+        return self._lock
+
+    def release(self):
+        if not self._lock:
+            return
+        try:
+            self._lock.release_lock()
+        except Exception as e:
+            log_msg = _("Failed to release callback lock: {name}: {error}", log=True)[1]
+            log_msg = log_msg.format(name=self.name, error=e)
+            self.logger.warning(log_msg)
+        self._lock = None
 
     def add_locked_object(self, o):
         """ Add modified object to callback. """
@@ -160,31 +199,32 @@ class JobCallback(object):
         self._exception = exception
         raise exception
 
-    def _gen_query_id(self):
-        """ Generate query ID. """
-        # Gen query ID.
-        query_id = f"callback:{stuff.gen_secret()}"
-        return query_id
+    def _gen_message_id(self):
+        """ Generate message ID. """
+        # Gen message ID.
+        message_id = f"callback:{stuff.gen_secret()}"
+        return message_id
 
-    def _send(self, query, command=None, timeout=1):
+    def _send(self, message, command=None, timeout=1):
         if command is None:
-            command = "query"
+            command = "message"
         comm_handler = self.job.comm_queue.get_handler("callback")
         try:
             comm_handler.send(recipient="client",
                             command=command,
-                            data=query,
+                            data=message,
                             timeout=timeout)
         except ExitOnSignal:
             self.job.stop()
         self.last_used = time.time()
 
-    def _send_query(self, query_id, query, timeout=1, convert_type=True):
-        """ Send query to client and handle answer. """
+    @callback_lock(write=True)
+    def _send_message(self, message_id, message, timeout=1, convert_type=True):
+        """ Send message to client and handle answer. """
         # Callback was used.
         self.last_used = time.time()
-        # Send query to client.
-        self._send(query, timeout=timeout)
+        # Send message to client.
+        self._send(message, timeout=timeout)
         # Receive answer
         comm_handler = self.job.comm_queue.get_handler("callback")
         try:
@@ -194,9 +234,9 @@ class JobCallback(object):
         except ExitOnSignal:
             self.job.stop()
             answer_id = None
-        if answer_id != query_id:
+        if answer_id != message_id:
             msg = _("Received wrong answer ID: {} <> {}")
-            msg = msg.format(query_id, answer_id)
+            msg = msg.format(message_id, answer_id)
             raise OTPmeException(msg)
         # Wait for answer from peer.
         if self.job.check_timeout():
@@ -218,8 +258,8 @@ class JobCallback(object):
         """ Send message to user. """
         if self.api_mode:
             return
-        query = send_keepalive(job_id=self.job.uuid)
-        self._send(query, timeout=timeout)
+        message = send_keepalive(job_id=self.job.uuid)
+        self._send(message, timeout=timeout)
         return True
 
     def send(self, message='\0OTPME_NULL\0', error=False,
@@ -245,10 +285,10 @@ class JobCallback(object):
         if error:
             _message = (False, message)
         if ignore_escaping:
-            query = dump_data(job_id=self.job.uuid, message=_message)
+            message = dump_data(job_id=self.job.uuid, message=_message)
         else:
-            query = send_msg(job_id=self.job.uuid, message=_message)
-        self._send(query, command=command, timeout=timeout)
+            message = send_msg(job_id=self.job.uuid, message=_message)
+        self._send(message, command=command, timeout=timeout)
         return True
 
     @handle_exception
@@ -328,7 +368,7 @@ class JobCallback(object):
 
     @handle_exception
     def ask(self, message, input_prefill=None, timeout=1):
-        """ Send query to ask the user for some input. """
+        """ Send message to ask the user for some input. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
             raise OTPmeException(self.api_exception)
@@ -336,55 +376,55 @@ class JobCallback(object):
             raise OTPmeException(self.api_exception)
         # Make sure message is string.
         message = str(message)
-        # Gen query ID.
-        query_id = self._gen_query_id()
-        # Build query string.
-        query = ask(query_id=query_id,
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = ask(message_id=message_id,
                     input_prefill=input_prefill,
                     prompt=message)
-        # Send query.
-        return self._send_query(query_id, query, timeout=timeout)
+        # Send message.
+        return self._send_message(message_id, message, timeout=timeout)
 
     @handle_exception
     def askpass(self, prompt, null_ok=False, timeout=1):
-        """ Send query to ask the user for a password. """
+        """ Send message to ask the user for a password. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
             raise OTPmeException(self.api_exception)
         if self.api_mode:
             raise OTPmeException(self.api_exception)
-        # Gen query ID.
-        query_id = self._gen_query_id()
-        # Build query string.
-        query = askpass(query_id=query_id,
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = askpass(message_id=message_id,
                         prompt=prompt,
                         null_ok=null_ok)
-        # Send query.
-        result = self._send_query(query_id,
-                                query,
+        # Send message.
+        result = self._send_message(message_id,
+                                message,
                                 timeout=timeout,
                                 convert_type=False)
         return result
 
     @handle_exception
     def sshauth(self, challenge, timeout=1):
-        """ Send query to ask the user/client to authenticate via ssh key. """
+        """ Send message to ask the user/client to authenticate via ssh key. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
             raise OTPmeException(self.api_exception)
         if self.api_mode:
             raise OTPmeException(self.api_exception)
-        # Gen query ID.
-        query_id = self._gen_query_id()
-        # Build query string.
-        query = sshauth(query_id, challenge)
-        # Send query.
-        return self._send_query(query_id, query, timeout=timeout)
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = sshauth(message_id, challenge)
+        # Send message.
+        return self._send_message(message_id, message, timeout=timeout)
 
     @handle_exception
     def scauth(self, smartcard_type, smartcard_data, timeout=1):
         """
-        Send query to ask the user/client to authenticate via
+        Send message to ask the user/client to authenticate via
         smartcard (e.g. fido2 tokens).
         """
         # If the callback is disabled we do not send anything to the client.
@@ -392,19 +432,19 @@ class JobCallback(object):
             raise OTPmeException(self.api_exception)
         if self.api_mode:
             raise OTPmeException(self.api_exception)
-        # Gen query ID.
-        query_id = self._gen_query_id()
-        # Build query string.
-        query = scauth(query_id=query_id,
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = scauth(message_id=message_id,
                     smartcard_type=smartcard_type,
                     smartcard_data=smartcard_data)
-        # Send query.
-        return self._send_query(query_id, query, timeout=timeout)
+        # Send message.
+        return self._send_message(message_id, message, timeout=timeout)
 
     @handle_exception
     def auth_jwt(self, reason, challenge, timeout=1):
         """
-        Send query to ask the user/client to get a JWT.
+        Send message to ask the user/client to get a JWT.
         """
         from otpme.lib import backend
         from otpme.lib import jwt as _jwt
@@ -418,17 +458,17 @@ class JobCallback(object):
             raise OTPmeException(self.api_exception)
         if self.api_mode:
             raise OTPmeException(self.api_exception)
-        # Gen query ID.
-        query_id = self._gen_query_id()
+        # Gen message ID.
+        message_id = self._gen_message_id()
         # Get user.
         user = backend.get_object(uuid=config.auth_token.owner_uuid)
-        # Build query string.
-        query = auth_jwt(query_id=query_id,
+        # Build message string.
+        message = auth_jwt(message_id=message_id,
                         username=user.name,
                         reason=reason,
                         challenge=challenge)
-        # Send query.
-        jwt = self._send_query(query_id, query, timeout=timeout)
+        # Send message.
+        jwt = self._send_message(message_id, message, timeout=timeout)
         if jwt is None:
             msg = _("No JWT received.")
             raise OTPmeException(msg)
@@ -474,135 +514,151 @@ class JobCallback(object):
 
     @handle_exception
     def move_objects(self, object_data, timeout=1):
-        """ Send query to client to move objects cross-site. """
+        """ Send message to client to move objects cross-site. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
             raise OTPmeException(self.api_exception)
         if self.api_mode:
             raise OTPmeException(self.api_exception)
-        # Gen query ID.
-        query_id = self._gen_query_id()
-        # Build query string.
-        query = move_objects(query_id, object_data=object_data)
-        # Send query.
-        reply = self._send_query(query_id, query, timeout=timeout)
-        return reply
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = move_objects(message_id, object_data=object_data)
+        # Send message.
+        response = self._send_message(message_id, message, timeout=timeout)
+        return response
 
     @handle_exception
     def change_user_default_group(self, object_data, timeout=1):
-        """ Send query to client to change users default group cross-site. """
+        """ Send message to client to change users default group cross-site. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
             raise OTPmeException(self.api_exception)
         if self.api_mode:
             raise OTPmeException(self.api_exception)
-        # Gen query ID.
-        query_id = self._gen_query_id()
-        # Build query string.
-        query = change_user_default_group(query_id, object_data=object_data)
-        # Send query.
-        reply = self._send_query(query_id, query, timeout=timeout)
-        return reply
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = change_user_default_group(message_id, object_data=object_data)
+        # Send message.
+        response = self._send_message(message_id, message, timeout=timeout)
+        return response
+
+    @handle_exception
+    def create_remote_job(self, job_data, timeout=1):
+        """ Send message to client to create job on remote site. """
+        # If the callback is disabled we do not send anything to the client.
+        if not self.enabled:
+            raise OTPmeException(self.api_exception)
+        if self.api_mode:
+            raise OTPmeException(self.api_exception)
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = create_remote_job(message_id, object_data=job_data)
+        # Send message.
+        response = self._send_message(message_id, message, timeout=timeout)
+        return response
 
     @handle_exception
     def reencrypt_share_key(self, share_user, share_key, key_mode=None, timeout=1):
-        """ Send query to client to generate and encrypt share key. """
+        """ Send message to client to generate and encrypt share key. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
             raise OTPmeException(self.api_exception)
         if self.api_mode:
             raise OTPmeException(self.api_exception)
-        # Gen query ID.
-        query_id = self._gen_query_id()
-        # Build query string.
-        query = reencrypt_share_key(query_id,
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = reencrypt_share_key(message_id,
                             share_user=share_user,
                             share_key=share_key,
                             key_mode=key_mode)
-        # Send query.
-        reply = self._send_query(query_id, query, timeout=timeout)
-        return reply
+        # Send message.
+        response = self._send_message(message_id, message, timeout=timeout)
+        return response
 
     @handle_exception
     def gen_share_key(self, key_len=2048, key_mode=None, timeout=1):
-        """ Send query to client to generate and encrypt share key. """
+        """ Send message to client to generate and encrypt share key. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
             raise OTPmeException(self.api_exception)
         if self.api_mode:
             raise OTPmeException(self.api_exception)
-        # Gen query ID.
-        query_id = self._gen_query_id()
-        # Build query string.
-        query = gen_share_key(query_id, key_len=key_len, key_mode=key_mode)
-        # Send query.
-        reply = self._send_query(query_id, query, timeout=timeout)
-        return reply
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = gen_share_key(message_id, key_len=key_len, key_mode=key_mode)
+        # Send message.
+        response = self._send_message(message_id, message, timeout=timeout)
+        return response
 
     @handle_exception
     def gen_user_keys(self, username,
         key_len=2048, stdin_pass=False, timeout=1):
-        """ Send query to client to generate users privat/public keys. """
+        """ Send message to client to generate users privat/public keys. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
             raise OTPmeException(self.api_exception)
         if self.api_mode:
             raise OTPmeException(self.api_exception)
-        # Gen query ID.
-        query_id = self._gen_query_id()
-        # Build query string.
-        query = gen_user_keys(query_id,
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = gen_user_keys(message_id,
                             username=username,
                             key_len=key_len,
                             stdin_pass=stdin_pass)
-        # Send query.
-        reply = self._send_query(query_id, query, timeout=timeout)
-        return reply
+        # Send message.
+        response = self._send_message(message_id, message, timeout=timeout)
+        return response
 
     @handle_exception
     def sign(self, data, timeout=1):
-        """ Send query to client to sign given data. """
+        """ Send message to client to sign given data. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
             raise OTPmeException(self.api_exception)
         if self.api_mode:
             raise OTPmeException(self.api_exception)
-        # Gen query ID.
-        query_id = self._gen_query_id()
-        # Build query string.
-        query = sign(query_id, data=data)
-        # Send query.
-        return self._send_query(query_id, query, timeout=timeout)
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = sign(message_id, data=data)
+        # Send message.
+        return self._send_message(message_id, message, timeout=timeout)
 
     @handle_exception
     def encrypt(self, data, use_rsa_key=True, timeout=1):
-        """ Send query to client to encrypt given data. """
+        """ Send message to client to encrypt given data. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
             raise OTPmeException(self.api_exception)
         if self.api_mode:
             raise OTPmeException(self.api_exception)
-        # Gen query ID.
-        query_id = self._gen_query_id()
-        # Build query string.
-        query = encrypt(query_id, use_rsa_key=use_rsa_key, data=data)
-        # Send query.
-        return self._send_query(query_id, query, timeout=timeout)
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = encrypt(message_id, use_rsa_key=use_rsa_key, data=data)
+        # Send message.
+        return self._send_message(message_id, message, timeout=timeout)
 
     @handle_exception
     def decrypt(self, data, timeout=1):
-        """ Send query to client to decrypt given data. """
+        """ Send message to client to decrypt given data. """
         # If the callback is disabled we do not send anything to the client.
         if not self.enabled:
             raise OTPmeException(self.api_exception)
         if self.api_mode:
             raise OTPmeException(self.api_exception)
-        # Gen query ID.
-        query_id = self._gen_query_id()
-        # Build query string.
-        query = decrypt(query_id, data=data)
-        # Send query.
-        return self._send_query(query_id, query, timeout=timeout)
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = decrypt(message_id, data=data)
+        # Send message.
+        return self._send_message(message_id, message, timeout=timeout)
 
     @handle_exception
     def enable(self):

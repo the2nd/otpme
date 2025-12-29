@@ -1141,32 +1141,32 @@ class ControlDaemon(UnixDaemon):
                 heartbeat_sent = False
 
             if heartbeat_sent:
-                # Try to get heartbeat reply.
+                # Try to get heartbeat response.
                 try:
                     sender, \
-                    ping_reply, \
+                    ping_response, \
                     data = self.comm_handler.recv(sender=daemon_name,
                                             timeout=heartbeat_timeout)
                 except TimeoutReached:
-                    ping_reply = None
+                    ping_response = None
                 except ExitOnSignal:
                     break
                 except Exception as e:
-                    log_msg = _("Failed to receive heartbeat reply: {daemon}: {error_type}", log=True)[1]
+                    log_msg = _("Failed to receive heartbeat response: {daemon}: {error_type}", log=True)[1]
                     log_msg = log_msg.format(daemon=daemon_name, error_type=type(e))
                     self.logger.critical(log_msg, exc_info=True)
-                    ping_reply = None
-                # Check for heartbeat reply.
-                if ping_reply:
-                    #if ping_reply == "down":
+                    ping_response = None
+                # Check for heartbeat response.
+                if ping_response:
+                    #if ping_response == "down":
                     #    return
-                    #if ping_reply == "quit":
+                    #if ping_response == "quit":
                     #    return
-                    if ping_reply == "pong":
+                    if ping_response == "pong":
                         daemon_status = "ready"
                     else:
-                        msg = _("Got wrong response to heartbeat packet from daemon '{daemon}': {reply}")
-                        msg = msg.format(daemon=daemon_name, reply=ping_reply)
+                        msg = _("Got wrong response to heartbeat packet from daemon '{daemon}': {response}")
+                        msg = msg.format(daemon=daemon_name, response=ping_response)
                         raise OTPmeException(msg)
                     self.childs[daemon_name]['status'] = daemon_status
                     return True
@@ -1240,7 +1240,7 @@ class ControlDaemon(UnixDaemon):
         # Max wait for child daemon reload.
         max_wait = 15
         count_wait = 0
-        # Wait until we get 'reload_done' reply from child daemon.
+        # Wait until we get 'reload_done' response from child daemon.
         while True:
             if count_wait == max_wait:
                 log_msg = _("Child daemon '{daemon}' does not respond to reload command. Restarting...", log=True)[1]
@@ -1250,19 +1250,19 @@ class ControlDaemon(UnixDaemon):
                 self.start_daemon(daemon_name)
                 break
             try:
-                sender, reply, data = self.comm_handler.recv(sender=daemon_name,
+                sender, response, data = self.comm_handler.recv(sender=daemon_name,
                                                                 timeout=0.01)
             except TimeoutReached:
                 continue
             except ExitOnSignal:
                 break
             except Exception as e:
-                log_msg = _("Failed to get daemon reload reply: {daemon}: {error}", log=True)[1]
+                log_msg = _("Failed to get daemon reload response: {daemon}: {error}", log=True)[1]
                 log_msg = log_msg.format(daemon=daemon_name, error=e)
                 self.logger.critical(log_msg, exc_info=True)
                 continue
 
-            if reply == "reload_shutdown":
+            if response == "reload_shutdown":
                 log_msg = _("Child daemon '{daemon}' needs a restart to reload its config.", log=True)[1]
                 log_msg = log_msg.format(daemon=daemon_name)
                 self.logger.info(log_msg)
@@ -1271,7 +1271,7 @@ class ControlDaemon(UnixDaemon):
                 self.start_daemon(daemon_name, reload=True,
                                 master_node=master_node)
                 break
-            if reply == "reload_done":
+            if response == "reload_done":
                 self.childs[sender]['status'] = "ready"
                 break
 
@@ -1291,7 +1291,7 @@ class ControlDaemon(UnixDaemon):
         startup_timeout = 15
         try:
             sender, \
-            reply, \
+            response, \
             data = self.comm_handler.recv(sender=daemon.name,
                                         timeout=startup_timeout)
         except Exception as e:
@@ -1300,15 +1300,15 @@ class ControlDaemon(UnixDaemon):
             self.logger.critical(log_msg, exc_info=True)
             return False
 
-        if reply == "ready":
-            daemon_status = reply
+        if response == "ready":
+            daemon_status = response
             log_msg = _("Got 'ready' message from {daemon}.", log=True)[1]
             log_msg = log_msg.format(daemon=daemon.name)
             self.logger.info(log_msg)
         else:
             daemon_status = False
-            log_msg = _("Error starting {daemon}: Wrong reply: {reply}", log=True)[1]
-            log_msg = log_msg.format(daemon=daemon.name, reply=reply)
+            log_msg = _("Error starting {daemon}: Wrong response: {response}", log=True)[1]
+            log_msg = log_msg.format(daemon=daemon.name, response=response)
             self.logger.critical(log_msg)
 
         if daemon_status is False:
@@ -1350,7 +1350,7 @@ class ControlDaemon(UnixDaemon):
             log_msg = log_msg.format(daemon=daemon.name, pid=daemon.pid, error=e)
             self.logger.warning(log_msg)
 
-        # Wait until we get 'down' reply from child daemon or it dies.
+        # Wait until we get 'down' response from child daemon or it dies.
         count = 0
         while daemon.is_alive():
             if count == terminate_wait:

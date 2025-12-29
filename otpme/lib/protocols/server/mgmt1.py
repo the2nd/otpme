@@ -20,6 +20,7 @@ except:
 
 from otpme.lib import re
 from otpme.lib import oid
+from otpme.lib import cli
 from otpme.lib import json
 from otpme.lib import stuff
 from otpme.lib import config
@@ -35,6 +36,7 @@ from otpme.lib.protocols import status_codes
 from otpme.lib.job.otpme_job import OTPmeJob
 from otpme.lib.protocols.utils import send_msg
 from otpme.lib.protocols.otpme_server import OTPmeServer1
+from otpme.lib.classes.data_objects.otpme_job import OTPmeTreeJob
 
 from otpme.lib.exceptions import *
 
@@ -46,6 +48,7 @@ command_map = {}
 
 # All valid commands
 valid_commands = [
+                'job',
                 'trash',
                 'backend',
                 'stop_job',
@@ -103,7 +106,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         self.pid = None
         # Event to handle jobs.
         self.new_job_event = None
-        self.new_query_event = None
+        self.new_message_event = None
         # Management server requires master node.
         self.require_master_node = True
         # call parent class init
@@ -118,7 +121,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         signal.signal(signal.SIGINT, self.signal_handler)
         # Event to handle jobs.
         self.new_job_event = threading.Event()
-        self.new_query_event = threading.Event()
+        self.new_message_event = threading.Event()
         # Start thread to handle jobs.
         multiprocessing.start_thread(name=self.name,
                                     target=self.handle_jobs,
@@ -187,11 +190,11 @@ class OTPmeMgmtP1(OTPmeServer1):
             return
         # Get comm handler to communicate with job.
         job_comm_handler = job.comm_queue.get_handler("client")
-        # Get message/query from job.
+        # Get message/message from job.
         try:
             sender, \
             command, \
-            callback_query = job_comm_handler.recv(timeout=timeout)
+            callback_message = job_comm_handler.recv(timeout=timeout)
         except TimeoutReached:
             command = None
         except QueueClosed:
@@ -204,10 +207,10 @@ class OTPmeMgmtP1(OTPmeServer1):
             except:
                 job_queries = []
                 self.job_queries[job_uuid] = job_queries
-            query = {'command':command, 'query':callback_query}
-            job_queries.append(query)
-            if self.new_query_event:
-                self.new_query_event.set()
+            message = {'command':command, 'message':callback_message}
+            job_queries.append(message)
+            if self.new_message_event:
+                self.new_message_event.set()
             return True
         if job.is_alive():
             return True
@@ -231,8 +234,8 @@ class OTPmeMgmtP1(OTPmeServer1):
         self.job_exit_status[job_uuid]['objects_written'] = job.objects_written.value
         # Close job.
         job.close()
-        if self.new_query_event:
-            self.new_query_event.set()
+        if self.new_message_event:
+            self.new_message_event.set()
         if not config.use_api:
             try:
                 multiprocessing.running_jobs.pop(job_uuid)
@@ -320,9 +323,9 @@ class OTPmeMgmtP1(OTPmeServer1):
         _opt_args={}, _dargs={}, command_args={}, thread=True, process=False):
         """ Start command as child process. """
         if len(self.running_jobs) >= self.max_jobs:
-            job_reply = _("Max jobs reached ({max})")
-            job_reply = job_reply.format(max=self.max_jobs)
-            return False, job_reply
+            job_response = _("Max jobs reached ({max})")
+            job_response = job_response.format(max=self.max_jobs)
+            return False, job_response
         # Get method args from command_args
         _method_args = self.get_method_args(command_args, args, _args, opt_args, _opt_args, _dargs)
         _caller = _method_args['_caller']
@@ -332,24 +335,24 @@ class OTPmeMgmtP1(OTPmeServer1):
             job_timeout = command_args['job_timeout']
         except:
             job_status = False
-            job_reply = _("Job request missing timeout parameter: {name}")
-            job_reply = job_reply.format(name=name)
-            return job_status, job_reply
+            job_response = _("Job request missing timeout parameter: {name}")
+            job_response = job_response.format(name=name)
+            return job_status, job_response
         # Get lock args.
         try:
             lock_timeout = command_args['lock_timeout']
             lock_wait_timeout = command_args['lock_wait_timeout']
         except:
             job_status = False
-            job_reply = "Job request missing lock parameters."
-            return job_status, job_reply
+            job_response = "Job request missing lock parameters."
+            return job_status, job_response
         # Get object auto-reload arg.
         try:
             reload_on_change = command_args['lock_reload_on_change']
         except:
             job_status = False
-            job_reply = "Job request missing auto-reload parameter."
-            return job_status, job_reply
+            job_response = "Job request missing auto-reload parameter."
+            return job_status, job_response
 
         if config.use_api:
             debug_as_thread = False
@@ -392,7 +395,7 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         if thread or process:
             # Start job
-            job_reply = job.start()
+            job_response = job.start()
             # Add job to our job list
             self.jobs[job.uuid] = job
             self.running_jobs[job.uuid] = job
@@ -411,9 +414,9 @@ class OTPmeMgmtP1(OTPmeServer1):
             if self.new_job_event:
                 self.new_job_event.set()
         else:
-            job_reply = job.start()
+            job_response = job.start()
 
-        return job_reply
+        return job_response
 
     def handle_job(self, job_uuid, callbacks={}, stop=False):
         """ Handle command job. """
@@ -426,7 +429,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             return False, msg
 
         # Make sure we have at least an empty keepalive message.
-        job_reply = send_msg(job_id=job.uuid)
+        job_response = send_msg(job_id=job.uuid)
 
         if stop and job.is_alive():
             try:
@@ -446,11 +449,11 @@ class OTPmeMgmtP1(OTPmeServer1):
             while job.is_alive():
                 time.sleep(0.001)
             if not stop_result:
-                job_reply['message'] = [stop_result, stop_message]
-                return job_status, job_reply
+                job_response['message'] = [stop_result, stop_message]
+                return job_status, job_response
 
         # FIXME: How to implement sending of stop_job command in OTPmeClient()
-        #        without replying to keepalive (MSG) messages!?!
+        #        without responseing to keepalive (MSG) messages!?!
         # We need a short keepalive interval to catch stop_job
         # commands from peer.
         keepalive_count = 0
@@ -486,13 +489,13 @@ class OTPmeMgmtP1(OTPmeServer1):
 
             # Get job messages/queries.
             try:
-                query = self.job_queries[job_uuid].pop(0)
+                message = self.job_queries[job_uuid].pop(0)
             except:
-                query = None
-            if query is not None:
-                callback_query = query['query']
-                job_reply = callback_query
-                return job_status, job_reply
+                message = None
+            if message is not None:
+                callback_message = message['message']
+                job_response = callback_message
+                return job_status, job_response
 
             # Process callbacks.
             try:
@@ -513,9 +516,9 @@ class OTPmeMgmtP1(OTPmeServer1):
                         pass
 
             # Wait for wakeup by job.
-            if job.is_alive() and self.new_query_event:
-                self.new_query_event.wait(timeout=keepalive_interval)
-                self.new_query_event.clear()
+            if job.is_alive() and self.new_message_event:
+                self.new_message_event.wait(timeout=keepalive_interval)
+                self.new_message_event.clear()
 
             # Check if we reached the keepalive interval
             if keepalive_count >= keepalive_interval:
@@ -531,7 +534,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             except:
                 continue
             try:
-                job_reply = self.job_exit_status[job_uuid]['exit_message']
+                job_response = self.job_exit_status[job_uuid]['exit_message']
             except:
                 continue
             try:
@@ -567,7 +570,7 @@ class OTPmeMgmtP1(OTPmeServer1):
                     logger.debug(log_msg)
                     config.auth_user = x
 
-        return job_status, job_reply
+        return job_status, job_response
 
     def get_default_unit(self, object_type):
         object_unit = None
@@ -586,7 +589,8 @@ class OTPmeMgmtP1(OTPmeServer1):
         return object_unit
 
     def add_object(self, object_type, object_name,
-        unit=None, callback=default_callback, **kwargs):
+        unit=None, callback=default_callback,
+        force=False, **kwargs):
         def signal_handler(_signal, frame):
             """ Handle signals. """
             if config.active_transactions:
@@ -619,6 +623,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             log_msg = _("Error loading object class: {type}: {error}", log=True)[1]
             log_msg = log_msg.format(type=object_type, error=e)
             logger.warning(log_msg)
+            msg = _("Error loading object class.")
             callback.error(msg)
             sys.exit(1)
         try:
@@ -632,15 +637,17 @@ class OTPmeMgmtP1(OTPmeServer1):
             log_msg = _("Error loading object: {name}: {error}", log=True)[1]
             log_msg = log_msg.format(name=object_name, error=e)
             logger.warning(log_msg)
+            msg = _("Error loading object.")
             callback.error(msg)
             sys.exit(1)
         # Add object.
         try:
-            add_result = o.add(callback=callback, **kwargs)
+            add_result = o.add(force=force, callback=callback, **kwargs)
         except Exception as e:
-            log_msg = _("Failed to add object: {name}: {error}", log=True)[1]
+            msg, log_msg = _("Failed to add object: {name}: {error}", log=True)
             log_msg = log_msg.format(name=object_name, error=e)
             logger.warning(log_msg)
+            msg = msg.format(name=object_name, error=e)
             callback.error(msg)
             sys.exit(1)
         finally:
@@ -649,9 +656,10 @@ class OTPmeMgmtP1(OTPmeServer1):
         if add_result:
             callback.write_modified_objects()
             sys.exit(0)
-        log_msg = _("Error adding object: {name} (See previous errors)", log=True)[1]
+        msg, log_msg = _("Error adding object: {name} (See previous errors)", log=True)
         log_msg = log_msg.format(name=object_name)
         logger.warning(log_msg)
+        msg = msg.format(name=object_name)
         callback.error(msg)
         sys.exit(1)
 
@@ -1105,6 +1113,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             method_kwargs['gen_qrcode'] = False
             method_kwargs['verify_acls'] = False
             method_kwargs['callback'] = callback
+            method_kwargs['force'] = kwargs['force']
             add_child = multiprocessing.start_process(name="add_object",
                                     target=self.add_object,
                                     target_args=(object_type,
@@ -1196,8 +1205,8 @@ class OTPmeMgmtP1(OTPmeServer1):
             msg = msg.format(oid=x_oid, uuid1=x_uuid, uuid2=y_uuid)
             raise OTPmeException(msg)
 
-    def build_move_reply(self, moved_objects):
-        """ Build reply JWT. """
+    def build_move_response(self, moved_objects):
+        """ Build response JWT. """
         our_site = backend.get_object(object_type="site",
                                         realm=config.realm,
                                         name=config.site)
@@ -1234,7 +1243,7 @@ class OTPmeMgmtP1(OTPmeServer1):
             status = False
             return self.build_response(status, message)
 
-        # Get site cert to decrypt objects and verify reply JWT.
+        # Get site cert to decrypt objects and verify response JWT.
         _dst_site = backend.get_object(object_type="site",
                                         realm=config.realm,
                                         name=config.site)
@@ -1469,9 +1478,9 @@ class OTPmeMgmtP1(OTPmeServer1):
                 status = False
                 return self.build_response(status, message)
 
-        move_reply = self.build_move_reply(moved_objects)
+        move_response = self.build_move_response(moved_objects)
 
-        return self.build_response(True, move_reply)
+        return self.build_response(True, move_response)
 
     def change_user_default_group(self, command_args):
         jwt = command_args['jwt']
@@ -1696,7 +1705,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         if not status:
             return self.build_response(status, message)
 
-        # Build JWT reply.
+        # Build JWT response.
         our_site = backend.get_object(object_type="site",
                                         realm=config.realm,
                                         name=config.site)
@@ -1712,6 +1721,161 @@ class OTPmeMgmtP1(OTPmeServer1):
                         algorithm='RS256')
 
         return self.build_response(True, jwt)
+
+    def handle_job_commands(self, job_command, command_args):
+        """ Handle 'backend' commands. """
+        status = False
+        response = ""
+
+        valid_backend_commands = [
+                                    "add",
+                                    "show",
+                                    "list",
+                                    "del",
+                                ]
+
+        if len(job_command) < 2:
+            status = False
+            message = _("Missing job sub command: {command}")
+            message = message.format(command=job_command)
+            return self.build_response(status, message)
+
+        # Check if we got a valid command
+        if not job_command in valid_backend_commands:
+            status = False
+            message = _("Unknown command: {command}")
+            message = message.format(command=job_command)
+            return self.build_response(status, message)
+
+        if job_command == "add":
+            object_data = command_args['object_data']
+            jwt = object_data['jwt']
+            src_realm = object_data['src_realm']
+            src_site = object_data['src_site']
+            try:
+                jwt_data = self.verify_cross_site_jwt(src_realm, src_site, jwt)
+            except Exception as e:
+                message, log_msg = _("JWT verification failed", log=True)
+                log_msg = f"{log_msg}: {e}"
+                self.logger.warning(log_msg)
+                status = False
+                return self.build_response(status, message)
+            # Get job data.
+            try:
+                job_data = jwt_data['job_data']
+            except KeyError:
+                message, log_msg = _("JWT misses job data.", log=True)
+                self.logger.warning(log_msg)
+                status = False
+                return self.build_response(status, message)
+            # Get job name.
+            try:
+                job_name = job_data['job_name']
+            except KeyError:
+                message, log_msg = _("Job data misses job name.", log=True)
+                self.logger.warning(log_msg)
+                status = False
+                return self.build_response(status, message)
+            # Create job.
+            try:
+                tree_job = OTPmeTreeJob(realm=config.realm,
+                                        site=config.site,
+                                        src_realm=src_realm,
+                                        src_site=src_site,
+                                        job_name=job_name,
+                                        job_data=job_data)
+            except Exception as e:
+                status = False
+                message, log_msg = _("Job error: {error}", log=True)
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                message = message.format(error=e)
+                return self.build_response(status, message)
+            # Run job check.
+            try:
+                tree_job.commit(check_only=True)
+            except Exception as e:
+                status = False
+                message, log_msg = _("Job error: {error}", log=True)
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                message = message.format(error=e)
+                return self.build_response(status, message)
+            # Add job.
+            try:
+                tree_job.add()
+            except Exception as e:
+                status = False
+                message, log_msg = _("Job write error: {error}", log=True)
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                message = message.format(error=e)
+                return self.build_response(status, message)
+            status = True
+            message = _("Job added successfully.")
+            return self.build_response(status, message)
+
+        if job_command == "list":
+            if not self.is_admin:
+                status = False
+                message = _("You need to be admin to run this command.")
+                return self.build_response(status, message)
+            jobs = backend.search(object_type="job",
+                                    attribute="uuid",
+                                    value="*",
+                                    return_type="uuid")
+            status = True
+            response = "\n".join(jobs)
+            return self.build_response(status, response)
+
+        if job_command == "show":
+            if not self.is_admin:
+                status = False
+                message = _("You need to be admin to run this command.")
+                return self.build_response(status, message)
+            try:
+                search_regex = command_args['search_regex']
+            except KeyError:
+                search_regex = "*"
+            status = True
+            show_getter = cli.show_getter("job")
+            response = show_getter(search_regex=search_regex)
+            return self.build_response(status, response)
+
+        if job_command == "del":
+            if not self.is_admin:
+                status = False
+                message = _("You need to be admin to run this command.")
+                return self.build_response(status, message)
+            try:
+                job_uuid = command_args['object_identifier']
+            except KeyError:
+                message, log_msg = _("Missing job UUID.", log=True)
+                self.logger.warning(log_msg)
+                status = False
+                return self.build_response(status, message)
+            job = backend.get_object(uuid=job_uuid)
+            if not job:
+                message, log_msg = _("Unknown job: {job_uuid}", log=True)
+                log_msg = log_msg.format(job_uuid=job_uuid)
+                self.logger.warning(log_msg)
+                status = False
+                message = message.format(job_uuid=job_uuid)
+                return self.build_response(status, message)
+            try:
+                job.delete()
+            except Exception as e:
+                log_msg = _("Failed to delete job: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                message = "Failed to delete job."
+                status = False
+                return self.build_response(status, message)
+            status = True
+            response = "Job deleted."
+            return self.build_response(status, response)
+
+        return self.build_response(status, response)
 
     def handle_backend_commands(self, backend_command, command_args):
         """ Handle 'backend' commands. """
@@ -2314,6 +2478,10 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Handle backend commands.
         if command == "backend":
             return self.handle_backend_commands(subcommand, command_args)
+
+        # Handle job commands.
+        if command == "job":
+            return self.handle_job_commands(subcommand, command_args)
 
         # Handle trash commands.
         if command == "trash":

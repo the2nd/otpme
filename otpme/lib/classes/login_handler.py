@@ -19,7 +19,7 @@ from otpme.lib.exceptions import *
 class LoginHandler(object):
     """ Class to login, logout and auth users. """
     def __init__(self):
-        self.login_reply = {}
+        self.login_response = {}
         self.logger = config.logger
 
     def get_agent_status(self):
@@ -174,8 +174,8 @@ class LoginHandler(object):
         finally:
             auth_conn.close()
 
-        # Build login reply.
-        self.login_reply = {
+        # Build login response.
+        self.login_response = {
                 'login_message'             : login_message,
                 'login_session_id'          : auth_conn.login_session_id,
                 'ssh_agent_script'          : auth_conn.ssh_agent_script,
@@ -183,7 +183,7 @@ class LoginHandler(object):
                 'ssh_agent_script_path'     : auth_conn.ssh_agent_script_path,
                 'ssh_agent_script_opts'     : auth_conn.ssh_agent_script_opts,
                 'ssh_agent_script_signs'    : auth_conn.ssh_agent_script_signs,
-                'auth_reply'                : auth_conn.auth_reply,
+                'auth_response'             : auth_conn.auth_response,
                 'rsp'                       : auth_conn.rsp,
         }
 

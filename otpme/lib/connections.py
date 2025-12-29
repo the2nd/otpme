@@ -90,22 +90,22 @@ def get_connection(**kwargs):
         daemon_conn = OTPmeClient(**kwargs)
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = daemon_conn.send("ping", timeout=3)
         exception = None
     except Exception as e:
         daemon_conn = None
         status = False
         exception = e
-        reply = e
+        response = e
     if not status:
         if daemon_conn:
-            msg = _("Daemon connection failed: {socket_uri}: {reply}")
-            msg = msg.format(socket_uri=daemon_conn.socket_uri, reply=reply)
+            msg = _("Daemon connection failed: {socket_uri}: {response}")
+            msg = msg.format(socket_uri=daemon_conn.socket_uri, response=response)
             daemon_conn.close()
         else:
-            msg = _("Daemon connection failed: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Daemon connection failed: {response}")
+            msg = msg.format(response=response)
         if exception:
             raise exception
         raise ConnectionError(msg)
@@ -242,17 +242,17 @@ def get(daemon, **kwargs):
                 result = conn.send("ping", timeout=3)
                 status = result[0]
                 status_code = result[1]
-                reply = result[2]
+                response = result[2]
             except Exception as e:
                 status = False
-                reply = str(e)
+                response = str(e)
 
             if daemon != "agent":
                 if not conn.print_messages \
-                and isinstance(reply, list):
-                    reply = reply[-1]
+                and isinstance(response, list):
+                    response = response[-1]
 
-            if reply == "pong":
+            if response == "pong":
                 return conn
         connections[proc_id][daemon].pop(conn_key)
 
@@ -493,7 +493,7 @@ def get(daemon, **kwargs):
         connect_exception = None
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = daemon_conn.send("ping", timeout=3)
         break
 

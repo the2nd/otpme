@@ -261,7 +261,7 @@ def register_object_type(object_type, path_getter, oid_getter,
         msg = _("Object type already registered: {object_type}")
         msg = msg.format(object_type=object_type)
         raise OTPmeException(msg)
-    if not object_type in object_settings:
+    if object_type not in object_settings:
         object_settings[object_type] = {}
     object_settings[object_type]['oid_getter'] = oid_getter
     object_settings[object_type]['path_getter'] = path_getter

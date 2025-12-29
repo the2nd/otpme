@@ -84,14 +84,14 @@ def run_script(script_type, script_uuid, script_parms,
         try:
             sender, \
             command, \
-            script_reply = script_comm_handler.recv(timeout=1)
+            script_response = script_comm_handler.recv(timeout=1)
         except TimeoutReached:
             continue
         else:
             break
     # Get script result/exception.
-    script_result = script_reply['script_result']
-    script_exception = script_reply['script_exception']
+    script_result = script_response['script_result']
+    script_exception = script_response['script_exception']
     # Close comm queue.
     script_comm_handler.close()
     script_comm_handler.unlink()
@@ -149,15 +149,15 @@ def handle_script_request(request):
         script_exception = _("Invalid script type: {type}")
         script_exception = script_exception.format(type=script_type)
 
-    # Send reply.
-    script_reply = {
+    # Send response.
+    script_response = {
                     'script_result'     : script_result,
                     'script_exception'  : script_exception,
                 }
     scriptd_comm_handler = script_comm_q.get_handler("scriptd")
     scriptd_comm_handler.send(recipient=sender,
-                            command="script_reply",
-                            data=script_reply)
+                            command="script_response",
+                            data=script_response)
     scriptd_comm_handler.close()
     scriptd_comm_handler.unlink()
 

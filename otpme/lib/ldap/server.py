@@ -429,7 +429,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
             try:
                 status, \
                 status_code, \
-                auth_reply, \
+                auth_response, \
                 binary_data = authd_conn.send(command="verify",
                                     command_args=command_args)
             except Exception as e:
@@ -441,17 +441,17 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 authd_conn.close()
 
             if status is False:
-                log_msg = _("Failed to authenticate user: {username}: {reply}", log=True)[1]
-                log_msg = log_msg.format(username=username, reply=auth_reply)
+                log_msg = _("Failed to authenticate user: {username}: {response}", log=True)[1]
+                log_msg = log_msg.format(username=username, response=auth_response)
                 self.logger.warning(log_msg)
                 raise ldaperrors.LDAPInvalidCredentials
 
             # Set auth token.
-            self.auth_token_uuid = auth_reply[0]['login_token_uuid']
+            self.auth_token_uuid = auth_response[0]['login_token_uuid']
             # Cache authentication.
             if cache_auth:
                 try:
-                    session_uuid= auth_reply[0]['session']
+                    session_uuid= auth_response[0]['session']
                 except KeyError:
                     session_uuid = None
                 auth_cache.add(self.client, username, password, session_uuid, self.auth_token_uuid)
@@ -1349,7 +1349,7 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
         # Get peer.
         self.peer = self.transport.getPeer()
 
-    def handle_LDAPBindRequest(self, request, controls, reply):
+    def handle_LDAPBindRequest(self, request, controls, response):
         if request.version != 3:
             msg = _("Version {version} not supported")
             msg = msg.format(version=request.version)
@@ -1391,15 +1391,15 @@ class OTPmeLDAPServer(ldapserver.LDAPServer):
 
         return d
 
-    def handle_LDAPSearchRequest(self, request, controls, reply):
+    def handle_LDAPSearchRequest(self, request, controls, response):
         if self.boundUser is None:
             raise ldaperrors.LDAPStrongAuthRequired()
-        return ldapserver.LDAPServer.handle_LDAPSearchRequest(self, request, controls, reply)
+        return ldapserver.LDAPServer.handle_LDAPSearchRequest(self, request, controls, response)
 
-    def _cbSearchGotBase(self, base, dn, request, reply):
+    def _cbSearchGotBase(self, base, dn, request, response):
         # Pass on auth token.
         base.auth_token = self.boundUser.auth_token
-        return super(OTPmeLDAPServer, self)._cbSearchGotBase(base, dn, request, reply)
+        return super(OTPmeLDAPServer, self)._cbSearchGotBase(base, dn, request, response)
 
 class LDAPServer(object):
     """ Class to start an LDAP server as OTPme daemon using ldaptor. """

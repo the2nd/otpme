@@ -16,6 +16,9 @@ RADIUS_MAX_SERVERS="64"
 RADIUS_MIN_SPARE_SERVERS="8"
 RADIUS_MAX_SPARE_SERVERS="16"
 
+# Enable use of mgmtd socket (--socket) by default. This makes sense on nodes only.
+USE_MGMTD_SOCKET="False"
+
 # How long to wait for second node in two node clusters to appear.
 TWO_NODE_TIMEOUT="3"
 
@@ -92,6 +95,10 @@ POSTGRES_PG_CTL_BIN="/usr/lib/postgresql/13/bin/pg_ctl"
 #POSTGRES_TIMEZONE="Europe/Berlin"
 #POSTGRES_LOG_TIMEZONE="Europe/Berlin"
 
+# Language to use.
+LANGUAGE="en"
+LOG_LANGUAGE="en"
+
 # Audit log settings.
 AUDIT_LOG_ENABLED="False"
 AUDIT_LOG_FACILITY="DAEMON"
@@ -116,7 +123,6 @@ SYSLOG_USE_CLIENT_CERT="False"
 SYSLOG_CERT="/etc/otpme/ssl/syslog-cert.pem"
 SYSLOG_KEY="/etc/otpme/ssl/syslog-key.pem"
 
-# Pickle module used for caching. Currently
 # Run root scripts as this user.
 ROOT_SCRIPT_USER="nobody"
 ROOT_SCRIPT_GROUP="nogroup"
@@ -202,6 +208,7 @@ POSIX_MSGSIZE_MAX="8192"
 RLIMIT_MSGQUEUE="2621440000"
 
 # The socket receive buffer. This should be a high value like 100MiB to speedup OTPme fuse module.
+SOCKET_SEND_BUFFER="104857600"
 SOCKET_RECEIVE_BUFFER="104857600"
 
 # Max interval in seconds the backend executes object policies (e.g. autodisable).

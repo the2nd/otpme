@@ -79,15 +79,15 @@ class JoinHandler(object):
         # Send request.
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = joind_conn.send(command, command_args)
-        # Decode/decrypt reply.
-        if reply.startswith("JSON"):
-            reply = json.decode(reply,
+        # Decode/decrypt response.
+        if response.startswith("JSON"):
+            response = json.decode(response,
                                 encoding="base64",
                                 encryption=enc_mod,
                                 enc_key=enc_key)
-        return status, status_code, reply
+        return status, status_code, response
 
     def get_daemon_conn(self, realm, site, socket_uri,
         username=None, password=None, jotp=None, lotp=None,
@@ -251,9 +251,9 @@ class JoinHandler(object):
         self.username = username
         self.socket_uri = socket_uri
 
-    def set_password_salt(self, join_reply):
+    def set_password_salt(self, join_response):
         """ Set password hashing salt. """
-        password_hash_salt = join_reply['password_hash_salt']
+        password_hash_salt = join_response['password_hash_salt']
         config.set_password_salt(password_hash_salt)
 
     def gen_site_ca_req(self, key_len):
@@ -287,12 +287,12 @@ class JoinHandler(object):
                                                 key_len=key_len)
         return host_cert_req, host_key
 
-    def handle_master_node_stuff(self, join_reply, site_ca_key,
+    def handle_master_node_stuff(self, join_response, site_ca_key,
         host_cert_req, password, jotp, conn_kwargs):
         """ Handle stuff only to do for master node join. """
         if not self._my_site_ca.cert or not self._my_site_ca.key:
-            # Get CA cert from reply.
-            site_ca_cert = join_reply['ca_cert']
+            # Get CA cert from response.
+            site_ca_cert = join_response['ca_cert']
             # Make sure CA CRL is empty.
             self._my_site_ca.crl = None
             # Add new cert/key to site CA.
@@ -329,13 +329,13 @@ class JoinHandler(object):
             # Try to send site certificate.
             status, \
             status_code, \
-            join_reply = self.send(command,
+            join_response = self.send(command,
                                 command_args,
                                 request,
                                 **conn_kwargs)
             if not status:
-                msg = _("Sending site certificate failed: {reply}")
-                msg = msg.format(reply=join_reply)
+                msg = _("Sending site certificate failed: {response}")
+                msg = msg.format(response=join_response)
                 raise OTPmeException(msg)
 
         # Enabling site on master node join.
@@ -383,13 +383,13 @@ class JoinHandler(object):
         # Try to send initial CRL.
         status, \
         status_code, \
-        join_reply = self.send(command,
+        join_response = self.send(command,
                             command_args,
                             request,
                             **conn_kwargs)
         if not status:
-            msg = _("Sending CRL failed: {reply}")
-            msg = msg.format(reply=join_reply)
+            msg = _("Sending CRL failed: {response}")
+            msg = msg.format(response=join_response)
             raise OTPmeException(msg)
 
         # Make sure master node is ready.
@@ -397,10 +397,10 @@ class JoinHandler(object):
 
         return self._my_host.cert
 
-    def process_objects(self, join_reply):
+    def process_objects(self, join_response):
         """ Add base objects etc.. """
-        # Get base objects from reply.
-        object_configs = join_reply['object_configs']
+        # Get base objects from response.
+        object_configs = join_response['object_configs']
 
         add_list = {}
         add_order = config.object_add_order
@@ -487,7 +487,7 @@ class JoinHandler(object):
                     if object_name == self.host_name:
                         my_uuid = object_config['UUID']
         if not my_uuid:
-            msg = _("Join reply is missing {host_type} object.")
+            msg = _("Join response is missing {host_type} object.")
             msg = msg.format(host_type=self.host_type)
             raise OTPmeException(msg)
 
@@ -536,16 +536,16 @@ class JoinHandler(object):
         # Send join command.
         status, \
         status_code, \
-        join_reply = self.send(command,
+        join_response = self.send(command,
                             command_args,
                             join_request,
                             **conn_kwargs)
         if not status:
-            msg = _("Joining {host_type} failed (join request): {reply}")
-            msg = msg.format(host_type=self.host_type, reply=join_reply)
+            msg = _("Joining {host_type} failed (join request): {response}")
+            msg = msg.format(host_type=self.host_type, response=join_response)
             raise OTPmeException(msg)
 
-        return join_reply
+        return join_response
 
     def send_final_join_request(self, force, conn_kwargs, jotp,
         host_cert=None, host_cert_req=None, site_ca_cert_req=None):
@@ -581,16 +581,16 @@ class JoinHandler(object):
         # Try to finalize realm join.
         status, \
         status_code, \
-        join_reply = self.send(command,
+        join_response = self.send(command,
                             command_args,
                             join_request,
                             **conn_kwargs)
         if not status:
-            msg = _("Joining {host_type} failed (final join request): {reply}")
-            msg = msg.format(host_type=self.host_type, reply=join_reply)
+            msg = _("Joining {host_type} failed (final join request): {response}")
+            msg = msg.format(host_type=self.host_type, response=join_response)
             raise OTPmeException(msg)
 
-        return join_reply
+        return join_response
 
     def join_realm(self, domain=None, realm=None, site=None, host_type="host",
         host_fqdn=None, username=None, password=None, jotp=None,
@@ -670,13 +670,13 @@ class JoinHandler(object):
             self.session_key = x['key']
 
         # Send initial join request.
-        join_reply = self.send_join_request(jotp, force, conn_kwargs)
+        join_response = self.send_join_request(jotp, force, conn_kwargs)
         # Get master node join status.
-        master_node_join = join_reply['master_node_join']
+        master_node_join = join_response['master_node_join']
         # Set password hashing salt.
-        self.set_password_salt(join_reply)
+        self.set_password_salt(join_response)
         # Add base objects etc..
-        self.process_objects(join_reply)
+        self.process_objects(join_response)
 
         # Init host and load required objects.
         self.init_host()
@@ -716,27 +716,27 @@ class JoinHandler(object):
         cache.flush()
 
         # Get JOTP to finish realm join.
-        finish_jotp = join_reply['jotp']
+        finish_jotp = join_response['jotp']
         # Send final join request.
-        join_reply = self.send_final_join_request(force, conn_kwargs,
+        join_response = self.send_final_join_request(force, conn_kwargs,
                                     site_ca_cert_req=site_ca_cert_req,
                                     host_cert_req=host_cert_req,
                                     host_cert=host_cert,
                                     jotp=finish_jotp)
 
         # Get join message.
-        join_message = join_reply['message']
+        join_message = join_response['message']
 
         if master_node_join:
             node_cert_req, host_key = self.gen_host_cert_req(key_len=host_key_len)
-            host_cert = self.handle_master_node_stuff(join_reply,
+            host_cert = self.handle_master_node_stuff(join_response,
                                                     site_ca_key,
                                                     node_cert_req,
                                                     password, jotp,
                                                     conn_kwargs)
 
         elif host_cert_req:
-            host_cert = join_reply['host_cert']
+            host_cert = join_response['host_cert']
             self._my_host.cert = host_cert
 
         self._my_host.enable(force=True,
@@ -811,7 +811,7 @@ class JoinHandler(object):
                 msg = _("Master node cannot leave realm.")
                 raise OTPmeException(msg)
 
-        reply = ""
+        response = ""
         # Set realm join mode.
         config.realm_join = True
         config.use_backend = True
@@ -901,11 +901,11 @@ class JoinHandler(object):
             # Send leave command.
             status, \
             status_code, \
-            reply = self.send(command, command_args, leave_request, **conn_kwargs)
+            response = self.send(command, command_args, leave_request, **conn_kwargs)
 
             if not status:
-                msg = _("Failed to leave realm: {reply_msg}")
-                msg = msg.format(reply_msg=reply)
+                msg = _("Failed to leave realm: {response_msg}")
+                msg = msg.format(response_msg=response)
                 raise OTPmeException(msg)
 
         # Close all connections.
@@ -986,4 +986,4 @@ class JoinHandler(object):
                 msg = msg.format(error=e)
                 raise OTPmeException(msg)
 
-        return reply
+        return response

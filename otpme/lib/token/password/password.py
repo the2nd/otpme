@@ -54,6 +54,7 @@ read_value_acls = {
                             "mschap",
                             "nt_hash",
                             "auth_script",
+                            "password_hash",
                             "offline_status",
                             "offline_expiry",
                             "offline_unused_expiry",
@@ -64,6 +65,7 @@ read_value_acls = {
 write_value_acls = {
                 "edit"      : [
                             "password",
+                            "password_hash",
                             "auth_script",
                             "offline_expiry",
                             "offline_unused_expiry",
@@ -122,6 +124,23 @@ commands = {
                     'method'            : 'upgrade_pass_hash',
                     'oargs'             : ['hash_type', 'hash_args'],
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'dump_pass_hash'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'dump_pass_hash',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'set_pass_hash'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'set_pass_hash',
+                    'args'              : ['hash_json'],
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -712,6 +731,7 @@ class PasswordToken(Token):
         self,
         password: Union[str,None]=None,
         enable_mschap: bool=False,
+        force: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -733,7 +753,9 @@ class PasswordToken(Token):
         else:
             new_pass = password
 
+        # Set password.
         self.change_password(password=new_pass,
+                            force=force,
                             verify_acls=False,
                             callback=callback)
 

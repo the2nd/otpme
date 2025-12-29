@@ -1837,11 +1837,11 @@ def get_user_uuid(username):
         command_args = {'username':username}
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = hostd_conn.send(command, command_args)
         if not status:
             return
-        user_uuid = reply
+        user_uuid = response
     return user_uuid
 
 def get_username_by_uuid(uuid):
@@ -1865,9 +1865,9 @@ def get_username_by_uuid(uuid):
         command = "get_user_name"
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = hostd_conn.send(command, command_args)
-        user_name = reply
+        user_name = response
         if not status:
             return None
     return user_name
@@ -1901,13 +1901,13 @@ def get_site_address(realm, site):
                     }
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = hostd_conn.send(daemon_command, command_args)
         if not status:
-            msg = _("Error getting site address from hostd: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Error getting site address from hostd: {response}")
+            msg = msg.format(response=response)
             raise ConnectionError(msg)
-        site_address = reply
+        site_address = response
     return site_address
 
 def get_site_fqdn(realm, site, mgmt=False):
@@ -1945,13 +1945,13 @@ def get_site_fqdn(realm, site, mgmt=False):
                     }
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = hostd_conn.send(daemon_command, command_args)
         if not status:
-            msg = _("Error getting site address from hostd: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Error getting site address from hostd: {response}")
+            msg = msg.format(response=response)
             raise ConnectionError(msg)
-        site_address = reply
+        site_address = response
     return site_address
 
 def get_site_cert(realm, site):
@@ -2032,16 +2032,16 @@ def get_site_trust_status(realm, site):
                 }
     status, \
     status_code, \
-    reply, \
+    response, \
     binary_data = hostd_conn.send(command=hostd_command,
                         command_args=command_args)
     if not status:
-        msg = _("Unable to get site trust status: {reply}")
-        msg = msg.format(reply=reply)
+        msg = _("Unable to get site trust status: {response}")
+        msg = msg.format(response=response)
         raise Exception(msg)
-    if reply == "trusted":
+    if response == "trusted":
         return True
-    raise SiteNotTrusted(reply)
+    raise SiteNotTrusted(response)
 
 def check_login_user(user_name, user_uuid):
     """ Check if the given user/uuid is allowed to login. """

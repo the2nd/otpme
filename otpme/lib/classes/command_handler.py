@@ -166,9 +166,9 @@ class CommandHandler(object):
             daemon_conn = connections.get("hostd", interactive=interactive)
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = daemon_conn.send(command, command_args=command_args)
-            return reply
+            return response
 
         if not command:
             command = self.command
@@ -247,7 +247,7 @@ class CommandHandler(object):
             mgmt_client = self.get_mgmt_client(username=username,
                                             password=password)
             status, \
-            reply = mgmt_client.send(command=command,
+            response = mgmt_client.send(command=command,
                                     subcommand=subcommand,
                                     command_args=command_args,
                                     object_list=object_list,
@@ -285,12 +285,12 @@ class CommandHandler(object):
             self.logger.debug(log_msg)
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = daemon_conn.send(command, command_args)
 
             if status:
-                auth_message = reply['message']
-                log_msg = _("Received authentication reply: {auth_message}", log=True)[1]
+                auth_message = response['message']
+                log_msg = _("Received authentication response: {auth_message}", log=True)[1]
                 log_msg = log_msg.format(auth_message=auth_message)
                 self.logger.debug(log_msg)
 
@@ -305,32 +305,32 @@ class CommandHandler(object):
             self.logger.debug(log_msg)
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = daemon_conn.send(command, command_args)
 
-            log_msg = _("Received reply: {reply}", log=True)[1]
-            log_msg = log_msg.format(reply=reply)
+            log_msg = _("Received response: {response}", log=True)[1]
+            log_msg = log_msg.format(response=response)
             self.logger.debug(log_msg)
 
         # None means user aborted the action.
         if status is None:
             message= _("Command aborted")
-            if reply:
-                message = _("Command aborted: {reply}")
-                message = message.format(reply=reply)
+            if response:
+                message = _("Command aborted: {response}")
+                message = message.format(response=response)
             raise OTPmeException(message)
 
         if status is False:
-            if isinstance(reply, dict):
-                reply = pprint.pformat(reply)
-            if isinstance(reply, list):
-                reply = "\n".join(reply)
+            if isinstance(response, dict):
+                response = pprint.pformat(response)
+            if isinstance(response, list):
+                response = "\n".join(response)
             if config.debug_enabled:
                 msg = f"Command failed: {command} {command} {command_args}"
-                reply = msg + "\n" + reply
-            raise OTPmeException(reply)
+                response = msg + "\n" + response
+            raise OTPmeException(response)
 
-        return reply
+        return response
 
     def handle_command(self, command, command_line, client_type="CLIENT"):
         """ Handle given command. """
@@ -454,6 +454,8 @@ class CommandHandler(object):
 
             if not (command == "realm" and subcommand == "init"):
                 self.init(use_backend=True)
+
+            register_module("otpme.lib.classes.data_objects.otpme_job")
 
             if command == "token":
                 register_module('otpme.lib.classes.token')
@@ -1021,12 +1023,12 @@ class CommandHandler(object):
         command = "backend"
         command_args['subcommand'] = "restore"
         status, \
-        reply = mgmt_client.send_command(command=command,
+        response = mgmt_client.send_command(command=command,
                                     command_args=command_args,
                                     client_type="CLIENT")
         if status is False:
-            raise OTPmeException(reply)
-        return reply
+            raise OTPmeException(response)
+        return response
 
     def remove_old_backups(self, backup_dir, older_than, dry_run=False):
         import shutil
@@ -1477,10 +1479,10 @@ class CommandHandler(object):
 
         command_args = {}
         # Send command.
-        reply = self.send_command(daemon="mgmtd",
+        response = self.send_command(daemon="mgmtd",
                                 command=command,
                                 command_args=command_args)
-        return reply
+        return response
 
     def handle_get_realm_command(self):
         """ Handle get realm command. """
@@ -1665,9 +1667,9 @@ class CommandHandler(object):
                 						   NAS_Identifier=radius_nas_id)
                 req["User-Password"] = req.PwCrypt(password)
                 # Send request.
-                reply = srv.SendPacket(req)
+                response = srv.SendPacket(req)
                 status = False
-                if reply.code == pyrad.packet.AccessAccept:
+                if response.code == pyrad.packet.AccessAccept:
                     status = True
             if not status:
                 msg = "Radius request failed."
@@ -2097,14 +2099,16 @@ class CommandHandler(object):
         self.init()
         mgmt_client = self.get_mgmt_client()
         mgmt_cmd = "mass_object_add"
+        # Enable force to prevent asking user for cross-site operations.
+        config.force = True
         command_args['csv_data'] = csv_data
         status, \
-        reply = mgmt_client.send(command=mgmt_cmd,
+        response = mgmt_client.send(command=mgmt_cmd,
                                 command_args=command_args,
                                 client_type="CLIENT")
         if status == False:
-            raise OTPmeException(reply)
-        return reply
+            raise OTPmeException(response)
+        return response
 
     def handle_dump_index_command(self, command_line):
         """ Handle dump index command. """
@@ -2153,12 +2157,12 @@ class CommandHandler(object):
         command = "check_duplicate_ids"
         command_args['subcommand'] = command_args['object_type']
         status, \
-        reply = mgmt_client.send_command(command=command,
+        response = mgmt_client.send_command(command=command,
                                     command_args=command_args,
                                     client_type="CLIENT")
         if status is False:
-            raise OTPmeException(reply)
-        return reply
+            raise OTPmeException(response)
+        return response
 
 
     def handle_dump_object_command(self, command_line):
@@ -2324,7 +2328,7 @@ class CommandHandler(object):
         """ Handle get sync status command. """
         register_module('otpme.lib.host')
         self.init()
-        reply = []
+        response = []
         host_type = config.host_data['type']
         sync_status = self.get_sync_status()
         for realm in sorted(sync_status):
@@ -2388,9 +2392,9 @@ class CommandHandler(object):
                     else:
                         x = f"{x} ({running_age})"
 
-                    reply.append(x)
+                    response.append(x)
 
-        return "\n".join(reply)
+        return "\n".join(response)
 
     def handle_sync_command(self, command_line, command, subcommand):
         """ Handle sync command. """
@@ -3408,14 +3412,14 @@ class CommandHandler(object):
         try:
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = authd_conn.send(command="get_jwt", command_args=command_args)
         except Exception as e:
             msg = f"Failed to get JWT: {e}"
             raise OTPmeException(msg)
         finally:
             authd_conn.close()
-        return reply
+        return response
 
     def get_login_sessions(self):
         """ Get login sessions from agent. """
@@ -3794,10 +3798,10 @@ class CommandHandler(object):
         mgmt_cmd = "dump_object"
         command_args = {'object_id':object_id}
         status, \
-        reply = mgmt_client.send(command=mgmt_cmd, command_args=command_args)
+        response = mgmt_client.send(command=mgmt_cmd, command_args=command_args)
         if status == False:
-            raise OTPmeException(reply)
-        return reply
+            raise OTPmeException(response)
+        return response
 
     def delete_object(self, object_id):
         """ Dump object config. """
@@ -3808,11 +3812,11 @@ class CommandHandler(object):
         command = "delete_object"
         command_args = {'object_id':object_id}
         status, \
-        reply = mgmt_client.send(command=command,
+        response = mgmt_client.send(command=command,
                                 command_args=command_args,
                                 client_type="CLIENT")
         if status == False:
-            raise OTPmeException(reply)
+            raise OTPmeException(response)
 
     def dump_index(self, object_id):
         """ Dump object index. """
@@ -3822,10 +3826,10 @@ class CommandHandler(object):
         mgmt_cmd = "dump_index"
         command_args = {'object_id':object_id}
         status, \
-        reply = mgmt_client.send(command=mgmt_cmd, command_args=command_args)
+        response = mgmt_client.send(command=mgmt_cmd, command_args=command_args)
         if status == False:
-            raise OTPmeException(reply)
-        return reply
+            raise OTPmeException(response)
+        return response
 
     def import_object(self, object_config, object_id, password=None):
         """ Import object. """
@@ -3842,10 +3846,10 @@ class CommandHandler(object):
         command = "backend"
         command_args['subcommand'] = "import"
         status, \
-        reply = mgmt_client.send_command(command=command,
+        response = mgmt_client.send_command(command=command,
                                     command_args=command_args)
         if status is False:
-            raise OTPmeException(reply)
+            raise OTPmeException(response)
 
     def gen_motp(self, **kwargs):
         """ Generate MOTP. """
@@ -4063,8 +4067,8 @@ class CommandHandler(object):
         """ Get sync status from hostd. """
         from otpme.lib import json
         cmd = "get_sync_status"
-        reply = self.send_command(daemon="hostd", command=cmd)
-        sync_status = json.decode(reply)
+        response = self.send_command(daemon="hostd", command=cmd)
+        sync_status = json.decode(response)
         return sync_status
 
     def daemon_dump(self, dump_type):
@@ -4566,7 +4570,7 @@ class CommandHandler(object):
                                 **kwargs)
         except Exception as e:
             raise OTPmeException(str(e))
-        login_message = login_handler.login_reply['login_message']
+        login_message = login_handler.login_response['login_message']
         return login_message
 
     def logout(self):
@@ -5476,11 +5480,11 @@ class CommandHandler(object):
             msg = f"Unable to get login session ID: {e}"
             raise OTPmeException(msg)
         if args.list_shares:
-            reply = self.send_command(daemon="mgmtd",
+            response = self.send_command(daemon="mgmtd",
                                     command="get_shares",
                                     parse_command_syntax=False,
                                     client_type="RAPI")
-            return reply
+            return response
         share_id = args.share
         try:
             share_site = share_id.split("/")[0]
@@ -5491,25 +5495,25 @@ class CommandHandler(object):
         mount_point = args.mount
         if nodes is None or mount_point is None:
             command_args = {'share_id':share_id}
-            reply = self.send_command(daemon="mgmtd",
+            response = self.send_command(daemon="mgmtd",
                                     command="get_share",
                                     command_args=command_args,
                                     parse_command_syntax=False,
                                     client_type="RAPI")
             if nodes is None:
-                nodes = reply[share_id]['nodes']
+                nodes = response[share_id]['nodes']
             if encrypted is None:
-                encrypted = reply[share_id]['encrypted']
+                encrypted = response[share_id]['encrypted']
             if mount_point is None:
-                shares = reply
+                shares = response
                 try:
                     agent_conn = connections.get("agent")
                 except Exception as e:
                     msg = _("Error getting agent connection: {e}")
                     msg = msg.format(e=e)
                     raise OTPmeException(msg)
-                mount_reply = agent_conn.mount_shares(shares=shares)
-                return mount_reply
+                mount_response = agent_conn.mount_shares(shares=shares)
+                return mount_response
         if not mount_point:
             msg = "Missing mountpoint."
             raise OTPmeException(msg)
@@ -5726,16 +5730,16 @@ class CommandHandler(object):
         """ Handle token resync command. """
         def get_login_token():
             try:
-                reply = self.get_login_token()
+                response = self.get_login_token()
                 status = True
             except Exception as e:
-                reply = str(e)
+                response = str(e)
                 status = False
             if status:
-                msg = _("Unsing login token: {reply}")
-                msg = msg.format(reply=reply)
+                msg = _("Unsing login token: {response}")
+                msg = msg.format(response=response)
                 message(msg)
-                return reply
+                return response
 
         # Set function to get default object.
         self.get_default_object = get_login_token

@@ -6,6 +6,11 @@ from typing import List
 from typing import Union
 
 try:
+    import ujson as json
+except:
+    import json
+
+try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
         msg = _("Loading module: {module}")
         msg = msg.format(module=__name__)
@@ -2713,8 +2718,7 @@ class Token(OTPmeObject):
                 except Exception as e:
                     return callback.error()
 
-            dst_token = self.get_destination_token()
-            return dst_token.change_password(password=password,
+            return self.dst_token.change_password(password=password,
                                             auto_password=auto_password,
                                             force=force,
                                             verify_acls=verify_acls,
@@ -2879,8 +2883,7 @@ class Token(OTPmeObject):
                 except Exception as e:
                     return callback.error()
 
-            dst_token = self.get_destination_token()
-            return dst_token.set_temp_password(password=temp_password,
+            return self.dst_token.set_temp_password(password=temp_password,
                                             auto_password=auto_password,
                                             remove=remove,
                                             verify_acls=verify_acls,
@@ -2936,6 +2939,87 @@ class Token(OTPmeObject):
         log_msg = f"{log_msg} ({add_info})"
         logger.info(log_msg)
         callback.send(msg)
+
+        return self._cache(callback=callback)
+
+    @object_lock()
+    @audit_log()
+    @check_acls(['view:password_hash'])
+    def dump_pass_hash(
+        self,
+        verify_acls: bool=True,
+        run_policies=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Dump password hash. """
+        if self.password_hash is False:
+            msg = _("Token type '{token_type}' does not have a password.")
+            msg = msg.format(token_type=self.token_type)
+            return callback.error(msg)
+
+        # Run policies on password change (e.g. auth_on_action).
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("dump_pass_hash",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        hash_dict = {
+                    'hash'          : self.password_hash,
+                    'hash_params'   : self.password_hash_params,
+                    'nt_hash'       : self.nt_hash,
+                    }
+
+        json_dict = json.dumps(hash_dict, sort_keys=True, indent=4)
+
+        return callback.ok(json_dict)
+
+    @object_lock()
+    @audit_log()
+    @check_acls(['edit:password_hash'])
+    def set_pass_hash(
+        self,
+        hash_json: str,
+        verify_acls: bool=True,
+        run_policies=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Dump password hash. """
+        if self.password_hash is False:
+            msg = _("Token type '{token_type}' does not have a password.")
+            msg = msg.format(token_type=self.token_type)
+            return callback.error(msg)
+
+        # Run policies on password change (e.g. auth_on_action).
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("set_pass_hash",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        try:
+            hash_dict = json.loads(hash_json)
+        except Exception as e:
+            msg = _("Invalid json hash data.")
+            return callback.error(msg)
+
+        self.password_hash = hash_dict['hash']
+        self.password_hash_params = hash_dict['hash_params']
+        self.nt_hash = hash_dict['nt_hash']
 
         return self._cache(callback=callback)
 
@@ -3062,7 +3146,7 @@ class Token(OTPmeObject):
         ):
         """ Gen OTP and return it as string. """
         if self.destination_token:
-            verify_token = self.get_destination_token()
+            verify_token = self.dst_token
             if not verify_token:
                 return callback.error(_("Unable to get destination token."))
         else:
@@ -3237,6 +3321,7 @@ class Token(OTPmeObject):
 
         # Call child class method (to do token specific stuff).
         self._add(owner_uuid=owner_uuid,
+                force=force,
                 _caller=_caller,
                 callback=callback,
                 verbose_level=verbose_level,
@@ -3244,6 +3329,7 @@ class Token(OTPmeObject):
 
         # Add object using parent class.
         add_status = super(Token, self).add(verbose_level=verbose_level,
+                                            force=force,
                                             write=write,
                                             callback=callback,
                                             **kwargs)
@@ -3550,6 +3636,8 @@ class Token(OTPmeObject):
         token_roles = self.get_roles(return_type="instance", recursive=False)
         _token_roles = []
         for x in token_roles:
+            if x.site != config.site:
+                continue
             _token_roles.append(x.name)
 
         # Get groups to remove token from.
@@ -3557,6 +3645,8 @@ class Token(OTPmeObject):
                                     return_type="instance")
         _token_groups = []
         for x in token_groups:
+            if x.site != config.site:
+                continue
             _token_groups.append(x.name)
 
         # Get accessgroups to remove token from.
@@ -3564,6 +3654,8 @@ class Token(OTPmeObject):
                                                     return_type="instance")
         _token_accessgroups = []
         for x in token_accessgroups:
+            if x.site != config.site:
+                continue
             _token_accessgroups.append(x.name)
 
         if token_roles:

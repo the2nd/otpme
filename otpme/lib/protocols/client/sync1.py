@@ -165,7 +165,7 @@ class OTPmeSyncP1(OTPmeClient1):
         while try_count < max_tries:
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = self.connection.send("add_sync_list_checksum", command_args)
 
             if status_code == status_codes.PERMISSION_DENIED:
@@ -177,10 +177,10 @@ class OTPmeSyncP1(OTPmeClient1):
                 msg = msg.format(realm=realm, site=site)
                 raise SyncDisabled(msg)
             if status:
-                return reply
+                return response
             try_count += 1
-            log_msg = _("Error sending sync list checksum to peer: {reply}", log=True)[1]
-            log_msg = log_msg.format(reply=reply)
+            log_msg = _("Error sending sync list checksum to peer: {response}", log=True)[1]
+            log_msg = log_msg.format(response=response)
             self.logger.error(log_msg)
             log_msg = _("Retrying ({try_count}/{max_tries})", log=True)[1]
             log_msg = log_msg.format(try_count=try_count, max_tries=max_tries)
@@ -201,7 +201,7 @@ class OTPmeSyncP1(OTPmeClient1):
         while try_count < max_tries:
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = self.connection.send("get_sync_list", command_args)
             if status_code == status_codes.PERMISSION_DENIED:
                 msg = _("Permission denied: {realm}/{site}")
@@ -212,10 +212,10 @@ class OTPmeSyncP1(OTPmeClient1):
                 msg = msg.format(realm=realm, site=site)
                 raise SyncDisabled(msg)
             if status:
-                return reply
+                return response
             try_count += 1
-            log_msg = _("Error receiving sync list from peer: {reply}", log=True)[1]
-            log_msg = log_msg.format(reply=reply)
+            log_msg = _("Error receiving sync list from peer: {response}", log=True)[1]
+            log_msg = log_msg.format(response=response)
             self.logger.error(log_msg)
             log_msg = _("Retrying ({try_count}/{max_tries})", log=True)[1]
             log_msg = log_msg.format(try_count=try_count, max_tries=max_tries)
@@ -233,7 +233,7 @@ class OTPmeSyncP1(OTPmeClient1):
         while True:
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = self.connection.send("get_last_used", command_args)
             if status_code == status_codes.PERMISSION_DENIED:
                 msg = _("Permission denied.")
@@ -242,10 +242,10 @@ class OTPmeSyncP1(OTPmeClient1):
                 msg = _("Peer site disabled synchronization with us.")
                 raise SyncDisabled(msg)
             if status:
-                return reply
+                return response
             try_count += 1
-            log_msg = _("Error receiving last used timestamps from peer: {reply}", log=True)[1]
-            log_msg = log_msg.format(reply=reply)
+            log_msg = _("Error receiving last used timestamps from peer: {response}", log=True)[1]
+            log_msg = log_msg.format(response=response)
             self.logger.error(log_msg)
             log_msg = _("Retrying ({try_count}/{max_tries})", log=True)[1]
             log_msg = log_msg.format(try_count=try_count, max_tries=max_tries)
@@ -659,24 +659,24 @@ class OTPmeSyncP1(OTPmeClient1):
 
                     status, \
                     status_code, \
-                    reply, \
+                    response, \
                     binary_data = self.connection.send("get_object", command_args)
 
                     if not status:
-                        log_msg = _("Error receiving object {object_id}: {reply}", log=True)[1]
-                        log_msg = log_msg.format(object_id=object_id, reply=reply)
+                        log_msg = _("Error receiving object {object_id}: {response}", log=True)[1]
+                        log_msg = log_msg.format(object_id=object_id, response=response)
                         self.logger.warning(log_msg)
                         # Make sure we try again.
                         remote_sync_list_checksum = None
                         continue
 
-                    if reply == "SYNC_UNKNOWN_OBJECT":
+                    if response == "SYNC_UNKNOWN_OBJECT":
                         log_msg = _("Object deleted on remote site while syncing: {object_id}", log=True)[1]
                         log_msg = log_msg.format(object_id=object_id)
                         self.logger.warning(log_msg)
                     else:
-                        new_checksum = reply['checksum']
-                        new_object_config = reply['object_config']
+                        new_checksum = response['checksum']
+                        new_object_config = response['object_config']
                         if not ignore_changed_objects:
                             # Make sure object has not changed while synching.
                             old_checksum = object_list[object_id]['remote_checksum']
@@ -1158,14 +1158,7 @@ class OTPmeSyncP1(OTPmeClient1):
             if user_name in self.blacklisted_users:
                 exit_child(200)
             # Make sure we update LDIF/nsscache.
-            x_groups = new_object.get_groups(return_type="full_oid")
-            for full_oid in x_groups:
-                full_oid = oid.get(full_oid)
-                nsscache.update_object(full_oid, "update")
-            x_roles = new_object.get_roles(return_type="full_oid", recursive=True)
-            for full_oid in x_roles:
-                full_oid = oid.get(full_oid)
-                nsscache.update_object(full_oid, "update")
+            self.update_nsscache(new_object)
 
         # Make sure the object is valid.
         site_oid = oid.get(object_type="site", realm=realm, name=site)
@@ -1184,24 +1177,24 @@ class OTPmeSyncP1(OTPmeClient1):
         # different site because this may be used to do some privilege
         # escalation (e.g. add a token with the same UUID as the realm
         # admin token).
-        current_object = backend.get_object(uuid=new_object.uuid)
+        current_uuid_object = backend.get_object(uuid=new_object.uuid)
         # Check if the object is from an other site.
-        if current_object:
-            if current_object.site != new_object.site:
-                log_msg = _("Ignoring duplicate UUID: {new_object_uuid}: {current_object} <> {object_id}", log=True)[1]
-                log_msg = log_msg.format(new_object_uuid=new_object.uuid, current_object=current_object, object_id=object_id)
+        if current_uuid_object:
+            if current_uuid_object.site != new_object.site:
+                log_msg = _("Ignoring duplicate UUID: {new_object_uuid}: {current_uuid_object} <> {object_id}", log=True)[1]
+                log_msg = log_msg.format(new_object_uuid=new_object.uuid, current_uuid_object=current_uuid_object, object_id=object_id)
                 self.logger.warning(log_msg)
                 exit_child(1)
 
         # Skip new object that is older than the current one.
-        if current_object is not None:
+        if current_uuid_object is not None:
             if config.host_data['type'] == "node":
                 # Allow older object if its the own node. This is required
                 # because clusterd en-/disables the own node object.
                 if not sync_older_objects:
                     if realm == own_realm and site == own_site:
-                        if current_object.uuid != config.uuid:
-                            if current_object.last_modified > new_object.last_modified:
+                        if current_uuid_object.uuid != config.uuid:
+                            if current_uuid_object.last_modified > new_object.last_modified:
                                 log_msg = _("Ignoring older object from peer: {object_id}", log=True)[1]
                                 log_msg = log_msg.format(object_id=object_id)
                                 self.logger.warning(log_msg)
@@ -1209,31 +1202,24 @@ class OTPmeSyncP1(OTPmeClient1):
 
         # Removed old object with different OID (e.g. object was
         # moved).
-        if current_object is not None:
-            if new_object.oid.full_oid != current_object.oid.full_oid:
+        if current_uuid_object is not None:
+            if new_object.oid.full_oid != current_uuid_object.oid.full_oid:
                 try:
-                    local_sync_list.pop(current_object.oid.full_oid)
+                    local_sync_list.pop(current_uuid_object.oid.full_oid)
                 except KeyError:
                     pass
-                backend.delete_object(current_object.oid)
+                # Make sure we update LDIF/nsscache.
+                if new_object.type == "token":
+                    self.update_nsscache(current_uuid_object)
+                # Delete old object.
+                backend.delete_object(current_uuid_object.oid)
 
-        # Load current object UUID.
-        try:
-            current_uuid = backend.get_uuid(object_id)
-        except:
-            current_uuid = None
-        # Removed old object with different UUID (e.g. object was
-        # re-created).
-        if current_uuid is not None:
-            if new_object.uuid != current_uuid:
-                try:
-                    local_sync_list.pop(object_id.full_oid)
-                except KeyError:
-                    pass
-                try:
-                    backend.delete_object(object_id)
-                except UnknownObject:
-                    pass
+        # Get current object by OID.
+        current_oid_object = backend.get_object(object_id)
+
+        # Make sure we update LDIF/nsscache.
+        if current_oid_object and current_oid_object.type == "token":
+            self.update_nsscache(current_oid_object)
 
         # Write object to backend.
         cluster = False
@@ -1290,7 +1276,7 @@ class OTPmeSyncP1(OTPmeClient1):
                         log_msg = _("Unable to add signer cache: {object_id}: {e}", log=True)[1]
                         log_msg = log_msg.format(object_id=object_id, e=e)
                         self.logger.critical(log_msg)
-        if current_object is None:
+        if current_uuid_object is None:
             exit_child(0)
         else:
             exit_child(100)
@@ -1373,14 +1359,7 @@ class OTPmeSyncP1(OTPmeClient1):
                     x_object = backend.get_object(object_id)
                     if not x_object:
                         continue
-                    x_groups = x_object.get_groups(return_type="full_oid")
-                    for full_oid in x_groups:
-                        full_oid = oid.get(full_oid)
-                        nsscache.update_object(full_oid, "update")
-                    x_roles = x_object.get_roles(return_type="full_oid", recursive=True)
-                    for full_oid in x_roles:
-                        full_oid = oid.get(full_oid)
-                        nsscache.update_object(full_oid, "update")
+                    self.update_nsscache(x_object)
                 # Remove object.
                 log_msg = _("Removing object ({del_counter}/{del_count}): {object_id}", log=True)[1]
                 log_msg = log_msg.format(del_counter=del_counter, del_count=del_count, object_id=object_id)
@@ -1398,6 +1377,17 @@ class OTPmeSyncP1(OTPmeClient1):
                     log_msg = log_msg.format(object_id=object_id, e=e)
                     self.logger.critical(log_msg)
                     self.removed_objects.append(object_id.read_oid)
+
+    def update_nsscache(self, x_object):
+        """ Update nsscache of objects. """
+        x_groups = x_object.get_groups(return_type="full_oid")
+        for full_oid in x_groups:
+            full_oid = oid.get(full_oid)
+            nsscache.update_object(full_oid, "update")
+        x_roles = x_object.get_roles(return_type="full_oid", recursive=True)
+        for full_oid in x_roles:
+            full_oid = oid.get(full_oid)
+            nsscache.update_object(full_oid, "update")
 
     def get_token_data(self, data_type, local_objects,
         token_oid=None, session_uuid=None, offline=False):
@@ -1431,14 +1421,14 @@ class OTPmeSyncP1(OTPmeClient1):
         while try_count < max_tries:
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = self.connection.send(command, command_args)
             if not status:
                 if status_code == status_codes.UNKNOWN_OBJECT:
-                    raise UnknownObject(reply)
+                    raise UnknownObject(response)
                 try_count += 1
-                log_msg = _("Error receiving list from peer: {reply}", log=True)[1]
-                log_msg = log_msg.format(reply=reply)
+                log_msg = _("Error receiving list from peer: {response}", log=True)[1]
+                log_msg = log_msg.format(response=response)
                 self.logger.error(log_msg)
                 log_msg = _("Retrying ({try_count}/{max_tries})", log=True)[1]
                 log_msg = log_msg.format(try_count=try_count, max_tries=max_tries)
@@ -1446,9 +1436,9 @@ class OTPmeSyncP1(OTPmeClient1):
                 time.sleep(1)
                 continue
 
-            for t in reply:
-                for x in reply[t]:
-                    x_config = reply[t][x]
+            for t in response:
+                for x in response[t]:
+                    x_config = response[t][x]
                     x_oid = oid.get(object_id=x)
                     if t not in objects:
                         objects[t] = {}
@@ -1732,19 +1722,19 @@ class OTPmeSyncP1(OTPmeClient1):
         while try_count < max_tries:
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = self.connection.send("get_ssh_authorized_keys")
             if not status:
                 try_count += 1
-                log_msg = _("Error receiving SSH authorized_keys from peer: {reply}", log=True)[1]
-                log_msg = log_msg.format(reply=reply)
+                log_msg = _("Error receiving SSH authorized_keys from peer: {response}", log=True)[1]
+                log_msg = log_msg.format(response=response)
                 self.logger.error(log_msg)
                 log_msg = _("Retrying ({try_count}/{max_tries})", log=True)[1]
                 log_msg = log_msg.format(try_count=try_count, max_tries=max_tries)
                 self.logger.error(log_msg)
                 time.sleep(1)
                 continue
-            received_ssh_keys = reply
+            received_ssh_keys = response
             break
 
         if not status:

@@ -46,6 +46,22 @@ cmd_help = {
                                 },
                 },
 
+    'dump_pass_hash'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token dump_pass_hash {token}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump password hash.'),
+                                },
+                },
+
+    'set_pass_hash'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token set_pass_hash {token} {file}'),
+                    'cmd'   :   '<|object|> <file:hash_json>',
+                    '_help' :   {
+                                    'cmd'                   : _('Dump password hash.'),
+                                },
+                },
+
     '2f_token'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token 2f_token {token} {2f_token}'),
                     'cmd'   :   '<|object|> <second_factor_token>',

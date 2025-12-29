@@ -44,8 +44,8 @@ class OTPmeMgmtClient(object):
                                                     site=site)
             method = getattr(daemon_conn, name)
             # Try to run method.
-            reply = method(*args, **kwargs)
-            return reply
+            response = method(*args, **kwargs)
+            return response
 
         return handler_function
 
@@ -82,7 +82,7 @@ class OTPmeMgmtClient(object):
         try:
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = authd_conn.send(command, command_args)
         except Exception as e:
             msg = _("Error requesting JWT: {e}")
@@ -91,10 +91,10 @@ class OTPmeMgmtClient(object):
         finally:
             authd_conn.close()
         if not status:
-            msg = _("Error requesting JWT: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Error requesting JWT: {response}")
+            msg = msg.format(response=response)
             raise OTPmeException(msg)
-        return reply
+        return response
 
     def get_daemon_connection(self, realm, site):
         """ Connect to mgmtd in the given realm/site. """
@@ -162,9 +162,10 @@ class OTPmeMgmtClient(object):
             daemon_conn = self.get_daemon_connection(realm=connect_realm,
                                                     site=connect_site)
             # Send command to MGMT daemon.
-            status, reply = daemon_conn.send_command(command=command,
-                                    command_args=command_args, **kwargs)
-            return status, reply
+            status, response = daemon_conn.send_command(command=command,
+                                                    command_args=command_args,
+                                                    **kwargs)
+            return status, response
 
         ## Make sure object class is registered.
         #module = f"otpme.lib.classes.{command}"
@@ -204,11 +205,11 @@ class OTPmeMgmtClient(object):
                 for _id in objects[realm][site]:
                     command_args['object_identifier'] = _id
                     # Send command to MGMT daemon.
-                    status, reply = daemon_conn.send_command(command=command,
+                    status, response = daemon_conn.send_command(command=command,
                                             command_args=command_args, **kwargs)
                     if status is False:
-                        return status, reply
-        return status, reply
+                        return status, response
+        return status, response
 
     #def close(self):
     #    """ Close all daemon connections. """

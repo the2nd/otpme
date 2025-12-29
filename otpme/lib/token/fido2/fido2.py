@@ -292,12 +292,12 @@ class Fido2Token(Token):
         self.reg_app_id = f"https://{self.realm}"
         # Generate registration challenge.
         self.reg_challenge = self.gen_challenge()[2]
-        reply = {
+        response = {
                 'app_id'    : self.reg_app_id,
                 'challenge' : self.reg_challenge,
                 }
         self._write(callback=callback)
-        return callback.ok(reply)
+        return callback.ok(response)
 
     @object_lock(full_lock=True)
     @backend.transaction

@@ -43,10 +43,10 @@ class OTPmeHostP1(OTPmeClient1):
                         }
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = self.connection.send(command, command_args)
         if status:
-            object_id = reply
+            object_id = response
         return object_id
 
     def get_uuid(self, object_id):
@@ -58,10 +58,10 @@ class OTPmeHostP1(OTPmeClient1):
                         }
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = self.connection.send(command, command_args)
         if status:
-            object_uuid = reply
+            object_uuid = response
         return object_uuid
 
     def object_exists(self, object_id):
@@ -73,10 +73,10 @@ class OTPmeHostP1(OTPmeClient1):
                         }
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = self.connection.send(command, command_args)
         if status:
-            object_exists = reply
+            object_exists = response
         return object_exists
 
     def get_user_uuid(self, username):
@@ -86,10 +86,10 @@ class OTPmeHostP1(OTPmeClient1):
         command_args = {'username':username}
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = self.connection.send(command, command_args)
         if status:
-            user_uuid = reply
+            user_uuid = response
         return user_uuid
 
     def get_user_site(self, username):
@@ -99,10 +99,10 @@ class OTPmeHostP1(OTPmeClient1):
         command_args = {'username':username}
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = self.connection.send(command, command_args)
         if status:
-            user_site = reply
+            user_site = response
         return user_site
 
     def get_site_cert(self, realm, site):
@@ -136,13 +136,13 @@ class OTPmeHostP1(OTPmeClient1):
                             }
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = self.connection.send(command, command_args)
             if not status:
-                msg = _("Unable to get site certificate: {reply}")
-                msg = msg.format(reply=reply)
+                msg = _("Unable to get site certificate: {response}")
+                msg = msg.format(response=response)
                 raise OTPmeException(msg)
-            site_cert = reply
+            site_cert = response
         if not site_cert:
             msg = _("Missing site certificate: {realm}/{site}")
             msg = msg.format(realm=realm, site=site)
@@ -154,9 +154,9 @@ class OTPmeHostP1(OTPmeClient1):
         command = "get_host_status"
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = self.connection.send(command)
-        return status, reply
+        return status, response
 
     def authorize_token(self, token_uuid, login_interface):
         """ Authorize token. """
@@ -167,9 +167,9 @@ class OTPmeHostP1(OTPmeClient1):
                         }
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = self.connection.send(command, command_args)
-        return status, reply
+        return status, response
 
     def get_daemon_socket(self, daemon, node_name):
         """ Send command to hostd. """
@@ -179,11 +179,11 @@ class OTPmeHostP1(OTPmeClient1):
         command_args['node_name'] = node_name
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = self.connection.send(command, command_args)
         if not status:
-            raise OTPmeException(reply)
-        socket_uri = reply
+            raise OTPmeException(response)
+        socket_uri = response
         return socket_uri
 
     def get_token_dynamic_groups(self, token):
@@ -193,11 +193,11 @@ class OTPmeHostP1(OTPmeClient1):
         command_args['token'] = token
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = self.connection.send(command, command_args)
         if not status:
-            raise OTPmeException(reply)
-        socket_uri = reply
+            raise OTPmeException(response)
+        socket_uri = response
         return socket_uri
 
     def get_host_dynamic_groups(self):
@@ -206,11 +206,11 @@ class OTPmeHostP1(OTPmeClient1):
         command_args = {}
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = self.connection.send(command, command_args)
         if not status:
-            raise OTPmeException(reply)
-        socket_uri = reply
+            raise OTPmeException(response)
+        socket_uri = response
         return socket_uri
 
     def get_pass_strength(self, password, policy_name=None):
@@ -221,11 +221,11 @@ class OTPmeHostP1(OTPmeClient1):
         command_args['policy_name'] = policy_name
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = self.connection.send(command, command_args)
         if not status:
-            raise OTPmeException(reply)
-        socket_uri = reply
+            raise OTPmeException(response)
+        socket_uri = response
         return socket_uri
 
     def trigger_token_data_sync(self):

@@ -44,6 +44,7 @@ from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.data_objects.used_sotp import UsedSOTP
 from otpme.lib.classes.data_objects.failed_pass import FailedPass
+from otpme.lib.classes.data_objects.otpme_job import OTPmeTreeJob
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
 
 from otpme.lib.classes.otpme_object import \
@@ -1349,14 +1350,17 @@ def user_is_blocked(user_uuid, access_group, realm, site):
             last_used = backend.get_last_used(uuid=uuid)
             if last_used == 0:
                 continue
-            last_used_list.append(last_used)
+            last_used_list.append(int(last_used))
         # Check if reset time is reached.
         if last_used_list:
             now = time.time()
-            last_login_try = sorted(last_used_list)[0]
+            last_login_try = sorted(last_used_list)[-1]
             last_try_age = now - last_login_try
             if last_try_age > max_fail_reset:
                 is_blocked = False
+                for uuid in result:
+                    x_oid = backend.get_oid(uuid, instance=True)
+                    backend.delete_object(x_oid)
     return is_blocked
 
 @match_class_typing
@@ -1716,10 +1720,6 @@ class User(OTPmeObject):
             if result:
                 current_group_uuid = result[0]
 
-        if not new_user and not current_group_uuid:
-            msg = "Default group not set (e.g. sync required?)."
-            return callback.error(msg)
-
         old_group = None
         if current_group_uuid:
             if current_group_uuid == group_uuid:
@@ -1902,25 +1902,25 @@ class User(OTPmeObject):
             return callback.error(msg)
 
         try:
-            reply = response['reply']
+            response_data = response['response']
         except KeyError:
-            msg = "Response missing reply."
+            msg = "Response missing response data."
             return callback.error(msg)
 
         if not status:
             if action == "add":
-                msg = _("Set user default group failed: {reply}")
-                msg = msg.format(reply=reply)
+                msg = _("Set user default group failed: {response_data}")
+                msg = msg.format(response_data=response_data)
             elif action == "remove":
-                msg = _("Unset user default group failed: {reply}")
-                msg = msg.format(reply=reply)
+                msg = _("Unset user default group failed: {response_data}")
+                msg = msg.format(response_data=response_data)
             elif action == "change":
-                msg = _("Change user default group failed: {reply}")
-                msg = msg.format(reply=reply)
+                msg = _("Change user default group failed: {response_data}")
+                msg = msg.format(response_data=response_data)
             return callback.error(msg)
 
         # Get destination site cert to encrypt objects and
-        # verify reply JWT.
+        # verify response JWT.
         _dst_site = backend.get_object(object_type="site",
                                         realm=dst_realm,
                                         name=dst_site)
@@ -1934,9 +1934,9 @@ class User(OTPmeObject):
             logger.warning(log_msg)
             return callback.error(msg)
 
-        # Decode reply JWT.
+        # Decode response JWT.
         try:
-            reply_jwt_data = jwt.decode(jwt=reply,
+            response_jwt_data = jwt.decode(jwt=response_data,
                                     key=dst_site_public_key,
                                     algorithm='RS256')
         except Exception as e:
@@ -1946,9 +1946,9 @@ class User(OTPmeObject):
             logger.warning(log_msg)
             return callback.error(msg)
 
-        if reply_jwt_data != jwt_data:
-            msg = _("Got wrong JWT data from peer:\n\t{jwt_data}\n\t{reply_jwt_data}")
-            msg = msg.format(jwt_data=jwt_data, reply_jwt_data=reply_jwt_data)
+        if response_jwt_data != jwt_data:
+            msg = _("Got wrong JWT data from peer:\n\t{jwt_data}\n\t{response_jwt_data}")
+            msg = msg.format(jwt_data=jwt_data, response_jwt_data=response_jwt_data)
             return callback.error(msg)
 
         return callback.ok()
@@ -2000,7 +2000,7 @@ class User(OTPmeObject):
             object_ids.append((token.oid.full_oid, token.uuid))
 
         # Get destination site cert to encrypt objects and
-        # verify reply JWT.
+        # verify response JWT.
         _dst_site = backend.get_object(object_type="site",
                                         realm=dst_realm,
                                         name=dst_site)
@@ -2055,16 +2055,16 @@ class User(OTPmeObject):
         response = callback.move_objects(object_data)
 
         status = response['status']
-        reply = response['reply']
+        response_data = response['response']
 
         if not status:
-            msg = _("Object move failed: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Object move failed: {response_data}")
+            msg = msg.format(response_data=response_data)
             return callback.error(msg)
 
-        # Decode reply JWT.
+        # Decode response JWT.
         try:
-            jwt_data = jwt.decode(jwt=reply,
+            jwt_data = jwt.decode(jwt=response_data,
                                 key=dst_site_public_key,
                                 algorithm='RS256')
         except Exception as e:
@@ -2082,11 +2082,11 @@ class User(OTPmeObject):
             try:
                 y_uuid = jwt_data[x_oid]['uuid']
             except KeyError:
-                msg = _("Failed to find object in reply: {x_oid}")
+                msg = _("Failed to find object in response: {x_oid}")
                 msg = msg.format(x_oid=x_oid)
                 return callback.error(msg)
             if x_uuid != y_uuid:
-                msg = _("UUID missmatch in reply: {x_oid}: {x_uuid} <> {y_uuid}")
+                msg = _("UUID missmatch in response: {x_oid}: {x_uuid} <> {y_uuid}")
                 msg = msg.format(x_oid=x_oid, x_uuid=x_uuid, y_uuid=y_uuid)
                 return callback.error(msg)
 
@@ -2661,18 +2661,18 @@ class User(OTPmeObject):
 
         if key_mode == "client":
             # Ask client to create users keys.
-            reply = callback.gen_user_keys(username=self.name,
+            response = callback.gen_user_keys(username=self.name,
                                             key_len=key_len,
                                             stdin_pass=stdin_pass)
-            if reply is None:
+            if response is None:
                 return callback.abort()
 
             try:
-                status = reply['status']
+                status = response['status']
             except:
                 status = False
             try:
-                message = reply['message']
+                message = response['message']
             except:
                 message = "Unknown error."
 
@@ -2681,14 +2681,14 @@ class User(OTPmeObject):
                 msg = msg.format(message=message)
                 return callback.error(msg)
 
-            # Get keys from reply.
+            # Get keys from response.
             try:
                 self.private_key = {}
-                self.private_key['key_blob'] = reply['private_key']
+                self.private_key['key_blob'] = response['private_key']
             except KeyError:
                 pass
             try:
-                self.public_key = reply['public_key']
+                self.public_key = response['public_key']
             except KeyError:
                 pass
 
@@ -3351,8 +3351,6 @@ class User(OTPmeObject):
                                     site=self.site,
                                     user=self.name,
                                     name=token_name)
-        if token and token.destination_token:
-            token.dst_token = token.get_destination_token()
         return token
 
     def get_tokens(
@@ -3450,7 +3448,7 @@ class User(OTPmeObject):
                                         return_attributes=return_attrs)
 
         # Walk through all tokens of the user.
-        for uuid in token_data:
+        for uuid in dict(token_data):
             add_token = False
 
             token_name = token_data[uuid]['name']
@@ -3469,24 +3467,24 @@ class User(OTPmeObject):
                     destination_token = None
                 # Make sure we load destination tokens.
                 if destination_token:
+                    dst_token_result = backend.search(object_type="token",
+                                            attribute="uuid",
+                                            value=destination_token,
+                                            return_attributes=return_attrs)
+                    if not dst_token_result:
+                        continue
                     if skip_disabled:
-                        dst_token_result = backend.search(object_type="token",
-                                                attribute="uuid",
-                                                value=destination_token,
-                                                return_attributes=return_attrs)
-                        if not dst_token_result:
-                            continue
-                        token_data[destination_token] = dst_token_result[destination_token]
                         try:
-                            destination_token_enabled = dst_token_result[destination_token]['enabled']
+                            destination_token_enabled = dst_token_result[destination_token]['enabled'][0]
                         except KeyError:
                             continue
                         if not destination_token_enabled:
                             continue
+                    token_data[destination_token] = dst_token_result[destination_token]
 
             # Make sure we resolv token links.
             if resolv_token_links and destination_token:
-                token_uuid = dst_token_result[destination_token]
+                token_uuid = destination_token
             else:
                 token_uuid = uuid
 
@@ -3544,7 +3542,10 @@ class User(OTPmeObject):
                 log_msg = _("Selecting token '{token_path}' based on accessgroup '{access_group_name}'.", log=True)[1]
                 log_msg = log_msg.format(token_path=token_rel_path, access_group_name=access_group.name)
                 logger.debug(log_msg)
-            tokens.append(token_uuid)
+            if destination_token:
+                tokens.append(uuid)
+            else:
+                tokens.append(token_uuid)
 
         result = []
         for token_uuid in tokens:
@@ -3778,12 +3779,15 @@ class User(OTPmeObject):
                                     site=config.site,
                                     attribute="name",
                                     value=access_group,
-                                    return_attributes=['max_fail'])
+                                    return_attributes=['max_fail', 'max_fail_reset'])
         if not result:
             msg = _("Unable to get max fail: Unknown accessgroup: {access_group}")
             msg = msg.format(access_group=access_group)
             raise OTPmeException(msg)
-        max_fail = result[0]
+
+        for uuid in result:
+            max_fail = result[uuid]['max_fail'][0]
+            max_fail_reset = result[uuid]['max_fail_reset'][0]
 
         # Get max failed pass config parameter.
         max_failed_pass = self.get_config_parameter("failed_pass_history")
@@ -3799,12 +3803,21 @@ class User(OTPmeObject):
                                             value=self.uuid,
                                             return_type="instance")
 
+        if max_fail_reset:
+            now = time.time()
+            for x in list(failed_pass_list):
+                last_try_age = now - x.last_used
+                if last_try_age <= max_fail_reset:
+                    continue
+                x.delete()
+                failed_pass_list.remove(x)
+
         failed_pass_count = len(failed_pass_list)
         if failed_pass_count >= max_failed_pass:
             x_sort = lambda x: x.last_used
             result = sorted(failed_pass_list, key=x_sort)
             del_failed_pass = failed_pass_count - max_failed_pass
-            for x in result[0:del_failed_pass]:
+            for x in list(result[0:del_failed_pass]):
                 x.delete()
 
     def count_fail(self, pass_hash: str, access_group: str):
@@ -4197,6 +4210,7 @@ class User(OTPmeObject):
         if new_token:
             if password is not None:
                 new_token.change_password(password=password,
+                                        force=force,
                                         verify_acls=False,
                                         callback=callback)
         else:
@@ -4353,7 +4367,7 @@ class User(OTPmeObject):
             if token.uuid == config.auth_token.uuid:
                 return callback.error(msg)
             if config.auth_token.destination_token:
-                dst_token = config.auth_token.get_destination_token()
+                dst_token = config.auth_token.dst_token
                 if dst_token:
                     if dst_token.uuid == config.auth_token.uuid:
                         return callback.error(msg)
@@ -4940,6 +4954,9 @@ class User(OTPmeObject):
             msg = msg.format(user_oid=user_oid)
             return callback.error(msg)
 
+        # LDIF attributes to ignore.
+        ignore_missing_attributes = []
+
         # Get template name set by policy.
         if template_name is None:
             template_name = self.template_name
@@ -4994,8 +5011,6 @@ class User(OTPmeObject):
                 result = backend.search(object_type="group",
                                         attribute="name",
                                         value=group_name,
-                                        realm=self.realm,
-                                        site=self.site,
                                         return_type="instance")
                 if not result:
                     msg = _("Unknown group: {group_name}")
@@ -5014,11 +5029,15 @@ class User(OTPmeObject):
         _default_roles = []
         if default_roles is not None:
             for role_name in default_roles:
+                realm = config.realm
+                site = config.site
+                if "/" in role_name:
+                    site, role_name = role_name.split("/")
                 result = backend.search(object_type="role",
                                         attribute="name",
                                         value=role_name,
-                                        realm=self.realm,
-                                        site=self.site,
+                                        realm=realm,
+                                        site=site,
                                         return_type="instance")
                 if not result:
                     msg = _("Unknown role: {role_name}")
@@ -5170,17 +5189,62 @@ class User(OTPmeObject):
 
         # If not group was set by policies set default users group.
         if self.group is None:
-            try:
-                self._change_group(default_group.uuid,
-                                new_user=True,
-                                verify_acls=verify_acls,
-                                callback=callback)
-            except UnknownObject as e:
-                msg = str(e)
-                return callback.error(msg, exception=UnknownObject)
-            except PermissionDenied as e:
-               msg = "Permission denied while setting group."
-               return callback.error(msg, exception=PermissionDenied)
+            if default_group.realm==config.realm and default_group.site == config.site:
+                try:
+                    self._change_group(default_group.uuid,
+                                    new_user=True,
+                                    verify_acls=verify_acls,
+                                    callback=callback)
+                except UnknownObject as e:
+                    msg = str(e)
+                    return callback.error(msg, exception=UnknownObject)
+                except PermissionDenied as e:
+                   msg = "Permission denied while setting group."
+                   return callback.error(msg, exception=PermissionDenied)
+            else:
+                ignore_missing_attributes.append("gidNumber")
+                job_name = f"add_default_group_user:{default_group.name}:{self.name}"
+                job_data = {
+                            'job_name'      : job_name,
+                            'group_uuid'    : default_group.uuid,
+                            'action'        : "add_default_group_user",
+                            'user_uuid'     : self.uuid,
+                            }
+                job_status = self.create_remote_job(realm=default_group.realm,
+                                                    site=default_group.site,
+                                                    job_data=job_data,
+                                                    callback=callback)
+                if not job_status:
+                    return callback.error()
+                # Add local job to add gidNumber to object on sync.
+                job_name = f"add_gidnumber:user:{self.name}"
+                job_data = {
+                            'job_name'      : job_name,
+                            'user_uuid'     : self.uuid,
+                            'action'        : "add_gidnumber",
+                            }
+                try:
+                    tree_job = OTPmeTreeJob(realm=config.realm,
+                                            site=config.site,
+                                            src_realm=default_group.realm,
+                                            src_site=default_group.site,
+                                            job_name=job_name,
+                                            job_data=job_data)
+                except Exception as e:
+                    msg, log_msg = _("Failed to add tree job: {error}", log=True)
+                    log_msg = log_msg.format(error=e)
+                    logger.warning(log_msg)
+                    msg = msg.format(error=e)
+                    return callback.error(msg)
+                # Add tree job.
+                try:
+                    tree_job.add()
+                except Exception as e:
+                    msg, log_msg = _("Failed to add tree job: {error}", log=True)
+                    log_msg = log_msg.format(error=e)
+                    logger.warning(log_msg)
+                    msg = msg.format(error=e)
+                    return callback.error(msg)
 
         # Handle given LDIF attributes.
         if ldif_attributes:
@@ -5214,6 +5278,7 @@ class User(OTPmeObject):
                                         inherit_acls=False,
                                         verify_acls=verify_acls,
                                         default_attributes=default_attributes,
+                                        ignore_missing_attributes=ignore_missing_attributes,
                                         verbose_level=verbose_level,
                                         callback=callback, **kwargs)
         if not add_result:
@@ -5363,6 +5428,7 @@ class User(OTPmeObject):
                 # Set default token password
                 if password is not None:
                     _default_token.change_password(password=password,
+                                                force=force,
                                                 verify_acls=False,
                                                 callback=callback)
             else:
@@ -5377,15 +5443,46 @@ class User(OTPmeObject):
                 _default_token = self.token(default_token_name)
             # Add default token to default roles.
             for role in _default_roles:
-                role.add_token(token_path=_default_token.rel_path,
-                                verify_acls=verify_acls,
-                                callback=callback)
+                if role.realm == config.realm and role.site == config.site:
+                    role.add_token(token_path=_default_token.rel_path,
+                                    verify_acls=verify_acls,
+                                    callback=callback)
+                else:
+                    job_name = f"add_token_to_role:{role.name}:{_default_token.rel_path}"
+                    job_data = {
+                                'job_name'      : job_name,
+                                'role_uuid'     : role.uuid,
+                                'action'        : "add_token_to_role",
+                                'token_uuid'    : _default_token.uuid,
+                                }
+                    job_status = self.create_remote_job(realm=role.realm,
+                                                        site=role.site,
+                                                        job_data=job_data,
+                                                        callback=callback)
+                    if not job_status:
+                        return callback.error()
+
             if _groups:
                 # Add token to given groups.
                 for _group in _groups:
-                    _group.add_token(token_path=_default_token.rel_path,
-                                    verify_acls=verify_acls,
-                                    callback=callback)
+                    if _group.realm == config.realm and _group.site == config.site:
+                        _group.add_token(token_path=_default_token.rel_path,
+                                        verify_acls=verify_acls,
+                                        callback=callback)
+                    else:
+                        job_name = f"add_token_to_group:{_group.name}:{_default_token.rel_path}"
+                        job_data = {
+                                    'job_name'      : job_name,
+                                    'group_uuid'    : _group.uuid,
+                                    'action'        : "add_token_to_group",
+                                    'token_uuid'    : _default_token.uuid,
+                                    }
+                        job_status = self.create_remote_job(realm=_group.realm,
+                                                            site=_group.site,
+                                                            job_data=job_data,
+                                                            callback=callback)
+                        if not job_status:
+                            return callback.error()
             else:
                 # If no groups are given run policies (e.g. defaultgroups).
                 policy_hook = "set_groups"
@@ -5530,7 +5627,7 @@ class User(OTPmeObject):
         # Remove user from group.
         if self.group_uuid:
             default_group = backend.get_object(uuid=self.group_uuid)
-            if default_group:
+            if default_group and default_group.site == config.site:
                 default_group.remove_default_group_user(self.uuid,
                                                 verify_acls=False,
                                                 ignore_missing=True,

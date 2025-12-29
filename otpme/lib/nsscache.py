@@ -132,7 +132,7 @@ def update_sync_map(lock=None, syncing=False):
         # Set "syncing" status.
         if syncing:
             try:
-                reply = add_sync_list_checksum(realm=x.realm,
+                response = add_sync_list_checksum(realm=x.realm,
                                             site=x.name,
                                             peer_realm=config.realm,
                                             peer_site=config.site,
@@ -147,7 +147,7 @@ def update_sync_map(lock=None, syncing=False):
                 log_msg = exception
                 logger.warning(log_msg)
             else:
-                log_msg = reply
+                log_msg = response
                 logger.debug(log_msg)
             return
 
@@ -160,7 +160,7 @@ def update_sync_map(lock=None, syncing=False):
                                                     object_types=object_types)
         # Add sync list checksum to sync map.
         try:
-            reply = add_sync_list_checksum(realm=x.realm,
+            response = add_sync_list_checksum(realm=x.realm,
                                         site=x.name,
                                         peer_realm=config.realm,
                                         peer_site=config.site,
@@ -175,7 +175,7 @@ def update_sync_map(lock=None, syncing=False):
             log_msg = exception
             logger.warning(log_msg)
         else:
-            log_msg = reply
+            log_msg = response
             logger.debug(log_msg)
 
 def update_object(object_id, action):

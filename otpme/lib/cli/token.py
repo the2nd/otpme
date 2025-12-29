@@ -327,7 +327,7 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                     group_string = f"{group_site}/{group_name}"
 
                 if group_status_string:
-                    group_string = f"({group_string} {group_status_string})"
+                    group_string = f"{group_string} {group_status_string}"
 
                 if group_uuid in role_ags_result:
                     group_string = f"({group_string})"

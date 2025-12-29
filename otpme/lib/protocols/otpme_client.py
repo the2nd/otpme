@@ -1586,9 +1586,11 @@ class OTPmeClient(OTPmeClientBase):
                                 key=jwt_key,
                                 algorithm='RS256')
         except Exception as e:
-            log_msg = _("JWT verification failed: {error}", log=True)[1]
+            response, log_msg = _("JWT verification failed: {error}", log=True)
             log_msg = log_msg.format(error=e)
             self.logger.warning(log_msg)
+            response = {'status':False, 'response':response}
+            return response
 
         if not config.force:
             x = pprint.pformat(jwt_data)
@@ -1597,7 +1599,7 @@ class OTPmeClient(OTPmeClientBase):
             paras = { 'prompt':msg, 'input_prefill':None }
             answer = self.ask(paras)
             if answer.lower() != "y":
-                response = {'status':False, 'reply':'Object move aborted by user.'}
+                response = {'status':False, 'response':'Object move aborted by user.'}
                 return response
 
         # Get mgmt client.
@@ -1617,13 +1619,13 @@ class OTPmeClient(OTPmeClientBase):
                     }
         try:
             status, \
-            reply = mgmt_client.send(command="move_object",
+            response = mgmt_client.send(command="move_object",
                                     command_args=command_args,
                                     realm=dst_realm,
                                     site=dst_site)
         except Exception as e:
             status = False
-            reply = str(e)
+            response = str(e)
         finally:
             try:
                 mgmt_client.close()
@@ -1632,7 +1634,7 @@ class OTPmeClient(OTPmeClientBase):
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)
 
-        response = {'status':status, 'reply':reply}
+        response = {'status':status, 'response':response}
 
         return response
 
@@ -1663,9 +1665,11 @@ class OTPmeClient(OTPmeClientBase):
                                 key=jwt_key,
                                 algorithm='RS256')
         except Exception as e:
-            log_msg = _("JWT verification failed: {error}", log=True)[1]
+            response, log_msg = _("JWT verification failed: {error}", log=True)
             log_msg = log_msg.format(error=e)
             self.logger.warning(log_msg)
+            response = {'status':False, 'response':response}
+            return response
 
         if not config.force:
             x = pprint.pformat(jwt_data)
@@ -1679,13 +1683,14 @@ class OTPmeClient(OTPmeClientBase):
                 msg = _("Change user default group membership on {realm}/{site}?\n{data}\n[y/n] ")
                 msg = msg.format(realm=dst_realm, site=dst_site, data=x)
             else:
-                response = {'status':False, 'reply':f'Unknown action: {action}.'}
+                response = {'status':False, 'response':f'Unknown action: {action}.'}
                 return response
             paras = { 'prompt':msg, 'input_prefill':None }
             answer = self.ask(paras)
             if answer.lower() != "y":
-                reply = f'Default group {action} aborted by user.'
-                response = {'status':False, 'reply':reply}
+                response = _('Default group {action} aborted by user.')
+                response.format(action=action)
+                response = {'status':False, 'response':response}
                 return response
 
         # Get mgmt client.
@@ -1704,13 +1709,13 @@ class OTPmeClient(OTPmeClientBase):
                     }
         try:
             status, \
-            reply = mgmt_client.send(command="change_user_default_group",
+            response = mgmt_client.send(command="change_user_default_group",
                                     command_args=command_args,
                                     realm=dst_realm,
                                     site=dst_site)
         except Exception as e:
             status = False
-            reply = str(e)
+            response = str(e)
         finally:
             try:
                 mgmt_client.close()
@@ -1719,7 +1724,84 @@ class OTPmeClient(OTPmeClientBase):
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)
 
-        response = {'status':status, 'reply':reply}
+        response = {'status':status, 'response':response}
+
+        return response
+
+    def create_remote_job(self, command_dict):
+        """ Create job on remote site. """
+        from otpme.lib.classes.mgmt_client import OTPmeMgmtClient
+        # Get sign request.
+        object_data = command_dict['object_data']
+        src_realm = object_data['src_realm']
+        src_site = object_data['src_site']
+        dst_realm = object_data['dst_realm']
+        dst_site = object_data['dst_site']
+        jwt = object_data['jwt']
+        cert = stuff.get_site_cert(realm=src_realm, site=src_site)
+        if not cert:
+            msg = "Unable to get site certificate."
+            raise OTPmeException(msg)
+        site_cert = SSLCert(cert=cert)
+        try:
+            jwt_key = RSAKey(key=site_cert.public_key())
+        except Exception as e:
+            msg = _("Unable to get public key of site certificate: {site}: {error}")
+            msg = msg.format(site=self.site, error=e)
+            raise OTPmeException(msg)
+        try:
+            jwt_data = _jwt.decode(jwt=jwt,
+                                key=jwt_key,
+                                algorithm='RS256')
+        except Exception as e:
+            response, log_msg = _("JWT verification failed: {error}", log=True)
+            log_msg = log_msg.format(error=e)
+            self.logger.warning(log_msg)
+            response = {'status':False, 'response':response}
+            return response
+
+        if not config.force:
+            x = pprint.pformat(jwt_data)
+            msg = _("Create job on {realm}/{site}?\n{data}\n[y/n] ")
+            msg = msg.format(realm=dst_realm, site=dst_site, data=x)
+            paras = { 'prompt':msg, 'input_prefill':None }
+            answer = self.ask(paras)
+            if answer.lower() != "y":
+                response = _('Action aborted by user.')
+                response = {'status':False, 'response':response}
+                return response
+
+        # Get mgmt client.
+        login_data = {
+                    config.realm : {
+                                'username' : self.username,
+                                },
+                    }
+        mgmt_client = OTPmeMgmtClient(login_data=login_data,
+                                    interactive=self.interactive)
+        # Send command.
+        command_args = {
+                        'object_data'   : object_data,
+                    }
+        try:
+            status, \
+            response = mgmt_client.send(command="job",
+                                    subcommand="add",
+                                    command_args=command_args,
+                                    realm=dst_realm,
+                                    site=dst_site)
+        except Exception as e:
+            status = False
+            response = str(e)
+        finally:
+            try:
+                mgmt_client.close()
+            except Exception as e:
+                log_msg = _("Failed to close connection to mgmtd: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+
+        response = {'status':status, 'response':response}
 
         return response
 
@@ -1737,13 +1819,13 @@ class OTPmeClient(OTPmeClientBase):
                 break
             if 'command' not in response:
                 break
-            if 'query_id' not in response:
+            if 'message_id' not in response:
                 break
 
             # Get command from dict.
             client_command = response['command']
             # Get response variable name.
-            response_id = response['query_id']
+            response_id = response['message_id']
 
             if not client_command.startswith("OTPME_"):
                 msg = _("Received invalid client command: {command}")
@@ -1843,7 +1925,7 @@ class OTPmeClient(OTPmeClientBase):
 
             elif client_command == "JOB":
                 # Set our current job UUID.
-                job_uuid = response['query_id']
+                job_uuid = response['message_id']
                 self.job = {'job_uuid' : job_uuid}
                 # Set job realm/site if we got redirected.
                 self.job['realm'] = response['realm']
@@ -1928,6 +2010,10 @@ class OTPmeClient(OTPmeClientBase):
             elif client_command == "CHANGE_USER_DEFAULT_GROUP":
                 send_request = True
                 request = self.change_user_default_group(response)
+
+            elif client_command == "CREATE_REMOTE_JOB":
+                send_request = True
+                request = self.create_remote_job(response)
 
             # Send request
             if send_request:
@@ -2278,10 +2364,10 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Will hold ssh-agent connection when doing login/logout.
         self.ssh_agent_conn = None
-        # Preauth reply.
-        self.preauth_reply = None
-        # Auth reply.
-        self.auth_reply = None
+        # Preauth response.
+        self.preauth_response = None
+        # Auth response.
+        self.auth_response = None
 
         if self.daemon == "hostd":
             self.verify_preauth = False
@@ -2356,16 +2442,16 @@ class OTPmeClient1(OTPmeClientBase):
                 if peer.fqdn == self.connection.peer_cn:
                     return peer
 
-    def _verify_jwt(self, auth_reply):
-        """ Verify JWT from auth reply. """
-        # Try to get JWT from auth reply.
+    def _verify_jwt(self, auth_response):
+        """ Verify JWT from auth response. """
+        # Try to get JWT from auth response.
         try:
-            self.jwt_string = auth_reply['jwt']
+            self.jwt_string = auth_response['jwt']
         except:
-            raise OTPmeException(_("Malformed auth reply: Missing JWT"))
+            raise OTPmeException(_("Malformed auth response: Missing JWT"))
 
         if not self.jwt_string:
-            msg = (_("Authentication reply does not contain JWT."))
+            msg = (_("Authentication response does not contain JWT."))
             raise OTPmeException(msg)
 
         # Verify JWT.
@@ -2546,7 +2632,7 @@ class OTPmeClient1(OTPmeClientBase):
         if self.reneg or self.rsp or self.srp or self.slp:
             need_token = False
 
-        # Indicates if we need the preauth reply to include valid token
+        # Indicates if we need the preauth response to include valid token
         # types that could be used to authenticate the user.
         preauth_args['need_token'] = need_token
 
@@ -2557,7 +2643,7 @@ class OTPmeClient1(OTPmeClientBase):
         if self.verify_preauth:
             need_site_cert = True
             if not self.realm or not self.site:
-                msg = (_("Need <realm> and <site> to verify preauth reply."))
+                msg = (_("Need <realm> and <site> to verify preauth response."))
                 raise OTPmeException(msg)
 
         # If no JWT key was given we need to get it from our site cert.
@@ -2726,77 +2812,77 @@ class OTPmeClient1(OTPmeClientBase):
             raise ConnectionError(response)
 
         if status_code != status_codes.OK:
-            msg = _("Got unknown preauth reply code: {code}")
+            msg = _("Got unknown preauth response code: {code}")
             msg = msg.format(code=status_code)
             raise OTPmeException(msg)
 
         if not isinstance(response, dict):
-            msg = _("Got wrong preauth reply: {response}")
+            msg = _("Got wrong preauth response: {response}")
             msg = msg.format(response=response)
             raise OTPmeException(msg)
 
         try:
-            reply_type = response['type']
+            response_type = response['type']
         except:
-            msg = (_("Preauth reply misses <type>."))
+            msg = (_("Preauth response misses <type>."))
             raise OTPmeException(msg)
 
-        if reply_type != "preauth":
-            msg = _("Got wrong preauth reply type: {reply_type}")
-            msg = msg.format(reply_type=reply_type)
+        if response_type != "preauth":
+            msg = _("Got wrong preauth response type: {response_type}")
+            msg = msg.format(response_type=response_type)
             raise OTPmeException(msg)
 
-        # Get inner preauth reply.
-        preauth_reply = response['preauth_reply']
+        # Get inner preauth response.
+        preauth_response = response['preauth_response']
 
-        # Decode inner preauth reply.
+        # Decode inner preauth response.
         try:
-            preauth_reply = json.decode(preauth_reply,
+            preauth_response = json.decode(preauth_response,
                                         encryption=enc_mod,
                                         enc_key=enc_key,
                                         encoding="base64")
         except Exception as e:
-            msg = _("Failed to decrypt preauth reply: {error}")
+            msg = _("Failed to decrypt preauth response: {error}")
             msg = msg.format(error=e)
             self.cleanup()
             config.raise_exception()
             raise OTPmeException(msg)
 
-        # Set preauth reply.
-        self.preauth_reply = preauth_reply
+        # Set preauth response.
+        self.preauth_response = preauth_response
 
         try:
-            preauth_status = self.preauth_reply['status']
+            preauth_status = self.preauth_response['status']
         except:
-            msg = (_("Malformed preauth reply: Missing status"))
+            msg = (_("Malformed preauth response: Missing status"))
             raise OTPmeException(msg)
 
         try:
-            preauth_message = self.preauth_reply['status_message']
+            preauth_message = self.preauth_response['status_message']
         except:
-            msg = (_("Malformed preauth reply: Missing message"))
+            msg = (_("Malformed preauth response: Missing message"))
             raise OTPmeException(msg)
 
         try:
-            preauth_response = self.preauth_reply['preauth_response']
+            preauth_response = self.preauth_response['preauth_response']
         except:
-            msg = (_("Malformed preauth reply: Missing preauth response"))
+            msg = (_("Malformed preauth response: Missing preauth response"))
             raise OTPmeException(msg)
 
         if self.connection.encrypt_session:
             try:
-                ecdh_server_pub_pem = self.preauth_reply['ecdh_server_pub']
+                ecdh_server_pub_pem = self.preauth_response['ecdh_server_pub']
             except:
-                msg = (_("Malformed preauth reply: Missing server ECDH "
+                msg = (_("Malformed preauth response: Missing server ECDH "
                         "public key."))
                 raise OTPmeException(msg)
 
         # Set realm/site we are connected to.
         try:
-            self.peer_realm = self.preauth_reply['realm']
-            self.peer_site = self.preauth_reply['site']
+            self.peer_realm = self.preauth_response['realm']
+            self.peer_site = self.preauth_response['site']
         except:
-            msg = (_("Malformed preauth reply: Missing peer realm/site"))
+            msg = (_("Malformed preauth response: Missing peer realm/site"))
             raise OTPmeException(msg)
 
         if not preauth_status:
@@ -2857,11 +2943,11 @@ class OTPmeClient1(OTPmeClientBase):
         if preauth_status == "redirect_auth":
             if self.login:
                 # On realm login we have to redirect the login request to the
-                # realm/site we got from the preauth reply and pass on the
+                # realm/site we got from the preauth response and pass on the
                 # redirect challenge to be signed by the users home site.
-                auth_realm = self.preauth_reply['auth_realm']
-                auth_site = self.preauth_reply['auth_site']
-                auth_challenge = self.preauth_reply['auth_challenge']
+                auth_realm = self.preauth_response['auth_realm']
+                auth_site = self.preauth_response['auth_site']
+                auth_challenge = self.preauth_response['auth_challenge']
                 try:
                     self.redirect_conn(realm=auth_realm,
                                         site=auth_site,
@@ -2886,9 +2972,9 @@ class OTPmeClient1(OTPmeClientBase):
 
             elif preauth_status == "redirect_auth":
                 # Redirect connection.
-                auth_realm = self.preauth_reply['auth_realm']
-                auth_site = self.preauth_reply['auth_site']
-                auth_challenge = self.preauth_reply['auth_challenge']
+                auth_realm = self.preauth_response['auth_realm']
+                auth_site = self.preauth_response['auth_site']
+                auth_challenge = self.preauth_response['auth_challenge']
                 try:
                     self.redirect_conn(realm=auth_realm,
                                         site=auth_site,
@@ -2910,7 +2996,7 @@ class OTPmeClient1(OTPmeClientBase):
                 msg = (_("Need <jwt_method> with <jwt_auth>."))
                 raise OTPmeException(msg)
             # Get challenge to be signed by the given <jwt_method>.
-            auth_challenge = self.preauth_reply['auth_challenge']
+            auth_challenge = self.preauth_response['auth_challenge']
             # Try to get JWT.
             try:
                 self.jwt = self.jwt_method(auth_challenge)
@@ -3002,21 +3088,21 @@ class OTPmeClient1(OTPmeClientBase):
                 msg = str(e)
                 raise OTPmeException(msg)
 
-        # Get server time from preauth reply.
+        # Get server time from preauth response.
         try:
-            peer_time = self.preauth_reply['time']
+            peer_time = self.preauth_response['time']
         except:
-            msg = (_("Malformed preauth reply: Missing peer time"))
+            msg = (_("Malformed preauth response: Missing peer time"))
             raise OTPmeException(msg)
 
-        # Try to get users agent script from preauth reply.
+        # Try to get users agent script from preauth response.
         if self.username:
             try:
-                self.ssh_agent_script = self.preauth_reply['agent_script']
-                self.ssh_agent_script_uuid = self.preauth_reply['agent_script_uuid']
-                self.ssh_agent_script_path = self.preauth_reply['agent_script_path']
-                self.ssh_agent_script_opts = self.preauth_reply['agent_script_options']
-                self.ssh_agent_script_signs = self.preauth_reply['agent_script_signs']
+                self.ssh_agent_script = self.preauth_response['agent_script']
+                self.ssh_agent_script_uuid = self.preauth_response['agent_script_uuid']
+                self.ssh_agent_script_path = self.preauth_response['agent_script_path']
+                self.ssh_agent_script_opts = self.preauth_response['agent_script_options']
+                self.ssh_agent_script_signs = self.preauth_response['agent_script_signs']
             except Exception:
                 log_msg = _("Got no SSH agent script from peer.", log=True)[1]
                 self.logger.debug(log_msg)
@@ -3035,14 +3121,14 @@ class OTPmeClient1(OTPmeClientBase):
                 self.logger.warning(log_msg)
 
         if self.username:
-            # Get smartcard options from preauth reply.
+            # Get smartcard options from preauth response.
             try:
-                self.smartcard_options = self.preauth_reply['token_options']
+                self.smartcard_options = self.preauth_response['token_options']
             except KeyError:
                 pass
-            # Get smartcard options from preauth reply.
+            # Get smartcard options from preauth response.
             try:
-                self.ssh_public_keys = self.preauth_reply['ssh_public_keys']
+                self.ssh_public_keys = self.preauth_response['ssh_public_keys']
             except KeyError:
                 pass
             if self.ssh_public_keys:
@@ -3671,7 +3757,7 @@ class OTPmeClient1(OTPmeClientBase):
                 self.logger.debug(log_msg)
 
         # Set auth response.
-        self.auth_reply = response
+        self.auth_response = response
 
         # Verify auth type.
         if response_type != "auth":
@@ -3682,7 +3768,7 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Try to get auth message from response.
         try:
-            reply_message = self.auth_reply['message']
+            response_message = self.auth_response['message']
         except:
             self.cleanup()
             msg = (_("Malformed auth response: Missing response message"))
@@ -3690,7 +3776,7 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Try to get auth status from response.
         try:
-            auth_status = self.auth_reply['status']
+            auth_status = self.auth_response['status']
         except:
             self.cleanup()
             msg = (_("Malformed auth response: Missing response status"))
@@ -3700,7 +3786,7 @@ class OTPmeClient1(OTPmeClientBase):
             # Verify JWT.
             if self.verify_jwt:
                 try:
-                    self._verify_jwt(self.auth_reply)
+                    self._verify_jwt(self.auth_response)
                 except Exception as e:
                     msg = str(e)
                     log_msg = msg
@@ -3712,8 +3798,8 @@ class OTPmeClient1(OTPmeClientBase):
                     self.logger.debug(log_msg)
 
             # Add SSH private key to agent.
-            if 'ssh_private_key' in self.auth_reply:
-                ssh_private_key = self.auth_reply['ssh_private_key']
+            if 'ssh_private_key' in self.auth_response:
+                ssh_private_key = self.auth_response['ssh_private_key']
             else:
                 ssh_private_key = None
 
@@ -3745,17 +3831,17 @@ class OTPmeClient1(OTPmeClientBase):
             # Set response message.
             if self.login:
                 auth_message = _("Realm login successful: {destination}: {message}")
-                auth_message = auth_message.format(destination=req_dst, message=reply_message)
+                auth_message = auth_message.format(destination=req_dst, message=response_message)
             else:
                 auth_message = _("Authentication successful: {destination}: {message}")
-                auth_message = auth_message.format(destination=req_dst, message=reply_message)
+                auth_message = auth_message.format(destination=req_dst, message=response_message)
 
             if self.login:
                 # Calculate RSP.
                 if config.debug_level(DEBUG_SLOT) > 3:
                     log_msg = _("Generating RSP via ECDH...", log=True)[1]
                     self.logger.debug(log_msg)
-                rsp_ecdh_server_pub = self.auth_reply['ecdh_server_pub']
+                rsp_ecdh_server_pub = self.auth_response['ecdh_server_pub']
                 server_pubkey = self.rsp_ecdh_key.load_public_key(rsp_ecdh_server_pub)
                 dh_secret = self.rsp_ecdh_key.dhexchange(server_pubkey)
                 self.rsp = sotp.derive_rsp(secret=dh_secret,
@@ -3764,22 +3850,22 @@ class OTPmeClient1(OTPmeClientBase):
 
             if self.mount_shares:
                 try:
-                    self.shares = self.auth_reply['shares']
+                    self.shares = self.auth_response['shares']
                 except KeyError:
                     pass
                 else:
                     log_msg = _("Received the following shares: {shares}")
                     log_msg = log_msg.format(shares=list(self.shares))
                     self.logger.debug(log_msg)
-                    mount_reply = self.agent_conn.mount_shares(shares=self.shares)
-                    self.message_method(mount_reply)
+                    mount_response = self.agent_conn.mount_shares(shares=self.shares)
+                    self.message_method(mount_response)
 
             if self.add_login_session:
                 # Add login session to agent, handle offline tokens etc.
                 self._add_login_session()
 
             elif self.reneg:
-                if reply_message == "AUTH_SESSION_RENEG_START":
+                if response_message == "AUTH_SESSION_RENEG_START":
                     # Send second auth request with new RSP to finish
                     # renegotiation.
                     command_args['password'] = self.new_rsp
@@ -3792,18 +3878,18 @@ class OTPmeClient1(OTPmeClientBase):
                                                 handle_auth=False)
                     # Try to decode reneg response.
                     try:
-                        reneg_reply = response
-                        reply_message = reneg_reply['message']
+                        reneg_response = response
+                        response_message = reneg_response['message']
                     except Exception as e:
-                        reneg_reply = None
-                        reply_message, log_msg = _("Invalid reneg reply.", log=True)
+                        reneg_response = None
+                        response_message, log_msg = _("Invalid reneg response.", log=True)
                         log_msg = f"{log_msg}: {e}"
                         self.logger.critical(log_msg)
 
                     # Verify JWT.
-                    if self.verify_jwt and reneg_reply:
+                    if self.verify_jwt and reneg_response:
                         try:
-                            self._verify_jwt(reneg_reply)
+                            self._verify_jwt(reneg_response)
                         except Exception as e:
                             msg = str(e)
                             log_msg = msg
@@ -3811,18 +3897,18 @@ class OTPmeClient1(OTPmeClientBase):
                             self.cleanup()
                             raise AuthFailed(msg)
 
-                    if reply_message == "AUTH_SESSION_RENEG_DONE":
+                    if response_message == "AUTH_SESSION_RENEG_DONE":
                         auth_message = "Session renegotiation successful."
                         reneg_status = True
                     else:
                         reneg_status = False
                 else:
                     reneg_status = False
-                    reply_message = _("Unknown reneg reply: {reply}")
-                    reply_message = reply_message.format(reply=reply_message)
+                    response_message = _("Unknown reneg response: {response}")
+                    response_message = response_message.format(response=response_message)
                 if not reneg_status:
                     msg = _("Session renegotiation failed: {message}")
-                    msg = msg.format(message=reply_message)
+                    msg = msg.format(message=response_message)
                     self.cleanup()
                     raise RenegFailed(msg)
             else:
@@ -3833,39 +3919,39 @@ class OTPmeClient1(OTPmeClientBase):
             self.cleanup()
             if self.login:
                 msg = _("Login failed for user {username}: {message}")
-                msg = msg.format(username=self.username, message=reply_message)
+                msg = msg.format(username=self.username, message=response_message)
                 raise AuthFailed(msg)
             elif self.logout:
-                if reply_message != "REALM_LOGOUT_OK":
+                if response_message != "REALM_LOGOUT_OK":
                     msg = _("Logout failed: {message}")
-                    msg = msg.format(message=reply_message)
+                    msg = msg.format(message=response_message)
                     raise LogoutFailed(msg)
                 auth_message = "Successfully logged out."
             elif self.reneg:
                 # To prevent otpme-agent from removing offline sessions when
                 # access was denied by a policy (e.g. login times) we raise no
                 # AuthFailed() exception.
-                if reply_message == "AUTH_DENIED_BY_POLICY":
+                if response_message == "AUTH_DENIED_BY_POLICY":
                     msg = _("Session renegotiation denied by policy: {message}")
-                    msg = msg.format(message=reply_message)
+                    msg = msg.format(message=response_message)
                     raise OTPmeException(msg)
                 else:
                     msg = _("Session renegotiation failed: {message}")
-                    msg = msg.format(message=reply_message)
+                    msg = msg.format(message=response_message)
                     raise AuthFailed(msg)
             elif self.rsp:
                 msg = _("Authentication failed: {message}")
-                msg = msg.format(message=reply_message)
+                msg = msg.format(message=response_message)
                 raise AuthFailed(msg)
             elif self.srp:
-                if reply_message != "AUTH_SESSION_REFRESH":
+                if response_message != "AUTH_SESSION_REFRESH":
                     msg = _("Session refresh failed: {message}")
-                    msg = msg.format(message=reply_message)
+                    msg = msg.format(message=response_message)
                     raise RefreshFailed(msg)
                 auth_message = "Session refresh successful."
             else:
                 msg = _("Authentication failed for user {username}: {message}")
-                msg = msg.format(username=self.username, message=reply_message)
+                msg = msg.format(username=self.username, message=response_message)
                 raise AuthFailed(msg)
 
         log_method(auth_message)
@@ -3986,11 +4072,11 @@ class OTPmeClient1(OTPmeClientBase):
         # Indicates if we have to cache offline tokens.
         cache_offline_tokens = False
         # Get SLP for this session.
-        slp = self.auth_reply['slp']
+        slp = self.auth_response['slp']
 
         # Set login token to otpme-agent.
-        login_token = self.auth_reply['login_token']
-        login_pass_type = self.auth_reply['login_pass_type']
+        login_token = self.auth_response['login_token']
+        login_pass_type = self.auth_response['login_pass_type']
         try:
             self.agent_conn.set_login_token(login_token, login_pass_type)
         except Exception as e:
@@ -3998,8 +4084,8 @@ class OTPmeClient1(OTPmeClientBase):
             log_msg = log_msg.format(error=e)
             self.logger.critical(log_msg)
 
-        # Get offline tokens from auth reply.
-        offline_tokens = self.auth_reply['offline_tokens']
+        # Get offline tokens from auth response.
+        offline_tokens = self.auth_response['offline_tokens']
 
         clear_offline_tokens = False
         if offline_tokens:
@@ -4018,7 +4104,7 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Get session UUID.
         try:
-            session_uuid = self.auth_reply['session']
+            session_uuid = self.auth_response['session']
         except:
             self.cleanup()
             msg = _("Malformed auth response: Missing session UUID")
@@ -4029,7 +4115,7 @@ class OTPmeClient1(OTPmeClientBase):
             self.logger.debug(log_msg)
         # Get offline session keeping.
         try:
-            keep_offline_session = self.auth_reply['keep_session']
+            keep_offline_session = self.auth_response['keep_session']
         except:
             self.cleanup()
             msg = _("Malformed auth response: Missing keep_session")
@@ -4040,7 +4126,7 @@ class OTPmeClient1(OTPmeClientBase):
             self.logger.debug(log_msg)
         # Get login time.
         try:
-            login_time = self.auth_reply['login_time']
+            login_time = self.auth_response['login_time']
         except:
             self.cleanup()
             msg = (_("Malformed auth response: Missing login time"))
@@ -4051,7 +4137,7 @@ class OTPmeClient1(OTPmeClientBase):
             self.logger.debug(log_msg)
         # Get session timeout.
         try:
-            session_timeout = self.auth_reply['timeout']
+            session_timeout = self.auth_response['timeout']
         except:
             self.cleanup()
             msg = (_("Malformed auth response: Missing session timeout"))
@@ -4062,7 +4148,7 @@ class OTPmeClient1(OTPmeClientBase):
             self.logger.debug(log_msg)
         # Get session unused timeout.
         try:
-            session_unused_timeout = self.auth_reply['unused_timeout']
+            session_unused_timeout = self.auth_response['unused_timeout']
         except:
             self.cleanup()
             msg = (_("Malformed auth response: Missing unused "
@@ -4074,7 +4160,7 @@ class OTPmeClient1(OTPmeClientBase):
             self.logger.debug(log_msg)
 
         # Do not add offline token on temp pass authentication.
-        temp_pass_auth = self.auth_reply['temp_pass_auth']
+        temp_pass_auth = self.auth_response['temp_pass_auth']
 
         # Check for offline tokens if requested.
         if self.cache_login_tokens and not temp_pass_auth:
@@ -4095,7 +4181,7 @@ class OTPmeClient1(OTPmeClientBase):
         if cache_offline_tokens:
             # Set login token before adding/decoding offline tokens. This is
             # required to get second factor tokens loaded.
-            login_token_uuid = self.auth_reply['login_token_uuid']
+            login_token_uuid = self.auth_response['login_token_uuid']
             self._offline_token.set_login_token(login_token_uuid, session_uuid)
             try:
                 token_instances = self.decode_offline_token(login_token_uuid,
@@ -4167,15 +4253,15 @@ class OTPmeClient1(OTPmeClientBase):
 
             # Save users key script to disk.
             try:
-                key_script = self.auth_reply['key_script']
-                key_script_uuid = self.auth_reply['key_script_uuid']
-                key_script_path = self.auth_reply['key_script_path']
-                key_script_opts = self.auth_reply['key_script_opts']
-                key_script_signs = self.auth_reply['key_script_signs']
+                key_script = self.auth_response['key_script']
+                key_script_uuid = self.auth_response['key_script_uuid']
+                key_script_path = self.auth_response['key_script_path']
+                key_script_opts = self.auth_response['key_script_opts']
+                key_script_signs = self.auth_response['key_script_signs']
             except:
                 key_script = None
                 config.raise_exception()
-                log_msg = _("Invalid auth reply: Failed to get key script", log=True)[1]
+                log_msg = _("Invalid auth response: Failed to get key script", log=True)[1]
                 self.logger.warning(log_msg)
 
             if key_script:
@@ -4208,15 +4294,15 @@ class OTPmeClient1(OTPmeClientBase):
 
             # Save users login script to disk.
             try:
-                login_script = self.auth_reply['login_script']
-                login_script_uuid = self.auth_reply['login_script_uuid']
-                login_script_path = self.auth_reply['login_script_path']
-                login_script_opts = self.auth_reply['login_script_opts']
-                login_script_signs = self.auth_reply['login_script_signs']
+                login_script = self.auth_response['login_script']
+                login_script_uuid = self.auth_response['login_script_uuid']
+                login_script_path = self.auth_response['login_script_path']
+                login_script_opts = self.auth_response['login_script_opts']
+                login_script_signs = self.auth_response['login_script_signs']
             except:
                 login_script = None
                 config.raise_exception()
-                log_msg = _("Invalid auth reply: Failed to get login script", log=True)[1]
+                log_msg = _("Invalid auth response: Failed to get login script", log=True)[1]
                 self.logger.warning(log_msg)
 
             if login_script:
@@ -4248,7 +4334,7 @@ class OTPmeClient1(OTPmeClientBase):
             return
 
     def decode_offline_token(self, login_token_uuid, offline_tokens):
-        """ Decode offline token from auth reply. """
+        """ Decode offline token from auth response. """
         token_instances = {}
         login_token = None
         need_encryption = False
@@ -4307,7 +4393,7 @@ class OTPmeClient1(OTPmeClientBase):
         enc_challenge = None
 
         # Set key to encrypt used OTPs/token counters.
-        offline_data_key = self.auth_reply['offline_data_key']
+        offline_data_key = self.auth_response['offline_data_key']
         self._offline_token.offline_data_key = offline_data_key
 
         try:
@@ -4371,7 +4457,7 @@ class OTPmeClient1(OTPmeClientBase):
                 elif verify_token.pass_type == "ssh_key":
                     # Try to get SSH private key.
                     try:
-                        ssh_private_key = self.auth_reply['ssh_private_key']
+                        ssh_private_key = self.auth_response['ssh_private_key']
                     except:
                         ssh_private_key = None
 

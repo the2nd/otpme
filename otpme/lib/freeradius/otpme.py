@@ -113,9 +113,9 @@ def authenticate(authData):
     # Default return code should be reject.
     return_code = radiusd.RLM_MODULE_REJECT
 
-    # Set empty reply_tuple and config_tuple. Both will be filled in while
+    # Set empty response_tuple and config_tuple. Both will be filled in while
     # processing the request.
-    reply_tuple = ()
+    response_tuple = ()
     config_tuple = ()
 
     # Get request parameters.
@@ -326,18 +326,18 @@ def authenticate(authData):
                 logger.debug(log_msg)
                 auth_status, \
                 status_code, \
-                auth_reply, \
+                auth_response, \
                 binary_data = daemon_conn.send("verify", command_args)
-                auth_message = auth_reply['message']
+                auth_message = auth_response['message']
                 try:
-                    session_uuid = auth_reply['session']
+                    session_uuid = auth_response['session']
                 except KeyError:
                     session_uuid = None
 
             # Check if user was authenticated successful.
             if auth_status:
-                # Build replyTuple for rlm_python.
-                reply_tuple = (
+                # Build responseTuple for rlm_python.
+                response_tuple = (
                             ('Reply-Message', _("Authentication successful")),
                             #('Session-Timeout', "30"),
                             #('Idle-Timeout', "15"),
@@ -360,8 +360,8 @@ def authenticate(authData):
                 # Set return code.
                 return_code = radiusd.RLM_MODULE_OK
             else:
-                # Build replyTuple for rlm_python.
-                reply_tuple = (
+                # Build responseTuple for rlm_python.
+                response_tuple = (
                                 ('Reply-Message', _("Authentication failed")),
                             )
 
@@ -411,12 +411,12 @@ def authenticate(authData):
             logger.debug(log_msg)
             auth_status, \
             status_code, \
-            auth_reply, \
+            auth_response, \
             binary_data = daemon_conn.send("verify_mschap", command_args)
             # Get auth message.
-            auth_message = auth_reply['message']
+            auth_message = auth_response['message']
             # Get password hash.
-            password_hash = auth_reply['password_hash']
+            password_hash = auth_response['password_hash']
 
             # Check if user authenticated successful.
             if auth_status:
@@ -470,8 +470,8 @@ def authenticate(authData):
                 log_msg = _("adding MS-MPPE-Encryption-Types: '0x00000006'", log=True)[1]
                 log(radiusd.L_DBG, log_msg)
 
-                # Build replyTuple for rlm_python.
-                reply_tuple = (
+                # Build responseTuple for rlm_python.
+                response_tuple = (
                                 ('Reply-Message', _("Authentication successful")),
                                 #('Tunnel-Password', "otp"),
                                 ('MS-CHAP2-Success', f"0x{success_response_hex}"),
@@ -507,8 +507,8 @@ def authenticate(authData):
                 log_msg = log_msg.format(failure_response=failure_response)
                 log(radiusd.L_DBG, log_msg)
 
-                # Build replyTuple for rlm_python.
-                reply_tuple = (
+                # Build responseTuple for rlm_python.
+                response_tuple = (
                                 ('Reply-Message', _("Authentication failed")),
                                 ('MS-CHAP-Error', failure_response),
                             )
@@ -529,7 +529,7 @@ def authenticate(authData):
                 return_code = radiusd.RLM_MODULE_REJECT
 
     # Finally return from authenticate().
-    return (return_code, reply_tuple, config_tuple)
+    return (return_code, response_tuple, config_tuple)
 
 
 def detach():

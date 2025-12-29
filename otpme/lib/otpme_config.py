@@ -552,7 +552,8 @@ class OTPmeConfig(object):
         self.register_config_var("nsscache_pidfile", str, None)
 
         self.register_config_var("use_mgmtd_socket", bool, False,
-                                config_file_parameter="USE_MGMTD_SOCKET")
+                                config_file_parameter="USE_MGMTD_SOCKET",
+                                user_config_file_parameter="USE_MGMTD_SOCKET")
         self.register_config_var("use_socket", bool, False)
         self.register_config_var("socket_auth", bool, False)
 
@@ -927,18 +928,17 @@ class OTPmeConfig(object):
         # Merge user config parameters.
         merged_config = dict(self.main_config)
         if not self.daemon_mode:
-            if self.login_user:
-                # Set users signers dir.
-                self.user_signers_dir = self.get_user_signers_dir(self.login_user)
-                # Get user config.
-                self.user_conf_file = self.get_user_conf_file(self.login_user)
-                self.user_config = self.read_user_conf_file(self.user_conf_file,
-                                                            quiet=quiet)
-                for parameter in self.user_config:
-                    if parameter not in self.merge_user_configfile_params:
-                        continue
-                    val = self.user_config[parameter]
-                    merged_config[parameter] = val
+            # Set users signers dir.
+            self.user_signers_dir = self.get_user_signers_dir(self.system_user())
+            # Get user config.
+            self.user_conf_file = self.get_user_conf_file(self.system_user())
+            self.user_config = self.read_user_conf_file(self.user_conf_file,
+                                                        quiet=quiet)
+            for parameter in self.user_config:
+                if parameter not in self.merge_user_configfile_params:
+                    continue
+                val = self.user_config[parameter]
+                merged_config[parameter] = val
 
         # Try to read index type from config.
         try:

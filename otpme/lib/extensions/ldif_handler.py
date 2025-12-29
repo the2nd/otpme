@@ -39,8 +39,8 @@ class OTPmeLDIFHandler(object):
     def __init__(self):
         self.objects_default_attributes = {}
 
-    def init(self, o, default_attributes={}, verbose_level=0,
-        callback=default_callback, **kwargs):
+    def init(self, o, default_attributes={}, ignore_missing_attributes=[],
+        verbose_level=0, callback=default_callback, **kwargs):
         """ Add needed attributes to object. """
         # Add object default attributes to be added by gen_attribute_value().
         self.objects_default_attributes[o.oid.full_oid] = default_attributes
@@ -75,10 +75,13 @@ class OTPmeLDIFHandler(object):
                                     auto_value=False,
                                     ignore_ro=True,
                                     verify=True,
+                                    ignore_missing_attributes=ignore_missing_attributes,
                                     verbose_level=verbose_level,
                                     callback=callback,
                                     **kwargs)
             if not add_result:
+                if at in ignore_missing_attributes:
+                    continue
                 msg = _("Extension {extension_name}: Error adding attribute: {attribute}")
                 msg = msg.format(extension_name=self.name, attribute=at)
                 raise OTPmeException(msg)
@@ -100,15 +103,23 @@ class OTPmeLDIFHandler(object):
                                     auto_value=True,
                                     ignore_ro=True,
                                     verify=True,
+                                    ignore_missing_attributes=ignore_missing_attributes,
                                     verbose_level=verbose_level,
                                     callback=callback,
                                     **kwargs)
             if not add_result:
+                if at in ignore_missing_attributes:
+                    continue
                 msg = _("Extension {extension_name}: Error adding default attribute: {attribute}")
                 msg = msg.format(extension_name=self.name, attribute=at)
                 raise OTPmeException(msg)
 
+        verify = True
+        if ignore_missing_attributes:
+            verify = False
+
         self.load(o=o,
+                verify=verify,
                 verbose_level=verbose_level,
                 callback=callback)
 
@@ -194,11 +205,11 @@ class OTPmeLDIFHandler(object):
     def load_schema(self, verbose_level=0, callback=default_callback):
         """ Load extension schema files. """
         # Load schema files.
-        ocs = []
+        #ocs = []
         ats = []
         for f in self.schema_files:
             f_ocs, f_ats = schema.load(f)
-            ocs += f_ocs
+            #ocs += f_ocs
             ats += f_ats
 
         # Register attribute types to config.
@@ -287,10 +298,8 @@ class OTPmeLDIFHandler(object):
                 if cur_val:
                     continue
                 new_val = self.gen_attribute_value(o, at, callback=callback)
-                if not new_val:
-                    msg = _("Unable to generate attribute value: {obj}: {attribute}")
-                    msg = msg.format(obj=o, attribute=at)
-                    return callback.error(msg)
+                if new_val is None:
+                    continue
                 x_ldif = [at, new_val]
                 if x_ldif in ldif:
                     continue
@@ -310,6 +319,8 @@ class OTPmeLDIFHandler(object):
             if cur_val:
                 continue
             new_val = self.gen_attribute_value(o, at, callback=callback)
+            if new_val is None:
+                continue
             x_ldif = [at, new_val]
             if x_ldif in ldif:
                 continue
@@ -647,7 +658,7 @@ class OTPmeLDIFHandler(object):
 
     def add_attribute(self, o, a, v=None, position=-1, ignore_ro=False,
         verify=True, auto_value=False, verbose_level=0,
-        callback=default_callback):
+        ignore_missing_attributes=[], callback=default_callback):
         """ Add attribute to object. """
         found_object_class = True
         # FIXME: what are valid chars for attributes and values?
@@ -697,6 +708,8 @@ class OTPmeLDIFHandler(object):
                     raise OTPmeException(msg)
 
                 if v is None:
+                    if a in ignore_missing_attributes:
+                        return callback.ok()
                     msg = _("Missing value for attribute: {extension_name}: {obj_oid}: {attr}")
                     msg = msg.format(extension_name=self.name, obj_oid=o.oid, attr=a)
                     return callback.error(msg)
@@ -741,6 +754,7 @@ class OTPmeLDIFHandler(object):
                         callback.send(msg)
                     self.add_object_class(o=o,
                                         oc=oc,
+                                        ignore_missing_attributes=ignore_missing_attributes,
                                         verbose_level=verbose_level,
                                         callback=callback)
                     found_object_class = True
@@ -909,7 +923,7 @@ class OTPmeLDIFHandler(object):
         return callback.ok()
 
     def add_object_class(self, o, oc, verbose_level=0,
-        callback=default_callback):
+        ignore_missing_attributes=[], callback=default_callback):
         """ Add object class to object. """
         if oc in o.object_classes:
             return callback.error("Object class already assigned.")
@@ -920,6 +934,7 @@ class OTPmeLDIFHandler(object):
             return callback.error(msg)
 
         o.object_classes.append(oc)
+        o.add_ldif([["objectClass", oc]])
 
         for at in self.get_default_attributes(o.type):
             add_attribute = False
@@ -940,6 +955,7 @@ class OTPmeLDIFHandler(object):
                             auto_value=True,
                             ignore_ro=True,
                             verify=True,
+                            ignore_missing_attributes=ignore_missing_attributes,
                             verbose_level=0,
                             callback=callback)
         return callback.ok()
@@ -1010,6 +1026,8 @@ class OTPmeLDIFHandler(object):
         if len(dependent_attributes) > 0 and force:
             for at in dependent_attributes:
                 self.del_attribute(o=o, a=at, ignore_deps=True, callback=callback)
+
+        o.del_ldif([["objectClass", oc]])
 
         return callback.ok()
 

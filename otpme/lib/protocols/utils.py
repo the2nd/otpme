@@ -66,7 +66,7 @@ def load_protocol_modules():
 def send_job(job_id, realm, site):
     """ Send job ID to client. """
     request = {
-            'query_id'  : job_id,
+            'message_id': job_id,
             'command'   : 'OTPME_JOB',
             'realm'     : realm,
             'site'      : site,
@@ -76,7 +76,7 @@ def send_job(job_id, realm, site):
 def send_msg(job_id, message=None):
     """ Sends message to client. """
     request = {
-            'query_id'  : job_id,
+            'message_id': job_id,
             'command'   : 'OTPME_MSG',
             'message'   : message,
             }
@@ -85,7 +85,7 @@ def send_msg(job_id, message=None):
 def send_keepalive(job_id, message=None):
     """ Sends keepalive message to client. """
     request = {
-            'query_id'  : job_id,
+            'message_id': job_id,
             'command'   : 'OTPME_KEEPALIVE',
             }
     return request
@@ -93,66 +93,66 @@ def send_keepalive(job_id, message=None):
 def dump_data(job_id, message=None):
     """ Dumps data to client. """
     request = {
-            'query_id'  : job_id,
+            'message_id': job_id,
             'command'   : 'OTPME_DUMP',
             'message'   : message,
             }
     return request
 
-def ask(query_id, prompt="Input:", input_prefill=None):
+def ask(message_id, prompt="Input:", input_prefill=None):
     """ Sends request to client to ask user for input. """
     request = {
-            'query_id'      : query_id,
+            'message_id'    : message_id,
             'command'       : 'OTPME_ASK',
             'input_prefill' : input_prefill,
             'prompt'        : prompt,
             }
     return request
 
-def askpass(query_id, prompt="Password:", null_ok=False):
+def askpass(message_id, prompt="Password:", null_ok=False):
     """ Sends request to client to ask user for password. """
     request = {
-            'query_id'      : query_id,
+            'message_id'    : message_id,
             'command'       : 'OTPME_ASKPASS',
             'prompt'        : prompt,
             'null_ok'       : null_ok,
             }
     return request
 
-def passauth(query_id, prompt="Password:",
+def passauth(message_id, prompt="Password:",
     pass_len=None):
     """ Sends request to client to do password authentication. """
     request = {
-            'query_id'      : query_id,
+            'message_id'    : message_id,
             'command'       : 'OTPME_PASSAUTH',
             'pass_len'      : pass_len,
             'prompt'        : prompt,
             }
     return request
 
-def sshauth(query_id, challenge):
+def sshauth(message_id, challenge):
     """ Sends request to client to do SSH authentication. """
     request = {
-            'query_id'  : query_id,
+            'message_id': message_id,
             'command'   : 'OTPME_SSHAUTH',
             'challenge' : challenge,
             }
     return request
 
-def scauth(query_id, smartcard_type, smartcard_data):
+def scauth(message_id, smartcard_type, smartcard_data):
     """ Sends request to client to do SSH authentication. """
     request = {
-            'query_id'          : query_id,
+            'message_id'        : message_id,
             'command'           : 'OTPME_SCAUTH',
-            'smartcard_type'   : smartcard_type,
+            'smartcard_type'    : smartcard_type,
             'smartcard_data'    : smartcard_data,
             }
     return request
 
-def auth_jwt(query_id, username, reason, challenge):
+def auth_jwt(message_id, username, reason, challenge):
     """ Sends request to client to get a JWT. """
     request = {
-            'query_id'  : query_id,
+            'message_id': message_id,
             'command'   : 'OTPME_GET_JWT',
             'username'  : username,
             'reason'    : reason,
@@ -160,10 +160,10 @@ def auth_jwt(query_id, username, reason, challenge):
             }
     return request
 
-def gen_user_keys(query_id, username, key_len, stdin_pass=False):
+def gen_user_keys(message_id, username, key_len, stdin_pass=False):
     """ Sends request to client to generate users private/public keys. """
     request = {
-            'query_id'      : query_id,
+            'message_id'    : message_id,
             'command'       : 'OTPME_GEN_USER_KEYS',
             'username'      : username,
             'key_len'       : key_len,
@@ -171,49 +171,49 @@ def gen_user_keys(query_id, username, key_len, stdin_pass=False):
             }
     return request
 
-def sign(query_id, data, use_rsa_key=False):
+def sign(message_id, data, use_rsa_key=False):
     """ Sends request to client to sign given data. """
     request = {
-            'query_id'      : query_id,
+            'message_id'    : message_id,
             'command'       : 'OTPME_SIGN',
             'data'          : data,
             }
     return request
 
-def encrypt(query_id, data, use_rsa_key=False):
+def encrypt(message_id, data, use_rsa_key=False):
     """ Sends request to client to encrypt given data. """
     request = {
-            'query_id'      : query_id,
+            'message_id'    : message_id,
             'command'       : 'OTPME_ENCRYPT',
             'use_rsa_key'   : use_rsa_key,
             'data'          : data,
             }
     return request
 
-def decrypt(query_id, data, use_rsa_key=False):
+def decrypt(message_id, data, use_rsa_key=False):
     """ Sends request to client to decrypt given data. """
     request = {
-            'query_id'      : query_id,
+            'message_id'    : message_id,
             'command'       : 'OTPME_DECRYPT',
             'use_rsa_key'   : use_rsa_key,
             'data'          : data,
             }
     return request
 
-def gen_share_key(query_id, key_len, key_mode):
+def gen_share_key(message_id, key_len, key_mode):
     """ Sends request to client to generate and encrypt share key. """
     request = {
-            'query_id'      : query_id,
+            'message_id'    : message_id,
             'command'       : 'OTPME_GEN_SHARE_KEY',
             'key_len'       : key_len,
             'key_mode'     : key_mode,
             }
     return request
 
-def reencrypt_share_key(query_id, share_user, share_key, key_mode):
+def reencrypt_share_key(message_id, share_user, share_key, key_mode):
     """ Sends request to client to re-encrypt given share key. """
     request = {
-            'query_id'      : query_id,
+            'message_id'    : message_id,
             'command'       : 'OTPME_REENCRYPT_SHARE_KEY',
             'share_user'    : share_user,
             'share_key'     : share_key,
@@ -221,20 +221,29 @@ def reencrypt_share_key(query_id, share_user, share_key, key_mode):
             }
     return request
 
-def move_objects(query_id, object_data):
+def move_objects(message_id, object_data):
     """ Sends request to client to move objects to other site. """
     request = {
-            'query_id'      : query_id,
+            'message_id'    : message_id,
             'command'       : 'OTPME_OBJECT_MOVE',
             'object_data'   : object_data,
             }
     return request
 
-def change_user_default_group(query_id, object_data):
+def change_user_default_group(message_id, object_data):
     """ Sends request to client to change user default group on other site. """
     request = {
-            'query_id'      : query_id,
+            'message_id'    : message_id,
             'command'       : 'OTPME_CHANGE_USER_DEFAULT_GROUP',
+            'object_data'   : object_data,
+            }
+    return request
+
+def create_remote_job(message_id, object_data):
+    """ Sends request to client to create job on other site. """
+    request = {
+            'message_id'    : message_id,
+            'command'       : 'OTPME_CREATE_REMOTE_JOB',
             'object_data'   : object_data,
             }
     return request

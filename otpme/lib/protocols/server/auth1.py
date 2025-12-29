@@ -331,11 +331,11 @@ class OTPmeAuthP1(OTPmeServer1):
         if not user:
             status = False
             command_error = "AUTH_UNKOWN_USER"
-            auth_reply = {'message':'AUTH_FAILED', 'status':False}
+            auth_response = {'message':'AUTH_FAILED', 'status':False}
             log_msg = _("{command_error}: user={log_username} access_group={log_access_group} client={log_client} client_ip={log_client_ip} auth_mode={log_auth_mode} auth_type={log_auth_type} session={log_session_id}", log=True)[1]
             log_msg = log_msg.format(command_error=command_error, log_username=log_username, log_access_group=log_access_group, log_client=log_client, log_client_ip=log_client_ip, log_auth_mode=log_auth_mode, log_auth_type=log_auth_type, log_session_id=log_session_id)
             self.logger.warning(log_msg)
-            return self.build_response(status, auth_reply)
+            return self.build_response(status, auth_response)
 
         redirect_connection = False
         if user.realm != config.realm:
@@ -397,7 +397,7 @@ class OTPmeAuthP1(OTPmeServer1):
             try:
                 status, \
                 status_code, \
-                auth_reply, \
+                auth_response, \
                 binary_data = authd_conn.send(command=verify_command,
                                             command_args=verify_args)
             except Exception as e:
@@ -417,23 +417,23 @@ class OTPmeAuthP1(OTPmeServer1):
                 return self.build_response(status, message)
 
             try:
-                redirect_response = auth_reply['jwt']
+                redirect_response = auth_response['jwt']
             except KeyError:
                 status = False
-                message = _("Auth reply misses JWT.")
+                message = _("Auth response misses JWT.")
                 return self.build_response(status, message)
 
             nt_key = None
             if auth_type == "mschap":
                 try:
-                    nt_key = auth_reply['nt_key']
+                    nt_key = auth_response['nt_key']
                 except KeyError:
                     status = False
-                    message = _("Auth reply misses NT_KEY.")
+                    message = _("Auth response misses NT_KEY.")
                     return self.build_response(status, message)
 
             # Try local JWT auth.
-            auth_reply = user.authenticate(auth_type="jwt",
+            auth_response = user.authenticate(auth_type="jwt",
                                         client=client,
                                         client_ip=client_ip,
                                         realm_login=False,
@@ -442,23 +442,23 @@ class OTPmeAuthP1(OTPmeServer1):
                                         verify_jwt_ag=False,
                                         redirect_challenge=redirect_challenge,
                                         redirect_response=redirect_response)
-            auth_status = auth_reply['status']
+            auth_status = auth_response['status']
             if not auth_status:
                 status = False
                 message = _("JWT authentication failed.")
                 return self.build_response(status, message)
 
-            # Add NT_KEY to reply.
+            # Add NT_KEY to response.
             if auth_type == "mschap":
-                auth_reply['nt_key'] = nt_key
+                auth_response['nt_key'] = nt_key
 
             # We will not send auth token instance to peer.
             try:
-                auth_reply.pop('token')
+                auth_response.pop('token')
             except KeyError:
                 pass
 
-            return self.build_response(status, auth_reply)
+            return self.build_response(status, auth_response)
 
         # Indicates if authentication was successful.
         auth_status = False
@@ -532,7 +532,7 @@ class OTPmeAuthP1(OTPmeServer1):
                 nt_key = None
                 if command == "token_verify_mschap":
                     nt_key = verify_status[1]
-                auth_reply = {
+                auth_response = {
                             'status'        : auth_status,
                             'login_token'   : auth_token.rel_path,
                             'message'       : "Token successfully verified.",
@@ -549,7 +549,7 @@ class OTPmeAuthP1(OTPmeServer1):
                     for x in self.audit_logger.handlers:
                         x.close()
             else:
-                auth_reply = {
+                auth_response = {
                             'status'    : auth_status,
                             'message'   : "Auth failed.",
                             }
@@ -579,17 +579,17 @@ class OTPmeAuthP1(OTPmeServer1):
                         'ecdh_curve'    : self.ecdh_curve,
                     }
             # Do authentication.
-            auth_reply = user.authenticate(**kwargs)
-            # Get auth status and message from reply.
-            auth_status = auth_reply['status']
+            auth_response = user.authenticate(**kwargs)
+            # Get auth status and message from response.
+            auth_status = auth_response['status']
             # We will not send auth token instance to peer.
             try:
-                auth_reply.pop('token')
+                auth_response.pop('token')
             except KeyError:
                 pass
 
-        # Build reply message.
-        message = auth_reply
+        # Build response message.
+        message = auth_response
         if auth_status:
             status = True
         else:

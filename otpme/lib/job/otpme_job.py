@@ -83,13 +83,13 @@ class OTPmeJob(object):
             # Start job as new thread or process.
             self._start()
             # Send job UUID to client.
-            job_reply = send_job(job_id=self.uuid,
+            job_response = send_job(job_id=self.uuid,
                                 realm=config.realm,
                                 site=config.site)
-            return True, job_reply
+            return True, job_response
         else:
-            job_reply = self.start_job()
-            return job_reply
+            job_response = self.start_job()
+            return job_response
 
     def _start(self):
         """ Start the job as thread and manage callback communication. """
@@ -155,7 +155,7 @@ class OTPmeJob(object):
         from otpme.lib import cache
         job_status = True
         job_error = None
-        job_reply = []
+        job_response = []
         job_log = []
 
         # Handle multiprocessing stuff.
@@ -232,14 +232,14 @@ class OTPmeJob(object):
             job_error = str(e)
             log_msg = job_error
             self.logger.warning(log_msg)
-            job_reply.append(job_error)
+            job_response.append(job_error)
             job_status = False
         except Exception as e:
             job_error, log_msg = _("Job error running command method: {method_name}: {error}", log=True)
             job_error = job_error.format(method_name=self.target_method.__name__, error=e)
             log_msg = log_msg.format(method_name=self.target_method.__name__, error=e)
             self.logger.warning(log_msg)
-            job_reply.append(job_error)
+            job_response.append(job_error)
             job_log.append(job_error)
             job_status = False
             config.raise_exception()
@@ -261,13 +261,13 @@ class OTPmeJob(object):
 
         # In debug mode we also send the job log to the client.
         if config.debug_enabled:
-            job_reply += job_log
+            job_response += job_log
 
-        # Reply needs to be a string when sending to a client.
+        # Response needs to be a string when sending to a client.
         if self._caller == "CLIENT":
-            job_reply = "\n".join(job_reply)
+            job_response = "\n".join(job_response)
         else:
-            job_reply = self.return_value
+            job_response = self.return_value
 
         if not job_error:
             job_error = "Job failed for unknown reason."
@@ -304,9 +304,9 @@ class OTPmeJob(object):
         multiprocessing.job_uuid = None
 
         if self.callback:
-            return self.callback.stop(job_status, job_reply)
+            return self.callback.stop(job_status, job_response)
 
-        return job_status, job_reply
+        return job_status, job_response
 
     def job_is_alive(self):
         """ Check if job thread/process is alive. """

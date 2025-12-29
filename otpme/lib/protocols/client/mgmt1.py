@@ -41,9 +41,9 @@ class OTPmeMgmtP1(OTPmeClient1):
         # Indicates a remote API call.
         args['_caller'] = client_type
         # Set default args but do not override exiting args.
-        if not 'verbose_level' in args:
+        if 'verbose_level' not in args:
             args['verbose_level'] = config.verbose_level
-        if not 'force' in args:
+        if 'force' not in args:
             args['force'] = config.force
         args['job_timeout'] = config.job_timeout
         args['lock_timeout'] = config.lock_timeout
@@ -59,28 +59,28 @@ class OTPmeMgmtP1(OTPmeClient1):
         try:
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = self.connection.send(command=command,
                                             command_args=args,
                                             handle_response=True)
         except Exception as e:
             config.raise_exception()
             status = False
-            reply = str(e)
+            response = str(e)
 
         if status is False:
             config.raise_exception()
-            raise OTPmeException(reply)
+            raise OTPmeException(response)
 
-        ## FIXME: We need a RAPI and better reply format etc.!!
-        #if isinstance(reply, list):
+        ## FIXME: We need a RAPI and better response format etc.!!
+        #if isinstance(response, list):
         #    # RAPI connection may return list with all callback messages. The
         #    # result is always the last message. Previous messages may be
         #    # notifications that normally would be printed to the screen (e.g.
         #    # token deleted)
-        #    reply = reply[-1]
+        #    response = response[-1]
 
-        return status, reply
+        return status, response
 
     def search(self, command):
         """ Search OTPme objects. """
@@ -130,11 +130,11 @@ class OTPmeMgmtP1(OTPmeClient1):
                         'return_type'       : return_type,
                         }
         try:
-            status, reply = self.send_command(command, command_args)
-            if reply and "," in reply:
-                users = reply.split(",")
+            status, response = self.send_command(command, command_args)
+            if response and "," in response:
+                users = response.split(",")
             else:
-                users = [reply]
+                users = [response]
         except Exception as e:
             msg = _("Unable to get role member users: {e}")
             msg = msg.format(e=e)
@@ -193,10 +193,10 @@ class OTPmeMgmtP1(OTPmeClient1):
         command_args['subcommand'] = "get_key_script"
         command_args['return_type'] = "path"
         try:
-            status, reply = self.send_command(command, command_args)
-            if reply:
-                key_script_path = reply[0][0]
-                key_script_opts = reply[0][1]
+            status, response = self.send_command(command, command_args)
+            if response:
+                key_script_path = response[0][0]
+                key_script_opts = response[0][1]
         except Exception as e:
             msg = _("Unable to get user key script name: {e}")
             msg = msg.format(e=e)
@@ -215,10 +215,10 @@ class OTPmeMgmtP1(OTPmeClient1):
         command_args['object_identifier'] = username
         command_args['return_type'] = "name"
         try:
-            status, reply = self.send_command(command, command_args)
-            if reply:
-                ssh_script_path = reply.split(" ")[0]
-                ssh_script_opts = " ".join(reply.split(" ")[1:])
+            status, response = self.send_command(command, command_args)
+            if response:
+                ssh_script_path = response.split(" ")[0]
+                ssh_script_opts = " ".join(response.split(" ")[1:])
         except Exception as e:
             msg = _("Unable to get user SSH agent script name: {e}")
             msg = msg.format(e=e)

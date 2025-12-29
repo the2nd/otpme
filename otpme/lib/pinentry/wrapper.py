@@ -200,30 +200,30 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
                         log.flush()
                     raise
 
-                # Handle reply.
+                # Handle response.
                 if debug_file:
-                    log.write("Reading reply from original pinentry...\n")
+                    log.write("Reading response from original pinentry...\n")
                     log.flush()
 
                 try:
                     r = proc.stdout.readline()
                 except Exception as e:
                     if debug_file:
-                        log.write(f"Error reading reply from original pinentry: {e}\n")
+                        log.write(f"Error reading response from original pinentry: {e}\n")
                         log.flush()
                     raise
 
-                reply = r
+                response = r
                 while not r.lower().startswith("ok") \
                 and not r.lower().startswith("err"):
                     if debug_file:
-                        log.write("Reading reply from original pinentry...\n")
+                        log.write("Reading response from original pinentry...\n")
                         log.flush()
                     try:
                         r = proc.stdout.readline()
                     except Exception as e:
                         if debug_file:
-                            log.write(f"Error reading reply from original pinentry: {e}\n")
+                            log.write(f"Error reading response from original pinentry: {e}\n")
                             log.flush()
                         raise
                     if r == "":
@@ -232,21 +232,21 @@ def pinentry_wrapper(pin=None, pin_function=None, autoconfirm_file=None,
                             log.flush()
                         sys.exit(1)
                         break
-                    reply += r
+                    response += r
 
                 if len(command_history) == 0:
                     try:
-                        sys.stdout.write(reply)
+                        sys.stdout.write(response)
                         sys.stdout.flush()
                     except Exception as e:
                         if line.lower() != "bye\n":
                             if debug_file:
-                                log.write(f"Error writing reply to stdout: {line}\n")
+                                log.write(f"Error writing response to stdout: {line}\n")
                                 log.flush()
                             raise
 
                 if line.lower().startswith("bye ") or line.lower() == "bye\n":
-                    if reply.lower().startswith("ok "):
+                    if response.lower().startswith("ok "):
                         session_end = True
                         break
             # Iteration sleep to prevent running wild if something goes wrong.

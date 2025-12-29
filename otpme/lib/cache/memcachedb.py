@@ -211,8 +211,8 @@ def set_memcachedb_pid(timeout=3):
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.connect(memcachedb_socket)
     sock.send("stats\n")
-    reply = sock.recv(1024)
-    for line in reply.split("\n"):
+    response = sock.recv(1024)
+    for line in response.split("\n"):
         if not line.startswith("STAT pid"):
             continue
         pid = line.split()[2]

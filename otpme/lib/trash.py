@@ -307,7 +307,7 @@ def restore(trash_id=None, objects=None, callback=default_callback, **kwargs):
         msg = msg.format(trash_id=trash_id)
         return callback.error(msg)
 
-    if config.auth_token:
+    if config.auth_token and not config.auth_token.is_admin():
         deleted_by = get_deleted_by(trash_id)
         deleted_by_token = f"token:{config.auth_token.rel_path}"
         if deleted_by != deleted_by_token:

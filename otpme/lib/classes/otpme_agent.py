@@ -965,7 +965,7 @@ class OTPmeAgent(UnixDaemon):
         try:
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = authd_conn.send(command, command_args)
         except Exception as e:
             msg = _("Error requesting JWT: {e}")
@@ -979,12 +979,12 @@ class OTPmeAgent(UnixDaemon):
                                     login_pid=login_pid)
         if not status:
             msg = "Method to get JWT failed"
-            if reply:
-                msg = f"{msg}: {reply}"
+            if response:
+                msg = f"{msg}: {response}"
             else:
                 msg = f"{msg}."
             raise Exception(msg)
-        return reply
+        return response
 
     def login_user(self, login_pid, realm, site, use_dns=None):
         """ Login user to realm/site using JWT challenge/response. """
@@ -1046,15 +1046,15 @@ class OTPmeAgent(UnixDaemon):
             self.logger.critical(log_msg)
             return False
         # Get RSP.
-        rsp = login_handler.login_reply['rsp']
-        # Get auth reply.
-        auth_reply = login_handler.login_reply['auth_reply']
+        rsp = login_handler.login_response['rsp']
+        # Get auth response.
+        auth_response = login_handler.login_response['auth_response']
 
         # Get session data.
-        login_time = auth_reply['login_time']
-        timeout = auth_reply['timeout']
-        unused_timeout = auth_reply['unused_timeout']
-        _slp = auth_reply['slp']
+        login_time = auth_response['login_time']
+        timeout = auth_response['timeout']
+        unused_timeout = auth_response['unused_timeout']
+        _slp = auth_response['slp']
 
         # Build session dict.
         session = {}
@@ -1098,7 +1098,7 @@ class OTPmeAgent(UnixDaemon):
         # we can try to update the login session file.
         if offline and login_user == config.system_user():
             session_id = self.login_sessions[login_pid]['session_id']
-            session_uuid = auth_reply['session']
+            session_uuid = auth_response['session']
             session_id = self.login_sessions[login_pid]['session_id']
             try:
                 try:
@@ -1174,15 +1174,15 @@ class OTPmeAgent(UnixDaemon):
             try:
                 status, \
                 status_code, \
-                reply, \
+                response, \
                 binary_data = daemon_conn.send("ping")
             except Exception as e:
-                reply = None
+                response = None
 
             if self.config_reload:
                 return
 
-            if reply != "pong":
+            if response != "pong":
                 log_msg = _("Detected broken connection to '{daemon}'. Trying reconnect...", log=True)[1]
                 log_msg = log_msg.format(daemon=daemon)
                 self.logger.info(log_msg)
@@ -1455,15 +1455,15 @@ class OTPmeAgent(UnixDaemon):
                 else:
                     message = _("Unknown agent command.")
                     status_code = status_codes.ERR
-                # Send reply.
-                reply_data = {
+                # Send response.
+                response_data = {
                             'login_pid'     : login_pid,
                             'status_code'   : status_code,
                             'message'       : message,
                             }
                 comm_handler.send(recipient=sender,
-                                command="agent_reply",
-                                data=reply_data,
+                                command="agent_response",
+                                data=response_data,
                                 autoclose=True)
             else:
                 proxy_request = request['proxy_request']
@@ -1496,30 +1496,30 @@ class OTPmeAgent(UnixDaemon):
                                                 login_pid=login_pid,
                                                 use_dns=use_dns)
             except AuthFailed as e:
-                reply = str(e)
+                response = str(e)
                 status_code = status_codes.NEED_USER_AUTH
             except OTPmeException as e:
-                reply = str(e)
+                response = str(e)
                 status_code = status_codes.ERR
             except Exception as e:
-                reply = _("Internal error getting daemon connection.")
+                response = _("Internal error getting daemon connection.")
                 status_code = status_codes.ERR
             if not self.config_reload:
                 break
 
         if not daemon_conn:
             # Send daemon connection error message agent connection.
-            reply_data = {
+            response_data = {
                         'login_pid'     : login_pid,
                         'status_code'   : status_code,
-                        'message'       : reply,
+                        'message'       : response,
                         }
             comm_handler.send(recipient=sender,
-                            command="daemon_reply",
-                            data=reply_data,
+                            command="daemon_response",
+                            data=response_data,
                             autoclose=True)
             comm_handler.close()
-            return status_code, reply
+            return status_code, response
 
         log_msg = _("Sending request to daemon: {daemon}: {realm}/{site}", log=True)[1]
         log_msg = log_msg.format(daemon=daemon, realm=realm, site=site)
@@ -1534,7 +1534,7 @@ class OTPmeAgent(UnixDaemon):
         try:
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = daemon_conn.send(command=command,
                                     command_args=command_args,
                                     encode_request=encode_request,
@@ -1561,10 +1561,10 @@ class OTPmeAgent(UnixDaemon):
                                         use_dns=use_dns)
         except Exception as e:
             self.close_daemon_conn(realm, site, daemon, login_pid)
-            reply = _("Daemon connection broken while sending: {daemon}: {error}")
-            reply = reply.format(daemon=daemon, error=e)
+            response = _("Daemon connection broken while sending: {daemon}: {error}")
+            response = response.format(daemon=daemon, error=e)
             status_code = status_codes.ERR
-            log_msg = reply
+            log_msg = response
             self.logger.critical(log_msg)
         finally:
             # Release daemon connection.
@@ -1572,18 +1572,18 @@ class OTPmeAgent(UnixDaemon):
                                     site=site,
                                     daemon=daemon,
                                     login_pid=login_pid)
-        # Send daemon reply.
-        reply_data = {
+        # Send daemon response.
+        response_data = {
                     'login_pid'     : login_pid,
                     'status_code'   : status_code,
-                    'message'       : reply,
+                    'message'       : response,
                     }
         comm_handler.send(recipient=sender,
-                        command="daemon_reply",
-                        data=reply_data,
+                        command="daemon_response",
+                        data=response_data,
                         autoclose=True)
         comm_handler.close()
-        return status_code, reply
+        return status_code, response
 
     def pre_fork(self):
         """ Run stuff before forking. """

@@ -235,7 +235,7 @@ class HostDaemon(OTPmeDaemon):
         if not config.master_node:
             return
 
-        # Our reply that will contain all nodes/sites that are not in sync.
+        # Our response that will contain all nodes/sites that are not in sync.
         notify_sites = []
 
         # Get master site.
@@ -348,7 +348,7 @@ class HostDaemon(OTPmeDaemon):
 
         status, \
         status_code, \
-        reply, \
+        response, \
         binary_data = sync_conn.send("start_sync", command_args=sync_params)
 
         # Handle disabled sites.
@@ -359,13 +359,13 @@ class HostDaemon(OTPmeDaemon):
             return False
 
         if status_code != status_codes.OK:
-            log_msg = _("Failed to send sync notification to site: {realm}/{site}: {reply}", log=True)[1]
-            log_msg = log_msg.format(realm=realm, site=site, reply=reply)
+            log_msg = _("Failed to send sync notification to site: {realm}/{site}: {response}", log=True)[1]
+            log_msg = log_msg.format(realm=realm, site=site, response=response)
             self.logger.warning(log_msg)
             return False
 
         # Update snyc status for each site the peer is syncing.
-        sync_params = reply
+        sync_params = response
         for x in sync_params:
             x_sync_time = x['time']
             x_sync_realm = x['realm']
@@ -374,7 +374,7 @@ class HostDaemon(OTPmeDaemon):
             x_skip_admin = x['skip_admin']
             x_object_types = x['object_types']
             try:
-                reply = add_sync_list_checksum(realm=x_sync_realm,
+                response = add_sync_list_checksum(realm=x_sync_realm,
                                             site=x_sync_site,
                                             peer_realm=sync_conn.peer.realm,
                                             peer_site=sync_conn.peer.site,
@@ -390,22 +390,22 @@ class HostDaemon(OTPmeDaemon):
                 log_msg = exception
                 self.logger.warning(log_msg)
             else:
-                log_msg = reply
+                log_msg = response
                 self.logger.debug(log_msg)
 
         # Close sync connection.
         sync_conn.close()
 
         if not status:
-            log_msg = _("Error sending sync notification to {realm}/{site}: {reply}", log=True)[1]
-            log_msg = log_msg.format(realm=realm, site=site, reply=reply)
+            log_msg = _("Error sending sync notification to {realm}/{site}: {response}", log=True)[1]
+            log_msg = log_msg.format(realm=realm, site=site, response=response)
             self.logger.warning(log_msg)
             return False
 
         # Update last notify timestamp.
         self.last_notify[last_notify_id] = time.time()
 
-        return reply
+        return response
 
     @handle_sync_child()
     def sync_sites(self, **kwargs):
@@ -509,12 +509,12 @@ class HostDaemon(OTPmeDaemon):
             # Get sites from master node.
             status, \
             status_code, \
-            reply, \
+            response, \
             binary_data = sync_conn.send("get_sites", command_args=sync_params)
 
             if status_code != status_codes.OK:
-                log_msg = _("Error receiving sites list: {site}: {reply}", log=True)[1]
-                log_msg = log_msg.format(site=site.oid, reply=reply)
+                log_msg = _("Error receiving sites list: {site}: {response}", log=True)[1]
+                log_msg = log_msg.format(site=site.oid, response=response)
                 self.logger.warning(log_msg)
                 sync_conn.close()
                 sync_status = False
@@ -523,8 +523,8 @@ class HostDaemon(OTPmeDaemon):
             # Close sync connection.
             sync_conn.close()
 
-            # Get sites and their objects from reply.
-            for x in reply:
+            # Get sites and their objects from response.
+            for x in response:
                 site_oid = oid.get(object_id=x)
                 if site_oid != site.oid:
                     log_msg = _("Uuuh received wrong site object from site {site}: {site_oid}", log=True)[1]
@@ -533,8 +533,8 @@ class HostDaemon(OTPmeDaemon):
                     continue
                 # Will hold all valid site objects.
                 site_objects = []
-                # Get object configs from reply.
-                x_objects = reply[site_oid]
+                # Get object configs from response.
+                x_objects = response[site_oid]
                 # Load and verify all site objects.
                 for x in x_objects:
                     # Get object ID.
@@ -617,7 +617,7 @@ class HostDaemon(OTPmeDaemon):
                             # Get object config of updated object.
                             object_config = o.object_config.copy()
                     # Update sync checksum of object.
-                    object_config['SYNC_CHECKSUM'] = o.sync_checksum
+                    object_config['SYNC_CHECKSUM'] = object_checksum
                     updated_objects += 1
                     log_msg = _("Updating object: {oid}", log=True)[1]
                     log_msg = log_msg.format(oid=x_oid)
@@ -1001,7 +1001,7 @@ class HostDaemon(OTPmeDaemon):
                 log_msg = _("Host disabled: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
                 self.logger.warning(log_msg)
-                # Disable ourselves based on peer reply.
+                # Disable ourselves based on peer response.
                 if self.host.type == "host":
                     if self.host.enabled:
                         log_msg = _("Disabling ourselves...", log=True)[1]
@@ -1150,6 +1150,8 @@ class HostDaemon(OTPmeDaemon):
 
         if sync_type == "objects":
             start_nsscache_sync = True
+            # Process tree jobs.
+            self.process_tree_jobs(realm, site)
 
         # Do not run nsscache sync of own site on nodes. They get triggered by clusterd.
         if start_nsscache_sync:
@@ -1321,6 +1323,34 @@ class HostDaemon(OTPmeDaemon):
         if sync_status is None:
             return True
         return False
+
+    def process_tree_jobs(self, realm, site):
+        if not config.master_node:
+            return
+        jobs = backend.search(object_type="job",
+                            attribute="uuid",
+                            value="*",
+                            return_type="instance")
+        for job in jobs:
+            if not config.master_node:
+                break
+            if job.src_realm != realm:
+                continue
+            if job.src_site != site:
+                continue
+            try:
+                job.commit()
+            except Exception as e:
+                log_msg = _("Tree job failed: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                continue
+            try:
+                job.delete()
+            except Exception as e:
+                log_msg = _("Failed to delete tree job: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
 
     def process_spooled_logs(self):
         try:

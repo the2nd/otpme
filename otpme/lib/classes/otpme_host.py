@@ -481,7 +481,7 @@ class OTPmeHost(OTPmeClientObject):
                 # Make sure we check destination token for linked tokens.
                 verify_token = token
                 if token.destination_token:
-                    verify_token = token.get_destination_token()
+                    verify_token = token.dst_token
                     if not verify_token:
                         continue
                     # Skip disabled destination tokens.

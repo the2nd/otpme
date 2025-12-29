@@ -1211,8 +1211,16 @@ class Role(OTPmeObject):
         token_uuids = set(self.tokens + list(self.token_options))
         for i in token_uuids:
             token_oid = backend.get_oid(object_type="token", uuid=i)
-            if not token_oid:
-                token_list.append(i)
+            if token_oid:
+                continue
+            token_list.append(i)
+
+        role_list = []
+        for i in self.roles:
+            role_oid = backend.get_oid(object_type="role", uuid=i)
+            if role_oid:
+                continue
+            role_list.append(i)
 
         if not force:
             msg = ""
@@ -1229,6 +1237,10 @@ class Role(OTPmeObject):
             if token_list:
                 msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan token UUIDs: {token_list}\n")
                 msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, token_list=','.join(token_list))
+
+            if role_list:
+                msg = _("{msg}{object_type}|{object_name}: Found the following orphan role UUIDs: {role_list}\n")
+                msg = msg.format(msg=msg, object_type=self.type, object_name=self.name, role_list=','.join(role_list))
 
             if msg:
                 msg_part = _("{msg}Remove?: ")
@@ -1254,6 +1266,8 @@ class Role(OTPmeObject):
                 msg = msg.format(token_uuid=i)
                 callback.send(msg)
             object_changed = True
+            # Update index.
+            self.del_index('token', i)
             try:
                 self.tokens.remove(i)
             except KeyError:
@@ -1266,6 +1280,16 @@ class Role(OTPmeObject):
                 self.token_login_interfaces.pop(i)
             except KeyError:
                 pass
+
+        for i in role_list:
+            if verbose_level > 0:
+                msg = _("Removing orphan role UUID: {role_uuid}")
+                msg = msg.format(role_uuid=i)
+                callback.send(msg)
+            object_changed = True
+            self.roles.remove(i)
+            # Update index.
+            self.del_index('role', i)
 
         if not object_changed:
             msg = _("No orphan objects found for {object_type}: {object_name}")

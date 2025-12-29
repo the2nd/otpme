@@ -339,10 +339,7 @@ def update_authorized_keys():
             # Make sure we check the user of the linked token.
             check_users.append(token.owner_uuid)
             # Get destination token.
-            try:
-                dst_token = token.get_destination_token()
-            except:
-                dst_token = None
+            dst_token = token.dst_token
             if not dst_token:
                 log_msg = f"{unknown_dst_token_msg}: {token_path}"
                 logger.warning(log_msg)

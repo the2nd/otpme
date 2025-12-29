@@ -1027,7 +1027,7 @@ class Group(OTPmeObject):
                 }
 
         # Get destination site cert to encrypt objects and
-        # verify reply JWT.
+        # verify response JWT.
         _dst_site = backend.get_object(object_type="site",
                                         realm=dst_realm,
                                         name=dst_site)
@@ -1082,16 +1082,16 @@ class Group(OTPmeObject):
         response = callback.move_objects(object_data)
 
         status = response['status']
-        reply = response['reply']
+        response_data = response['response']
 
         if not status:
-            msg = _("Object move failed: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Object move failed: {response}")
+            msg = msg.format(response_data=response_data)
             return callback.error(msg)
 
-        # Decode reply JWT.
+        # Decode response JWT.
         try:
-            jwt_data = jwt.decode(jwt=reply,
+            jwt_data = jwt.decode(jwt=response_data,
                                 key=dst_site_public_key,
                                 algorithm='RS256')
         except Exception as e:
@@ -1109,11 +1109,11 @@ class Group(OTPmeObject):
             try:
                 y_uuid = jwt_data[x_oid]['uuid']
             except KeyError:
-                msg = _("Failed to find object in reply: {x_oid}")
+                msg = _("Failed to find object in response: {x_oid}")
                 msg = msg.format(x_oid=x_oid)
                 return callback.error(msg)
             if x_uuid != y_uuid:
-                msg = _("UUID missmatch in reply: {x_oid}: {x_uuid} <> {y_uuid}")
+                msg = _("UUID missmatch in response: {x_oid}: {x_uuid} <> {y_uuid}")
                 msg = msg.format(x_oid=x_oid, x_uuid=x_uuid, y_uuid=y_uuid)
                 return callback.error(msg)
 
@@ -1330,6 +1330,8 @@ class Group(OTPmeObject):
             object_changed = True
             if i in self.tokens:
                 self.tokens.remove(i)
+                # Update index.
+                self.del_index('token', i)
             if i in self.token_options:
                 self.token_options.pop(i)
 
@@ -1340,6 +1342,8 @@ class Group(OTPmeObject):
                 callback.send(msg)
             object_changed = True
             self.roles.remove(i)
+            # Update index.
+            self.del_index('role', i)
 
         for i in default_group_users_list:
             if verbose_level > 0:
@@ -1349,6 +1353,8 @@ class Group(OTPmeObject):
             object_changed = True
             if i in self.default_group_users:
                 self.default_group_users.remove(i)
+                # Update index.
+                self.del_index('user', i)
 
         if not object_changed:
             msg = _("No orphan objects found for {object_type}: {object_name}")

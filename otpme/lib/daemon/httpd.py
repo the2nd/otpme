@@ -188,10 +188,23 @@ class HttpDaemon(OTPmeDaemon):
           'logger_class': CustomLogger,
         }
 
+        # Wrapper to fix "ggevent.py:38: MonkeyPatchWarning: Monkey-patching ssl after ssl has already been imported may lead to errors, including..."
+        # https://github.com/benoitc/gunicorn/issues/2796
+        def start_gunicorn():
+            #import sys
+            #del sys.modules['ssl']
+            try:
+                import gevent.monkey
+                gevent.monkey.patch_all()
+            except ImportError:
+                pass
+            gunicorn_app.run()
+
         # Start Gunicorn.
         gunicorn_app = GunicornApp(app, options)
         self.gunicorn_child = multiprocessing.start_process(name="gunicorn",
-                                                target=gunicorn_app.run,
+                                                #target=gunicorn_app.run,
+                                                target=start_gunicorn,
                                                 new_process_group=True)
 
         # Start main loop.

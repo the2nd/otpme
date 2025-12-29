@@ -660,15 +660,15 @@ class ListenSocket(object):
             while True:
                 # Receive data from client.
                 try:
-                    reply = connection.recv()
+                    response = connection.recv()
                 except Exception as e:
                     log_msg = _("Error receiving data: {error}", log=True)[1]
                     log_msg = log_msg.format(error=e)
                     self.logger.warning(log_msg)
                     break
-                # Send reply.
+                # Send response.
                 try:
-                    connection.send(reply)
+                    connection.send(response)
                 except Exception as e:
                     log_msg = _("Error sending data: {error}", log=True)[1]
                     log_msg = log_msg.format(error=e)

@@ -344,8 +344,9 @@ def load(schema_file):
                 + config.ldap_object_classes[oc].may
         for a in must_may:
             for n in config.ldap_attribute_types[a].names:
-                if not oc in config.ldap_attribute_deps[n]:
-                    config.ldap_attribute_deps[n].append(oc)
+                if oc in config.ldap_attribute_deps[n]:
+                    continue
+                config.ldap_attribute_deps[n].append(oc)
 
     # Add schema file to list of loaded files.
     config.ldap_schema_files_loaded[schema_file] = [object_classes,

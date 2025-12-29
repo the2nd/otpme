@@ -40,16 +40,28 @@ def check_acls(acls):
                 verify_acls = f_kwargs['verify_acls']
             except:
                 verify_acls = True
+            try:
+                verify_acls_only = f_kwargs['verify_acls_only']
+            except:
+                verify_acls_only = False
+
+            if verify_acls_only:
+                verify_acls = True
 
             if verify_acls:
                 access_granted = False
                 for acl in acls:
-                    if self.verify_acl(acl):
-                        access_granted = True
-                        break
+                    if not self.verify_acl(acl):
+                        continue
+                    access_granted = True
+                    break
                 if not access_granted:
                     msg = _("Permission denied.")
                     return callback.error(msg, exception=PermissionDenied)
+
+            if verify_acls_only:
+                msg = _("Permission granted.")
+                return callback.ok(msg)
 
             # Call given class method.
             return f(self, *f_args, **f_kwargs)

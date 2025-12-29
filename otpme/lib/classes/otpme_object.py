@@ -24,6 +24,7 @@ except:
 from otpme.lib import re
 from otpme.lib import oid
 from otpme.lib import cli
+from otpme.lib import jwt
 from otpme.lib import json
 from otpme.lib import stuff
 from otpme.lib import trash
@@ -1385,8 +1386,8 @@ class OTPmeBaseObject(OTPmeLockObject):
 
             if not type_ok:
                 msg, log_msg = _("Cannot update. Got wrong value for '{attribute}': {oid}: Wanted: {type_wanted} Got: {val}", log=True)
-                msg = msg.format(oid=self.oid, type_wanted=type_wanted, val=repr(type(val)))
-                log_msg = log_msg.format(oid=self.oid, type_wanted=type_wanted, val=repr(type(val)))
+                msg = msg.format(attribute=attribute, oid=self.oid, type_wanted=type_wanted, val=repr(type(val)))
+                log_msg = log_msg.format(attribute=attribute, oid=self.oid, type_wanted=type_wanted, val=repr(type(val)))
                 logger.warning(log_msg)
                 raise OTPmeException(msg)
 
@@ -1512,6 +1513,57 @@ class OTPmeBaseObject(OTPmeLockObject):
             self.last_modified_by_cache = modifier_cache
             # Update index.
             self.update_index('last_modified_by', self.last_modified_by)
+
+    def create_remote_job(self,
+        realm: str,
+        site: str,
+        job_data: dict,
+        callback: JobCallback=default_callback,
+        ):
+        # Load JWT signing key.
+        our_site = backend.get_object(uuid=config.site_uuid)
+        sign_key = our_site._key
+
+        # Set source site.
+        src_realm = config.realm
+        src_site = config.site
+
+        # Build JWT.
+        jwt_data = {
+                'job_data'          : job_data,
+                'reason'            : "TREE_JOB",
+                }
+        _jwt = jwt.encode(payload=jwt_data, key=sign_key, algorithm='RS256')
+
+        object_data = {
+                    'src_realm'     : src_realm,
+                    'src_site'      : src_site,
+                    'dst_realm'     : realm,
+                    'dst_site'      : site,
+                    'jwt'           : _jwt,
+                    }
+
+        # Actually create remote job.
+        response = callback.create_remote_job(object_data)
+
+        try:
+            status = response['status']
+        except KeyError:
+            msg = "Response missing status."
+            return callback.error(msg)
+
+        try:
+            response = response['response']
+        except KeyError:
+            msg = "Response missing response."
+            return callback.error(msg)
+
+        if not status:
+            msg = _("Creation of remote job failed: {response}")
+            msg = msg.format(response=response)
+            return callback.error(msg)
+
+        return callback.ok()
 
     @object_lock()
     def touch(self, callback: JobCallback=default_callback, **kwargs):
@@ -2840,6 +2892,7 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         extension: str,
         default_attributes: dict={},
+        ignore_missing_attributes: List=[],
         run_policies: bool=True,
         verbose_level: int=0,
         _caller: str="API",
@@ -2885,6 +2938,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Init extension.
         ext.init(self, default_attributes=default_attributes,
+                ignore_missing_attributes=ignore_missing_attributes,
                 verbose_level=verbose_level, callback=callback)
 
         # Add extension to object.
@@ -3481,6 +3535,7 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
+    @check_acls(['add:token'])
     @object_lock()
     def add_token(
         self,
@@ -4887,6 +4942,7 @@ class OTPmeObject(OTPmeBaseObject):
         run_policies: bool=True,
         ignore_ro: bool=False,
         position: int=-1,
+        ignore_missing_attributes: List=[],
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -4930,6 +4986,7 @@ class OTPmeObject(OTPmeBaseObject):
             extension.add_attribute(self, attribute, value,
                                 position=position,
                                 ignore_ro=ignore_ro,
+                                ignore_missing_attributes=ignore_missing_attributes,
                                 verbose_level=verbose_level,
                                 callback=callback)
         except Exception as e:
@@ -5432,7 +5489,7 @@ class OTPmeObject(OTPmeBaseObject):
                 if config.auth_token.uuid == self.uuid and not force:
                     return callback.error("Cannot disable token used at login.")
                 if config.auth_token.destination_token:
-                    dst_token = config.auth_token.get_destination_token()
+                    dst_token = config.auth_token.dst_token
                     if dst_token and dst_token.uuid == self.uuid and not force:
                         return callback.error("Cannot disable token used at login.")
             if self.name == config.admin_user_name:
@@ -7841,6 +7898,7 @@ class OTPmeObject(OTPmeBaseObject):
         inherit_acls: bool=True,
         template: Union[OTPmeBaseObject,None]=None,
         template_object: bool=False,
+        ignore_missing_attributes: List=[],
         verbose_level: int=0,
         verify_acls: bool=True,
         run_policies: bool=True,
@@ -7936,6 +7994,7 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 self.add_extension(extension=e,
                                 default_attributes=e_default_attributes,
+                                ignore_missing_attributes=ignore_missing_attributes,
                                 verify_acls=False,
                                 callback=callback,
                                 verbose_level=verbose_level)
@@ -7964,6 +8023,7 @@ class OTPmeObject(OTPmeBaseObject):
                             self.add_attribute(attribute=attr,
                                                 value=x,
                                                 ignore_ro=True,
+                                                ignore_missing_attributes=ignore_missing_attributes,
                                                 verify_acls=verify_acls,
                                                 callback=callback)
                             continue
@@ -7971,6 +8031,7 @@ class OTPmeObject(OTPmeBaseObject):
                             continue
                         self.add_attribute(attribute=attr,
                                         ignore_ro=True,
+                                        ignore_missing_attributes=ignore_missing_attributes,
                                         verify_acls=verify_acls,
                                         callback=callback)
 

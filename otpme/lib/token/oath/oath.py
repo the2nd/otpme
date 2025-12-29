@@ -489,10 +489,10 @@ class OathToken(Token):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
-        reply = {
+        response = {
                 'secret_len'    : self.secret_len,
                 }
-        return callback.ok(reply)
+        return callback.ok(response)
 
     @object_lock(full_lock=True)
     @backend.transaction

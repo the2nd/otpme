@@ -310,15 +310,15 @@ class OTPmeSyncP1(OTPmeServer1):
         """ Handle get last used command. """
         # Get sync list.
         try:
-            reply = backend.get_last_used_times(object_types=object_types)
+            response = backend.get_last_used_times(object_types=object_types)
             status = True
         except Exception as e:
             log_msg = _("Failed to get last used data from backend: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             self.logger.warning(log_msg)
-            reply = _("Failed to get last used data from backend.")
+            response = _("Failed to get last used data from backend.")
             status = False
-        return status, reply
+        return status, response
 
     def get_object_command(self, object_id,
         valid_object_types, remote_checksums=None):

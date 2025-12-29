@@ -832,19 +832,19 @@ class Session(OTPmeLockObject):
 
         for session_hash in session_hashes:
             if password:
-                verify_reply = self._verify(auth_type="clear-text",
+                verify_response = self._verify(auth_type="clear-text",
                                             session_hash=session_hash,
                                             password_hash=password_hash,
                                             password=password, **kwargs)
             elif challenge and response:
-                verify_reply = self._verify(auth_type="mschap",
+                verify_response = self._verify(auth_type="mschap",
                                             session_hash=session_hash,
                                             challenge=challenge,
                                             response=response, **kwargs)
-            verify_status = verify_reply['status']
+            verify_status = verify_response['status']
             if verify_status is not None:
-                return verify_reply
-        return verify_reply
+                return verify_response
+        return verify_response
 
     def _verify(
         self,
@@ -865,7 +865,7 @@ class Session(OTPmeLockObject):
         ):
         """ Verify given session hash via password or MSCHAP challenge/response. """
         # default should be None -> session does not match request
-        verify_reply = {'status' : None}
+        verify_response = {'status' : None}
 
         if auth_type == "clear-text":
             log_msg = _("Doing clear-text session verification.", log=True)[1]
@@ -908,11 +908,11 @@ class Session(OTPmeLockObject):
 
                 if reneg_match:
                     status = self.finish_reneg()
-                    verify_reply = {
+                    verify_response = {
                                     'type'      : 'reneg_end',
                                     'status'    : status,
                                     }
-                    return verify_reply
+                    return verify_response
 
             # Check for new session renegotiation.
             if auth_type == "clear-text":
@@ -953,22 +953,22 @@ class Session(OTPmeLockObject):
                                                             new_session_pass)
 
                 status = self.start_reneg(new_session_hash)
-                verify_reply = {
+                verify_response = {
                                 'type'      : 'reneg_start',
                                 'status'    : status,
                                 }
-                return verify_reply
+                return verify_response
 
         # Verify session.
         if check_auth:
             # Try to verify session with given clear-text password.
             if auth_type == "clear-text":
                 if session_hash == password_hash:
-                    verify_reply = {
+                    verify_response = {
                                     'type'      : 'auth',
                                     'status'    : True,
                                     }
-                    return verify_reply
+                    return verify_response
 
             # Try to verify session with given MSCHAP challenge/response.
             if auth_type == "mschap":
@@ -981,12 +981,12 @@ class Session(OTPmeLockObject):
                     log_msg = log_msg.format(session_id=self.session_id, error=e)
                     logger.critical(log_msg)
                 if verify_status:
-                    verify_reply = {
+                    verify_response = {
                                     'type'      : 'auth',
                                     'status'    : True,
                                     'nt_key'    : nt_key,
                                     }
-                    return verify_reply
+                    return verify_response
 
         # Check for SLP.
         if check_slp:
@@ -994,12 +994,12 @@ class Session(OTPmeLockObject):
                 # Check if given password matches logout password of this
                 # session.
                 if self.slp == password:
-                    verify_reply = {
+                    verify_response = {
                                     'type'      : 'logout',
                                     'status'    : True,
                                     'slp'       : self.slp,
                                     }
-                    return verify_reply
+                    return verify_response
 
             if auth_type == "mschap":
                 # Generate password hash of logout password of this session.
@@ -1016,14 +1016,14 @@ class Session(OTPmeLockObject):
                     log_msg = log_msg.format(session_id=self.session_id, error=e)
                     logger.critical(log_msg)
                 if verify_status:
-                    verify_reply = {
+                    verify_response = {
                                     'type'      : 'logout',
                                     'status'    : True,
                                     'slp'       : self.slp,
                                     'slp_hash'  : _slp_hash,
                                     'nt_key'    : nt_key,
                                     }
-                    return verify_reply
+                    return verify_response
 
         # Check for SRP.
         if check_srp:
@@ -1033,12 +1033,12 @@ class Session(OTPmeLockObject):
             if auth_type == "clear-text":
                 # Verify given password matches refresh password of this session.
                 if _srp == password:
-                    verify_reply = {
+                    verify_response = {
                                     'type'      : 'refresh',
                                     'status'    : True,
                                     'srp'       : _srp,
                                     }
-                    return verify_reply
+                    return verify_response
 
             if auth_type == "mschap":
                 # Generate password hash of refresh password of this session.
@@ -1056,14 +1056,14 @@ class Session(OTPmeLockObject):
                     logger.critical(log_msg)
 
                 if mschap_verify_status:
-                    verify_reply = {
+                    verify_response = {
                                     'type'      : 'refresh',
                                     'status'    : True,
                                     'srp'       : _srp,
                                     'srp_hash'  : _srp_hash,
                                     'nt_key'    : nt_key,
                                     }
-                    return verify_reply
+                    return verify_response
 
         # Check for SOTP.
         if check_sotp:
@@ -1079,19 +1079,19 @@ class Session(OTPmeLockObject):
                         log_msg = _("Unknown accessgroup: {auth_ag}", log=True)[1]
                         log_msg = log_msg.format(auth_ag=auth_ag)
                         logger.critical(log_msg)
-                        return verify_reply
+                        return verify_response
                     auth_ag_uuid = result[0]
                 # Check if given password matches an SOTP of this session.
                 sotp_verify_status = sotp.verify(password_hash=session_hash,
                                                 password=password,
                                                 access_group=auth_ag_uuid)
                 if sotp_verify_status:
-                    verify_reply = {
+                    verify_response = {
                                     'type'      : 'reauth',
                                     'status'    : True,
                                     'sotp'     : password,
                                     }
-                    return verify_reply
+                    return verify_response
 
             if auth_type == "mschap":
                 try:
@@ -1108,17 +1108,17 @@ class Session(OTPmeLockObject):
                     logger.critical(log_msg)
 
                 if sotp_verify_status:
-                    verify_reply = {
+                    verify_response = {
                                     'type'      : 'reauth',
                                     'status'    : True,
                                     'sotp'      : _sotp,
                                     'sotp_hash' : _sotp_hash,
                                     'nt_key'    : nt_key,
                                     }
-                    return verify_reply
+                    return verify_response
 
         # Return default status.
-        return verify_reply
+        return verify_response
 
     @object_lock()
     def add_child_session(self, session_uuid: str):

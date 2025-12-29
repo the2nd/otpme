@@ -65,9 +65,9 @@ class AgentConn(object):
 
     def get_status(self):
         """ Get login status from otpme-agent. """
-        status, status_code, reply = self.send("status")
+        status, status_code, response = self.send("status")
         if status_code == status_codes.OK:
-            if " (offline) " in reply:
+            if " (offline) " in response:
                 return None
             else:
                 return True
@@ -76,50 +76,50 @@ class AgentConn(object):
     def get_realm(self):
         """ Get session realm from otpme-agent. """
         username = None
-        status, status_code, reply = self.send("get_realm")
+        status, status_code, response = self.send("get_realm")
         if status_code == status_codes.OK:
-            username = reply
+            username = response
         return username
 
     def get_site(self):
         """ Get session site from otpme-agent. """
         username = None
-        status, status_code, reply = self.send("get_site")
+        status, status_code, response = self.send("get_site")
         if status_code == status_codes.OK:
-            username = reply
+            username = response
         return username
 
     def get_user(self):
         """ Get session user from otpme-agent. """
         username = None
-        status, status_code, reply = self.send("get_user")
+        status, status_code, response = self.send("get_user")
         if status_code == status_codes.OK:
-            username = reply
+            username = response
         return username
 
     def get_login_token(self):
         """ Get login token from otpme-agent. """
-        status, status_code, reply = self.send("status")
+        status, status_code, response = self.send("status")
         if status_code != status_codes.OK:
-            msg = _("Failed to get login token: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Failed to get login token: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
-        login_token = re.sub('.* token: ([^ ]*) .*', r'\1', reply)
+        login_token = re.sub('.* token: ([^ ]*) .*', r'\1', response)
         return login_token
 
     def get_login_pass_type(self):
         """ Get login pass type from otpme-agent. """
-        status, status_code, reply = self.send("status")
+        status, status_code, response = self.send("status")
         if status_code != status_codes.OK:
-            msg = _("Failed to get login pass type: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Failed to get login pass type: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
-        login_pass_type = re.sub('.* type: ([^ ]*)$', r'\1', reply)
+        login_pass_type = re.sub('.* type: ([^ ]*)$', r'\1', response)
         return login_pass_type
 
     def get_offline(self):
         """ Get session offline info."""
-        status, status_code, reply = self.send("get_offline")
+        status, status_code, response = self.send("get_offline")
         if status_code == status_codes.OK:
             return True
         return False
@@ -128,13 +128,13 @@ class AgentConn(object):
     #    """ get RSP from otpme-agent. """
     #    username = False
     #    rsp = False
-    #    status, status_code, reply = self.send("get_rsp")
+    #    status, status_code, response = self.send("get_rsp")
     #    if status_code == status_codes.OK:
-    #        username = re.sub('^username: ([^:]*) rsp: (.*)$', r'\1', reply)
-    #        rsp = re.sub('^username: ([^:]*) rsp: (.*)$', r'\2', reply)
+    #        username = re.sub('^username: ([^:]*) rsp: (.*)$', r'\1', response)
+    #        rsp = re.sub('^username: ([^:]*) rsp: (.*)$', r'\2', response)
     #        return username, rsp
     #    elif status_code == "403":
-    #        raise Exception(reply)
+    #        raise Exception(response)
     #    else:
     #        return False, False
 
@@ -143,90 +143,90 @@ class AgentConn(object):
         username = None
         sotp = None
         command_args = {'site':site}
-        status, status_code, reply = self.send("get_sotp", command_args=command_args)
+        status, status_code, response = self.send("get_sotp", command_args=command_args)
         if status_code != status_codes.OK:
-            msg = _("Failed to get SOTP from agent: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Failed to get SOTP from agent: {response}")
+            msg = msg.format(response=response)
             raise OTPmeException(msg)
-        username = reply['username']
-        sotp = reply['sotp']
+        username = response['username']
+        sotp = response['sotp']
         return username, sotp
 
     def get_srp(self):
         """ Get SRP from otpme-agent. """
         username = None
         srp = None
-        status, status_code, reply = self.send("get_srp")
+        status, status_code, response = self.send("get_srp")
         if status_code == status_codes.OK:
             username = re.sub('^username: ([^:]*) srp: (.*)$', r'\1',
-                            reply)
+                            response)
             srp = re.sub('^username: ([^:]*) srp: (.*)$', r'\2',
-                        reply)
+                        response)
         return username, srp
 
     def get_slp(self):
         """ Get SLP from otpme-agent. """
         username = None
         session_logout_pass = None
-        status, status_code, reply = self.send("get_slp")
+        status, status_code, response = self.send("get_slp")
         if status_code != status_codes.OK:
-            msg = _("Error getting SLP from agent: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Error getting SLP from agent: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
         username = re.sub('^username: ([^:]*) slp: (.*)$', r'\1',
-                        reply)
+                        response)
         session_logout_pass = re.sub('^username: ([^:]*) slp: (.*)$', r'\2',
-                                    reply)
+                                    response)
         return username, session_logout_pass
 
     def get_tty(self):
         """ Get TTY from otpme-agent. """
-        status, status_code, reply = self.send("get_tty")
+        status, status_code, response = self.send("get_tty")
         if status_code != status_codes.OK:
-            msg = _("Error getting TTY from agent: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Error getting TTY from agent: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
-        tty = reply
+        tty = response
         return tty
 
     def get_sessions(self):
         """ Get otpme-agent sessions."""
-        status, status_code, reply = self.send("get_sessions")
+        status, status_code, response = self.send("get_sessions")
         if status_code != status_codes.OK:
-            msg = _("Error getting session list from agent: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Error getting session list from agent: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
-        return reply
+        return response
 
     def get_login_session_id(self):
         """ Get otpme-agent session ID."""
-        status, status_code, reply = self.send("get_session_id")
+        status, status_code, response = self.send("get_session_id")
         if status_code != status_codes.OK:
-            msg = _("Error getting session ID from agent: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Error getting session ID from agent: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
-        return reply
+        return response
 
     def mount_shares(self, shares):
         """ Send share mount request to otpme-agent. """
         command_args = {
                         'shares' : shares,
                     }
-        status, status_code, reply = self.send("mount_shares", command_args)
+        status, status_code, response = self.send("mount_shares", command_args)
         if status_code != status_codes.OK:
-            msg = _("Failed to mount shares: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Failed to mount shares: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
-        return reply
+        return response
 
     def umount_shares(self):
         """ Send share umount request to otpme-agent. """
-        status, status_code, reply = self.send("umount_shares")
+        status, status_code, response = self.send("umount_shares")
         if status_code != status_codes.OK:
-            msg = _("Failed to umount shares: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Failed to umount shares: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
-        return reply
+        return response
 
     def add_session(self, username, session_id=None, tty=None):
         """ Add session to otpme-agent. """
@@ -235,23 +235,23 @@ class AgentConn(object):
                         'session_id'    : session_id,
                         'tty'           : tty,
                     }
-        status, status_code, reply = self.send("add_session", command_args)
+        status, status_code, response = self.send("add_session", command_args)
         if status_code != status_codes.OK:
-            msg = _("Error adding login session to agent: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Error adding login session to agent: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
         # Session ID includes ":"
-        session_id = ":".join(reply.split(":")[1:]).replace(" ", "")
+        session_id = ":".join(response.split(":")[1:]).replace(" ", "")
         return session_id
 
     def del_session(self):
         """ Del session from otpme-agent. """
-        status, status_code, reply = self.send("del_session")
+        status, status_code, response = self.send("del_session")
         if status_code != status_codes.OK:
-            msg = _("Error removing login session from agent: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Error removing login session from agent: {response}")
+            msg = msg.format(response=response)
             raise OTPmeException(msg)
-        return reply
+        return response
 
     def add_rsp(self, realm, site, rsp, slp, login_time, timeout, unused_timeout,
         session_key=None, offline=False):
@@ -267,10 +267,10 @@ class AgentConn(object):
                         'timeout'           : timeout,
                         'unused_timeout'    : unused_timeout,
                     }
-        status, status_code, reply = self.send("add_rsp", command_args)
+        status, status_code, response = self.send("add_rsp", command_args)
         if status_code != status_codes.OK:
-            msg = _("Failed to set RSP: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Failed to set RSP: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
         log_msg = _("Added RSP to otpme-agent: {realm}/{site}", log=True)[1]
         log_msg = log_msg.format(realm=realm, site=site)
@@ -282,12 +282,12 @@ class AgentConn(object):
                         'realm'         : realm,
                         'site'          : site,
                     }
-        status, status_code, reply = self.send("reneg", command_args)
+        status, status_code, response = self.send("reneg", command_args)
         if status_code != status_codes.OK:
-            msg = _("Error: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Error: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
-        return reply
+        return response
 
     def set_login_token(self, login_token, login_pass_type):
         """ Set login token to otpme-agent. """
@@ -295,10 +295,10 @@ class AgentConn(object):
                         'login_token'       : login_token,
                         'login_pass_type'   : login_pass_type,
                     }
-        status, status_code, reply = self.send("set_login_token", command_args)
+        status, status_code, response = self.send("set_login_token", command_args)
         if status_code != status_codes.OK:
-            msg = _("Failed to set login token: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Failed to set login token: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
 
     def add_ssh_key_pass(self, ssh_agent_pid, ssh_key_pass):
@@ -307,15 +307,15 @@ class AgentConn(object):
                         'ssh_agent_pid' : ssh_agent_pid,
                         'ssh_key_pass'  : ssh_key_pass,
                     }
-        status, status_code, reply = self.send("add_ssh_key_pass", command_args)
+        status, status_code, response = self.send("add_ssh_key_pass", command_args)
         if status_code != status_codes.OK:
-            msg = _("Failed to add SSH key passphrase to agent: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Failed to add SSH key passphrase to agent: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
 
     def check_ssh_key_pass(self):
         """ Check if otpme-agent does have a SSH key pass. """
-        status, status_code, reply = self.send("check_ssh_key_pass")
+        status, status_code, response = self.send("check_ssh_key_pass")
         if status_code == status_codes.OK:
             return True
         return False
@@ -324,20 +324,20 @@ class AgentConn(object):
         """ Get SSH key passphrase from otpme-agent. """
         username = None
         ssh_key_pass = None
-        status, status_code, reply = self.send("get_ssh_key_pass")
+        status, status_code, response = self.send("get_ssh_key_pass")
         if status_code == status_codes.OK:
             username = re.sub('^username: ([^:]*) ssh_key_pass: (.*)$', r'\1',
-                            reply)
+                            response)
             ssh_key_pass = re.sub('^username: ([^:]*) ssh_key_pass: (.*)$', r'\2',
-                                reply)
+                                response)
         return username, ssh_key_pass
 
     def del_ssh_key_pass(self):
         """ Del SSH key passphrase from otpme-agent. """
-        status, status_code, reply = self.send("del_ssh_key_pass")
+        status, status_code, response = self.send("del_ssh_key_pass")
         if status_code != status_codes.OK:
-            msg = _("Failed to remove SSH key passphrase from agent: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Failed to remove SSH key passphrase from agent: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
 
     def add_acl(self, username, acl):
@@ -346,10 +346,10 @@ class AgentConn(object):
                         'username'  : username,
                         'acl'       : acl,
                     }
-        status, status_code, reply = self.send("add_acl", command_args)
+        status, status_code, response = self.send("add_acl", command_args)
         if status_code != status_codes.OK:
-            msg = _("Failed to add ACL to agent: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Failed to add ACL to agent: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
 
     def del_acl(self, username, acl):
@@ -358,10 +358,10 @@ class AgentConn(object):
                         'username'  : username,
                         'acl'       : acl,
                     }
-        status, status_code, reply = self.send("del_acl", command_args)
+        status, status_code, response = self.send("del_acl", command_args)
         if status_code != status_codes.OK:
-            msg = _("Failed to remove ACL from agent: {reply}")
-            msg = msg.format(reply=reply)
+            msg = _("Failed to remove ACL from agent: {response}")
+            msg = msg.format(response=response)
             raise Exception(msg)
 
     def connect(self, connect_timeout=None, timeout=None):

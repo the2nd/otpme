@@ -839,10 +839,10 @@ class PamHandler(object):
             # We also check if the token is allowed to login via the current
             # interface (e.g. gui, tty).
             status, \
-            reply = self.hostd_conn.authorize_token(self.offline_login_token.uuid,
+            response = self.hostd_conn.authorize_token(self.offline_login_token.uuid,
                                                 login_interface=self.login_interface)
             if not status:
-                raise AuthFailed(reply)
+                raise AuthFailed(response)
 
         # Split off password, OTP and PIN.
         result = verify_token.split_password(password)
@@ -1235,8 +1235,8 @@ class PamHandler(object):
                         except KeyError:
                             shares = []
                         if shares:
-                            mount_reply = agent_conn.mount_shares(shares=shares)
-                            log_msg = mount_reply
+                            mount_response = agent_conn.mount_shares(shares=shares)
+                            log_msg = mount_response
                             self.logger.info(log_msg)
             else:
                 log_msg = _("No offline session found. Relogin required when servers are available again...", log=True)[1]
@@ -1374,28 +1374,28 @@ class PamHandler(object):
             self.logger.warning(log_msg, exc_info=True)
             return
 
-        # Get login reply.
-        login_reply = login_handler.login_reply
+        # Get login response.
+        login_response = login_handler.login_response
 
         ## Get login session ID.
-        #self.login_session_id = login_reply['login_session_id']
+        #self.login_session_id = login_response['login_session_id']
 
         if self.auth_status is True and login:
             # Get login token.
-            self.login_token = login_reply['auth_reply']['login_token']
+            self.login_token = login_response['auth_response']['login_token']
             # Get login script
-            self.login_script = login_reply['auth_reply']['login_script']
-            self.login_script_uuid = login_reply['auth_reply']['login_script_uuid']
-            self.login_script_path = login_reply['auth_reply']['login_script_path']
-            self.login_script_opts = login_reply['auth_reply']['login_script_opts']
-            self.login_script_signs = login_reply['auth_reply']['login_script_signs']
+            self.login_script = login_response['auth_response']['login_script']
+            self.login_script_uuid = login_response['auth_response']['login_script_uuid']
+            self.login_script_path = login_response['auth_response']['login_script_path']
+            self.login_script_opts = login_response['auth_response']['login_script_opts']
+            self.login_script_signs = login_response['auth_response']['login_script_signs']
 
         # The SSH agent script is delivered even if the auth/login failed!
-        self.ssh_agent_script = login_reply['ssh_agent_script']
-        self.ssh_agent_script_uuid = login_reply['ssh_agent_script_uuid']
-        self.ssh_agent_script_path = login_reply['ssh_agent_script_path']
-        self.ssh_agent_script_opts = login_reply['ssh_agent_script_opts']
-        self.ssh_agent_script_signs = login_reply['ssh_agent_script_signs']
+        self.ssh_agent_script = login_response['ssh_agent_script']
+        self.ssh_agent_script_uuid = login_response['ssh_agent_script_uuid']
+        self.ssh_agent_script_path = login_response['ssh_agent_script_path']
+        self.ssh_agent_script_opts = login_response['ssh_agent_script_opts']
+        self.ssh_agent_script_signs = login_response['ssh_agent_script_signs']
 
     def authenticate(self):
         """
@@ -1504,10 +1504,10 @@ class PamHandler(object):
             return self.pamh.PAM_SYSTEM_ERR
 
         # Check host status.
-        status, reply = self.hostd_conn.get_host_status()
+        status, response = self.hostd_conn.get_host_status()
         if not status:
             log_msg = _("Got host status: {status}", log=True)[1]
-            log_msg = log_msg.format(status=reply)
+            log_msg = log_msg.format(status=response)
             self.logger.warning(log_msg)
             self.cleanup()
             return self.pamh.PAM_AUTH_ERR

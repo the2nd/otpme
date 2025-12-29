@@ -211,7 +211,7 @@ class OTPmeJoinP1(OTPmeServer1):
         if host.site_uuid != config.site_uuid:
             cache.clear(host.oid)
 
-        log_msg = _("Selecting objects for join reply...", log=True)[1]
+        log_msg = _("Selecting objects for join response...", log=True)[1]
         self.logger.debug(log_msg)
 
         # Build list with initial sync objects.
@@ -395,16 +395,16 @@ class OTPmeJoinP1(OTPmeServer1):
             object_id = o.oid.full_oid
             sync_object_configs[object_id] = object_config
 
-        # Build join reply.
-        join_reply = {
+        # Build join response.
+        join_response = {
                     'jotp'                  : host.jotp,
                     'object_configs'        : sync_object_configs,
                     'master_node_join'      : self.master_node_join,
                     'password_hash_salt'    : config.password_hash_salt,
                     }
 
-        # Encode join reply.
-        message = json.encode(join_reply)
+        # Encode join response.
+        message = json.encode(join_response)
         status = True
 
         # Make sure we clean node from cache to prevent issues when joining
@@ -452,8 +452,8 @@ class OTPmeJoinP1(OTPmeServer1):
         if host.site_uuid != config.site_uuid:
             cache.clear(host.oid)
 
-        # Build final join reply.
-        join_reply = {
+        # Build final join response.
+        join_response = {
                     'lotp'      : host.lotp,
                     'host_cert' : host.cert,
                     }
@@ -526,8 +526,8 @@ class OTPmeJoinP1(OTPmeServer1):
                 # node from other site because checksums are not updated for objects
                 # from other sites.
                 cache.clear(site_ca.oid)
-                # Add cert to reply.
-                join_reply['ca_cert'] = cert
+                # Add cert to response.
+                join_response['ca_cert'] = cert
 
         # Make sure host is enabled.
         try:
@@ -564,11 +564,11 @@ class OTPmeJoinP1(OTPmeServer1):
         #if host.type == "node":
         #    self.update_node_object(host)
 
-        # Add join message to reply.
-        join_reply['message'] = "\n".join(msg)
+        # Add join message to response.
+        join_response['message'] = "\n".join(msg)
 
-        # Encode join reply.
-        message = json.encode(join_reply)
+        # Encode join response.
+        message = json.encode(join_response)
         status = True
 
         # Write changed objects.
