@@ -67,7 +67,8 @@ def challenge_response(challenge, password_hash):
     return response
 
 def generate_authenticator_response(nt_response, peer_challenge,
-    authenticator_challenge, username, password=None, password_hash=None):
+    authenticator_challenge, username, password=None,
+    password_hash=None, password_hash_hash=None):
     """ https://tools.ietf.org/html/rfc2759#section-8.7 """
     magic1 = b"\x4D\x61\x67\x69\x63\x20\x73\x65\x72\x76" \
             b"\x65\x72\x20\x74\x6F\x20\x63\x6C\x69\x65" \
@@ -82,7 +83,8 @@ def generate_authenticator_response(nt_response, peer_challenge,
 
     if password and not password_hash:
         password_hash = nt_password_hash(password)
-    password_hash_hash = hash_nt_password_hash(password_hash)
+    if password_hash and not password_hash_hash:
+        password_hash_hash = hash_nt_password_hash(password_hash)
 
     m = hashlib.sha1()
     m.update(password_hash_hash[:16])
@@ -98,6 +100,9 @@ def generate_authenticator_response(nt_response, peer_challenge,
     n.update(challenge[:8])
     n.update(magic2[:41])
     authenticator_response = n.hexdigest()
+    # auth response must be uppercase. If its not, iOS refuses to authenticate.
+    # https://datatracker.ietf.org/doc/html/rfc2759#section-5
+    authenticator_response = authenticator_response.upper()
 
     return f"S={authenticator_response}"
 

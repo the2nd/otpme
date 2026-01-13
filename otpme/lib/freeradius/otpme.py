@@ -415,23 +415,23 @@ def authenticate(authData):
             binary_data = daemon_conn.send("verify_mschap", command_args)
             # Get auth message.
             auth_message = auth_response['message']
-            # Get password hash.
-            password_hash = auth_response['password_hash']
 
             # Check if user authenticated successful.
             if auth_status:
-                # Encode password_hash we got from User().authenticate()
-                password_hash_bin = decode(password_hash, "hex")
+                # Get password hash.
+                nt_key = auth_response['nt_key']
+                # Encode nt_key we got from User().authenticate()
+                nt_key_bin = decode(nt_key, "hex")
 
                 # Generate authenticator response.
                 auth_response = mschap.generate_authenticator_response(peer_nt_response_bin,
                                                                         peer_challenge_bin,
                                                                         auth_challenge_bin,
                                                                         username,
-                                                                        password_hash=password_hash_bin)
+                                                                        password_hash_hash=nt_key_bin)
                 # Generate mppe send and receive keys.
-                master_key = mschap.get_master_key(password_hash_bin,
-                                                    peer_nt_response_bin)
+                master_key = mschap.get_master_key(nt_response=peer_nt_response_bin,
+                                                    password_hash_hash=nt_key_bin)
                 master_send_key_bin = mschap.get_asymetric_start_key(master_key=master_key,
                                                                     session_key_len=16,
                                                                     is_send=False,
@@ -452,6 +452,7 @@ def authenticate(authData):
                 #  If the Value received in a Response is equal to the expected
                 #  value, then the implementation MUST transmit a CHAP packet with
                 #  the Code field set to 3 (Success).
+                #success_response = f"3.{auth_response} M=OK"
                 success_response = f"3{auth_response}"
                 success_response_hex = encode(success_response, "hex")
 
@@ -531,6 +532,21 @@ def authenticate(authData):
     # Finally return from authenticate().
     return (return_code, response_tuple, config_tuple)
 
+def post_auth(authData):
+    """ Post-Auth - Add attributes to final reply for iOS compatibility """
+    # This is especially important for PEAP: iOS expects MPPE encryption
+    # attributes in the final Access-Accept, not just in the inner tunnel.
+
+    # Build response tuple with iOS-required attributes
+    response_tuple = (
+        ('MS-MPPE-Encryption-Policy', '0x00000001'),  # Encryption-Allowed
+        ('MS-MPPE-Encryption-Types', '0x00000006'),   # RC4-40or128-bit-Allowed
+    )
+
+    log_msg = _("post_auth: Adding MPPE encryption attributes for iOS compatibility", log=True)[1]
+    log(radiusd.L_DBG, log_msg)
+
+    return (radiusd.RLM_MODULE_OK, response_tuple, ())
 
 def detach():
     """ Detach and clean up."""

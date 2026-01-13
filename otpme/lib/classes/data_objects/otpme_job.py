@@ -240,6 +240,217 @@ class OTPmeTreeJob(OTPmeDataObject):
             raise OTPmeException(msg)
         return action
 
+    def add_gidnumber(self, check_only, callback):
+        try:
+            user_uuid = self.job_data['user_uuid']
+        except KeyError:
+            msg, log_msg = _("Job data misses user UUID.", log=True)
+            logger.warning(log_msg)
+            raise OTPmeException(msg)
+        # Try to get user.
+        user = backend.get_object(uuid=user_uuid)
+        if not user:
+            msg, log_msg = _("Unknown user: {user_uuid}", log=True)
+            log_msg = log_msg.format(user_uuid=user_uuid)
+            logger.warning(log_msg)
+            msg = msg.format(user_uuid=user_uuid)
+            raise OTPmeException(msg)
+        if not user.group_uuid:
+            msg, log_msg = _("User without default group: {user}", log=True)
+            log_msg = log_msg.format(user=user)
+            logger.warning(log_msg)
+            msg = msg.format(user=user)
+            raise OTPmeException(msg)
+        if check_only:
+            return
+        # Add gidNumber attribute.
+        try:
+            status = user.add_attribute(attribute="gidNumber",
+                                        ignore_ro=True,
+                                        verify_acls=False,
+                                        callback=callback)
+        except Exception as e:
+            msg, log_msg = _("Adding gidNumber failed: {user}", log=True)
+            log_msg = log_msg.format(user=user)
+            logger.warning(log_msg)
+            msg = msg.format(user=user)
+            raise OTPmeException(msg)
+        if status is False:
+            msg = f"Failed: {callback.job.return_value}"
+            logger.warning(msg)
+            raise OTPmeException(msg)
+        # Write objects on success.
+        callback.write_modified_objects()
+
+    def add_token_to_role(self, check_only, callback):
+        try:
+            role_uuid = self.job_data['role_uuid']
+        except KeyError:
+            msg, log_msg = _("Job data misses role UUID.", log=True)
+            logger.warning(log_msg)
+            raise OTPmeException(msg)
+        try:
+            token_uuid = self.job_data['token_uuid']
+        except KeyError:
+            msg, log_msg = _("Job data misses user UUID.", log=True)
+            logger.warning(log_msg)
+            raise OTPmeException(msg)
+        # Try to get role.
+        role = backend.get_object(uuid=role_uuid)
+        if not role:
+            msg, log_msg = _("Unknown role: {role_uuid}", log=True)
+            log_msg = log_msg.format(role_uuid=role_uuid)
+            logger.warning(log_msg)
+            msg = msg.format(role_uuid=role_uuid)
+            raise OTPmeException(msg)
+        # Try to get token.
+        token = backend.get_object(uuid=token_uuid)
+        if token:
+            token_path = token.rel_path
+        else:
+            if not check_only:
+                msg, log_msg = _("Unknown token: {token_uuid}", log=True)
+                log_msg = log_msg.format(token_uuid=token_uuid)
+                logger.warning(log_msg)
+                msg = msg.format(token_uuid=token_uuid)
+                raise OTPmeException(msg)
+            token_path = "dummyuser/dummytoken"
+        verify_acls = False
+        verify_acls_only = False
+        if check_only:
+            verify_acls = True
+            verify_acls_only = check_only
+        try:
+            status = role.add_token(token_path=token_path,
+                                    callback=callback,
+                                    verify_acls=verify_acls,
+                                    verify_acls_only=verify_acls_only)
+        except Exception as e:
+            log_msg = _("Error: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            logger.warning(log_msg)
+            msg = _("Error adding token.")
+            raise OTPmeException(msg)
+        if status is False:
+            if verify_acls_only:
+                msg = _("Permission denied.")
+                raise OTPmeException(msg)
+            else:
+                msg = f"Failed: {callback.job.return_value}"
+                raise OTPmeException(msg)
+        # Write objects on success.
+        if not check_only:
+            callback.write_modified_objects()
+
+    def add_token_to_group(self, check_only, callback):
+        try:
+            group_uuid = self.job_data['group_uuid']
+        except KeyError:
+            msg, log_msg = _("Job data misses group UUID.", log=True)
+            logger.warning(log_msg)
+            raise OTPmeException(msg)
+        try:
+            token_uuid = self.job_data['token_uuid']
+        except KeyError:
+            msg, log_msg = _("Job data misses user UUID.", log=True)
+            logger.warning(log_msg)
+            raise OTPmeException(msg)
+        # Try to get group.
+        group = backend.get_object(uuid=group_uuid)
+        if not group:
+            msg, log_msg = _("Unknown group: {group_uuid}", log=True)
+            log_msg = log_msg.format(group_uuid=group_uuid)
+            logger.warning(log_msg)
+            msg = msg.format(group_uuid=group_uuid)
+            raise OTPmeException(msg)
+        # Try to get token.
+        token = backend.get_object(uuid=token_uuid)
+        if token:
+            token_path = token.rel_path
+        else:
+            if not check_only:
+                msg, log_msg = _("Unknown token: {token_uuid}", log=True)
+                log_msg = log_msg.format(token_uuid=token_uuid)
+                logger.warning(log_msg)
+                msg = msg.format(token_uuid=token_uuid)
+                raise OTPmeException(msg)
+            token_path = "dummyuser/dummytoken"
+        verify_acls = False
+        verify_acls_only = False
+        if check_only:
+            verify_acls = True
+            verify_acls_only = check_only
+        try:
+            status = group.add_token(token_path=token_path,
+                                    callback=callback,
+                                    verify_acls=verify_acls,
+                                    verify_acls_only=verify_acls_only)
+        except Exception as e:
+            log_msg = _("Error: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            logger.warning(log_msg)
+            msg = _("Error adding token.")
+            raise OTPmeException(msg)
+        if status is False:
+            if verify_acls_only:
+                msg = _("Permission denied.")
+                raise OTPmeException(msg)
+            msg = f"Failed: {callback.job.return_value}"
+            raise OTPmeException(msg)
+        # Write objects on success.
+        if not check_only:
+            callback.write_modified_objects()
+
+    def add_default_group_user(self, check_only, callback):
+        try:
+            group_uuid = self.job_data['group_uuid']
+        except KeyError:
+            msg, log_msg = _("Job data misses group UUID.", log=True)
+            logger.warning(log_msg)
+            raise OTPmeException(msg)
+        try:
+            user_uuid = self.job_data['user_uuid']
+        except KeyError:
+            msg, log_msg = _("Job data misses user UUID.", log=True)
+            logger.warning(log_msg)
+            raise OTPmeException(msg)
+        # Try to get group.
+        group = backend.get_object(uuid=group_uuid)
+        if not group:
+            msg, log_msg = _("Unknown group: {group_uuid}", log=True)
+            log_msg = log_msg.format(group_uuid=group_uuid)
+            logger.warning(log_msg)
+            msg = msg.format(group_uuid=group_uuid)
+            raise OTPmeException(msg)
+        verify_acls = False
+        verify_acls_only = False
+        if check_only:
+            verify_acls = True
+            verify_acls_only = check_only
+        try:
+            status = group.add_default_group_user(user_uuid=user_uuid,
+                                                callback=callback,
+                                                verify_acls=verify_acls,
+                                                verify_acls_only=verify_acls_only)
+        except Exception as e:
+            log_msg = _("Error: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            logger.warning(log_msg)
+            msg = _("Error setting default group.")
+            raise OTPmeException(msg)
+        if status is False:
+            if verify_acls_only:
+                msg = _("Permission denied.")
+                raise OTPmeException(msg)
+            self.job_status = f"Failed: {callback.job.return_value}"
+            self.update_index('job_status', self.job_status)
+            self._write()
+            msg = self.job_status
+            raise OTPmeException(msg)
+        # Write objects on success.
+        if not check_only:
+            callback.write_modified_objects()
+
     def commit(
         self,
         check_only: bool=False,
@@ -255,50 +466,10 @@ class OTPmeTreeJob(OTPmeDataObject):
         # Process actions.
         if self.action == "add_default_group_user":
             try:
-                group_uuid = self.job_data['group_uuid']
-            except KeyError:
-                msg, log_msg = _("Job data misses group UUID.", log=True)
-                logger.warning(log_msg)
-                raise OTPmeException(msg)
-            try:
-                user_uuid = self.job_data['user_uuid']
-            except KeyError:
-                msg, log_msg = _("Job data misses user UUID.", log=True)
-                logger.warning(log_msg)
-                raise OTPmeException(msg)
-            # Try to get group.
-            group = backend.get_object(uuid=group_uuid)
-            if not group:
-                msg, log_msg = _("Unknown group: {group_uuid}", log=True)
-                log_msg = log_msg.format(group_uuid=group_uuid)
-                logger.warning(log_msg)
-                msg = msg.format(group_uuid=group_uuid)
-                raise OTPmeException(msg)
-            verify_acls = False
-            verify_acls_only = False
-            if check_only:
-                verify_acls = True
-                verify_acls_only = check_only
-            try:
-                status = group.add_default_group_user(user_uuid=user_uuid,
-                                                    callback=callback,
-                                                    verify_acls=verify_acls,
-                                                    verify_acls_only=verify_acls_only)
+                self.add_default_group_user(check_only=check_only,
+                                            callback=callback)
             except Exception as e:
-                log_msg = _("Error: {error}", log=True)[1]
-                log_msg = log_msg.format(error=e)
-                logger.warning(log_msg)
-                msg = _("Error setting default group.")
-                raise OTPmeException(msg)
-            if status is not False:
-                if not check_only:
-                    callback.write_modified_objects()
-                return
-            if verify_acls_only:
-                msg = _("Permission denied.")
-                raise OTPmeException(msg)
-            else:
-                self.job_status = f"Failed: {callback.job.return_value}"
+                self.job_status = str(e)
                 self.update_index('job_status', self.job_status)
                 self._write()
                 msg = self.job_status
@@ -306,62 +477,10 @@ class OTPmeTreeJob(OTPmeDataObject):
 
         if self.action == "add_token_to_group":
             try:
-                group_uuid = self.job_data['group_uuid']
-            except KeyError:
-                msg, log_msg = _("Job data misses group UUID.", log=True)
-                logger.warning(log_msg)
-                raise OTPmeException(msg)
-            try:
-                token_uuid = self.job_data['token_uuid']
-            except KeyError:
-                msg, log_msg = _("Job data misses user UUID.", log=True)
-                logger.warning(log_msg)
-                raise OTPmeException(msg)
-            # Try to get group.
-            group = backend.get_object(uuid=group_uuid)
-            if not group:
-                msg, log_msg = _("Unknown group: {group_uuid}", log=True)
-                log_msg = log_msg.format(group_uuid=group_uuid)
-                logger.warning(log_msg)
-                msg = msg.format(group_uuid=group_uuid)
-                raise OTPmeException(msg)
-            # Try to get token.
-            token = backend.get_object(uuid=token_uuid)
-            if token:
-                token_path = token.rel_path
-            else:
-                if not check_only:
-                    msg, log_msg = _("Unknown token: {token_uuid}", log=True)
-                    log_msg = log_msg.format(token_uuid=token_uuid)
-                    logger.warning(log_msg)
-                    msg = msg.format(token_uuid=token_uuid)
-                    raise OTPmeException(msg)
-                token_path = "dummyuser/dummytoken"
-            verify_acls = False
-            verify_acls_only = False
-            if check_only:
-                verify_acls = True
-                verify_acls_only = check_only
-            try:
-                status = group.add_token(token_path=token_path,
-                                        callback=callback,
-                                        verify_acls=verify_acls,
-                                        verify_acls_only=verify_acls_only)
+                self.add_token_to_group(check_only=check_only,
+                                        callback=callback)
             except Exception as e:
-                log_msg = _("Error: {error}", log=True)[1]
-                log_msg = log_msg.format(error=e)
-                logger.warning(log_msg)
-                msg = _("Error adding token.")
-                raise OTPmeException(msg)
-            if status is not False:
-                if not check_only:
-                    callback.write_modified_objects()
-                return
-            if verify_acls_only:
-                msg = _("Permission denied.")
-                raise OTPmeException(msg)
-            else:
-                self.job_status = f"Failed: {callback.job.return_value}"
+                self.job_status = str(e)
                 self.update_index('job_status', self.job_status)
                 self._write()
                 msg = self.job_status
@@ -369,62 +488,10 @@ class OTPmeTreeJob(OTPmeDataObject):
 
         if self.action == "add_token_to_role":
             try:
-                role_uuid = self.job_data['role_uuid']
-            except KeyError:
-                msg, log_msg = _("Job data misses role UUID.", log=True)
-                logger.warning(log_msg)
-                raise OTPmeException(msg)
-            try:
-                token_uuid = self.job_data['token_uuid']
-            except KeyError:
-                msg, log_msg = _("Job data misses user UUID.", log=True)
-                logger.warning(log_msg)
-                raise OTPmeException(msg)
-            # Try to get role.
-            role = backend.get_object(uuid=role_uuid)
-            if not role:
-                msg, log_msg = _("Unknown role: {role_uuid}", log=True)
-                log_msg = log_msg.format(role_uuid=role_uuid)
-                logger.warning(log_msg)
-                msg = msg.format(role_uuid=role_uuid)
-                raise OTPmeException(msg)
-            # Try to get token.
-            token = backend.get_object(uuid=token_uuid)
-            if token:
-                token_path = token.rel_path
-            else:
-                if not check_only:
-                    msg, log_msg = _("Unknown token: {token_uuid}", log=True)
-                    log_msg = log_msg.format(token_uuid=token_uuid)
-                    logger.warning(log_msg)
-                    msg = msg.format(token_uuid=token_uuid)
-                    raise OTPmeException(msg)
-                token_path = "dummyuser/dummytoken"
-            verify_acls = False
-            verify_acls_only = False
-            if check_only:
-                verify_acls = True
-                verify_acls_only = check_only
-            try:
-                status = role.add_token(token_path=token_path,
-                                        callback=callback,
-                                        verify_acls=verify_acls,
-                                        verify_acls_only=verify_acls_only)
+                self.add_token_to_role(check_only=check_only,
+                                        callback=callback)
             except Exception as e:
-                log_msg = _("Error: {error}", log=True)[1]
-                log_msg = log_msg.format(error=e)
-                logger.warning(log_msg)
-                msg = _("Error adding token.")
-                raise OTPmeException(msg)
-            if status is not False:
-                if not check_only:
-                    callback.write_modified_objects()
-                return
-            if verify_acls_only:
-                msg = _("Permission denied.")
-                raise OTPmeException(msg)
-            else:
-                self.job_status = f"Failed: {callback.job.return_value}"
+                self.job_status = str(e)
                 self.update_index('job_status', self.job_status)
                 self._write()
                 msg = self.job_status
@@ -432,44 +499,11 @@ class OTPmeTreeJob(OTPmeDataObject):
 
         if self.action == "add_gidnumber":
             try:
-                user_uuid = self.job_data['user_uuid']
-            except KeyError:
-                msg, log_msg = _("Job data misses user UUID.", log=True)
-                logger.warning(log_msg)
-                raise OTPmeException(msg)
-            # Try to get user.
-            user = backend.get_object(uuid=user_uuid)
-            if not user:
-                msg, log_msg = _("Unknown user: {user_uuid}", log=True)
-                log_msg = log_msg.format(user_uuid=user_uuid)
-                logger.warning(log_msg)
-                msg = msg.format(user_uuid=user_uuid)
-                raise OTPmeException(msg)
-            if not user.group_uuid:
-                msg, log_msg = _("User without default group: {user}", log=True)
-                log_msg = log_msg.format(user=user)
-                logger.warning(log_msg)
-                msg = msg.format(user=user)
-                raise OTPmeException(msg)
-            if check_only:
-                return
-            # Add gidNumber attribute.
-            try:
-                status = user.add_attribute(attribute="gidNumber",
-                                            ignore_ro=True,
-                                            verify_acls=False,
-                                            callback=callback)
+                self.add_gidnumber(check_only=check_only,
+                                    callback=callback)
             except Exception as e:
-                msg, log_msg = _("Adding gidNumber failed: {user}", log=True)
-                log_msg = log_msg.format(user=user)
-                logger.warning(log_msg)
-                msg = msg.format(user=user)
+                self.job_status = str(e)
+                self.update_index('job_status', self.job_status)
+                self._write()
+                msg = self.job_status
                 raise OTPmeException(msg)
-            if status is not False:
-                callback.write_modified_objects()
-                return
-            self.job_status = f"Failed: {callback.job.return_value}"
-            self.update_index('job_status', self.job_status)
-            self._write()
-            msg = self.job_status
-            raise OTPmeException(msg)

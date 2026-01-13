@@ -2769,9 +2769,7 @@ class AuthHandler(object):
                 }
 
             if self.auth_type == "mschap":
-                auth_response['password_hash'] = self.password_hash
                 auth_response['nt_key'] = self.nt_key
-
 
             # Handle session creation.
             if self.replace_sessions:

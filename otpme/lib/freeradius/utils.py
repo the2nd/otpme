@@ -182,7 +182,8 @@ def create_freeradius_conf():
         }
 
         eap {
-            default_eap_type = md5
+            #default_eap_type = md5
+            default_eap_type = mschapv2
             timer_expire = 60
             ignore_unknown_eap_types = no
             cisco_accounting_username_bug = no
@@ -222,7 +223,8 @@ def create_freeradius_conf():
 
             ttls {
                 tls = tls-common
-                default_eap_type = md5
+                #default_eap_type = md5
+                default_eap_type = mschapv2
                 copy_request_to_tunnel = yes
                 use_tunneled_reply = yes
                 virtual_server = "otpme"
