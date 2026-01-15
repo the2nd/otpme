@@ -434,6 +434,7 @@ class OTPmeAuthP1(OTPmeServer1):
 
             # Try local JWT auth.
             auth_response = user.authenticate(auth_type="jwt",
+                                        peer=self.peer,
                                         client=client,
                                         client_ip=client_ip,
                                         realm_login=False,
@@ -567,6 +568,7 @@ class OTPmeAuthP1(OTPmeServer1):
             kwargs = {
                         'auth_mode'     : auth_mode,
                         'auth_type'     : auth_type,
+                        'peer'          : self.peer,
                         'access_group'  : access_group,
                         'challenge'     : mschap_challenge,
                         'response'      : mschap_response,

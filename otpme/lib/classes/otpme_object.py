@@ -1572,6 +1572,7 @@ class OTPmeBaseObject(OTPmeLockObject):
                             full_index_update=True,
                             use_acl_journal=False,
                             full_acl_update=True,
+                            full_ldif_update=True,
                             callback=callback)
 
     @object_lock()

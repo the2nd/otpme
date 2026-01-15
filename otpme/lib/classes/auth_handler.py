@@ -2097,7 +2097,7 @@ class AuthHandler(object):
         return log_message
 
     def authenticate(self, user, ecdh_curve=None, auth_type="clear-text",
-        auth_mode="auto", realm_login=False, realm_logout=False,
+        auth_mode="auto", peer=None, realm_login=False, realm_logout=False,
         login_interface=None, reneg=None, reneg_salt=None, rsp_hash_type=None,
         unlock=False, password=None, challenge=None, response=None,
         smartcard_data=None, client=None, client_ip=None, access_group=None,
@@ -2174,6 +2174,7 @@ class AuthHandler(object):
         self.user = user
         self.password = string_vars['password']
         self.user_token = string_vars['user_token']
+        self.peer = peer
         self.challenge = string_vars['challenge']
         self.response = string_vars['response']
         self.auth_type = string_vars['auth_type']
@@ -2769,7 +2770,8 @@ class AuthHandler(object):
                 }
 
             if self.auth_type == "mschap":
-                auth_response['nt_key'] = self.nt_key
+                if self.peer and self.peer.type == "node":
+                    auth_response['nt_key'] = self.nt_key
 
             # Handle session creation.
             if self.replace_sessions:

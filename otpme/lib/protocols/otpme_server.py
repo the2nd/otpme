@@ -128,6 +128,7 @@ class OTPmeServer1(object):
         self.client_cn = None
 
         # Client infos.
+        self.peer = None
         self.client = client
         self.client_name = client
         # Get process infos from unix socket client.
@@ -141,6 +142,7 @@ class OTPmeServer1(object):
             self.require_preauth = False
             self.encrypt_session = False
             self.require_client_cert = False
+            self.peer = backend.get_object(uuid=config.uuid)
 
         self.peer_cert = peer_cert
         self.client_cn = None
@@ -194,7 +196,6 @@ class OTPmeServer1(object):
             raise OTPmeException(msg)
         self.session_key_hash_type = "HKDF"
         self.session_key_hash_algo = "SHA256"
-        self.peer = None
         self.smartcard_handlers = {}
         self.compresss_response = True
 
@@ -1945,6 +1946,7 @@ class OTPmeServer1(object):
                 auth_response = self.user.authenticate(auth_mode=auth_mode,
                                             auth_type=auth_type,
                                             client=client,
+                                            peer=self.peer,
                                             realm_login=realm_login,
                                             realm_logout=realm_logout,
                                             unlock=auth_unlock,
@@ -1986,6 +1988,7 @@ class OTPmeServer1(object):
                 auth_response = self.user.authenticate(auth_mode=auth_mode,
                                             auth_type=auth_type,
                                             client=client,
+                                            peer=self.peer,
                                             realm_login=realm_login,
                                             realm_logout=realm_logout,
                                             unlock=auth_unlock,
