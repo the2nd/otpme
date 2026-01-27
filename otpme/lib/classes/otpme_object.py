@@ -339,6 +339,7 @@ def register_backend():
     config.register_index_attribute('resolver')
     config.register_index_attribute('resolver_key')
     config.register_index_attribute('resolver_checksum')
+    config.register_index_attribute('auto_disable')
     config.register_index_attribute('origin')
 
 def register_config_parameters():
@@ -2157,7 +2158,11 @@ class OTPmeObject(OTPmeBaseObject):
         self.load_extensions()
         return result
 
-    def exists(self, run_policies: bool=True):
+    def exists(
+        self,
+        run_policies: bool=True,
+        log: bool=True,
+        ):
         """ Check if object exists. """
         if self.object_config:
             object_exists = backend.object_exists(self.oid)
@@ -2189,7 +2194,7 @@ class OTPmeObject(OTPmeBaseObject):
                 logger.warning(log_msg, exc_info=True)
 
         # Check for auto-disable of object.
-        self.check_auto_disable()
+        self.check_auto_disable(log=log)
 
         return True
 
@@ -6402,7 +6407,7 @@ class OTPmeObject(OTPmeBaseObject):
         self._cache(callback=callback)
         return callback.ok()
 
-    def check_auto_disable(self, **kwargs):
+    def check_auto_disable(self, log=True, **kwargs):
         """ Handle auto disable. """
         if not self.auto_disable:
             return
@@ -6427,15 +6432,16 @@ class OTPmeObject(OTPmeBaseObject):
                 exception = e
                 object_disabled = False
                 config.raise_exception()
-            if object_disabled:
-                log_msg = _("{object_type} auto-disabled: {object_name}", log=True)[1]
-                log_msg = log_msg.format(object_type=self.type, object_name=self.name)
-                logger.warning(log_msg)
-            else:
-                log_msg = _("Cannot auto-disable object: {object_name}: {exception}", log=True)[1]
-                log_msg = log_msg.format(object_name=self.name, exception=exception)
-                logger.critical(log_msg)
-                return False
+            if log:
+                if object_disabled:
+                    log_msg = _("{object_type} auto-disabled: {object_name}", log=True)[1]
+                    log_msg = log_msg.format(object_type=self.type, object_name=self.name)
+                    logger.warning(log_msg)
+                else:
+                    log_msg = _("Cannot auto-disable object: {object_name}: {exception}", log=True)[1]
+                    log_msg = log_msg.format(object_name=self.name, exception=exception)
+                    logger.critical(log_msg)
+                    return False
         return True
 
     @check_acls(['edit:auto_disable'])
@@ -6474,10 +6480,12 @@ class OTPmeObject(OTPmeBaseObject):
 
         if auto_disable == 0:
             self.auto_disable = ""
+            self.del_index('auto_disable')
         else:
             self.unused_disable = unused
             self.auto_disable = auto_disable
             self.auto_disable_start_time = time.time()
+            self.update_index('auto_disable', True)
 
         return self._cache(callback=callback)
 

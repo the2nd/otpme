@@ -65,7 +65,7 @@ def handle_sync_child():
                 log_msg = log_msg.format(function=f.__name__, sync_type=sync_type, error=e)
                 self.logger.critical(log_msg)
                 result = False
-                config.raise_exception()
+                #config.raise_exception()
             finally:
                 self._send_local_daemon_msg("sync_done")
                 multiprocessing.cleanup(keep_queues=True)
@@ -81,6 +81,7 @@ class HostDaemon(OTPmeDaemon):
     """ HostDaemon. """
     def __init__(self, *args, **kwargs):
         self.resolver_run_child = None
+        self.auto_disabled_run_child = None
         self.remove_outdated_tokens_child = None
         self.clear_outdated_cache_objects_child = None
         super(HostDaemon, self).__init__(*args, **kwargs)
@@ -96,6 +97,8 @@ class HostDaemon(OTPmeDaemon):
         self.logger.info(log_msg)
         # Stop resolver runs.
         self.stop_resolvers()
+        # Stop auto disable childs.
+        self.stop_auto_disable()
         # Shutdown sync childs.
         self.shutdown_sync_childs()
         return super(HostDaemon, self).signal_handler(_signal, frame)
@@ -1391,6 +1394,46 @@ class HostDaemon(OTPmeDaemon):
             callback.write_modified_objects()
             callback.release_cache_locks()
 
+    def process_auto_disabled(self):
+        """ Update auto disabled objects. """
+        if not config.master_node:
+            return
+        if not config.cluster_status:
+            return
+        if config.master_failover:
+            return
+        if self.auto_disabled_run_child:
+            if self.auto_disabled_run_child.is_alive():
+                return
+            self.auto_disabled_run_child.close()
+        # Create child process.
+        child = multiprocessing.start_process(name=self.name,
+                            target=self._process_auto_disabled,
+                            join=True)
+        self.auto_disabled_run_child = child
+
+    def _process_auto_disabled(self):
+        """ Update auto disabled objects. """
+        search_attributes = {
+                            'enabled'       : {'value':True},
+                            'auto_disable'  : {'value':True},
+                        }
+        result = backend.search(attributes=search_attributes)
+        for x_uuid in result:
+            if not config.master_node:
+               break
+            if not config.cluster_status:
+                break
+            if config.master_failover:
+                break
+            x_object = backend.get_object(uuid=x_uuid,
+                                        log_exists=False,
+                                        run_policies=False)
+            x_object.exists(log=False,
+                            run_policies=False)
+        # Do some cleanup.
+        multiprocessing.cleanup(keep_queues=True)
+
     def run_resolvers(self):
         """ Run resolvers as child process. """
         if not config.master_node:
@@ -1437,7 +1480,7 @@ class HostDaemon(OTPmeDaemon):
                         verify_acls=False,
                         callback=callback)
         # Do some cleanup.
-        multiprocessing.cleanup()
+        multiprocessing.cleanup(keep_queues=True)
 
     def clear_outdated_cache_objects(self):
         """ Start clear outdated cache objects als child process. """
@@ -1461,7 +1504,7 @@ class HostDaemon(OTPmeDaemon):
         cache.clear_outdated_acl_cache()
         backend.clear_outdated_sync_maps()
         # Do some cleanup.
-        multiprocessing.cleanup()
+        multiprocessing.cleanup(keep_queues=True)
 
     def remove_outdated_tokens(self):
         """ Start remove outdated offline tokens job as child process. """
@@ -1521,7 +1564,7 @@ class HostDaemon(OTPmeDaemon):
             offline_token.unlock()
 
         # Do some cleanup.
-        multiprocessing.cleanup()
+        multiprocessing.cleanup(keep_queues=True)
 
     def wait_for_syncd(self):
         """ Wait for syncd to get ready. """
@@ -1707,11 +1750,13 @@ class HostDaemon(OTPmeDaemon):
         crl_update_interval = 300
         resolver_run_interval = 30
         cache_outdate_interval = 30
+        auto_disable_interval = 300
         host_object_reload_interval = 30
         token_data_removal_interval = 30
         last_resolver_run = time.time()
         last_log_resend_run = time.time()
         last_crl_update_run = time.time()
+        last_auto_disable_run = time.time()
         last_cache_outdate = time.time()
         last_host_object_reload = time.time()
         last_token_data_removal = time.time()
@@ -1731,6 +1776,7 @@ class HostDaemon(OTPmeDaemon):
             try:
                 # Calculate new recv timeout.
                 new_timeout = min(crl_update_interval,
+                                auto_disable_interval,
                                 log_resend_interval,
                                 resolver_run_interval,
                                 cache_outdate_interval,
@@ -1761,32 +1807,72 @@ class HostDaemon(OTPmeDaemon):
 
                 # Update our host object from backend.
                 if (now - last_host_object_reload) >= host_object_reload_interval:
-                    self.reload_host_object()
+                    try:
+                        self.reload_host_object()
+                    except Exception as e:
+                        log_msg = _("Failed to reload host object: {e}", log=True)[1]
+                        log_msg = log_msg.format(e=e)
+                        self.logger.critical(log_msg)
                     last_host_object_reload = time.time()
 
                 # Remove outdated offline tokens.
                 if (now - last_token_data_removal) >= token_data_removal_interval:
-                    self.remove_outdated_tokens()
+                    try:
+                        self.remove_outdated_tokens()
+                    except Exception as e:
+                        log_msg = _("Failed to remove outdated tokens: {e}", log=True)[1]
+                        log_msg = log_msg.format(e=e)
+                        self.logger.critical(log_msg)
                     last_token_data_removal = time.time()
 
                 # Clear outdated shared cache objects.
                 if (now - last_cache_outdate) >= cache_outdate_interval:
-                    self.clear_outdated_cache_objects()
+                    try:
+                        self.clear_outdated_cache_objects()
+                    except Exception as e:
+                        log_msg = _("Failed to clear outdated cache objects: {e}", log=True)[1]
+                        log_msg = log_msg.format(e=e)
+                        self.logger.critical(log_msg)
                     last_cache_outdate = time.time()
 
                 # Update CA CRLs.
                 if (now - last_crl_update_run) >= crl_update_interval:
-                    self.update_crls()
+                    try:
+                        self.update_crls()
+                    except Exception as e:
+                        log_msg = _("Failed to run update CLRs job: {e}", log=True)[1]
+                        log_msg = log_msg.format(e=e)
+                        self.logger.critical(log_msg)
                     last_crl_update_run = time.time()
+
+                # Update auto-disable objects.
+                if (now - last_auto_disable_run) >= auto_disable_interval:
+                    try:
+                        self.process_auto_disabled()
+                    except Exception as e:
+                        log_msg = _("Failed to run auto disable job: {e}", log=True)[1]
+                        log_msg = log_msg.format(e=e)
+                        self.logger.critical(log_msg)
+                    last_auto_disable_run = time.time()
 
                 # Run resolvers.
                 if (now - last_resolver_run) >= resolver_run_interval:
-                    self.run_resolvers()
+                    try:
+                        self.run_resolvers()
+                    except Exception as e:
+                        log_msg = _("Failed to run resolvers job: {e}", log=True)[1]
+                        log_msg = log_msg.format(e=e)
+                        self.logger.critical(log_msg)
                     last_resolver_run = time.time()
 
                 # Retry spooled log entries.
                 if (now - last_log_resend_run) >= log_resend_interval:
-                    self.process_spooled_logs()
+                    try:
+                        self.process_spooled_logs()
+                    except Exception as e:
+                        log_msg = _("Failed to process spooled logs: {e}", log=True)[1]
+                        log_msg = log_msg.format(e=e)
+                        self.logger.critical(log_msg)
                     last_log_resend_run = time.time()
 
                 # Check if command can be handled by parent class.
@@ -2046,6 +2132,16 @@ class HostDaemon(OTPmeDaemon):
         if not self.resolver_run_child:
             return
         if not self.resolver_run_child.is_alive():
+            self.resolver_run_child.join()
             return
         self.resolver_run_child.terminate()
         self.resolver_run_child.join()
+
+    def stop_auto_disable(self):
+        if not self.auto_disabled_run_child:
+            return
+        if not self.auto_disabled_run_child.is_alive():
+            self.auto_disabled_run_child.join()
+            return
+        self.auto_disabled_run_child.terminate()
+        self.auto_disabled_run_child.join()

@@ -636,6 +636,8 @@ def write(object_id, object_config, index_journal=None, ldif_journal=None,
                                     object_id=object_id,
                                     acl_journal=acl_journal,
                                     index_journal=index_journal,
+                                    full_acl_update=full_acl_update,
+                                    full_index_update=full_index_update,
                                     wait_for_write=wait_for_cluster_writes)
 
     # Commit and remove write transaction.

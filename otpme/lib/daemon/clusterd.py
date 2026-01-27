@@ -161,6 +161,7 @@ def cluster_daemon_reload():
 def cluster_sync_object(action, object_id=None, object_uuid=None,
     object_type=None, object_data=None, old_object_id=None,
     new_object_id=None, index_journal=None, acl_journal=None,
+    full_acl_update=False, full_index_update=False,
     trash_id=None, deleted_by=None, wait_for_write=True):
     if config.host_type != "node":
         return (None, None)
@@ -237,6 +238,10 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
             cluster_journal_entry.deleted_by = deleted_by
         if object_data:
             cluster_journal_entry.object_data = object_data
+        if full_acl_update:
+            cluster_journal_entry.full_acl_update = full_acl_update
+        if full_index_update:
+            cluster_journal_entry.full_index_update = full_index_update
         if acl_journal:
             cluster_journal_entry.add_acl_journal(acl_journal)
         if index_journal:
@@ -324,6 +329,8 @@ class ClusterEntry(object):
         self.object_uuid_file = os.path.join(self.entry_dir, "object_uuid")
         self.index_journal_file = os.path.join(self.entry_dir, "index_journal")
         self.acl_journal_file = os.path.join(self.entry_dir, "acl_journal")
+        self.full_acl_update_file = os.path.join(self.entry_dir, "full_acl_update")
+        self.full_index_update_file = os.path.join(self.entry_dir, "full_index_update")
         self.trash_id_file = os.path.join(self.entry_dir, "trash_id")
         self.deleted_by_file = os.path.join(self.entry_dir, "deleted_by")
         self.object_data_file = os.path.join(self.entry_dir, "object_data")
@@ -908,6 +915,54 @@ class ClusterJournalEntry(ClusterEntry):
                                     content=str(object_data))
         except Exception as e:
             log_msg = _("Failed to add object data to cluster entry: {journal_id}: {error}", log=True)[1]
+            log_msg = log_msg.format(journal_id=self.journal_id, error=e)
+            self.logger.critical(log_msg)
+
+    @property
+    #@entry_lock(write=False)
+    def full_acl_update(self):
+        try:
+            full_acl_update = bool(filetools.read_file(self.full_acl_update_file))
+        except FileNotFoundError:
+            full_acl_update = False
+        except Exception as e:
+            full_acl_update = False
+            log_msg = _("Failed to read full acl update data from cluster entry: {journal_id}: {error}", log=True)[1]
+            log_msg = log_msg.format(journal_id=self.journal_id, error=e)
+            self.logger.critical(log_msg)
+        return full_acl_update
+
+    @full_acl_update.setter
+    def full_acl_update(self, full_acl_update):
+        try:
+            filetools.create_file(path=self.full_acl_update_file,
+                                content=str(full_acl_update))
+        except Exception as e:
+            log_msg = _("Failed to add full acl update data to cluster entry: {journal_id}: {error}", log=True)[1]
+            log_msg = log_msg.format(journal_id=self.journal_id, error=e)
+            self.logger.critical(log_msg)
+
+    @property
+    #@entry_lock(write=False)
+    def full_index_update(self):
+        try:
+            full_index_update = bool(filetools.read_file(self.full_index_update_file))
+        except FileNotFoundError:
+            full_index_update = False
+        except Exception as e:
+            full_index_update = False
+            log_msg = _("Failed to read full index update data from cluster entry: {journal_id}: {error}", log=True)[1]
+            log_msg = log_msg.format(journal_id=self.journal_id, error=e)
+            self.logger.critical(log_msg)
+        return full_index_update
+
+    @full_index_update.setter
+    def full_index_update(self, full_index_update):
+        try:
+            filetools.create_file(path=self.full_index_update_file,
+                                content=str(full_index_update))
+        except Exception as e:
+            log_msg = _("Failed to add full index update data to cluster entry: {journal_id}: {error}", log=True)[1]
             log_msg = log_msg.format(journal_id=self.journal_id, error=e)
             self.logger.critical(log_msg)
 
@@ -2899,10 +2954,16 @@ class ClusterDaemon(OTPmeDaemon):
                                 full_acl_update = True
                                 full_index_update = True
                             else:
-                                use_acl_journal = True
-                                use_index_journal = True
-                                full_acl_update = False
-                                full_index_update = False
+                                full_acl_update = cluster_journal_entry.full_acl_update
+                                full_index_update = cluster_journal_entry.full_index_update
+                                if full_acl_update:
+                                    use_acl_journal = False
+                                else:
+                                    use_acl_journal = True
+                                if full_index_update:
+                                    use_index_journal = False
+                                else:
+                                    use_index_journal = True
                             try:
                                 write_status = node_conn.write(object_id.full_oid,
                                                             object_config,

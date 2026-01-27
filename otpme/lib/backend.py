@@ -960,6 +960,7 @@ def get_object(
     unit: Union[str,None]=None,
     name: Union[str,None]=None,
     run_policies: bool=False,
+    log_exists: bool=True,
     use_cache: bool=True,
     **kwargs
     ):
@@ -1058,7 +1059,8 @@ def get_object(
 
     # Call policies for the "exists" hook (e.g. auto_disable policy).
     if instance:
-        instance_exists = instance.exists(run_policies=run_policies)
+        instance_exists = instance.exists(log=log_exists,
+                                        run_policies=run_policies)
         if not instance_exists:
             instance = None
 

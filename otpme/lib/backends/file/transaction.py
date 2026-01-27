@@ -526,7 +526,8 @@ class BaseTransaction(object):
             config.raise_exception()
 
     def cluster_write(self, object_uuid, object_id, index_journal,
-        acl_journal, wait_for_write=True):
+        acl_journal, full_index_update=False, full_acl_update=False,
+        wait_for_write=True):
         """ Cluster write action. """
         action = "cluster_write"
         journal_file = self.get_cluster_journal_file(action)
@@ -537,6 +538,8 @@ class BaseTransaction(object):
                         'object_type'       : object_id.object_type,
                         'acl_journal'       : list(acl_journal),
                         'index_journal'     : list(index_journal),
+                        'full_index_update' : full_index_update,
+                        'full_acl_update'   : full_acl_update,
                         'wait_for_write'    : wait_for_write,
                         'journal_file'      : journal_file,
                         }
@@ -579,6 +582,8 @@ class BaseTransaction(object):
         object_type = journal_entry['object_type']
         acl_journal = journal_entry['acl_journal']
         index_journal = journal_entry['index_journal']
+        full_acl_update = journal_entry['full_acl_update']
+        full_index_update = journal_entry['full_index_update']
         wait_for_write = journal_entry['wait_for_write']
         object_id = oid.get(object_id)
         if self._replay:
@@ -591,6 +596,8 @@ class BaseTransaction(object):
                                         object_type=object_type,
                                         acl_journal=acl_journal,
                                         index_journal=index_journal,
+                                        full_acl_update=full_acl_update,
+                                        full_index_update=full_index_update,
                                         wait_for_write=wait_for_write)
         return event_data
 

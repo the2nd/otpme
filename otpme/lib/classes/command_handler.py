@@ -301,16 +301,20 @@ class CommandHandler(object):
                                         site=site,
                                         interactive=interactive)
             # Send request.
-            log_msg = _("Sending request to syncd...", log=True)[1]
-            self.logger.debug(log_msg)
-            status, \
-            status_code, \
-            response, \
-            binary_data = daemon_conn.send(command, command_args)
+            try:
+                log_msg = _("Sending request to syncd...", log=True)[1]
+                self.logger.debug(log_msg)
+                status, \
+                status_code, \
+                response, \
+                binary_data = daemon_conn.send(command, command_args)
 
-            log_msg = _("Received response: {response}", log=True)[1]
-            log_msg = log_msg.format(response=response)
-            self.logger.debug(log_msg)
+                log_msg = _("Received response: {response}", log=True)[1]
+                log_msg = log_msg.format(response=response)
+                self.logger.debug(log_msg)
+            finally:
+                # Close syncd connection.
+                daemon_conn.close()
 
         # None means user aborted the action.
         if status is None:
@@ -4045,18 +4049,18 @@ class CommandHandler(object):
                 sync_message = []
                 cmd = "sync_objects"
                 result = self.send_command(daemon="hostd",
-                                                command=cmd,
-                                                interactive=False)
+                                            command=cmd,
+                                            interactive=False)
                 sync_message.append(result)
                 cmd = "sync_token_data"
                 result = self.send_command(daemon="hostd",
-                                                command=cmd,
-                                                interactive=False)
+                                            command=cmd,
+                                            interactive=False)
                 sync_message.append(result)
                 cmd = "sync_ssh_authorized_keys"
                 result = self.send_command(daemon="hostd",
-                                                command=cmd,
-                                                interactive=False)
+                                            command=cmd,
+                                            interactive=False)
                 sync_message.append(result)
                 sync_message = "\n".join(sync_message)
             else:
