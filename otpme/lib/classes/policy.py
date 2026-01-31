@@ -526,7 +526,7 @@ class Policy(OTPmeObject):
         # Set OID.
         self.set_oid()
 
-    def activate(self):
+    def activate(self, hook_object, callback=default_callback, **kwargs):
         """ Activate policy by returning per object policy data """
         return {}
 

@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
+import datetime
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -15,10 +16,12 @@ from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
 from otpme.lib.humanize import units
+from otpme.lib import multiprocessing
 from otpme.lib.audit import audit_log
 from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.classes.policy import Policy
+from otpme.lib.job.callback import JobCallback
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.unit import register_subtype_add_acl
 from otpme.lib.classes.unit import register_subtype_del_acl
@@ -144,6 +147,8 @@ def register():
     policy_acl = f'policy:{POLICY_TYPE}'
     register_subtype_add_acl(policy_acl)
     register_subtype_del_acl(policy_acl)
+    # Auto disable times for hostd.
+    multiprocessing.register_shared_dict("auto_disable_policy_times")
 
 def register_hooks():
     config.register_auth_on_action_hook("policy", "change_auto_disable")
@@ -282,11 +287,23 @@ class AutodisablePolicy(Policy):
         # read from config.
         Policy.set_variables(self)
 
-    def activate(self):
+    def activate(self, hook_object, callback=default_callback):
         """ Activate policy by returning per object policy data """
+        policy_add_time = time.time()
         policy_data = {
-                    'policy_add_time'   : time.time(),
+                    'policy_add_time'   : policy_add_time,
                     }
+        # Clear hostd dict.
+        try:
+            multiprocessing.auto_disable_policy_times.pop(hook_object.uuid)
+        except KeyError:
+            pass
+        disable_time = self.get_auto_disable_time(hook_object=hook_object,
+                                                policy_add_time=policy_add_time,
+                                                humanize=True)
+        msg = _("Object disable time by policy: {policy_name}: {disable_time}")
+        msg = msg.format(policy_name=self.name, disable_time=disable_time)
+        callback.send(msg)
         return policy_data
 
     def test(self, force=False, verbose_level=0,
@@ -304,8 +321,8 @@ class AutodisablePolicy(Policy):
             msg = msg.format(hook_name=hook_name)
             return callback.error(msg, exception=self.policy_exception)
         if not hook_object.enabled and not force:
-            msg = _("{} disabled by policy.")
-            msg = msg.format(hook_object.type)
+            msg = _("{object_type} disabled by policy.")
+            msg = msg.format(object_type=hook_object.type)
             return callback.error(message=msg,
                                 raise_exception=True,
                                 exception=self.policy_exception)
@@ -325,32 +342,45 @@ class AutodisablePolicy(Policy):
             log_msg = log_msg.format(e=e)
             logger.warning(log_msg)
 
-    def _check_auto_disable(self, hook_object, policy_add_time=None, **kwargs):
-        """ Handle auto disable. """
-        if not policy_add_time:
-            return True
+    def get_auto_disable_time(self, hook_object, policy_add_time=None, humanize=False):
         if self._unused_disable:
             check_time = hook_object.get_last_used_time()
         else:
             check_time = policy_add_time
         disable_time = units.string2unixtime(self._auto_disable, check_time)
+        if humanize:
+            disable_time = datetime.datetime.fromtimestamp(disable_time)
+            disable_time = disable_time.strftime('%d.%m.%Y %H:%M:%S')
+        return disable_time
+
+    def _check_auto_disable(self, hook_object, policy_add_time=None, **kwargs):
+        """ Handle auto disable. """
+        if not policy_add_time:
+            return True
+        disable_time = self.get_auto_disable_time(hook_object=hook_object,
+                                                policy_add_time=policy_add_time)
         now = time.time()
         if now >= disable_time:
             if hook_object.enabled:
+                callback = JobCallback(name="auto_disable", client="auto_disable_policy")
                 try:
-                    hook_object.disable(force=True, verify_acls=False)
+                    hook_object.disable(force=True, verify_acls=False, callback=callback)
                     object_disabled = True
                     hook_object._write()
                 except Exception as e:
                     exception = e
                     object_disabled = False
                 if object_disabled:
-                    log_msg = _("{} disabled by policy: {}: {}", log=True)[1]
-                    log_msg = log_msg.format(hook_object.type, self.name, hook_object.name)
+                    log_msg = _("{object_type} disabled by policy: {policy_name}: {object_name}", log=True)[1]
+                    log_msg = log_msg.format(object_type=hook_object.type,
+                                            policy_name=self.name,
+                                            object_name=hook_object.name)
                     logger.warning(log_msg)
                 else:
-                    log_msg = _("Cannot disable object by policy: {}: {}: {}", log=True)[1]
-                    log_msg = log_msg.format(self.name, hook_object.rel_path, exception)
+                    log_msg = _("Cannot disable object by policy: {policy_name}: {object_path}: {e}", log=True)[1]
+                    log_msg = log_msg.format(policy_name=self.name,
+                                            object_path=hook_object.rel_path,
+                                            e=exception)
                     logger.critical(log_msg)
                     return False
         return True
@@ -384,6 +414,10 @@ class AutodisablePolicy(Policy):
 
         self._auto_disable = auto_disable
         self._unused_disable = unused
+
+        # Clear hostd dict.
+        multiprocessing.auto_disable_policy_times.clear()
+
         return self._cache(callback=callback)
 
     @object_lock(full_lock=True)

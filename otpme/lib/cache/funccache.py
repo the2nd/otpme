@@ -196,8 +196,8 @@ class Cache(object):
                                     ignore_args=ignore_args,
                                     ignore_classes=ignore_classes)
                 except Exception as e:
-                    msg = _("Failed to parse function args: {self.name} ({cache_name}): {method_name}: {e}")
-                    msg = msg.format(self.name, cache_name=cache_name, method_name=method_name, e=e)
+                    msg = _("Failed to parse function args: {name} ({cache_name}): {method_name}: {e}")
+                    msg = msg.format(name=self.name, cache_name=cache_name, method_name=method_name, e=e)
                     raise OTPmeException(msg)
                 # Build key to cache result.
                 k = f"{method_name}.{k}"

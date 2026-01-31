@@ -247,6 +247,8 @@ def register():
         return sync_status
     config.register_property(name="sync_status", getx=sync_status_getter)
     multiprocessing.register_shared_dict("sync_status", clear=True)
+    # Auto disable times for hostd.
+    multiprocessing.register_shared_dict("auto_disable_times")
 
 class ControlDaemon(UnixDaemon):
     """

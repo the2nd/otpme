@@ -1414,6 +1414,7 @@ class HostDaemon(OTPmeDaemon):
 
     def _process_auto_disabled(self):
         """ Update auto disabled objects. """
+        # Check object auto disable stuff.
         search_attributes = {
                             'enabled'       : {'value':True},
                             'auto_disable'  : {'value':True},
@@ -1426,11 +1427,78 @@ class HostDaemon(OTPmeDaemon):
                 break
             if config.master_failover:
                 break
+            now = time.time()
+            try:
+                auto_disable_time = multiprocessing.auto_disable_times[x_uuid]
+            except KeyError:
+                auto_disable_time = 0
+            if auto_disable_time > now:
+                continue
             x_object = backend.get_object(uuid=x_uuid,
                                         log_exists=False,
                                         run_policies=False)
+            auto_disable_time = x_object.get_auto_disable_time()
+            multiprocessing.auto_disable_times[x_uuid] = auto_disable_time
+            if auto_disable_time > now:
+                continue
             x_object.exists(log=False,
-                            run_policies=False)
+                            run_policies=True)
+
+        # Check autodisable policy objects.
+        search_attributes = {
+                            'enabled' : {
+                                    'value' : True,
+                                    },
+                            'policy_type' : {
+                                    'value' : "autodisable",
+                                    },
+                            }
+        policy_uuids = backend.search(object_type="policy",
+                                    realm=config.realm,
+                                    site=config.site,
+                                    attributes=search_attributes,
+                                    return_type="uuid")
+        if policy_uuids:
+            search_attributes = {
+                                'enabled' : {
+                                        'value' : True,
+                                        },
+                                'policy' : {
+                                        'values' : policy_uuids,
+                                        },
+                                }
+            result = backend.search(realm=config.realm,
+                                    site=config.site,
+                                    attributes=search_attributes,
+                                    return_type="uuid")
+            for x_uuid in result:
+                x_object = backend.get_object(uuid=x_uuid,
+                                            log_exists=False,
+                                            run_policies=False)
+                for policy_uuid in policy_uuids:
+                    if policy_uuid not in x_object.policies:
+                        continue
+                    now = time.time()
+                    try:
+                        auto_disable_time = multiprocessing.auto_disable_policy_times[x_uuid]
+                    except KeyError:
+                        auto_disable_time = 0
+                    if auto_disable_time > now:
+                        continue
+                    x_policy = backend.get_object(uuid=policy_uuid)
+                    try:
+                        policy_add_time = x_object.policy_options[policy_uuid]['policy_add_time']
+                    except KeyError:
+                        continue
+                    auto_disable_time = x_policy.get_auto_disable_time(hook_object=x_object,
+                                                                policy_add_time=policy_add_time)
+                    multiprocessing.auto_disable_policy_times[x_uuid] = auto_disable_time
+                    if auto_disable_time > now:
+                        continue
+                    # FIXME: log=False should be passed to policies (e.g. autodisable policy).
+                    x_object.exists(log=False,
+                                    run_policies=True)
+
         # Do some cleanup.
         multiprocessing.cleanup(keep_queues=True)
 

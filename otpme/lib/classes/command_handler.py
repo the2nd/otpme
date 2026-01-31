@@ -343,6 +343,7 @@ class CommandHandler(object):
             # We need to register controld to get e.g. config.daemon_shutdown.
             register_module("otpme.lib.daemon.controld")
             register_module("otpme.lib.protocols.server.mgmt1")
+            register_module("otpme.lib.policy.autodisable.autodisable")
         # Add newline to command output?
         self.newline = True
         # Command args we send to the server.

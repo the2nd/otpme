@@ -830,6 +830,7 @@ msgstr "Unbekannter Papierkorb-Eintrag: {trash_id}"
 #: otpme/lib/classes/otpme_object.py:6722
 #: otpme/lib/classes/otpme_object.py:6779
 #: otpme/lib/classes/otpme_object.py:6788
+#: otpme/lib/classes/otpme_object.py:6803
 msgid "Permission denied"
 msgstr "Zugriff verweigert"
 
@@ -1307,7 +1308,7 @@ msgstr "Kann nicht im API-Modus ausgeführt werden: Backend nicht verfügbar"
 #: otpme/lib/host.py:228 otpme/lib/host.py:339
 #: otpme/lib/daemon/controld.py:601 otpme/lib/host.py:233
 #: otpme/lib/host.py:344 otpme/lib/join.py:792
-#: otpme/lib/daemon/controld.py:578
+#: otpme/lib/daemon/controld.py:578 otpme/lib/daemon/controld.py:580
 msgid "Host is not a realm member."
 msgstr "Host ist kein Realm-Mitglied."
 
@@ -1425,6 +1426,14 @@ msgstr "Funktionsargumente konnten nicht geparst werden."
 #: otpme/lib/classes/command_handler.py:3613
 #: otpme/lib/classes/command_handler.py:3649
 #: otpme/lib/classes/command_handler.py:5516
+#: otpme/lib/classes/command_handler.py:1706
+#: otpme/lib/classes/command_handler.py:3451
+#: otpme/lib/classes/command_handler.py:3489
+#: otpme/lib/classes/command_handler.py:3524
+#: otpme/lib/classes/command_handler.py:3573
+#: otpme/lib/classes/command_handler.py:3614
+#: otpme/lib/classes/command_handler.py:3650
+#: otpme/lib/classes/command_handler.py:5517
 #, python-brace-format
 msgid "Error getting agent connection: {e}"
 msgstr "Fehler beim Abrufen der Agent-Verbindung: {e}"
@@ -1910,6 +1919,13 @@ msgstr "Zu viele <values> für Attribut '{attr}'."
 #: otpme/lib/classes/otpme_object.py:4642
 #: otpme/lib/classes/otpme_object.py:4704
 #: otpme/lib/classes/otpme_object.py:4707
+#: otpme/lib/classes/otpme_object.py:4068
+#: otpme/lib/classes/otpme_object.py:4071
+#: otpme/lib/classes/otpme_object.py:4575
+#: otpme/lib/classes/otpme_object.py:4645
+#: otpme/lib/classes/otpme_object.py:4648
+#: otpme/lib/classes/otpme_object.py:4710
+#: otpme/lib/classes/otpme_object.py:4713
 #, python-brace-format
 msgid "Unknown return type: {return_type}"
 msgstr "Unbekannter Rückgabetyp: {return_type}"
@@ -1991,6 +2007,7 @@ msgstr "Konfigurationsdatei kann nicht abgerufen werden: {object_id}"
 #: otpme/lib/classes/command_handler.py:2316
 #: otpme/lib/backends/file/file.py:2443
 #: otpme/lib/classes/command_handler.py:2320
+#: otpme/lib/classes/command_handler.py:2321
 #, python-brace-format
 msgid "Error reading object config: {e}"
 msgstr "Fehler beim Lesen der Objektkonfiguration: {e}"
@@ -3062,6 +3079,7 @@ msgstr "Leeres Passwort erhalten."
 #: otpme/lib/classes/data_objects/otpme_job.py:336
 #: otpme/lib/classes/data_objects/otpme_job.py:396
 #: otpme/lib/classes/data_objects/otpme_job.py:443
+#: otpme/lib/policy/autodisable/autodisable.py:416
 msgid "Permission denied."
 msgstr "Zugriff verweigert."
 
@@ -3100,6 +3118,8 @@ msgstr "Unbekannte Kodierung: {encoding}"
 #: otpme/lib/classes/otpme_object.py:3958
 #: otpme/lib/classes/otpme_object.py:4018
 #: otpme/lib/classes/otpme_object.py:4024
+#: otpme/lib/classes/otpme_object.py:3968
+#: otpme/lib/classes/otpme_object.py:4028
 #, python-brace-format
 msgid "Unknown node: {node_name}"
 msgstr "Unbekannte Node: {node_name}"
@@ -3319,6 +3339,7 @@ msgstr "'key_script_path' wird benötigt, wenn 'key_script' angegeben ist."
 #: otpme/lib/classes/command_handler.py:2819
 #: otpme/lib/classes/command_handler.py:2913
 #: otpme/lib/classes/command_handler.py:2917
+#: otpme/lib/classes/command_handler.py:2918
 #, python-brace-format
 msgid "Error getting user key script: {e}"
 msgstr "Fehler beim Abrufen des Benutzer-Key-Scripts: {e}"
@@ -3649,17 +3670,14 @@ msgstr "Unbekannter ACL-Typ: {acl_type}"
 #: otpme/lib/policy/idrange/idrange.py:320
 #: otpme/lib/policy/password/password.py:471
 #: otpme/lib/policy/idrange/idrange.py:325
+#: otpme/lib/policy/autodisable/autodisable.py:312
 #, python-brace-format
 msgid "Unknown policy hook: {hook_name}"
 msgstr "Unbekannter Policy-Hook: {hook_name}"
 
 #. AI-generated
-#: otpme/lib/policy/autodisable/autodisable.py:307
-msgid "{} disabled by policy."
-msgstr "{} durch Policy deaktiviert."
-
-#. AI-generated
 #: otpme/lib/policy/autodisable/autodisable.py:318
+#: otpme/lib/policy/autodisable/autodisable.py:327
 #, python-brace-format
 msgid "Unable to update object policy: {e}"
 msgstr "Objektrichtlinie konnte nicht aktualisiert werden: {e}"
@@ -3667,15 +3685,10 @@ msgstr "Objektrichtlinie konnte nicht aktualisiert werden: {e}"
 #. AI-generated
 #: otpme/lib/policy/autodisable/autodisable.py:323
 #: otpme/lib/policy/autodisable/autodisable.py:324
+#: otpme/lib/policy/autodisable/autodisable.py:333
 #, python-brace-format
 msgid "Error updating object policy: {e}"
 msgstr "Fehler beim Aktualisieren der Objektrichtlinie: {e}"
-
-#. AI-generated
-#: otpme/lib/policy/autodisable/autodisable.py:347
-#: otpme/lib/policy/autodisable/autodisable.py:348
-msgid "{} disabled by policy: {}: {}"
-msgstr "{} durch Policy deaktiviert: {}: {}"
 
 #. AI-generated
 #: otpme/lib/policy/autodisable/autodisable.py:351
@@ -3686,6 +3699,7 @@ msgstr "Objekt kann nicht durch Policy deaktiviert werden: {}: {}: {}"
 #. AI-generated
 #: otpme/lib/policy/autodisable/autodisable.py:369
 #: otpme/lib/policy/autodisable/autodisable.py:370
+#: otpme/lib/policy/autodisable/autodisable.py:389
 #, python-brace-format
 msgid "Invalid date string: {e}"
 msgstr "Ungültiger Datumsstring: {e}"
@@ -3749,6 +3763,8 @@ msgstr "Ungültiger Objekttyp für diese Policy: {object_type}"
 #: otpme/lib/classes/otpme_object.py:4279
 #: otpme/lib/classes/otpme_object.py:4218
 #: otpme/lib/classes/otpme_object.py:4285
+#: otpme/lib/classes/otpme_object.py:4222
+#: otpme/lib/classes/otpme_object.py:4290
 #, python-brace-format
 msgid "Unknown policy: {policy_name}"
 msgstr "Unbekannte Policy: {policy_name}"
@@ -4025,6 +4041,8 @@ msgstr "Hook nicht für diesen Objekttyp hinzugefügt."
 #: otpme/lib/classes/otpme_object.py:3854
 #: otpme/lib/classes/otpme_object.py:3574
 #: otpme/lib/classes/otpme_object.py:3860
+#: otpme/lib/classes/otpme_object.py:3578
+#: otpme/lib/classes/otpme_object.py:3864
 #, python-brace-format
 msgid "Invalid token path: {token_path}"
 msgstr "Ungültiger Token-Pfad: {token_path}"
@@ -4052,6 +4070,8 @@ msgstr "Ungültiger Token-Pfad: {token_path}"
 #: otpme/lib/classes/otpme_object.py:3865
 #: otpme/lib/classes/otpme_object.py:3603
 #: otpme/lib/classes/otpme_object.py:3871
+#: otpme/lib/classes/otpme_object.py:3607
+#: otpme/lib/classes/otpme_object.py:3875
 #, python-brace-format
 msgid "Unknown token: {token_path}"
 msgstr "Unbekannter Token: {token_path}"
@@ -4899,6 +4919,7 @@ msgstr ""
 #: otpme/lib/host.py:432 otpme/lib/daemon/controld.py:512
 #: otpme/lib/daemon/controld.py:519 otpme/lib/host.py:427
 #: otpme/lib/daemon/controld.py:518 otpme/lib/daemon/controld.py:495
+#: otpme/lib/daemon/controld.py:497
 #, python-brace-format
 msgid ""
 "Uuhh, '{hostname}' does not have host type set. This is most likely a result"
@@ -7578,6 +7599,7 @@ msgstr "Fehler beim Abrufen der Agent-Verbindung: {error}"
 #: otpme/lib/daemon/hostd.py:1464 otpme/lib/daemon/hostd.py:1460
 #: otpme/lib/pam.py:748 otpme/lib/daemon/hostd.py:1477
 #: otpme/lib/daemon/hostd.py:1507 otpme/lib/daemon/hostd.py:1550
+#: otpme/lib/daemon/hostd.py:1620
 #, python-brace-format
 msgid "Error loading offline tokens: {error}"
 msgstr "Fehler beim Laden der Offline-Token: {error}"
@@ -10121,6 +10143,7 @@ msgstr "Entferne verwaiste Benutzer-UUID: {user_uuid}"
 #: otpme/lib/classes/role.py:1271 otpme/lib/classes/client.py:1590
 #: otpme/lib/classes/group.py:1360 otpme/lib/classes/otpme_object.py:8448
 #: otpme/lib/classes/role.py:1295 otpme/lib/classes/otpme_object.py:8457
+#: otpme/lib/classes/otpme_object.py:8472
 #, python-brace-format
 msgid "No orphan objects found for {object_type}: {object_name}"
 msgstr "Keine verwaisten Objekte für {object_type} gefunden: {object_name}"
@@ -10707,6 +10730,7 @@ msgstr "Ungültiger zuletzt verwendeter Zeitstempel: {oid}: {timestamp}"
 #: otpme/lib/classes/otpme_object.py:9040
 #: otpme/lib/classes/otpme_object.py:1989
 #: otpme/lib/classes/otpme_object.py:9049
+#: otpme/lib/classes/otpme_object.py:9064
 #, python-brace-format
 msgid "Unknown realm '{realm}'."
 msgstr "Unbekannter Bereich '{realm}'."
@@ -10737,6 +10761,7 @@ msgstr "Ungültiger Pfad: {path}"
 #: otpme/lib/classes/otpme_object.py:9072
 #: otpme/lib/classes/otpme_object.py:2074
 #: otpme/lib/classes/otpme_object.py:9081
+#: otpme/lib/classes/otpme_object.py:9096
 #, python-brace-format
 msgid "Unknown site '{site}'."
 msgstr "Unbekannter Standort '{site}'."
@@ -10779,6 +10804,7 @@ msgstr "Fehler beim Erwerb der Sperre für neue OID: {new_oid}: {error}"
 #: otpme/lib/classes/otpme_object.py:9099
 #: otpme/lib/classes/otpme_object.py:2173
 #: otpme/lib/classes/otpme_object.py:9108
+#: otpme/lib/classes/otpme_object.py:9123
 #, python-brace-format
 msgid "Failed to read object config: {obj}: {error}"
 msgstr "Fehler beim Lesen der Objektkonfiguration: {obj}: {error}"
@@ -10797,6 +10823,8 @@ msgstr "Fehler beim Lesen der Objektkonfiguration: {obj}: {error}"
 #: otpme/lib/classes/otpme_object.py:6459
 #: otpme/lib/classes/otpme_object.py:2224
 #: otpme/lib/classes/otpme_object.py:6466
+#: otpme/lib/classes/otpme_object.py:2230
+#: otpme/lib/classes/otpme_object.py:6475
 #, python-brace-format
 msgid "Invalid date string: {error}"
 msgstr "Ungültige Datumszeichenkette: {error}"
@@ -10809,6 +10837,7 @@ msgstr "Ungültige Datumszeichenkette: {error}"
 #: otpme/lib/classes/otpme_object.py:2243
 #: otpme/lib/classes/otpme_object.py:2295
 #: otpme/lib/classes/otpme_object.py:2301
+#: otpme/lib/classes/otpme_object.py:2305
 #, python-brace-format
 msgid "Invalid parameter: {obj}: {param}"
 msgstr "Ungültiger Parameter: {obj}: {param}"
@@ -10821,6 +10850,7 @@ msgstr "Ungültiger Parameter: {obj}: {param}"
 #: otpme/lib/classes/otpme_object.py:2276
 #: otpme/lib/classes/otpme_object.py:2328
 #: otpme/lib/classes/otpme_object.py:2334
+#: otpme/lib/classes/otpme_object.py:2338
 #, python-brace-format
 msgid "Invalid value: {param}: {val}"
 msgstr "Ungültiger Wert: {param}: {val}"
@@ -10833,6 +10863,7 @@ msgstr "Ungültiger Wert: {param}: {val}"
 #: otpme/lib/classes/otpme_object.py:2670
 #: otpme/lib/classes/otpme_object.py:2722
 #: otpme/lib/classes/otpme_object.py:2728
+#: otpme/lib/classes/otpme_object.py:2732
 #, python-brace-format
 msgid "Cannot write without object lock: {obj}"
 msgstr "Kann nicht ohne Objektsperre schreiben: {obj}"
@@ -10845,6 +10876,7 @@ msgstr "Kann nicht ohne Objektsperre schreiben: {obj}"
 #: otpme/lib/classes/otpme_object.py:2674
 #: otpme/lib/classes/otpme_object.py:2726
 #: otpme/lib/classes/otpme_object.py:2732
+#: otpme/lib/classes/otpme_object.py:2736
 #, python-brace-format
 msgid "Cannot write object with expired lock: {obj}"
 msgstr "Kann Objekt mit abgelaufener Sperre nicht schreiben: {obj}"
@@ -10857,6 +10889,7 @@ msgstr "Kann Objekt mit abgelaufener Sperre nicht schreiben: {obj}"
 #: otpme/lib/classes/otpme_object.py:2749
 #: otpme/lib/classes/otpme_object.py:2801
 #: otpme/lib/classes/otpme_object.py:2807
+#: otpme/lib/classes/otpme_object.py:2811
 #, python-brace-format
 msgid "Object '{oid}' does not exist."
 msgstr "Objekt '{oid}' existiert nicht."
@@ -10869,6 +10902,7 @@ msgstr "Objekt '{oid}' existiert nicht."
 #: otpme/lib/classes/otpme_object.py:2807
 #: otpme/lib/classes/otpme_object.py:2859
 #: otpme/lib/classes/otpme_object.py:2865
+#: otpme/lib/classes/otpme_object.py:2869
 #, python-brace-format
 msgid "Unable to get parent object of: {oid}"
 msgstr "Kann übergeordnetes Objekt nicht abrufen von: {oid}"
@@ -10881,6 +10915,7 @@ msgstr "Kann übergeordnetes Objekt nicht abrufen von: {oid}"
 #: otpme/lib/classes/otpme_object.py:2815
 #: otpme/lib/classes/otpme_object.py:2867
 #: otpme/lib/classes/otpme_object.py:2873
+#: otpme/lib/classes/otpme_object.py:2877
 #, python-brace-format
 msgid "Unknown parent object: {parent_uuid}"
 msgstr "Unbekanntes übergeordnetes Objekt: {parent_uuid}"
@@ -10893,6 +10928,7 @@ msgstr "Unbekanntes übergeordnetes Objekt: {parent_uuid}"
 #: otpme/lib/classes/otpme_object.py:2851
 #: otpme/lib/classes/otpme_object.py:2904
 #: otpme/lib/classes/otpme_object.py:2910
+#: otpme/lib/classes/otpme_object.py:2914
 msgid "Extension already enabled for this object."
 msgstr "Erweiterung bereits für dieses Objekt aktiviert."
 
@@ -10904,6 +10940,7 @@ msgstr "Erweiterung bereits für dieses Objekt aktiviert."
 #: otpme/lib/classes/otpme_object.py:2861
 #: otpme/lib/classes/otpme_object.py:2914
 #: otpme/lib/classes/otpme_object.py:2920
+#: otpme/lib/classes/otpme_object.py:2924
 #, python-brace-format
 msgid "Extension '{ext}' not valid for this object type."
 msgstr "Erweiterung '{ext}' nicht gültig für diesen Objekttyp."
@@ -10916,6 +10953,7 @@ msgstr "Erweiterung '{ext}' nicht gültig für diesen Objekttyp."
 #: otpme/lib/classes/otpme_object.py:2880
 #: otpme/lib/classes/otpme_object.py:2933
 #: otpme/lib/classes/otpme_object.py:2939
+#: otpme/lib/classes/otpme_object.py:2943
 #, python-brace-format
 msgid ""
 "Cannot add extension '{ext_name}' that depends on extension {dep_ext}'."
@@ -10931,6 +10969,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:2924
 #: otpme/lib/classes/otpme_object.py:2978
 #: otpme/lib/classes/otpme_object.py:2984
+#: otpme/lib/classes/otpme_object.py:2988
 #, python-brace-format
 msgid "Cannot remove extension '{ext}' needed by: {deps}"
 msgstr "Kann Erweiterung '{ext}' nicht entfernen, benötigt von: {deps}"
@@ -10949,6 +10988,8 @@ msgstr "Kann Erweiterung '{ext}' nicht entfernen, benötigt von: {deps}"
 #: otpme/lib/classes/otpme_object.py:3256
 #: otpme/lib/classes/otpme_object.py:3316
 #: otpme/lib/classes/otpme_object.py:3322
+#: otpme/lib/classes/otpme_object.py:3266
+#: otpme/lib/classes/otpme_object.py:3326
 msgid "Object does not support users."
 msgstr "Objekt unterstützt keine Benutzer."
 
@@ -10967,6 +11008,8 @@ msgstr "Objekt unterstützt keine Benutzer."
 #: otpme/lib/classes/otpme_object.py:3334 otpme/lib/classes/token.py:3418
 #: otpme/lib/classes/otpme_object.py:3275
 #: otpme/lib/classes/otpme_object.py:3340
+#: otpme/lib/classes/otpme_object.py:3279
+#: otpme/lib/classes/otpme_object.py:3344
 #, python-brace-format
 msgid "Unknown user: {user_name}"
 msgstr "Unbekannter Benutzer: {user_name}"
@@ -10979,6 +11022,7 @@ msgstr "Unbekannter Benutzer: {user_name}"
 #: otpme/lib/classes/otpme_object.py:3237
 #: otpme/lib/classes/otpme_object.py:3291
 #: otpme/lib/classes/otpme_object.py:3297
+#: otpme/lib/classes/otpme_object.py:3301
 #, python-brace-format
 msgid "Adding user {user_oid} to {obj_type} {obj_name}."
 msgstr "Füge Benutzer {user_oid} zu {obj_type} {obj_name} hinzu."
@@ -10991,6 +11035,7 @@ msgstr "Füge Benutzer {user_oid} zu {obj_type} {obj_name} hinzu."
 #: otpme/lib/classes/otpme_object.py:3285
 #: otpme/lib/classes/otpme_object.py:3339
 #: otpme/lib/classes/otpme_object.py:3345
+#: otpme/lib/classes/otpme_object.py:3349
 #, python-brace-format
 msgid "User is not assigned to {obj_type} '{obj_name}'."
 msgstr "Benutzer ist nicht {obj_type} '{obj_name}' zugeordnet."
@@ -11009,6 +11054,8 @@ msgstr "Benutzer ist nicht {obj_type} '{obj_name}' zugeordnet."
 #: otpme/lib/classes/otpme_object.py:3377
 #: otpme/lib/classes/otpme_object.py:3476
 #: otpme/lib/classes/otpme_object.py:3482
+#: otpme/lib/classes/otpme_object.py:3387
+#: otpme/lib/classes/otpme_object.py:3486
 msgid "Object does not support roles."
 msgstr "Objekt unterstützt keine Rollen."
 
@@ -11027,6 +11074,8 @@ msgstr "Objekt unterstützt keine Rollen."
 #: otpme/lib/classes/otpme_object.py:3504
 #: otpme/lib/classes/otpme_object.py:3408
 #: otpme/lib/classes/otpme_object.py:3510
+#: otpme/lib/classes/otpme_object.py:3412
+#: otpme/lib/classes/otpme_object.py:3514
 #, python-brace-format
 msgid "Unknown role: {site}/{role}"
 msgstr "Unbekannte Rolle: {site}/{role}"
@@ -11039,6 +11088,7 @@ msgstr "Unbekannte Rolle: {site}/{role}"
 #: otpme/lib/classes/otpme_object.py:3359
 #: otpme/lib/classes/otpme_object.py:3413
 #: otpme/lib/classes/otpme_object.py:3419
+#: otpme/lib/classes/otpme_object.py:3423
 #, python-brace-format
 msgid "Role is already a member of {obj_type} '{obj_name}'."
 msgstr "Rolle ist bereits Mitglied von {obj_type} '{obj_name}'."
@@ -11051,6 +11101,7 @@ msgstr "Rolle ist bereits Mitglied von {obj_type} '{obj_name}'."
 #: otpme/lib/classes/otpme_object.py:3380
 #: otpme/lib/classes/otpme_object.py:3434
 #: otpme/lib/classes/otpme_object.py:3440
+#: otpme/lib/classes/otpme_object.py:3444
 msgid ""
 "WARNING: Please make sure role ACLs do not allow any privilege escalation "
 "when adding a role to a role!"
@@ -11067,6 +11118,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3458
 #: otpme/lib/classes/otpme_object.py:3512
 #: otpme/lib/classes/otpme_object.py:3518
+#: otpme/lib/classes/otpme_object.py:3522
 #, python-brace-format
 msgid "Role is not a member of {obj_type} '{obj_name}'."
 msgstr "Rolle ist kein Mitglied von {obj_type} '{obj_name}'."
@@ -11086,6 +11138,8 @@ msgstr "Rolle ist kein Mitglied von {obj_type} '{obj_name}'."
 #: otpme/lib/classes/otpme_object.py:3838
 #: otpme/lib/classes/otpme_object.py:3564
 #: otpme/lib/classes/otpme_object.py:3844
+#: otpme/lib/classes/otpme_object.py:3568
+#: otpme/lib/classes/otpme_object.py:3848
 msgid "Object does not support tokens."
 msgstr "Objekt unterstützt keine Token."
 
@@ -11097,6 +11151,7 @@ msgstr "Objekt unterstützt keine Token."
 #: otpme/lib/classes/otpme_object.py:3527
 #: otpme/lib/classes/otpme_object.py:3582
 #: otpme/lib/classes/otpme_object.py:3588
+#: otpme/lib/classes/otpme_object.py:3592
 #, python-brace-format
 msgid "Unknown login interface: {interface}"
 msgstr "Unbekannte Anmeldeschnittstelle: {interface}"
@@ -11109,6 +11164,7 @@ msgstr "Unbekannte Anmeldeschnittstelle: {interface}"
 #: otpme/lib/classes/otpme_object.py:3531
 #: otpme/lib/classes/otpme_object.py:3586
 #: otpme/lib/classes/otpme_object.py:3592
+#: otpme/lib/classes/otpme_object.py:3596
 msgid "You cannot mix positive/negative interface options."
 msgstr "Sie können positive/negative Schnittstellenoptionen nicht mischen."
 
@@ -11120,6 +11176,7 @@ msgstr "Sie können positive/negative Schnittstellenoptionen nicht mischen."
 #: otpme/lib/classes/otpme_object.py:3549
 #: otpme/lib/classes/otpme_object.py:3604
 #: otpme/lib/classes/otpme_object.py:3610
+#: otpme/lib/classes/otpme_object.py:3614
 #, python-brace-format
 msgid "Orphan token: Unknown user: {owner_uuid}"
 msgstr "Verwaister Token: Unbekannter Benutzer: {owner_uuid}"
@@ -11132,6 +11189,7 @@ msgstr "Verwaister Token: Unbekannter Benutzer: {owner_uuid}"
 #: otpme/lib/classes/otpme_object.py:3582
 #: otpme/lib/classes/otpme_object.py:3637
 #: otpme/lib/classes/otpme_object.py:3643
+#: otpme/lib/classes/otpme_object.py:3647
 #, python-brace-format
 msgid "Token is already assigned to {obj_type} '{obj_name}'."
 msgstr "Token ist bereits {obj_type} '{obj_name}' zugewiesen."
@@ -11144,6 +11202,7 @@ msgstr "Token ist bereits {obj_type} '{obj_name}' zugewiesen."
 #: otpme/lib/classes/otpme_object.py:3588
 #: otpme/lib/classes/otpme_object.py:3643
 #: otpme/lib/classes/otpme_object.py:3649
+#: otpme/lib/classes/otpme_object.py:3653
 msgid "Would you like to modify current token options? "
 msgstr "Möchten Sie die aktuellen Token-Optionen ändern?"
 
@@ -11155,6 +11214,7 @@ msgstr "Möchten Sie die aktuellen Token-Optionen ändern?"
 #: otpme/lib/classes/otpme_object.py:3594
 #: otpme/lib/classes/otpme_object.py:3649
 #: otpme/lib/classes/otpme_object.py:3655
+#: otpme/lib/classes/otpme_object.py:3659
 msgid "Would you like to modify current token login interfaces? "
 msgstr "Möchten Sie die aktuellen Token-Anmeldeschnittstellen ändern?"
 
@@ -11166,6 +11226,7 @@ msgstr "Möchten Sie die aktuellen Token-Anmeldeschnittstellen ändern?"
 #: otpme/lib/classes/otpme_object.py:3612
 #: otpme/lib/classes/otpme_object.py:3667
 #: otpme/lib/classes/otpme_object.py:3673
+#: otpme/lib/classes/otpme_object.py:3677
 #, python-brace-format
 msgid "Adding token {token_path} to {obj_type} {obj_name}."
 msgstr "Füge Token {token_path} zu {obj_type} {obj_name} hinzu."
@@ -11178,6 +11239,7 @@ msgstr "Füge Token {token_path} zu {obj_type} {obj_name} hinzu."
 #: otpme/lib/classes/otpme_object.py:3640
 #: otpme/lib/classes/otpme_object.py:3695
 #: otpme/lib/classes/otpme_object.py:3701
+#: otpme/lib/classes/otpme_object.py:3705
 msgid "Cannot sign without login token."
 msgstr "Kann ohne Anmelde-Token nicht signieren."
 
@@ -11189,6 +11251,7 @@ msgstr "Kann ohne Anmelde-Token nicht signieren."
 #: otpme/lib/classes/otpme_object.py:3733
 #: otpme/lib/classes/otpme_object.py:3788
 #: otpme/lib/classes/otpme_object.py:3794
+#: otpme/lib/classes/otpme_object.py:3798
 #, python-brace-format
 msgid "Using existing signature: {signature}"
 msgstr "Verwende vorhandene Signatur: {signature}"
@@ -11201,6 +11264,7 @@ msgstr "Verwende vorhandene Signatur: {signature}"
 #: otpme/lib/classes/otpme_object.py:3743
 #: otpme/lib/classes/otpme_object.py:3798
 #: otpme/lib/classes/otpme_object.py:3804
+#: otpme/lib/classes/otpme_object.py:3808
 msgid "Signing error."
 msgstr "Signierfehler."
 
@@ -11212,6 +11276,7 @@ msgstr "Signierfehler."
 #: otpme/lib/classes/otpme_object.py:3747
 #: otpme/lib/classes/otpme_object.py:3802
 #: otpme/lib/classes/otpme_object.py:3808
+#: otpme/lib/classes/otpme_object.py:3812
 #, python-brace-format
 msgid "Error signing token: {error}"
 msgstr "Fehler beim Signieren des Tokens: {error}"
@@ -11224,6 +11289,7 @@ msgstr "Fehler beim Signieren des Tokens: {error}"
 #: otpme/lib/classes/otpme_object.py:3815
 #: otpme/lib/classes/otpme_object.py:3870
 #: otpme/lib/classes/otpme_object.py:3876
+#: otpme/lib/classes/otpme_object.py:3880
 #, python-brace-format
 msgid "Token is not assigned to {obj_type} '{obj_name}'."
 msgstr "Token ist nicht {obj_type} '{obj_name}' zugewiesen."
@@ -11236,6 +11302,7 @@ msgstr "Token ist nicht {obj_type} '{obj_name}' zugewiesen."
 #: otpme/lib/classes/otpme_object.py:3844
 #: otpme/lib/classes/otpme_object.py:3899
 #: otpme/lib/classes/otpme_object.py:3905
+#: otpme/lib/classes/otpme_object.py:3909
 #, python-brace-format
 msgid ""
 "Remove signature?\n"
@@ -11262,6 +11329,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3944
 #: otpme/lib/classes/otpme_object.py:4004
 #: otpme/lib/classes/otpme_object.py:4010
+#: otpme/lib/classes/otpme_object.py:3954
+#: otpme/lib/classes/otpme_object.py:4014
 msgid "Object does not support nodes."
 msgstr "Objekt unterstützt keine Nodes."
 
@@ -11273,6 +11342,7 @@ msgstr "Objekt unterstützt keine Nodes."
 #: otpme/lib/classes/otpme_object.py:3909
 #: otpme/lib/classes/otpme_object.py:3964
 #: otpme/lib/classes/otpme_object.py:3970
+#: otpme/lib/classes/otpme_object.py:3974
 #, python-brace-format
 msgid "Node is already assigned to {obj_type} '{obj_name}'."
 msgstr "Node ist bereits {obj_type} '{obj_name}' zugewiesen."
@@ -11285,6 +11355,7 @@ msgstr "Node ist bereits {obj_type} '{obj_name}' zugewiesen."
 #: otpme/lib/classes/otpme_object.py:3927
 #: otpme/lib/classes/otpme_object.py:3982
 #: otpme/lib/classes/otpme_object.py:3988
+#: otpme/lib/classes/otpme_object.py:3992
 #, python-brace-format
 msgid "Adding node {node_name} to {obj_type} {obj_name}."
 msgstr "Füge Node {node_name} zu {obj_type} {obj_name} hinzu."
@@ -11297,6 +11368,7 @@ msgstr "Füge Node {node_name} zu {obj_type} {obj_name} hinzu."
 #: otpme/lib/classes/otpme_object.py:3968
 #: otpme/lib/classes/otpme_object.py:4023
 #: otpme/lib/classes/otpme_object.py:4029
+#: otpme/lib/classes/otpme_object.py:4033
 #, python-brace-format
 msgid "Node is not assigned to {obj_type} '{obj_name}'."
 msgstr "Node ist nicht {obj_type} '{obj_name}' zugewiesen."
@@ -11316,6 +11388,8 @@ msgstr "Node ist nicht {obj_type} '{obj_name}' zugewiesen."
 #: otpme/lib/classes/otpme_object.py:4162
 #: otpme/lib/classes/otpme_object.py:4127
 #: otpme/lib/classes/otpme_object.py:4168
+#: otpme/lib/classes/otpme_object.py:4131
+#: otpme/lib/classes/otpme_object.py:4172
 msgid "Object does not support dynamic groups."
 msgstr "Objekt unterstützt keine dynamischen Gruppen."
 
@@ -11327,6 +11401,7 @@ msgstr "Objekt unterstützt keine dynamischen Gruppen."
 #: otpme/lib/classes/otpme_object.py:4084
 #: otpme/lib/classes/otpme_object.py:4139
 #: otpme/lib/classes/otpme_object.py:4145
+#: otpme/lib/classes/otpme_object.py:4149
 #, python-brace-format
 msgid "Dynamic group is already assigned to {object_type} '{object_name}'."
 msgstr ""
@@ -11340,6 +11415,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4111
 #: otpme/lib/classes/otpme_object.py:4166
 #: otpme/lib/classes/otpme_object.py:4172
+#: otpme/lib/classes/otpme_object.py:4176
 #, python-brace-format
 msgid "Dynamic group is not assigned to {object_type} '{object_name}'."
 msgstr "Dynamische Gruppe ist nicht {object_type} '{object_name}' zugewiesen."
@@ -11352,6 +11428,7 @@ msgstr "Dynamische Gruppe ist nicht {object_type} '{object_name}' zugewiesen."
 #: otpme/lib/classes/otpme_object.py:4164
 #: otpme/lib/classes/otpme_object.py:4219
 #: otpme/lib/classes/otpme_object.py:4225
+#: otpme/lib/classes/otpme_object.py:4229
 #, python-brace-format
 msgid "Policy not valid for object type: {object_type}"
 msgstr "Richtlinie nicht gültig für Objekttyp: {object_type}"
@@ -11364,6 +11441,7 @@ msgstr "Richtlinie nicht gültig für Objekttyp: {object_type}"
 #: otpme/lib/classes/otpme_object.py:4171
 #: otpme/lib/classes/otpme_object.py:4226
 #: otpme/lib/classes/otpme_object.py:4232
+#: otpme/lib/classes/otpme_object.py:4236
 msgid "Policy of this type already exists."
 msgstr "Richtlinie dieses Typs existiert bereits."
 
@@ -11375,6 +11453,7 @@ msgstr "Richtlinie dieses Typs existiert bereits."
 #: otpme/lib/classes/otpme_object.py:4184
 #: otpme/lib/classes/otpme_object.py:4239
 #: otpme/lib/classes/otpme_object.py:4245
+#: otpme/lib/classes/otpme_object.py:4249
 msgid "Policy already enabled for this object."
 msgstr "Richtlinie bereits für dieses Objekt aktiviert."
 
@@ -11386,6 +11465,7 @@ msgstr "Richtlinie bereits für dieses Objekt aktiviert."
 #: otpme/lib/classes/otpme_object.py:4231
 #: otpme/lib/classes/otpme_object.py:4286
 #: otpme/lib/classes/otpme_object.py:4292
+#: otpme/lib/classes/otpme_object.py:4297
 #, python-brace-format
 msgid "Policy not enabled for this object: {object_oid}"
 msgstr "Richtlinie nicht aktiviert für dieses Objekt: {object_oid}"
@@ -11398,6 +11478,7 @@ msgstr "Richtlinie nicht aktiviert für dieses Objekt: {object_oid}"
 #: otpme/lib/classes/otpme_object.py:4472
 #: otpme/lib/classes/otpme_object.py:4527
 #: otpme/lib/classes/otpme_object.py:4533
+#: otpme/lib/classes/otpme_object.py:4539
 #, python-brace-format
 msgid "Policy exception: {policy_name}: {exception}"
 msgstr "Richtlinien-Ausnahme: {policy_name}: {exception}"
@@ -11410,6 +11491,7 @@ msgstr "Richtlinien-Ausnahme: {policy_name}: {exception}"
 #: otpme/lib/classes/otpme_object.py:4481
 #: otpme/lib/classes/otpme_object.py:4536
 #: otpme/lib/classes/otpme_object.py:4542
+#: otpme/lib/classes/otpme_object.py:4548
 #, python-brace-format
 msgid "Internal server error running policy: {policy_name}"
 msgstr "Interner Serverfehler beim Ausführen der Richtlinie: {policy_name}"
@@ -11422,6 +11504,7 @@ msgstr "Interner Serverfehler beim Ausführen der Richtlinie: {policy_name}"
 #: otpme/lib/classes/otpme_object.py:4918
 #: otpme/lib/classes/otpme_object.py:4974
 #: otpme/lib/classes/otpme_object.py:4980
+#: otpme/lib/classes/otpme_object.py:4986
 #, python-brace-format
 msgid "Using extension '{e_name}' to add attribute '{attribute}' to object."
 msgstr ""
@@ -11436,6 +11519,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4987
 #: otpme/lib/classes/otpme_object.py:5044
 #: otpme/lib/classes/otpme_object.py:5050
+#: otpme/lib/classes/otpme_object.py:5056
 #, python-brace-format
 msgid ""
 "Using extension '{e_name}' to modify attribute '{attribute}' of object."
@@ -11451,6 +11535,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5006
 #: otpme/lib/classes/otpme_object.py:5063
 #: otpme/lib/classes/otpme_object.py:5069
+#: otpme/lib/classes/otpme_object.py:5075
 #, python-brace-format
 msgid "Unable to add attribute: {attribute}: {exception}"
 msgstr "Attribut kann nicht hinzugefügt werden: {attribute}: {exception}"
@@ -11463,6 +11548,7 @@ msgstr "Attribut kann nicht hinzugefügt werden: {attribute}: {exception}"
 #: otpme/lib/classes/otpme_object.py:5056
 #: otpme/lib/classes/otpme_object.py:5113
 #: otpme/lib/classes/otpme_object.py:5119
+#: otpme/lib/classes/otpme_object.py:5125
 #, python-brace-format
 msgid ""
 "Using extension '{e_name}' to delete attribute '{attribute}' from object."
@@ -11478,6 +11564,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5074
 #: otpme/lib/classes/otpme_object.py:5131
 #: otpme/lib/classes/otpme_object.py:5137
+#: otpme/lib/classes/otpme_object.py:5143
 #, python-brace-format
 msgid "Unable to delete mandatory attribute: {exception}"
 msgstr "Pflichtattribut kann nicht gelöscht werden: {exception}"
@@ -11490,6 +11577,7 @@ msgstr "Pflichtattribut kann nicht gelöscht werden: {exception}"
 #: otpme/lib/classes/otpme_object.py:5078
 #: otpme/lib/classes/otpme_object.py:5135
 #: otpme/lib/classes/otpme_object.py:5141
+#: otpme/lib/classes/otpme_object.py:5147
 #, python-brace-format
 msgid "Unable to delete attribute: {attribute}: {exception}"
 msgstr "Attribut kann nicht gelöscht werden: {attribute}: {exception}"
@@ -11502,6 +11590,7 @@ msgstr "Attribut kann nicht gelöscht werden: {attribute}: {exception}"
 #: otpme/lib/classes/otpme_object.py:5151
 #: otpme/lib/classes/otpme_object.py:5208
 #: otpme/lib/classes/otpme_object.py:5214
+#: otpme/lib/classes/otpme_object.py:5220
 #, python-brace-format
 msgid ""
 "Using extension '{extension_name}' to add object class '{object_class}' to "
@@ -11518,6 +11607,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5159
 #: otpme/lib/classes/otpme_object.py:5216
 #: otpme/lib/classes/otpme_object.py:5222
+#: otpme/lib/classes/otpme_object.py:5228
 #, python-brace-format
 msgid "Unable to find extension to add object class to object: {object_class}"
 msgstr ""
@@ -11532,6 +11622,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5169
 #: otpme/lib/classes/otpme_object.py:5226
 #: otpme/lib/classes/otpme_object.py:5232
+#: otpme/lib/classes/otpme_object.py:5238
 #, python-brace-format
 msgid "Error adding object class: {exception}"
 msgstr "Fehler beim Hinzufügen der Objektklasse: {exception}"
@@ -11544,6 +11635,7 @@ msgstr "Fehler beim Hinzufügen der Objektklasse: {exception}"
 #: otpme/lib/classes/otpme_object.py:5205
 #: otpme/lib/classes/otpme_object.py:5262
 #: otpme/lib/classes/otpme_object.py:5268
+#: otpme/lib/classes/otpme_object.py:5274
 #, python-brace-format
 msgid "{object_type} does not have object class '{object_class}' assigned."
 msgstr "{object_type} hat Objektklasse '{object_class}' nicht zugewiesen."
@@ -11556,6 +11648,7 @@ msgstr "{object_type} hat Objektklasse '{object_class}' nicht zugewiesen."
 #: otpme/lib/classes/otpme_object.py:5247
 #: otpme/lib/classes/otpme_object.py:5304
 #: otpme/lib/classes/otpme_object.py:5310
+#: otpme/lib/classes/otpme_object.py:5316
 #, python-brace-format
 msgid "Cannot add empty attribute: {attribute}"
 msgstr "Leeres Attribut kann nicht hinzugefügt werden: {attribute}"
@@ -11568,6 +11661,7 @@ msgstr "Leeres Attribut kann nicht hinzugefügt werden: {attribute}"
 #: otpme/lib/classes/otpme_object.py:5378
 #: otpme/lib/classes/otpme_object.py:5435
 #: otpme/lib/classes/otpme_object.py:5441
+#: otpme/lib/classes/otpme_object.py:5447
 #, python-brace-format
 msgid "{object_type} already enabled."
 msgstr "{object_type} bereits aktiviert."
@@ -11580,6 +11674,7 @@ msgstr "{object_type} bereits aktiviert."
 #: otpme/lib/classes/otpme_object.py:5384
 #: otpme/lib/classes/otpme_object.py:5441
 #: otpme/lib/classes/otpme_object.py:5447
+#: otpme/lib/classes/otpme_object.py:5453
 #, python-brace-format
 msgid "Enable {object_type} '{object_name}'?: "
 msgstr "{object_type} '{object_name}' aktivieren?:"
@@ -11592,6 +11687,7 @@ msgstr "{object_type} '{object_name}' aktivieren?:"
 #: otpme/lib/classes/otpme_object.py:5443
 #: otpme/lib/classes/otpme_object.py:5500
 #: otpme/lib/classes/otpme_object.py:5506
+#: otpme/lib/classes/otpme_object.py:5517
 #, python-brace-format
 msgid "{object_type} '{object_name}' already disabled."
 msgstr "{object_type} '{object_name}' bereits deaktiviert."
@@ -11604,6 +11700,7 @@ msgstr "{object_type} '{object_name}' bereits deaktiviert."
 #: otpme/lib/classes/otpme_object.py:5454
 #: otpme/lib/classes/otpme_object.py:5511
 #: otpme/lib/classes/otpme_object.py:5517
+#: otpme/lib/classes/otpme_object.py:5528
 #, python-brace-format
 msgid "Disable {type} '{name}'?: "
 msgstr "{type} '{name}' deaktivieren?:"
@@ -11623,6 +11720,8 @@ msgstr "{type} '{name}' deaktivieren?:"
 #: otpme/lib/classes/otpme_object.py:5917
 #: otpme/lib/classes/otpme_object.py:5854
 #: otpme/lib/classes/otpme_object.py:5923
+#: otpme/lib/classes/otpme_object.py:5865
+#: otpme/lib/classes/otpme_object.py:5934
 #, python-brace-format
 msgid "ACL inheritance disabled for object {object_oid}"
 msgstr "ACL-Vererbung für Objekt {object_oid} deaktiviert"
@@ -11635,6 +11734,7 @@ msgstr "ACL-Vererbung für Objekt {object_oid} deaktiviert"
 #: otpme/lib/classes/otpme_object.py:5926
 #: otpme/lib/classes/otpme_object.py:5983
 #: otpme/lib/classes/otpme_object.py:5989
+#: otpme/lib/classes/otpme_object.py:6000
 #, python-brace-format
 msgid "Unable to get parent object: {object_oid}: {exception}"
 msgstr ""
@@ -11655,6 +11755,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6211
 #: otpme/lib/classes/otpme_object.py:5998
 #: otpme/lib/classes/otpme_object.py:6217
+#: otpme/lib/classes/otpme_object.py:6009
+#: otpme/lib/classes/otpme_object.py:6228
 #, python-brace-format
 msgid "Error decoding ACL: {acl}: {exception}"
 msgstr "Fehler beim Dekodieren der ACL: {acl}: {exception}"
@@ -11667,6 +11769,7 @@ msgstr "Fehler beim Dekodieren der ACL: {acl}: {exception}"
 #: otpme/lib/classes/otpme_object.py:6110
 #: otpme/lib/classes/otpme_object.py:6167
 #: otpme/lib/classes/otpme_object.py:6173
+#: otpme/lib/classes/otpme_object.py:6184
 #, python-brace-format
 msgid "Permission denied: {obj}"
 msgstr "Zugriff verweigert: {obj}"
@@ -11679,6 +11782,7 @@ msgstr "Zugriff verweigert: {obj}"
 #: otpme/lib/classes/otpme_object.py:6142
 #: otpme/lib/classes/otpme_object.py:6199
 #: otpme/lib/classes/otpme_object.py:6205
+#: otpme/lib/classes/otpme_object.py:6216
 #, python-brace-format
 msgid "Error decoding raw ACL: {raw_acl}: {exception}"
 msgstr "Fehler beim Dekodieren der Raw-ACL: {raw_acl}: {exception}"
@@ -11691,6 +11795,7 @@ msgstr "Fehler beim Dekodieren der Raw-ACL: {raw_acl}: {exception}"
 #: otpme/lib/classes/otpme_object.py:6185
 #: otpme/lib/classes/otpme_object.py:6242
 #: otpme/lib/classes/otpme_object.py:6248
+#: otpme/lib/classes/otpme_object.py:6259
 #, python-brace-format
 msgid "Unknown {owner_type}: {owner_name}"
 msgstr "Unbekannt {owner_type}: {owner_name}"
@@ -11703,6 +11808,7 @@ msgstr "Unbekannt {owner_type}: {owner_name}"
 #: otpme/lib/classes/otpme_object.py:6191
 #: otpme/lib/classes/otpme_object.py:6248
 #: otpme/lib/classes/otpme_object.py:6254
+#: otpme/lib/classes/otpme_object.py:6265
 #, python-brace-format
 msgid "Found multiple objects for '{owner_name}': {result_list}"
 msgstr "Mehrere Objekte für '{owner_name}' gefunden: {result_list}"
@@ -11715,6 +11821,7 @@ msgstr "Mehrere Objekte für '{owner_name}' gefunden: {result_list}"
 #: otpme/lib/classes/otpme_object.py:6207
 #: otpme/lib/classes/otpme_object.py:6264
 #: otpme/lib/classes/otpme_object.py:6270
+#: otpme/lib/classes/otpme_object.py:6281
 #, python-brace-format
 msgid "Found multiple {t}'s for UUID '{owner_uuid}': {result}"
 msgstr "Mehrere {t}'s für UUID '{owner_uuid}' gefunden: {result}"
@@ -11727,6 +11834,7 @@ msgstr "Mehrere {t}'s für UUID '{owner_uuid}' gefunden: {result}"
 #: otpme/lib/classes/otpme_object.py:6215
 #: otpme/lib/classes/otpme_object.py:6272
 #: otpme/lib/classes/otpme_object.py:6278
+#: otpme/lib/classes/otpme_object.py:6289
 #, python-brace-format
 msgid "Unknown object: {owner_uuid}"
 msgstr "Unbekanntes Objekt: {owner_uuid}"
@@ -11739,6 +11847,7 @@ msgstr "Unbekanntes Objekt: {owner_uuid}"
 #: otpme/lib/classes/otpme_object.py:6222
 #: otpme/lib/classes/otpme_object.py:6279
 #: otpme/lib/classes/otpme_object.py:6285
+#: otpme/lib/classes/otpme_object.py:6296
 msgid "Need at least <owner_type> + <owner_name> or <owner_uuid>"
 msgstr "Benötige mindestens <owner_type> + <owner_name> oder <owner_uuid>"
 
@@ -11750,6 +11859,7 @@ msgstr "Benötige mindestens <owner_type> + <owner_name> oder <owner_uuid>"
 #: otpme/lib/classes/otpme_object.py:6232
 #: otpme/lib/classes/otpme_object.py:6289
 #: otpme/lib/classes/otpme_object.py:6295
+#: otpme/lib/classes/otpme_object.py:6306
 #, python-brace-format
 msgid "Error decoding raw ACL: {acl}: {exception}"
 msgstr "Fehler beim Dekodieren der Raw-ACL: {acl}: {exception}"
@@ -11762,6 +11872,7 @@ msgstr "Fehler beim Dekodieren der Raw-ACL: {acl}: {exception}"
 #: otpme/lib/classes/otpme_object.py:6250
 #: otpme/lib/classes/otpme_object.py:6307
 #: otpme/lib/classes/otpme_object.py:6313
+#: otpme/lib/classes/otpme_object.py:6324
 #, python-brace-format
 msgid "Unsupported ACL: {object_oid}: {acl_id}"
 msgstr "Nicht unterstützte ACL: {object_oid}: {acl_id}"
@@ -11774,6 +11885,7 @@ msgstr "Nicht unterstützte ACL: {object_oid}: {acl_id}"
 #: otpme/lib/classes/otpme_object.py:6277
 #: otpme/lib/classes/otpme_object.py:6334
 #: otpme/lib/classes/otpme_object.py:6340
+#: otpme/lib/classes/otpme_object.py:6351
 #, python-brace-format
 msgid "Adding ACL {resolved_acl} to {object_oid}"
 msgstr "Füge ACL {resolved_acl} zu {object_oid} hinzu"
@@ -11786,6 +11898,7 @@ msgstr "Füge ACL {resolved_acl} zu {object_oid} hinzu"
 #: otpme/lib/classes/otpme_object.py:6285
 #: otpme/lib/classes/otpme_object.py:6342
 #: otpme/lib/classes/otpme_object.py:6348
+#: otpme/lib/classes/otpme_object.py:6359
 #, python-brace-format
 msgid "Removing ACL {resolved_acl} from {object_oid}"
 msgstr "Entferne ACL {resolved_acl} von {object_oid}"
@@ -11798,6 +11911,7 @@ msgstr "Entferne ACL {resolved_acl} von {object_oid}"
 #: otpme/lib/classes/otpme_object.py:6325
 #: otpme/lib/classes/otpme_object.py:6382
 #: otpme/lib/classes/otpme_object.py:6388
+#: otpme/lib/classes/otpme_object.py:6399
 msgid "Command failed. Please try (-vv) to see all errors."
 msgstr ""
 "Befehl fehlgeschlagen. Bitte versuchen Sie (-vv) um alle Fehler zu sehen."
@@ -11810,6 +11924,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6335
 #: otpme/lib/classes/otpme_object.py:6392
 #: otpme/lib/classes/otpme_object.py:6398
+#: otpme/lib/classes/otpme_object.py:6409
 #, python-brace-format
 msgid "Error writing {object_type} config: {object_oid}"
 msgstr "Fehler beim Schreiben der {object_type} Konfiguration: {object_oid}"
@@ -11821,6 +11936,7 @@ msgstr "Fehler beim Schreiben der {object_type} Konfiguration: {object_oid}"
 #: otpme/lib/classes/otpme_object.py:6373
 #: otpme/lib/classes/otpme_object.py:6430
 #: otpme/lib/classes/otpme_object.py:6437
+#: otpme/lib/classes/otpme_object.py:6446
 #, python-brace-format
 msgid "{object_type} auto-disabled: {object_name}"
 msgstr "{object_type} automatisch deaktiviert: {object_name}"
@@ -11832,6 +11948,7 @@ msgstr "{object_type} automatisch deaktiviert: {object_name}"
 #: otpme/lib/classes/otpme_object.py:6377
 #: otpme/lib/classes/otpme_object.py:6434
 #: otpme/lib/classes/otpme_object.py:6441
+#: otpme/lib/classes/otpme_object.py:6450
 #, python-brace-format
 msgid "Cannot auto-disable object: {object_name}: {exception}"
 msgstr ""
@@ -11844,6 +11961,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:6506
 #: otpme/lib/classes/otpme_object.py:6563
 #: otpme/lib/classes/otpme_object.py:6572
+#: otpme/lib/classes/otpme_object.py:6587
 #, python-brace-format
 msgid "New secret: {secret}"
 msgstr "Neues Secret: {secret}"
@@ -11861,6 +11979,8 @@ msgstr "Neues Secret: {secret}"
 #: otpme/lib/classes/otpme_object.py:6645
 #: otpme/lib/classes/otpme_object.py:6609
 #: otpme/lib/classes/otpme_object.py:6654
+#: otpme/lib/classes/otpme_object.py:6624
+#: otpme/lib/classes/otpme_object.py:6669
 #, python-brace-format
 msgid "{object_name} does not have a certificate."
 msgstr "{object_name} hat kein Zertifikat."
@@ -11872,6 +11992,7 @@ msgstr "{object_name} hat kein Zertifikat."
 #: otpme/lib/classes/otpme_object.py:6560
 #: otpme/lib/classes/otpme_object.py:6617
 #: otpme/lib/classes/otpme_object.py:6626
+#: otpme/lib/classes/otpme_object.py:6641
 #, python-brace-format
 msgid "{object_name} does not have a private key."
 msgstr "{object_name} hat keinen privaten Schlüssel."
@@ -11883,6 +12004,7 @@ msgstr "{object_name} hat keinen privaten Schlüssel."
 #: otpme/lib/classes/otpme_object.py:6634
 #: otpme/lib/classes/otpme_object.py:6691
 #: otpme/lib/classes/otpme_object.py:6700
+#: otpme/lib/classes/otpme_object.py:6715
 #, python-brace-format
 msgid "Invalid unit: {exception}"
 msgstr "Ungültige Einheit: {exception}"
@@ -11894,6 +12016,7 @@ msgstr "Ungültige Einheit: {exception}"
 #: otpme/lib/classes/otpme_object.py:6645
 #: otpme/lib/classes/otpme_object.py:6702
 #: otpme/lib/classes/otpme_object.py:6711
+#: otpme/lib/classes/otpme_object.py:6726
 #, python-brace-format
 msgid "Permission denied: {unit_path}"
 msgstr "Zugriff verweigert: {unit_path}"
@@ -11905,6 +12028,7 @@ msgstr "Zugriff verweigert: {unit_path}"
 #: otpme/lib/classes/otpme_object.py:6653
 #: otpme/lib/classes/otpme_object.py:6710
 #: otpme/lib/classes/otpme_object.py:6719
+#: otpme/lib/classes/otpme_object.py:6734
 #, python-brace-format
 msgid "{object_type} already in unit '{new_unit}'."
 msgstr "{object_type} bereits in Einheit '{new_unit}'."
@@ -11916,6 +12040,7 @@ msgstr "{object_type} bereits in Einheit '{new_unit}'."
 #: otpme/lib/classes/otpme_object.py:6656
 #: otpme/lib/classes/otpme_object.py:6713
 #: otpme/lib/classes/otpme_object.py:6722
+#: otpme/lib/classes/otpme_object.py:6737
 #, python-brace-format
 msgid "Moving {object_type} {object_path} > {new_unit}..."
 msgstr "Verschiebe {object_type} {object_path} > {new_unit}..."
@@ -11927,6 +12052,7 @@ msgstr "Verschiebe {object_type} {object_path} > {new_unit}..."
 #: otpme/lib/classes/otpme_object.py:6707
 #: otpme/lib/classes/otpme_object.py:6764
 #: otpme/lib/classes/otpme_object.py:6773
+#: otpme/lib/classes/otpme_object.py:6788
 msgid "ACL inheritance for admin users not allowed"
 msgstr "ACL-Vererbung für Admin-Benutzer nicht erlaubt"
 
@@ -11937,6 +12063,7 @@ msgstr "ACL-Vererbung für Admin-Benutzer nicht erlaubt"
 #: otpme/lib/classes/otpme_object.py:6711
 #: otpme/lib/classes/otpme_object.py:6768
 #: otpme/lib/classes/otpme_object.py:6777
+#: otpme/lib/classes/otpme_object.py:6792
 msgid "ACL inheritance for admin tokens not allowed"
 msgstr "ACL-Vererbung für Admin-Token nicht erlaubt"
 
@@ -11947,6 +12074,7 @@ msgstr "ACL-Vererbung für Admin-Token nicht erlaubt"
 #: otpme/lib/classes/otpme_object.py:6716
 #: otpme/lib/classes/otpme_object.py:6773
 #: otpme/lib/classes/otpme_object.py:6782
+#: otpme/lib/classes/otpme_object.py:6797
 msgid "ACL inheritance for admin role not allowed"
 msgstr "ACL-Vererbung für Admin-Rolle nicht erlaubt"
 
@@ -11957,6 +12085,7 @@ msgstr "ACL-Vererbung für Admin-Rolle nicht erlaubt"
 #: otpme/lib/classes/otpme_object.py:6731
 #: otpme/lib/classes/otpme_object.py:6788
 #: otpme/lib/classes/otpme_object.py:6797
+#: otpme/lib/classes/otpme_object.py:6812
 msgid "* Removing default ACLs of old unit..."
 msgstr "* Entferne Standard-ACLs der alten Einheit..."
 
@@ -11967,6 +12096,7 @@ msgstr "* Entferne Standard-ACLs der alten Einheit..."
 #: otpme/lib/classes/otpme_object.py:6742
 #: otpme/lib/classes/otpme_object.py:6799
 #: otpme/lib/classes/otpme_object.py:6808
+#: otpme/lib/classes/otpme_object.py:6823
 #, python-brace-format
 msgid "Error removing unit default ACLs: {exception}"
 msgstr "Fehler beim Entfernen der Einheits-Standard-ACLs: {exception}"
@@ -11989,6 +12119,8 @@ msgstr "* Wende Standard-ACLs der neuen/alten NICHT an/entferne sie"
 #: otpme/lib/classes/otpme_object.py:8187
 #: otpme/lib/classes/otpme_object.py:6842
 #: otpme/lib/classes/otpme_object.py:8196
+#: otpme/lib/classes/otpme_object.py:6857
+#: otpme/lib/classes/otpme_object.py:8211
 #, python-brace-format
 msgid "Error renaming {object_type} '{new_name}': {exception}"
 msgstr "Fehler beim Umbenennen von {object_type} '{new_name}': {exception}"
@@ -12000,6 +12132,7 @@ msgstr "Fehler beim Umbenennen von {object_type} '{new_name}': {exception}"
 #: otpme/lib/classes/otpme_object.py:6785
 #: otpme/lib/classes/otpme_object.py:6842
 #: otpme/lib/classes/otpme_object.py:6851
+#: otpme/lib/classes/otpme_object.py:6866
 msgid "* Applying default ACLs of new unit..."
 msgstr "* Wende Standard-ACLs der neuen Einheit an..."
 
@@ -12010,6 +12143,7 @@ msgstr "* Wende Standard-ACLs der neuen Einheit an..."
 #: otpme/lib/classes/otpme_object.py:6796
 #: otpme/lib/classes/otpme_object.py:6853
 #: otpme/lib/classes/otpme_object.py:6862
+#: otpme/lib/classes/otpme_object.py:6877
 #, python-brace-format
 msgid "Error adding unit default ACLs: {exception}"
 msgstr "Fehler beim Hinzufügen der Einheits-Standard-ACLs: {exception}"
@@ -12021,6 +12155,7 @@ msgstr "Fehler beim Hinzufügen der Einheits-Standard-ACLs: {exception}"
 #: otpme/lib/classes/otpme_object.py:6864
 #: otpme/lib/classes/otpme_object.py:6921
 #: otpme/lib/classes/otpme_object.py:6930
+#: otpme/lib/classes/otpme_object.py:6945
 #, python-brace-format
 msgid "Unknown script: {script}"
 msgstr "Unbekanntes Skript: {script}"
@@ -12043,6 +12178,7 @@ msgstr "Unbekanntes Skript: {script}"
 #: otpme/lib/protocols/otpme_server.py:1141
 #: otpme/lib/classes/otpme_object.py:6971
 #: otpme/lib/protocols/otpme_server.py:1142
+#: otpme/lib/classes/otpme_object.py:6986
 #, python-brace-format
 msgid "Unknown user: {username}"
 msgstr "Unbekannter Benutzer: {username}"
@@ -12054,6 +12190,7 @@ msgstr "Unbekannter Benutzer: {username}"
 #: otpme/lib/classes/otpme_object.py:6913
 #: otpme/lib/classes/otpme_object.py:6970
 #: otpme/lib/classes/otpme_object.py:6979
+#: otpme/lib/classes/otpme_object.py:6994
 #, python-brace-format
 msgid "Cannot find user with UUID: {user_uuid}"
 msgstr "Kann Benutzer mit UUID nicht finden: {user_uuid}"
@@ -12071,6 +12208,8 @@ msgstr "Kann Benutzer mit UUID nicht finden: {user_uuid}"
 #: otpme/lib/classes/otpme_object.py:7359
 #: otpme/lib/classes/otpme_object.py:6986
 #: otpme/lib/classes/otpme_object.py:7368
+#: otpme/lib/classes/otpme_object.py:7001
+#: otpme/lib/classes/otpme_object.py:7383
 #, python-brace-format
 msgid "No signature found for user: {user_name}"
 msgstr "Keine Signatur für Benutzer gefunden: {user_name}"
@@ -12082,6 +12221,7 @@ msgstr "Keine Signatur für Benutzer gefunden: {user_name}"
 #: otpme/lib/classes/otpme_object.py:6929
 #: otpme/lib/classes/otpme_object.py:6986
 #: otpme/lib/classes/otpme_object.py:6995
+#: otpme/lib/classes/otpme_object.py:7010
 #, python-brace-format
 msgid "Found signature of orphan user: {uuid}"
 msgstr "Signatur von verwaisten Benutzer gefunden: {uuid}"
@@ -12093,6 +12233,7 @@ msgstr "Signatur von verwaisten Benutzer gefunden: {uuid}"
 #: otpme/lib/classes/otpme_object.py:6999
 #: otpme/lib/classes/otpme_object.py:7056
 #: otpme/lib/classes/otpme_object.py:7065
+#: otpme/lib/classes/otpme_object.py:7080
 #, python-brace-format
 msgid "Failed to create signature: {sign_info}"
 msgstr "Fehler beim Erstellen der Signatur: {sign_info}"
@@ -12104,6 +12245,7 @@ msgstr "Fehler beim Erstellen der Signatur: {sign_info}"
 #: otpme/lib/classes/otpme_object.py:7087
 #: otpme/lib/classes/otpme_object.py:7144
 #: otpme/lib/classes/otpme_object.py:7153
+#: otpme/lib/classes/otpme_object.py:7168
 msgid "Got empty signature."
 msgstr "Leere Signatur erhalten."
 
@@ -12114,6 +12256,7 @@ msgstr "Leere Signatur erhalten."
 #: otpme/lib/classes/otpme_object.py:7097
 #: otpme/lib/classes/otpme_object.py:7154
 #: otpme/lib/classes/otpme_object.py:7163
+#: otpme/lib/classes/otpme_object.py:7178
 #, python-brace-format
 msgid "Got invalid signature: {exception}"
 msgstr "Ungültige Signatur erhalten: {exception}"
@@ -12125,6 +12268,7 @@ msgstr "Ungültige Signatur erhalten: {exception}"
 #: otpme/lib/classes/otpme_object.py:7104
 #: otpme/lib/classes/otpme_object.py:7161
 #: otpme/lib/classes/otpme_object.py:7170
+#: otpme/lib/classes/otpme_object.py:7185
 #, python-brace-format
 msgid "Failed to verify signature: {exception}"
 msgstr "Fehler beim Verifizieren der Signatur: {exception}"
@@ -12136,6 +12280,7 @@ msgstr "Fehler beim Verifizieren der Signatur: {exception}"
 #: otpme/lib/classes/otpme_object.py:7108
 #: otpme/lib/classes/otpme_object.py:7165
 #: otpme/lib/classes/otpme_object.py:7174
+#: otpme/lib/classes/otpme_object.py:7189
 msgid "Failed to verify signature"
 msgstr "Fehler beim Verifizieren der Signatur"
 
@@ -12146,6 +12291,7 @@ msgstr "Fehler beim Verifizieren der Signatur"
 #: otpme/lib/classes/otpme_object.py:7151
 #: otpme/lib/classes/otpme_object.py:7208
 #: otpme/lib/classes/otpme_object.py:7217
+#: otpme/lib/classes/otpme_object.py:7232
 #, python-brace-format
 msgid "Invalid signature type: {signature_type}"
 msgstr "Ungültiger Signaturtyp: {signature_type}"
@@ -12157,6 +12303,7 @@ msgstr "Ungültiger Signaturtyp: {signature_type}"
 #: otpme/lib/classes/otpme_object.py:7181
 #: otpme/lib/classes/otpme_object.py:7238
 #: otpme/lib/classes/otpme_object.py:7247
+#: otpme/lib/classes/otpme_object.py:7262
 msgid "A valid signature already exists. Use -f to override."
 msgstr ""
 "Eine gültige Signatur existiert bereits. Verwenden Sie -f zum Überschreiben."
@@ -12168,6 +12315,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:7198
 #: otpme/lib/classes/otpme_object.py:7255
 #: otpme/lib/classes/otpme_object.py:7264
+#: otpme/lib/classes/otpme_object.py:7279
 #, python-brace-format
 msgid "Failed to revoke old signature: {exception}"
 msgstr "Fehler beim Widerrufen der alten Signatur: {exception}"
@@ -12179,6 +12327,7 @@ msgstr "Fehler beim Widerrufen der alten Signatur: {exception}"
 #: otpme/lib/classes/otpme_object.py:7242
 #: otpme/lib/classes/otpme_object.py:7299
 #: otpme/lib/classes/otpme_object.py:7308
+#: otpme/lib/classes/otpme_object.py:7323
 msgid "Object is not signable."
 msgstr "Objekt ist nicht signierbar."
 
@@ -12189,6 +12338,7 @@ msgstr "Objekt ist nicht signierbar."
 #: otpme/lib/classes/otpme_object.py:7292
 #: otpme/lib/classes/otpme_object.py:7349
 #: otpme/lib/classes/otpme_object.py:7358
+#: otpme/lib/classes/otpme_object.py:7373
 #, python-brace-format
 msgid "Unable to find user: {username}"
 msgstr "Benutzer kann nicht gefunden werden: {username}"
@@ -12200,6 +12350,7 @@ msgstr "Benutzer kann nicht gefunden werden: {username}"
 #: otpme/lib/classes/otpme_object.py:7311
 #: otpme/lib/classes/otpme_object.py:7368
 #: otpme/lib/classes/otpme_object.py:7377
+#: otpme/lib/classes/otpme_object.py:7392
 #, python-brace-format
 msgid "No signature with given tags found: {tags}"
 msgstr "Keine Signatur mit den angegebenen Tags gefunden: {tags}"
@@ -12211,6 +12362,7 @@ msgstr "Keine Signatur mit den angegebenen Tags gefunden: {tags}"
 #: otpme/lib/classes/otpme_object.py:7314
 #: otpme/lib/classes/otpme_object.py:7371
 #: otpme/lib/classes/otpme_object.py:7380
+#: otpme/lib/classes/otpme_object.py:7395
 msgid "No signature without tags found."
 msgstr "Keine Signatur ohne Tags gefunden."
 
@@ -12227,6 +12379,8 @@ msgstr "Keine Signatur ohne Tags gefunden."
 #: otpme/lib/classes/otpme_object.py:8264
 #: otpme/lib/classes/otpme_object.py:7388
 #: otpme/lib/classes/otpme_object.py:8273
+#: otpme/lib/classes/otpme_object.py:7403
+#: otpme/lib/classes/otpme_object.py:8288
 #, python-brace-format
 msgid "Failed to revoke signature: {exception}"
 msgstr "Fehler beim Widerrufen der Signatur: {exception}"
@@ -12238,6 +12392,7 @@ msgstr "Fehler beim Widerrufen der Signatur: {exception}"
 #: otpme/lib/classes/otpme_object.py:7450
 #: otpme/lib/classes/otpme_object.py:7507
 #: otpme/lib/classes/otpme_object.py:7516
+#: otpme/lib/classes/otpme_object.py:7531
 #, python-brace-format
 msgid "{user_name}: Unable to load public key."
 msgstr "{user_name}: Öffentlicher Schlüssel kann nicht geladen werden."
@@ -12249,6 +12404,7 @@ msgstr "{user_name}: Öffentlicher Schlüssel kann nicht geladen werden."
 #: otpme/lib/classes/otpme_object.py:7456
 #: otpme/lib/classes/otpme_object.py:7513
 #: otpme/lib/classes/otpme_object.py:7522
+#: otpme/lib/classes/otpme_object.py:7537
 #, python-brace-format
 msgid "{user_name}: Signature revoked ({sign_info})"
 msgstr "{user_name}: Signatur widerrufen ({sign_info})"
@@ -12260,6 +12416,7 @@ msgstr "{user_name}: Signatur widerrufen ({sign_info})"
 #: otpme/lib/classes/otpme_object.py:7462
 #: otpme/lib/classes/otpme_object.py:7519
 #: otpme/lib/classes/otpme_object.py:7528
+#: otpme/lib/classes/otpme_object.py:7543
 #, python-brace-format
 msgid "{user_name}: Faulty signature ({sign_info})"
 msgstr "{user_name}: Fehlerhafte Signatur ({sign_info})"
@@ -12271,6 +12428,7 @@ msgstr "{user_name}: Fehlerhafte Signatur ({sign_info})"
 #: otpme/lib/classes/otpme_object.py:7469
 #: otpme/lib/classes/otpme_object.py:7526
 #: otpme/lib/classes/otpme_object.py:7535
+#: otpme/lib/classes/otpme_object.py:7550
 #, python-brace-format
 msgid "{user_name}: Invalid signature ({sign_info})"
 msgstr "{user_name}: Ungültige Signatur ({sign_info})"
@@ -12282,6 +12440,7 @@ msgstr "{user_name}: Ungültige Signatur ({sign_info})"
 #: otpme/lib/classes/otpme_object.py:7475
 #: otpme/lib/classes/otpme_object.py:7532
 #: otpme/lib/classes/otpme_object.py:7541
+#: otpme/lib/classes/otpme_object.py:7556
 #, python-brace-format
 msgid "{user_name}: Signature OK ({sign_info})"
 msgstr "{user_name}: Signatur OK ({sign_info})"
@@ -12293,6 +12452,7 @@ msgstr "{user_name}: Signatur OK ({sign_info})"
 #: otpme/lib/classes/otpme_object.py:7482
 #: otpme/lib/classes/otpme_object.py:7539
 #: otpme/lib/classes/otpme_object.py:7548
+#: otpme/lib/classes/otpme_object.py:7563
 #, python-brace-format
 msgid "No signature found with ID: {sign_id}"
 msgstr "Keine Signatur mit ID gefunden: {sign_id}"
@@ -12304,6 +12464,7 @@ msgstr "Keine Signatur mit ID gefunden: {sign_id}"
 #: otpme/lib/classes/otpme_object.py:7489
 #: otpme/lib/classes/otpme_object.py:7546
 #: otpme/lib/classes/otpme_object.py:7555
+#: otpme/lib/classes/otpme_object.py:7570
 #, python-brace-format
 msgid "No signature found with tags: {tags_str}"
 msgstr "Keine Signatur mit Tags gefunden: {tags_str}"
@@ -12315,6 +12476,7 @@ msgstr "Keine Signatur mit Tags gefunden: {tags_str}"
 #: otpme/lib/classes/otpme_object.py:7559
 #: otpme/lib/classes/otpme_object.py:7616
 #: otpme/lib/classes/otpme_object.py:7625
+#: otpme/lib/classes/otpme_object.py:7640
 #, python-brace-format
 msgid "No signature found with tags: {tags}"
 msgstr "Keine Signatur mit Tags gefunden: {tags}"
@@ -12326,6 +12488,7 @@ msgstr "Keine Signatur mit Tags gefunden: {tags}"
 #: otpme/lib/classes/otpme_object.py:7562
 #: otpme/lib/classes/otpme_object.py:7619
 #: otpme/lib/classes/otpme_object.py:7628
+#: otpme/lib/classes/otpme_object.py:7643
 msgid "No signature found."
 msgstr "Keine Signatur gefunden."
 
@@ -12336,6 +12499,7 @@ msgstr "Keine Signatur gefunden."
 #: otpme/lib/classes/otpme_object.py:7711
 #: otpme/lib/classes/otpme_object.py:7768
 #: otpme/lib/classes/otpme_object.py:7777
+#: otpme/lib/classes/otpme_object.py:7792
 #, python-brace-format
 msgid "Cannot run policies without parent object: {object_oid}"
 msgstr ""
@@ -12355,6 +12519,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:9123
 #: otpme/lib/classes/otpme_object.py:7813
 #: otpme/lib/classes/otpme_object.py:9132
+#: otpme/lib/classes/otpme_object.py:7828
+#: otpme/lib/classes/otpme_object.py:9147
 #, python-brace-format
 msgid "{object_type} already exists."
 msgstr "{object_type} existiert bereits."
@@ -12366,6 +12532,7 @@ msgstr "{object_type} existiert bereits."
 #: otpme/lib/classes/otpme_object.py:7756
 #: otpme/lib/classes/otpme_object.py:7813
 #: otpme/lib/classes/otpme_object.py:7822
+#: otpme/lib/classes/otpme_object.py:7837
 #, python-brace-format
 msgid "Cannot verify ACLs without parent object: {object_oid}"
 msgstr ""
@@ -12385,6 +12552,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:7827
 #: otpme/lib/classes/otpme_object.py:7830
 #: otpme/lib/classes/otpme_object.py:7836
+#: otpme/lib/classes/otpme_object.py:7845
+#: otpme/lib/classes/otpme_object.py:7851
 #, python-brace-format
 msgid "Permission denied: {parent_path}"
 msgstr "Zugriff verweigert: {parent_path}"
@@ -12396,6 +12565,7 @@ msgstr "Zugriff verweigert: {parent_path}"
 #: otpme/lib/classes/otpme_object.py:7774
 #: otpme/lib/classes/otpme_object.py:7831
 #: otpme/lib/classes/otpme_object.py:7840
+#: otpme/lib/classes/otpme_object.py:7855
 #, python-brace-format
 msgid "Adding {object_type}: {object_name}"
 msgstr "Füge {object_type} hinzu: {object_name}"
@@ -12407,6 +12577,7 @@ msgstr "Füge {object_type} hinzu: {object_name}"
 #: otpme/lib/classes/otpme_object.py:7784
 #: otpme/lib/classes/otpme_object.py:7841
 #: otpme/lib/classes/otpme_object.py:7850
+#: otpme/lib/classes/otpme_object.py:7865
 #, python-brace-format
 msgid "UUID conflict: {self_oid} <> {other_oid}"
 msgstr "UUID-Konflikt: {self_oid} <> {other_oid}"
@@ -12418,6 +12589,7 @@ msgstr "UUID-Konflikt: {self_oid} <> {other_oid}"
 #: otpme/lib/classes/otpme_object.py:7801
 #: otpme/lib/classes/otpme_object.py:7858
 #: otpme/lib/classes/otpme_object.py:7867
+#: otpme/lib/classes/otpme_object.py:7882
 #, python-brace-format
 msgid "Adding policy: {policy_name}"
 msgstr "Füge Richtlinie hinzu: {policy_name}"
@@ -12429,6 +12601,7 @@ msgstr "Füge Richtlinie hinzu: {policy_name}"
 #: otpme/lib/classes/otpme_object.py:7874
 #: otpme/lib/classes/otpme_object.py:7932
 #: otpme/lib/classes/otpme_object.py:7941
+#: otpme/lib/classes/otpme_object.py:7956
 msgid "Creator must be a UUID."
 msgstr "Ersteller muss eine UUID sein."
 
@@ -12439,6 +12612,7 @@ msgstr "Ersteller muss eine UUID sein."
 #: otpme/lib/classes/otpme_object.py:7929
 #: otpme/lib/classes/otpme_object.py:7987
 #: otpme/lib/classes/otpme_object.py:7996
+#: otpme/lib/classes/otpme_object.py:8011
 #, python-brace-format
 msgid "Adding default extension: {extension}"
 msgstr "Füge Standarderweiterung hinzu: {extension}"
@@ -12455,6 +12629,7 @@ msgstr "WARNUNG: ACLs können nicht vom übergeordneten Objekt geerbt werden"
 #: otpme/lib/classes/otpme_object.py:8093
 #: otpme/lib/classes/otpme_object.py:8154
 #: otpme/lib/classes/otpme_object.py:8163
+#: otpme/lib/classes/otpme_object.py:8178
 #, python-brace-format
 msgid "Cannot rename object with expired lock: {obj}"
 msgstr "Objekt mit abgelaufener Sperre kann nicht umbenannt werden: {obj}"
@@ -12466,6 +12641,7 @@ msgstr "Objekt mit abgelaufener Sperre kann nicht umbenannt werden: {obj}"
 #: otpme/lib/classes/otpme_object.py:8098
 #: otpme/lib/classes/otpme_object.py:8159
 #: otpme/lib/classes/otpme_object.py:8168
+#: otpme/lib/classes/otpme_object.py:8183
 #, python-brace-format
 msgid "New name matches current name: {new_name}"
 msgstr "Neuer Name entspricht aktuellem Namen: {new_name}"
@@ -12477,6 +12653,7 @@ msgstr "Neuer Name entspricht aktuellem Namen: {new_name}"
 #: otpme/lib/classes/otpme_object.py:8103
 #: otpme/lib/classes/otpme_object.py:8164
 #: otpme/lib/classes/otpme_object.py:8173
+#: otpme/lib/classes/otpme_object.py:8188
 #, python-brace-format
 msgid "Cannot rename. {object_type} '{new_name}' exists."
 msgstr "Umbenennung nicht möglich. {object_type} '{new_name}' existiert."
@@ -12488,6 +12665,7 @@ msgstr "Umbenennung nicht möglich. {object_type} '{new_name}' existiert."
 #: otpme/lib/classes/otpme_object.py:8179
 #: otpme/lib/classes/otpme_object.py:8240
 #: otpme/lib/classes/otpme_object.py:8249
+#: otpme/lib/classes/otpme_object.py:8264
 #, python-brace-format
 msgid "Cannot delete object with expired lock: {obj}"
 msgstr "Objekt mit abgelaufener Sperre kann nicht gelöscht werden: {obj}"
@@ -12499,6 +12677,7 @@ msgstr "Objekt mit abgelaufener Sperre kann nicht gelöscht werden: {obj}"
 #: otpme/lib/classes/otpme_object.py:8259
 #: otpme/lib/classes/otpme_object.py:8320
 #: otpme/lib/classes/otpme_object.py:8329
+#: otpme/lib/classes/otpme_object.py:8344
 #, python-brace-format
 msgid ""
 "{object_type}|{object_name}: Found the following orphan ACLs: {acl_list}\n"
@@ -12514,6 +12693,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:8269
 #: otpme/lib/classes/otpme_object.py:8330
 #: otpme/lib/classes/otpme_object.py:8339
+#: otpme/lib/classes/otpme_object.py:8354
 #, python-brace-format
 msgid "Removing orphan ACL: {acl}"
 msgstr "Entferne verwaiste ACL: {acl}"
@@ -12525,6 +12705,7 @@ msgstr "Entferne verwaiste ACL: {acl}"
 #: otpme/lib/classes/otpme_object.py:8278
 #: otpme/lib/classes/otpme_object.py:8339
 #: otpme/lib/classes/otpme_object.py:8348
+#: otpme/lib/classes/otpme_object.py:8363
 #, python-brace-format
 msgid "No orphan ACLs found for {object_type}: {object_name}"
 msgstr "Keine verwaisten ACLs gefunden für {object_type}: {object_name}"
@@ -12536,6 +12717,7 @@ msgstr "Keine verwaisten ACLs gefunden für {object_type}: {object_name}"
 #: otpme/lib/classes/otpme_object.py:8309
 #: otpme/lib/classes/otpme_object.py:8370
 #: otpme/lib/classes/otpme_object.py:8379
+#: otpme/lib/classes/otpme_object.py:8394
 #, python-brace-format
 msgid ""
 "{object_type}|{object_name}: Found the following orphan policies: {policy_list}\n"
@@ -12551,6 +12733,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:8319
 #: otpme/lib/classes/otpme_object.py:8380
 #: otpme/lib/classes/otpme_object.py:8389
+#: otpme/lib/classes/otpme_object.py:8404
 #, python-brace-format
 msgid "Removing orphan policy: {policy}"
 msgstr "Entferne verwaiste Richtlinie: {policy}"
@@ -12562,6 +12745,7 @@ msgstr "Entferne verwaiste Richtlinie: {policy}"
 #: otpme/lib/classes/otpme_object.py:8330
 #: otpme/lib/classes/otpme_object.py:8391
 #: otpme/lib/classes/otpme_object.py:8400
+#: otpme/lib/classes/otpme_object.py:8415
 #, python-brace-format
 msgid "No orphan policies found for {object_type}: {object_name}"
 msgstr ""
@@ -12574,6 +12758,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:8365
 #: otpme/lib/classes/otpme_object.py:8426
 #: otpme/lib/classes/otpme_object.py:8435
+#: otpme/lib/classes/otpme_object.py:8450
 #, python-brace-format
 msgid ""
 "{object_type}|{object_name}: Found the following orphan signer UUIDs: {signers_list}\n"
@@ -12589,6 +12774,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:8376
 #: otpme/lib/classes/otpme_object.py:8437
 #: otpme/lib/classes/otpme_object.py:8446
+#: otpme/lib/classes/otpme_object.py:8461
 #, python-brace-format
 msgid "Removing orphan signature: {signature}"
 msgstr "Entferne verwaiste Signatur: {signature}"
@@ -12600,6 +12786,7 @@ msgstr "Entferne verwaiste Signatur: {signature}"
 #: otpme/lib/classes/otpme_object.py:8717
 #: otpme/lib/classes/otpme_object.py:8778
 #: otpme/lib/classes/otpme_object.py:8787
+#: otpme/lib/classes/otpme_object.py:8802
 msgid "Logins already limited."
 msgstr "Anmeldungen bereits begrenzt."
 
@@ -12610,6 +12797,7 @@ msgstr "Anmeldungen bereits begrenzt."
 #: otpme/lib/classes/otpme_object.py:8744
 #: otpme/lib/classes/otpme_object.py:8805
 #: otpme/lib/classes/otpme_object.py:8814
+#: otpme/lib/classes/otpme_object.py:8829
 msgid "Logins already unlimited."
 msgstr "Anmeldungen bereits unbegrenzt."
 
@@ -12620,6 +12808,7 @@ msgstr "Anmeldungen bereits unbegrenzt."
 #: otpme/lib/classes/otpme_object.py:8774
 #: otpme/lib/classes/otpme_object.py:8835
 #: otpme/lib/classes/otpme_object.py:8844
+#: otpme/lib/classes/otpme_object.py:8859
 #, python-brace-format
 msgid "Invalid object type: {object_type}"
 msgstr "Ungültiger Objekttyp: {object_type}"
@@ -12631,6 +12820,7 @@ msgstr "Ungültiger Objekttyp: {object_type}"
 #: otpme/lib/classes/otpme_object.py:8784
 #: otpme/lib/classes/otpme_object.py:8845
 #: otpme/lib/classes/otpme_object.py:8854
+#: otpme/lib/classes/otpme_object.py:8869
 #, python-brace-format
 msgid "Unknown login interface: {login_interface}"
 msgstr "Unbekannte Anmeldeschnittstelle: {login_interface}"
@@ -12642,6 +12832,7 @@ msgstr "Unbekannte Anmeldeschnittstelle: {login_interface}"
 #: otpme/lib/classes/otpme_object.py:8790
 #: otpme/lib/classes/otpme_object.py:8851
 #: otpme/lib/classes/otpme_object.py:8860
+#: otpme/lib/classes/otpme_object.py:8875
 #, python-brace-format
 msgid "Logins limited: Token not assigned: {token}"
 msgstr "Anmeldungen begrenzt: Token nicht zugewiesen: {token}"
@@ -12653,6 +12844,7 @@ msgstr "Anmeldungen begrenzt: Token nicht zugewiesen: {token}"
 #: otpme/lib/classes/otpme_object.py:8815
 #: otpme/lib/classes/otpme_object.py:8876
 #: otpme/lib/classes/otpme_object.py:8885
+#: otpme/lib/classes/otpme_object.py:8900
 #, python-brace-format
 msgid ""
 "Access denied by login interface option: {object_oid}: {login_interface_neg}"
@@ -12667,6 +12859,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:8819
 #: otpme/lib/classes/otpme_object.py:8880
 #: otpme/lib/classes/otpme_object.py:8889
+#: otpme/lib/classes/otpme_object.py:8904
 #, python-brace-format
 msgid ""
 "Access denied: Login interface not allowed: {object_oid}: {login_interface}"
@@ -12681,6 +12874,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:8840
 #: otpme/lib/classes/otpme_object.py:8901
 #: otpme/lib/classes/otpme_object.py:8910
+#: otpme/lib/classes/otpme_object.py:8925
 #, python-brace-format
 msgid "Unable to find accessgroup: {auth_access_group}"
 msgstr "Zugriffsgruppe nicht gefunden: {auth_access_group}"
@@ -12692,6 +12886,7 @@ msgstr "Zugriffsgruppe nicht gefunden: {auth_access_group}"
 #: otpme/lib/classes/otpme_object.py:8854
 #: otpme/lib/classes/otpme_object.py:8915
 #: otpme/lib/classes/otpme_object.py:8924
+#: otpme/lib/classes/otpme_object.py:8939
 #, python-brace-format
 msgid ""
 "Access denied by login interface option: {auth_ag_oid}: "
@@ -12707,6 +12902,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:8858
 #: otpme/lib/classes/otpme_object.py:8919
 #: otpme/lib/classes/otpme_object.py:8928
+#: otpme/lib/classes/otpme_object.py:8943
 #, python-brace-format
 msgid ""
 "Access denied: Login interface not allowed: {auth_ag_oid}: {login_interface}"
@@ -12721,6 +12917,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:8883
 #: otpme/lib/classes/otpme_object.py:8944
 #: otpme/lib/classes/otpme_object.py:8953
+#: otpme/lib/classes/otpme_object.py:8968
 #, python-brace-format
 msgid ""
 "Access denied by login interface option: {role_oid}: {login_interface_neg}"
@@ -12735,6 +12932,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:8887
 #: otpme/lib/classes/otpme_object.py:8948
 #: otpme/lib/classes/otpme_object.py:8957
+#: otpme/lib/classes/otpme_object.py:8972
 #, python-brace-format
 msgid ""
 "Access denied: Login interface not allowed: {role_oid}: {login_interface}"
@@ -12749,6 +12947,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:8907
 #: otpme/lib/classes/otpme_object.py:8968
 #: otpme/lib/classes/otpme_object.py:8977
+#: otpme/lib/classes/otpme_object.py:8992
 #, python-brace-format
 msgid ""
 "Login interface valid by: {login_interface_valid_by}: {login_interface}"
@@ -14054,6 +14253,7 @@ msgstr "{self_type_title} existiert bereits."
 #: otpme/lib/classes/otpme_object.py:7992 otpme/lib/classes/user.py:5131
 #: otpme/lib/classes/user.py:5137 otpme/lib/classes/otpme_object.py:8053
 #: otpme/lib/classes/user.py:5167 otpme/lib/classes/otpme_object.py:8062
+#: otpme/lib/classes/otpme_object.py:8077
 #, python-brace-format
 msgid "WARNING: Unable to inherit ACLs from parent object: {e}"
 msgstr ""
@@ -14587,6 +14787,8 @@ msgstr "{dictionary_dir}/{d}.gz"
 #: otpme/lib/classes/command_handler.py:4941
 #: otpme/lib/classes/command_handler.py:4828
 #: otpme/lib/classes/command_handler.py:4945
+#: otpme/lib/classes/command_handler.py:4829
+#: otpme/lib/classes/command_handler.py:4946
 #, python-brace-format
 msgid "No such file or directory: {dict_file}"
 msgstr "Datei oder Verzeichnis nicht vorhanden: {dict_file}"
@@ -15734,6 +15936,16 @@ msgstr "Erstellungsmodus bereits gesetzt auf: {directory_mode}"
 #: otpme/lib/classes/otpme_object.py:4932
 #: otpme/lib/classes/otpme_object.py:5556
 #: otpme/lib/classes/otpme_object.py:5602
+#: otpme/lib/classes/otpme_object.py:3271
+#: otpme/lib/classes/otpme_object.py:3331
+#: otpme/lib/classes/otpme_object.py:3392
+#: otpme/lib/classes/otpme_object.py:3573
+#: otpme/lib/classes/otpme_object.py:3853
+#: otpme/lib/classes/otpme_object.py:3959
+#: otpme/lib/classes/otpme_object.py:4019
+#: otpme/lib/classes/otpme_object.py:4938
+#: otpme/lib/classes/otpme_object.py:5567
+#: otpme/lib/classes/otpme_object.py:5613
 #, python-brace-format
 msgid "Permission denied: {self}"
 msgstr "Zugriff verweigert: {self}"
@@ -16040,6 +16252,14 @@ msgstr "Fehler beim Entfernen der Sitzung '{session_name}': {error}"
 #: otpme/lib/classes/command_handler.py:3621
 #: otpme/lib/classes/command_handler.py:3657
 #: otpme/lib/protocols/otpme_server.py:724
+#: otpme/lib/classes/command_handler.py:1176
+#: otpme/lib/classes/command_handler.py:1182
+#: otpme/lib/classes/command_handler.py:3459
+#: otpme/lib/classes/command_handler.py:3497
+#: otpme/lib/classes/command_handler.py:3530
+#: otpme/lib/classes/command_handler.py:3579
+#: otpme/lib/classes/command_handler.py:3622
+#: otpme/lib/classes/command_handler.py:3658
 msgid "Not logged in."
 msgstr "Nicht angemeldet."
 
@@ -16246,6 +16466,36 @@ msgstr "Unbekannter Befehl: {command}"
 #: otpme/lib/classes/command_handler.py:5877
 #: otpme/lib/classes/command_handler.py:6858
 #: otpme/lib/classes/command_handler.py:6928
+#: otpme/lib/classes/command_handler.py:553
+#: otpme/lib/classes/command_handler.py:574
+#: otpme/lib/classes/command_handler.py:836
+#: otpme/lib/classes/command_handler.py:866
+#: otpme/lib/classes/command_handler.py:917
+#: otpme/lib/classes/command_handler.py:1136
+#: otpme/lib/classes/command_handler.py:1344
+#: otpme/lib/classes/command_handler.py:1390
+#: otpme/lib/classes/command_handler.py:1416
+#: otpme/lib/classes/command_handler.py:1833
+#: otpme/lib/classes/command_handler.py:1982
+#: otpme/lib/classes/command_handler.py:2081
+#: otpme/lib/classes/command_handler.py:2144
+#: otpme/lib/classes/command_handler.py:2292
+#: otpme/lib/classes/command_handler.py:2410
+#: otpme/lib/classes/command_handler.py:2473
+#: otpme/lib/classes/command_handler.py:2511
+#: otpme/lib/classes/command_handler.py:3548
+#: otpme/lib/classes/command_handler.py:4752
+#: otpme/lib/classes/command_handler.py:4800
+#: otpme/lib/classes/command_handler.py:4923
+#: otpme/lib/classes/command_handler.py:4981
+#: otpme/lib/classes/command_handler.py:5066
+#: otpme/lib/classes/command_handler.py:5104
+#: otpme/lib/classes/command_handler.py:5354
+#: otpme/lib/classes/command_handler.py:5567
+#: otpme/lib/classes/command_handler.py:5800
+#: otpme/lib/classes/command_handler.py:5878
+#: otpme/lib/classes/command_handler.py:6859
+#: otpme/lib/classes/command_handler.py:6929
 #, python-brace-format
 msgid "Unknown command: {subcommand}"
 msgstr "Unbekannter Befehl: {subcommand}"
@@ -16280,6 +16530,7 @@ msgstr "Befehl abgebrochen: {reply}"
 #: otpme/lib/classes/command_handler.py:549
 #: otpme/lib/classes/command_handler.py:560
 #: otpme/lib/classes/command_handler.py:564
+#: otpme/lib/classes/command_handler.py:565
 #, python-brace-format
 msgid "Missing required votes: {subcommand}"
 msgstr "Fehlende erforderliche Stimmen: {subcommand}"
@@ -16324,6 +16575,13 @@ msgstr "Fehlende erforderliche Stimmen: {subcommand}"
 #: otpme/lib/classes/command_handler.py:5131
 #: otpme/lib/classes/command_handler.py:5277
 #: otpme/lib/classes/command_handler.py:5780
+#: otpme/lib/classes/command_handler.py:658
+#: otpme/lib/classes/command_handler.py:696
+#: otpme/lib/classes/command_handler.py:731
+#: otpme/lib/classes/command_handler.py:5053
+#: otpme/lib/classes/command_handler.py:5132
+#: otpme/lib/classes/command_handler.py:5278
+#: otpme/lib/classes/command_handler.py:5781
 msgid "--stdin-pass option conflicts with global option."
 msgstr "--stdin-pass Option steht im Konflikt mit globaler Option."
 
@@ -16333,6 +16591,7 @@ msgstr "--stdin-pass Option steht im Konflikt mit globaler Option."
 #: otpme/lib/classes/command_handler.py:657
 #: otpme/lib/classes/command_handler.py:668
 #: otpme/lib/classes/command_handler.py:672
+#: otpme/lib/classes/command_handler.py:673
 msgid "--stdin-key option conflicts with global --stdin-pass option."
 msgstr ""
 "--stdin-key Option steht im Konflikt mit globaler --stdin-pass Option."
@@ -16348,6 +16607,8 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:729
 #: otpme/lib/classes/command_handler.py:692
 #: otpme/lib/classes/command_handler.py:733
+#: otpme/lib/classes/command_handler.py:693
+#: otpme/lib/classes/command_handler.py:734
 msgid "--stdin-pass option conflicts with --stdin-data option."
 msgstr "--stdin-pass Option steht im Konflikt mit --stdin-data Option."
 
@@ -16358,6 +16619,7 @@ msgstr "--stdin-pass Option steht im Konflikt mit --stdin-data Option."
 #: otpme/lib/classes/command_handler.py:1117
 #: otpme/lib/classes/command_handler.py:1199
 #: otpme/lib/classes/command_handler.py:1203
+#: otpme/lib/classes/command_handler.py:1204
 msgid "Command invalid for API mode."
 msgstr "Befehl ungültig für API-Modus."
 
@@ -16368,6 +16630,7 @@ msgstr "Befehl ungültig für API-Modus."
 #: otpme/lib/classes/command_handler.py:1480
 #: otpme/lib/classes/command_handler.py:1572
 #: otpme/lib/classes/command_handler.py:1576
+#: otpme/lib/classes/command_handler.py:1577
 #, python-brace-format
 msgid "Error reading index dump file: {e}"
 msgstr "Fehler beim Lesen der Index-Dump-Datei: {e}"
@@ -16385,6 +16648,8 @@ msgstr "Fehler beim Lesen der Index-Dump-Datei: {e}"
 #: otpme/lib/classes/command_handler.py:5158
 #: otpme/lib/classes/command_handler.py:2616
 #: otpme/lib/classes/command_handler.py:5162
+#: otpme/lib/classes/command_handler.py:2617
+#: otpme/lib/classes/command_handler.py:5163
 #, python-brace-format
 msgid "Error running key script: {output}"
 msgstr "Fehler beim Ausführen des Schlüssel-Skripts: {output}"
@@ -16396,6 +16661,7 @@ msgstr "Fehler beim Ausführen des Schlüssel-Skripts: {output}"
 #: otpme/lib/classes/command_handler.py:2523
 #: otpme/lib/classes/command_handler.py:2617
 #: otpme/lib/classes/command_handler.py:2621
+#: otpme/lib/classes/command_handler.py:2622
 msgid "Got no keys from script."
 msgstr "Keine Schlüssel vom Skript erhalten."
 
@@ -16406,6 +16672,7 @@ msgstr "Keine Schlüssel vom Skript erhalten."
 #: otpme/lib/classes/command_handler.py:2528
 #: otpme/lib/classes/command_handler.py:2622
 #: otpme/lib/classes/command_handler.py:2626
+#: otpme/lib/classes/command_handler.py:2627
 msgid "Unable to get private key from script."
 msgstr "Privater Schlüssel konnte nicht vom Skript abgerufen werden."
 
@@ -16416,6 +16683,7 @@ msgstr "Privater Schlüssel konnte nicht vom Skript abgerufen werden."
 #: otpme/lib/classes/command_handler.py:2533
 #: otpme/lib/classes/command_handler.py:2627
 #: otpme/lib/classes/command_handler.py:2631
+#: otpme/lib/classes/command_handler.py:2632
 msgid "Unable to get public key from script."
 msgstr "Öffentlicher Schlüssel konnte nicht vom Skript abgerufen werden."
 
@@ -16426,6 +16694,7 @@ msgstr "Öffentlicher Schlüssel konnte nicht vom Skript abgerufen werden."
 #: otpme/lib/classes/command_handler.py:2546
 #: otpme/lib/classes/command_handler.py:2640
 #: otpme/lib/classes/command_handler.py:2644
+#: otpme/lib/classes/command_handler.py:2645
 #, python-brace-format
 msgid "Error detecting yubikey: {e}"
 msgstr "Fehler beim Erkennen des Yubikey: {e}"
@@ -16437,6 +16706,7 @@ msgstr "Fehler beim Erkennen des Yubikey: {e}"
 #: otpme/lib/classes/command_handler.py:2571
 #: otpme/lib/classes/command_handler.py:2665
 #: otpme/lib/classes/command_handler.py:2669
+#: otpme/lib/classes/command_handler.py:2670
 #, python-brace-format
 msgid "Flag successfully set for slot {slot}"
 msgstr "Flag erfolgreich für Slot {slot} gesetzt"
@@ -16448,6 +16718,7 @@ msgstr "Flag erfolgreich für Slot {slot} gesetzt"
 #: otpme/lib/classes/command_handler.py:2587
 #: otpme/lib/classes/command_handler.py:2681
 #: otpme/lib/classes/command_handler.py:2685
+#: otpme/lib/classes/command_handler.py:2686
 #, python-brace-format
 msgid "No such file or directory: {ssh_private_key}"
 msgstr "Datei oder Verzeichnis nicht vorhanden: {ssh_private_key}"
@@ -16459,6 +16730,7 @@ msgstr "Datei oder Verzeichnis nicht vorhanden: {ssh_private_key}"
 #: otpme/lib/classes/command_handler.py:2594
 #: otpme/lib/classes/command_handler.py:2688
 #: otpme/lib/classes/command_handler.py:2692
+#: otpme/lib/classes/command_handler.py:2693
 #, python-brace-format
 msgid "Error reading private key from file: {e}"
 msgstr "Fehler beim Lesen des privaten Schlüssels aus Datei: {e}"
@@ -16470,6 +16742,7 @@ msgstr "Fehler beim Lesen des privaten Schlüssels aus Datei: {e}"
 #: otpme/lib/classes/command_handler.py:2613
 #: otpme/lib/classes/command_handler.py:2707
 #: otpme/lib/classes/command_handler.py:2711
+#: otpme/lib/classes/command_handler.py:2712
 msgid "Cannot continue without private key."
 msgstr "Kann ohne privaten Schlüssel nicht fortfahren."
 
@@ -16480,6 +16753,7 @@ msgstr "Kann ohne privaten Schlüssel nicht fortfahren."
 #: otpme/lib/classes/command_handler.py:2659
 #: otpme/lib/classes/command_handler.py:2753
 #: otpme/lib/classes/command_handler.py:2757
+#: otpme/lib/classes/command_handler.py:2758
 #, python-brace-format
 msgid "Skipping existing user: {username}"
 msgstr "Überspringe existierenden Benutzer: {username}"
@@ -16491,6 +16765,7 @@ msgstr "Überspringe existierenden Benutzer: {username}"
 #: otpme/lib/classes/command_handler.py:2671
 #: otpme/lib/classes/command_handler.py:2765
 #: otpme/lib/classes/command_handler.py:2769
+#: otpme/lib/classes/command_handler.py:2770
 #, python-brace-format
 msgid "Adding user: {username} ({user_counter}/{user_count})"
 msgstr "Füge Benutzer hinzu: {username} ({user_counter}/{user_count})"
@@ -16502,6 +16777,7 @@ msgstr "Füge Benutzer hinzu: {username} ({user_counter}/{user_count})"
 #: otpme/lib/classes/command_handler.py:2681
 #: otpme/lib/classes/command_handler.py:2775
 #: otpme/lib/classes/command_handler.py:2779
+#: otpme/lib/classes/command_handler.py:2780
 #, python-brace-format
 msgid "Error adding user: {e}"
 msgstr "Fehler beim Hinzufügen des Benutzers: {e}"
@@ -16525,6 +16801,9 @@ msgstr "Fehler beim Hinzufügen des Benutzers: {e}"
 #: otpme/lib/classes/command_handler.py:2811
 #: otpme/lib/classes/command_handler.py:2838
 #: otpme/lib/classes/command_handler.py:2858
+#: otpme/lib/classes/command_handler.py:2812
+#: otpme/lib/classes/command_handler.py:2839
+#: otpme/lib/classes/command_handler.py:2859
 #, python-brace-format
 msgid "Error initializing offline tokens: {e}"
 msgstr "Fehler beim Initialisieren der Offline-Token: {e}"
@@ -16536,6 +16815,7 @@ msgstr "Fehler beim Initialisieren der Offline-Token: {e}"
 #: otpme/lib/classes/command_handler.py:2795
 #: otpme/lib/classes/command_handler.py:2889
 #: otpme/lib/classes/command_handler.py:2893
+#: otpme/lib/classes/command_handler.py:2894
 #, python-brace-format
 msgid "Error getting script UUID: {e}"
 msgstr "Fehler beim Abrufen der Skript-UUID: {e}"
@@ -16547,6 +16827,7 @@ msgstr "Fehler beim Abrufen der Skript-UUID: {e}"
 #: otpme/lib/classes/command_handler.py:2808
 #: otpme/lib/classes/command_handler.py:2902
 #: otpme/lib/classes/command_handler.py:2906
+#: otpme/lib/classes/command_handler.py:2907
 #, python-brace-format
 msgid "Error getting user key script path: {e}"
 msgstr "Fehler beim Abrufen des Benutzerschlüssel-Skriptpfads: {e}"
@@ -16558,6 +16839,7 @@ msgstr "Fehler beim Abrufen des Benutzerschlüssel-Skriptpfads: {e}"
 #: otpme/lib/classes/command_handler.py:2826
 #: otpme/lib/classes/command_handler.py:2920
 #: otpme/lib/classes/command_handler.py:2924
+#: otpme/lib/classes/command_handler.py:2925
 #, python-brace-format
 msgid "Error getting key script signatures: {e}"
 msgstr "Fehler beim Abrufen der Schlüssel-Skript-Signaturen: {e}"
@@ -16569,6 +16851,7 @@ msgstr "Fehler beim Abrufen der Schlüssel-Skript-Signaturen: {e}"
 #: otpme/lib/classes/command_handler.py:2834
 #: otpme/lib/classes/command_handler.py:2928
 #: otpme/lib/classes/command_handler.py:2932
+#: otpme/lib/classes/command_handler.py:2933
 #, python-brace-format
 msgid "Error getting key script UUID: {e}"
 msgstr "Fehler beim Abrufen der Schlüssel-Skript-UUID: {e}"
@@ -16580,6 +16863,7 @@ msgstr "Fehler beim Abrufen der Schlüssel-Skript-UUID: {e}"
 #: otpme/lib/classes/command_handler.py:2847
 #: otpme/lib/classes/command_handler.py:2941
 #: otpme/lib/classes/command_handler.py:2945
+#: otpme/lib/classes/command_handler.py:2946
 #, python-brace-format
 msgid "Error getting user SSH script path: {e}"
 msgstr "Fehler beim Abrufen des Benutzer-SSH-Skriptpfads: {e}"
@@ -16591,6 +16875,7 @@ msgstr "Fehler beim Abrufen des Benutzer-SSH-Skriptpfads: {e}"
 #: otpme/lib/classes/command_handler.py:2858
 #: otpme/lib/classes/command_handler.py:2952
 #: otpme/lib/classes/command_handler.py:2956
+#: otpme/lib/classes/command_handler.py:2957
 #, python-brace-format
 msgid "Error getting user SSH script: {e}"
 msgstr "Fehler beim Abrufen des Benutzer-SSH-Skripts: {e}"
@@ -16602,6 +16887,7 @@ msgstr "Fehler beim Abrufen des Benutzer-SSH-Skripts: {e}"
 #: otpme/lib/classes/command_handler.py:2865
 #: otpme/lib/classes/command_handler.py:2959
 #: otpme/lib/classes/command_handler.py:2963
+#: otpme/lib/classes/command_handler.py:2964
 #, python-brace-format
 msgid "Error getting SSH script signatures: {e}"
 msgstr "Fehler beim Abrufen der SSH-Skript-Signaturen: {e}"
@@ -16613,6 +16899,7 @@ msgstr "Fehler beim Abrufen der SSH-Skript-Signaturen: {e}"
 #: otpme/lib/classes/command_handler.py:2873
 #: otpme/lib/classes/command_handler.py:2967
 #: otpme/lib/classes/command_handler.py:2971
+#: otpme/lib/classes/command_handler.py:2972
 #, python-brace-format
 msgid "Error getting SSH script UUID: {e}"
 msgstr "Fehler beim Abrufen der SSH-Skript-UUID: {e}"
@@ -16624,6 +16911,7 @@ msgstr "Fehler beim Abrufen der SSH-Skript-UUID: {e}"
 #: otpme/lib/classes/command_handler.py:2913
 #: otpme/lib/classes/command_handler.py:3007
 #: otpme/lib/classes/command_handler.py:3011
+#: otpme/lib/classes/command_handler.py:3012
 #, python-brace-format
 msgid "Error getting user SSH agent script: {e}"
 msgstr "Fehler beim Abrufen des Benutzer-SSH-Agent-Skripts: {e}"
@@ -16635,6 +16923,7 @@ msgstr "Fehler beim Abrufen des Benutzer-SSH-Agent-Skripts: {e}"
 #: otpme/lib/classes/command_handler.py:2930
 #: otpme/lib/classes/command_handler.py:3024
 #: otpme/lib/classes/command_handler.py:3028
+#: otpme/lib/classes/command_handler.py:3029
 #, python-brace-format
 msgid "Error loading SSH script from offline tokens: {e}"
 msgstr "Fehler beim Laden des SSH-Skripts aus Offline-Token: {e}"
@@ -16646,6 +16935,7 @@ msgstr "Fehler beim Laden des SSH-Skripts aus Offline-Token: {e}"
 #: otpme/lib/classes/command_handler.py:2934
 #: otpme/lib/classes/command_handler.py:3028
 #: otpme/lib/classes/command_handler.py:3032
+#: otpme/lib/classes/command_handler.py:3033
 msgid "Unable to get SSH agent script."
 msgstr "SSH-Agent-Skript konnte nicht abgerufen werden."
 
@@ -16656,6 +16946,7 @@ msgstr "SSH-Agent-Skript konnte nicht abgerufen werden."
 #: otpme/lib/classes/command_handler.py:3306
 #: otpme/lib/classes/command_handler.py:3400
 #: otpme/lib/classes/command_handler.py:3404
+#: otpme/lib/classes/command_handler.py:3405
 #, python-brace-format
 msgid "Unable to get connection to authd: {e}"
 msgstr "Verbindung zu authd konnte nicht hergestellt werden: {e}"
@@ -16667,6 +16958,7 @@ msgstr "Verbindung zu authd konnte nicht hergestellt werden: {e}"
 #: otpme/lib/classes/command_handler.py:3574
 #: otpme/lib/classes/command_handler.py:3668
 #: otpme/lib/classes/command_handler.py:3672
+#: otpme/lib/classes/command_handler.py:3673
 msgid "Realm config does not have a master pass salt."
 msgstr "Realm-Konfiguration hat kein Master-Passwort-Salt."
 
@@ -16699,6 +16991,11 @@ msgstr "Realm-Konfiguration hat kein Master-Passwort-Salt."
 #: otpme/lib/classes/command_handler.py:3745
 #: otpme/lib/classes/command_handler.py:6492
 #: otpme/lib/classes/command_handler.py:6562
+#: otpme/lib/classes/command_handler.py:3677
+#: otpme/lib/classes/command_handler.py:3700
+#: otpme/lib/classes/command_handler.py:3746
+#: otpme/lib/classes/command_handler.py:6493
+#: otpme/lib/classes/command_handler.py:6563
 msgid "You must be root for this command."
 msgstr "Sie müssen root für diesen Befehl sein."
 
@@ -16709,6 +17006,7 @@ msgstr "Sie müssen root für diesen Befehl sein."
 #: otpme/lib/classes/command_handler.py:3585
 #: otpme/lib/classes/command_handler.py:3679
 #: otpme/lib/classes/command_handler.py:3683
+#: otpme/lib/classes/command_handler.py:3684
 #, python-brace-format
 msgid "Error reading master pass salt from file: {e}"
 msgstr "Fehler beim Lesen des Master-Passwort-Salts aus Datei: {e}"
@@ -16720,6 +17018,7 @@ msgstr "Fehler beim Lesen des Master-Passwort-Salts aus Datei: {e}"
 #: otpme/lib/classes/command_handler.py:3620
 #: otpme/lib/classes/command_handler.py:3714
 #: otpme/lib/classes/command_handler.py:3718
+#: otpme/lib/classes/command_handler.py:3719
 #, python-brace-format
 msgid "Failed to send auth key to server: {e}"
 msgstr "Fehler beim Senden des Auth-Schlüssels an Server: {e}"
@@ -16731,6 +17030,7 @@ msgstr "Fehler beim Senden des Auth-Schlüssels an Server: {e}"
 #: otpme/lib/classes/command_handler.py:3676
 #: otpme/lib/classes/command_handler.py:3770
 #: otpme/lib/classes/command_handler.py:3774
+#: otpme/lib/classes/command_handler.py:3775
 #, python-brace-format
 msgid "Failed to send renew cert command to server: {e}"
 msgstr "Fehler beim Senden des Zertifikat-Erneuern-Befehls an Server: {e}"
@@ -16742,6 +17042,7 @@ msgstr "Fehler beim Senden des Zertifikat-Erneuern-Befehls an Server: {e}"
 #: otpme/lib/classes/command_handler.py:3688
 #: otpme/lib/classes/command_handler.py:3782
 #: otpme/lib/classes/command_handler.py:3786
+#: otpme/lib/classes/command_handler.py:3787
 #, python-brace-format
 msgid "Failed to send dump cert command to server: {e}"
 msgstr "Fehler beim Senden des Zertifikat-Dump-Befehls an Server: {e}"
@@ -16759,6 +17060,8 @@ msgstr "Fehler beim Senden des Zertifikat-Dump-Befehls an Server: {e}"
 #: otpme/lib/classes/command_handler.py:3967
 #: otpme/lib/classes/command_handler.py:3947
 #: otpme/lib/classes/command_handler.py:3971
+#: otpme/lib/classes/command_handler.py:3948
+#: otpme/lib/classes/command_handler.py:3972
 #, python-brace-format
 msgid "Unable to get agent connection: {e}"
 msgstr "Agent-Verbindung konnte nicht hergestellt werden: {e}"
@@ -16770,6 +17073,7 @@ msgstr "Agent-Verbindung konnte nicht hergestellt werden: {e}"
 #: otpme/lib/classes/command_handler.py:3857
 #: otpme/lib/classes/command_handler.py:3951
 #: otpme/lib/classes/command_handler.py:3955
+#: otpme/lib/classes/command_handler.py:3956
 #, python-brace-format
 msgid "Error getting login pass type from agent: {e}"
 msgstr "Fehler beim Abrufen des Login-Passwort-Typs vom Agent: {e}"
@@ -16781,6 +17085,7 @@ msgstr "Fehler beim Abrufen des Login-Passwort-Typs vom Agent: {e}"
 #: otpme/lib/classes/command_handler.py:3881
 #: otpme/lib/classes/command_handler.py:3975
 #: otpme/lib/classes/command_handler.py:3979
+#: otpme/lib/classes/command_handler.py:3980
 #, python-brace-format
 msgid "Error getting login user from agent: {e}"
 msgstr "Fehler beim Abrufen des Login-Benutzers vom Agent: {e}"
@@ -16792,6 +17097,7 @@ msgstr "Fehler beim Abrufen des Login-Benutzers vom Agent: {e}"
 #: otpme/lib/classes/command_handler.py:4355
 #: otpme/lib/classes/command_handler.py:4449
 #: otpme/lib/classes/command_handler.py:4453
+#: otpme/lib/classes/command_handler.py:4454
 #, python-brace-format
 msgid ""
 "{output}\n"
@@ -16809,6 +17115,7 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:4450
 #: otpme/lib/classes/command_handler.py:4544
 #: otpme/lib/classes/command_handler.py:4548
+#: otpme/lib/classes/command_handler.py:4549
 #, python-brace-format
 msgid "Unable to start otpme-agent: {e}"
 msgstr "otpme-agent konnte nicht gestartet werden: {e}"
@@ -16820,6 +17127,7 @@ msgstr "otpme-agent konnte nicht gestartet werden: {e}"
 #: otpme/lib/classes/command_handler.py:4642
 #: otpme/lib/classes/command_handler.py:4736 otpme/lib/ssh.py:540
 #: otpme/lib/classes/command_handler.py:4740
+#: otpme/lib/classes/command_handler.py:4741
 #, python-brace-format
 msgid "Unable to read current authorized_keys file: {e}"
 msgstr "Aktuelle authorized_keys Datei konnte nicht gelesen werden: {e}"
@@ -16831,6 +17139,7 @@ msgstr "Aktuelle authorized_keys Datei konnte nicht gelesen werden: {e}"
 #: otpme/lib/classes/command_handler.py:4930
 #: otpme/lib/classes/command_handler.py:5024
 #: otpme/lib/classes/command_handler.py:5028
+#: otpme/lib/classes/command_handler.py:5029
 msgid "Script stdout:"
 msgstr "Skript stdout:"
 
@@ -16841,6 +17150,7 @@ msgstr "Skript stdout:"
 #: otpme/lib/classes/command_handler.py:4933
 #: otpme/lib/classes/command_handler.py:5027
 #: otpme/lib/classes/command_handler.py:5031
+#: otpme/lib/classes/command_handler.py:5032
 msgid "Script stderr:"
 msgstr "Skript stderr:"
 
@@ -16851,6 +17161,7 @@ msgstr "Skript stderr:"
 #: otpme/lib/classes/command_handler.py:5068
 #: otpme/lib/classes/command_handler.py:5162
 #: otpme/lib/classes/command_handler.py:5166
+#: otpme/lib/classes/command_handler.py:5167
 msgid "Key script returned no CSR."
 msgstr "Schlüssel-Skript hat keinen CSR zurückgegeben."
 
@@ -16873,6 +17184,9 @@ msgstr "Schlüssel-Skript hat keinen CSR zurückgegeben."
 #: otpme/lib/classes/command_handler.py:5270
 #: otpme/lib/classes/command_handler.py:5769
 #: otpme/lib/classes/command_handler.py:6958
+#: otpme/lib/classes/command_handler.py:5271
+#: otpme/lib/classes/command_handler.py:5770
+#: otpme/lib/classes/command_handler.py:6959
 #, python-brace-format
 msgid "Error getting key mode: {e}"
 msgstr "Fehler beim Abrufen des Schlüssel-Modus: {e}"
@@ -16884,6 +17198,7 @@ msgstr "Fehler beim Abrufen des Schlüssel-Modus: {e}"
 #: otpme/lib/classes/command_handler.py:5186
 #: otpme/lib/classes/command_handler.py:5280
 #: otpme/lib/classes/command_handler.py:5284
+#: otpme/lib/classes/command_handler.py:5285
 msgid "Input format for --stdin-pass is: old_pass"
 msgstr "Eingabeformat für --stdin-pass ist: old_pass"
 
@@ -16900,6 +17215,8 @@ msgstr "Eingabeformat für --stdin-pass ist: old_pass"
 #: otpme/lib/classes/command_handler.py:5398
 #: otpme/lib/classes/command_handler.py:5316
 #: otpme/lib/classes/command_handler.py:5402
+#: otpme/lib/classes/command_handler.py:5317
+#: otpme/lib/classes/command_handler.py:5403
 #, python-brace-format
 msgid "Error running key script: {script_stdout}"
 msgstr "Fehler beim Ausführen des Schlüssel-Skripts: {script_stdout}"
@@ -16917,6 +17234,8 @@ msgstr "Fehler beim Ausführen des Schlüssel-Skripts: {script_stdout}"
 #: otpme/lib/classes/command_handler.py:5402
 #: otpme/lib/classes/command_handler.py:5320
 #: otpme/lib/classes/command_handler.py:5406
+#: otpme/lib/classes/command_handler.py:5321
+#: otpme/lib/classes/command_handler.py:5407
 #, python-brace-format
 msgid "Error running key script: {script_stderr}"
 msgstr "Fehler beim Ausführen des Schlüssel-Skripts: {script_stderr}"
@@ -16928,6 +17247,7 @@ msgstr "Fehler beim Ausführen des Schlüssel-Skripts: {script_stderr}"
 #: otpme/lib/classes/command_handler.py:5227
 #: otpme/lib/classes/command_handler.py:5321
 #: otpme/lib/classes/command_handler.py:5325
+#: otpme/lib/classes/command_handler.py:5326
 msgid "Got no private key from key script."
 msgstr "Kein privater Schlüssel vom Schlüssel-Skript erhalten."
 
@@ -16944,6 +17264,8 @@ msgstr "Kein privater Schlüssel vom Schlüssel-Skript erhalten."
 #: otpme/lib/classes/command_handler.py:5425
 #: otpme/lib/classes/command_handler.py:5337
 #: otpme/lib/classes/command_handler.py:5429
+#: otpme/lib/classes/command_handler.py:5338
+#: otpme/lib/classes/command_handler.py:5430
 #, python-brace-format
 msgid "Error sending private key to server: {e}"
 msgstr "Fehler beim Senden des privaten Schlüssels an Server: {e}"
@@ -16955,6 +17277,7 @@ msgstr "Fehler beim Senden des privaten Schlüssels an Server: {e}"
 #: otpme/lib/classes/command_handler.py:5319
 #: otpme/lib/classes/command_handler.py:5413
 #: otpme/lib/classes/command_handler.py:5417
+#: otpme/lib/classes/command_handler.py:5418
 msgid "Got no key from key script."
 msgstr "Keinen Schlüssel vom Schlüssel-Skript erhalten."
 
@@ -16965,6 +17288,7 @@ msgstr "Keinen Schlüssel vom Schlüssel-Skript erhalten."
 #: otpme/lib/classes/command_handler.py:5342
 #: otpme/lib/classes/command_handler.py:5436
 #: otpme/lib/classes/command_handler.py:5440
+#: otpme/lib/classes/command_handler.py:5441
 #, python-brace-format
 msgid "Error sending public key to server: {e}"
 msgstr "Fehler beim Senden des öffentlichen Schlüssels an Server: {e}"
@@ -16976,6 +17300,7 @@ msgstr "Fehler beim Senden des öffentlichen Schlüssels an Server: {e}"
 #: otpme/lib/classes/command_handler.py:5431
 #: otpme/lib/classes/command_handler.py:5525
 #: otpme/lib/classes/command_handler.py:5529
+#: otpme/lib/classes/command_handler.py:5530
 #, python-brace-format
 msgid "Error reading master password from stdin: {e}"
 msgstr "Fehler beim Lesen des Master-Passworts von stdin: {e}"
@@ -16987,6 +17312,7 @@ msgstr "Fehler beim Lesen des Master-Passworts von stdin: {e}"
 #: otpme/lib/classes/command_handler.py:5514
 #: otpme/lib/classes/command_handler.py:5608
 #: otpme/lib/classes/command_handler.py:5612
+#: otpme/lib/classes/command_handler.py:5613
 msgid "Unknown command: deploy"
 msgstr "Unbekannter Befehl: deploy"
 
@@ -16997,6 +17323,7 @@ msgstr "Unbekannter Befehl: deploy"
 #: otpme/lib/classes/command_handler.py:5562
 #: otpme/lib/classes/command_handler.py:5656
 #: otpme/lib/classes/command_handler.py:5660
+#: otpme/lib/classes/command_handler.py:5661
 #, python-brace-format
 msgid "Unknown token type: {smartcard_type}"
 msgstr "Unbekannter Token-Typ: {smartcard_type}"
@@ -17008,6 +17335,7 @@ msgstr "Unbekannter Token-Typ: {smartcard_type}"
 #: otpme/lib/classes/command_handler.py:5610
 #: otpme/lib/classes/command_handler.py:5704
 #: otpme/lib/classes/command_handler.py:5708
+#: otpme/lib/classes/command_handler.py:5709
 #, python-brace-format
 msgid "Unable to deploy token: {e}"
 msgstr "Token konnte nicht bereitgestellt werden: {e}"
@@ -17028,6 +17356,7 @@ msgstr "Verwende Login-Token: {reply}"
 #: otpme/lib/classes/command_handler.py:5676
 #: otpme/lib/classes/command_handler.py:5770
 #: otpme/lib/classes/command_handler.py:5774
+#: otpme/lib/classes/command_handler.py:5775
 msgid "Unable to get users key mode. Private key missing?"
 msgstr ""
 "Schlüssel-Modus des Benutzers konnte nicht abgerufen werden. Privater "
@@ -17040,6 +17369,7 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:6798
 #: otpme/lib/classes/command_handler.py:6892
 #: otpme/lib/classes/command_handler.py:6896
+#: otpme/lib/classes/command_handler.py:6897
 #, python-brace-format
 msgid "Error reading users file: {e}"
 msgstr "Fehler beim Lesen der Benutzerdatei: {e}"
@@ -21953,7 +22283,7 @@ msgstr "Kein Freigabeschlüssel für Benutzer: {user_name}"
 #: otpme/lib/daemon/hostd.py:1597 otpme/lib/protocols/server/fs1.py:644
 #: otpme/lib/daemon/hostd.py:1614 otpme/lib/daemon/clusterd.py:3703
 #: otpme/lib/daemon/hostd.py:1644 otpme/lib/daemon/hostd.py:1687
-#: otpme/lib/daemon/clusterd.py:3764
+#: otpme/lib/daemon/clusterd.py:3764 otpme/lib/daemon/hostd.py:1757
 #, python-brace-format
 msgid "Failed to drop privileges: {error}"
 msgstr "Privilegien konnten nicht abgegeben werden: {error}"
@@ -23065,6 +23395,7 @@ msgstr "Node synchronisiert."
 #: otpme/lib/classes/command_handler.py:6349
 #: otpme/lib/classes/command_handler.py:6443
 #: otpme/lib/classes/command_handler.py:6447
+#: otpme/lib/classes/command_handler.py:6448
 msgid "Node not in sync."
 msgstr "Node nicht synchronisiert."
 
@@ -24722,6 +25053,7 @@ msgstr "Fehler beim Einreihen des Sync-Befehls: {error}"
 #: otpme/lib/protocols/server/sync1.py:890
 #: otpme/lib/classes/command_handler.py:6646
 #: otpme/lib/classes/command_handler.py:6650
+#: otpme/lib/classes/command_handler.py:6651
 msgid "No cluster quorum."
 msgstr "Kein Cluster-Quorum."
 
@@ -26789,7 +27121,12 @@ msgstr "Bind an Socket fehlgeschlagen: {socket}: {error}"
 #: otpme/lib/daemon/controld.py:652 otpme/lib/daemon/controld.py:660
 #: otpme/lib/daemon/controld.py:668 otpme/lib/daemon/controld.py:676
 #: otpme/lib/daemon/controld.py:684 otpme/lib/daemon/controld.py:692
-#: otpme/lib/classes/otpme_agent.py:1659
+#: otpme/lib/classes/otpme_agent.py:1659 otpme/lib/daemon/controld.py:612
+#: otpme/lib/daemon/controld.py:622 otpme/lib/daemon/controld.py:630
+#: otpme/lib/daemon/controld.py:638 otpme/lib/daemon/controld.py:646
+#: otpme/lib/daemon/controld.py:654 otpme/lib/daemon/controld.py:662
+#: otpme/lib/daemon/controld.py:670 otpme/lib/daemon/controld.py:678
+#: otpme/lib/daemon/controld.py:686 otpme/lib/daemon/controld.py:694
 #, python-brace-format
 msgid "Failed to get shared bool: {error}"
 msgstr "Shared Bool konnte nicht abgerufen werden: {error}"
@@ -27448,7 +27785,7 @@ msgstr "Fehler beim erneuten Senden gepufferter Audit-Log-Einträge: {error}"
 #: otpme/lib/daemon/hostd.py:1386 otpme/lib/daemon/hostd.py:1388
 #: otpme/lib/daemon/hostd.py:1389 otpme/lib/daemon/hostd.py:1385
 #: otpme/lib/daemon/hostd.py:1400 otpme/lib/daemon/hostd.py:1430
-#: otpme/lib/daemon/hostd.py:1473
+#: otpme/lib/daemon/hostd.py:1473 otpme/lib/daemon/hostd.py:1543
 #, python-brace-format
 msgid "Running resolver: {resolver}"
 msgstr "Resolver wird ausgeführt: {resolver}"
@@ -27457,7 +27794,7 @@ msgstr "Resolver wird ausgeführt: {resolver}"
 #: otpme/lib/daemon/hostd.py:1471 otpme/lib/daemon/hostd.py:1473
 #: otpme/lib/daemon/hostd.py:1474 otpme/lib/daemon/hostd.py:1470
 #: otpme/lib/daemon/hostd.py:1487 otpme/lib/daemon/hostd.py:1517
-#: otpme/lib/daemon/hostd.py:1560
+#: otpme/lib/daemon/hostd.py:1560 otpme/lib/daemon/hostd.py:1630
 #, python-brace-format
 msgid "Error getting offline tokens: {error}"
 msgstr "Fehler beim Abrufen von Offline-Token: {error}"
@@ -27468,7 +27805,7 @@ msgstr "Fehler beim Abrufen von Offline-Token: {error}"
 #: otpme/lib/daemon/clusterd.py:3672 otpme/lib/daemon/hostd.py:1533
 #: otpme/lib/daemon/hostd.py:1550 otpme/lib/daemon/clusterd.py:3679
 #: otpme/lib/daemon/hostd.py:1580 otpme/lib/daemon/hostd.py:1623
-#: otpme/lib/daemon/clusterd.py:3740
+#: otpme/lib/daemon/clusterd.py:3740 otpme/lib/daemon/hostd.py:1693
 #, python-brace-format
 msgid "Failed to configure {name}"
 msgstr "Fehler beim Konfigurieren von {name}"
@@ -27482,6 +27819,7 @@ msgstr "Fehler beim Konfigurieren von {name}"
 #: otpme/lib/daemon/hostd.py:1586 otpme/lib/daemon/clusterd.py:3691
 #: otpme/lib/daemon/hostd.py:1616 otpme/lib/daemon/mgmtd.py:49
 #: otpme/lib/daemon/hostd.py:1659 otpme/lib/daemon/clusterd.py:3752
+#: otpme/lib/daemon/hostd.py:1729
 #, python-brace-format
 msgid "Failed to set connection handler: {error}"
 msgstr "Fehler beim Setzen des Connection-Handlers: {error}"
@@ -27491,7 +27829,7 @@ msgstr "Fehler beim Setzen des Connection-Handlers: {error}"
 #: otpme/lib/daemon/hostd.py:1591 otpme/lib/daemon/hostd.py:1592
 #: otpme/lib/daemon/hostd.py:1588 otpme/lib/daemon/hostd.py:1605
 #: otpme/lib/daemon/hostd.py:1635 otpme/lib/daemon/mgmtd.py:63
-#: otpme/lib/daemon/hostd.py:1678
+#: otpme/lib/daemon/hostd.py:1678 otpme/lib/daemon/hostd.py:1748
 #, python-brace-format
 msgid "Failed to add unix socket: {error}"
 msgstr "Fehler beim Hinzufügen des Unix-Sockets: {error}"
@@ -27503,7 +27841,7 @@ msgstr "Fehler beim Hinzufügen des Unix-Sockets: {error}"
 #: otpme/lib/daemon/clusterd.py:3711 otpme/lib/daemon/hostd.py:1606
 #: otpme/lib/daemon/hostd.py:1623 otpme/lib/daemon/clusterd.py:3718
 #: otpme/lib/daemon/hostd.py:1653 otpme/lib/daemon/hostd.py:1696
-#: otpme/lib/daemon/clusterd.py:3779
+#: otpme/lib/daemon/clusterd.py:3779 otpme/lib/daemon/hostd.py:1766
 #, python-brace-format
 msgid "Unable to listen on socket: {error}"
 msgstr "Socket kann nicht überwacht werden: {error}"
@@ -27516,6 +27854,7 @@ msgstr "Socket kann nicht überwacht werden: {error}"
 #: otpme/lib/daemon/hostd.py:1634 otpme/lib/daemon/hostd.py:1649
 #: otpme/lib/daemon/hostd.py:1664 otpme/lib/daemon/hostd.py:1679
 #: otpme/lib/daemon/hostd.py:1707 otpme/lib/daemon/hostd.py:1722
+#: otpme/lib/daemon/hostd.py:1777 otpme/lib/daemon/hostd.py:1792
 #, python-brace-format
 msgid "Failed to get shared dict: {error}"
 msgstr "Fehler beim Abrufen des Shared Dict: {error}"
@@ -27524,7 +27863,7 @@ msgstr "Fehler beim Abrufen des Shared Dict: {error}"
 #: otpme/lib/daemon/hostd.py:1625 otpme/lib/daemon/hostd.py:1627
 #: otpme/lib/daemon/hostd.py:1628 otpme/lib/daemon/hostd.py:1624
 #: otpme/lib/daemon/hostd.py:1641 otpme/lib/daemon/hostd.py:1671
-#: otpme/lib/daemon/hostd.py:1714
+#: otpme/lib/daemon/hostd.py:1714 otpme/lib/daemon/hostd.py:1784
 #, python-brace-format
 msgid "Failed to get shared list: {error}"
 msgstr "Fehler beim Abrufen der Shared List: {error}"
@@ -27533,7 +27872,7 @@ msgstr "Fehler beim Abrufen der Shared List: {error}"
 #: otpme/lib/daemon/hostd.py:1641 otpme/lib/daemon/hostd.py:1643
 #: otpme/lib/daemon/hostd.py:1644 otpme/lib/daemon/hostd.py:1640
 #: otpme/lib/daemon/hostd.py:1657 otpme/lib/daemon/hostd.py:1687
-#: otpme/lib/daemon/hostd.py:1730
+#: otpme/lib/daemon/hostd.py:1730 otpme/lib/daemon/hostd.py:1800
 #, python-brace-format
 msgid "Failed to send read message to controld: {error}"
 msgstr "Fehler beim Senden der Lese-Nachricht an controld: {error}"
@@ -27542,7 +27881,7 @@ msgstr "Fehler beim Senden der Lese-Nachricht an controld: {error}"
 #: otpme/lib/daemon/hostd.py:1649 otpme/lib/daemon/hostd.py:1651
 #: otpme/lib/daemon/hostd.py:1652 otpme/lib/daemon/hostd.py:1648
 #: otpme/lib/daemon/hostd.py:1665 otpme/lib/daemon/hostd.py:1695
-#: otpme/lib/daemon/hostd.py:1738
+#: otpme/lib/daemon/hostd.py:1738 otpme/lib/daemon/hostd.py:1808
 #, python-brace-format
 msgid "Failed to reload host data: {error}"
 msgstr "Fehler beim Neuladen der Host-Daten: {error}"
@@ -27551,7 +27890,7 @@ msgstr "Fehler beim Neuladen der Host-Daten: {error}"
 #: otpme/lib/daemon/hostd.py:1677 otpme/lib/daemon/hostd.py:1679
 #: otpme/lib/daemon/hostd.py:1682 otpme/lib/daemon/hostd.py:1678
 #: otpme/lib/daemon/hostd.py:1695 otpme/lib/daemon/hostd.py:1725
-#: otpme/lib/daemon/hostd.py:1770
+#: otpme/lib/daemon/hostd.py:1770 otpme/lib/daemon/hostd.py:1842
 #, python-brace-format
 msgid "Failed to start sync jobs: {error}"
 msgstr "Fehler beim Starten der Sync-Jobs: {error}"
@@ -27570,6 +27909,7 @@ msgstr "Fehler beim Starten der Sync-Jobs: {error}"
 #: otpme/lib/daemon/clusterd.py:3776 otpme/lib/daemon/hostd.py:1754
 #: otpme/lib/daemon/mgmtd.py:84 otpme/lib/daemon/httpd.py:235
 #: otpme/lib/daemon/hostd.py:1800 otpme/lib/daemon/clusterd.py:3837
+#: otpme/lib/daemon/hostd.py:1872
 #, python-brace-format
 msgid "Error receiving daemon message: {error}"
 msgstr "Fehler beim Empfangen der Daemon-Nachricht: {error}"
@@ -27578,6 +27918,7 @@ msgstr "Fehler beim Empfangen der Daemon-Nachricht: {error}"
 #: otpme/lib/daemon/hostd.py:1828 otpme/lib/daemon/hostd.py:1830
 #: otpme/lib/daemon/hostd.py:1834 otpme/lib/daemon/hostd.py:1847
 #: otpme/lib/daemon/hostd.py:1877 otpme/lib/daemon/hostd.py:1963
+#: otpme/lib/daemon/hostd.py:2035
 #, python-brace-format
 msgid "Sync child finished successful: {info} [{pid}]"
 msgstr "Sync-Kindprozess erfolgreich beendet: {info} [{pid}]"
@@ -27586,6 +27927,7 @@ msgstr "Sync-Kindprozess erfolgreich beendet: {info} [{pid}]"
 #: otpme/lib/daemon/hostd.py:1832 otpme/lib/daemon/hostd.py:1834
 #: otpme/lib/daemon/hostd.py:1838 otpme/lib/daemon/hostd.py:1851
 #: otpme/lib/daemon/hostd.py:1881 otpme/lib/daemon/hostd.py:1967
+#: otpme/lib/daemon/hostd.py:2039
 #, python-brace-format
 msgid "Sync child failed: {info} [{pid}]"
 msgstr "Sync-Kindprozess fehlgeschlagen: {info} [{pid}]"
@@ -27594,7 +27936,7 @@ msgstr "Sync-Kindprozess fehlgeschlagen: {info} [{pid}]"
 #: otpme/lib/daemon/hostd.py:1952 otpme/lib/daemon/hostd.py:1954
 #: otpme/lib/daemon/hostd.py:1955 otpme/lib/daemon/hostd.py:1951
 #: otpme/lib/daemon/hostd.py:1970 otpme/lib/daemon/hostd.py:2000
-#: otpme/lib/daemon/hostd.py:2086
+#: otpme/lib/daemon/hostd.py:2086 otpme/lib/daemon/hostd.py:2158
 #, python-brace-format
 msgid "Unhandled error in hostd: {error}"
 msgstr "Unbehandelter Fehler in hostd: {error}"
@@ -27722,6 +28064,7 @@ msgstr "Fehler beim Vorladen der Protokoll-Module: {error}"
 #: otpme/lib/daemon/otpme_daemon.py:208 otpme/lib/daemon/controld.py:775
 #: otpme/lib/daemon/otpme_daemon.py:213 otpme/lib/daemon/controld.py:783
 #: otpme/lib/daemon/controld.py:781 otpme/lib/daemon/controld.py:749
+#: otpme/lib/daemon/controld.py:751
 #, python-brace-format
 msgid "Failed to reload config: {error}"
 msgstr "Fehler beim Neuladen der Konfiguration: {error}"
@@ -27785,6 +28128,7 @@ msgstr "Fehler beim Benachrichtigen von controld über Daemon-Start: {error}"
 #: otpme/lib/daemon/otpme_daemon.py:405 otpme/lib/daemon/controld.py:913
 #: otpme/lib/daemon/otpme_daemon.py:417 otpme/lib/daemon/controld.py:921
 #: otpme/lib/daemon/controld.py:919 otpme/lib/daemon/controld.py:887
+#: otpme/lib/daemon/controld.py:889
 #, python-brace-format
 msgid "Failed to set proctitle: {error}"
 msgstr "Fehler beim Setzen des Prozesstitel: {error}"
@@ -27855,25 +28199,27 @@ msgstr "config.daemon_name nicht gesetzt."
 #. AI-generated
 #: otpme/lib/daemon/controld.py:307 otpme/lib/classes/otpme_agent.py:99
 #: otpme/lib/protocols/otpme_client.py:394 otpme/lib/daemon/controld.py:290
+#: otpme/lib/daemon/controld.py:292
 msgid "Exiting on Ctrl+C"
 msgstr "Beenden bei Strg+C"
 
 #. AI-generated
 #: otpme/lib/daemon/controld.py:310 otpme/lib/classes/otpme_agent.py:103
 #: otpme/lib/protocols/otpme_client.py:397 otpme/lib/daemon/controld.py:311
-#: otpme/lib/daemon/controld.py:294
+#: otpme/lib/daemon/controld.py:294 otpme/lib/daemon/controld.py:296
 msgid "Exiting on 'SIGTERM'."
 msgstr "Beenden bei 'SIGTERM'."
 
 #. AI-generated
 #: otpme/lib/daemon/controld.py:312 otpme/lib/classes/otpme_agent.py:107
 #: otpme/lib/daemon/controld.py:314 otpme/lib/daemon/controld.py:297
+#: otpme/lib/daemon/controld.py:299
 msgid "Received 'SIGHUP'."
 msgstr "'SIGHUP' empfangen."
 
 #. AI-generated
 #: otpme/lib/daemon/controld.py:359 otpme/lib/daemon/controld.py:362
-#: otpme/lib/daemon/controld.py:345
+#: otpme/lib/daemon/controld.py:345 otpme/lib/daemon/controld.py:347
 msgid "Control daemon shutdown succeeded."
 msgstr "Control-Daemon-Herunterfahren erfolgreich."
 
@@ -27895,7 +28241,8 @@ msgstr "Control-Daemon-Herunterfahren erfolgreich."
 #: otpme/lib/daemon/controld.py:380 otpme/lib/daemon/controld.py:386
 #: otpme/lib/daemon/controld.py:392 otpme/lib/daemon/controld.py:398
 #: otpme/lib/daemon/controld.py:404 otpme/lib/daemon/controld.py:410
-#: otpme/lib/daemon/controld.py:416
+#: otpme/lib/daemon/controld.py:416 otpme/lib/daemon/controld.py:358
+#: otpme/lib/daemon/controld.py:364
 #, python-brace-format
 msgid "Failed to close shared bool: {name}"
 msgstr "Fehler beim Schließen des geteilten Bool: {name}"
@@ -27905,21 +28252,22 @@ msgstr "Fehler beim Schließen des geteilten Bool: {name}"
 #: otpme/lib/daemon/controld.py:460 otpme/lib/daemon/controld.py:451
 #: otpme/lib/daemon/controld.py:457 otpme/lib/daemon/controld.py:463
 #: otpme/lib/daemon/controld.py:428 otpme/lib/daemon/controld.py:434
-#: otpme/lib/daemon/controld.py:440
+#: otpme/lib/daemon/controld.py:440 otpme/lib/daemon/controld.py:430
+#: otpme/lib/daemon/controld.py:436 otpme/lib/daemon/controld.py:442
 #, python-brace-format
 msgid "Failed to remove cluster event: {error}"
 msgstr "Fehler beim Entfernen des Cluster-Ereignis: {error}"
 
 #. AI-generated
 #: otpme/lib/daemon/controld.py:482 otpme/lib/daemon/controld.py:487
-#: otpme/lib/daemon/controld.py:464
+#: otpme/lib/daemon/controld.py:464 otpme/lib/daemon/controld.py:466
 #, python-brace-format
 msgid "Unable to configure floating IP for site: {site}: {error}"
 msgstr "Floating IP für Site kann nicht konfiguriert werden: {site}: {error}"
 
 #. AI-generated
 #: otpme/lib/daemon/controld.py:498 otpme/lib/daemon/controld.py:504
-#: otpme/lib/daemon/controld.py:481
+#: otpme/lib/daemon/controld.py:481 otpme/lib/daemon/controld.py:483
 #, python-brace-format
 msgid "Unable to deconfigure floating IP for site: {site}: {error}"
 msgstr ""
@@ -27927,7 +28275,7 @@ msgstr ""
 
 #. AI-generated
 #: otpme/lib/daemon/controld.py:506 otpme/lib/daemon/controld.py:513
-#: otpme/lib/daemon/controld.py:490
+#: otpme/lib/daemon/controld.py:490 otpme/lib/daemon/controld.py:492
 #, python-brace-format
 msgid ""
 "Don't know my hostname. Please make sure {file} points to the correct OTPme "
@@ -27939,12 +28287,14 @@ msgstr ""
 #. AI-generated
 #: otpme/lib/daemon/controld.py:561 otpme/lib/daemon/controld.py:568
 #: otpme/lib/daemon/controld.py:566 otpme/lib/daemon/controld.py:543
+#: otpme/lib/daemon/controld.py:545
 msgid "Removing child daemon."
 msgstr "Entfernen des Child-Daemon."
 
 #. AI-generated
 #: otpme/lib/daemon/controld.py:726 otpme/lib/daemon/controld.py:734
 #: otpme/lib/daemon/controld.py:732 otpme/lib/daemon/controld.py:700
+#: otpme/lib/daemon/controld.py:702
 #, python-brace-format
 msgid "Failed to start index: {error}"
 msgstr "Fehler beim Starten des Index: {error}"
@@ -27952,6 +28302,7 @@ msgstr "Fehler beim Starten des Index: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:734 otpme/lib/daemon/controld.py:742
 #: otpme/lib/daemon/controld.py:740 otpme/lib/daemon/controld.py:708
+#: otpme/lib/daemon/controld.py:710
 #, python-brace-format
 msgid "Failed to start cache: {error}"
 msgstr "Fehler beim Starten des Cache: {error}"
@@ -27959,6 +28310,7 @@ msgstr "Fehler beim Starten des Cache: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:743 otpme/lib/daemon/controld.py:751
 #: otpme/lib/daemon/controld.py:749 otpme/lib/daemon/controld.py:717
+#: otpme/lib/daemon/controld.py:719
 #, python-brace-format
 msgid "Failed to flush cache: {error}"
 msgstr "Fehler beim Leeren des Cache: {error}"
@@ -27966,6 +28318,7 @@ msgstr "Fehler beim Leeren des Cache: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:751 otpme/lib/daemon/controld.py:759
 #: otpme/lib/daemon/controld.py:757 otpme/lib/daemon/controld.py:725
+#: otpme/lib/daemon/controld.py:727
 #, python-brace-format
 msgid "Failed to init cache: {error}"
 msgstr "Fehler beim Initialisieren des Cache: {error}"
@@ -27973,6 +28326,7 @@ msgstr "Fehler beim Initialisieren des Cache: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:757 otpme/lib/daemon/controld.py:765
 #: otpme/lib/daemon/controld.py:763 otpme/lib/daemon/controld.py:731
+#: otpme/lib/daemon/controld.py:733
 #, python-brace-format
 msgid "Failed to enable cache: {error}"
 msgstr "Fehler beim Aktivieren des Cache: {error}"
@@ -27980,6 +28334,7 @@ msgstr "Fehler beim Aktivieren des Cache: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:765 otpme/lib/daemon/controld.py:773
 #: otpme/lib/daemon/controld.py:771 otpme/lib/daemon/controld.py:739
+#: otpme/lib/daemon/controld.py:741
 #, python-brace-format
 msgid "Failed to init OTPme: {error}"
 msgstr "Fehler beim Initialisieren von OTPme: {error}"
@@ -27987,6 +28342,7 @@ msgstr "Fehler beim Initialisieren von OTPme: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:785 otpme/lib/daemon/controld.py:793
 #: otpme/lib/daemon/controld.py:791 otpme/lib/daemon/controld.py:759
+#: otpme/lib/daemon/controld.py:761
 #, python-brace-format
 msgid "Failed to configure controld: {error}"
 msgstr "Fehler beim Konfigurieren von controld: {error}"
@@ -27994,6 +28350,7 @@ msgstr "Fehler beim Konfigurieren von controld: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:794 otpme/lib/daemon/controld.py:802
 #: otpme/lib/daemon/controld.py:800 otpme/lib/daemon/controld.py:768
+#: otpme/lib/daemon/controld.py:770
 #, python-brace-format
 msgid "Failed to init interprocess queue: {error}"
 msgstr "Fehler beim Initialisieren der Interprocess-Warteschlange: {error}"
@@ -28001,6 +28358,7 @@ msgstr "Fehler beim Initialisieren der Interprocess-Warteschlange: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:807 otpme/lib/daemon/controld.py:815
 #: otpme/lib/daemon/controld.py:813 otpme/lib/daemon/controld.py:781
+#: otpme/lib/daemon/controld.py:783
 #, python-brace-format
 msgid "Failed to create shared objects: {error}"
 msgstr "Fehler beim Erstellen geteilter Objekte: {error}"
@@ -28008,6 +28366,7 @@ msgstr "Fehler beim Erstellen geteilter Objekte: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:814 otpme/lib/daemon/controld.py:822
 #: otpme/lib/daemon/controld.py:820 otpme/lib/daemon/controld.py:788
+#: otpme/lib/daemon/controld.py:790
 msgid "Updating host data..."
 msgstr "Aktualisiere Host-Daten..."
 
@@ -28016,6 +28375,7 @@ msgstr "Aktualisiere Host-Daten..."
 #: otpme/lib/daemon/controld.py:827 otpme/lib/daemon/controld.py:902
 #: otpme/lib/daemon/controld.py:825 otpme/lib/daemon/controld.py:900
 #: otpme/lib/daemon/controld.py:793 otpme/lib/daemon/controld.py:868
+#: otpme/lib/daemon/controld.py:795 otpme/lib/daemon/controld.py:870
 #, python-brace-format
 msgid "Failed to update host data: {error}"
 msgstr "Fehler beim Aktualisieren der Host-Daten: {error}"
@@ -28023,6 +28383,7 @@ msgstr "Fehler beim Aktualisieren der Host-Daten: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:828 otpme/lib/daemon/controld.py:836
 #: otpme/lib/daemon/controld.py:834 otpme/lib/daemon/controld.py:802
+#: otpme/lib/daemon/controld.py:804
 #, python-brace-format
 msgid "Failed to load sync status: {error}"
 msgstr "Fehler beim Laden des Sync-Status: {error}"
@@ -28033,6 +28394,7 @@ msgstr "Fehler beim Laden des Sync-Status: {error}"
 #: otpme/lib/daemon/clusterd.py:3723 otpme/lib/daemon/controld.py:838
 #: otpme/lib/daemon/controld.py:806 otpme/lib/daemon/clusterd.py:3730
 #: otpme/lib/classes/otpme_agent.py:1710 otpme/lib/daemon/clusterd.py:3791
+#: otpme/lib/daemon/controld.py:808
 #, python-brace-format
 msgid "{name} started"
 msgstr "{name} gestartet"
@@ -28040,6 +28402,7 @@ msgstr "{name} gestartet"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:842 otpme/lib/daemon/controld.py:850
 #: otpme/lib/daemon/controld.py:848 otpme/lib/daemon/controld.py:816
+#: otpme/lib/daemon/controld.py:818
 #, python-brace-format
 msgid "Failed to start daemon handler process: {error}"
 msgstr "Fehler beim Starten des Daemon-Handler-Prozess: {error}"
@@ -28047,6 +28410,7 @@ msgstr "Fehler beim Starten des Daemon-Handler-Prozess: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:850 otpme/lib/daemon/controld.py:858
 #: otpme/lib/daemon/controld.py:856 otpme/lib/daemon/controld.py:824
+#: otpme/lib/daemon/controld.py:826
 #, python-brace-format
 msgid "Failed to send daemon start command to handler process: {error}"
 msgstr "Fehler beim Senden des Daemon-Startbefehl an Handler-Prozess: {error}"
@@ -28054,6 +28418,7 @@ msgstr "Fehler beim Senden des Daemon-Startbefehl an Handler-Prozess: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:868 otpme/lib/daemon/controld.py:876
 #: otpme/lib/daemon/controld.py:874 otpme/lib/daemon/controld.py:842
+#: otpme/lib/daemon/controld.py:844
 #, python-brace-format
 msgid "Failed to get daemon command: {message}"
 msgstr "Fehler beim Abrufen des Daemon-Befehl: {message}"
@@ -28061,6 +28426,7 @@ msgstr "Fehler beim Abrufen des Daemon-Befehl: {message}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:926 otpme/lib/daemon/controld.py:934
 #: otpme/lib/daemon/controld.py:932 otpme/lib/daemon/controld.py:900
+#: otpme/lib/daemon/controld.py:902
 #, python-brace-format
 msgid "EOFError while receiving command: {error}"
 msgstr "EOFError beim Empfangen des Befehl: {error}"
@@ -28068,6 +28434,7 @@ msgstr "EOFError beim Empfangen des Befehl: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:931 otpme/lib/daemon/controld.py:939
 #: otpme/lib/daemon/controld.py:937 otpme/lib/daemon/controld.py:905
+#: otpme/lib/daemon/controld.py:907
 #, python-brace-format
 msgid "IOError while receiving command: {error}"
 msgstr "IOError beim Empfangen des Befehl: {error}"
@@ -28075,6 +28442,7 @@ msgstr "IOError beim Empfangen des Befehl: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:936 otpme/lib/daemon/controld.py:944
 #: otpme/lib/daemon/controld.py:942 otpme/lib/daemon/controld.py:910
+#: otpme/lib/daemon/controld.py:912
 #, python-brace-format
 msgid "Failed to get daemon command: {error}"
 msgstr "Fehler beim Abrufen des Daemon-Befehl: {error}"
@@ -28082,6 +28450,7 @@ msgstr "Fehler beim Abrufen des Daemon-Befehl: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:946 otpme/lib/daemon/controld.py:954
 #: otpme/lib/daemon/controld.py:952 otpme/lib/daemon/controld.py:920
+#: otpme/lib/daemon/controld.py:922
 #, python-brace-format
 msgid "Failed to start daemons: {error}"
 msgstr "Fehler beim Starten der Daemons: {error}"
@@ -28089,6 +28458,7 @@ msgstr "Fehler beim Starten der Daemons: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:969 otpme/lib/daemon/controld.py:977
 #: otpme/lib/daemon/controld.py:975 otpme/lib/daemon/controld.py:943
+#: otpme/lib/daemon/controld.py:945
 #, python-brace-format
 msgid "Failed to configure floating IP: {error}"
 msgstr "Fehler beim Konfigurieren der Floating IP: {error}"
@@ -28096,6 +28466,7 @@ msgstr "Fehler beim Konfigurieren der Floating IP: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:981 otpme/lib/daemon/controld.py:989
 #: otpme/lib/daemon/controld.py:987 otpme/lib/daemon/controld.py:976
+#: otpme/lib/daemon/controld.py:978
 #, python-brace-format
 msgid "Unknown daemon command: {command}"
 msgstr "Unbekannter Daemon-Befehl: {command}"
@@ -28103,6 +28474,7 @@ msgstr "Unbekannter Daemon-Befehl: {command}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:998 otpme/lib/daemon/controld.py:1006
 #: otpme/lib/daemon/controld.py:1004 otpme/lib/daemon/controld.py:993
+#: otpme/lib/daemon/controld.py:995
 msgid "Index not started."
 msgstr "Index nicht gestartet."
 
@@ -28111,12 +28483,14 @@ msgstr "Index nicht gestartet."
 #: otpme/lib/daemon/controld.py:1042 otpme/lib/daemon/controld.py:1060
 #: otpme/lib/daemon/controld.py:1040 otpme/lib/daemon/controld.py:1058
 #: otpme/lib/daemon/controld.py:1029 otpme/lib/daemon/controld.py:1047
+#: otpme/lib/daemon/controld.py:1031 otpme/lib/daemon/controld.py:1049
 msgid "Cache not started."
 msgstr "Cache nicht gestartet."
 
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1083 otpme/lib/daemon/controld.py:1091
 #: otpme/lib/daemon/controld.py:1089 otpme/lib/daemon/controld.py:1078
+#: otpme/lib/daemon/controld.py:1080
 #, python-brace-format
 msgid "Got unknown daemon: {daemon}"
 msgstr "Unbekannter Daemon erhalten: {daemon}"
@@ -28124,6 +28498,7 @@ msgstr "Unbekannter Daemon erhalten: {daemon}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1090 otpme/lib/daemon/controld.py:1098
 #: otpme/lib/daemon/controld.py:1096 otpme/lib/daemon/controld.py:1085
+#: otpme/lib/daemon/controld.py:1087
 #, python-brace-format
 msgid "Unable to load daemon class: {daemon_class}: {error}"
 msgstr "Daemon-Klasse kann nicht geladen werden: {daemon_class}: {error}"
@@ -28131,6 +28506,7 @@ msgstr "Daemon-Klasse kann nicht geladen werden: {daemon_class}: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1100 otpme/lib/daemon/controld.py:1108
 #: otpme/lib/daemon/controld.py:1106 otpme/lib/daemon/controld.py:1095
+#: otpme/lib/daemon/controld.py:1097
 #, python-brace-format
 msgid "Failed to start child daemon: {daemon}: {error}"
 msgstr "Fehler beim Starten des Child-Daemon: {daemon}: {error}"
@@ -28138,6 +28514,7 @@ msgstr "Fehler beim Starten des Child-Daemon: {daemon}: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1123 otpme/lib/daemon/controld.py:1132
 #: otpme/lib/daemon/controld.py:1130 otpme/lib/daemon/controld.py:1119
+#: otpme/lib/daemon/controld.py:1121
 #, python-brace-format
 msgid "Starting {daemon}"
 msgstr "Starte {daemon}"
@@ -28145,6 +28522,7 @@ msgstr "Starte {daemon}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1142 otpme/lib/daemon/controld.py:1151
 #: otpme/lib/daemon/controld.py:1149 otpme/lib/daemon/controld.py:1138
+#: otpme/lib/daemon/controld.py:1140
 #, python-brace-format
 msgid "Unable to send heartbeat packet to: {daemon}"
 msgstr "Heartbeat-Paket kann nicht gesendet werden an: {daemon}"
@@ -28167,6 +28545,7 @@ msgstr ""
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1179 otpme/lib/daemon/controld.py:1188
 #: otpme/lib/daemon/controld.py:1186 otpme/lib/daemon/controld.py:1175
+#: otpme/lib/daemon/controld.py:1177
 #, python-brace-format
 msgid "Daemon '{daemon}' is not responding. Trying to restart..."
 msgstr "Daemon '{daemon}' reagiert nicht. Versuche Neustart..."
@@ -28174,6 +28553,7 @@ msgstr "Daemon '{daemon}' reagiert nicht. Versuche Neustart..."
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1186 otpme/lib/daemon/controld.py:1195
 #: otpme/lib/daemon/controld.py:1193 otpme/lib/daemon/controld.py:1182
+#: otpme/lib/daemon/controld.py:1184
 #, python-brace-format
 msgid "Daemon '{daemon}' is not responding. Retrying in {interval} seconds..."
 msgstr ""
@@ -28183,6 +28563,7 @@ msgstr ""
 #: otpme/lib/daemon/controld.py:1193 otpme/lib/classes/otpme_agent.py:1734
 #: otpme/lib/daemon/controld.py:1202 otpme/lib/daemon/controld.py:1200
 #: otpme/lib/daemon/controld.py:1189 otpme/lib/classes/otpme_agent.py:1742
+#: otpme/lib/daemon/controld.py:1191
 msgid "Starting config reload..."
 msgstr "Starte Konfigurations-Neuladen..."
 
@@ -28190,7 +28571,7 @@ msgstr "Starte Konfigurations-Neuladen..."
 #: otpme/lib/daemon/controld.py:1227 otpme/lib/classes/otpme_agent.py:1933
 #: otpme/lib/daemon/controld.py:1237 otpme/lib/classes/otpme_agent.py:1932
 #: otpme/lib/daemon/controld.py:1235 otpme/lib/daemon/controld.py:1224
-#: otpme/lib/classes/otpme_agent.py:1940
+#: otpme/lib/classes/otpme_agent.py:1940 otpme/lib/daemon/controld.py:1226
 msgid "Finished config reload..."
 msgstr "Konfigurations-Neuladen abgeschlossen..."
 
@@ -28227,6 +28608,7 @@ msgstr "Fehler beim Abrufen der Daemon-Neuladen-Antwort: {daemon}: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1269 otpme/lib/daemon/controld.py:1280
 #: otpme/lib/daemon/controld.py:1277 otpme/lib/daemon/controld.py:1266
+#: otpme/lib/daemon/controld.py:1268
 #, python-brace-format
 msgid "Child daemon '{daemon}' needs a restart to reload its config."
 msgstr ""
@@ -28236,6 +28618,7 @@ msgstr ""
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1301 otpme/lib/daemon/controld.py:1312
 #: otpme/lib/daemon/controld.py:1309 otpme/lib/daemon/controld.py:1298
+#: otpme/lib/daemon/controld.py:1300
 #, python-brace-format
 msgid "Error getting startup response from {daemon}: {error}"
 msgstr "Fehler beim Abrufen der Startantwort von {daemon}: {error}"
@@ -28243,6 +28626,7 @@ msgstr "Fehler beim Abrufen der Startantwort von {daemon}: {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1308 otpme/lib/daemon/controld.py:1319
 #: otpme/lib/daemon/controld.py:1316 otpme/lib/daemon/controld.py:1305
+#: otpme/lib/daemon/controld.py:1307
 #, python-brace-format
 msgid "Got 'ready' message from {daemon}."
 msgstr "'ready'-Nachricht von {daemon} erhalten."
@@ -28257,6 +28641,7 @@ msgstr "Fehler beim Starten von {daemon}: Falsche Antwort: {reply}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1344 otpme/lib/daemon/controld.py:1355
 #: otpme/lib/daemon/controld.py:1352 otpme/lib/daemon/controld.py:1341
+#: otpme/lib/daemon/controld.py:1343
 #, python-brace-format
 msgid "Waiting for child daemon '{daemon} ({pid})' to shutdown."
 msgstr "Warte auf Herunterfahren des Child-Daemons '{daemon} ({pid})'."
@@ -28264,6 +28649,7 @@ msgstr "Warte auf Herunterfahren des Child-Daemons '{daemon} ({pid})'."
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1352 otpme/lib/daemon/controld.py:1363
 #: otpme/lib/daemon/controld.py:1360 otpme/lib/daemon/controld.py:1349
+#: otpme/lib/daemon/controld.py:1351
 #, python-brace-format
 msgid "Failed to send SIGTERM to daemon '{daemon} ({pid})': {error}"
 msgstr "Fehler beim Senden von SIGTERM an Daemon '{daemon} ({pid})': {error}"
@@ -28271,6 +28657,7 @@ msgstr "Fehler beim Senden von SIGTERM an Daemon '{daemon} ({pid})': {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1360 otpme/lib/daemon/controld.py:1371
 #: otpme/lib/daemon/controld.py:1368 otpme/lib/daemon/controld.py:1357
+#: otpme/lib/daemon/controld.py:1359
 #, python-brace-format
 msgid ""
 "Child daemon '{daemon} ({pid})' ignored SIGTERM command. Sending SIGKILL."
@@ -28280,6 +28667,7 @@ msgstr ""
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1369 otpme/lib/daemon/controld.py:1380
 #: otpme/lib/daemon/controld.py:1377 otpme/lib/daemon/controld.py:1366
+#: otpme/lib/daemon/controld.py:1368
 #, python-brace-format
 msgid "Failed to send SIGKILL to daemon '{daemon} ({pid})': {error}"
 msgstr "Fehler beim Senden von SIGKILL an Daemon '{daemon} ({pid})': {error}"
@@ -28287,6 +28675,7 @@ msgstr "Fehler beim Senden von SIGKILL an Daemon '{daemon} ({pid})': {error}"
 #. AI-generated
 #: otpme/lib/daemon/controld.py:1380 otpme/lib/daemon/controld.py:1391
 #: otpme/lib/daemon/controld.py:1388 otpme/lib/daemon/controld.py:1377
+#: otpme/lib/daemon/controld.py:1379
 #, python-brace-format
 msgid "Child daemon '{daemon}' shutdown succeeded."
 msgstr "Herunterfahren des Child-Daemons '{daemon}' erfolgreich."
@@ -42222,6 +42611,7 @@ msgstr "Fehler beim Ausführen des 'exists' Policy-Hooks: {oid}: {e}"
 #: otpme/lib/classes/otpme_object.py:2270
 #: otpme/lib/classes/otpme_object.py:2322
 #: otpme/lib/classes/otpme_object.py:2328
+#: otpme/lib/classes/otpme_object.py:2332
 #, python-brace-format
 msgid "Parameter <{parameter}> needs to be of type: {value_type}"
 msgstr "Parameter <{parameter}> muss vom Typ sein: {value_type}"
@@ -42238,6 +42628,8 @@ msgstr "Parameter <{parameter}> muss vom Typ sein: {value_type}"
 #: otpme/lib/classes/otpme_object.py:3039
 #: otpme/lib/classes/otpme_object.py:3098
 #: otpme/lib/classes/otpme_object.py:3104
+#: otpme/lib/classes/otpme_object.py:3049
+#: otpme/lib/classes/otpme_object.py:3108
 #, python-brace-format
 msgid "Cannot update unknown extension: {oid}: {x}"
 msgstr "Unbekannte Erweiterung kann nicht aktualisiert werden: {oid}: {x}"
@@ -42249,6 +42641,7 @@ msgstr "Unbekannte Erweiterung kann nicht aktualisiert werden: {oid}: {x}"
 #: otpme/lib/classes/otpme_object.py:3051
 #: otpme/lib/classes/otpme_object.py:3105
 #: otpme/lib/classes/otpme_object.py:3111
+#: otpme/lib/classes/otpme_object.py:3115
 #, python-brace-format
 msgid "Cannot update unknown hook: {oid}: {hook} ({ext_name})"
 msgstr ""
@@ -42261,6 +42654,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:3056
 #: otpme/lib/classes/otpme_object.py:3110
 #: otpme/lib/classes/otpme_object.py:3116
+#: otpme/lib/classes/otpme_object.py:3120
 #, python-brace-format
 msgid "Updating extension: {oid}: {ext_name} ({hook})"
 msgstr "Aktualisiere Erweiterung: {oid}: {ext_name} ({hook})"
@@ -42272,6 +42666,7 @@ msgstr "Aktualisiere Erweiterung: {oid}: {ext_name} ({hook})"
 #: otpme/lib/classes/otpme_object.py:3067
 #: otpme/lib/classes/otpme_object.py:3121
 #: otpme/lib/classes/otpme_object.py:3127
+#: otpme/lib/classes/otpme_object.py:3131
 #, python-brace-format
 msgid "Failed to run extension hook: {ext_name}: {hook}: {e}"
 msgstr "Fehler beim Ausführen des Erweiterungs-Hooks: {ext_name}: {hook}: {e}"
@@ -42283,6 +42678,7 @@ msgstr "Fehler beim Ausführen des Erweiterungs-Hooks: {ext_name}: {hook}: {e}"
 #: otpme/lib/classes/otpme_object.py:4924
 #: otpme/lib/classes/otpme_object.py:4980
 #: otpme/lib/classes/otpme_object.py:4986
+#: otpme/lib/classes/otpme_object.py:4992
 #, python-brace-format
 msgid "Unable to find extension to add attribute to object: {attribute}"
 msgstr ""
@@ -42296,6 +42692,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:4993
 #: otpme/lib/classes/otpme_object.py:5050
 #: otpme/lib/classes/otpme_object.py:5056
+#: otpme/lib/classes/otpme_object.py:5062
 #, python-brace-format
 msgid "Unable to find extension to modify attribute of object: {attribute}"
 msgstr ""
@@ -42308,6 +42705,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5063
 #: otpme/lib/classes/otpme_object.py:5120
 #: otpme/lib/classes/otpme_object.py:5126
+#: otpme/lib/classes/otpme_object.py:5132
 msgid "Unable to find extension to delete attribute from object."
 msgstr "Erweiterung zum Löschen des Attributs vom Objekt nicht gefunden."
 
@@ -42318,6 +42716,7 @@ msgstr "Erweiterung zum Löschen des Attributs vom Objekt nicht gefunden."
 #: otpme/lib/classes/otpme_object.py:5219
 #: otpme/lib/classes/otpme_object.py:5276
 #: otpme/lib/classes/otpme_object.py:5282
+#: otpme/lib/classes/otpme_object.py:5288
 #, python-brace-format
 msgid "Failed to get extension to handle object class: {object_class}"
 msgstr ""
@@ -42331,6 +42730,7 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:5410
 #: otpme/lib/classes/otpme_object.py:5467
 #: otpme/lib/classes/otpme_object.py:5473
+#: otpme/lib/classes/otpme_object.py:5479
 #, python-brace-format
 msgid "Auto-disable active for this object: {auto_disable_time}"
 msgstr "Auto-Deaktivierung aktiv für dieses Objekt: {auto_disable_time}"
@@ -42341,6 +42741,7 @@ msgstr "Auto-Deaktivierung aktiv für dieses Objekt: {auto_disable_time}"
 #: otpme/lib/classes/otpme_object.py:6639
 #: otpme/lib/classes/otpme_object.py:6696
 #: otpme/lib/classes/otpme_object.py:6705
+#: otpme/lib/classes/otpme_object.py:6720
 #, python-brace-format
 msgid "Unknown unit: {self}: {new_unit}"
 msgstr "Unbekannte Einheit: {self}: {new_unit}"
@@ -42351,6 +42752,7 @@ msgstr "Unbekannte Einheit: {self}: {new_unit}"
 #: otpme/lib/classes/otpme_object.py:6746
 #: otpme/lib/classes/otpme_object.py:6803
 #: otpme/lib/classes/otpme_object.py:6812
+#: otpme/lib/classes/otpme_object.py:6827
 #, python-brace-format
 msgid ""
 "* NOT applying/removing default ACLs of new/old unit: {inherit_acls_message}"
@@ -42369,6 +42771,8 @@ msgstr ""
 #: otpme/lib/classes/otpme_object.py:8254
 #: otpme/lib/classes/otpme_object.py:7253
 #: otpme/lib/classes/otpme_object.py:8263
+#: otpme/lib/classes/otpme_object.py:7268
+#: otpme/lib/classes/otpme_object.py:8278
 msgid "Auto revoking of signatures enabled."
 msgstr "Automatisches Widerrufen von Signaturen aktiviert."
 
@@ -42378,6 +42782,7 @@ msgstr "Automatisches Widerrufen von Signaturen aktiviert."
 #: otpme/lib/classes/otpme_object.py:7444
 #: otpme/lib/classes/otpme_object.py:7501
 #: otpme/lib/classes/otpme_object.py:7510
+#: otpme/lib/classes/otpme_object.py:7525
 #, python-brace-format
 msgid "{user_name}: signature verification failed: {sign_info}: {e}"
 msgstr "{user_name}: Signaturverifizierung fehlgeschlagen: {sign_info}: {e}"
@@ -43092,6 +43497,7 @@ msgstr "Antwort empfangen: {reply}"
 #: otpme/lib/classes/command_handler.py:338
 #: otpme/lib/classes/command_handler.py:349
 #: otpme/lib/classes/command_handler.py:353
+#: otpme/lib/classes/command_handler.py:354
 #, python-brace-format
 msgid "Processing command: {command}: {command_line}"
 msgstr "Verarbeite Befehl: {command}: {command_line}"
@@ -43127,6 +43533,12 @@ msgstr "Verarbeite Befehl: {command}: {command_line}"
 #: otpme/lib/classes/command_handler.py:6454
 #: otpme/lib/classes/command_handler.py:6518
 #: otpme/lib/classes/command_handler.py:6615
+#: otpme/lib/classes/command_handler.py:1626
+#: otpme/lib/classes/command_handler.py:6372
+#: otpme/lib/classes/command_handler.py:6409
+#: otpme/lib/classes/command_handler.py:6455
+#: otpme/lib/classes/command_handler.py:6519
+#: otpme/lib/classes/command_handler.py:6616
 #, python-brace-format
 msgid "Failed to get hostd connection: {e}"
 msgstr "Fehler beim Abrufen der hostd-Verbindung: {e}"
@@ -43137,6 +43549,7 @@ msgstr "Fehler beim Abrufen der hostd-Verbindung: {e}"
 #: otpme/lib/classes/command_handler.py:1845
 #: otpme/lib/classes/command_handler.py:1937
 #: otpme/lib/classes/command_handler.py:1941
+#: otpme/lib/classes/command_handler.py:1942
 #, python-brace-format
 msgid "Failed to stop OTPme daemons: {e}"
 msgstr "Fehler beim Stoppen der OTPme-Daemons: {e}"
@@ -43147,6 +43560,7 @@ msgstr "Fehler beim Stoppen der OTPme-Daemons: {e}"
 #: otpme/lib/classes/command_handler.py:2813
 #: otpme/lib/classes/command_handler.py:2907
 #: otpme/lib/classes/command_handler.py:2911
+#: otpme/lib/classes/command_handler.py:2912
 msgid "Reading users key script..."
 msgstr "Lese Benutzerschlüssel-Skript..."
 
@@ -43156,6 +43570,7 @@ msgstr "Lese Benutzerschlüssel-Skript..."
 #: otpme/lib/classes/command_handler.py:2852
 #: otpme/lib/classes/command_handler.py:2946
 #: otpme/lib/classes/command_handler.py:2950
+#: otpme/lib/classes/command_handler.py:2951
 msgid "Reading users SSH script..."
 msgstr "Lese Benutzer-SSH-Skript..."
 
@@ -43165,6 +43580,7 @@ msgstr "Lese Benutzer-SSH-Skript..."
 #: otpme/lib/classes/command_handler.py:3236
 #: otpme/lib/classes/command_handler.py:3330
 #: otpme/lib/classes/command_handler.py:3334
+#: otpme/lib/classes/command_handler.py:3335
 #, python-brace-format
 msgid "Error updating nsscache: {e}"
 msgstr "Fehler beim Aktualisieren von nsscache: {e}"
@@ -43175,6 +43591,7 @@ msgstr "Fehler beim Aktualisieren von nsscache: {e}"
 #: otpme/lib/classes/command_handler.py:3254
 #: otpme/lib/classes/command_handler.py:3348
 #: otpme/lib/classes/command_handler.py:3352
+#: otpme/lib/classes/command_handler.py:3353
 #, python-brace-format
 msgid "Unable to get sync connection: {realm}/{site}: {e}"
 msgstr "Sync-Verbindung kann nicht hergestellt werden: {realm}/{site}: {e}"
@@ -43185,6 +43602,7 @@ msgstr "Sync-Verbindung kann nicht hergestellt werden: {realm}/{site}: {e}"
 #: otpme/lib/classes/command_handler.py:3261
 #: otpme/lib/classes/command_handler.py:3355
 #: otpme/lib/classes/command_handler.py:3359
+#: otpme/lib/classes/command_handler.py:3360
 msgid "Processing sync cache from disk."
 msgstr "Verarbeite Sync-Cache von Festplatte."
 
@@ -43194,6 +43612,7 @@ msgstr "Verarbeite Sync-Cache von Festplatte."
 #: otpme/lib/classes/command_handler.py:5814
 #: otpme/lib/classes/command_handler.py:5908
 #: otpme/lib/classes/command_handler.py:5912
+#: otpme/lib/classes/command_handler.py:5913
 #, python-brace-format
 msgid "Reading cluster data from node: {node_name}"
 msgstr "Lese Cluster-Daten von Knoten: {node_name}"
@@ -43204,6 +43623,7 @@ msgstr "Lese Cluster-Daten von Knoten: {node_name}"
 #: otpme/lib/classes/command_handler.py:5828
 #: otpme/lib/classes/command_handler.py:5922
 #: otpme/lib/classes/command_handler.py:5926
+#: otpme/lib/classes/command_handler.py:5927
 #, python-brace-format
 msgid "Failed to get cluster connection: {node_name}: {e}"
 msgstr "Fehler beim Abrufen der Cluster-Verbindung: {node_name}: {e}"
@@ -43214,6 +43634,7 @@ msgstr "Fehler beim Abrufen der Cluster-Verbindung: {node_name}: {e}"
 #: otpme/lib/classes/command_handler.py:5872
 #: otpme/lib/classes/command_handler.py:5966
 #: otpme/lib/classes/command_handler.py:5970
+#: otpme/lib/classes/command_handler.py:5971
 #, python-brace-format
 msgid "Checksum request failed: {e}"
 msgstr "Prüfsummenanfrage fehlgeschlagen: {e}"
@@ -43224,6 +43645,7 @@ msgstr "Prüfsummenanfrage fehlgeschlagen: {e}"
 #: otpme/lib/classes/command_handler.py:6101
 #: otpme/lib/classes/command_handler.py:6195
 #: otpme/lib/classes/command_handler.py:6199
+#: otpme/lib/classes/command_handler.py:6200
 #, python-brace-format
 msgid "Object {m_object} missing on node {x_node}."
 msgstr "Objekt {m_object} fehlt auf Knoten {x_node}."
@@ -43234,6 +43656,7 @@ msgstr "Objekt {m_object} fehlt auf Knoten {x_node}."
 #: otpme/lib/classes/command_handler.py:6116
 #: otpme/lib/classes/command_handler.py:6210
 #: otpme/lib/classes/command_handler.py:6214
+#: otpme/lib/classes/command_handler.py:6215
 #, python-brace-format
 msgid ""
 "Object {m_object} differs on node {x_node}: {m_checksum} <> {n_checksum}"
@@ -43247,6 +43670,7 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:6136
 #: otpme/lib/classes/command_handler.py:6230
 #: otpme/lib/classes/command_handler.py:6234
+#: otpme/lib/classes/command_handler.py:6235
 #, python-brace-format
 msgid "Object {n_object} missing on node {master_node}."
 msgstr "Objekt {n_object} fehlt auf Knoten {master_node}."
@@ -43257,6 +43681,7 @@ msgstr "Objekt {n_object} fehlt auf Knoten {master_node}."
 #: otpme/lib/classes/command_handler.py:6157
 #: otpme/lib/classes/command_handler.py:6251
 #: otpme/lib/classes/command_handler.py:6255
+#: otpme/lib/classes/command_handler.py:6256
 #, python-brace-format
 msgid "Data object {m_data} missing on node {x_node}."
 msgstr "Datenobjekt {m_data} fehlt auf Knoten {x_node}."
@@ -43267,6 +43692,7 @@ msgstr "Datenobjekt {m_data} fehlt auf Knoten {x_node}."
 #: otpme/lib/classes/command_handler.py:6172
 #: otpme/lib/classes/command_handler.py:6266
 #: otpme/lib/classes/command_handler.py:6270
+#: otpme/lib/classes/command_handler.py:6271
 #, python-brace-format
 msgid "Object {m_data} differs on node {x_node}: {m_checksum} <> {n_checksum}"
 msgstr ""
@@ -43279,6 +43705,7 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:6192
 #: otpme/lib/classes/command_handler.py:6286
 #: otpme/lib/classes/command_handler.py:6290
+#: otpme/lib/classes/command_handler.py:6291
 #, python-brace-format
 msgid "Data object {n_data} missing on node {master_node}."
 msgstr "Datenobjekt {n_data} fehlt auf Knoten {master_node}."
@@ -43289,6 +43716,7 @@ msgstr "Datenobjekt {n_data} fehlt auf Knoten {master_node}."
 #: otpme/lib/classes/command_handler.py:6213
 #: otpme/lib/classes/command_handler.py:6307
 #: otpme/lib/classes/command_handler.py:6311
+#: otpme/lib/classes/command_handler.py:6312
 #, python-brace-format
 msgid "Session {m_session} missing on node {x_node}."
 msgstr "Sitzung {m_session} fehlt auf Knoten {x_node}."
@@ -43299,6 +43727,7 @@ msgstr "Sitzung {m_session} fehlt auf Knoten {x_node}."
 #: otpme/lib/classes/command_handler.py:6228
 #: otpme/lib/classes/command_handler.py:6322
 #: otpme/lib/classes/command_handler.py:6326
+#: otpme/lib/classes/command_handler.py:6327
 #, python-brace-format
 msgid ""
 "Session {m_session} differs on node {x_node}: {m_checksum} <> {n_checksum}"
@@ -43312,6 +43741,7 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:6249
 #: otpme/lib/classes/command_handler.py:6343
 #: otpme/lib/classes/command_handler.py:6347
+#: otpme/lib/classes/command_handler.py:6348
 #, python-brace-format
 msgid "Session {n_session} missing on node {master_node}."
 msgstr "Sitzung {n_session} fehlt auf Knoten {master_node}."
@@ -43322,6 +43752,7 @@ msgstr "Sitzung {n_session} fehlt auf Knoten {master_node}."
 #: otpme/lib/classes/command_handler.py:6257
 #: otpme/lib/classes/command_handler.py:6351
 #: otpme/lib/classes/command_handler.py:6355
+#: otpme/lib/classes/command_handler.py:6356
 #, python-brace-format
 msgid "Misses: {missing_objects_len}"
 msgstr "Fehlend: {missing_objects_len}"
@@ -43332,6 +43763,7 @@ msgstr "Fehlend: {missing_objects_len}"
 #: otpme/lib/classes/command_handler.py:6260
 #: otpme/lib/classes/command_handler.py:6354
 #: otpme/lib/classes/command_handler.py:6358
+#: otpme/lib/classes/command_handler.py:6359
 #, python-brace-format
 msgid "Diffs: {diff_objects_len}"
 msgstr "Unterschiede: {diff_objects_len}"
@@ -43371,6 +43803,13 @@ msgstr "Unterschiede: {diff_objects_len}"
 #: otpme/lib/classes/command_handler.py:6623
 #: otpme/lib/classes/command_handler.py:6727
 #: otpme/lib/classes/command_handler.py:6798
+#: otpme/lib/classes/command_handler.py:6380
+#: otpme/lib/classes/command_handler.py:6417
+#: otpme/lib/classes/command_handler.py:6463
+#: otpme/lib/classes/command_handler.py:6526
+#: otpme/lib/classes/command_handler.py:6624
+#: otpme/lib/classes/command_handler.py:6728
+#: otpme/lib/classes/command_handler.py:6799
 #, python-brace-format
 msgid "Failed to get daemon socket from hostd: {e}"
 msgstr "Daemon-Socket konnte nicht von hostd abgerufen werden: {e}"
@@ -43386,6 +43825,8 @@ msgstr "Daemon-Socket konnte nicht von hostd abgerufen werden: {e}"
 #: otpme/lib/classes/command_handler.py:6422
 #: otpme/lib/classes/command_handler.py:6389
 #: otpme/lib/classes/command_handler.py:6426
+#: otpme/lib/classes/command_handler.py:6390
+#: otpme/lib/classes/command_handler.py:6427
 #, python-brace-format
 msgid "Failed to get node connection: {node_name}: {e}"
 msgstr "Knotenverbindung konnte nicht hergestellt werden: {node_name}: {e}"
@@ -43396,6 +43837,7 @@ msgstr "Knotenverbindung konnte nicht hergestellt werden: {node_name}: {e}"
 #: otpme/lib/classes/command_handler.py:6299
 #: otpme/lib/classes/command_handler.py:6393
 #: otpme/lib/classes/command_handler.py:6397
+#: otpme/lib/classes/command_handler.py:6398
 #, python-brace-format
 msgid "Node vote check failed: {node_name}: {e}"
 msgstr "Knoten-Abstimmungsprüfung fehlgeschlagen: {node_name}: {e}"
@@ -43406,6 +43848,7 @@ msgstr "Knoten-Abstimmungsprüfung fehlgeschlagen: {node_name}: {e}"
 #: otpme/lib/classes/command_handler.py:6303
 #: otpme/lib/classes/command_handler.py:6397
 #: otpme/lib/classes/command_handler.py:6401
+#: otpme/lib/classes/command_handler.py:6402
 msgid "Node not ready."
 msgstr "Knoten nicht bereit."
 
@@ -43415,6 +43858,7 @@ msgstr "Knoten nicht bereit."
 #: otpme/lib/classes/command_handler.py:6336
 #: otpme/lib/classes/command_handler.py:6430
 #: otpme/lib/classes/command_handler.py:6434
+#: otpme/lib/classes/command_handler.py:6435
 #, python-brace-format
 msgid "Master sync check failed: {node_name}: {e}"
 msgstr "Master-Synchronisationsprüfung fehlgeschlagen: {node_name}: {e}"
@@ -43425,6 +43869,7 @@ msgstr "Master-Synchronisationsprüfung fehlgeschlagen: {node_name}: {e}"
 #: otpme/lib/classes/command_handler.py:6340
 #: otpme/lib/classes/command_handler.py:6434
 #: otpme/lib/classes/command_handler.py:6438
+#: otpme/lib/classes/command_handler.py:6439
 msgid "Node master sync not finished."
 msgstr "Knoten-Master-Synchronisation nicht abgeschlossen."
 
@@ -43434,6 +43879,7 @@ msgstr "Knoten-Master-Synchronisation nicht abgeschlossen."
 #: otpme/lib/classes/command_handler.py:6345
 #: otpme/lib/classes/command_handler.py:6439
 #: otpme/lib/classes/command_handler.py:6443
+#: otpme/lib/classes/command_handler.py:6444
 #, python-brace-format
 msgid "Node sync check failed: {node_name}: {e}"
 msgstr "Knoten-Synchronisationsprüfung fehlgeschlagen: {node_name}: {e}"
@@ -43444,6 +43890,7 @@ msgstr "Knoten-Synchronisationsprüfung fehlgeschlagen: {node_name}: {e}"
 #: otpme/lib/classes/command_handler.py:6374
 #: otpme/lib/classes/command_handler.py:6468
 #: otpme/lib/classes/command_handler.py:6472
+#: otpme/lib/classes/command_handler.py:6473
 #, python-brace-format
 msgid "Failed to get master node connection: {node_name}: {e}"
 msgstr ""
@@ -43455,6 +43902,7 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:6383
 #: otpme/lib/classes/command_handler.py:6477
 #: otpme/lib/classes/command_handler.py:6481
+#: otpme/lib/classes/command_handler.py:6482
 #, python-brace-format
 msgid "Failed to start master failover: {node_name}: {e}"
 msgstr "Master-Failover konnte nicht gestartet werden: {node_name}: {e}"
@@ -43470,6 +43918,8 @@ msgstr "Master-Failover konnte nicht gestartet werden: {node_name}: {e}"
 #: otpme/lib/classes/command_handler.py:6570
 #: otpme/lib/classes/command_handler.py:6503
 #: otpme/lib/classes/command_handler.py:6574
+#: otpme/lib/classes/command_handler.py:6504
+#: otpme/lib/classes/command_handler.py:6575
 #, python-brace-format
 msgid "Unknown node: {this_node_name}"
 msgstr "Unbekannter Knoten: {this_node_name}"
@@ -43485,6 +43935,8 @@ msgstr "Unbekannter Knoten: {this_node_name}"
 #: otpme/lib/classes/command_handler.py:6577
 #: otpme/lib/classes/command_handler.py:6510
 #: otpme/lib/classes/command_handler.py:6581
+#: otpme/lib/classes/command_handler.py:6511
+#: otpme/lib/classes/command_handler.py:6582
 msgid "Node disabled."
 msgstr "Knoten deaktiviert."
 
@@ -43499,6 +43951,8 @@ msgstr "Knoten deaktiviert."
 #: otpme/lib/classes/command_handler.py:6630
 #: otpme/lib/classes/command_handler.py:6537
 #: otpme/lib/classes/command_handler.py:6634
+#: otpme/lib/classes/command_handler.py:6538
+#: otpme/lib/classes/command_handler.py:6635
 #, python-brace-format
 msgid "Failed to get cluster connection: {this_node}: {e}"
 msgstr "Clusterverbindung konnte nicht hergestellt werden: {this_node}: {e}"
@@ -43509,6 +43963,7 @@ msgstr "Clusterverbindung konnte nicht hergestellt werden: {this_node}: {e}"
 #: otpme/lib/classes/command_handler.py:6490
 #: otpme/lib/classes/command_handler.py:6584
 #: otpme/lib/classes/command_handler.py:6588
+#: otpme/lib/classes/command_handler.py:6589
 msgid "Node not the master node."
 msgstr "Knoten ist nicht der Master-Knoten."
 
@@ -43518,6 +43973,7 @@ msgstr "Knoten ist nicht der Master-Knoten."
 #: otpme/lib/classes/command_handler.py:6500
 #: otpme/lib/classes/command_handler.py:6594
 #: otpme/lib/classes/command_handler.py:6598
+#: otpme/lib/classes/command_handler.py:6599
 #, python-brace-format
 msgid "Unknown node: {new_master}"
 msgstr "Unbekannter Knoten: {new_master}"
@@ -43528,6 +43984,7 @@ msgstr "Unbekannter Knoten: {new_master}"
 #: otpme/lib/classes/command_handler.py:6507
 #: otpme/lib/classes/command_handler.py:6601
 #: otpme/lib/classes/command_handler.py:6605
+#: otpme/lib/classes/command_handler.py:6606
 msgid "Node already master node."
 msgstr "Knoten ist bereits Master-Knoten."
 
@@ -43537,6 +43994,7 @@ msgstr "Knoten ist bereits Master-Knoten."
 #: otpme/lib/classes/command_handler.py:6511
 #: otpme/lib/classes/command_handler.py:6605
 #: otpme/lib/classes/command_handler.py:6609
+#: otpme/lib/classes/command_handler.py:6610
 msgid "Checking for cluster quorum..."
 msgstr "Prüfe Cluster-Quorum..."
 
@@ -43546,6 +44004,7 @@ msgstr "Prüfe Cluster-Quorum..."
 #: otpme/lib/classes/command_handler.py:6545
 #: otpme/lib/classes/command_handler.py:6639
 #: otpme/lib/classes/command_handler.py:6643
+#: otpme/lib/classes/command_handler.py:6644
 #, python-brace-format
 msgid "Failed to get cluster quorum: {this_node}: {e}"
 msgstr "Cluster-Quorum konnte nicht abgerufen werden: {this_node}: {e}"
@@ -43556,6 +44015,7 @@ msgstr "Cluster-Quorum konnte nicht abgerufen werden: {this_node}: {e}"
 #: otpme/lib/classes/command_handler.py:6556
 #: otpme/lib/classes/command_handler.py:6650
 #: otpme/lib/classes/command_handler.py:6654
+#: otpme/lib/classes/command_handler.py:6655
 msgid "Trying to find a node to switch to..."
 msgstr "Versuche einen Knoten zum Wechseln zu finden..."
 
@@ -43565,6 +44025,7 @@ msgstr "Versuche einen Knoten zum Wechseln zu finden..."
 #: otpme/lib/classes/command_handler.py:6563
 #: otpme/lib/classes/command_handler.py:6657
 #: otpme/lib/classes/command_handler.py:6661
+#: otpme/lib/classes/command_handler.py:6662
 #, python-brace-format
 msgid "Failed to get cluster nodes: {this_node}: {e}"
 msgstr "Clusterknoten konnten nicht abgerufen werden: {this_node}: {e}"
@@ -43575,6 +44036,7 @@ msgstr "Clusterknoten konnten nicht abgerufen werden: {this_node}: {e}"
 #: otpme/lib/classes/command_handler.py:6575
 #: otpme/lib/classes/command_handler.py:6669
 #: otpme/lib/classes/command_handler.py:6673
+#: otpme/lib/classes/command_handler.py:6674
 msgid "Master failover failed: Unable to find node to switch to."
 msgstr "Master-Failover fehlgeschlagen: Kein Knoten zum Wechseln gefunden."
 
@@ -43594,6 +44056,9 @@ msgstr "Master-Failover fehlgeschlagen: Kein Knoten zum Wechseln gefunden."
 #: otpme/lib/classes/command_handler.py:6682
 #: otpme/lib/classes/command_handler.py:6689
 #: otpme/lib/classes/command_handler.py:6785
+#: otpme/lib/classes/command_handler.py:6683
+#: otpme/lib/classes/command_handler.py:6690
+#: otpme/lib/classes/command_handler.py:6786
 #, python-brace-format
 msgid "Will not switch to unsync node: {new_master_node}: {e}"
 msgstr ""
@@ -43605,6 +44070,7 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:6597
 #: otpme/lib/classes/command_handler.py:6691
 #: otpme/lib/classes/command_handler.py:6695
+#: otpme/lib/classes/command_handler.py:6696
 #, python-brace-format
 msgid "Will switch to node: {new_master_node}"
 msgstr "Werde zu Knoten wechseln: {new_master_node}"
@@ -43620,6 +44086,8 @@ msgstr "Werde zu Knoten wechseln: {new_master_node}"
 #: otpme/lib/classes/command_handler.py:6811
 #: otpme/lib/classes/command_handler.py:6701
 #: otpme/lib/classes/command_handler.py:6815
+#: otpme/lib/classes/command_handler.py:6702
+#: otpme/lib/classes/command_handler.py:6816
 #, python-brace-format
 msgid "Setting master failover status on current master node: {master_node}"
 msgstr ""
@@ -43636,6 +44104,8 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:6818
 #: otpme/lib/classes/command_handler.py:6708
 #: otpme/lib/classes/command_handler.py:6822
+#: otpme/lib/classes/command_handler.py:6709
+#: otpme/lib/classes/command_handler.py:6823
 msgid "Master node ready..."
 msgstr "Master-Knoten bereit..."
 
@@ -43650,6 +44120,8 @@ msgstr "Master-Knoten bereit..."
 #: otpme/lib/classes/command_handler.py:6830
 #: otpme/lib/classes/command_handler.py:6720
 #: otpme/lib/classes/command_handler.py:6834
+#: otpme/lib/classes/command_handler.py:6721
+#: otpme/lib/classes/command_handler.py:6835
 #, python-brace-format
 msgid "Trying to switch to new master node: {new_master_node}"
 msgstr "Versuche zu neuem Master-Knoten zu wechseln: {new_master_node}"
@@ -43665,6 +44137,8 @@ msgstr "Versuche zu neuem Master-Knoten zu wechseln: {new_master_node}"
 #: otpme/lib/classes/command_handler.py:6805
 #: otpme/lib/classes/command_handler.py:6738
 #: otpme/lib/classes/command_handler.py:6809
+#: otpme/lib/classes/command_handler.py:6739
+#: otpme/lib/classes/command_handler.py:6810
 #, python-brace-format
 msgid "Failed to get cluster connection: {new_master_node}: {e}"
 msgstr ""
@@ -43676,6 +44150,7 @@ msgstr ""
 #: otpme/lib/classes/command_handler.py:6659
 #: otpme/lib/classes/command_handler.py:6753
 #: otpme/lib/classes/command_handler.py:6757
+#: otpme/lib/classes/command_handler.py:6758
 #, python-brace-format
 msgid "Node already the master node: {new_master_node}"
 msgstr "Knoten ist bereits der Master-Knoten: {new_master_node}"
@@ -43686,6 +44161,7 @@ msgstr "Knoten ist bereits der Master-Knoten: {new_master_node}"
 #: otpme/lib/classes/command_handler.py:6664
 #: otpme/lib/classes/command_handler.py:6758
 #: otpme/lib/classes/command_handler.py:6762
+#: otpme/lib/classes/command_handler.py:6763
 #, python-brace-format
 msgid "Checking node sync status: {new_master_node}"
 msgstr "Prüfe Knoten-Synchronisationsstatus: {new_master_node}"
@@ -43696,6 +44172,7 @@ msgstr "Prüfe Knoten-Synchronisationsstatus: {new_master_node}"
 #: otpme/lib/classes/command_handler.py:6673
 #: otpme/lib/classes/command_handler.py:6767
 #: otpme/lib/classes/command_handler.py:6771
+#: otpme/lib/classes/command_handler.py:6772
 #, python-brace-format
 msgid "Will not switch to not ready node: {new_master_node}: {e}"
 msgstr "Werde nicht zu nicht bereitem Knoten wechseln: {new_master_node}: {e}"
@@ -44930,6 +45407,7 @@ msgstr ""
 #: otpme/lib/daemon/hostd.py:1249 otpme/lib/daemon/hostd.py:1928
 #: otpme/lib/daemon/hostd.py:1251 otpme/lib/daemon/hostd.py:1958
 #: otpme/lib/daemon/hostd.py:1254 otpme/lib/daemon/hostd.py:2044
+#: otpme/lib/daemon/hostd.py:2116
 msgid "Timeout waiting for lock getting unsync peers."
 msgstr ""
 "Zeitüberschreitung beim Warten auf Sperre für nicht synchronisierte Peers."
@@ -44963,6 +45441,7 @@ msgstr "Sende keine Sync-Benachrichtigung: Wir sind nicht der Master-Knoten"
 #: otpme/lib/daemon/hostd.py:1669 otpme/lib/daemon/ldapd.py:131
 #: otpme/lib/daemon/httpd.py:204 otpme/lib/daemon/hostd.py:1699
 #: otpme/lib/daemon/httpd.py:217 otpme/lib/daemon/hostd.py:1742
+#: otpme/lib/daemon/hostd.py:1812
 #, python-brace-format
 msgid "{full_name} started"
 msgstr "{full_name} gestartet"
@@ -44970,7 +45449,7 @@ msgstr "{full_name} gestartet"
 #. AI-generated
 #: otpme/lib/daemon/hostd.py:1925 otpme/lib/daemon/hostd.py:1921
 #: otpme/lib/daemon/hostd.py:1940 otpme/lib/daemon/hostd.py:1970
-#: otpme/lib/daemon/hostd.py:2056
+#: otpme/lib/daemon/hostd.py:2056 otpme/lib/daemon/hostd.py:2128
 msgid "Last sync failed and retry interval reached. Retrying..."
 msgstr ""
 "Letzte Synchronisation fehlgeschlagen und Wiederholungsintervall erreicht. "
@@ -44979,7 +45458,7 @@ msgstr ""
 #. AI-generated
 #: otpme/lib/daemon/hostd.py:1961 otpme/lib/daemon/hostd.py:1957
 #: otpme/lib/daemon/hostd.py:1976 otpme/lib/daemon/hostd.py:2006
-#: otpme/lib/daemon/hostd.py:2092
+#: otpme/lib/daemon/hostd.py:2092 otpme/lib/daemon/hostd.py:2164
 msgid "Received signal, terminating."
 msgstr "Signal empfangen, beende."
 
@@ -45427,6 +45906,7 @@ msgstr "Ungültiger Suchfilter: Filter nicht mit '*'"
 #: otpme/lib/classes/otpme_object.py:5949
 #: otpme/lib/classes/otpme_object.py:6006
 #: otpme/lib/classes/otpme_object.py:6012
+#: otpme/lib/classes/otpme_object.py:6023
 msgid "Failed to disinherit ACLs."
 msgstr "ACLs konnten nicht entzogen werden."
 
@@ -45434,6 +45914,7 @@ msgstr "ACLs konnten nicht entzogen werden."
 #: otpme/lib/classes/otpme_object.py:5958
 #: otpme/lib/classes/otpme_object.py:6015
 #: otpme/lib/classes/otpme_object.py:6021
+#: otpme/lib/classes/otpme_object.py:6032
 msgid "Failed to inherit ACLs."
 msgstr "ACLs konnten nicht geerbt werden."
 
@@ -45468,6 +45949,7 @@ msgstr "Sitzung ohne OID: {obj_type}: {obj_id}"
 #: otpme/lib/classes/command_handler.py:1437
 #: otpme/lib/classes/command_handler.py:1529
 #: otpme/lib/classes/command_handler.py:1533
+#: otpme/lib/classes/command_handler.py:1534
 msgid "Path must be a directory."
 msgstr "Pfad muss ein Verzeichnis sein."
 
@@ -45577,7 +46059,7 @@ msgstr ""
 "Nicht zulässiges Objekt von Sites-Synchronisierung empfangen: {object_id}"
 
 #. AI-generated
-#: otpme/lib/daemon/controld.py:970
+#: otpme/lib/daemon/controld.py:970 otpme/lib/daemon/controld.py:972
 msgid "Not restarting clusterd on master node."
 msgstr "clusterd auf Master-Knoten wird nicht neu gestartet."
 
@@ -46114,6 +46596,7 @@ msgstr "Befehl abgebrochen: {response}"
 #. AI-generated
 #: otpme/lib/classes/command_handler.py:1039
 #: otpme/lib/classes/command_handler.py:1043
+#: otpme/lib/classes/command_handler.py:1044
 #, python-brace-format
 msgid "Unknown time delta: {older_than}"
 msgstr "Unbekanntes Zeitdelta: {older_than}"
@@ -46121,6 +46604,7 @@ msgstr "Unbekanntes Zeitdelta: {older_than}"
 #. AI-generated
 #: otpme/lib/classes/command_handler.py:1096
 #: otpme/lib/classes/command_handler.py:1100
+#: otpme/lib/classes/command_handler.py:1101
 #, python-brace-format
 msgid "Would remove: {x_path}"
 msgstr "Würde entfernen: {x_path}"
@@ -46128,6 +46612,7 @@ msgstr "Würde entfernen: {x_path}"
 #. AI-generated
 #: otpme/lib/classes/command_handler.py:5739
 #: otpme/lib/classes/command_handler.py:5743
+#: otpme/lib/classes/command_handler.py:5744
 #, python-brace-format
 msgid "Unsing login token: {response}"
 msgstr "Verwende Login-Token: {response}"
@@ -46582,13 +47067,13 @@ msgid "Failed to delete tree job: {error}"
 msgstr "Löschen des Tree-Jobs fehlgeschlagen: {error}"
 
 #. AI-generated
-#: otpme/lib/daemon/controld.py:1155
+#: otpme/lib/daemon/controld.py:1155 otpme/lib/daemon/controld.py:1157
 #, python-brace-format
 msgid "Failed to receive heartbeat response: {daemon}: {error_type}"
 msgstr "Empfang der Heartbeat-Antwort fehlgeschlagen: {daemon}: {error_type}"
 
 #. AI-generated
-#: otpme/lib/daemon/controld.py:1168
+#: otpme/lib/daemon/controld.py:1168 otpme/lib/daemon/controld.py:1170
 #, python-brace-format
 msgid ""
 "Got wrong response to heartbeat packet from daemon '{daemon}': {response}"
@@ -46597,13 +47082,13 @@ msgstr ""
 "{response}"
 
 #. AI-generated
-#: otpme/lib/daemon/controld.py:1260
+#: otpme/lib/daemon/controld.py:1260 otpme/lib/daemon/controld.py:1262
 #, python-brace-format
 msgid "Failed to get daemon reload response: {daemon}: {error}"
 msgstr "Abrufen der Daemon-Neulade-Antwort fehlgeschlagen: {daemon}: {error}"
 
 #. AI-generated
-#: otpme/lib/daemon/controld.py:1310
+#: otpme/lib/daemon/controld.py:1310 otpme/lib/daemon/controld.py:1312
 #, python-brace-format
 msgid "Error starting {daemon}: Wrong response: {response}"
 msgstr "Fehler beim Starten von {daemon}: Falsche Antwort: {response}"
@@ -46616,43 +47101,43 @@ msgstr ""
 "Kompatibilität"
 
 #. AI-generated
-#: otpme/lib/daemon/hostd.py:1813
+#: otpme/lib/daemon/hostd.py:1813 otpme/lib/daemon/hostd.py:1885
 #, python-brace-format
 msgid "Failed to reload host object: {e}"
 msgstr "Fehler beim Neuladen des Host-Objekts: {e}"
 
 #. AI-generated
-#: otpme/lib/daemon/hostd.py:1823
+#: otpme/lib/daemon/hostd.py:1823 otpme/lib/daemon/hostd.py:1895
 #, python-brace-format
 msgid "Failed to remove outdated tokens: {e}"
 msgstr "Fehler beim Entfernen veralteter Tokens: {e}"
 
 #. AI-generated
-#: otpme/lib/daemon/hostd.py:1833
+#: otpme/lib/daemon/hostd.py:1833 otpme/lib/daemon/hostd.py:1905
 #, python-brace-format
 msgid "Failed to clear outdated cache objects: {e}"
 msgstr "Fehler beim Löschen veralteter Cache-Objekte: {e}"
 
 #. AI-generated
-#: otpme/lib/daemon/hostd.py:1843
+#: otpme/lib/daemon/hostd.py:1843 otpme/lib/daemon/hostd.py:1915
 #, python-brace-format
 msgid "Failed to run update CLRs job: {e}"
 msgstr "Fehler beim Ausführen des CLRs-Aktualisierungsjobs: {e}"
 
 #. AI-generated
-#: otpme/lib/daemon/hostd.py:1853
+#: otpme/lib/daemon/hostd.py:1853 otpme/lib/daemon/hostd.py:1925
 #, python-brace-format
 msgid "Failed to run auto disable job: {e}"
 msgstr "Fehler beim Ausführen des automatischen Deaktivierungsjobs: {e}"
 
 #. AI-generated
-#: otpme/lib/daemon/hostd.py:1863
+#: otpme/lib/daemon/hostd.py:1863 otpme/lib/daemon/hostd.py:1935
 #, python-brace-format
 msgid "Failed to run resolvers job: {e}"
 msgstr "Fehler beim Ausführen des Resolver-Jobs: {e}"
 
 #. AI-generated
-#: otpme/lib/daemon/hostd.py:1873
+#: otpme/lib/daemon/hostd.py:1873 otpme/lib/daemon/hostd.py:1945
 #, python-brace-format
 msgid "Failed to process spooled logs: {e}"
 msgstr "Fehler beim Verarbeiten der gepufferten Logs: {e}"
@@ -46694,3 +47179,27 @@ msgid ""
 msgstr ""
 "Fehler beim Hinzufügen der vollständigen Index-Aktualisierungsdaten zum "
 "Cluster-Eintrag: {journal_id}: {error}"
+
+#: otpme/lib/policy/autodisable/autodisable.py:316
+#, python-brace-format
+msgid "{object_type} disabled by policy."
+msgstr ""
+
+#. AI-generated
+#: otpme/lib/policy/autodisable/autodisable.py:363
+#, python-brace-format
+msgid "{object_type} disabled by policy: {policy_name}: {object_name}"
+msgstr ","
+
+#. AI-generated
+#: otpme/lib/policy/autodisable/autodisable.py:369
+#, python-brace-format
+msgid "Cannot disable object by policy: {policy_name}: {object_path}: {e}"
+msgstr ","
+
+#. AI-generated
+#: otpme/lib/cache/funccache.py:199
+#, python-brace-format
+msgid ""
+"Failed to parse function args: {name} ({cache_name}): {method_name}: {e}"
+msgstr ","

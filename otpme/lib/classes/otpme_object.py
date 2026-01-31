@@ -2213,6 +2213,12 @@ class OTPmeObject(OTPmeBaseObject):
     def auto_disable_time(self):
         if not self.auto_disable:
             return 0.0
+        auto_disable_time = self.get_auto_disable_time()
+        auto_disable_time = datetime.datetime.fromtimestamp(auto_disable_time)
+        auto_disable_time = auto_disable_time.strftime('%d.%m.%Y %H:%M:%S')
+        return auto_disable_time
+
+    def get_auto_disable_time(self):
         if self.unused_disable:
             check_time = self.get_last_used_time()
         else:
@@ -2224,8 +2230,6 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Invalid date string: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg)
-        auto_disable_time = datetime.datetime.fromtimestamp(auto_disable_time)
-        auto_disable_time = auto_disable_time.strftime('%d.%m.%Y %H:%M:%S')
         return auto_disable_time
 
     #@property
@@ -4233,7 +4237,7 @@ class OTPmeObject(OTPmeBaseObject):
                 return callback.error(msg)
 
         # Get policy options.
-        policy_options = policy.activate()
+        policy_options = policy.activate(self, callback=callback)
 
         try:
             current_options = self.policy_options[policy.uuid]
@@ -4261,6 +4265,7 @@ class OTPmeObject(OTPmeBaseObject):
         self.policies.append(policy.uuid)
         if policy_options:
             self.policy_options[policy.uuid] = policy_options
+
         # Update index.
         self.add_index('policy', policy.uuid)
 
@@ -4294,7 +4299,7 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.error(msg)
 
         # Get policy options.
-        policy_options = policy.activate()
+        policy_options = policy.activate(self, callback=callback)
 
         # Update policy options of object.
         self.policy_options[policy.uuid] = policy_options
@@ -4512,9 +4517,10 @@ class OTPmeObject(OTPmeBaseObject):
             if x.policy_type in ignore_policy_types:
                 continue
             try:
-                policy_options = stuff.copy_object(self.policy_options[x.uuid])
-            except:
+                policy_options = stuff.copy_object(dict(self.policy_options[x.uuid]))
+            except KeyError:
                 policy_options = {}
+
             for a in kwargs:
                 v = kwargs[a]
                 policy_options[a] = v
@@ -5473,6 +5479,11 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("Auto-disable active for this object: {auto_disable_time}")
             msg = msg.format(auto_disable_time=self.auto_disable_time)
             callback.send(msg)
+            # Clear hostd dict.
+            try:
+                multiprocessing.auto_disable_times.pop(self.uuid)
+            except KeyError:
+                pass
 
         return self._cache(callback=callback)
 
@@ -6415,17 +6426,15 @@ class OTPmeObject(OTPmeBaseObject):
             return
         if not self._enabled:
             return
-        if self.unused_disable:
-            check_time = self.get_last_used_time()
-        else:
-            check_time = self.auto_disable_start_time
-        disable_time = units.string2unixtime(self.auto_disable, check_time)
+        disable_time = self.get_auto_disable_time()
         now = time.time()
         if now >= disable_time:
+            callback = JobCallback(name="auto_disable", client="auto_disable")
             try:
                 self.disable(force=True,
                             verify_acls=False,
-                            run_policies=False)
+                            run_policies=False,
+                            callback=callback)
                 object_disabled = True
                 self._write()
             except Exception as e:
@@ -6486,6 +6495,12 @@ class OTPmeObject(OTPmeBaseObject):
             self.auto_disable = auto_disable
             self.auto_disable_start_time = time.time()
             self.update_index('auto_disable', True)
+
+        # Clear hostd dict.
+        try:
+            multiprocessing.auto_disable_times.pop(self.uuid)
+        except KeyError:
+            pass
 
         return self._cache(callback=callback)
 
