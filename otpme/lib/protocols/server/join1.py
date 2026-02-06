@@ -733,6 +733,22 @@ class OTPmeJoinP1(OTPmeServer1):
                 msg = (_("Access denied."))
             raise OTPmeException(msg)
 
+        # On leave a client cert must be sent by the client.
+        if not self.peer:
+            msg, log_msg = _("Cannot leave host connected without valid client cert: {host_fqdn}", log=True)
+            msg = msg.format(host_fqdn=host_fqdn)
+            log_msg = log_msg.format(host_fqdn=host_fqdn)
+            self.logger.warning(log_msg)
+            raise OTPmeException(msg)
+
+        # If a host/node is connected, it may only leave itself.
+        if host.uuid != self.peer.uuid:
+            msg = _("Access denied: Connected {peer_type} does not match leave target: {peer_name} <> {host_name}")
+            msg = msg.format(peer_type=self.peer.type,
+                            peer_name=self.peer.name,
+                            host_name=host.name)
+            raise OTPmeException(msg)
+
         # Cannot leave host from other site.
         if host.site_uuid != config.site_uuid:
             msg = _("Cannot leave {host_type} from other site: {host_name}")

@@ -405,10 +405,10 @@ class OTPmeServer1(object):
             msg = _("Failed to sign ident challenge: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg)
-        ident_response = {}
-        ident_response['site_cert'] = site_cert.cert
-        ident_response['ident_response'] = ident_response
-        return ident_response
+        response = {}
+        response['site_cert'] = site_cert.cert
+        response['ident_response'] = ident_response
+        return response
 
     def check_cluster_status(self):
         check_cluster_status()

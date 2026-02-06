@@ -90,8 +90,7 @@ class YubikeyHmacClientHandler(object):
 
         if not no_token_write:
             if not config.force:
-                message(_("WARNING!!!!!!! You will lose any key/password "
-                        "configured for the given slot!!!"))
+                message(_("WARNING!!!!!!! You will lose any key/password configured for the given slot!!!"))
                 msg = _("Write HMAC-SHA1 secret to slot '{slot}'?: ")
                 msg = msg.format(slot=slot)
                 ask = cli.user_input(msg)

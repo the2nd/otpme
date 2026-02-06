@@ -106,15 +106,14 @@ def audit_log(ignore_args=None, ignore_api_calls=False):
                     return result
                 auth_token = "API"
 
+            job_client = "Unknown client"
+            job_error = "Unknown error"
             if callback:
                 job_client = callback.job.client
                 try:
                     job_error = callback.job.exit_info['last_error']
                 except KeyError:
                     pass
-            else:
-                job_client = "Unknown client"
-                job_error = "Unknown error"
 
             if result is False:
                 audit_msg = _("[{pid}] Client: {client}: Token: {token}: Job failed ({error}): Data: {func} {self} {args} {kwargs}", log=True)[1]
