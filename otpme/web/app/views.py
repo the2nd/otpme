@@ -137,15 +137,15 @@ def login():
             logger.critical(log_msg)
             flash("Internal error while authenticating user.")
             return redirect(url_for('login', _external=True, _scheme='https'))
+        try:
+            auth_token = auth_response['token']
+            session_uuid = auth_response['session']
+        except KeyError:
+            log_msg = _("Invalid auth response.", log=True)[1]
+            logger.warning(log_msg)
+            flash("Login failed.")
+            return redirect(url_for('login', _external=True, _scheme='https'))
     if not auth_status:
-        flash("Login failed.")
-        return redirect(url_for('login', _external=True, _scheme='https'))
-    try:
-        auth_token = auth_response['token']
-        session_uuid = auth_response['session']
-    except KeyError:
-        log_msg = _("Invalid auth response.", log=True)[1]
-        logger.warning(log_msg)
         flash("Login failed.")
         return redirect(url_for('login', _external=True, _scheme='https'))
     config.auth_token = auth_token
@@ -315,6 +315,7 @@ def do_jwt_auth(user, password, client_ip):
                                 client_ip=client_ip,
                                 realm_login=False,
                                 realm_logout=False,
+                                jwt_auth=True,
                                 jwt_reason=jwt_reason,
                                 verify_jwt_ag=False,
                                 redirect_challenge=redirect_challenge,

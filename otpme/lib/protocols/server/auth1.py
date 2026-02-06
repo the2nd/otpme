@@ -546,8 +546,8 @@ class OTPmeAuthP1(OTPmeServer1):
                 # Audit logging.
                 if audit_logger:
                     audit_msg = f"{config.daemon_name}: {log_msg}"
-                    self.audit_logger.info(audit_msg)
-                    for x in self.audit_logger.handlers:
+                    audit_logger.info(audit_msg)
+                    for x in audit_logger.handlers:
                         x.close()
             else:
                 auth_response = {
@@ -560,8 +560,8 @@ class OTPmeAuthP1(OTPmeServer1):
                 # Audit logging.
                 if audit_logger:
                     audit_msg = f"{config.daemon_name}: {log_msg}"
-                    self.audit_logger.warning(audit_msg)
-                    for x in self.audit_logger.handlers:
+                    audit_logger.warning(audit_msg)
+                    for x in audit_logger.handlers:
                         x.close()
         else:
             # Build auth request.
