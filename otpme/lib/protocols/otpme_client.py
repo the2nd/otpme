@@ -2060,7 +2060,7 @@ class OTPmeClient(OTPmeClientBase):
 
         return status_code, response
 
-    def close(self):
+    def close(self, keep_agent_conn=False):
         """ Close our connection. """
         # Close redirect connection.
         if self.redirect_connection:
@@ -2068,8 +2068,9 @@ class OTPmeClient(OTPmeClientBase):
         # Close connection.
         if self.connection:
             self.connection.close()
-        if self.agent_conn:
-            self.agent_conn.close()
+        if not keep_agent_conn:
+            if self.agent_conn:
+                self.agent_conn.close()
         # Set status.
         self.connected = False
 
@@ -2558,7 +2559,8 @@ class OTPmeClient1(OTPmeClientBase):
         finally:
             # Close redirect connection.
             if login:
-                redirect_connection.close()
+                redirect_connection.close(keep_agent_conn=True)
+                pass
 
         if not login:
             self.redirect_connection = redirect_connection
@@ -3422,6 +3424,7 @@ class OTPmeClient1(OTPmeClientBase):
             except Exception as login_exception:
                 if self.login_redirect and self.login_redirect_status:
                     log_msg = _("Redirected login failed: {login_exception}", log=True)[1]
+                    log_msg = log_msg.format(login_exception=login_exception)
                     self.logger.warning(log_msg)
                     # If this was a login redirect send logout request for
                     # users home site.
@@ -3583,10 +3586,12 @@ class OTPmeClient1(OTPmeClientBase):
                     self.cleanup()
                     raise AuthFailed(msg)
 
-            # Get offline session key (e.g. to be forwarded on login redirect).
-            if not self._offline_token.session_key_private:
-                self._offline_token.gen_session_key()
-            self.offline_session_key = self._offline_token.session_key_public
+            # Check if we got a session key from redirect connection.
+            if self.offline_session_key is None:
+                # Get offline session key (e.g. to be forwarded on login redirect).
+                if not self._offline_token.session_key_private:
+                    self._offline_token.gen_session_key()
+                self.offline_session_key = self._offline_token.session_key_public
 
             # Get SLPs of old offline sessions we will try to logout.
             try:
@@ -4556,12 +4561,6 @@ class OTPmeClient1(OTPmeClientBase):
                 pass
             # Remove agent connection
             self.connection.ssh_agent_conn = None
-
-        # Close otpme-agent connection
-        if self.connection.agent_conn:
-            self.connection.agent_conn.close()
-            # Remove agent connection
-            self.connection.agent_conn = None
 
         # Workaround for "[Errno 16] Resource busy" with yubikey.
         if self.smartcard:

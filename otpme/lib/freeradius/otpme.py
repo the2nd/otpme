@@ -32,7 +32,7 @@ from otpme.lib.otpme_config import OTPmeConfig
 config = OTPmeConfig(tool_name="radius_module")
 otpme.lib.config = config
 # Init OTPme.
-init_otpme()
+init_otpme(load_host_data=False)
 
 from otpme.lib import backend
 from otpme.lib import auth_cache

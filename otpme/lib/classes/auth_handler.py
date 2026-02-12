@@ -1198,6 +1198,13 @@ class AuthHandler(object):
             self.logger.warning(log_msg)
             self.auth_failed = True
             self.auth_message = "AUTH_TOKEN_MISSING"
+        # Without password tokens assigned to accessgroup we must not
+        # count failed logins and must not block users.
+        if not self.valid_user_tokens_static:
+            if not self.user_default_token:
+                self.count_fails = False
+            elif self.user_default_token.pass_type != "static":
+                self.count_fails = False
 
     def try_temp_pass_auth(self, verify_token, token_verify_parms):
         """ Check temp password if set. """
@@ -1675,9 +1682,9 @@ class AuthHandler(object):
     def verify_jwt(self):
         """ Verify received JWT. """
         # Get users site public key to verify the JWT.
-        site = backend.get_object(object_type="site",
-                            uuid=self.user.site_uuid)
-        site_jwt_key = site._cert_public_key
+        user_site = backend.get_object(object_type="site",
+                                    uuid=self.user.site_uuid)
+        site_jwt_key = user_site._cert_public_key
 
         # The JWT reason we need to check.
         if self.jwt_reason:
@@ -1849,20 +1856,57 @@ class AuthHandler(object):
             self.auth_message = "AUTH_JWT_UNKNOWN_TOKEN"
             return
 
-        if self.auth_token.realm != site.realm:
+        if self.auth_token.realm != user_site.realm:
             self.auth_failed = True
             self.auth_message = "AUTH_JWT_INVALID_TOKEN_REALM"
             return
 
-        if self.auth_token.site != site.name:
+        if self.auth_token.site != user_site.name:
             self.auth_failed = True
             self.auth_message = "AUTH_JWT_INVALID_TOKEN_SITE"
             return
 
         if self.auth_token.site == config.site:
-            self.auth_failed = True
-            self.auth_message = "AUTH_JWT_TOKEN_SITE_IS_OWN_SITE"
-            return
+            # Get auth realm/site.
+            try:
+                auth_realm = outer_jwt_data['realm']
+            except:
+                log_msg = _("JWT data is missing auth realm.", log=True)[1]
+                self.logger.warning(log_msg)
+                self.auth_failed = True
+                self.auth_message = "AUTH_OUTER_JWT_REALM_MISSING"
+                self.count_fails = False
+                return
+            try:
+                auth_site = outer_jwt_data['site']
+            except:
+                log_msg = _("JWT data is missing auth site.", log=True)[1]
+                self.logger.warning(log_msg)
+                self.auth_failed = True
+                self.auth_message = "AUTH_OUTER_JWT_SITE_MISSING"
+                self.count_fails = False
+                return
+            result = backend.search(object_type="site",
+                                    attribute="name",
+                                    value=auth_site,
+                                    realm=auth_realm,
+                                    return_type="instance")
+            if not result:
+                log_msg = _("JWT data with unknown site: {realm}/{site}", log=True)[1]
+                log_msg = log_msg.format(realm=auth_realm, site=auth_site)
+                self.logger.warning(log_msg)
+                self.auth_failed = True
+                self.auth_message = "AUTH_OUTER_JWT_UNKNOWN_SITE"
+                self.count_fails = False
+                return
+
+            _auth_site = result[0]
+            _own_site = backend.get_object(uuid=config.site_uuid)
+
+            if _auth_site.uuid not in _own_site.trusted_sites:
+                self.auth_failed = True
+                self.auth_message = "AUTH_JWT_TOKEN_SITE_IS_OWN_SITE"
+                return
 
         # Verify auth token (group membership etc.)
         self.verify_auth_token()

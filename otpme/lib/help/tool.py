@@ -304,6 +304,13 @@ cmd_help = {
                                 },
                 },
 
+    'get_user_site'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-tool get_user_site'),
+                    '_help' :   {
+                                    'cmd'                   : _('Get site of login user.'),
+                                },
+                },
+
     'import'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool import {file}'),
                     'cmd'   :   '--password :password: <|object|>',

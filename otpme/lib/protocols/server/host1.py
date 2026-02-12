@@ -405,13 +405,18 @@ class OTPmeHostP1(OTPmeServer1):
         elif command == "get_user_site":
             try:
                 username = command_args['username']
+                status = True
             except:
                 username = None
                 message = _("{error_code} INCOMPLETE_COMMAND")
                 message = message.format(error_code=status_codes.ERR)
                 status = False
 
-            if username:
+            if not username:
+                message = "INCOMPLETE_COMMAND"
+                status = False
+
+            if status:
                 if "@" in username:
                     user_name = username.split("@")[0]
                     user_realm = username.split("@")[1]

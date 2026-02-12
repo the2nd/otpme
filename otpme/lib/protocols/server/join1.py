@@ -260,9 +260,7 @@ class OTPmeJoinP1(OTPmeServer1):
         result = backend.search(object_type="group",
                                 attribute="name",
                                 value=config.realm_users_group,
-                                return_type="uuid",
-                                realm=config.realm,
-                                site=config.site)
+                                return_type="uuid")
         for x in result:
             sync_objects.append(("group", x))
 

@@ -21,6 +21,7 @@ try:
 except:
     pass
 
+from otpme.lib import net
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import filetools
@@ -1262,7 +1263,7 @@ class PamHandler(object):
         self.logger.critical(log_msg)
         raise OTPmeException(msg)
 
-    def online_auth(self, login=False):
+    def online_auth(self, realm=None, site=None, login=False):
         """ Try to login/authenticate user against OTPme server. """
         from otpme.lib.classes.login_handler import LoginHandler
         # Activate autoconfirm of otpme-pinentry to autoconfirm key usage while
@@ -1328,7 +1329,9 @@ class PamHandler(object):
         # Send auth/login request.
         login_handler = LoginHandler()
         try:
-            login_handler.login(username=self.username,
+            login_handler.login(realm=realm,
+                                site=site,
+                                username=self.username,
                                 password_method=self.get_password,
                                 use_ssh_agent=self.use_ssh_agent,
                                 start_ssh_agent=start_ssh_agent,
@@ -1372,7 +1375,7 @@ class PamHandler(object):
                 self.auth_message = self.auth_message.format(error=e)
                 log_msg = log_msg.format(error=e)
             self.logger.warning(log_msg, exc_info=True)
-            return
+            raise
 
         # Get login response.
         login_response = login_handler.login_response
@@ -1416,6 +1419,7 @@ class PamHandler(object):
                                             user=self.username,
                                             group=True,
                                             recursive=True)
+                    # FIXME: set permissions to 0o700?
                 else:
                     filetools.create_dir(path=home_dir,
                                         user=self.username,
@@ -1515,6 +1519,11 @@ class PamHandler(object):
         # Get user UUID.
         self.user_uuid = self.get_user_uuid()
 
+        # Try to get user site (e.g. used by key script).
+        user_site = self.hostd_conn.get_user_site(self.username)
+        if user_site:
+            self.pamh.env['OTPME_USER_SITE'] = user_site
+
         if not self.user_uuid:
             log_msg = _("Unknown user: {user}", log=True)[1]
             log_msg = log_msg.format(user=self.username)
@@ -1603,7 +1612,6 @@ class PamHandler(object):
         #    # FIXME: should we do the same here for smartcard sessions???
         #    #       - we need to add token type to otpme-agent for this!!!
 
-
         # If we are already logged in (e.g. this is a screen unlock request) we
         # just have to verify the given credentials.
         if self.login_status is not False:
@@ -1660,7 +1668,10 @@ class PamHandler(object):
                         self.logger.warning(log_msg)
                 self.start_ssh_agent()
                 # Try to authenticate user with OTPme servers.
-                self.online_auth(login=False)
+                try:
+                    self.online_auth(login=False)
+                except Exception:
+                    pass
                 # If authentication was successful no need to try offline auth.
                 if self.auth_status:
                     try_offline_auth = False
@@ -1757,7 +1768,25 @@ class PamHandler(object):
                     self.logger.warning(log_msg, exc_info=True)
 
             # Try to auth/login user via OTPme servers.
-            self.online_auth(login=self.realm_login)
+            try:
+                self.online_auth(login=self.realm_login)
+            except Exception:
+                # Try to get realm/site to connect to via DNS.
+                x = net.get_otpme_site(config.realm)
+                try:
+                    realm = x['realm']
+                    site = x['site']
+                except KeyError:
+                    pass
+                else:
+                    if realm == config.realm:
+                        if site != config.site:
+                            try:
+                                self.online_auth(realm=realm,
+                                                site=site,
+                                                login=self.realm_login)
+                            except Exception:
+                                pass
 
             if not self.auth_status:
                 if not self.auth_failed and self.offline_token.status():

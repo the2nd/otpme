@@ -336,6 +336,110 @@ class CommandHandler(object):
 
         return response
 
+    def get_user_key_mode(self, username):
+        # Make sure we have our realm set.
+        self.init()
+        # Get user site.
+        hostd_conn = connections.get("hostd")
+        user_site = hostd_conn.get_user_site(username)
+        # Get mgmtd connection to users site.
+        if config.use_mgmtd_socket:
+            if not config.use_api and config.use_agent:
+                login_status = self.get_login_status()
+                if not login_status:
+                    config.use_socket = True
+        conn_kwargs = {}
+        conn_kwargs['use_agent'] = True
+        conn_kwargs['auto_auth'] = False
+        conn_kwargs['auto_preauth'] = False
+        if config.use_socket:
+            conn_kwargs['use_agent'] = False
+            conn_kwargs['use_ssl'] = False
+            conn_kwargs['local_socket'] = True
+            conn_kwargs['handle_host_auth'] = False
+            conn_kwargs['handle_user_auth'] = False
+            conn_kwargs['encrypt_session'] = False
+            conn_kwargs['socket_uri'] = config.mgmtd_socket_path
+
+        mgmtd_conn = connections.get(daemon="mgmtd",
+                                    realm=config.realm,
+                                    site=user_site,
+                                    **conn_kwargs)
+        # Get key mode of users private key (server or client).
+        key_mode = mgmtd_conn.get_user_key_mode(username)
+        return key_mode
+
+    def get_user_key_script_path(self, username, **kwargs):
+        # Make sure we have our realm set.
+        self.init()
+        # Get user site.
+        hostd_conn = connections.get("hostd")
+        user_site = hostd_conn.get_user_site(username)
+        # Get mgmtd connection to users site.
+        if config.use_mgmtd_socket:
+            if not config.use_api and config.use_agent:
+                login_status = self.get_login_status()
+                if not login_status:
+                    config.use_socket = True
+        conn_kwargs = {}
+        conn_kwargs['use_agent'] = True
+        conn_kwargs['auto_auth'] = False
+        conn_kwargs['auto_preauth'] = False
+        if config.use_socket:
+            conn_kwargs['use_agent'] = False
+            conn_kwargs['use_ssl'] = False
+            conn_kwargs['local_socket'] = True
+            conn_kwargs['handle_host_auth'] = False
+            conn_kwargs['handle_user_auth'] = False
+            conn_kwargs['encrypt_session'] = False
+            conn_kwargs['socket_uri'] = config.mgmtd_socket_path
+
+        mgmtd_conn = connections.get(daemon="mgmtd",
+                                    realm=config.realm,
+                                    site=user_site,
+                                    **conn_kwargs)
+        script_path, \
+        script_opts = mgmtd_conn.get_user_key_script_path(username=username, **kwargs)
+        return script_path, script_opts
+
+    def get_script_sign(self, script_path, username=None, realm=None, site=None, **kwargs):
+        # Make sure we have our realm set.
+        self.init()
+        if realm is None:
+            realm = config.realm
+        if site is None:
+            site = config.site
+        # Get user site.
+        if username:
+            hostd_conn = connections.get("hostd")
+            site = hostd_conn.get_user_site(username)
+        # Get mgmtd connection to users site.
+        if config.use_mgmtd_socket:
+            if not config.use_api:
+                login_status = self.get_login_status()
+                if not login_status:
+                    if site == config.site:
+                        config.use_socket = True
+        conn_kwargs = {}
+        conn_kwargs['use_agent'] = True
+        conn_kwargs['auto_auth'] = False
+        conn_kwargs['auto_preauth'] = False
+        if config.use_socket:
+            conn_kwargs['use_agent'] = False
+            conn_kwargs['use_ssl'] = False
+            conn_kwargs['local_socket'] = True
+            conn_kwargs['handle_host_auth'] = False
+            conn_kwargs['handle_user_auth'] = False
+            conn_kwargs['encrypt_session'] = False
+            conn_kwargs['socket_uri'] = config.mgmtd_socket_path
+
+        mgmtd_conn = connections.get(daemon="mgmtd",
+                                    realm=realm,
+                                    site=site,
+                                    **conn_kwargs)
+        script_signs = mgmtd_conn.get_script_sign(script_path=script_path, **kwargs)
+        return script_signs
+
     def handle_command(self, command, command_line, client_type="CLIENT"):
         """ Handle given command. """
         register_module("otpme.lib.protocols.otpme_client")
@@ -1261,6 +1365,9 @@ class CommandHandler(object):
         if subcommand == "get_site":
             return self.handle_get_site_command()
 
+        if subcommand == "get_user_site":
+            return self.handle_get_user_site_command()
+
         if subcommand == "cache":
             return self.handle_cache_command(command_line)
 
@@ -1500,6 +1607,18 @@ class CommandHandler(object):
         #init_otpme()
         self.init()
         return config.site
+
+    def handle_get_user_site_command(self):
+        """ Handle get user site command. """
+        try:
+            hostd_conn = connections.get("hostd")
+        except Exception as e:
+            log_msg = _("Failed to get hostd connection: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            return
+        user_site = hostd_conn.get_user_site(config.login_user)
+        return user_site
 
     def handle_cache_command(self, command_line):
         """ Handle cache command. """
@@ -2600,7 +2719,8 @@ class CommandHandler(object):
                                             script_options=script_options)
         except Exception as e:
             config.raise_exception()
-            msg = f"Failed to run key script: {e}"
+            msg = _("Failed to run key script: {e}")
+            msg = msg.format(e=e)
             raise OTPmeException(msg)
 
         # Make sure script output is string.
@@ -2920,7 +3040,9 @@ class CommandHandler(object):
             raise OTPmeException(msg)
         # Get key script signatures.
         try:
-            script_signs = self.get_script_sign(script_path=script_path, **kwargs)
+            script_signs = self.get_script_sign(script_path=script_path,
+                                                username=username,
+                                                **kwargs)
         except Exception as e:
             msg = _("Error getting key script signatures: {e}")
             msg = msg.format(e=e)
@@ -2959,7 +3081,9 @@ class CommandHandler(object):
             raise OTPmeException(msg)
         # Get SSH script signatures.
         try:
-            script_signs = self.get_script_sign(script_path=script_path, **kwargs)
+            script_signs = self.get_script_sign(script_path=script_path,
+                                                username=username,
+                                                **kwargs)
         except Exception as e:
             msg = _("Error getting SSH script signatures: {e}")
             msg = msg.format(e=e)
@@ -5263,10 +5387,12 @@ class CommandHandler(object):
         new_password = None
         # Get login user.
         login_user = config.login_user
+        if not login_user:
+            login_user = config.system_user()
 
         # Get key mode of users private key (server or client).
         try:
-            key_mode = self.get_user_key_mode(username=login_user)
+            key_mode = self.get_user_key_mode(login_user)
         except Exception as e:
             msg = _("Error getting key mode: {e}")
             msg = msg.format(e=e)
@@ -5761,10 +5887,12 @@ class CommandHandler(object):
         self.init()
         # Get login user.
         login_user = config.login_user
+        if not login_user:
+            login_user = config.system_user()
 
         # Get key mode of users private key (server or client).
         try:
-            key_mode = self.get_user_key_mode(username=login_user)
+            key_mode = self.get_user_key_mode(login_user)
         except Exception as e:
             config.raise_exception()
             msg = _("Error getting key mode: {e}")
@@ -6849,7 +6977,7 @@ class CommandHandler(object):
     def handle_auth_command(self, command, subcommand, command_line):
         """ Handle auth command. """
         register_module("otpme.lib.classes.realm")
-        self.init(use_backend=False)
+        self.init(use_backend=False, load_host_data=False)
         cache.init()
         cache.enable()
         # Get command syntax.
@@ -6920,6 +7048,8 @@ class CommandHandler(object):
 
         # Get login user.
         login_user = config.login_user
+        if not login_user:
+            login_user = config.system_user()
 
         # Get command syntax.
         try:
@@ -6954,7 +7084,7 @@ class CommandHandler(object):
 
         # Get key mode of users private key (server or client).
         try:
-            key_mode = self.get_user_key_mode(username=login_user)
+            key_mode = self.get_user_key_mode(login_user)
         except Exception as e:
             msg = _("Error getting key mode: {e}")
             msg = msg.format(e=e)

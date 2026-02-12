@@ -70,7 +70,9 @@ def get(script_path):
 
         # Try to get script signatures.
         try:
-            signatures = command_handler.get_script_sign(script_path=script_path)
+            signatures = command_handler.get_script_sign(script_path=script_path,
+                                                        realm=config.realm,
+                                                        site=config.site)
         except Exception as e:
             config.raise_exception()
             msg = _("Error getting script signatures: {script_path}: {e}")

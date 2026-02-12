@@ -104,7 +104,7 @@ def set_realm_site():
             msg = _("Missing site!")
             raise OTPmeException(msg)
 
-def do_direct_init():
+def do_direct_init(load_host_data=True):
     """ Init OTPme via direct backend access. """
     # Register modules (e.g. OID schema of objects).
     from otpme.lib import host
@@ -148,13 +148,14 @@ def do_direct_init():
     config.update_realm_data()
 
     # Try to update our host data.
-    try:
-        host.update_data()
-    except:
-        config.raise_exception()
-        raise
+    if load_host_data:
+        try:
+            host.update_data()
+        except:
+            config.raise_exception()
+            raise
 
-def do_hostd_init():
+def do_hostd_init(load_host_data=True):
     """ Init OTPme by getting infos from hostd. """
     from otpme.lib import host
     #from otpme.lib import connections
@@ -181,16 +182,17 @@ def do_hostd_init():
     except:
         pass
 
-    ignore_missing = False
-    if config.realm_init:
-        ignore_missing = True
+    if load_host_data:
+        ignore_missing = False
+        if config.realm_init:
+            ignore_missing = True
 
-    # Try to set our host data.
-    try:
-        host.load_data(ignore_missing)
-    except:
-        config.raise_exception()
-        raise
+        # Try to set our host data.
+        try:
+            host.load_data(ignore_missing)
+        except:
+            config.raise_exception()
+            raise
 
     # Get realm data from file.
     try:
@@ -216,7 +218,7 @@ def do_hostd_init():
                     auth_fqdn=site_auth_fqdn,
                     mgmt_fqdn=site_mgmt_fqdn)
 
-def init_otpme(use_backend=None):
+def init_otpme(use_backend=None, load_host_data=True):
     """ Init OTPme. """
     from otpme.lib import backend
     #from otpme.lib.messages import message
@@ -305,11 +307,11 @@ def init_otpme(use_backend=None):
     if use_backend:
         log_msg = _("Doing direct init...", log=True)[1]
         logger.debug(log_msg)
-        do_direct_init()
+        do_direct_init(load_host_data=load_host_data)
     else:
         log_msg = _("Doing hostd init...", log=True)[1]
         logger.debug(log_msg)
-        do_hostd_init()
+        do_hostd_init(load_host_data=load_host_data)
 
     # Reload config after realm/site was set.
     config.reload()

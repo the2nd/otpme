@@ -141,10 +141,8 @@ class ConnectSocket(object):
             if self.use_ssl:
                 # Create default SSL context.
                 ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-                # FIXME: Is this all we need to enable PFS with python 2.7??
-                # Enable PFS.
-                # http://jderose.blogspot.de/2014/01/how-to-enable-perfect-forward-secrecy.html
-                ctx.set_ecdh_curve('secp384r1')
+                ## Enable PFS.
+                #ctx.set_ecdh_curve('secp384r1')
                 #ctx.set_ecdh_curve('prime256v1')
 
                 # Verify server certificate and CRL.
@@ -288,8 +286,8 @@ class ConnectSocket(object):
             raise ConnectionQuit(e)
         except Exception as e:
             self._close()
-            msg = _("Error sending data: {error}")
-            msg = msg.format(error=e)
+            msg = _("Error sending data: {error} ({socket_uri})")
+            msg = msg.format(error=e, socket_uri=self.socket_uri)
             raise OTPmeException(msg)
 
     def sendall(self, data, blocking=None, timeout=None, **kwargs):
@@ -311,8 +309,8 @@ class ConnectSocket(object):
             raise ConnectionQuit(e)
         except Exception as e:
             self._close()
-            msg = _("Error sending data: {error}")
-            msg = msg.format(error=e)
+            msg = _("Error sending all data: {error} ({socket_uri})")
+            msg = msg.format(error=e, socket_uri=self.socket_uri)
             raise ConnectionError(msg)
 
     def recv(self, recv_buffer=config.socket_receive_buffer, blocking=None, timeout=None, **kwargs):

@@ -443,14 +443,6 @@ class OTPmeServer1(object):
             msg = msg.format(user=self.client_user)
             raise OTPmeException(msg)
         user = result[0]
-        valid_user = False
-        if user.realm == config.realm:
-            if user.site == config.site:
-                valid_user = True
-        if not valid_user:
-            msg = _("Permission denied: {user}")
-            msg = msg.format(user=self.client_user)
-            raise OTPmeException(msg)
         try:
             default_token = user.get_default_token()
         except Exception as e:
@@ -1353,7 +1345,7 @@ class OTPmeServer1(object):
 
         else:
             self.preauth_status = False
-            message, log_msg = _("No token found to authenticate user.", log=True)
+            message, log_msg = _("No token found to authenticate user", log=True)
             preauth_response = {
                     'realm'                 : config.realm,
                     'site'                  : config.site,

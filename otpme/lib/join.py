@@ -89,7 +89,7 @@ class JoinHandler(object):
                                 enc_key=enc_key)
         return status, status_code, response
 
-    def get_daemon_conn(self, realm, site, socket_uri,
+    def get_daemon_conn(self, realm, site, socket_uri=None,
         username=None, password=None, jotp=None, lotp=None,
         trust_site_cert=False, check_site_cert=None,
         fingerprint_digest="sha256"):
@@ -851,16 +851,6 @@ class JoinHandler(object):
             if not domain:
                 domain = config.realm
 
-            log_msg = _("Trying to get master node via DNS...", log=True)[1]
-            logger.debug(log_msg)
-            # Try to get joind URI via DNS.
-            if not socket_uri:
-                socket_uri = net.get_daemon_uri("joind", domain)
-            if not socket_uri:
-                msg = _("Unable to resolve domain: {domain_name}")
-                msg = msg.format(domain_name=domain)
-                raise OTPmeException(msg)
-
             # With LOTP we can encrypt the leave request.
             if lotp:
                 # Make sure we encrypt communication from now on.
@@ -877,7 +867,6 @@ class JoinHandler(object):
             conn_kwargs['lotp'] = lotp
             conn_kwargs['username'] = username
             conn_kwargs['password'] = password
-            conn_kwargs['socket_uri'] = socket_uri
             conn_kwargs['realm'] = config.realm
             conn_kwargs['site'] = config.site
 

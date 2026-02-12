@@ -1012,6 +1012,9 @@ class OTPmeConfig(object):
         self.locks_dir = os.path.join(self.run_dir, "locks")
         if self.daemon_mode and self.daemon_name == "agent":
             self.locks_dir = self.get_user_locks_dir(self.system_user())
+        if self.system_user() != self.user:
+            if self.system_user() != "root":
+                self.locks_dir = self.get_user_locks_dir(self.system_user())
         filetools.create_dir(self.locks_dir)
 
         self.sync_dir = os.path.join(self.spool_dir, "sync")

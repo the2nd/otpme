@@ -553,6 +553,11 @@ class OTPmeFS(fuse.Operations):
             if config.debug_enabled:
                 self.logger.debug(f"statfs failed for path: {path}")
             raise fuse.FuseOSError(response_code)
+        # Set blocksize to PREFERRED_BLOCK_SIZE to speedup tools like cp(1).
+        orig_frsize = response['f_frsize']
+        response['f_blocks'] = (response['f_blocks'] * orig_frsize) // PREFERRED_BLOCK_SIZE
+        response['f_bfree'] = (response['f_bfree'] * orig_frsize) // PREFERRED_BLOCK_SIZE
+        response['f_bavail'] = (response['f_bavail'] * orig_frsize) // PREFERRED_BLOCK_SIZE
         response['f_bsize'] = PREFERRED_BLOCK_SIZE
         response['f_frsize'] = PREFERRED_BLOCK_SIZE
         if config.debug_enabled:

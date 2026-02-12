@@ -55,7 +55,8 @@ def get_file_owner_group():
             config.ssl_site_cert_file   : file_mode,
             }
     # File owner.
-    file_owner = config.user
+    #file_owner = config.user
+    file_owner = "root"
     # Realm users group may not exist (e.g. on realm init)
     try:
         stuff.group_exists(config.realm_users_group)
@@ -74,8 +75,10 @@ def set_ssl_file_perms():
             config.host_key_file        : 0o600,
             }
     filetools.ensure_fs_permissions(files=files,
-                                    user=config.user,
-                                    group=config.group)
+                                    #user=config.user,
+                                    #group=config.group)
+                                    user="root",
+                                    group="root")
 
 def update_ssl_files(host_cert=None, host_key=None,
     ca_data=None, site_cert=None, host_auth_key=None):
@@ -213,6 +216,7 @@ def update_ssl_files(host_cert=None, host_key=None,
             if e.errno != e.errno.EACCES:
                 raise
 
+    # NOTE: this is now done on realm init and host/node join.
     ## Make sure files have sane permissions.
     #set_ssl_file_perms()
 
@@ -333,8 +337,8 @@ def load_data(ignore_missing=False):
     multiprocessing.host_data['auth_key'] = f_host_auth_key
     return
 
-def update_data(host_cert=None, host_key=None,
-    ca_data=None, site_cert=None, host_auth_key=None):
+def update_data(host_cert=None, host_key=None, ca_data=None,
+    site_cert=None, host_auth_key=None, ignore_missing=None):
     """
     Update data of our host "host_data" dictionary as well
     as SSL cert/key files.
@@ -343,11 +347,12 @@ def update_data(host_cert=None, host_key=None,
         if not os.path.exists(config.uuid_file):
             raise Exception(_("Host is not a realm member."))
 
-    ignore_missing = False
-    if config.realm_init:
-        ignore_missing = True
-    if config.realm_join:
-        ignore_missing = True
+    if ignore_missing is None:
+        ignore_missing = False
+        if config.realm_init:
+            ignore_missing = True
+        if config.realm_join:
+            ignore_missing = True
 
     # Load host data.
     load_data(ignore_missing)
@@ -463,6 +468,7 @@ def update_data(host_cert=None, host_key=None,
             site_cert = mysite.cert
             update_ssl_files(site_cert=site_cert)
 
+    # NOTE: this is now done on realm init and host/node join.
     ## Make sure files have sane permissions.
     #set_ssl_file_perms()
 
