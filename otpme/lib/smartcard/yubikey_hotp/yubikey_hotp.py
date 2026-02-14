@@ -45,6 +45,10 @@ class YubikeyHotpClientHandler(object):
         self.error_message_method = print
         self.logger = config.logger
 
+    def get_pre_deploy_args(self):
+        pre_deploy_args = {}
+        return pre_deploy_args
+
     def handle_deploy(self, command_handler, no_token_write=False, pre_deploy_result=None, **kwargs):
         # Get command syntax.
         try:

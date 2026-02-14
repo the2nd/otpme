@@ -327,7 +327,14 @@ class OTPmeMgmtP1(OTPmeServer1):
             job_response = job_response.format(max=self.max_jobs)
             return False, job_response
         # Get method args from command_args
-        _method_args = self.get_method_args(command_args, args, _args, opt_args, _opt_args, _dargs)
+        try:
+            _method_args = self.get_method_args(command_args, args, _args, opt_args, _opt_args, _dargs)
+        except Exception as e:
+            job_status = False
+            job_response = _("Failed to get arguments: {e}")
+            job_response = job_response.format(e=e)
+            return job_status, job_response
+
         _caller = _method_args['_caller']
 
         # Get timeout arg.
@@ -3003,7 +3010,13 @@ class OTPmeMgmtP1(OTPmeServer1):
                 job_name = f"{job_name} {object_name}"
 
             if job_type is None:
-                _method_args = self.get_method_args(command_args, args, _args, opt_args, _opt_args, _dargs)
+                try:
+                    _method_args = self.get_method_args(command_args, args, _args, opt_args, _opt_args, _dargs)
+                except Exception as e:
+                    status = False
+                    response = _("Failed to get arguments: {e}")
+                    response = job_response.format(e=e)
+                    return self.build_response(status, response)
                 try:
                     response = command_method(**_method_args)
                     status = True

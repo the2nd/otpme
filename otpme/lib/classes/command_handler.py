@@ -5774,7 +5774,7 @@ class CommandHandler(object):
             replace = False
 
         try:
-            smartcard_client_handler = config.get_smartcard_handler(smartcard_type)[0]
+            sc_client_handler = config.get_smartcard_handler(smartcard_type)[0]
         except NotRegistered:
             raise
 
@@ -5805,7 +5805,7 @@ class CommandHandler(object):
                     return self.get_help(message=msg)
 
         try:
-            smartcard_client_handler = smartcard_client_handler(sc_type=smartcard_type,
+            smartcard_client_handler = sc_client_handler(sc_type=smartcard_type,
                                                         token_rel_path=object_identifier)
         except ShowHelp as e:
             return str(e)
@@ -5814,6 +5814,8 @@ class CommandHandler(object):
         self.init()
 
         self.command_args['pre_deploy'] = True
+        pre_deploy_args = smartcard_client_handler.get_pre_deploy_args()
+        self.command_args['pre_deploy_args'] = pre_deploy_args
         # Build command line for "user deploy_token" command
         user_name = object_identifier.split("/")[0]
         token_name = object_identifier.split("/")[1]

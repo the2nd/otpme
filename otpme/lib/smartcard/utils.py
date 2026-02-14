@@ -45,10 +45,11 @@ def detect_smartcard(sc_types=None, detect_only=False, print_devices=False):
         if not search_smartcard:
             smartcard = None
             continue
-        log_msg = _("Searching for smartcard: {type}", log=True)[1]
+        msg, log_msg = _("Searching for smartcard: {type}", log=True)
         log_msg = log_msg.format(type=s)
         logger.debug(log_msg)
         if print_devices:
+            msg = msg.format(type=s)
             print(msg)
         try:
             smartcard.detect(print_devices=print_devices)

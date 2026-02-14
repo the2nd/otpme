@@ -46,6 +46,10 @@ class YubikeyHmacClientHandler(object):
         self.error_message_method = print
         self.logger = config.logger
 
+    def get_pre_deploy_args(self):
+        pre_deploy_args = {}
+        return pre_deploy_args
+
     def handle_deploy(self, command_handler, no_token_write=False, **kwargs):
         # Get command syntax.
         try:
@@ -188,8 +192,7 @@ class YubikeyHmacClientHandler(object):
         smartcard_data['token_rel_path'] = self.token_rel_path
         return smartcard_data
 
-    def handle_authentication(self, smartcard, smartcard_data,
-        password, peer_time_diff, **kwargs):
+    def handle_authentication(self, smartcard, smartcard_data, password, **kwargs):
         # Get yubikey slot.
         slot = smartcard_data['slot']
         # Get HMAC challenge.
@@ -209,10 +212,7 @@ class YubikeyHmacClientHandler(object):
             raise AuthFailed(msg)
         # If we got the token secret we can generate a OTPme
         # OTP as response.
-        epoch_time = time.time() - peer_time_diff
-        otp_epoch_time = int(str(int(epoch_time))[:-1])
-        response = motp.generate(epoch_time=otp_epoch_time,
-                                secret=secret, otp_count=1,
+        response = motp.generate(secret=secret, otp_count=1,
                                 otp_len=otp_len)
         return response
 

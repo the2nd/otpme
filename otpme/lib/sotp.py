@@ -58,7 +58,7 @@ def verify(password_hash, epoch_time=None, validity_range=None,
     if not epoch_time:
         # We need SOTPs in 1 second timestep because fuse mount
         # and key script sends OTPs one after another.
-        epoch_time = int(str(int(time.time())))
+        epoch_time = int(time.time())
 
     if not validity_range:
         # Calculate SOTP validity times.
@@ -108,7 +108,7 @@ def gen(epoch_time=None, password_hash=None, sotp_len=None,
     if not epoch_time:
         # We need SOTPs in 1 second timestep because fuse mount
         # and key script sends OTPs one after another.
-        epoch_time = int(str(int(time.time())))
+        epoch_time = int(time.time())
 
     if sotp_len is None:
         sotp_len = config.sotp_len
@@ -126,8 +126,10 @@ def gen(epoch_time=None, password_hash=None, sotp_len=None,
         secret = password_hash
 
     # Generate OTP.
-    otp = motp.generate(epoch_time=epoch_time, secret=secret,
-                        otp_count=1, otp_len=sotp_len)
+    otp = motp.generate(epoch_time=epoch_time,
+                        secret=secret,
+                        otp_count=1,
+                        otp_len=sotp_len)
     if reneg:
         # Generate new RSP.
         new_pass = derive_rsp(secret=otp,

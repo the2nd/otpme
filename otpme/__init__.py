@@ -25,7 +25,7 @@ __project_name__ = "otpme"
 #__email__ = "the2nd@otpme.org"
 #__credits__ = []
 #__license__ = "GPLv3"
-__version__ = "0.3.0a154"
+__version__ = "0.3.0a155"
 #__status__ = "Development Status :: 3 - Alpha"
 ## In future versions :D
 ##__status__ = "Development Status :: 4 - Beta"

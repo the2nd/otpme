@@ -112,15 +112,13 @@ class OathToken(Token):
             if not pin:
                 msg = _("Cannot generate secret without PIN.")
                 return callback.error(msg)
-            pin = pin.encode("utf-8")
             server_secret = self.server_secret
-            if isinstance(server_secret, str):
-                server_secret = server_secret.encode("utf-8")
             hash_string = f"{pin}{server_secret}".encode()
             sha512 = hashlib.sha512()
             sha512.update(hash_string)
             secret = sha512.hexdigest()
             secret = secret[0:self.secret_len]
+
             if self.secret_encoding == "base32":
                 secret = encode(secret, "base32")
 

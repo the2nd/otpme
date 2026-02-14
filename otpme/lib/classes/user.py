@@ -470,7 +470,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'deploy_token',
-                    'oargs'             : ['token_name', 'token_type', 'smartcard_type', 'deploy_data', 'pre_deploy', 'replace'],
+                    'oargs'             : ['token_name', 'token_type', 'smartcard_type', 'deploy_data', 'pre_deploy', 'pre_deploy_args', 'replace'],
                     'job_type'          : 'process',
                     },
                 },
@@ -3954,6 +3954,7 @@ class User(OTPmeObject):
         replace: bool=False,
         deploy_data: Union[str,None]=None,
         pre_deploy: bool=False,
+        pre_deploy_args: dict={},
         force: bool=False,
         run_policies: bool=True,
         verbose_level: int=0,
@@ -4061,10 +4062,11 @@ class User(OTPmeObject):
                 return callback.error("Error decoding token data.")
 
         if pre_deploy:
-            return token.pre_deploy(verbose_level=verbose_level,
-                            callback=callback,
-                            _caller=_caller,
-                            **deploy_args)
+            return token.pre_deploy(pre_deploy_args=pre_deploy_args,
+                                    verbose_level=verbose_level,
+                                    callback=callback,
+                                    _caller=_caller,
+                                    **deploy_args)
 
         if not token.deploy(verbose_level=verbose_level,
                             callback=callback,

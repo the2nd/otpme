@@ -1254,8 +1254,7 @@ class OTPmeClient(OTPmeClientBase):
                                                                 error_message_method=self.error_message_method)
         return self.smartcard_client_handler.handle_authentication(smartcard=self.smartcard,
                                                                     smartcard_data=smartcard_data,
-                                                                    password=self.password,
-                                                                    peer_time_diff=self.peer_time_diff)
+                                                                    password=self.password)
 
     def gen_user_keys(self, command_dict):
         """ Handle generation of users private/public keys via key script. """

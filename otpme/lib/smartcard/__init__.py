@@ -15,6 +15,7 @@ REGISTER_BEFORE = []
 REGISTER_AFTER = []
 
 modules = [
+        'otpme.lib.smartcard.u2f.u2f',
         'otpme.lib.smartcard.fido2.fido2',
         'otpme.lib.smartcard.yubikey_hmac.yubikey_hmac',
         'otpme.lib.smartcard.yubikey_hotp.yubikey_hotp',

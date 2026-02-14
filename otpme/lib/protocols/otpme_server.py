@@ -626,6 +626,7 @@ class OTPmeServer1(object):
                 preauth_result = self.handle_preauth(preauth_request,
                                                     enc_key=enc_key)
             except Exception as e:
+                #config.raise_exception()
                 status = False
                 message = _("Preauth failed.")
                 log_msg = _("Error in OTPmeServer1.handle_preauth(): {error}", log=True)[1]

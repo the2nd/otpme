@@ -265,12 +265,12 @@ def register_config_params():
     # MOTP validity time.
     config.register_config_parameter(name="motp_validity_time",
                                     ctype=int,
-                                    default_value=3,
+                                    default_value=60,
                                     object_types=object_types)
     # MOTP timedrift tolerance.
     config.register_config_parameter(name="motp_timedrift_tolerance",
                                     ctype=int,
-                                    default_value=3,
+                                    default_value=15,
                                     object_types=object_types)
     # MOTP default PIN length.
     config.register_config_parameter(name="motp_default_pin_len",

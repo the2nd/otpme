@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import json
 from datetime import datetime
 from cryptography import x509
-from fido2.server import Fido2Server
-from fido2.webauthn import RegistrationResponse
-from fido2.webauthn import AttestedCredentialData
+from fido2.utils import sha256
+from fido2.ctap1 import SignatureData
+from fido2.ctap1 import RegistrationData
 from cryptography.hazmat.primitives.asymmetric import padding
 
 from typing import Union
@@ -149,7 +148,7 @@ def register():
     register_token_type()
     register_commands("token",
                     commands,
-                    sub_type="fido2",
+                    sub_type="u2f",
                     sub_type_attribute="token_type")
     register_config_parameters()
 
@@ -158,7 +157,7 @@ def register_hooks():
 
 def register_token_type():
     """ Register token type. """
-    config.register_sub_object_type("token", "fido2")
+    config.register_sub_object_type("token", "u2f")
 
 def register_config_parameters():
     """ Registger config parameters. """
@@ -170,14 +169,14 @@ def register_config_parameters():
                         'token',
                     ]
     # Allow to rename default token?
-    config.register_config_parameter(name="check_fido2_attestation_cert",
+    config.register_config_parameter(name="check_u2f_attestation_cert",
                                     ctype=bool,
                                     default_value=False,
                                     object_types=object_types)
 
 @match_class_typing
-class Fido2Token(Token):
-    """ Class for fido2 tokens. """
+class U2fToken(Token):
+    """ Class for U2F tokens. """
     commands = commands
     def __init__(
         self,
@@ -191,7 +190,7 @@ class Fido2Token(Token):
         ):
 
         # Call parent class init.
-        super(Fido2Token, self).__init__(object_id=object_id,
+        super(U2fToken, self).__init__(object_id=object_id,
                                             realm=realm,
                                             site=site,
                                             user=user,
@@ -204,12 +203,14 @@ class Fido2Token(Token):
         self._default_acls = get_default_acls()
         self._recursive_default_acls = get_recursive_default_acls()
         # Set token type.
-        self.token_type = "fido2"
+        self.token_type = "u2f"
         # Set password type.
         self.pass_type = "smartcard"
-        self.uv = None
         # Set default values.
-        self.credential_data = None
+        self.reg_app_id = None
+        self.reg_challenge = None
+        self.key_handle = None
+        self.public_key = None
         self.attestation_cert = None
         self.allow_offline = False
         self.offline_expiry = 0
@@ -217,24 +218,31 @@ class Fido2Token(Token):
         self.keep_session = False
         self.offline_pinnable = True
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
-        self.supported_hardware_tokens = [ 'fido2' ]
+        self.supported_hardware_tokens = [ 'u2f' ]
 
     def _get_object_config(self):
         """ Merge token config with config from parent class. """
         token_config = {
-            'UV'                        : {
-                                            'var_name'      : 'uv',
+            'REG_APP_ID'          : {
+                                            'var_name'      : 'reg_app_id',
                                             'type'          : str,
                                             'required'      : False,
                                         },
-            'REG_STATE'                 : {
-                                            'var_name'      : 'reg_state',
-                                            'type'          : dict,
+
+            'REG_CHALLENGE'       : {
+                                            'var_name'      : 'reg_challenge',
+                                            'type'          : str,
                                             'required'      : False,
                                         },
 
-            'CREDENTIAL_DATA'           : {
-                                            'var_name'      : 'credential_data',
+            'KEY_HANDLE'                : {
+                                            'var_name'      : 'key_handle',
+                                            'type'          : str,
+                                            'required'      : False,
+                                        },
+
+            'PUBLIC_KEY'                : {
+                                            'var_name'      : 'public_key',
                                             'type'          : str,
                                             'required'      : False,
                                         },
@@ -265,39 +273,29 @@ class Fido2Token(Token):
         offline_config['NEED_OFFLINE_ENCRYPTION'] = need_encryption
         return offline_config
 
-    @property
-    def rp(self):
-        return config.realm
-
-    def get_fido2_server(self):
-        rp_data = {"id": config.realm, "name": "OTPme RP"}
-        fido2_server = Fido2Server(rp_data, attestation="direct")
-        return fido2_server
+    def gen_challenge(self):
+        """ Generate challenge. """
+        challenge = os.urandom(32)
+        challenge_hash = sha256(challenge)
+        challenge_hash_hex = encode(challenge_hash, "hex")
+        return challenge, challenge_hash, challenge_hash_hex
 
     @object_lock(full_lock=True)
     def pre_deploy(
         self,
-        pre_deploy_args: dict={},
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         ):
-        """ Deploy fido2 token. """
-        try:
-            self.uv = pre_deploy_args['uv']
-        except KeyError:
-            msg = _("Missing uv.")
-            return callback.error(msg)
-        fido2_server = self.get_fido2_server()
-        user_id = config.auth_user.name.encode()
-        user = {"id": user_id, "name": user_id}
-        # Server: create options.
-        create_options, \
-        self.reg_state = fido2_server.register_begin(user,
-                                user_verification=self.uv,
-                                authenticator_attachment="cross-platform")
-        create_options_json = json.dumps(dict(create_options))
-        response = {'create_options':create_options_json}
+        """ Deploy U2F token. """
+        # Generate registration ID.
+        self.reg_app_id = f"https://{self.realm}"
+        # Generate registration challenge.
+        self.reg_challenge = self.gen_challenge()[2]
+        response = {
+                'app_id'    : self.reg_app_id,
+                'challenge' : self.reg_challenge,
+                }
         self._write(callback=callback)
         return callback.ok(response)
 
@@ -311,32 +309,22 @@ class Fido2Token(Token):
         verbose_level: int=0,
         callback: JobCallback=default_callback,
         ):
-        """ Deploy fido2 token. """
+        """ Deploy U2F token. """
+        # Generate app id hash.
+        app_id_hash = sha256(self.reg_app_id.encode())
+        reg_challenge_hash = decode(self.reg_challenge, "hex")
+        registration_data = RegistrationData.from_b64(registration_data)
         try:
-            registration_data = json.loads(registration_data)
-        except Exception:
-            msg = _("Failed to load registration data.")
-            return callback.error(msg)
-        fido2_server = self.get_fido2_server()
-        try:
-            auth_data = fido2_server.register_complete(self.reg_state,
-                                                    registration_data)
+            registration_data.verify(app_param=app_id_hash,
+                                    client_param=reg_challenge_hash)
         except Exception as e:
-            msg = _("Failed to complete registration: {error}")
+            msg = _("Failed to verify registration parameters: {error}")
             msg = msg.format(error=e)
             return callback.error(msg)
-        check_attestation_cert = self.get_config_parameter("check_fido2_attestation_cert")
+        check_attestation_cert = self.get_config_parameter("check_u2f_attestation_cert")
         if check_attestation_cert:
-            # Parse the response to access the attestation object
-            registration = RegistrationResponse.from_dict(registration_data)
-            attestation_object = registration.response.attestation_object
-            # x5c contains the certificate chain (DER-encoded), x5c[0] is the attestation cert.
-            x5c = attestation_object.att_stmt.get("x5c")
-            if not x5c:
-                msg = _("Registration data misses attestation certificate.")
-                return callback.error(msg)
             try:
-                attestation_cert = x509.load_der_x509_certificate(x5c[0])
+                attestation_cert = x509.load_der_x509_certificate(registration_data.certificate)
             except Exception as e:
                 msg = _("Failed to load attestation certificate: {error}")
                 msg = msg.format(error=e)
@@ -349,18 +337,6 @@ class Fido2Token(Token):
             msg = _("Got attestation certificate issuer: {issuer}")
             msg = msg.format(issuer=issuer)
             callback.send(msg)
-            # Check attestation certificate validity.
-            now = datetime.now(attestation_cert.not_valid_before_utc.tzinfo)
-            if attestation_cert.not_valid_before_utc > now:
-                msg = _("Attestation certificate not yet valid: {not_valid_before}")
-                msg = msg.format(not_valid_before=attestation_cert.not_valid_before_utc)
-                return callback.error(msg)
-            now = datetime.now(attestation_cert.not_valid_before_utc.tzinfo)
-            if attestation_cert.not_valid_after_utc < now:
-                msg = _("Attestation certificate not valid anymore: {not_valid_before}")
-                msg = msg.format(not_valid_before=attestation_cert.not_valid_before_utc)
-                return callback.error(msg)
-            # Try to get fido2 CA cert.
             own_site = backend.get_object(uuid=config.site_uuid)
             if not own_site:
                 msg = _("Failed to load site: {site_uuid}")
@@ -391,14 +367,25 @@ class Fido2Token(Token):
                 msg = _("Failed to verify signature: {error}")
                 msg = msg.format(error=e)
                 return callback.error(msg)
-            msg = _("Attestation certificate verified succesfully.")
-            callback.send(msg)
-        # Set credential data.
-        self.credential_data = encode(auth_data.credential_data, "hex")
-        self.reg_state = {}
+            # Check attestation certificate validity.
+            now = datetime.now(attestation_cert.not_valid_before_utc.tzinfo)
+            if attestation_cert.not_valid_before_utc > now:
+                msg = _("Attestation certificate not yet valid: {not_valid_before}")
+                msg = msg.format(not_valid_before=attestation_cert.not_valid_before_utc)
+                return callback.error(msg)
+            now = datetime.now(attestation_cert.not_valid_before_utc.tzinfo)
+            if attestation_cert.not_valid_after_utc < now:
+                msg = _("Attestation certificate not valid anymore: {not_valid_before}")
+                msg = msg.format(not_valid_before=attestation_cert.not_valid_before_utc)
+                return callback.error(msg)
+
+        # Set key handle.
+        self.key_handle = encode(registration_data.key_handle, "hex")
+        # Set public key.
+        self.public_key = encode(registration_data.public_key, "hex")
         # Write object.
         self._cache(callback=callback)
-        msg = _("Fido2 token deployed successful.")
+        msg = _("U2F token deployed successful.")
         return callback.ok(msg)
 
     def test(
@@ -408,34 +395,41 @@ class Fido2Token(Token):
         **kwargs,
         ):
         """ Test token authentication. """
-        credential_data = decode(self.credential_data, "hex")
-        credentials = [AttestedCredentialData(credential_data)]
-        fido2_server = self.get_fido2_server()
-        request_options, \
-        self.auth_state = fido2_server.authenticate_begin(credentials,
-                                                    user_verification=self.uv)
-        request_options_json = json.dumps(dict(request_options))
+        # Get app ID.
+        app_id = self.reg_app_id
+        # Generate authentication challenge.
+        auth_challenge, \
+        auth_challenge_hash, \
+        auth_challenge_hash_hex = self.gen_challenge()
         smartcard_data = {
-                    'rp'                : self.rp,
-                    'token_path'        : self.rel_path,
-                    'pass_required'     : False,
-                    'request_options'   : request_options_json,
+                    'token_path'    : self.rel_path,
+                    'app_id'        : app_id,
+                    'challenge'     : auth_challenge_hash_hex,
+                    'key_handle'    : self.key_handle,
+                    'pass_required' : False,
                     }
         # Do smartcard authentication on client.
-        auth_response = callback.scauth(smartcard_type="fido2",
+        auth_response = callback.scauth(smartcard_type="u2f",
                                 smartcard_data=smartcard_data)
+        # Get signature data from response.
         try:
-            auth_response = json.loads(auth_response)
-        except Exception:
-            msg = _("Failed to decode auth response.")
-            return callback.error(msg)
-        try:
-            fido2_server.authenticate_complete(self.auth_state,
-                                                credentials,
-                                                auth_response)
+            signature_data = SignatureData.from_b64(auth_response)
         except Exception as e:
-            msg = _("Token verififcation failed: {e}")
-            msg = msg.format(e=e)
+            msg = _("Failed to load U2F signature data.")
+            return callback.error(msg)
+        # Generate app ID hash.
+        app_id_bytes = app_id.encode()
+        app_id_hash = sha256(app_id_bytes)
+        # Load public key.
+        public_key = decode(self.public_key, "hex")
+        # Verify signature.
+        try:
+            signature_data.verify(app_param=app_id_hash,
+                                client_param=auth_challenge_hash,
+                                public_key=public_key)
+        except Exception as e:
+            msg = _("U2F token response verification failed: {error}")
+            msg = msg.format(error=e)
             return callback.error(msg)
         msg = _("Token verified successful: {rel_path}")
         msg = msg.format(rel_path=self.rel_path)
@@ -448,24 +442,32 @@ class Fido2Token(Token):
         **kwargs,
         ):
         """ Verify signature. """
-        self.auth_state = smartcard_data['auth_state']
-        auth_response = smartcard_data['auth_response']
+        # Get challenge.
+        challenge = smartcard_data['challenge']
+        challenge = decode(challenge, "hex")
+        # Get signature data from response.
         try:
-            auth_response = json.loads(auth_response)
-        except Exception:
-            msg = _("Failed to decode auth response.")
-            return callback.error(msg)
-        credential_data = decode(self.credential_data, "hex")
-        credentials = [AttestedCredentialData(credential_data)]
-        fido2_server = self.get_fido2_server()
-        try:
-            fido2_server.authenticate_complete(self.auth_state,
-                                                credentials,
-                                                auth_response)
+            signature_data = smartcard_data['signature_data']
+            signature_data = SignatureData.from_b64(signature_data)
         except Exception as e:
-            msg = _("Token verififcation failed: {e}")
-            msg = msg.format(e=e)
+            msg = _("Failed to load U2F signature data.")
             return callback.error(msg)
+        # Generate app ID hash.
+        app_id = self.reg_app_id
+        app_id_bytes = app_id.encode()
+        app_id_hash = sha256(app_id_bytes)
+        # Load public key.
+        public_key = decode(self.public_key, "hex")
+        # Verify signature.
+        try:
+            signature_data.verify(app_param=app_id_hash,
+                                client_param=challenge,
+                                public_key=public_key)
+        except Exception as e:
+            log_msg = _("U2F token response verification failed: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            logger.critical(log_msg)
+            return False
         return True
 
     @object_lock(full_lock=True)
@@ -475,9 +477,9 @@ class Fido2Token(Token):
         _caller: str="API",
         **kwargs,
         ):
-        """ Add a fido2 token. """
+        """ Add a U2F token. """
         if _caller == "CLIENT":
-            return_message = _("NOTE: You have to deploy this fido2 token to make it usable.")
+            return_message = _("NOTE: You have to deploy this U2F token to make it usable.")
             return callback.ok(return_message)
         return callback.ok()
 
@@ -489,10 +491,10 @@ class Fido2Token(Token):
 
         lines = []
 
-        if self.verify_acl("view:credential_data"):
-            lines.append(f'CREDENTIAL_DATA="{self.credential_data}"')
+        if self.verify_acl("view:key_handle"):
+            lines.append(f'KEY_HANDLE="{self.key_handle}"')
         else:
-            lines.append('CREDENTIAL_DATA=""')
+            lines.append('KEY_HANDLE=""')
 
         if self.verify_acl("view:attestation_cert"):
             lines.append(f'ATTESTATION_CERT="{self.attestation_cert}"')

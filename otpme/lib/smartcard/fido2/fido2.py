@@ -1,12 +1,19 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import time
-from fido2.utils import sha256
-from fido2.ctap1 import ApduError
+import json
+from getpass import getpass
+from fido2.ctap2 import Ctap2
 from fido2.hid import CtapHidDevice
-#from fido2.ctap1 import SignatureData
-#from fido2.ctap1 import RegistrationData
+from fido2.client import Fido2Client
+from fido2.client import UserInteraction
+from fido2.webauthn import AttestedCredentialData
+from fido2.client import DefaultClientDataCollector
+
+try:
+    from fido2.pcsc import CtapPcscDevice
+except ImportError:
+    CtapPcscDevice = None
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -32,6 +39,22 @@ REGISTER_AFTER = []
 def register():
     config.register_smartcard_type("fido2", Fido2ClientHandler, Fido2ServerHandler)
 
+class CliInteraction(UserInteraction):
+    def __init__(self, pin=None):
+        self._pin = pin
+
+    def prompt_up(self):
+        print("Touch your authenticator device now...")
+
+    def request_pin(self, permissions, rd_id):
+        if not self._pin:
+            self._pin = getpass("Enter PIN: ")
+        return self._pin
+
+    def request_uv(self, permissions, rd_id):
+        print("User Verification required.")
+        return True
+
 class Fido2ClientHandler(object):
     def __init__(self, sc_type, token_rel_path, token_options=None,
         message_method=print, error_message_method=print):
@@ -40,6 +63,7 @@ class Fido2ClientHandler(object):
         self.smartcard_type = sc_type
         self.token_rel_path = token_rel_path
         self.token_options = token_options
+        self.fido2_token = None
         self.message_method = message_method
         self.error_message_method = error_message_method
         # FIXME: pam message methods from pam.py does not work with sddm
@@ -47,6 +71,22 @@ class Fido2ClientHandler(object):
         self.message_method = print
         self.error_message_method = print
         self.logger = config.logger
+
+    def get_pre_deploy_args(self):
+        self.detect_fido2_sc()
+        pre_deploy_args = {'uv':self.fido2_token.uv}
+        return pre_deploy_args
+
+    def detect_fido2_sc(self):
+        if self.fido2_token:
+            return
+        log_msg = _("Trying to detect connected fido2 token...", log=True)[1]
+        self.logger.debug(log_msg)
+        try:
+            self.fido2_token = Fido2()
+        except Exception as e:
+            msg = str(e)
+            raise OTPmeException(msg)
 
     def handle_deploy(self, command_handler, no_token_write=False, pre_deploy_result=None):
         # Get command syntax.
@@ -76,21 +116,12 @@ class Fido2ClientHandler(object):
                 raise ShowHelp(exception)
 
         # Try to find a locally connected U2F token.
-        log_msg = _("Trying to detect connected fido2 token...", log=True)[1]
-        self.logger.debug(log_msg)
-        try:
-            fido2_token = Fido2()
-        except Exception as e:
-            msg = str(e)
-            raise OTPmeException(msg)
+        self.detect_fido2_sc()
 
-        app_id = pre_deploy_result['app_id']
-        app_id = app_id.encode()
-        app_param = sha256(app_id)
-        challenge = pre_deploy_result['challenge']
-        client_param = decode(challenge, "hex")
+        create_options_json = pre_deploy_result['create_options']
+        create_options = json.loads(create_options_json)
         try:
-            registration_data = fido2_token.register(client_param, app_param)
+            registration_data = self.fido2_token.register(create_options)
         except Exception as e:
             msg = _("Failed to register fido2 token: {error}")
             msg = msg.format(error=e)
@@ -98,59 +129,43 @@ class Fido2ClientHandler(object):
 
         # Send registration data to server.
         deploy_args = {}
-        deploy_args['registration_data'] = registration_data.b64
+        deploy_args['registration_data'] = registration_data
         return deploy_args
 
     def handle_preauth(self, smartcard, **kwargs):
-        app_id = self.token_options['app_id']
-        app_id = app_id.encode()
-        app_id_hash = sha256(app_id)
-        challenge_hash = self.token_options['challenge']
-        challenge_hash = decode(challenge_hash, "hex")
-        key_handle = self.token_options['key_handle']
-        key_handle = decode(key_handle, "hex")
+        rp = self.token_options['rp']
+        request_options = self.token_options['request_options']
         is_2f_token = self.token_options['is_2f_token']
         pass_required = self.token_options['pass_required']
-        msg = "Please press fido2 token button."
-        self.message_method(msg)
         try:
-            signature_data = smartcard.authenticate(client_param=challenge_hash,
-                                                    app_param=app_id_hash,
-                                                    key_handle=key_handle)
-                                                    #check_only=False)
+            auth_response = smartcard.authenticate(rp=rp,
+                                request_options=request_options)
         except Exception as e:
             msg = _("Failed to authenticate with fido2 token: {error}")
             msg = msg.format(error=e)
             raise AuthFailed(msg)
+        auth_response_json = json.dumps(dict(auth_response))
         smartcard_data = {
                             'token_rel_path'    : self.token_rel_path,
                             'smartcard_type'    : self.smartcard_type,
-                            'signature_data'    : signature_data.b64,
+                            'auth_response'     : auth_response_json,
                             'pass_required'     : pass_required,
                             'is_2f_token'       : is_2f_token,
                         }
         return smartcard_data
 
     def handle_authentication(self, smartcard, smartcard_data, **kwargs):
-        app_id = smartcard_data['app_id']
-        app_id = app_id.encode()
-        app_id_hash = sha256(app_id)
-        challenge_hash = smartcard_data['challenge']
-        challenge_hash = decode(challenge_hash, "hex")
-        key_handle = smartcard_data['key_handle']
-        key_handle = decode(key_handle, "hex")
-        msg = "Please press fido2 token button to test."
-        self.message_method(msg)
+        rp = smartcard_data['rp']
+        request_options = smartcard_data['request_options']
         try:
-            signature_data = smartcard.authenticate(client_param=challenge_hash,
-                                                    app_param=app_id_hash,
-                                                    key_handle=key_handle)
-                                                    #check_only=False)
+            auth_response = smartcard.authenticate(rp=rp,
+                                request_options=request_options)
         except Exception as e:
             msg = _("Failed to authenticate with fido2 token: {error}")
             msg = msg.format(error=e)
             raise AuthFailed(msg)
-        return signature_data.b64
+        auth_response_json = json.dumps(dict(auth_response))
+        return auth_response_json
 
     def handle_offline_token_challenge(self, **kwargs):
         return None
@@ -159,54 +174,51 @@ class Fido2ClientHandler(object):
         return None
 
     def get_smartcard_data(self, smartcard, token, password, **kwargs):
-        app_id = token.reg_app_id
-        app_id = app_id.encode()
-        app_id_hash = sha256(app_id)
-        challenge, \
-        challenge_hash, \
-        challenge_hash_hex = token.gen_challenge()
-        key_handle = decode(token.key_handle, "hex")
-        msg = "Please press fido2 token button."
-        self.message_method(msg)
+        credential_data = decode(token.credential_data, "hex")
+        credentials = [AttestedCredentialData(credential_data)]
+        fido2_server = token.get_fido2_server()
+        request_options, \
+        auth_state = fido2_server.authenticate_begin(credentials,
+                                                    user_verification=token.uv)
+        request_options = json.dumps(dict(request_options))
         try:
-            signature_data = smartcard.authenticate(client_param=challenge_hash,
-                                                    app_param=app_id_hash,
-                                                    key_handle=key_handle)
-                                                    #check_only=False)
+            auth_response = smartcard.authenticate(rp=token.rp,
+                                request_options=request_options)
         except Exception as e:
             msg = _("Failed to authenticate with fido2 token: {error}")
             msg = msg.format(error=e)
             raise AuthFailed(msg)
+        auth_response_json = json.dumps(dict(auth_response))
         smartcard_data = {
-                            'challenge'         : challenge_hash_hex,
-                            'signature_data'    : signature_data.b64,
+                            'auth_state'    : auth_state,
+                            'auth_response' : auth_response_json,
                         }
         return smartcard_data
 
 
 class Fido2ServerHandler(object):
     def __init__(self):
-        self.app_id = None
-        self.key_handle = None
+        self.auth_state = None
         self.token_type = None
-        self.challenge = None
 
     def handle_preauth(self, token, **kwargs):
-        challenge = token.gen_challenge()[2]
-        self.app_id = token.reg_app_id
-        self.key_handle = token.key_handle
+        credential_data = decode(token.credential_data, "hex")
+        credentials = [AttestedCredentialData(credential_data)]
+        fido2_server = token.get_fido2_server()
+        request_options, \
+        self.auth_state = fido2_server.authenticate_begin(credentials,
+                                                    user_verification=token.uv)
+        request_options = json.dumps(dict(request_options))
         self.token_type = token.token_type
-        self.challenge = challenge
         token_options = {
+                    'rp'                : token.rp,
                     'token_type'        : self.token_type,
-                    'app_id'            : self.app_id,
-                    'key_handle'        : self.key_handle,
-                    'challenge'         : self.challenge,
+                    'request_options'   : request_options,
                     }
         return token_options
 
     def prepare_authentication(self, smartcard_data):
-        smartcard_data['challenge'] = self.challenge
+        smartcard_data['auth_state'] = self.auth_state
         return smartcard_data
 
 class Fido2(object):
@@ -218,60 +230,80 @@ class Fido2(object):
         self.type = "fido2"
         # Will be set by OTPmeClient() when doing preauth_check
         self.options = {}
+        self.ctap = None
         self.dev = None
+        self.pin = None
+        self.uv = None
         if autodetect:
             self.detect()
 
     def detect(self, debug=False, print_devices=False):
         """ Try to find fido2 token """
-        from fido2.ctap1 import Ctap1
-        from fido2.pcsc import CtapPcscDevice
-        # Locate a device
-        dev = next(CtapHidDevice.list_devices(), None)
-        if dev is not None:
-            log_msg = _("Fido2 smartcard: Use USB HID channel.", log=True)[1]
-            logger.debug(log_msg)
-        else:
-            try:
-                dev = next(CtapPcscDevice.list_devices(), None)
-            except Exception as e:
-                dev = None
-                log_msg = _("Fido2 smartcard: pcscd search error: {error}", log=True)[1]
-                log_msg = log_msg.format(error=e)
-                logger.warning(log_msg)
-            if dev:
-                log_msg = _("Fido2 smartcard: Use pcscd channel.", log=True)[1]
-                logger.debug(log_msg)
-        if not dev:
-            raise NoSmartcardFound("No FIDO device found")
-        self.dev = Ctap1(dev)
-        if print_devices:
-            for x in dev.list_devices():
+        dev = None
+        for x_dev in CtapHidDevice.list_devices():
+            if dev is None:
+                dev = x_dev
+            if not print_devices:
+                break
+            msg = _("Detected fido2 smartcard: {device}")
+            msg = msg.format(device=x_dev)
+            print(msg)
+
+        if dev is None and CtapPcscDevice:
+            for dev in CtapPcscDevice.list_devices():
+                if dev is None:
+                    dev = x_dev
+                if not print_devices:
+                    break
                 msg = _("Detected fido2 smartcard: {device}")
-                msg = msg.format(device=x)
+                msg = msg.format(device=x_dev)
                 print(msg)
 
-    def register(self, client_param, app_param):
-        msg = "Please press the token you want to register..."
-        print(msg)
-        while True:
-            try:
-                registration_data = self.dev.register(client_param, app_param)
-                return registration_data
-            except ApduError:
-                time.sleep(0.5)
-                continue
-            break
+        if dev is None:
+            raise ValueError("No suitable fido2 smartcard found!")
 
-    def authenticate(self, client_param, app_param, key_handle, check_only=False):
-        while True:
-            try:
-                auth_response = self.dev.authenticate(client_param,
-                                                    app_param,
-                                                    key_handle)
-                                                    #check_only=check_only)
-                return auth_response
-            except ApduError as e:
-                time.sleep(0.5)
-                continue
-            break
+        self.dev = dev
+        self.ctap = Ctap2(self.dev)
+        info = self.ctap.info
+
+        pin_set = info.options.get("clientPin")
+        if pin_set is None:
+            # Authenticator does not support PIN.
+            self.pin = None
+        elif pin_set:
+            # Authenticator has a PIN set.
+            self.pin = True
+        else:
+            # Authenticator supports PIN but none is set.
+            self.pin = False
+
+        # Prefer UV if supported and configured.
+        if info.options.get("uv") or info.options.get("bioEnroll"):
+            self.uv = "preferred"
+        else:
+            self.uv = "discouraged"
+
+    def get_fido2_client(self, rp, pin=None):
+        rp = f"https://{rp}"
+        client_data_collector = DefaultClientDataCollector(rp)
+        client = Fido2Client(self.dev,
+                            client_data_collector=client_data_collector,
+                            user_interaction=CliInteraction(pin=pin))
+        return client
+
+    def register(self, create_options):
+        rp = create_options['publicKey']['rp']['id']
+        pin = None
+        if self.pin:
+            pin = getpass("Enter PIN: ")
+        client = self.get_fido2_client(rp, pin=pin)
+        result = client.make_credential(create_options["publicKey"])
+        result = json.dumps(dict(result))
+        return result
+
+    def authenticate(self, rp, request_options):
+        client = self.get_fido2_client(rp)
+        request_options = json.loads(request_options)
+        results = client.get_assertion(request_options["publicKey"])
+        auth_response = results.get_response(0)
+        return auth_response

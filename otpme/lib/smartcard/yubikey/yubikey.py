@@ -2,7 +2,12 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 try:
-    import yubico
+    from ykman.device import list_all_devices, list_otp_devices
+    from yubikit.core import TRANSPORT
+    from yubikit.core.otp import OtpConnection
+    from yubikit.core.smartcard import SmartCardConnection
+    from yubikit.yubiotp import YubiOtpSession, HmacSha1SlotConfiguration, HotpSlotConfiguration, SLOT
+    from yubikit.management import ManagementSession, DeviceConfig, CAPABILITY
 except ImportError as e:
     msg = _("Unable to load module: {error}")
     msg = msg.format(error=e)
@@ -43,31 +48,29 @@ scd apdu 00 44 00 00
 
 def get(debug=False, print_devices=False):
     """ Try to find yubikey and return instance """
-    try:
-        YK = yubico.find_yubikey(debug=debug)
-    except yubico.yubico_exception.YubicoError as e:
-        if e.reason == "No YubiKey found":
-            raise NoSmartcardFound(e.reason)
-        msg = _("Error: {e.reason}")
-        raise Exception(msg)
+    devices = list_all_devices()
+    if not devices:
+        raise NoSmartcardFound("No YubiKey found")
+
+    device, info = devices[0]
 
     if config.debug_enabled:
-        log_msg = _("Found Yubikey: {model}", log=True)[1]
-        log_msg = log_msg.format(model=YK.model)
+        log_msg = _("Found Yubikey: serial={serial}", log=True)[1]
+        log_msg = log_msg.format(serial=info.serial)
         logger.debug(log_msg)
         log_msg = _("Version: {version}", log=True)[1]
-        log_msg = log_msg.format(version=YK.version())
+        log_msg = log_msg.format(version=info.version)
         logger.debug(log_msg)
 
     if print_devices:
-        msg = _("Found Yubikey: {model}")
-        msg = msg.format(model=YK.model)
+        msg = _("Found Yubikey: serial={serial}")
+        msg = msg.format(serial=info.serial)
         print(msg)
         msg = _("Version: {version}")
-        msg = msg.format(version=YK.version())
+        msg = msg.format(version=info.version)
         print(msg)
 
-    return YK
+    return device, info
 
 class Yubikey(object):
     """ Class to access yubikey tokens """
@@ -81,12 +84,13 @@ class Yubikey(object):
         if autodetect:
             self.detect()
         else:
-            self.yubikey = None
+            self.device = None
+            self.info = None
 
     def detect(self, debug=False, print_devices=False):
         """ Try to find yubikey """
         # Get yubikey instance
-        self.yubikey = get(debug=debug, print_devices=print_devices)
+        self.device, self.info = get(debug=debug, print_devices=print_devices)
 
     def get_id(self):
         """ Get smartcard ID. Used to get settings (e.g. slot) from authd on login """
@@ -94,7 +98,7 @@ class Yubikey(object):
 
     def get_serial(self, **kwargs):
         """ Returns yubikey serial """
-        return self.yubikey.serial()
+        return self.info.serial
 
     def get_slot(self):
         """ Get slot from options or set default """
@@ -104,58 +108,53 @@ class Yubikey(object):
             slot = 2
         return slot
 
+    def _get_yk_slot(self, slot):
+        """ Map integer slot number to SLOT enum """
+        if slot == 1:
+            return SLOT.ONE
+        return SLOT.TWO
+
+    def _open_otp_session(self):
+        """ Open YubiOtpSession via OTP HID, with SmartCard fallback for config writes """
+        # 1) Try OtpConnection on composite device.
+        if self.device.supports_connection(OtpConnection):
+            conn = self.device.open_connection(OtpConnection)
+            return conn, YubiOtpSession(conn)
+        # 2) Composite device has no OTP HID - try listing OTP HID devices directly.
+        try:
+            otp_devs = list_otp_devices()
+            if otp_devs:
+                conn = otp_devs[0].open_connection(OtpConnection)
+                return conn, YubiOtpSession(conn)
+        except Exception:
+            pass
+        # 3) Fall back to SmartCardConnection (works for config writes,
+        #    but challenge-response may fail over CCID).
+        if self.device.supports_connection(SmartCardConnection):
+            conn = self.device.open_connection(SmartCardConnection)
+            return conn, YubiOtpSession(conn)
+        raise Exception("YubiKey does not support OTP or SmartCard connection")
+
     def set_mode(self, mode="82"):
         """ Set yubikey mode """
-        #  FIXME: We should use python-yubico for this:
-        #         https://github.com/Yubico/python-yubico/issues/21
-        # Set yubikey mode (http://forum.yubico.com/viewtopic.php?f=26&t=1171)
-        # OTP HID-only (0x80): The key behaves like a regular YubiKey
-        #                      or YubiKey Nano when inserted. This is
-        #                      the factory setting.
-        # OpenPGP CCID-only (0x81): The key only operates as an OpenPGP
-        #                           CCID smartcard token when inserted.
-        #                           The button acts to enable/disable
-        #                           the reader.
-        # OTP HID+OpenPGP CCID (0x82): The key is visible both as an HOTP HID
-        #                              device and OpenPGP CCID smartcard. The
-        #                              button functions as on a regular YubiKey.
-        yubikey_mode_command = [ 'ykpersonalize', '-y', '-m', mode ]
-        command_returncode, \
-        command_stdout, \
-        command_stderr, \
-        command_pid = system_command.run(command=yubikey_mode_command)
-        if command_returncode != 0:
-            msg = _("Error setting yubikey mode: {error}")
-            msg = msg.format(error=command_stderr)
-            raise Exception(msg)
+        # mode "82" = OTP HID + OpenPGP CCID
+        capabilities = CAPABILITY.OTP | CAPABILITY.OPENPGP
+        device_config = DeviceConfig(
+            enabled_capabilities={TRANSPORT.USB: capabilities},
+        )
+        for conn_type in (SmartCardConnection, OtpConnection):
+            if self.device.supports_connection(conn_type):
+                with self.device.open_connection(conn_type) as conn:
+                    mgmt = ManagementSession(conn)
+                    mgmt.write_device_config(device_config, reboot=True)
+                break
+        else:
+            raise Exception("YubiKey does not support SmartCard or OTP connection")
         return True
 
     def set_serial_visible(self, slot=None, visible=True, **kwargs):
-        """ Set SERIAL_API_VISIBLE flag """
-        if slot == None:
-            slot = self.get_slot()
-
-        # make sure slot is int()
-        slot = int(slot)
-
-        try:
-            yk_cfg = self.yubikey.init_config()
-            yk_cfg.extended_flag('SERIAL_API_VISIBLE', visible)
-        except yubico.yubico_exception.YubicoError as e:
-            msg = _("ERROR: {reason}")
-            msg = msg.format(reason=e.reason)
-            raise Exception(msg)
-
-        try:
-            self.yubikey.write_config(yk_cfg, slot=slot)
-            return True
-        except yubico.yubico_exception.YubicoError as e:
-            msg = _("Error writing config: {reason}")
-            msg = msg.format(reason=e.reason)
-            raise Exception(msg)
-        except Exception as e:
-            msg = _("Error writing config: {e}")
-            raise Exception(msg)
+        """ No-op - serial is always readable via ykman """
+        pass
 
     def add_hmac_sha1(self, slot=None, key=None, **kwargs):
         """ Add HMAC-SHA1 config to given yubikey slot """
@@ -168,32 +167,21 @@ class Yubikey(object):
             key = stuff.gen_secret(len=20)
         if isinstance(key, str):
             key = key.encode()
+        yk_slot = self._get_yk_slot(slot)
+        # key is hex-encoded, convert to raw bytes for yubikit.
+        raw_key = bytes.fromhex(key.decode())
+        slot_config = HmacSha1SlotConfiguration(raw_key)
+        conn, session = self._open_otp_session()
         try:
-            yk_cfg = self.yubikey.init_config()
-            yk_cfg.mode_challenge_response(b'h:%s' % key, type='HMAC', variable=True)
-            yk_cfg.extended_flag('SERIAL_API_VISIBLE', True)
-        except yubico.yubico_exception.YubicoError as e:
-            msg = _("ERROR: {reason}")
-            msg = msg.format(reason=e.reason)
-            raise Exception(msg)
-
-        try:
-            self.yubikey.write_config(yk_cfg, slot=slot)
-        except yubico.yubico_exception.YubicoError as e:
-            msg = _("Error writing config: {reason}")
-            msg = msg.format(reason=e.reason)
-            raise Exception(msg)
-        except Exception as e:
-            msg = _("Error writing config: {error}")
-            msg = msg.format(error=e)
-            raise Exception(msg)
-
-        # Return HMAC secret on success.
+            session.put_configuration(yk_slot, slot_config)
+        finally:
+            conn.close()
+        # Return HMAC secret on success (hex-encoded, as before).
         return key
 
     def add_oath_hotp(self, slot=None, key=None, **kwargs):
         """ Add OATH HOTP config to given yubikey slot """
-        if slot == None:
+        if slot is None:
             slot = self.get_slot()
         # Make sure slot is int().
         slot = int(slot)
@@ -202,39 +190,39 @@ class Yubikey(object):
             key = stuff.gen_secret(len=20)
         if isinstance(key, str):
             key = key.encode()
+        yk_slot = self._get_yk_slot(slot)
+        # key is hex-encoded, convert to raw bytes for yubikit.
+        raw_key = bytes.fromhex(key.decode())
+        slot_config = HotpSlotConfiguration(raw_key)
+        conn, session = self._open_otp_session()
         try:
-            yk_cfg = self.yubikey.init_config()
-            yk_cfg.mode_oath_hotp(b'h:%s' % key)
-            yk_cfg.extended_flag('SERIAL_API_VISIBLE', True)
-            yk_cfg.ticket_flag('APPEND_CR', True)
-        except yubico.yubico_exception.YubicoError as e:
-            msg = _("ERROR: {reason}")
-            msg = msg.format(reason=e.reason)
-            raise Exception(msg)
-
-        try:
-            self.yubikey.write_config(yk_cfg, slot=slot)
-        except yubico.yubico_exception.YubicoError as e:
-            msg = _("Error writing config: {reason}")
-            msg = msg.format(reason=e.reason)
-            raise Exception(msg)
-        except Exception as e:
-            msg = _("Error writing config: {error}")
-            msg = msg.format(error=e)
-            raise Exception(msg)
-
-        # return HMAC secret on success
+            session.put_configuration(yk_slot, slot_config)
+        finally:
+            conn.close()
+        # Return HMAC secret on success (hex-encoded, as before).
         return key
 
     def send_challenge(self, challenge, slot=None, **kwargs):
-        """ send challenge to yubikey and return response """
-        if slot == None:
+        """ Send challenge to yubikey and return response """
+        if slot is None:
             slot = self.get_slot()
         # Make sure slot is int().
         slot = int(slot)
         if isinstance(challenge, str):
             challenge = challenge.encode()
-        response = self.yubikey.challenge_response(challenge, slot=slot)
+        yk_slot = self._get_yk_slot(slot)
+        conn, session = self._open_otp_session()
+        try:
+            response = session.calculate_hmac_sha1(yk_slot, challenge)
+        except Exception as e:
+            conn.close()
+            if not isinstance(conn, OtpConnection):
+                msg = ("HMAC challenge-response failed over SmartCard/CCID. "
+                       "OTP HID access is required - check that /dev/hidraw* "
+                       "devices are accessible (udev rules, permissions).")
+                raise Exception(msg) from e
+            raise
+        conn.close()
         return encode(response, "hex")
 
     def reset_gpg(self):

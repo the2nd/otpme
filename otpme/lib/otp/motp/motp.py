@@ -66,17 +66,17 @@ def get_validity_times(validity_time, timedrift_tolerance=0,
     if not epoch_time and not full_epoch_time:
         epoch_time = int(str(int(time.time()))[:-1])
     if full_epoch_time:
-        otp_epoch_time = int(int(full_epoch_time) - validity_time + offset)
+        start_timestamp = int(int(full_epoch_time) - (validity_time / 2))
+        end_timestamp = int(int(full_epoch_time) + (validity_time / 2))
+        otp_epoch_time = start_timestamp
     else:
-        otp_epoch_time = int((epoch_time * 10) - validity_time + offset)
-    start_timestamp = otp_epoch_time - timedrift_tolerance
-    end_timestamp = otp_epoch_time + validity_time + timedrift_tolerance
+        start_timestamp = int(epoch_time * 10) - (validity_time / 2)
+        end_timestamp = int(epoch_time * 10) + (validity_time / 2)
+        otp_epoch_time = int(str(int(start_timestamp))[:-1])
     if full_epoch_time:
-        otp_validity_range = ((end_timestamp - start_timestamp) * 2)
+        otp_validity_range = end_timestamp - start_timestamp
     else:
-        otp_validity_range = (((end_timestamp - start_timestamp) / 10) * 2)
-    if epoch_time:
-        epoch_time = int(otp_epoch_time[:-1])
+        otp_validity_range = (end_timestamp - start_timestamp) / 10
     start_time = datetime.fromtimestamp(start_timestamp)
     end_time = datetime.fromtimestamp(end_timestamp)
     start_time = str(start_time)

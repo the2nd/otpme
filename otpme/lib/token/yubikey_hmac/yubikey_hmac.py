@@ -170,6 +170,24 @@ commands = {
                     },
                 },
             },
+    'validity_time'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_validity_time',
+                    'oargs'             : ['validity_time'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'timedrift_tolerance'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_timedrift_tolerance',
+                    'oargs'             : ['timedrift_tolerance'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     }
 
 def get_acls(split=False, **kwargs):
@@ -430,7 +448,7 @@ class YubikeyhmacToken(Token):
                 except:
                     pass
 
-        if not isinstance(int, validity_time):
+        if not isinstance(validity_time, int):
             msg = _("Need integer for <validity_time>.")
             return callback.error(msg)
 
@@ -471,7 +489,7 @@ class YubikeyhmacToken(Token):
                 except:
                     pass
 
-        if not isinstance(int, timedrift_tolerance):
+        if not isinstance(timedrift_tolerance, int):
             msg = _("Need integer for <timedrift_tolerance>.")
             return callback.error(msg)
 
@@ -544,10 +562,8 @@ class YubikeyhmacToken(Token):
             if self.is_used_otp(otp):
                 return False
 
-        # OTPME configuration option is in minutes. OTPme timestep is 10 seconds.
-        # So we have to multiply with 6.
-        validity_time = self.validity_time * 6
-        timedrift_tolerance = self.timedrift_tolerance * 6
+        validity_time = self.validity_time
+        timedrift_tolerance = self.timedrift_tolerance
 
         # Calculate times to verify OTP.
         validity_times = motp.get_validity_times(validity_time=validity_time,
@@ -559,7 +575,7 @@ class YubikeyhmacToken(Token):
         otp_validity_end_time = validity_times[5]
 
         # Log OTP timerange.
-        log_msg = _("Verifiying OTP within timerange: start='{otp_validity_start_time}' end='{otp_validity_end_time}'.", log=True)
+        log_msg = _("Verifiying OTP within timerange: start='{otp_validity_start_time}' end='{otp_validity_end_time}'.", log=True)[1]
         log_msg = log_msg.format(otp_validity_start_time=otp_validity_start_time,
                                 otp_validity_end_time=otp_validity_end_time)
         logger.debug(log_msg)
@@ -601,10 +617,8 @@ class YubikeyhmacToken(Token):
             if not self.sync_offline_otps:
                 return True
 
-        # OTPME configuration option is in minutes. OTPME timestep is 10 seconds.
-        # So we have to multiply with 6.
-        validity_time = self.validity_time * 6
-        timedrift_tolerance = self.timedrift_tolerance * 6
+        validity_time = self.validity_time
+        timedrift_tolerance = self.timedrift_tolerance
 
         # Calculate times to verify OTP.
         validity_times = motp.get_validity_times(validity_time=validity_time,
@@ -672,8 +686,8 @@ class YubikeyhmacToken(Token):
     def _add(self, callback: JobCallback=default_callback, **kwargs):
         """ Add a token. """
         # Get default HOTP settings.
-        self.validity_time = self.get_config_parameter("otpme_validity_time")
-        self.timedrift_tolerance = self.get_config_parameter("otpme_timedrift_tolerance")
+        self.validity_time = self.get_config_parameter("motp_validity_time")
+        self.timedrift_tolerance = self.get_config_parameter("motp_timedrift_tolerance")
         self.secret_len = self.get_config_parameter("otpme_hmac_secret_len")
         self.otp_len = self.get_config_parameter("otpme_hmac_otp_len")
         self.secret = stuff.gen_secret(self.secret_len)

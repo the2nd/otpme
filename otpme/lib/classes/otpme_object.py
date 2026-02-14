@@ -4845,24 +4845,34 @@ class OTPmeObject(OTPmeBaseObject):
     def is_assigned_token(
         self,
         token_uuid: str,
+        checked_roles: list=[],
         ):
         if token_uuid in self.tokens:
             return True
         for x_uuid in self.roles:
+            if x_uuid in checked_roles:
+                break
             role = backend.get_object(object_type="role", uuid=x_uuid)
             if not role:
                 continue
             if not role.enabled:
                 continue
-            if role.is_assigned_token(token_uuid):
+            if role.is_assigned_token(token_uuid, checked_roles=checked_roles):
                 return True
+            checked_roles.append(x_uuid)
         return False
 
     @assigned_role_cache.cache_method()
-    def is_assigned_role(self, role_uuid: str):
+    def is_assigned_role(
+        self,
+        role_uuid: str,
+        checked_roles: list=[],
+        ):
         if role_uuid in self.roles:
             return True
         for x_uuid in self.roles:
+            if x_uuid in checked_roles:
+                break
             role = backend.get_object(object_type="role", uuid=x_uuid)
             if not role:
                 continue
@@ -4870,6 +4880,7 @@ class OTPmeObject(OTPmeBaseObject):
                 continue
             if role.is_assigned_role(role_uuid):
                 return True
+            checked_roles.append(x_uuid)
         return False
 
     @cli.check_rapi_opts()

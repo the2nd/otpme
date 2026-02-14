@@ -983,6 +983,7 @@ def get_object(
                                             run_policies=run_policies,
                                             **kwargs)
         except Exception as e:
+            #config.raise_exception()
             msg = _("Failed to get object from cache: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg)
