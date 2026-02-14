@@ -503,6 +503,8 @@ class HotpToken(OathToken):
                 secret = self.get_secret(encoding="base32", callback=callback)
             if self.mode == "mode2":
                 pin = callback.askpass(_("Please enter PIN: "))
+                if pin is None:
+                    return callback.abort()
                 if len(pin) != self.pin_len:
                     msg = _("Invalid PIN.")
                     return callback.error(msg)
@@ -777,6 +779,8 @@ class HotpToken(OathToken):
         if pin is None:
             if self.mode == "mode2":
                 pin = callback.askpass(_("Please enter PIN: "))
+                if pin is None:
+                    return callback.abort()
                 if len(pin) != self.pin_len:
                     msg = _("Invalid PIN.")
                     return callback.error(msg)
