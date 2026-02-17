@@ -119,12 +119,12 @@ class CommandHandler(object):
         from otpme.lib.classes.mgmt_client import OTPmeMgmtClient
         # In API and socket mode no login is required.
         if config.use_mgmtd_socket:
-            if not config.use_api and config.use_agent:
+            if not config.use_api:
                 login_status = self.get_login_status()
                 if not login_status:
                     config.use_socket = True
         else:
-            if not config.use_api and not config.use_socket and config.use_agent:
+            if not config.use_api and not config.use_socket:
                 login_status = self.get_login_status()
                 if not login_status:
                     raise OTPmeException(_("Not logged in."))
@@ -344,7 +344,7 @@ class CommandHandler(object):
         user_site = hostd_conn.get_user_site(username)
         # Get mgmtd connection to users site.
         if config.use_mgmtd_socket:
-            if not config.use_api and config.use_agent:
+            if not config.use_api:
                 login_status = self.get_login_status()
                 if not login_status:
                     config.use_socket = True
@@ -377,7 +377,7 @@ class CommandHandler(object):
         user_site = hostd_conn.get_user_site(username)
         # Get mgmtd connection to users site.
         if config.use_mgmtd_socket:
-            if not config.use_api and config.use_agent:
+            if not config.use_api:
                 login_status = self.get_login_status()
                 if not login_status:
                     config.use_socket = True

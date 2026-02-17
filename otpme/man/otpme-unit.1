@@ -1,0 +1,195 @@
+.TH OTPME-UNIT 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-unit \- manage OTPme organizational units
+.SH SYNOPSIS
+.B otpme-unit
+.I command
+[\fIoptions\fR] [\fIunit\fR]
+.SH DESCRIPTION
+.B otpme-unit
+manages organizational units in the OTPme system. Units provide a hierarchical structure for organizing objects such as users and groups.
+.SH COMMANDS
+.SS Unit Management
+.TP
+.B add \fIunit\fR
+Add a new unit.
+.TP
+.B del \fIunit\fR
+Delete a unit.
+.TP
+.B show \fR[\fIunit\fR]
+Display unit information.
+.TP
+.B list \fR[\fIregex\fR]
+List units, optionally filtered by regex pattern.
+.TP
+.B enable \fIunit\fR
+Enable a disabled unit.
+.TP
+.B disable \fIunit\fR
+Disable a unit without deleting it.
+.TP
+.B rename \fIunit\fR \fInew_name\fR
+Rename a unit.
+.TP
+.B move \fR[\fB\-m\fR] [\fB\-k\fR] [\fB\-o\fR \fIobject_types\fR] [\fB\-\-keep\-acls\fR] \fIunit\fR \fInew_unit\fR
+Move unit to a different unit. Use \fB\-m\fR to merge objects into destination, \fB\-k\fR to keep source unit.
+.TP
+.B touch \fIunit\fR
+Re-index the object to fix potential index problems.
+.SS Unit Configuration
+.TP
+.B config \fIunit\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter.
+.TP
+.B show_config \fIunit\fR
+Show unit config parameters.
+.TP
+.B description \fIunit\fR \fR[\fIdescription\fR]
+Set unit description.
+.SS Policy Management
+.TP
+.B add_policy \fIunit\fR \fIpolicy\fR
+Add policy to unit.
+.TP
+.B remove_policy \fIunit\fR \fIpolicy\fR
+Remove policy from unit.
+.TP
+.B list_policies \fR[\fIunit\fR]
+List assigned policies.
+.SS ACL Management
+.TP
+.B add_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] \fIunit\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry. Use \fB\-r\fR for recursive, \fB\-a\fR to apply default ACLs to existing objects.
+.TP
+.B del_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] \fIunit\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIunit\fR
+Display all ACLs for the unit.
+.TP
+.B enable_acl_inheritance \fIunit\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIunit\fR
+Disable ACL inheritance.
+.SS Extension and Attribute Management
+.TP
+.B add_extension \fIunit\fR \fIextension\fR
+Add an extension to the unit.
+.TP
+.B remove_extension \fIunit\fR \fIextension\fR
+Remove an extension from the unit.
+.TP
+.B add_attribute \fIunit\fR \fIattribute\fR=\fIvalue\fR
+Add an LDAP attribute to the unit.
+.TP
+.B modify_attribute \fIunit\fR \fIattribute\fR \fIold_value\fR \fInew_value\fR
+Modify an LDAP attribute of the unit.
+.TP
+.B del_attribute \fIunit\fR \fIattribute\fR=\fIvalue\fR
+Delete an LDAP attribute from the unit.
+.TP
+.B add_object_class \fIunit\fR \fIclass\fR
+Add an LDAP object class to the unit.
+.TP
+.B del_object_class \fIunit\fR \fIclass\fR
+Delete an LDAP object class from the unit.
+.TP
+.B show_ldif \fR[\fB\-a\fR \fIattributes\fR] \fIunit\fR
+Show LDIF representation of the unit. Use \fB\-a\fR to show only specific attributes.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIpassword\fR] \fIunit\fR
+Export unit config to stdout.
+.TP
+.B remove_orphans \fR[\fB\-r\fR] \fIunit\fR
+Remove orphan UUIDs. Use \fB\-r\fR for recursive.
+.SH OPTIONS
+.SS Display Options
+.TP
+.B \-a
+Show all units.
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.TP
+.B \-\-attribute \fIATTR\fR
+Display specific attribute in list command.
+.SS Move Options
+.TP
+.B \-m
+Merge objects from source unit into destination unit.
+.TP
+.B \-k
+Keep source unit.
+.TP
+.B \-\-keep\-acls
+Keep object ACLs.
+.TP
+.B \-o \fIuser,group,...\fR
+Move only given object types.
+.SS General Options
+.TP
+.B \-r
+Recursive (for ACL and remove_orphans operations).
+.TP
+.B \-a
+Apply default ACLs to existing objects (for ACL operations).
+.TP
+.B \-\-objects \fItype1,type2\fR
+Limit ACL operations to specific object types.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.TP
+.B otpme-unit add it
+Create a new unit
+.TP
+.B otpme-unit add it/admins
+Create a sub-unit
+.TP
+.B otpme-unit move \-m old_unit new_unit
+Merge objects from old_unit into new_unit
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme-user (1),
+.BR otpme-group (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

@@ -1,0 +1,267 @@
+.TH OTPME-ROLE 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-role \- manage OTPme roles
+.SH SYNOPSIS
+.B otpme-role
+.I command
+[\fIoptions\fR] [\fIrole\fR]
+.SH DESCRIPTION
+.B otpme-role
+manages roles in the OTPme system. Roles are groups of tokens or other roles that can be nested.
+.SH COMMANDS
+.SS Role Management
+.TP
+.B add \fR[\fB\-\-groups\fR \fIgroup1,group2\fR] [\fB\-\-roles\fR \fIrole1,role2\fR] \fIrole\fR
+Create a new role. Optionally add it directly to groups or other roles.
+.TP
+.B del \fIrole\fR
+Delete a role.
+.TP
+.B show \fR[\fIrole\fR]
+Display role information. Without arguments, shows all roles.
+.TP
+.B list \fR[\fIregex\fR]
+List roles, optionally filtered by regex pattern.
+.TP
+.B enable \fIrole\fR
+Enable a disabled role.
+.TP
+.B disable \fIrole\fR
+Disable a role without deleting it.
+.TP
+.B rename \fIrole\fR \fInew_name\fR
+Rename a role.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIrole\fR \fIunit\fR
+Move role to a different unit.
+.TP
+.B touch \fIrole\fR
+Re-index the object to fix potential index problems.
+.SS Token Assignment
+.TP
+.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] \fIrole\fR \fItoken_path\fR
+Add a token to the role. Use \fB\-i\fR to limit login to specific interfaces (e.g. tty, gui, ssh).
+.TP
+.B remove_token \fR[\fB\-\-keep\-sign\fR] \fIrole\fR \fItoken_path\fR
+Remove a token from the role.
+.TP
+.B list_tokens \fIrole\fR
+List tokens assigned to the role.
+.SS Role Nesting
+.TP
+.B add_role \fIrole\fR \fIchild_role\fR
+Add a child role to this role.
+.TP
+.B remove_role \fIrole\fR \fIchild_role\fR
+Remove a child role from this role.
+.TP
+.B list_roles \fR[\fB\-r\fR] \fIrole\fR
+List roles assigned to the role. Use \fB\-r\fR for recursive listing.
+.SS User and Group Listing
+.TP
+.B list_users \fIrole\fR
+List users of the role.
+.TP
+.B list_dynamic_groups \fIrole\fR
+List dynamic groups of the role.
+.SS Dynamic Groups
+.TP
+.B add_dynamic_group \fIrole\fR \fIgroup\fR
+Add a dynamic group to the role.
+.TP
+.B remove_dynamic_group \fIrole\fR \fIgroup\fR
+Remove a dynamic group from the role.
+.SS Sync Users
+.TP
+.B add_sync_user \fIrole\fR \fIuser\fR
+Add a sync user to the role.
+.TP
+.B remove_sync_user \fIrole\fR \fIuser\fR
+Remove a sync user from the role.
+.TP
+.B list_sync_users \fIrole\fR
+List sync users of the role.
+.SS Policy Management
+.TP
+.B add_policy \fIrole\fR \fIpolicy\fR
+Attach a policy to the role.
+.TP
+.B remove_policy \fIrole\fR \fIpolicy\fR
+Remove a policy from the role.
+.TP
+.B list_policies \fIrole\fR
+List policies attached to the role.
+.SS ACL Management
+.TP
+.B add_acl \fIrole\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fIrole\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIrole\fR
+Display all ACLs for the role.
+.TP
+.B enable_acl_inheritance \fIrole\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIrole\fR
+Disable ACL inheritance.
+.SS Extension and Attribute Management
+.TP
+.B add_extension \fIrole\fR \fIextension\fR
+Add an extension to the role.
+.TP
+.B remove_extension \fIrole\fR \fIextension\fR
+Remove an extension from the role.
+.TP
+.B add_attribute \fIrole\fR \fIattribute\fR=\fIvalue\fR
+Add an LDAP attribute to the role.
+.TP
+.B del_attribute \fIrole\fR \fIattribute\fR=\fIvalue\fR
+Remove an LDAP attribute from the role.
+.TP
+.B add_object_class \fIrole\fR \fIclass\fR
+Add an LDAP object class to the role.
+.TP
+.B del_object_class \fIrole\fR \fIclass\fR
+Remove an LDAP object class from the role.
+.TP
+.B show_ldif \fR[\fB\-a\fR \fIattributes\fR] \fIrole\fR
+Show LDIF representation of the role. Use \fB\-a\fR to show only specific attributes.
+.SS Configuration and Attributes
+.TP
+.B config \fIrole\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter.
+.TP
+.B show_config \fIrole\fR
+Show all configuration parameters.
+.TP
+.B description \fIrole\fR \fR[\fIdescription\fR]
+Set role description.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIrole\fR
+Export role configuration.
+.TP
+.B remove_orphans \fIrole\fR
+Remove orphaned object references.
+.SH OPTIONS
+.SS Display Options
+.TP
+.B \-a
+Show all roles (across all units).
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-token\-limit \fIN\fR
+Limit number of tokens shown.
+.TP
+.B \-\-role\-limit \fIN\fR
+Limit number of roles shown.
+.TP
+.B \-\-accessgroup\-limit \fIN\fR
+Limit number of access groups shown.
+.TP
+.B \-\-group\-limit \fIN\fR
+Limit number of groups shown.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.TP
+.B \-\-attribute \fIATTR\fR
+Display specific attribute in list command.
+.SS Token Options
+.TP
+.B \-i \fIinterfaces\fR
+Limit login to given interfaces (e.g. tty, gui, ssh).
+.TP
+.B \-\-sign
+Sign the object with default tags.
+.TP
+.B \-\-tags \fItag1,tag2\fR
+Add tags to signature.
+.TP
+.B \-\-no\-auto\-sign
+Do not automatically sign when adding a token.
+.TP
+.B \-\-keep\-sign
+Do not remove any signature when removing a token.
+.SS General Options
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving role.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.TP
+.B \-r
+List roles recursively.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.SS Managing Roles
+.TP
+.B otpme-role add admins
+Create a new role
+.TP
+.B otpme-role add \-\-groups sysadmins \-\-roles operators
+Create a role and add it to groups and roles
+.SS Token Assignment
+.TP
+.B otpme-role add_token admins admin/totp
+Add admin's TOTP token to the role
+.TP
+.B otpme-role add_token \-i ssh admins admin/ssh_key
+Add SSH key for SSH interface only
+.SS Role Nesting
+.TP
+.B otpme-role add_role super_admins admins
+Add admins role as child of super_admins
+.TP
+.B otpme-role list_roles \-r super_admins
+List all nested roles recursively
+.SS Policy Assignment
+.TP
+.B otpme-role add_policy admins require_2fa
+Attach a policy to the role
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme-user (1),
+.BR otpme-token (1),
+.BR otpme-group (1),
+.BR otpme-accessgroup (1),
+.BR otpme-policy (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

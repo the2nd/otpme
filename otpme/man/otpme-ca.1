@@ -1,0 +1,203 @@
+.TH OTPME-CA 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-ca \- manage OTPme certificate authorities
+.SH SYNOPSIS
+.B otpme-ca
+.I command
+[\fIoptions\fR] [\fIca\fR]
+.SH DESCRIPTION
+.B otpme-ca
+manages certificate authorities (CAs) in the OTPme system. CAs issue and manage X.509 certificates for nodes and hosts, maintain certificate revocation lists (CRLs), and provide the PKI infrastructure for secure communication between OTPme components.
+.PP
+Each CA generates a self-signed CA certificate with configurable X.509 distinguished name fields. CAs can issue server, client, node, and host certificates. CRL data is propagated to all nodes in the realm.
+.SH COMMANDS
+.SS CA Management
+.TP
+.B add \fR[\fIoptions\fR] \fIca\fR
+Create a new CA with a self-signed certificate.
+.TP
+.B del \fIca\fR
+Delete a CA.
+.TP
+.B show \fR[\fIca\fR]
+Display CA information. Without arguments, shows all CAs.
+.TP
+.B list \fR[\fIregex\fR]
+List CAs, optionally filtered by regex pattern.
+.TP
+.B enable \fIca\fR
+Enable a disabled CA.
+.TP
+.B disable \fIca\fR
+Disable a CA without deleting it.
+.TP
+.B touch \fIca\fR
+Re-index the object to fix potential index problems.
+.SS Certificate Operations
+.TP
+.B dump_cert \fIca\fR
+Export the CA certificate to stdout.
+.TP
+.B dump_key \fR[\fB\-p\fR \fIpassphrase\fR] \fIca\fR
+Export the CA private key to stdout. Use \fB\-p\fR to encrypt with a passphrase.
+.TP
+.B dump_ca_chain \fIca\fR
+Export the CA certificate chain to stdout.
+.SS CRL Management
+.TP
+.B crl_validity \fIca\fR \fIdays\fR
+Set CRL validity period in days.
+.TP
+.B dump_crl \fIca\fR
+Export the certificate revocation list to stdout.
+.TP
+.B update_crl \fIca\fR
+Remove outdated certificates from the CRL.
+.SS Configuration
+.TP
+.B config \fIca\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter.
+.TP
+.B show_config \fIca\fR
+Show all configuration parameters.
+.TP
+.B description \fIca\fR \fR[\fIdescription\fR]
+Set CA description.
+.SS Policy Management
+.TP
+.B add_policy \fIca\fR \fIpolicy\fR
+Attach a policy to the CA.
+.TP
+.B remove_policy \fIca\fR \fIpolicy\fR
+Remove a policy from the CA.
+.TP
+.B list_policies \fR[\fIca\fR]
+List policies attached to the CA.
+.SS ACL Management
+.TP
+.B add_acl \fIca\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fIca\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIca\fR
+Display all ACLs for the CA.
+.TP
+.B enable_acl_inheritance \fIca\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIca\fR
+Disable ACL inheritance.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIca\fR
+Export CA configuration.
+.TP
+.B remove_orphans \fIca\fR
+Remove orphaned object references.
+.SH OPTIONS
+.SS CA Creation Options
+.TP
+.B \-\-country \fICOUNTRY\fR
+Set X.509 country field.
+.TP
+.B \-\-state \fISTATE\fR
+Set X.509 state field.
+.TP
+.B \-\-locality \fILOCALITY\fR
+Set X.509 locality field.
+.TP
+.B \-\-organization \fIORG\fR
+Set X.509 organization field.
+.TP
+.B \-\-ou \fIOU\fR
+Set X.509 organizational unit field.
+.TP
+.B \-\-email \fIEMAIL\fR
+Set X.509 email field.
+.TP
+.B \-\-valid \fIDAYS\fR
+CA certificate validity in days.
+.TP
+.B \-\-key\-len \fIBITS\fR
+Key length for CA certificate in bits.
+.SS Display Options
+.TP
+.B \-a
+Show all CAs (across all units).
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.SS General Options
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.SS Creating a CA
+.TP
+.B otpme-ca add myca
+Create a new CA with default settings
+.TP
+.B otpme-ca add \-\-key\-len 4096 \-\-valid 3650 \-\-country DE \-\-organization "Example Corp" myca
+Create CA with specific key length, validity, and X.509 fields
+.SS Certificate and CRL Operations
+.TP
+.B otpme-ca dump_cert myca
+Export CA certificate
+.TP
+.B otpme-ca dump_key \-p mysecret myca
+Export CA private key encrypted with passphrase
+.TP
+.B otpme-ca dump_ca_chain myca
+Export certificate chain
+.TP
+.B otpme-ca crl_validity myca 365
+Set CRL validity to 365 days
+.TP
+.B otpme-ca dump_crl myca
+Export CRL
+.TP
+.B otpme-ca update_crl myca
+Remove expired certificates from CRL
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (7),
+.BR otpme-site (1),
+.BR otpme-node (1),
+.BR otpme-host (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

@@ -281,12 +281,10 @@ class AuthHandler(object):
         # Make sure login to child accessgroups of SSO accessgroup are not allowed
         # if the token is assigned to the SSO accessgroup.
         if not self.found_sotp and not self.auth_session:
-            session_master = self.auth_group.parents(recursive=True,
-                                                    session_master=True,
-                                                    return_type="instance")
-            if session_master:
-                if session_master.name == config.sso_access_group:
-                    if self.verify_token.uuid in session_master.tokens:
+            master_group = self.auth_group.get_master_group()
+            if master_group:
+                if master_group.name == config.sso_access_group:
+                    if self.verify_token.uuid in master_group.tokens:
                         log_msg = _("Token {token} is assigned to SSO accessgroup. Auth will fail.", log=True)[1]
                         log_msg = log_msg.format(token=self.verify_token.rel_path)
                         self.logger.warning(log_msg)
@@ -341,9 +339,9 @@ class AuthHandler(object):
                 return
 
         # Check if token is valid for the accessgroup.
-        if not self.auth_group.is_assigned_token(self.auth_token.uuid):
-            # But we want to ignore token group validity for logout requests.
-            if not self.session_logout:
+        if not self.session_logout:
+            if not self.auth_group.is_assigned_token(self.auth_token.uuid,
+                                                    check_parent_groups=True):
                 log_msg = _("Verification failed because token is not valid for accessgroup '{access_group}'.", log=True)[1]
                 log_msg = log_msg.format(access_group=self.access_group)
                 self.logger.warning(log_msg)
@@ -503,15 +501,13 @@ class AuthHandler(object):
                     continue
             verify_sessions.append(session)
 
-        # Get sessions for the session master.
-        session_master = self.auth_group.parents(recursive=True,
-                                                session_master=True,
-                                                return_type="instance")
+        # Get sessions for the master group.
+        master_group = self.auth_group.get_master_group()
         session_masters = []
         session_master_childs = []
-        if session_master:
+        if master_group:
             master_sessions = backend.get_sessions(user=self.user.uuid,
-                                                access_group=session_master.uuid,
+                                                access_group=master_group.uuid,
                                                 return_attributes=return_attributes,
                                                 session_type=self.auth_type)
             for session_uuid in master_sessions:
@@ -618,8 +614,8 @@ class AuthHandler(object):
                 check_sotp = False
                 if self.access_group == config.sso_access_group:
                     check_sotp = True
-                if session_master:
-                    if session_master.name == config.sso_access_group:
+                if master_group:
+                    if master_group.name == config.sso_access_group:
                         check_sotp = True
                         # For SSO session childs we use the one iter hash
                         # because it was created by an SOTP.
@@ -1104,55 +1100,63 @@ class AuthHandler(object):
                 and "ssh_key" not in self.require_pass_types:
                     select_ssh_tokens = False
 
-            # Select user tokens by pass type and self.require_token_types if
-            # given.
-            if select_static_tokens:
-                self.valid_user_tokens_static += self.user.get_tokens(
-                                                pass_type="static",
-                                                token_types=self.require_token_types,
-                                                access_group=self.auth_group,
-                                                host=self.auth_host,
-                                                client=self.auth_client,
-                                                return_type="instance", quiet=False)
-                self.valid_user_tokens_script_static += self.user.get_tokens(
-                                                pass_type="script_static",
-                                                access_group=self.auth_group,
-                                                token_types=self.require_token_types,
-                                                host=self.auth_host,
-                                                client=self.auth_client,
-                                                return_type="instance", quiet=False)
+            valid_ags = [self.auth_group]
+            master_group = self.auth_group.get_master_group()
+            if master_group:
+                if master_group.name != config.sso_access_group:
+                    valid_ags += self.auth_group.parents(recursive=True,
+                                                        return_type="instance")
 
-            if select_otp_tokens:
-                self.valid_user_tokens_otp += self.user.get_tokens(
-                                                pass_type="otp",
-                                                access_group=self.auth_group,
-                                                token_types=self.require_token_types,
-                                                host=self.auth_host,
-                                                client=self.auth_client,
-                                                return_type="instance", quiet=False)
-                self.valid_user_tokens_script_otp += self.user.get_tokens(
-                                                pass_type="script_otp",
-                                                access_group=self.auth_group,
-                                                token_types=self.require_token_types,
-                                                host=self.auth_host,
-                                                client=self.auth_client,
-                                                return_type="instance", quiet=False)
-                self.valid_user_tokens_otp_push += self.user.get_tokens(
-                                                pass_type="otp_push",
-                                                access_group=self.auth_group,
-                                                token_types=self.require_token_types,
-                                                host=self.auth_host,
-                                                client=self.auth_client,
-                                                return_type="instance", quiet=False)
+            for ag in valid_ags:
+                # Select user tokens by pass type and self.require_token_types if
+                # given.
+                if select_static_tokens:
+                    self.valid_user_tokens_static += self.user.get_tokens(
+                                                    pass_type="static",
+                                                    token_types=self.require_token_types,
+                                                    access_group=ag,
+                                                    host=self.auth_host,
+                                                    client=self.auth_client,
+                                                    return_type="instance", quiet=False)
+                    self.valid_user_tokens_script_static += self.user.get_tokens(
+                                                    pass_type="script_static",
+                                                    access_group=ag,
+                                                    token_types=self.require_token_types,
+                                                    host=self.auth_host,
+                                                    client=self.auth_client,
+                                                    return_type="instance", quiet=False)
 
-            if select_ssh_tokens:
-                self.valid_user_tokens_ssh += self.user.get_tokens(
-                                            pass_type="ssh_key",
-                                            access_group=self.auth_group,
-                                            token_types=self.require_token_types,
-                                            host=self.auth_host,
-                                            client=self.auth_client,
-                                            return_type="instance", quiet=False)
+                if select_otp_tokens:
+                    self.valid_user_tokens_otp += self.user.get_tokens(
+                                                    pass_type="otp",
+                                                    access_group=ag,
+                                                    token_types=self.require_token_types,
+                                                    host=self.auth_host,
+                                                    client=self.auth_client,
+                                                    return_type="instance", quiet=False)
+                    self.valid_user_tokens_script_otp += self.user.get_tokens(
+                                                    pass_type="script_otp",
+                                                    access_group=ag,
+                                                    token_types=self.require_token_types,
+                                                    host=self.auth_host,
+                                                    client=self.auth_client,
+                                                    return_type="instance", quiet=False)
+                    self.valid_user_tokens_otp_push += self.user.get_tokens(
+                                                    pass_type="otp_push",
+                                                    access_group=ag,
+                                                    token_types=self.require_token_types,
+                                                    host=self.auth_host,
+                                                    client=self.auth_client,
+                                                    return_type="instance", quiet=False)
+
+                if select_ssh_tokens:
+                    self.valid_user_tokens_ssh += self.user.get_tokens(
+                                                pass_type="ssh_key",
+                                                access_group=ag,
+                                                token_types=self.require_token_types,
+                                                host=self.auth_host,
+                                                client=self.auth_client,
+                                                return_type="instance", quiet=False)
 
         if not self.user_default_token:
             for token in list(self.valid_user_tokens_static):
@@ -2016,24 +2020,6 @@ class AuthHandler(object):
                 self.logger.warning(log_msg)
                 return
 
-        # Check if there is a session master for auth_group configured.
-        session_master = self.auth_group.parents(recursive=True,
-                                                sessions=True,
-                                                session_master=True,
-                                                return_type="instance")
-
-        # If we found the session master and it has sessions enabled it must be
-        # used as session_start_group.
-        if session_master and session_master.sessions_enabled:
-            log_msg = _("Found a valid session master: '{session_master}'", log=True)[1]
-            log_msg = log_msg.format(session_master=session_master)
-            self.logger.debug(log_msg)
-            self.session_start_group = session_master.name
-        else:
-            # If there is no session master use accessgroup from request as
-            # session start group.
-            self.session_start_group = self.access_group
-
         if not self.auth_failed:
             # For SSO accessgroup we have to create a random password
             # to prevent login with the same OTP.
@@ -2058,7 +2044,7 @@ class AuthHandler(object):
                             slp=session_logout_pass,
                             token=self.auth_token.uuid,
                             uuid=self.new_session_uuid,
-                            access_group=self.session_start_group,
+                            access_group=self.access_group,
                             client=client_uuid,
                             client_ip=self.client_ip)
             # Invoke method to create child sessions which also creates
@@ -2347,9 +2333,6 @@ class AuthHandler(object):
         self.verify_sessions = True
         # Indicates if we should create sessions.
         self.create_sessions = True
-        # Will hold the accessgroup that will be used as start point on session
-        # creation.
-        self.session_start_group = None
         # Will be set to True if this is a session logout request.
         self.session_logout = False
         # Will be set to True if this is a session refresh request.

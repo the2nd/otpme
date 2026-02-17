@@ -1,0 +1,218 @@
+.TH OTPME-RESOLVER 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-resolver \- manage OTPme resolvers for importing objects from external directories
+.SH SYNOPSIS
+.B otpme-resolver
+[\fB\-\-type\fR \fIresolver_type\fR]
+.I command
+[\fIoptions\fR] [\fIresolver\fR]
+.SH DESCRIPTION
+.B otpme-resolver
+manages resolvers in the OTPme system. Resolvers synchronize objects (users, groups) from external directory services into OTPme. Currently the supported resolver type is LDAP, which connects to LDAP directories (e.g. Active Directory, OpenLDAP) and imports user and group objects.
+.PP
+Resolvers can run periodically at a configured sync interval, and can optionally delete OTPme objects that no longer exist in the external directory.
+.SH COMMANDS
+.SS Resolver Management
+.TP
+.B add \fIresolver\fR
+Create a new resolver. Requires \fB\-\-type\fR before the command.
+.TP
+.B del \fIresolver\fR
+Delete a resolver.
+.TP
+.B show \fR[\fIresolver\fR]
+Display resolver information. Without arguments, shows all resolvers.
+.TP
+.B list \fR[\fIregex\fR]
+List resolvers, optionally filtered by regex pattern.
+.TP
+.B enable \fIresolver\fR
+Enable a disabled resolver.
+.TP
+.B disable \fIresolver\fR
+Disable a resolver without deleting it.
+.TP
+.B rename \fIresolver\fR \fInew_name\fR
+Rename a resolver.
+.TP
+.B unit \fIresolver\fR \fIunit\fR
+Move resolver to a different organizational unit.
+.SS Resolver Operations
+.TP
+.B run \fR[\fB\-\-object\-types\fR \fItypes\fR] \fIresolver\fR
+Run the resolver to synchronize objects. Use \fB\-\-object\-types\fR to limit to specific types (e.g. user,group).
+.TP
+.B test \fR[\fB\-\-object\-types\fR \fItypes\fR] \fIresolver\fR
+Test the resolver without making changes.
+.TP
+.B get_objects \fR[\fB\-\-object\-types\fR \fItypes\fR] \fIresolver\fR
+Get objects from the resolver source.
+.TP
+.B delete_objects \fR[\fB\-\-object\-types\fR \fItypes\fR] \fIresolver\fR
+Delete objects imported by the resolver.
+.SS Sync Configuration
+.TP
+.B sync_interval \fIresolver\fR \fIinterval\fR
+Set the automatic sync interval for the resolver.
+.TP
+.B key_attribute \fIresolver\fR \fIobject_type\fR \fIattribute\fR
+Set the key attribute used to match objects during sync (e.g. entryUUID).
+.TP
+.B enable_sync_units \fIresolver\fR
+Enable synchronization of organizational units.
+.TP
+.B disable_sync_units \fIresolver\fR
+Disable synchronization of organizational units.
+.TP
+.B enable_deletions \fIresolver\fR
+Enable deletion of OTPme objects that no longer exist in the external directory.
+.TP
+.B disable_deletions \fIresolver\fR
+Disable deletion of missing objects.
+.SS LDAP Configuration
+These commands are specific to LDAP resolvers:
+.TP
+.B ldap_base \fIresolver\fR \fIbase_dn\fR
+Set the LDAP search base DN (e.g. dc=example,dc=com).
+.TP
+.B login_dn \fIresolver\fR \fIdn\fR
+Set the DN used to bind to the LDAP server.
+.TP
+.B login_password \fIresolver\fR \fR[\fIpassword\fR]
+Set the password for LDAP bind. If omitted, prompts interactively.
+.TP
+.B add_server \fIresolver\fR \fIserver_uri\fR
+Add an LDAP server URI (e.g. ldaps://ldap.example.com, ldaps://ldap2.example.com:389).
+.TP
+.B del_server \fIresolver\fR \fIserver_uri\fR
+Remove an LDAP server URI.
+.TP
+.B add_ldap_filter \fIresolver\fR \fIobject_type\fR \fIfilter\fR
+Add an LDAP search filter for a given object type (e.g. user, group).
+.TP
+.B del_ldap_filter \fIresolver\fR \fIobject_type\fR \fIfilter\fR
+Remove an LDAP search filter.
+.TP
+.B add_ldap_attribute \fIresolver\fR \fIobject_type\fR \fIsrc_attr\fR [\fIdst_attr\fR]
+Add an LDAP attribute mapping for an object type. Maps a source LDAP attribute to an OTPme attribute. If \fIdst_attr\fR is omitted, the same attribute name is used.
+.TP
+.B del_ldap_attribute \fIresolver\fR \fIobject_type\fR \fIattribute\fR
+Remove an LDAP attribute mapping.
+.SS Policy Management
+.TP
+.B add_policy \fIresolver\fR \fIpolicy\fR
+Attach a policy to the resolver.
+.TP
+.B remove_policy \fIresolver\fR \fIpolicy\fR
+Remove a policy from the resolver.
+.TP
+.B list_policies \fIresolver\fR
+List policies attached to the resolver.
+.SS ACL Management
+.TP
+.B add_acl \fIresolver\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fIresolver\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIresolver\fR
+Display all ACLs for the resolver.
+.TP
+.B enable_acl_inheritance \fIresolver\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIresolver\fR
+Disable ACL inheritance.
+.SS Configuration and Attributes
+.TP
+.B config \fIresolver\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter.
+.TP
+.B description \fIresolver\fR \fR[\fIdescription\fR]
+Set resolver description.
+.SS Import/Export
+.TP
+.B export \fIresolver\fR
+Export resolver configuration to stdout.
+.SH OPTIONS
+.TP
+.B \-\-type \fITYPE\fR
+Specify the resolver type. Required for the \fBadd\fR command and for all type-specific commands. Must be placed before the command.
+.TP
+.B \-\-object\-types \fItype1,type2\fR
+Limit operations to specific object types (e.g. user,group).
+.SS Display Options
+.TP
+.B \-a
+Show all resolvers.
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.SS Setting Up an LDAP Resolver
+.TP
+.B otpme-resolver \-\-type ldap add ad_resolver
+Create an LDAP resolver
+.TP
+.B otpme-resolver add_server ad_resolver ldaps://ad.example.com
+Add LDAP server
+.TP
+.B otpme-resolver ldap_base ad_resolver dc=example,dc=com
+Set search base
+.TP
+.B otpme-resolver login_dn ad_resolver cn=readonly,dc=example,dc=com
+Set bind DN
+.TP
+.B otpme-resolver login_password ad_resolver
+Set bind password (prompts interactively)
+.SS Configuring Sync
+.TP
+.B otpme-resolver key_attribute ad_resolver user entryUUID
+Set key attribute for user matching
+.TP
+.B otpme-resolver add_ldap_filter ad_resolver user (objectClass=inetOrgPerson)
+Add LDAP search filter for users
+.TP
+.B otpme-resolver add_ldap_attribute ad_resolver user cn
+Map LDAP attribute cn for users
+.TP
+.B otpme-resolver sync_interval ad_resolver 3600
+Set sync interval to 1 hour
+.SS Running the Resolver
+.TP
+.B otpme-resolver test ad_resolver
+Test resolver configuration
+.TP
+.B otpme-resolver run ad_resolver
+Run the resolver to sync objects
+.TP
+.B otpme-resolver run \-\-object\-types user ad_resolver
+Sync only users
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme-user (1),
+.BR otpme-group (1),
+.BR otpme-policy (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

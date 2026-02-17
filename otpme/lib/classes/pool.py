@@ -539,6 +539,25 @@ class Pool(OTPmeObject):
                                 callback=callback, **kwargs)
         return add_result
 
+    @object_lock(full_lock=True)
+    @backend.transaction
+    @audit_log()
+    def rename(
+        self,
+        new_name: str,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Rename pool. """
+        # Build new OID.
+        new_oid = oid.get(object_type="pool",
+                        realm=self.realm,
+                        site=self.site,
+                        unit=self.unit,
+                        name=new_name)
+        return self._rename(new_oid, callback=callback, _caller=_caller, **kwargs)
+
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show role config. """
         if not self.verify_acl("view_public:object"):

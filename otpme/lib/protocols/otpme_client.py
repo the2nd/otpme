@@ -76,8 +76,6 @@ def register():
 
 def register_config():
     """ Register config stuff. """
-    # Do not show login prompt if user is not logged in?
-    config.register_config_var("no_auth", bool, False)
     # RSP len. We use 65 because the initial RSP generated via DH key exchange is
     # of length 65.
     config.register_config_var("rsp_len", int, 65)
@@ -2263,9 +2261,6 @@ class OTPmeClient1(OTPmeClientBase):
         self.sync_token_data = sync_token_data
         # Indicates if we should handle user authentication.
         self.handle_user_auth = handle_user_auth
-        # If --no-auth is given we should not handle authentication, just fail.
-        if config.no_auth:
-            self.handle_user_auth = False
         # Indicates if we should handle host authentication.
         self.handle_host_auth = handle_host_auth
         # Will hold otpme-agent connection when doing login/logout.

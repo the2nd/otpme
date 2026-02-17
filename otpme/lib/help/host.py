@@ -106,53 +106,53 @@ cmd_help = {
                                 },
                 },
 
-     'add_extension'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-host add_extension {host} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
-                    '_help' :   {
-                                    'cmd'                   : _('Add extension to host'),
-                                },
-                },
+     #'add_extension'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-host add_extension {host} {extension}'),
+     #               'cmd'   :   '<|object|> <extension>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Add extension to host'),
+     #                           },
+     #           },
 
-     'remove_extension'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-host remove_extension {host} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
-                    '_help' :   {
-                                    'cmd'                   : _('Remove extension from host'),
-                                },
-                },
+     #'remove_extension'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-host remove_extension {host} {extension}'),
+     #               'cmd'   :   '<|object|> <extension>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Remove extension from host'),
+     #                           },
+     #           },
 
-     'add_attribute'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-host add_attribute {host} {attribute}=[value]'),
-                    'cmd'   :   '<|object|> <attribute>=[value]',
-                    '_help' :   {
-                                    'cmd'                   : _('Add (LDAP) attribute to host'),
-                                },
-                },
+     #'add_attribute'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-host add_attribute {host} {attribute}=[value]'),
+     #               'cmd'   :   '<|object|> <attribute>=[value]',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Add (LDAP) attribute to host'),
+     #                           },
+     #           },
 
-     'del_attribute'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-host del_attribute {host} {attribute}=[value]'),
-                    'cmd'   :   '<|object|> <attribute>=[value]',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete (LDAP) attribute from host'),
-                                },
-                },
+     #'del_attribute'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-host del_attribute {host} {attribute}=[value]'),
+     #               'cmd'   :   '<|object|> <attribute>=[value]',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Delete (LDAP) attribute from host'),
+     #                           },
+     #           },
 
-     'add_object_class'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-host add_object_class {host} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
-                    '_help' :   {
-                                    'cmd'                   : _('Add (LDAP) object class to host'),
-                                },
-                },
+     #'add_object_class'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-host add_object_class {host} {object_class}'),
+     #               'cmd'   :   '<|object|> <object_class>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Add (LDAP) object class to host'),
+     #                           },
+     #           },
 
-     'del_object_class'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-host del_object_class {host} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete (LDAP) object class from host'),
-                                },
-                },
+     #'del_object_class'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-host del_object_class {host} {object_class}'),
+     #               'cmd'   :   '<|object|> <object_class>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Delete (LDAP) object class from host'),
+     #                           },
+     #           },
 
      #'show_ldif'    : {
      #               '_cmd_usage_help' : 'Usage: otpme-host show_ldif {host} -a attribute1,attribute2',

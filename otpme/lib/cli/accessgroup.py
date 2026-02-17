@@ -29,7 +29,6 @@ table_headers = [
                 "max",
                 "relogin",
                 "Childs",
-                "master" ,
                 "to_pass_on",
                 "timeout",
                 "utimeout)",
@@ -49,7 +48,6 @@ def register():
                         'description',
                         'max_sessions',
                         'max_fail_reset',
-                        'session_master',
                         'relogin_timeout',
                         'timeout_pass_on',
                         'session_timeout',
@@ -102,7 +100,6 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
         max_fail = group_data[ag_uuid]['max_fail'][0]
         max_sessions = group_data[ag_uuid]['max_sessions'][0]
         max_fail_reset = group_data[ag_uuid]['max_fail_reset'][0]
-        session_master = group_data[ag_uuid]['session_master'][0]
         session_timeout = group_data[ag_uuid]['session_timeout'][0]
         timeout_pass_on = group_data[ag_uuid]['timeout_pass_on'][0]
         sessions_enabled = group_data[ag_uuid]['sessions_enabled'][0]
@@ -233,14 +230,6 @@ def row_getter(realm, site, group_order, group_data, acls, table=None,
                     row.append("\n".join(child_sessions_result))
                 else:
                     row.append("")
-            else:
-                row.append("-")
-        # Session master.
-        if "master" in output_fields:
-            if check_acl("view:session_master") \
-            or check_acl("enable:session_master") \
-            or check_acl("disable:session_master"):
-                row.append(session_master)
             else:
                 row.append("-")
         # Timeout pass-on.

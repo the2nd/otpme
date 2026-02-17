@@ -335,22 +335,18 @@ cmd_help = {
                 },
 
     'add_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup add_token [-i tty,gui,ssh] [--no-auto-sign] [--sign --tags {tag1,tag2,...}] {accessgroup} {token} [token_options]'),
-                    'cmd'   :   '-i :[login_interfaces]: --no-auto-sign :auto_sign=False: --sign :sign=True: --tags :[tags]: <|object|> <token_path> [token_options]',
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup add_token {accessgroup} {token} [token_options]'),
+                    'cmd'   :   '<|object|> <token_path> [token_options]',
                     '_help' :   {
                                     'cmd'                   : _('Add token to accessgroup.'),
-                                    '-i <tty,gui,ssh>'      : _('Limit login to given interface(s).'),
-                                    '--sign'                : _('Sign the object with default tags.'),
-                                    '--tags <tag1,tag2>'    : _('Add tags to signature.'),
                                 },
                 },
 
     'remove_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup remove_token --keep-sign {accessgroup} {token}'),
-                    'cmd'   :   '--keep-sign :keep_sign=True: <|object|> <token_path>',
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup remove_token {accessgroup} {token}'),
+                    'cmd'   :   '<|object|> <token_path>',
                     '_help' :   {
                                     'cmd'                   : _('Remove token from accessgroup.'),
-                                    '--keep-sign'           : _('Do not remove any signature.'),
                                 },
                 },
 
@@ -367,22 +363,6 @@ cmd_help = {
                     'cmd'   :   '<|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Disable sessions for accessgroup'),
-                                },
-                },
-
-    'enable_session_master'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup enable_session_master {accessgroup}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Make accessgroup the session master'),
-                                },
-                },
-
-    'disable_session_master'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup disable_session_master {accessgroup}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Disable session master for accessgroup'),
                                 },
                 },
 

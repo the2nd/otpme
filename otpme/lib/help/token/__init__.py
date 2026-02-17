@@ -147,53 +147,53 @@ cmd_help = {
                                 },
                 },
 
-     'add_extension'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token add_extension {token} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
-                    '_help' :   {
-                                    'cmd'                   : _('Add extension to token.'),
-                                },
-                },
+     #'add_extension'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-token add_extension {token} {extension}'),
+     #               'cmd'   :   '<|object|> <extension>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Add extension to token.'),
+     #                           },
+     #           },
 
-     'remove_extension'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token remove_extension {token} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
-                    '_help' :   {
-                                    'cmd'                   : _('Remove extension from token.'),
-                                },
-                },
+     #'remove_extension'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-token remove_extension {token} {extension}'),
+     #               'cmd'   :   '<|object|> <extension>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Remove extension from token.'),
+     #                           },
+     #           },
 
-     'add_attribute'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token add_attribute {token} {attribute}=[value]'),
-                    'cmd'   :   '<|object|> <attribute>=[value]',
-                    '_help' :   {
-                                    'cmd'                   : _('Add (LDAP) attribute to token.'),
-                                },
-                },
+     #'add_attribute'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-token add_attribute {token} {attribute}=[value]'),
+     #               'cmd'   :   '<|object|> <attribute>=[value]',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Add (LDAP) attribute to token.'),
+     #                           },
+     #           },
 
-     'del_attribute'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token del_attribute {token} {attribute}=[value]'),
-                    'cmd'   :   '<|object|> <attribute>=[value]',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete (LDAP) attribute from token.'),
-                                },
-                },
+     #'del_attribute'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-token del_attribute {token} {attribute}=[value]'),
+     #               'cmd'   :   '<|object|> <attribute>=[value]',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Delete (LDAP) attribute from token.'),
+     #                           },
+     #           },
 
-     'add_object_class'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token add_object_class {token} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
-                    '_help' :   {
-                                    'cmd'                   : _('Add (LDAP) object class to token.'),
-                                },
-                },
+     #'add_object_class'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-token add_object_class {token} {object_class}'),
+     #               'cmd'   :   '<|object|> <object_class>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Add (LDAP) object class to token.'),
+     #                           },
+     #           },
 
-     'del_object_class'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token del_object_class {token} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete (LDAP) object class from token.'),
-                                },
-                },
+     #'del_object_class'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-token del_object_class {token} {object_class}'),
+     #               'cmd'   :   '<|object|> <object_class>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Delete (LDAP) object class from token.'),
+     #                           },
+     #           },
 
      #'show_ldif'    : {
      #               '_cmd_usage_help' : 'Usage: otpme-token show_ldif {token}',

@@ -1,0 +1,295 @@
+.TH OTPME-ACCESSGROUP 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-accessgroup \- manage OTPme access groups for resource authorization
+.SH SYNOPSIS
+.B otpme-accessgroup
+.I command
+[\fIoptions\fR] [\fIaccessgroup\fR]
+.SH DESCRIPTION
+.B otpme-accessgroup
+manages access groups in the OTPme system. Access groups control which tokens and roles are authorized to access specific services. They provide centralized access control, session management, timeout configuration, and failure handling.
+.PP
+Access groups are assigned to clients (see
+.BR otpme\-client (1))
+to control who can authenticate. They support hierarchical structures with parent and child groups. For a conceptual overview, see
+.BR otpme (7).
+.SH COMMANDS
+.SS Access Group Management
+.TP
+.B add \fIaccessgroup\fR
+Create a new access group.
+.TP
+.B del \fIaccessgroup\fR
+Delete an access group.
+.TP
+.B show \fR[\fIaccessgroup\fR]
+Display access group information.
+.TP
+.B list \fR[\fIregex\fR]
+List access groups, optionally filtered by regex pattern.
+.TP
+.B enable \fIaccessgroup\fR
+Enable a disabled access group.
+.TP
+.B disable \fIaccessgroup\fR
+Disable an access group without deleting it.
+.TP
+.B rename \fIaccessgroup\fR \fInew_name\fR
+Rename an access group.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIaccessgroup\fR \fIunit\fR
+Move access group to a different unit.
+.TP
+.B touch \fIaccessgroup\fR
+Re-index the access group to fix potential index problems.
+.SS Token and Role Assignment
+.TP
+.B add_token \fIaccessgroup\fR \fItoken_path\fR
+Add a token to the access group. Tokens in the group are authorized to access resources using this group.
+.TP
+.B remove_token \fIaccessgroup\fR \fItoken_path\fR
+Remove a token from the access group.
+.TP
+.B list_tokens \fIaccessgroup\fR
+List tokens assigned to the access group.
+.TP
+.B add_role \fIaccessgroup\fR \fIrole\fR
+Add a role to the access group. All tokens with this role are authorized.
+.TP
+.B remove_role \fIaccessgroup\fR \fIrole\fR
+Remove a role from the access group.
+.TP
+.B list_roles \fIaccessgroup\fR
+List roles assigned to the access group.
+.SS Session Management
+.TP
+.B enable_sessions \fIaccessgroup\fR
+Enable session management for this access group.
+.TP
+.B disable_sessions \fIaccessgroup\fR
+Disable session management.
+.TP
+.B enable_timeout_pass_on \fIaccessgroup\fR
+Pass timeout values to child sessions.
+.TP
+.B disable_timeout_pass_on \fIaccessgroup\fR
+Do not pass timeout values to child sessions.
+.SS Timeout Configuration
+.TP
+.B timeout \fIaccessgroup\fR \fR[\fItime\fR]
+Set session timeout (e.g., 30m, 2h, 1D, 1W). Default: 1800s (30 minutes).
+.TP
+.B unused_timeout \fIaccessgroup\fR \fR[\fItime\fR]
+Set timeout for unused sessions. Default: 300s (5 minutes).
+.TP
+.B relogin_timeout \fIaccessgroup\fR \fR[\fItime\fR]
+Set minimum time before allowing re-login. Default: 0 (immediate).
+.TP
+.B max_sessions \fIaccessgroup\fR \fR[\fIcount\fR]
+Set maximum concurrent sessions (0 = unlimited). Default: 0.
+.SS Failure Handling
+.TP
+.B max_fail \fIaccessgroup\fR \fR[\fIcount\fR]
+Set maximum failed login attempts before locking. Default: 5.
+.TP
+.B max_fail_reset \fIaccessgroup\fR \fR[\fItime\fR]
+Set time after which failed login counter resets (e.g., 5m, 1h). Default: 0 (no reset).
+.SS Hierarchical Groups
+.TP
+.B add_child_group \fIaccessgroup\fR \fIchild_group\fR
+Add a child access group. Tokens assigned to a parent group are also accepted when authenticating to the child group.
+.TP
+.B remove_child_group \fIaccessgroup\fR \fIchild_group\fR
+Remove a child access group.
+.TP
+.B add_child_session \fIaccessgroup\fR \fIsession_group\fR
+Add a child session group. When a session is created at this access group, child sessions are automatically created for all child session groups.
+.TP
+.B remove_child_session \fIaccessgroup\fR \fIsession_group\fR
+Remove a child session group.
+.SS Policy Management
+.TP
+.B add_policy \fIaccessgroup\fR \fIpolicy\fR
+Attach a policy to the access group.
+.TP
+.B remove_policy \fIaccessgroup\fR \fIpolicy\fR
+Remove a policy from the access group.
+.TP
+.B list_policies \fIaccessgroup\fR
+List policies attached to the access group.
+.SS ACL Management
+.TP
+.B add_acl \fIaccessgroup\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fIaccessgroup\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIaccessgroup\fR
+Display all ACLs for the access group.
+.TP
+.B enable_acl_inheritance \fIaccessgroup\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIaccessgroup\fR
+Disable ACL inheritance.
+.SS Configuration and Attributes
+.TP
+.B config \fIaccessgroup\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter.
+.TP
+.B show_config \fIaccessgroup\fR
+Show all configuration parameters.
+.TP
+.B description \fIaccessgroup\fR \fR[\fIdescription\fR]
+Set access group description.
+.TP
+.B add_extension \fIaccessgroup\fR \fIextension\fR
+Add an extension to the access group.
+.TP
+.B remove_extension \fIaccessgroup\fR \fIextension\fR
+Remove an extension.
+.TP
+.B add_attribute \fIaccessgroup\fR \fIattribute\fR=\fIvalue\fR
+Add an LDAP attribute.
+.TP
+.B del_attribute \fIaccessgroup\fR \fIattribute\fR=\fIvalue\fR
+Remove an LDAP attribute.
+.TP
+.B add_object_class \fIaccessgroup\fR \fIclass\fR
+Add an LDAP object class.
+.TP
+.B del_object_class \fIaccessgroup\fR \fIclass\fR
+Remove an LDAP object class.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIaccessgroup\fR
+Export access group configuration.
+.TP
+.B remove_orphans \fIaccessgroup\fR
+Remove orphaned object references.
+.SH OPTIONS
+.SS Display Options
+.TP
+.B \-a
+Show all access groups (across all units).
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.TP
+.B \-\-attribute \fIATTR\fR
+Display specific attribute in list command.
+.SS General Options
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving access group.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.SS Creating and Configuring Access Groups
+.TP
+.B otpme-accessgroup add vpn
+Create access group for VPN access
+.TP
+.B otpme-accessgroup add wlan_building1
+Create access group for building 1 WLAN
+.TP
+.B otpme-accessgroup description vpn "VPN Access Group"
+Set description
+.SS Adding Tokens and Roles
+.TP
+.B otpme-accessgroup add_token vpn alice/totp
+Allow alice's TOTP token to access VPN
+.TP
+.B otpme-accessgroup add_token \-i ssh vpn bob/ssh_key
+Allow bob's SSH key only for SSH interface
+.TP
+.B otpme-accessgroup add_role vpn VPN_USER
+Allow all tokens with VPN_USER role
+.TP
+.B otpme-accessgroup list_tokens vpn
+Show all authorized tokens
+.SS Configuring Sessions
+.TP
+.B otpme-accessgroup enable_sessions vpn
+Enable session management
+.TP
+.B otpme-accessgroup timeout vpn 8h
+Set 8-hour session timeout
+.TP
+.B otpme-accessgroup unused_timeout vpn 30m
+Set 30-minute unused timeout
+.TP
+.B otpme-accessgroup max_sessions vpn 3
+Allow maximum 3 concurrent sessions
+.TP
+.B otpme-accessgroup relogin_timeout vpn 5m
+Require 5-minute wait before re-login
+.SS Configuring Failure Handling
+.TP
+.B otpme-accessgroup max_fail vpn 3
+Lock after 3 failed attempts
+.TP
+.B otpme-accessgroup max_fail_reset vpn 10m
+Reset failure counter after 10 minutes
+.SS Hierarchical Configuration
+.TP
+.B otpme-accessgroup add wlan
+Create parent WLAN group
+.TP
+.B otpme-accessgroup add wlan_building1
+Create child group for building 1
+.TP
+.B otpme-accessgroup add_child_group wlan wlan_building1
+Link child to parent
+.TP
+.B otpme-accessgroup enable_timeout_pass_on wlan
+Pass timeout settings to children
+.SS Assigning to a Client
+.TP
+.B otpme-client access_group vpn_gateway vpn
+Assign access group to VPN gateway client
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (7),
+.BR otpme-client (1),
+.BR otpme-host (1),
+.BR otpme-token (1),
+.BR otpme-role (1),
+.BR otpme-policy (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

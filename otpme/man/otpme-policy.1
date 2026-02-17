@@ -1,0 +1,470 @@
+.TH OTPME-POLICY 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-policy \- manage OTPme security and business policies
+.SH SYNOPSIS
+.B otpme-policy
+[\fB\-\-type\fR \fIpolicy_type\fR]
+.I command
+[\fIoptions\fR] [\fIpolicy\fR]
+.SH DESCRIPTION
+.B otpme-policy
+manages policies in the OTPme system. Policies are objects that can be attached to other OTPme objects (users, tokens, hosts, nodes, groups, units, roles, etc.) and are triggered via hooks when actions are performed on those objects. Each policy type defines which hooks it handles (e.g. check_password, check_pin, authenticate) and which object types it applies to. When an action is performed on an object, all assigned policies are evaluated through the run_policies() mechanism.
+.SH POLICY TYPES
+OTPme supports the following policy types:
+.TP
+.B password
+Password and PIN complexity requirements. Controls minimum length, character requirements, and strength checking.
+.TP
+.B logintimes
+Time-based access control. Restricts authentication to specific time windows.
+.TP
+.B autodisable
+Automatic account or token disabling. Disables objects after a specified time or after a period of inactivity.
+.TP
+.B forcetoken
+Token enforcement policy. Requires specific token types or pass types for authentication.
+.TP
+.B authonaction
+Authentication on action. Requires re-authentication before performing sensitive operations (hooks).
+.TP
+.B defaultunits
+Default organizational units. Specifies default units for creating new objects of specific types.
+.TP
+.B defaultgroups
+Default group assignments. Automatically adds new users to specified groups and sets the user's default (primary) group.
+.TP
+.B defaultroles
+Default role assignments. Automatically adds a new user's default token to the specified roles.
+.TP
+.B defaultpolicies
+Default policy assignments. Automatically applies policies to new objects of a given type.
+.TP
+.B idrange
+ID range management. Controls uidNumber and gidNumber ranges for users and groups.
+.TP
+.B tokenacls
+Token ACL policy. Assigns ACLs to newly created tokens and to the user/token that created them.
+.TP
+.B objecttemplates
+Object templates. Provides templates for creating new objects with predefined configurations.
+.SH COMMANDS
+.SS Policy Management
+.TP
+.B add \fIpolicy_name\fR
+Create a new policy.
+.TP
+.B del \fIpolicy\fR
+Delete a policy.
+.TP
+.B show \fR[\fIpolicy\fR]
+Display policy information. Without arguments, shows all policies.
+.TP
+.B list \fR[\fIregex\fR]
+List policies, optionally filtered by regex pattern.
+.TP
+.B enable \fIpolicy\fR
+Enable a disabled policy.
+.TP
+.B disable \fIpolicy\fR
+Disable a policy without deleting it.
+.TP
+.B rename \fIpolicy\fR \fInew_name\fR
+Rename a policy.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIpolicy\fR \fIunit\fR
+Move policy to a different unit.
+.SS Policy Configuration
+.TP
+.B show_config \fIpolicy\fR
+Show all policy configuration parameters.
+.TP
+.B config \fIpolicy\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter.
+.TP
+.B description \fIpolicy\fR \fR[\fIdescription\fR]
+Set policy description.
+.SS Policy Assignment
+Policies can be assigned to other policies (policy chaining):
+.TP
+.B add_policy \fIpolicy\fR \fIchild_policy\fR
+Add a policy to this policy.
+.TP
+.B remove_policy \fIpolicy\fR \fIchild_policy\fR
+Remove a policy from this policy.
+.TP
+.B list_policies \fIpolicy\fR
+List policies assigned to this policy.
+.SS ACL Management
+.TP
+.B add_acl \fIpolicy\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry. Owner type can be 'role' or 'token'.
+.TP
+.B del_acl \fIpolicy\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIpolicy\fR
+Display all ACLs for the policy.
+.TP
+.B enable_acl_inheritance \fIpolicy\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIpolicy\fR
+Disable ACL inheritance.
+.SS Import/Export
+.TP
+.B export \fIpolicy\fR
+Export policy configuration to stdout.
+.SH POLICY TYPE DETAILS
+.SS Password Policy
+Controls password and PIN requirements.
+.PP
+Commands:
+.RS
+.TP
+.B password_min_len \fIpolicy\fR \fIlength\fR
+Set minimum password length.
+.TP
+.B pin_min_len \fIpolicy\fR \fIlength\fR
+Set minimum PIN length.
+.TP
+.B enable_require_number \fIpolicy\fR
+Require at least one number in password.
+.TP
+.B disable_require_number \fIpolicy\fR
+Disable number requirement.
+.TP
+.B enable_require_upper \fIpolicy\fR
+Require at least one uppercase character.
+.TP
+.B disable_require_upper \fIpolicy\fR
+Disable uppercase requirement.
+.TP
+.B enable_require_lower \fIpolicy\fR
+Require at least one lowercase character.
+.TP
+.B disable_require_lower \fIpolicy\fR
+Disable lowercase requirement.
+.TP
+.B enable_require_special \fIpolicy\fR
+Require at least one special character.
+.TP
+.B disable_require_special \fIpolicy\fR
+Disable special character requirement.
+.TP
+.B strength_checker \fIpolicy\fR \fIchecker\fR
+Set the password strength checker to use.
+.TP
+.B enable_strength_checker \fIpolicy\fR
+Enable the strength checker.
+.TP
+.B disable_strength_checker \fIpolicy\fR
+Disable the strength checker.
+.TP
+.B strength_checker_opts \fIpolicy\fR \fIoptions\fR
+Set strength checker options.
+.TP
+.B test \fR[\fB\-\-password\fR \fIpassword\fR] [\fB\-\-pin\fR \fIpin\fR] \fIpolicy\fR
+Test the policy against a password or PIN.
+.RE
+.SS Login Times Policy
+Restricts authentication to specific time windows.
+.PP
+Commands:
+.RS
+.TP
+.B login_times \fIpolicy\fR \fIlogin_times\fR
+Set allowed login times.
+.TP
+.B test \fR[\fB\-\-object\-type\fR \fItype\fR] [\fB\-\-test\-object\fR \fIobject\fR] [\fB\-\-token\fR \fItoken\fR] \fIpolicy\fR
+Test the policy. Specify the object type, test object, and token to simulate.
+.RE
+.SS Auto-Disable Policy
+Automatically disables accounts or tokens based on time or usage.
+.PP
+Commands:
+.RS
+.TP
+.B auto_disable \fIpolicy\fR \fItime\fR
+Set disable time. Can be an absolute time (e.g. "09:53 13.06.2023") or a relative duration (e.g. "1d" for 1 day). Use \fB\-u\fR to disable after the object has been unused for the given time.
+.RE
+.SS Force Token Policy
+Requires specific token types or pass types for authentication.
+.PP
+Commands:
+.RS
+.TP
+.B force_token_types \fIpolicy\fR \fItoken_types\fR
+Set the list of allowed token types (e.g. totp, hotp, fido2).
+.TP
+.B force_pass_types \fIpolicy\fR \fIpass_types\fR
+Set the list of allowed pass types.
+.RE
+.SS Auth On Action Policy
+Requires re-authentication before performing sensitive operations.
+.PP
+Commands:
+.RS
+.TP
+.B add_hook \fIpolicy\fR \fIobject_type\fR \fIhook\fR
+Add a hook that triggers re-authentication (e.g. change_pin).
+.TP
+.B remove_hook \fIpolicy\fR \fIobject_type\fR \fIhook\fR
+Remove a hook.
+.TP
+.B reauth_timeout \fIpolicy\fR \fItimeout\fR
+Set the re-authentication timeout.
+.TP
+.B reauth_expiry \fIpolicy\fR \fIexpiry\fR
+Set the re-authentication expiry timeout.
+.TP
+.B whitelist_token \fIpolicy\fR \fItoken\fR
+Add a token to the re-authentication whitelist (exempt from re-auth).
+.TP
+.B unwhitelist_token \fIpolicy\fR \fItoken\fR
+Remove a token from the whitelist.
+.TP
+.B whitelist_role \fIpolicy\fR \fIrole\fR
+Add a role to the re-authentication whitelist.
+.TP
+.B unwhitelist_role \fIpolicy\fR \fIrole\fR
+Remove a role from the whitelist.
+.RE
+.SS Default Units Policy
+Specifies default organizational units for new objects.
+.PP
+Commands:
+.RS
+.TP
+.B set_unit \fIpolicy\fR \fIobject_type\fR \fR[\fIunit\fR]
+Set default unit for an object type (user, host, group, etc.). Omit unit to clear.
+.RE
+.SS Default Groups Policy
+Automatically adds new users to specified groups and sets the user's default (primary) group.
+.PP
+Commands:
+.RS
+.TP
+.B add_group \fIpolicy\fR \fIgroup\fR
+Add a default group.
+.TP
+.B remove_group \fIpolicy\fR \fIgroup\fR
+Remove a default group.
+.TP
+.B default_group \fIpolicy\fR \fIgroup\fR
+Set the primary default group.
+.RE
+.SS Default Roles Policy
+Automatically adds a new user's default token to the specified roles.
+.PP
+Commands:
+.RS
+.TP
+.B add_default_role \fIpolicy\fR \fIrole\fR
+Add a default role.
+.TP
+.B remove_default_role \fIpolicy\fR \fIrole\fR
+Remove a default role.
+.RE
+.SS Default Policies Policy
+Automatically applies policies to new objects of a given type.
+.PP
+Commands:
+.RS
+.TP
+.B add_default_policy \fIpolicy\fR \fIobject_type\fR \fIpolicy_name\fR
+Add a default policy for the given object type.
+.TP
+.B remove_default_policy \fIpolicy\fR \fIobject_type\fR \fIpolicy_name\fR
+Remove a default policy.
+.RE
+.SS ID Range Policy
+Controls UID/GID allocation ranges.
+.PP
+Commands:
+.RS
+.TP
+.B add_id_range \fIpolicy\fR \fIattribute:type:range\fR
+Add an ID range. Range type must be s=sequence or r=random.
+.TP
+.B del_id_range \fIpolicy\fR \fIattribute:type:range\fR
+Delete an ID range.
+.TP
+.B enable_id_check \fIpolicy\fR
+Enable check if a new ID is already in use.
+.TP
+.B disable_id_check \fIpolicy\fR
+Disable ID uniqueness check.
+.TP
+.B enable_id_range_recheck \fIpolicy\fR
+Enable periodic ID range re-check.
+.TP
+.B disable_id_range_recheck \fIpolicy\fR
+Disable ID range re-check.
+.RE
+.SS Token ACLs Policy
+Defines default ACLs for users, tokens, and token creators.
+.PP
+Commands:
+.RS
+.TP
+.B add_user_acl \fIpolicy\fR \fIacl\fR
+Add a user ACL.
+.TP
+.B del_user_acl \fIpolicy\fR \fIacl\fR
+Delete a user ACL.
+.TP
+.B add_token_acl \fIpolicy\fR \fIacl\fR
+Add a token ACL.
+.TP
+.B del_token_acl \fIpolicy\fR \fIacl\fR
+Delete a token ACL.
+.TP
+.B add_creator_acl \fIpolicy\fR \fIacl\fR
+Add a token creator ACL.
+.TP
+.B del_creator_acl \fIpolicy\fR \fIacl\fR
+Delete a token creator ACL.
+.RE
+.SS Object Templates Policy
+Provides templates for creating new objects with predefined configurations.
+.PP
+Commands:
+.RS
+.TP
+.B set_template \fIpolicy\fR \fIobject_type\fR \fItemplate\fR
+Set a template for the given object type.
+.RE
+.SH OPTIONS
+.TP
+.B \-\-type \fITYPE\fR
+Specify the policy type. Required for the \fBadd\fR command and for all type-specific commands. Must be placed before the command.
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving policy to different unit.
+.SS Display Options
+.TP
+.B \-a
+Show all policies (not just current unit).
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.SS Password Policy
+.TP
+.B otpme-policy \-\-type password add strong_passwords
+Create a password policy
+.TP
+.B otpme-policy password_min_len strong_passwords 12
+Require minimum 12 characters
+.TP
+.B otpme-policy enable_require_upper strong_passwords
+Require at least one uppercase letter
+.TP
+.B otpme-policy enable_require_number strong_passwords
+Require at least one number
+.TP
+.B otpme-policy enable_require_special strong_passwords
+Require at least one special character
+.TP
+.B otpme-policy enable_strength_checker strong_passwords
+Enable password strength checking
+.TP
+.B otpme-policy test \-\-password "MyP@ss123" strong_passwords
+Test a password against the policy
+.TP
+.B otpme-user add_policy alice strong_passwords
+Apply policy to user alice
+.SS Login Time Restrictions
+.TP
+.B otpme-policy \-\-type logintimes add workhours
+Create login times policy
+.TP
+.B otpme-policy login_times workhours "mon-fri 08:00-18:00"
+Set allowed login times
+.TP
+.B otpme-group add_policy contractors workhours
+Apply to contractors group
+.SS Auto-Disable Temporary Access
+.TP
+.B otpme-policy \-\-type autodisable add temp_access
+Create auto-disable policy
+.TP
+.B otpme-policy auto_disable temp_access 90d
+Auto-disable after 90 days
+.TP
+.B otpme-policy auto_disable \-u temp_access 30d
+Auto-disable after 30 days of inactivity
+.TP
+.B otpme-user add_policy temp_contractor temp_access
+Apply to temporary contractor
+.SS Force Two-Factor Authentication
+.TP
+.B otpme-policy \-\-type forcetoken add require_2fa
+Create force token policy
+.TP
+.B otpme-policy force_token_types require_2fa totp,fido2
+Require TOTP or FIDO2 tokens
+.TP
+.B otpme-accessgroup add_policy vpn_access require_2fa
+Apply to VPN access group
+.SS Protect Sensitive Operations
+.TP
+.B otpme-policy \-\-type authonaction add protect_ops
+Create auth-on-action policy
+.TP
+.B otpme-policy add_hook protect_ops user change_pin
+Require re-auth for PIN changes
+.TP
+.B otpme-policy reauth_timeout protect_ops 300
+Re-auth valid for 5 minutes (300 seconds)
+.TP
+.B otpme-policy whitelist_role protect_ops ADMIN
+Exempt admin role from re-auth
+.SS Set Organizational Defaults
+.TP
+.B otpme-policy \-\-type defaultunits add org_defaults
+Create default units policy
+.TP
+.B otpme-policy set_unit org_defaults user it/users
+New users go to it/users unit
+.TP
+.B otpme-policy set_unit org_defaults host infrastructure/servers
+New hosts go to infrastructure/servers
+.SS ID Ranges
+.TP
+.B otpme-policy \-\-type idrange add uid_range
+Create ID range policy
+.TP
+.B otpme-policy add_id_range uid_range uidNumber:s:10000-60000
+Add sequential UID range 10000-60000
+.TP
+.B otpme-policy enable_id_check uid_range
+Enable ID uniqueness checking
+.SH FILES
+.TP
+.I /var/lib/otpme/objects/policy/
+Server-side policy storage
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme-user (1),
+.BR otpme-group (1),
+.BR otpme-token (1),
+.BR otpme-unit (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

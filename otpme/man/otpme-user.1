@@ -1,0 +1,390 @@
+.TH OTPME-USER 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-user \- manage OTPme user accounts
+.SH SYNOPSIS
+.B otpme-user
+.I command
+[\fIoptions\fR] [\fIuser\fR]
+.SH DESCRIPTION
+.B otpme-user
+manages user accounts in the OTPme authentication system. Users are identities that can authenticate to the system using tokens (OTP, SSH keys, passwords, etc.). Users can be members of groups, assigned roles, and have policies applied to control their access.
+.PP
+Users are identified by their name within the organizational unit hierarchy (e.g., alice, bob, it/admin_user).
+.SH COMMANDS
+.SS User Management
+.TP
+.B add \fR[\fIoptions\fR] \fIusername\fR
+Create a new user account. By default, creates a user with a default token.
+.TP
+.B del \fIuser\fR [\fIuser\fR ...]
+Delete one or more user accounts.
+.TP
+.B show \fR[\fIuser\fR]
+Display user information. Without arguments, shows all users.
+.TP
+.B list \fR[\fIregex\fR]
+List users, optionally filtered by regex pattern.
+.TP
+.B enable \fIuser\fR
+Enable a disabled user account.
+.TP
+.B disable \fIuser\fR
+Disable a user account without deleting it.
+.TP
+.B rename \fIuser\fR \fInew_name\fR
+Rename a user account.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIuser\fR \fIunit\fR
+Move user to a different organizational unit.
+.TP
+.B touch \fIuser\fR
+Re-index the object to fix potential index problems.
+.SS Token Management
+.TP
+.B list_tokens \fR[\fIuser\fR]
+List all tokens assigned to user(s).
+.SS Group Membership
+.TP
+.B add_group \fIuser\fR \fIgroup\fR
+Add user to a group.
+.TP
+.B remove_group \fIuser\fR \fIgroup\fR
+Remove user from a group.
+.TP
+.B list_groups \fR[\fIuser\fR]
+List groups the user belongs to.
+.SS Role Management
+.TP
+.B add_role \fIuser\fR \fIrole\fR
+Assign a role to the user.
+.TP
+.B remove_role \fIuser\fR \fIrole\fR
+Remove a role from the user.
+.TP
+.B list_roles \fR[\fIuser\fR]
+List roles assigned to the user.
+.SS Policy Management
+.TP
+.B add_policy \fIuser\fR \fIpolicy\fR
+Attach a policy to the user.
+.TP
+.B remove_policy \fIuser\fR \fIpolicy\fR
+Remove a policy from the user.
+.TP
+.B list_policies \fR[\fIuser\fR]
+List policies attached to the user.
+.SS User Configuration
+.TP
+.B config \fIuser\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter.
+.TP
+.B show_config \fR[\fIuser\fR]
+Show all configuration parameters.
+.TP
+.B description \fIuser\fR \fR[\fIdescription\fR]
+Set user description.
+.TP
+.B unit \fIuser\fR \fR[\fIunit\fR]
+Display or change user's organizational unit.
+.SS Cryptographic Keys
+.TP
+.B gen_keys \fR[\fIoptions\fR] \fIuser\fR
+Generate encryption/signing keys for the user.
+.TP
+.B del_keys \fIuser\fR
+Delete user's cryptographic keys.
+.TP
+.B key_mode \fIuser\fR \fImode\fR
+Set key mode (client or server).
+.TP
+.B get_key_mode \fIuser\fR
+Display current key mode.
+.TP
+.B key_pass \fIuser\fR
+Change key passphrase.
+.TP
+.B dump_key \fR[\fB\-p\fR] \fIuser\fR
+Export user's public key (\fB\-p\fR for private key).
+.TP
+.B import_key \fIuser\fR \fR[\fIkeyfile\fR]
+Import existing key for the user.
+.SS ACL Management
+.TP
+.B add_acl \fIuser\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fIuser\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIuser\fR
+Display all ACLs for the user.
+.TP
+.B enable_acl_inheritance \fIuser\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIuser\fR
+Disable ACL inheritance.
+.SS LDAP Integration
+.TP
+.B add_attribute \fIuser\fR \fIattribute\fR=\fIvalue\fR
+Add an LDAP attribute to the user.
+.TP
+.B del_attribute \fIuser\fR \fIattribute\fR=\fIvalue\fR
+Remove an LDAP attribute from the user.
+.TP
+.B add_object_class \fIuser\fR \fIclass\fR
+Add an LDAP object class to the user.
+.TP
+.B del_object_class \fIuser\fR \fIclass\fR
+Remove an LDAP object class from the user.
+.TP
+.B show_ldif \fIuser\fR
+Display LDAP LDIF representation of the user.
+.SS Extension Management
+.TP
+.B add_extension \fIuser\fR \fIextension\fR
+Add an extension to the user.
+.TP
+.B remove_extension \fIuser\fR \fIextension\fR
+Remove an extension from the user.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIuser\fR
+Export user configuration. Use \fB\-\-password\fR to encrypt.
+.TP
+.B remove_orphans \fIuser\fR
+Remove orphaned object references.
+.SH OPTIONS
+.SS User Creation Options
+.TP
+.B \-\-group \fIGROUP\fR
+Set the default group of the user.
+.TP
+.B \-\-groups \fIGROUP1,GROUP2\fR
+Add user to multiple groups during creation.
+.TP
+.B \-\-role \fIROLE\fR
+Assign role during user creation.
+.TP
+.B \-\-roles \fIROLE1,ROLE2\fR
+Assign multiple roles during user creation.
+.TP
+.B \-\-password \fIPASS\fR
+Set initial password during user creation.
+.TP
+.B \-\-no\-default\-token
+Do not create a default token for the user.
+.TP
+.B \-\-default\-token \fINAME\fR
+Specify name for the default token (default: "login").
+.TP
+.B \-\-default\-token\-type \fITYPE\fR
+Specify type for the default token (default: system default).
+.TP
+.B \-\-no\-qrcode
+Do not generate QR code for default TOTP token.
+.TP
+.B \-t, \-\-template
+Create user as a template object.
+.TP
+.B \-\-template \fINAME\fR
+Use specified template when creating user.
+.TP
+.B \-\-attributes \fIATTR1=VAL1,ATTR2=VAL2\fR
+Set LDAP attributes during user creation.
+.SS Key Generation Options
+.TP
+.B \-b \fIBITS\fR
+Specify key length in bits (default: 4096).
+.TP
+.B \-\-server
+Generate server-mode keys.
+.TP
+.B \-\-pass\-hash\-type \fITYPE\fR
+Specify password hash type.
+.TP
+.B \-n
+Do not encrypt the private key.
+.TP
+.B \-\-stdin\-pass
+Read passphrase from stdin.
+.TP
+.B \-\-stdin\-key
+Read key from stdin.
+.SS Display Options
+.TP
+.B \-a
+Show all users (across all units).
+.TP
+.B \-t, \-\-show\-templates
+Include template users in output.
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.TP
+.B \-\-attribute \fIATTR\fR
+Display specific attribute in list command.
+.SS General Options
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving user.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.SH USER PROPERTIES
+Users have the following key properties:
+.TP
+.B Username
+Unique identifier within the organizational unit.
+.TP
+.B UID
+Unix user ID number (automatically assigned from ID range).
+.TP
+.B Tokens
+Authentication credentials (TOTP, SSH keys, passwords, etc.).
+.TP
+.B Groups
+Group memberships for access control.
+.TP
+.B Roles
+Assigned roles that grant permissions.
+.TP
+.B Policies
+Applied policies that control behavior and access.
+.TP
+.B Unit
+Organizational unit the user belongs to.
+.TP
+.B Keys
+Encryption and signing keys for secure operations.
+.SH EXAMPLES
+.SS Creating Users
+.TP
+.B otpme-user add alice
+Create user alice with default token
+.TP
+.B otpme-user add \-\-no\-default\-token bob
+Create user bob without a default token
+.TP
+.B otpme-user add \-\-default\-token\-type totp charlie
+Create user charlie with a TOTP token
+.TP
+.B otpme-user add \-\-group admins \-\-role ADMIN dave
+Create admin user dave
+.TP
+.B otpme-user add \-\-groups users,developers \-\-roles DEV,USER eve
+Create user eve with multiple groups and roles
+.SS Managing Groups and Roles
+.TP
+.B otpme-user add_group alice developers
+Add alice to developers group
+.TP
+.B otpme-user add_role alice DEVELOPER
+Assign DEVELOPER role to alice
+.TP
+.B otpme-user list_groups alice
+Show alice's group memberships
+.TP
+.B otpme-user list_roles alice
+Show alice's assigned roles
+.SS Applying Policies
+.TP
+.B otpme-user add_policy alice strong_passwords
+Apply password policy to alice
+.TP
+.B otpme-user add_policy alice workhours_only
+Restrict alice's login times
+.TP
+.B otpme-user list_policies alice
+Show all policies applied to alice
+.SS Key Management
+.TP
+.B otpme-user gen_keys alice
+Generate encryption keys for alice
+.TP
+.B otpme-user gen_keys \-b 2048 bob
+Generate 2048-bit keys for bob
+.TP
+.B otpme-user key_pass alice
+Change alice's key passphrase
+.TP
+.B otpme-user dump_key alice
+Export alice's public key
+.SS Managing User Status
+.TP
+.B otpme-user disable alice
+Temporarily disable alice's account
+.TP
+.B otpme-user enable alice
+Re-enable alice's account
+.TP
+.B otpme-user rename alice alice_temp
+Rename user alice to alice_temp
+.TP
+.B otpme-user move alice it/admins
+Move alice to it/admins unit
+.SS Querying Users
+.TP
+.B otpme-user show alice
+Show detailed information about alice
+.TP
+.B otpme-user list
+List all users in current unit
+.TP
+.B otpme-user list \-a
+List all users in all units
+.TP
+.B otpme-user list "^admin.*"
+List users starting with "admin"
+.TP
+.B otpme-user show \-\-fields name,uid,groups
+Show users with specific fields
+.SS Using Templates
+.TP
+.B otpme-user add \-t developer_template
+Create a user template for developers
+.TP
+.B otpme-user add \-\-template developer_template bob
+Create bob using the developer template
+.SH FILES
+.TP
+.I ~/.otpme/user/
+User-specific OTPme cache directory
+.TP
+.I /var/lib/otpme/objects/user/
+Server-side user storage
+.SH SEE ALSO
+.BR otpme (7),
+.BR otpme-token (1),
+.BR otpme-group (1),
+.BR otpme-role (1),
+.BR otpme-policy (1),
+.BR otpme-unit (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

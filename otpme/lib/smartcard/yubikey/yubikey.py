@@ -2,12 +2,18 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 try:
-    from ykman.device import list_all_devices, list_otp_devices
+    from yubikit.yubiotp import SLOT
     from yubikit.core import TRANSPORT
+    from ykman.device import list_all_devices
+    from ykman.device import list_otp_devices
+    from yubikit.management import CAPABILITY
     from yubikit.core.otp import OtpConnection
+    from yubikit.yubiotp import YubiOtpSession
+    from yubikit.management import DeviceConfig
+    from yubikit.management import ManagementSession
+    from yubikit.yubiotp import HotpSlotConfiguration
+    from yubikit.yubiotp import HmacSha1SlotConfiguration
     from yubikit.core.smartcard import SmartCardConnection
-    from yubikit.yubiotp import YubiOtpSession, HmacSha1SlotConfiguration, HotpSlotConfiguration, SLOT
-    from yubikit.management import ManagementSession, DeviceConfig, CAPABILITY
 except ImportError as e:
     msg = _("Unable to load module: {error}")
     msg = msg.format(error=e)

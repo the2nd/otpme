@@ -1,0 +1,247 @@
+.TH OTPME-GROUP 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-group \- manage OTPme groups
+.SH SYNOPSIS
+.B otpme-group
+.I command
+[\fIoptions\fR] [\fIgroup\fR]
+.SH DESCRIPTION
+.B otpme-group
+manages POSIX/LDAP groups in the OTPme system. Groups have a GID number and can contain users, tokens, and roles. Each user has a default group, and groups are exposed via LDAP with standard attributes.
+.SH COMMANDS
+.SS Group Management
+.TP
+.B add \fR[\fB\-\-attributes\fR \fIattr1=val1,attr2=val2\fR] \fIgroup\fR
+Create a new group, optionally with LDIF attributes.
+.TP
+.B del \fIgroup\fR
+Delete a group.
+.TP
+.B show \fR[\fIgroup\fR]
+Display group information. Without arguments, shows all groups.
+.TP
+.B list \fR[\fIregex\fR]
+List groups, optionally filtered by regex pattern.
+.TP
+.B enable \fIgroup\fR
+Enable a disabled group.
+.TP
+.B disable \fIgroup\fR
+Disable a group without deleting it.
+.TP
+.B rename \fIgroup\fR \fInew_name\fR
+Rename a group.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIgroup\fR \fIunit\fR
+Move group to a different unit.
+.TP
+.B touch \fIgroup\fR
+Re-index the object to fix potential index problems.
+.SS Token and Role Assignment
+.TP
+.B add_token \fR[\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] \fIgroup\fR \fItoken_path\fR
+Add a token to the group.
+.TP
+.B remove_token \fR[\fB\-\-keep\-sign\fR] \fIgroup\fR \fItoken_path\fR
+Remove a token from the group.
+.TP
+.B list_tokens \fIgroup\fR
+List tokens assigned to the group.
+.TP
+.B add_role \fIgroup\fR \fIrole\fR
+Add a role to the group.
+.TP
+.B remove_role \fIgroup\fR \fIrole\fR
+Remove a role from the group.
+.TP
+.B list_roles \fIgroup\fR
+List roles assigned to the group.
+.SS User Management
+.TP
+.B list_users \fIgroup\fR
+List users in the group.
+.TP
+.B list_default_group_users \fIgroup\fR
+List users that have this group as their default group.
+.SS Sync User Management
+.TP
+.B add_sync_user \fIgroup\fR \fIuser\fR
+Add a sync user to the group.
+.TP
+.B remove_sync_user \fIgroup\fR \fIuser\fR
+Remove a sync user from the group.
+.TP
+.B list_sync_users \fIgroup\fR
+List sync users in the group.
+.SS Policy Management
+.TP
+.B add_policy \fIgroup\fR \fIpolicy\fR
+Attach a policy to the group.
+.TP
+.B remove_policy \fIgroup\fR \fIpolicy\fR
+Remove a policy from the group.
+.TP
+.B list_policies \fIgroup\fR
+List policies attached to the group.
+.SS ACL Management
+.TP
+.B add_acl \fIgroup\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fIgroup\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIgroup\fR
+Display all ACLs for the group.
+.TP
+.B enable_acl_inheritance \fIgroup\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIgroup\fR
+Disable ACL inheritance.
+.SS Configuration and Attributes
+.TP
+.B config \fIgroup\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter.
+.TP
+.B show_config \fIgroup\fR
+Show all configuration parameters.
+.TP
+.B description \fIgroup\fR \fR[\fIdescription\fR]
+Set group description.
+.TP
+.B add_extension \fIgroup\fR \fIextension\fR
+Add an extension to the group.
+.TP
+.B remove_extension \fIgroup\fR \fIextension\fR
+Remove an extension.
+.TP
+.B add_attribute \fIgroup\fR \fIattribute\fR=\fIvalue\fR
+Add an LDAP attribute.
+.TP
+.B del_attribute \fIgroup\fR \fIattribute\fR=\fIvalue\fR
+Remove an LDAP attribute.
+.TP
+.B add_object_class \fIgroup\fR \fIclass\fR
+Add an LDAP object class.
+.TP
+.B del_object_class \fIgroup\fR \fIclass\fR
+Remove an LDAP object class.
+.TP
+.B show_ldif \fIgroup\fR \fR[\fB\-a\fR \fIattribute1,attribute2\fR]
+Show LDIF representation of the group. Use \fB\-a\fR to show only given attributes.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIgroup\fR
+Export group configuration.
+.TP
+.B remove_orphans \fIgroup\fR
+Remove orphaned object references.
+.SH OPTIONS
+.SS Display Options
+.TP
+.B \-a
+Show all groups (across all units).
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-role\-limit \fIN\fR
+Limit number of roles shown.
+.TP
+.B \-\-token\-limit \fIN\fR
+Limit number of tokens shown.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.TP
+.B \-\-attribute \fIATTR\fR
+Display specific attribute in list command.
+.SS Token Options
+.TP
+.B \-\-sign
+Sign the object with default tags.
+.TP
+.B \-\-tags \fItag1,tag2\fR
+Add tags to signature.
+.TP
+.B \-\-no\-auto\-sign
+Do not automatically sign when adding a token.
+.TP
+.B \-\-keep\-sign
+Do not remove any signature when removing a token.
+.SS General Options
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving group.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.SS Managing Groups
+.TP
+.B otpme-group add developers
+Create a new group
+.TP
+.B otpme-group add \-\-attributes gidNumber=1001 developers
+Create group with specific GID
+.TP
+.B otpme-group list_users developers
+List users in the group
+.TP
+.B otpme-group list_default_group_users developers
+List users with this as default group
+.SS Assigning Tokens and Roles
+.TP
+.B otpme-group add_token developers alice/totp
+Add a token to the group
+.TP
+.B otpme-group add_role developers DEV_ROLE
+Add a role to the group
+.SS LDAP
+.TP
+.B otpme-group show_ldif developers
+Show LDIF representation
+.TP
+.B otpme-group show_ldif developers \-a cn,gidNumber
+Show only specific LDAP attributes
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme-user (1),
+.BR otpme-role (1),
+.BR otpme-token (1),
+.BR otpme-policy (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

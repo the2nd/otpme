@@ -1,0 +1,263 @@
+.TH OTPME 7 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme \- OTPme authentication and authorization system architecture
+.SH DESCRIPTION
+.B OTPme
+is a comprehensive authentication and authorization system that provides secure multi-factor authentication, granular access control, and centralized identity management. This manual page describes the overall architecture, core concepts, and design principles of OTPme.
+.PP
+A central design principle of OTPme is that each user can have
+.B multiple authentication tokens
+assigned simultaneously. Different tokens can be used for different services, allowing fine-grained control over how a user authenticates to each resource.
+.PP
+For example, consider WLAN authentication: instead of sharing a single password across all of a user's devices, an administrator can assign a separate password token for each device (laptop, phone, tablet). If a device is stolen, the administrator simply deletes that device's token. All other devices continue to work without any reconfiguration \- there is no need to change the WLAN password on every remaining device.
+.PP
+This per-service token design also provides strong security isolation. Since each token only grants access to the service it is assigned to, someone who obtains a user's WLAN password cannot use it to access the user's email, file shares, or system login. Each service is protected by its own independent credentials.
+.PP
+A user might log in to their workstation with a FIDO2 hardware key, access file shares with the same FIDO2 token, authenticate to WLAN with per-device passwords via RADIUS, and use a dedicated password token for groupware access (CalDAV, CardDAV, IMAP) from a smartphone where credentials are stored persistently on the device \- all managed centrally under one identity.
+.PP
+Access control is enforced through
+.B clients
+and
+.B access groups.
+Each service that authenticates against OTPme is represented as a client object. An access group is assigned to each client, and only tokens or roles that are members of that access group are permitted to authenticate.
+.PP
+A client can be a
+.B RADIUS client,
+where the RADIUS NAS identifier must match the OTPme client name. For example, a WLAN access point configured with NAS ID "wlan\-office" must have a corresponding OTPme client named "wlan\-office". Only tokens assigned to that client's access group will be accepted for WLAN authentication.
+.PP
+Alternatively, a client can be an
+.B LDAP client,
+authenticating against
+.BR otpme\-ldapd .
+In this case the client name is specified as a DC component in the LDAP bind DN. For example, a bind DN of
+.I uid=user1,ou=users,dc=mailserver,dc=example,dc=com
+maps to the OTPme client "mailserver". This way, the mail server can only authenticate users who hold tokens assigned to the mail server's access group.
+.SH ARCHITECTURE OVERVIEW
+OTPme is built on a distributed, hierarchical architecture with the following key components:
+.SS Daemons
+.TP
+.B controld
+Main daemon controller. Starts, stops, and monitors all other OTPme daemons.
+.TP
+.B mgmtd
+Management daemon. Handles all administrative operations such as creating, modifying, and deleting objects (users, tokens, policies, etc.).
+.TP
+.B authd
+Authentication daemon. Handles authentication requests, validates credentials, and manages sessions.
+.TP
+.B syncd
+Synchronization server daemon. Serves objects from all sites to hostd instances. On nodes, objects from other sites are synchronized between hostd and syncd. Objects from the local site are synchronized between nodes by the clusterd.
+.TP
+.B hostd
+Host daemon. Runs on both hosts and nodes. Acts as a sync client that pulls object updates from a node's syncd. On hosts, hostd synchronizes objects from all sites with the syncd on nodes.
+.TP
+.B clusterd
+Cluster daemon. Manages cluster coordination, quorum, and master failover between nodes within a site. Also handles synchronization of local site objects between nodes.
+.TP
+.B joind
+Join daemon. Handles the process of joining a host or node to an OTPme site.
+.TP
+.B ldapd
+LDAP daemon. Provides an LDAP interface so that external services can authenticate users and query directory data against OTPme.
+.TP
+.B httpd
+HTTP daemon. Serves the web management interface.
+.TP
+.B fsd
+File server daemon. Handles file share access for FUSE-mounted OTPme shares.
+.TP
+.B scriptd
+Script daemon. Executes server-side scripts (e.g. authentication scripts, push scripts).
+.SS External Integrations
+.TP
+.B FreeRADIUS
+OTPme integrates with FreeRADIUS to provide RADIUS authentication (e.g. WLAN, VPN). OTPme includes a FreeRADIUS module (rlm_python) that forwards RADIUS requests to the authd. Alternatively, FreeRADIUS can use the
+.B otpme\-auth
+command, which serves as a replacement for ntlm_auth. Any application that supports RADIUS (e.g. via pam_radius_auth) can authenticate against OTPme.
+.TP
+.B PAM Module
+OTPme includes a Python PAM module that enables authentication with token types such as FIDO2 or YubiKey HMAC challenge-response during system login. Upon login, the
+.B otpme\-agent
+is started to manage a realm session and connections to the mgmtd. Through the otpme\-agent, users can manage OTPme objects (users, groups, tokens, etc.) and access file shares served by the fsd without re-authenticating.
+.TP
+.B NSS (libnss\-cache)
+OTPme uses libnss\-cache to make OTPme users and groups available as local Linux accounts. The cache files are generated by the hostd using nsscache.
+.SH ORGANIZATIONAL STRUCTURE
+OTPme organizes infrastructure in a three-level hierarchy:
+.SS Realms
+A
+.B realm
+is the top-level administrative domain, comparable to a Windows domain. It represents a completely independent authentication domain with its own users, groups, policies, roles, units, and other objects. Realms are currently completely independent and cannot be connected to each other.
+.PP
+A realm contains one or more sites. Users and groups are realm-wide, meaning they exist across all sites. Other objects such as units, roles, and policies are per-site. The only user that exists per-site is the root user.
+.SS Sites
+A
+.B site
+is a separate administrative area within a realm. Typically, a site is created for each physical location. Since the nodes of a site form a cluster, this provides redundancy per location. Each site has its own root user who can manage the site's users, groups, and other objects. Additionally, each site has a
+.B site_admin
+role that can be assigned to a "user/token" to grant administrative rights for that site. Normal users can be granted specific modify rights on objects via ACLs, including across sites.
+.PP
+By default, token secrets are not synchronized to other sites. When a user from site1 tries to log in on a host belonging to site2, the authentication request is forwarded to site1. To allow local authentication without forwarding, site1 must be configured to trust site2 (site trust). With trust enabled, token secrets are replicated to the trusted site, allowing direct local authentication.
+.PP
+Depending on the use case, users can either be created per-site or centrally in the master site with a site trust configured. Creating users per-site allows independent administration at each location, while creating all users in the master site with trust provides centralized administration.
+.PP
+Nodes and hosts are created per-site but must have realm-wide unique names. The nodes of each site form a cluster.
+.SS Units
+.B Units
+are comparable to LDAP OUs and are used to store objects. Policies and ACLs can be assigned to a unit \- for example, ACLs to allow a token or role to create, delete, or edit objects within the unit, or policies that determine which groups and roles a "user/token" belongs to.
+.SH CORE OBJECT TYPES
+.SS Users
+User accounts represent identities that can authenticate to the system. Each user has a unique user ID (username) and gets assigned a unique UID (Unix user ID).
+.PP
+Every user has a default token (login) for authenticating to the realm. Additional tokens can be added for specific services \- for example, separate password tokens for WLAN access on a notebook and smartphone.
+.PP
+Each user has a default group. The group is not added to the user \- instead, the user is added to the group as a "default group user". This prevents an administrator of site1 from assigning a group from site2 to a user on site1.
+.PP
+Policies and ACLs can also be assigned to a user \- for example, ACLs that allow another "user/token" to edit the user, or a policy that determines in which unit objects (e.g. groups) are created by default.
+.PP
+Extensions can be added to a user. By default, the extensions "base" and "posix" are assigned. Both are LDAP extensions that define which LDAP attributes are available for the user.
+.SS Tokens
+Tokens are authentication credentials assigned to users. OTPme supports diverse token types:
+.IP \(bu 2
+.B TOTP/HOTP
+- RFC 6238/4226 one-time passwords
+.IP \(bu 2
+.B FIDO2
+- Hardware security keys and platform authenticators
+.IP \(bu 2
+.B U2F
+- Universal 2nd Factor security keys
+.IP \(bu 2
+.B SSH
+- Public key authentication
+.IP \(bu 2
+.B Password
+- Static passwords with policy enforcement
+.IP \(bu 2
+.B YubiKey
+- HMAC-SHA1 challenge-response
+.IP \(bu 2
+.B Link
+- Reference to another user's token
+.IP \(bu 2
+.B Script
+- Custom authentication via external scripts
+.PP
+A key concept in OTPme is that tokens \- not users \- are added to groups and roles. Typically, it is the user's default token (login) that is assigned to groups and roles.
+.PP
+Tokens support offline authentication, allowing secure access when the OTPme server is unreachable.
+.SS Groups
+A group in OTPme is automatically a Linux group on hosts and nodes, so it can be used to assign filesystem permissions. To add a user to a group, the user's default token is added to the group. Alternatively, the default token can be added to a role, and the role is then added to the group.
+.PP
+There is a built-in group "realmusers" that automatically contains all users of the realm. Additionally, each site has a group named after the site (e.g. "berlin") that automatically contains all users of that site.
+.PP
+Groups can also be used as sync groups to control which users are synchronized to a host.
+.SS Roles
+A role is essentially a group of tokens. In almost all places where a token can be assigned, a role can be used instead. This extends and simplifies permission management. Roles can also be added to other roles, enabling hierarchical permission structures.
+.PP
+There are built-in default roles:
+.B REALM_USER
+and
+.B SITE_ADMIN.
+By default, every user's default token is added to the REALM_USER role. This allows the user to log in to the realm and automatically makes them a member of the "realmusers" group and the corresponding site group. Adding a "user/token" to the SITE_ADMIN role grants site administrator privileges.
+.PP
+A good example of how roles work: a role "wlan" grants WLAN access, and a role "employee" is added to the role "wlan". Every employee automatically gets WLAN access. A role "marketing" can then be added to the role "employee" and also to the group "marketing". Adding a marketing user's default token to the role "marketing" gives them both WLAN access and membership in the marketing group. If all employees should later get access to an additional service (e.g. webmail), only the role "employee" needs to be added to the corresponding access group (see Access Groups) and the permission is granted for all employees.
+.SS Access Groups
+Access groups are used to control access to services and to define session parameters. A client (RADIUS, LDAP) is assigned an access group \- for example, the access point "ap01" gets the access group "wlan". Tokens or roles are then assigned to the access group to grant access to the service. When a WLAN authentication request arrives, the access group determines who is allowed access.
+.PP
+Additional parameters can be configured per access group, such as how many failed authentication attempts lock a user out of the access group and for how long (e.g. 5 minutes).
+.PP
+Each access group can be configured to create a session for requests. This is useful when a service sends recurring requests with the same password or OTP (e.g. an IMAP server). Note that an OTP login is then no longer one-time but remains valid for the duration of the session. Per access group, the session lifetime and the maximum number of parallel sessions can be configured.
+.PP
+Access groups can have child access groups. For example, the default access group "SSO" (the OTPme SSO portal) can have "nextcloud" as a child access group. Tokens and roles that have access to the SSO access group then automatically get access to the nextcloud access group as well.
+.SS File Shares
+OTPme file shares require a shared storage backend mounted on all nodes (e.g. under /otpme\-mounts/ or /otpme\-mounts/share1). The mount point is assigned to the share as its root_dir. It is important that this backend is made available on all nodes equally. CephFS or NFS is recommended as backend.
+.PP
+Tokens or roles are assigned to a share to grant access. Clients mount shares via FUSE using
+.BR otpme\-mount .
+By default, all nodes serve a share. Specific nodes can be assigned to a share, in which case only those nodes will serve it. The client/host mounts the share from a random node (load balancing).
+.PP
+A share can optionally be created as an encrypted share. During creation, a master password is requested from which the AES key is derived. Since encryption happens on the client/host side, an encrypted copy of the AES key must be added for each token that should access the encrypted share. This is also the reason why only tokens \- not roles \- can be assigned to an encrypted share.
+.SS Node Pools
+A node pool is a collection of nodes. A node pool can be assigned to a share, and then the share is only served by the nodes in that pool.
+.SS Policies
+Policies implement business rules and security controls. They can be attached to various objects such as units, users, tokens, or access groups.
+.TP
+.B authonaction
+Requires re-authentication when performing sensitive actions (e.g. modify, delete, add ACL). Configurable timeout and expiry. Tokens and roles can be whitelisted.
+.TP
+.B autodisable
+Automatically disables objects after a specified time (e.g. +1h, +1D, +1W, +1M, +1Y). Can optionally count from last usage instead of assignment time.
+.TP
+.B defaultgroups
+Automatically assigns new users to preconfigured groups upon creation. Can also set the default group of a user.
+.TP
+.B defaultpolicies
+Automatically attaches preconfigured policies to new objects of a given type.
+.TP
+.B defaultroles
+Automatically assigns preconfigured roles to the default token of new users.
+.TP
+.B defaultunits
+Specifies default units for different object types, controlling where new objects are placed.
+.TP
+.B forcetoken
+Restricts which token types and authentication methods can be used for authorization.
+.TP
+.B idrange
+Defines ID ranges for automatic assignment of the LDAP attributes uidNumber and gidNumber. Supports sequential and random allocation.
+.TP
+.B logintimes
+Restricts login to specific times using a cron-like format (e.g. work hours only, weekdays only).
+.TP
+.B objecttemplates
+Automatically applies template objects (preconfigured settings) to new users or hosts.
+.TP
+.B password
+Enforces password and PIN strength requirements (minimum length, character complexity, dictionary-based strength checking).
+.TP
+.B tokenacls
+Automatically assigns ACLs to new tokens, controlling what users and creators can do with them.
+.SH ACCESS CONTROL
+OTPme implements a sophisticated multi-layer access control system:
+.SS ACLs (Access Control Lists)
+Fine-grained permissions controlling who can perform what operations on which objects. ACLs are assigned to a "user/token" or a role. ACLs support:
+.IP \(bu 2
+Object-specific permissions (view, modify, delete, enable, disable)
+.IP \(bu 2
+Sub-type permissions \- e.g. "enable:object" grants enabling the object itself, while "enable" without a sub-type grants all enable permissions (enable:object, enable:mschap, etc.)
+.IP \(bu 2
+Inheritance from parent objects (e.g. ACLs on a unit apply to all objects within)
+.SH OFFLINE AUTHENTICATION
+When the OTPme server is unreachable, hosts can authenticate users against locally cached offline data. Offline authentication must be explicitly enabled per token.
+.PP
+During an online login, the token configuration and session data are encrypted and cached locally on the host. The offline data is encrypted using Argon2i key derivation based on the user's password, PIN, or smartcard response.
+.PP
+When the server is unreachable, credentials are verified against the local cache. Already used OTPs are tracked locally to prevent replay attacks. Configurable expiration times control how long the offline cache remains valid (by login age and by inactivity).
+.PP
+When the server becomes available again, the hostd synchronizes used OTPs and token counters back to the server.
+.SH FILES
+.TP
+.I /etc/otpme/otpme.conf
+Main configuration file
+.TP
+.I /var/lib/otpme/
+Data directory (objects, indices, caches)
+.TP
+.I /var/log/otpme/
+Log directory
+.TP
+.I ~/.otpme/
+User-specific configuration and caches
+.SH SEE ALSO
+.BR otpme (7),
+.BR otpme-user (1),
+.BR otpme-token (1),
+.BR otpme-policy (1),
+.BR otpme-accessgroup (1)
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

@@ -568,7 +568,7 @@ class OTPmeConfig(object):
                                 config_file_parameter="MASTER_KEY_HASH_TYPE")
         # Compress object JSON files.
         self.register_config_var("object_json_compression", str, None,
-                                config_file_parameter="OBJECT_JSON_COMPRESSSION")
+                                config_file_parameter="OBJECT_JSON_COMPRESSION")
         # Prettify object JSON.
         self.register_config_var("prettify_object_json", bool, False,
                                 config_file_parameter="PRETTIFY_OBJECT_JSON")

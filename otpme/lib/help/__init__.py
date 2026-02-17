@@ -77,7 +77,6 @@ def get_cmd_help(command, mod_name=None):
 # FIXME: we need to import global opts from a version dependent location!!
 register_global_opt("-r <realm>", "Connect to realm")
 register_global_opt("-s <site>", "Connect to site")
-register_global_opt("-u <user>", "Connect as user")
 register_global_opt("--type <object_type>", "Object type to act on (e.g. token type).")
 register_global_opt("-t <timeout>", "Connect timeout in seconds")
 register_global_opt("-tt <timeout>", "Connection timeout in seconds")
@@ -87,8 +86,6 @@ register_global_opt("--no-dns", "Do not resolve OTPme site address via DNS")
 register_global_opt("--use-dns", "Resolve OTPme site address via DNS")
 register_global_opt("--login-no-dns", "Do not resolve OTPme login point via DNS")
 register_global_opt("--login-use-dns", "Resolve OTPme login point via DNS")
-register_global_opt("--no-auth", "Do not ask for credentials if not logged in")
-register_global_opt("--use-agent [y|n|auto]", "Use otpme-agent login session to connect to daemons")
 register_global_opt("--use-ssh-agent [y|n]", "Use ssh-agent for authentication")
 register_global_opt("--use-smartcard [y|n]", "Use smartcard for authentication")
 register_global_opt("--stdin-pass", "Read passphrase from stdin")
@@ -485,9 +482,6 @@ def get_main_opts(clear_cache=False, mod_name=None):
         elif sys.argv[0] == "--login-use-dns":
             main_opts['login_use_dns'] = True
             sys.argv.pop(0)
-        elif sys.argv[0] == "--no-auth":
-            main_opts['no_auth'] = True
-            sys.argv.pop(0)
         elif sys.argv[0] == "--api":
             main_opts['use_api'] = True
             sys.argv.pop(0)
@@ -512,16 +506,6 @@ def get_main_opts(clear_cache=False, mod_name=None):
                 main_opts['use_smartcard'] = True
             elif a == "n":
                 main_opts['use_smartcard'] = False
-        elif sys.argv[0] == "--use-agent":
-            sys.argv.pop(0)
-            a = sys.argv[0]
-            sys.argv.pop(0)
-            if a == "y":
-                main_opts['use_agent'] = True
-            elif a == "n":
-                main_opts['use_agent'] = False
-            else:
-                main_opts['use_agent'] = a
         elif sys.argv[0] == "--keep-floating-ip":
             sys.argv.pop(0)
             main_opts['keep_floating_ip'] = True
@@ -667,10 +651,6 @@ def get_main_opts(clear_cache=False, mod_name=None):
         elif sys.argv[0] == "--enable-typing":
             sys.argv.pop(0)
             main_opts['typing_enabled'] = True
-        elif sys.argv[0] == "-u":
-            sys.argv.pop(0)
-            main_opts['login_user'] = str(sys.argv[0])
-            sys.argv.pop(0)
         elif sys.argv[0] == "-r":
             sys.argv.pop(0)
             main_opts['connect_realm'] = str(sys.argv[0])

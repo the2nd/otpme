@@ -1,0 +1,192 @@
+.TH OTPME-SCRIPT 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-script \- manage OTPme scripts
+.SH SYNOPSIS
+.B otpme-script
+.I command
+[\fIoptions\fR] [\fIscript\fR]
+.SH DESCRIPTION
+.B otpme-script
+manages scripts in the OTPme system. Scripts are stored as OTPme objects and can be signed to ensure integrity. They are used for various purposes such as login scripts and key scripts.
+.SH COMMANDS
+.SS Script Management
+.TP
+.B add \fR[\fB\-r\fR] \fIname\fR \fIscript\fR
+Add a new script. Use \fB\-r\fR to replace an existing script while keeping its UUID.
+.TP
+.B del \fIscript\fR
+Delete a script.
+.TP
+.B show \fR[\fIscript\fR]
+Display script information.
+.TP
+.B list \fR[\fIregex\fR]
+List scripts, optionally filtered by regex pattern.
+.TP
+.B enable \fIscript\fR
+Enable a disabled script.
+.TP
+.B disable \fIscript\fR
+Disable a script without deleting it.
+.TP
+.B rename \fIscript\fR \fInew_name\fR
+Rename a script.
+.TP
+.B copy \fIscript\fR \fIdst_script\fR
+Copy a script and its signatures.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIscript\fR \fIunit\fR
+Move script to a different unit.
+.TP
+.B touch \fIscript\fR
+Re-index the object to fix potential index problems.
+.SS Script Operations
+.TP
+.B dump \fIscript\fR
+Dump script contents to stdout.
+.TP
+.B edit \fIscript\fR
+Edit a script.
+.TP
+.B run \fR[\fB\-\-type\fR \fIscript_type\fR] \fIscript\fR
+Run a script. Use \fB\-\-type\fR to run as a specific script type (e.g. key_script).
+.SS Signature Management
+.TP
+.B sign \fR[\fB\-\-stdin\-pass\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] \fIscript\fR
+Sign a script. Use \fB\-\-stdin\-pass\fR to read the RSA private key passphrase from stdin.
+.TP
+.B resign \fR[\fB\-\-stdin\-pass\fR] \fIscript\fR
+Re-sign all script signatures.
+.TP
+.B verify_sign \fR[\fB\-\-user\fR \fIusername\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] \fIscript\fR
+Verify script signature(s).
+.TP
+.B get_sign \fR[\fB\-\-user\fR \fIusername\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] \fIscript\fR
+Get script signature(s).
+.TP
+.B get_sign_data \fR[\fB\-\-tags\fR \fItag1,tag2\fR] \fIscript\fR
+Get the data to be signed from a script.
+.TP
+.B add_sign \fR[\fB\-\-tags\fR \fItag1,tag2\fR] \fIscript\fR \fIsignature\fR
+Add a signature to a script.
+.TP
+.B del_sign \fR[\fB\-\-user\fR \fIusername\fR] [\fB\-\-tags\fR \fItag1,tag2\fR] \fIscript\fR
+Delete a signature from a script.
+.SS Policy Management
+.TP
+.B add_policy \fIscript\fR \fIpolicy\fR
+Attach a policy to the script.
+.TP
+.B remove_policy \fIscript\fR \fIpolicy\fR
+Remove a policy from the script.
+.TP
+.B list_policies \fIscript\fR
+List policies attached to the script.
+.SS ACL Management
+.TP
+.B add_acl \fIscript\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fIscript\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIscript\fR
+Display all ACLs for the script.
+.TP
+.B enable_acl_inheritance \fIscript\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIscript\fR
+Disable ACL inheritance.
+.SS Configuration
+.TP
+.B description \fIscript\fR \fR[\fIdescription\fR]
+Set script description.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIscript\fR
+Export script configuration.
+.TP
+.B remove_orphans \fIscript\fR
+Remove orphaned object references.
+.SH OPTIONS
+.SS Display Options
+.TP
+.B \-a
+Show all scripts.
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.SS General Options
+.TP
+.B \-r
+Replace existing script and keep its UUID.
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving script.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.TP
+.B \-\-stdin\-pass
+Read RSA private key passphrase from stdin.
+.TP
+.B \-\-tags \fItag1,tag2\fR
+Tags for signatures.
+.TP
+.B \-\-user \fIusername\fR
+Select signature by username.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.TP
+.B otpme-script add myscript /path/to/script.sh
+Add a new script
+.TP
+.B otpme-script sign myscript
+Sign a script
+.TP
+.B otpme-script dump myscript
+Show script contents
+.TP
+.B otpme-script edit myscript
+Edit a script
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme-user (1),
+.BR otpme-token (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

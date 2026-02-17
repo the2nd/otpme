@@ -105,53 +105,53 @@ cmd_help = {
                                 },
                 },
 
-     'add_extension'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node add_extension {node} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
-                    '_help' :   {
-                                    'cmd'                   : _('Add extension to node'),
-                                },
-                },
+     #'add_extension'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-node add_extension {node} {extension}'),
+     #               'cmd'   :   '<|object|> <extension>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Add extension to node'),
+     #                           },
+     #           },
 
-     'remove_extension'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node remove_extension {node} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
-                    '_help' :   {
-                                    'cmd'                   : _('Remove extension from node'),
-                                },
-                },
+     #'remove_extension'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-node remove_extension {node} {extension}'),
+     #               'cmd'   :   '<|object|> <extension>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Remove extension from node'),
+     #                           },
+     #           },
 
-     'add_attribute'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node add_attribute {node} {attribute}=[value]'),
-                    'cmd'   :   '<|object|> <attribute>=[value]',
-                    '_help' :   {
-                                    'cmd'                   : _('Add (LDAP) attribute to node'),
-                                },
-                },
+     #'add_attribute'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-node add_attribute {node} {attribute}=[value]'),
+     #               'cmd'   :   '<|object|> <attribute>=[value]',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Add (LDAP) attribute to node'),
+     #                           },
+     #           },
 
-     'del_attribute'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node del_attribute {node} {attribute}=[value]'),
-                    'cmd'   :   '<|object|> <attribute>=[value]',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete (LDAP) attribute from node'),
-                                },
-                },
+     #'del_attribute'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-node del_attribute {node} {attribute}=[value]'),
+     #               'cmd'   :   '<|object|> <attribute>=[value]',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Delete (LDAP) attribute from node'),
+     #                           },
+     #           },
 
-     'add_object_class'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node add_object_class {node} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
-                    '_help' :   {
-                                    'cmd'                   : _('Add (LDAP) object class to node'),
-                                },
-                },
+     #'add_object_class'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-node add_object_class {node} {object_class}'),
+     #               'cmd'   :   '<|object|> <object_class>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Add (LDAP) object class to node'),
+     #                           },
+     #           },
 
-     'del_object_class'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node del_object_class {node} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete (LDAP) object class from node'),
-                                },
-                },
+     #'del_object_class'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-node del_object_class {node} {object_class}'),
+     #               'cmd'   :   '<|object|> <object_class>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Delete (LDAP) object class from node'),
+     #                           },
+     #           },
 
      #'show_ldif'    : {
      #               '_cmd_usage_help' : 'Usage: otpme-node show_ldif {node} -a attribute1,attribute2',

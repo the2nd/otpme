@@ -90,21 +90,21 @@ cmd_help = {
                                 },
                 },
 
-    'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm add {realm} {address}'),
-                    'cmd'   :   '<|object|> <address>',
-                    '_help' :   {
-                                    'cmd'                   : _('Add new realm trust relationship'),
-                                },
-                },
+    #'add'    : {
+    #                '_cmd_usage_help' : _('Usage: otpme-realm add {realm} {address}'),
+    #                'cmd'   :   '<|object|> <address>',
+    #                '_help' :   {
+    #                                'cmd'                   : _('Add new realm trust relationship'),
+    #                            },
+    #            },
 
-    'del'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm del {realm}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete realm trust relationship'),
-                                },
-                },
+    #'del'    : {
+    #                '_cmd_usage_help' : _('Usage: otpme-realm del {realm}'),
+    #                'cmd'   :   '<|object|>',
+    #                '_help' :   {
+    #                                'cmd'                   : _('Delete realm trust relationship'),
+    #                            },
+    #            },
 
     'touch'    : {
                     '_cmd_usage_help' : _('Usage: otpme-realm touch {realm}'),
@@ -332,22 +332,22 @@ cmd_help = {
                 },
 
 
-    'add_alias'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm add_alias {realm} {alias}'),
-                    'cmd'   :   '<|object|> <alias>',
-                    '_help' :   {
-                                    'cmd'                   : _('Add realm alias'),
-                                },
-                },
+    #'add_alias'   : {
+    #                '_cmd_usage_help' : _('Usage: otpme-realm add_alias {realm} {alias}'),
+    #                'cmd'   :   '<|object|> <alias>',
+    #                '_help' :   {
+    #                                'cmd'                   : _('Add realm alias'),
+    #                            },
+    #            },
 
 
-    'del_alias'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-realm del_alias {realm} {alias}'),
-                    'cmd'   :   '<|object|> <alias>',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete realm alias'),
-                                },
-                },
+    #'del_alias'   : {
+    #                '_cmd_usage_help' : _('Usage: otpme-realm del_alias {realm} {alias}'),
+    #                'cmd'   :   '<|object|> <alias>',
+    #                '_help' :   {
+    #                                'cmd'                   : _('Delete realm alias'),
+    #                            },
+    #            },
 
 
     'enable_auth'    : {

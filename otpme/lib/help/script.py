@@ -38,12 +38,11 @@ cmd_help = {
                 },
 
     'list'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-script list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
+                    '_cmd_usage_help' : _('Usage: otpme-script list [-a] [regex]'),
+                    'cmd'   :   '-a :show_all=True: [search_regex]',
                     '_help' :   {
                                     'cmd'                       : _('List scripts.'),
                                     '-a'                        : _('List all scripts.'),
-                                    '--attribute <attribute>'   : _('Output given attribute.')
                                 },
                 },
 

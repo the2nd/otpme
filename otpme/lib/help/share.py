@@ -355,7 +355,7 @@ cmd_help = {
                 },
 
     'list_pools'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-share list_pools {share}'),
+                    '_cmd_usage_help' : _('Usage: otpme-share list_pools [--return-type <return_type>] {share}'),
                     'cmd'   :   '--return-type :return_type: [|object|]',
                     '_help' :   {
                                     'cmd'                       : _('List assigned pools.'),

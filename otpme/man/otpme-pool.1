@@ -1,0 +1,155 @@
+.TH OTPME-POOL 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-pool \- manage OTPme node pools
+.SH SYNOPSIS
+.B otpme-pool
+.I command
+[\fIoptions\fR] [\fIpool\fR]
+.SH DESCRIPTION
+.B otpme-pool
+manages node pools in the OTPme system. A pool defines which nodes are used for a share.
+.SH COMMANDS
+.SS Pool Management
+.TP
+.B add \fIpool\fR
+Create a new pool.
+.TP
+.B del \fIpool\fR
+Delete a pool.
+.TP
+.B show \fR[\fIpool\fR]
+Display pool information.
+.TP
+.B list \fR[\fIregex\fR]
+List pools, optionally filtered by regex pattern.
+.TP
+.B enable \fIpool\fR
+Enable a disabled pool.
+.TP
+.B disable \fIpool\fR
+Disable a pool without deleting it.
+.TP
+.B rename \fIpool\fR \fInew_name\fR
+Rename a pool.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIpool\fR \fIunit\fR
+Move pool to a different unit.
+.TP
+.B touch \fIpool\fR
+Re-index the object to fix potential index problems.
+.SS Node Management
+.TP
+.B add_node \fIpool\fR \fInode\fR
+Add a node to the pool.
+.TP
+.B remove_node \fIpool\fR \fInode\fR
+Remove a node from the pool.
+.TP
+.B list_nodes \fIpool\fR
+List nodes in the pool.
+.SS Policy Management
+.TP
+.B add_policy \fIpool\fR \fIpolicy\fR
+Attach a policy to the pool.
+.TP
+.B remove_policy \fIpool\fR \fIpolicy\fR
+Remove a policy from the pool.
+.TP
+.B list_policies \fIpool\fR
+List policies attached to the pool.
+.SS ACL Management
+.TP
+.B add_acl \fIpool\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fIpool\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIpool\fR
+Display all ACLs for the pool.
+.TP
+.B enable_acl_inheritance \fIpool\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIpool\fR
+Disable ACL inheritance.
+.SS Configuration
+.TP
+.B description \fIpool\fR \fR[\fIdescription\fR]
+Set pool description.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIpool\fR
+Export pool configuration.
+.TP
+.B remove_orphans \fIpool\fR
+Remove orphaned object references.
+.SH OPTIONS
+.SS Display Options
+.TP
+.B \-a
+Show all pools.
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-node\-limit \fIN\fR
+Limit number of nodes shown.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.SS General Options
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving pool.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.TP
+.B otpme-pool add europe
+Create a pool
+.TP
+.B otpme-pool add_node europe node-eu-1
+Add a node to the pool
+.TP
+.B otpme-pool list_nodes europe
+List nodes in the pool
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme-share (1),
+.BR otpme-node (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

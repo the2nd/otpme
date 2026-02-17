@@ -1,0 +1,275 @@
+.TH OTPME-CLIENT 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-client \- manage OTPme clients
+.SH SYNOPSIS
+.B otpme-client
+.I command
+[\fIoptions\fR] [\fIclient\fR]
+.SH DESCRIPTION
+.B otpme-client
+manages client objects in the OTPme system. Clients are connected either via RADIUS or LDAP. A special client is the OTPme SSO portal, which provides Single Sign-On for web applications. Each client is assigned an access group that controls which tokens are authorized, and can optionally have addresses, secrets, and SSO configuration.
+.SH COMMANDS
+.SS Client Management
+.TP
+.B add \fIclient\fR \fR[\fIaddress\fR]
+Create a new client, optionally with an IP address.
+.TP
+.B del \fIclient\fR
+Delete a client.
+.TP
+.B show \fR[\fIclient\fR]
+Display client information. Without arguments, shows all clients.
+.TP
+.B list \fR[\fIregex\fR]
+List clients, optionally filtered by regex pattern.
+.TP
+.B enable \fIclient\fR
+Enable a disabled client.
+.TP
+.B disable \fIclient\fR
+Disable a client without deleting it.
+.TP
+.B rename \fIclient\fR \fInew_name\fR
+Rename a client.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIclient\fR \fIunit\fR
+Move client to a different unit.
+.TP
+.B touch \fIclient\fR
+Re-index the object to fix potential index problems.
+.SS Access Group and Authorization
+.TP
+.B access_group \fIclient\fR \fR[\fIaccess_group\fR]
+Set or display the client's access group. The access group controls which tokens are authorized to authenticate via this client.
+.TP
+.B add_token \fIclient\fR \fItoken_path\fR
+Add a token to the client.
+.TP
+.B remove_token \fIclient\fR \fItoken_path\fR
+Remove a token from the client.
+.TP
+.B list_tokens \fIclient\fR
+List tokens assigned to the client.
+.TP
+.B add_role \fIclient\fR \fIrole\fR
+Add a role to the client.
+.TP
+.B remove_role \fIclient\fR \fIrole\fR
+Remove a role from the client.
+.TP
+.B list_roles \fIclient\fR
+List roles assigned to the client.
+.SS Login Control
+.TP
+.B limit_logins \fIclient\fR
+Limit logins to tokens and roles explicitly assigned to this client.
+.TP
+.B unlimit_logins \fIclient\fR
+Allow logins from all tokens authorized by the access group.
+.TP
+.B secret \fIclient\fR \fR[\fIsecret\fR]
+Set or change the client secret (e.g. RADIUS shared secret).
+.TP
+.B show_secret \fIclient\fR
+Display the client secret.
+.SS Address Management
+.TP
+.B add_address \fIclient\fR \fIaddress\fR
+Add an IP address to the client.
+.TP
+.B del_address \fIclient\fR \fIaddress\fR
+Remove an IP address from the client.
+.SS Auth Cache
+.TP
+.B enable_auth_cache \fIclient\fR
+Enable authentication caching for this client.
+.TP
+.B disable_auth_cache \fIclient\fR
+Disable authentication caching.
+.TP
+.B auth_cache_timeout \fIclient\fR \fItimeout\fR
+Set authentication cache timeout.
+.SS SSO Configuration
+.TP
+.B enable_sso \fIclient\fR
+Enable SSO (Single Sign-On) for this client.
+.TP
+.B disable_sso \fIclient\fR
+Disable SSO for this client.
+.TP
+.B sso_name \fIclient\fR \fIname\fR
+Set the SSO display name for this client.
+.TP
+.B sso_logo \fIclient\fR \fIimage_path\fR
+Set the SSO logo image for this client.
+.TP
+.B dump_sso_logo \fIclient\fR
+Export SSO logo as base64.
+.TP
+.B del_sso_logo \fIclient\fR
+Delete the SSO logo.
+.TP
+.B login_url \fIclient\fR \fIurl\fR
+Set the client login URL.
+.TP
+.B helper_url \fIclient\fR \fIurl\fR
+Set the SSO helper URL.
+.TP
+.B enable_sso_popup \fIclient\fR
+Enable SSO popup for this client.
+.TP
+.B disable_sso_popup \fIclient\fR
+Disable SSO popup for this client.
+.SS Policy Management
+.TP
+.B add_policy \fIclient\fR \fIpolicy\fR
+Attach a policy to the client.
+.TP
+.B remove_policy \fIclient\fR \fIpolicy\fR
+Remove a policy from the client.
+.TP
+.B list_policies \fIclient\fR
+List policies attached to the client.
+.SS ACL Management
+.TP
+.B add_acl \fIclient\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fIclient\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIclient\fR
+Display all ACLs for the client.
+.TP
+.B enable_acl_inheritance \fIclient\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIclient\fR
+Disable ACL inheritance.
+.SS Configuration and Attributes
+.TP
+.B config \fIclient\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter.
+.TP
+.B show_config \fIclient\fR
+Show all configuration parameters.
+.TP
+.B description \fIclient\fR \fR[\fIdescription\fR]
+Set client description.
+.TP
+.B add_extension \fIclient\fR \fIextension\fR
+Add an extension to the client.
+.TP
+.B remove_extension \fIclient\fR \fIextension\fR
+Remove an extension.
+.TP
+.B add_attribute \fIclient\fR \fIattribute\fR=\fIvalue\fR
+Add an LDAP attribute.
+.TP
+.B del_attribute \fIclient\fR \fIattribute\fR=\fIvalue\fR
+Remove an LDAP attribute.
+.TP
+.B add_object_class \fIclient\fR \fIclass\fR
+Add an LDAP object class.
+.TP
+.B del_object_class \fIclient\fR \fIclass\fR
+Remove an LDAP object class.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIclient\fR
+Export client configuration.
+.TP
+.B remove_orphans \fIclient\fR
+Remove orphaned object references.
+.SH OPTIONS
+.SS Display Options
+.TP
+.B \-a
+Show all clients (across all units).
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.TP
+.B \-\-attribute \fIATTR\fR
+Display specific attribute in list command.
+.SS General Options
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving client.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.SS Creating and Configuring Clients
+.TP
+.B otpme-client add radius_gw 10.0.0.1
+Create client with IP address
+.TP
+.B otpme-client access_group radius_gw vpn
+Assign access group to client
+.TP
+.B otpme-client secret radius_gw
+Set RADIUS shared secret
+.SS Managing Addresses
+.TP
+.B otpme-client add_address radius_gw 10.0.0.2
+Add additional address
+.TP
+.B otpme-client del_address radius_gw 10.0.0.1
+Remove address
+.SS SSO Configuration
+.TP
+.B otpme-client enable_sso webapp
+Enable SSO for web application
+.TP
+.B otpme-client sso_name webapp "My Application"
+Set SSO display name
+.TP
+.B otpme-client login_url webapp https://app.example.com/login
+Set login URL
+.SS Login Control
+.TP
+.B otpme-client limit_logins radius_gw
+Limit logins to explicitly assigned tokens
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (7),
+.BR otpme-accessgroup (1),
+.BR otpme-token (1),
+.BR otpme-role (1),
+.BR otpme-policy (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

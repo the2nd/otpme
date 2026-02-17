@@ -464,6 +464,16 @@ commands = {
                     },
                 },
             },
+    'list_pools'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_pools',
+                    'oargs'             : ['return_type', 'skip_disabled'],
+                    'dargs'             : {'return_type':'name', 'skip_disabled':False},
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'add_acl'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -928,6 +938,8 @@ class Share(OTPmeObject):
                 return callback.error(msg)
             self.add_token(token_path=config.auth_token.rel_path,
                             share_key=share_key)
+        self.update_index('create_mode', self.create_mode)
+        self.update_index('directory_mode', self.create_mode)
         return self._write(callback=callback)
 
     @object_lock(full_lock=True)
@@ -940,7 +952,7 @@ class Share(OTPmeObject):
         _caller: str="API",
         **kwargs,
         ):
-        """ Rename group. """
+        """ Rename share. """
         # Build new OID.
         new_oid = oid.get(object_type="share",
                         realm=self.realm,
@@ -1657,6 +1669,55 @@ class Share(OTPmeObject):
                                             include_pools=include_pools,
                                             callback=callback,
                                             _caller=_caller)
+
+        return callback.ok(result)
+
+    @cli.check_rapi_opts()
+    def get_pools(
+        self,
+        return_type: str="name",
+        skip_disabled: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Get all pools assigned to this node. """
+        exception = None
+        if return_type not in [ 'name', 'instance', 'uuid', 'oid', 'read_oid', 'full_oid' ]:
+            exception = _("Unknown return type: {return_type}")
+            exception = exception.format(return_type=return_type)
+        if _caller != "API" and (return_type == "instance" or return_type == "oid"):
+            exception = _("Unknown return type: {return_type}")
+            exception = exception.format(return_type=return_type)
+        if exception:
+            return callback.error(exception)
+        result = []
+        # Pools assigned to this object.
+        if not self.pools:
+            if _caller == "RAPI":
+                result = ",".join(result)
+            if _caller == "CLIENT":
+                result = "\n".join(result)
+            return result
+        # Search attributes.
+        search_attr = {}
+        if skip_disabled:
+            search_attr['enabled'] = {}
+            search_attr['enabled']['value'] = True
+        _return_type = return_type
+        result = backend.search(attribute="uuid",
+                                values=self.pools,
+                                attributes=search_attr,
+                                object_type="pool",
+                                return_type=_return_type)
+        # Remove duplicates.
+        if isinstance(result, list):
+            result = sorted(list(set(result)))
+
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
 
         return callback.ok(result)
 

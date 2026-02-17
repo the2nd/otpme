@@ -1,0 +1,247 @@
+.TH OTPME-SHARE 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-share \- manage OTPme file shares
+.SH SYNOPSIS
+.B otpme-share
+.I command
+[\fIoptions\fR] [\fIshare\fR]
+.SH DESCRIPTION
+.B otpme-share
+manages file shares in the OTPme system. A share provides access to a directory tree and can optionally be encrypted.
+.SH COMMANDS
+.SS Share Management
+.TP
+.B add \fR[\fB\-\-crypt\fR] [\fB\-\-no\-key\-gen\fR] [\fB\-\-block\-size\fR \fIsize\fR] [\fB\-\-key\-len\fR \fIlen\fR] \fIshare\fR \fIroot_dir\fR
+Create a new share. Use \fB\-\-crypt\fR to enable encryption.
+.TP
+.B del \fIshare\fR
+Delete a share.
+.TP
+.B show \fR[\fIshare\fR]
+Display share information.
+.TP
+.B list \fR[\fIregex\fR]
+List shares, optionally filtered by regex pattern.
+.TP
+.B enable \fIshare\fR
+Enable a disabled share.
+.TP
+.B disable \fIshare\fR
+Disable a share without deleting it.
+.TP
+.B rename \fIshare\fR \fInew_name\fR
+Rename a share.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIshare\fR \fIunit\fR
+Move share to a different unit.
+.TP
+.B touch \fIshare\fR
+Re-index the object to fix potential index problems.
+.SS Share Configuration
+.TP
+.B root_dir \fIshare\fR \fIpath\fR
+Set the share root directory.
+.TP
+.B force_group \fIshare\fR \fIgroup\fR
+Files and directories will always be owned by the given group.
+.TP
+.B force_create_mode \fIshare\fR \fImode\fR
+Set file creation mode.
+.TP
+.B force_directory_mode \fIshare\fR \fImode\fR
+Set directory creation mode.
+.TP
+.B enable_ro \fIshare\fR
+Make share read-only.
+.TP
+.B disable_ro \fIshare\fR
+Make share read-write.
+.TP
+.B description \fIshare\fR \fR[\fIdescription\fR]
+Set share description.
+.SS Encryption
+.TP
+.B get_share_key \fIshare\fR \fIuser\fR
+Get encrypted share key for a user.
+.SS Token and Role Management
+.TP
+.B add_token \fIshare\fR \fItoken_path\fR
+Add a token to the share.
+.TP
+.B remove_token \fIshare\fR \fItoken_path\fR
+Remove a token from the share.
+.TP
+.B list_tokens \fIshare\fR
+List tokens assigned to the share.
+.TP
+.B add_role \fIshare\fR \fIrole\fR
+Add a role to the share.
+.TP
+.B remove_role \fIshare\fR \fIrole\fR
+Remove a role from the share.
+.TP
+.B list_roles \fR[\fB\-r\fR] \fIshare\fR
+List roles assigned to the share. Use \fB\-r\fR for recursive listing.
+.TP
+.B list_users \fIshare\fR
+List users of the share.
+.SS Master Password Token
+.TP
+.B add_master_password_token \fIshare\fR \fItoken_path\fR
+Allow a token to mount the share with master password.
+.TP
+.B remove_master_password_token \fIshare\fR \fItoken_path\fR
+Remove a master password token from the share.
+.SS Pool and Node Management
+.TP
+.B add_pool \fIshare\fR \fIpool\fR
+Add a pool to the share.
+.TP
+.B remove_pool \fIshare\fR \fIpool\fR
+Remove a pool from the share.
+.TP
+.B list_pools \fIshare\fR
+List pools assigned to the share.
+.TP
+.B add_node \fIshare\fR \fInode\fR
+Add a node to the share.
+.TP
+.B remove_node \fIshare\fR \fInode\fR
+Remove a node from the share.
+.TP
+.B list_nodes \fIshare\fR
+List nodes assigned to the share.
+.SS Policy Management
+.TP
+.B add_policy \fIshare\fR \fIpolicy\fR
+Attach a policy to the share.
+.TP
+.B remove_policy \fIshare\fR \fIpolicy\fR
+Remove a policy from the share.
+.TP
+.B list_policies \fIshare\fR
+List policies attached to the share.
+.SS ACL Management
+.TP
+.B add_acl \fIshare\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fIshare\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIshare\fR
+Display all ACLs for the share.
+.TP
+.B enable_acl_inheritance \fIshare\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIshare\fR
+Disable ACL inheritance.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIshare\fR
+Export share configuration.
+.TP
+.B remove_orphans \fIshare\fR
+Remove orphaned object references.
+.SH OPTIONS
+.SS Creation Options
+.TP
+.B \-\-crypt
+Enable encryption for the share.
+.TP
+.B \-\-no\-key\-gen
+Do not generate an AES key.
+.TP
+.B \-\-block\-size \fISIZE\fR
+Encrypted share block size (default 4096).
+.TP
+.B \-\-key\-len \fILENGTH\fR
+AES key length.
+.SS Display Options
+.TP
+.B \-a
+Show all shares.
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-node\-limit \fIN\fR
+Limit number of nodes shown.
+.TP
+.B \-\-pool\-limit \fIN\fR
+Limit number of pools shown.
+.TP
+.B \-\-token\-limit \fIN\fR
+Limit number of tokens shown.
+.TP
+.B \-\-role\-limit \fIN\fR
+Limit number of roles shown.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.TP
+.B \-\-attribute \fIATTR\fR
+Display specific attribute in list command.
+.SS General Options
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving share.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.TP
+.B \-r
+List roles recursively.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.TP
+.B otpme-share add myshare /data/share
+Create a share
+.TP
+.B otpme-share add \-\-crypt secureshare /data/secure
+Create an encrypted share
+.TP
+.B otpme-share add_token myshare alice/totp
+Add a token to the share
+.TP
+.B otpme-share add_pool myshare europe
+Add a pool to the share
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme-pool (1),
+.BR otpme-token (1),
+.BR otpme-role (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

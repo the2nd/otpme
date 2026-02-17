@@ -2933,9 +2933,6 @@ class Site(OTPmeObject):
                 group.change_relogin_timeout(verify_acls=False,
                                             relogin_timeout="1m",
                                             callback=callback)
-                # Enable session master for SSO portal.
-                group.enable_session_master(verify_acls=False,
-                                            callback=callback)
             if group.name == config.ldap_access_group:
                 # Set max sessions for ldap (ldaptor) group to 3.
                 group.change_max_sessions(verify_acls=False,

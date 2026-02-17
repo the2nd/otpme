@@ -1,0 +1,271 @@
+.TH OTPME-NODE 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-node \- manage OTPme nodes
+.SH SYNOPSIS
+.B otpme-node
+.I command
+[\fIoptions\fR] [\fInode\fR]
+.SH DESCRIPTION
+.B otpme-node
+manages node objects in the OTPme system. Nodes are the servers that run OTPme daemons and provide authentication, management, and synchronization services to the realm. Nodes have certificates, can be configured with tokens, roles, and dynamic groups.
+.SH COMMANDS
+.SS Node Management
+.TP
+.B add \fInode\fR
+Create a new node.
+.TP
+.B del \fInode\fR
+Delete a node.
+.TP
+.B show \fR[\fInode\fR]
+Display node information. Without arguments, shows all nodes.
+.TP
+.B list \fR[\fIregex\fR]
+List nodes, optionally filtered by regex pattern.
+.TP
+.B enable \fInode\fR
+Enable a disabled node.
+.TP
+.B disable \fInode\fR
+Disable a node without deleting it.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fInode\fR \fIunit\fR
+Move node to a different unit.
+.TP
+.B touch \fInode\fR
+Re-index the object to fix potential index problems.
+.SS Token and Role Assignment
+.TP
+.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] \fInode\fR \fItoken_path\fR
+Add a token to the node. Use \fB\-i\fR to limit login to specific interfaces (e.g. tty, gui, ssh).
+.TP
+.B remove_token \fR[\fB\-\-keep\-sign\fR] \fInode\fR \fItoken_path\fR
+Remove a token from the node.
+.TP
+.B list_tokens \fInode\fR
+List tokens assigned to the node.
+.TP
+.B add_role \fInode\fR \fIrole\fR
+Add a role to the node.
+.TP
+.B remove_role \fInode\fR \fIrole\fR
+Remove a role from the node.
+.TP
+.B list_roles \fInode\fR
+List roles assigned to the node.
+.SS Login Control
+.TP
+.B limit_logins \fInode\fR
+Limit logins to tokens and roles explicitly assigned to this node.
+.TP
+.B unlimit_logins \fInode\fR
+Allow logins from all authorized tokens.
+.SS User and Group Listing
+.TP
+.B list_users \fInode\fR
+List users on the node.
+.TP
+.B list_dynamic_groups \fInode\fR
+List dynamic groups of the node.
+.SS Dynamic Groups
+Dynamic groups are local Linux groups (e.g. plugdev) that exist on hosts and nodes. Users are automatically added to these groups when they log in via the OTPme PAM module. This is most commonly used on hosts where users log in interactively.
+.TP
+.B add_dynamic_group \fInode\fR \fIgroup\fR
+Add a dynamic group to the node.
+.TP
+.B remove_dynamic_group \fInode\fR \fIgroup\fR
+Remove a dynamic group from the node.
+.SS Realm Join/Leave
+.TP
+.B enable_jotp \fInode\fR
+Enable realm join via JOTP.
+.TP
+.B disable_jotp \fInode\fR
+Disable realm join via JOTP.
+.TP
+.B enable_lotp \fInode\fR
+Enable realm leaving via LOTP.
+.TP
+.B disable_lotp \fInode\fR
+Disable realm leaving via LOTP.
+.TP
+.B enable_jotp_rejoin \fInode\fR
+Enable printing of rejoin JOTP on realm leave.
+.TP
+.B disable_jotp_rejoin \fInode\fR
+Disable printing of rejoin JOTP on realm leave.
+.SS Certificate Operations
+.TP
+.B dump_cert \fInode\fR
+Export the node certificate to stdout.
+.TP
+.B dump_ca_chain \fInode\fR
+Export the CA certificate chain of the node cert to stdout.
+.TP
+.B renew_cert \fInode\fR
+Renew the node certificate.
+.TP
+.B public_key \fInode\fR \fR[\fIpublic_key\fR]
+Set or display the node's public key.
+.SS Vote Script
+.TP
+.B vote_script \fInode\fR \fIvote_script\fR
+Set the node vote script.
+.TP
+.B enable_vote_script \fInode\fR
+Enable the node vote script.
+.TP
+.B disable_vote_script \fInode\fR
+Disable the node vote script.
+.SS SSH
+.TP
+.B get_ssh_authorized_keys \fInode\fR \fR[\fIuser\fR]
+Get SSH authorized keys for the node, optionally for a specific user.
+.SS Policy Management
+.TP
+.B add_policy \fInode\fR \fIpolicy\fR
+Attach a policy to the node.
+.TP
+.B remove_policy \fInode\fR \fIpolicy\fR
+Remove a policy from the node.
+.TP
+.B list_policies \fInode\fR
+List policies attached to the node.
+.SS ACL Management
+.TP
+.B add_acl \fInode\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fInode\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fInode\fR
+Display all ACLs for the node.
+.TP
+.B enable_acl_inheritance \fInode\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fInode\fR
+Disable ACL inheritance.
+.SS Configuration and Attributes
+.TP
+.B config \fInode\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter.
+.TP
+.B show_config \fInode\fR
+Show all configuration parameters.
+.TP
+.B description \fInode\fR \fR[\fIdescription\fR]
+Set node description.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fInode\fR
+Export node configuration.
+.TP
+.B remove_orphans \fInode\fR
+Remove orphaned object references.
+.SH OPTIONS
+.SS Display Options
+.TP
+.B \-a
+Show all nodes (across all units).
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-role\-limit \fIN\fR
+Limit number of roles shown.
+.TP
+.B \-\-token\-limit \fIN\fR
+Limit number of tokens shown.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.TP
+.B \-\-attribute \fIATTR\fR
+Display specific attribute in list command.
+.SS Token Options
+.TP
+.B \-i \fIinterfaces\fR
+Limit login to given interfaces (e.g. tty, gui, ssh).
+.TP
+.B \-\-sign
+Sign the object with default tags.
+.TP
+.B \-\-tags \fItag1,tag2\fR
+Add tags to signature.
+.TP
+.B \-\-no\-auto\-sign
+Do not automatically sign when adding a token.
+.TP
+.B \-\-keep\-sign
+Do not remove any signature when removing a token.
+.SS General Options
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving node.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.SS Managing Nodes
+.TP
+.B otpme-node add node2
+Create a new node
+.TP
+.B otpme-node enable_jotp node2
+Enable realm join via JOTP
+.SS Token Assignment
+.TP
+.B otpme-node add_token node2 admin/totp
+Allow admin's TOTP token to login on node
+.TP
+.B otpme-node add_token \-i ssh node2 admin/ssh_key
+Allow admin's SSH key only for SSH interface
+.SS Certificate Operations
+.TP
+.B otpme-node dump_cert node2
+Export node certificate
+.TP
+.B otpme-node renew_cert node2
+Renew the node certificate
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme-host (1),
+.BR otpme-token (1),
+.BR otpme-role (1),
+.BR otpme-ca (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

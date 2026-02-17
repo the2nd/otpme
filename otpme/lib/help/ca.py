@@ -95,13 +95,13 @@ cmd_help = {
                                 },
                 },
 
-    'rename'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca rename {ca} {new_name}'),
-                    'cmd'   :   '<|object|> <new_name>',
-                    '_help' :   {
-                                    'cmd'                   : _('Rename CA'),
-                                },
-                },
+    #'rename'    : {
+    #                '_cmd_usage_help' : _('Usage: otpme-ca rename {ca} {new_name}'),
+    #                'cmd'   :   '<|object|> <new_name>',
+    #                '_help' :   {
+    #                                'cmd'                   : _('Rename CA'),
+    #                            },
+    #            },
 
      'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-ca config {ca} {param} [value]'),
@@ -119,53 +119,53 @@ cmd_help = {
                                 },
                 },
 
-     'add_extension'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca add_extension {ca} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
-                    '_help' :   {
-                                    'cmd'                   : _('Add extension to CA'),
-                                },
-                },
+     #'add_extension'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-ca add_extension {ca} {extension}'),
+     #               'cmd'   :   '<|object|> <extension>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Add extension to CA'),
+     #                           },
+     #           },
 
-     'remove_extension'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca remove_extension {ca} {extension}'),
-                    'cmd'   :   '<|object|> <extension>',
-                    '_help' :   {
-                                    'cmd'                   : _('Remove extension from CA'),
-                                },
-                },
+     #'remove_extension'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-ca remove_extension {ca} {extension}'),
+     #               'cmd'   :   '<|object|> <extension>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Remove extension from CA'),
+     #                           },
+     #           },
 
-     'add_attribute'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca add_attribute {ca} {attribute}=[value]'),
-                    'cmd'   :   '<|object|> <attribute>=[value]',
-                    '_help' :   {
-                                    'cmd'                   : _('Add (ldap) attribute to CA'),
-                                },
-                },
+     #'add_attribute'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-ca add_attribute {ca} {attribute}=[value]'),
+     #               'cmd'   :   '<|object|> <attribute>=[value]',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Add (ldap) attribute to CA'),
+     #                           },
+     #           },
 
-     'del_attribute'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca del_attribute {ca} {attribute}=[value]'),
-                    'cmd'   :   '<|object|> <attribute>=[value]',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete (ldap) attribute from CA'),
-                                },
-                },
+     #'del_attribute'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-ca del_attribute {ca} {attribute}=[value]'),
+     #               'cmd'   :   '<|object|> <attribute>=[value]',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Delete (ldap) attribute from CA'),
+     #                           },
+     #           },
 
-     'add_object_class'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca add_object_class {ca} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
-                    '_help' :   {
-                                    'cmd'                   : _('Add (ldap) object class to CA'),
-                                },
-                },
+     #'add_object_class'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-ca add_object_class {ca} {object_class}'),
+     #               'cmd'   :   '<|object|> <object_class>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Add (ldap) object class to CA'),
+     #                           },
+     #           },
 
-     'del_object_class'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca del_object_class {ca} {object_class}'),
-                    'cmd'   :   '<|object|> <object_class>',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete (ldap) object class from CA'),
-                                },
-                },
+     #'del_object_class'    : {
+     #               '_cmd_usage_help' : _('Usage: otpme-ca del_object_class {ca} {object_class}'),
+     #               'cmd'   :   '<|object|> <object_class>',
+     #               '_help' :   {
+     #                               'cmd'                   : _('Delete (ldap) object class from CA'),
+     #                           },
+     #           },
 
      #'show_ldif'    : {
      #               '_cmd_usage_help' : 'Usage: otpme-ca show_ldif {ca}',

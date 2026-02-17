@@ -1,0 +1,167 @@
+.TH OTPME-DICTIONARY 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-dictionary \- manage OTPme dictionaries
+.SH SYNOPSIS
+.B otpme-dictionary
+.I command
+[\fIoptions\fR] [\fIdictionary\fR]
+.SH DESCRIPTION
+.B otpme-dictionary
+manages dictionaries in the OTPme system. Dictionaries are word lists used by password policies for password strength checking and passphrase generation. Supported dictionary types are
+.BR list ,
+.BR sorted-list ,
+and
+.BR guessing .
+.SH COMMANDS
+.SS Dictionary Management
+.TP
+.B add \fIdictionary\fR \fR[\fIdict_type\fR]
+Create a new dictionary, optionally with a specific type.
+.TP
+.B del \fIdictionary\fR
+Delete a dictionary.
+.TP
+.B show \fR[\fIdictionary\fR]
+Display dictionary information. Without arguments, shows all dictionaries.
+.TP
+.B list \fR[\fIregex\fR]
+List dictionaries, optionally filtered by regex pattern.
+.TP
+.B enable \fIdictionary\fR
+Enable a disabled dictionary.
+.TP
+.B disable \fIdictionary\fR
+Disable a dictionary without deleting it.
+.TP
+.B rename \fIdictionary\fR \fInew_name\fR
+Rename a dictionary.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIdictionary\fR \fIunit\fR
+Move dictionary to a different unit.
+.TP
+.B touch \fIdictionary\fR
+Re-index the object to fix potential index problems.
+.SS Word Management
+.TP
+.B word_import \fIdictionary\fR \fIfile\fR
+Import words from a file into the dictionary.
+.TP
+.B word_learning \fIdictionary\fR \fIfile\fR
+Analyze words from a file and build a guessing dictionary with character sequence patterns and their frequencies.
+.TP
+.B word_export \fIdictionary\fR
+Export all words to stdout.
+.TP
+.B clear \fIdictionary\fR
+Remove all words from the dictionary.
+.SS Policy Management
+.TP
+.B add_policy \fIdictionary\fR \fIpolicy\fR
+Attach a policy to the dictionary.
+.TP
+.B remove_policy \fIdictionary\fR \fIpolicy\fR
+Remove a policy from the dictionary.
+.TP
+.B list_policies \fIdictionary\fR
+List policies attached to the dictionary.
+.SS ACL Management
+.TP
+.B add_acl \fIdictionary\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fIdictionary\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIdictionary\fR
+Display all ACLs for the dictionary.
+.TP
+.B enable_acl_inheritance \fIdictionary\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIdictionary\fR
+Disable ACL inheritance.
+.SS Configuration
+.TP
+.B description \fIdictionary\fR \fR[\fIdescription\fR]
+Set dictionary description.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIdictionary\fR
+Export dictionary configuration.
+.SH OPTIONS
+.SS Display Options
+.TP
+.B \-a
+Show all dictionaries (across all units).
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.TP
+.B \-\-attribute \fIATTR\fR
+Display specific attribute in list command.
+.SS General Options
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving dictionary.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.SS Managing Dictionaries
+.TP
+.B otpme-dictionary add english list
+Create a word list dictionary
+.TP
+.B otpme-dictionary add english_guessing guessing
+Create a guessing dictionary
+.TP
+.B otpme-dictionary word_import english /usr/share/dict/words
+Import words from a file
+.TP
+.B otpme-dictionary word_learning english_guessing /usr/share/dict/words
+Build guessing patterns from a word file
+.TP
+.B otpme-dictionary word_export english
+Export all words to stdout
+.TP
+.B otpme-dictionary clear english
+Remove all words from the dictionary
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (7),
+.BR otpme-policy (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

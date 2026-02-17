@@ -36,18 +36,16 @@ cmd_help = {
                                     '--node-limit <limit>'          : _('Output <limit> member nodes.'),
                                     '--token-limit <limit>'         : _('Output <limit> member tokens.'),
                                     '--role-limit <limit>'          : _('Output <limit> member roles.'),
-                                    '--group-limit <limit>'         : _('Output <limit> member groups.'),
                                     '--policy-limit <limit>'        : _('Output <limit> assigned policies.'),
                                 },
                 },
 
     'list'    : {
                     '_cmd_usage_help' : _('Usage: otpme-pool list [--attribute attribute] [-a] [regex]'),
-                    'cmd'   :   '--attribute :attribute: -a :show_all=True: [search_regex]',
+                    'cmd'   :   '-a :show_all=True: [search_regex]',
                     '_help' :   {
                                     'cmd'                       : _('List pools.'),
                                     '-a'                        : _('List all pools.'),
-                                    '--attribute <attribute>'   : _('Output given attribute.')
                                 },
                 },
 

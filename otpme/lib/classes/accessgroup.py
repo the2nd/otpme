@@ -53,7 +53,6 @@ read_value_acls = {
                             "child_group",
                             "child_session",
                             "sessions_enabled",
-                            "session_master",
                             "timeout_pass_on",
                             "max_fail",
                             "max_fail_reset",
@@ -97,12 +96,10 @@ write_value_acls = {
                             ],
                 "enable"    : [
                             "sessions",
-                            "session_master",
                             "timeout_pass_on",
                             ],
                 "disable"   : [
                             "sessions",
-                            "session_master",
                             "timeout_pass_on",
                             ],
 }
@@ -271,22 +268,6 @@ commands = {
                     },
                 },
             },
-    'enable_session_master'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'enable_session_master',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'disable_session_master'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'disable_session_master',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
     'enable_timeout_pass_on'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -362,7 +343,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['token_options', 'login_interfaces', 'sign', 'tags'],
+                    'oargs'             : ['token_options'],
                     'job_type'          : 'process',
                     },
                 },
@@ -372,7 +353,6 @@ commands = {
                 'exists'    : {
                     'method'            : 'remove_token',
                     'args'              : ['token_path'],
-                    'oargs'             : ['keep_sign'],
                     'job_type'          : 'process',
                     },
                 },
@@ -712,7 +692,6 @@ def register():
     config.register_index_attribute("max_fail")
     config.register_index_attribute("max_fail_reset")
     config.register_index_attribute("max_sessions")
-    config.register_index_attribute("session_master")
     config.register_index_attribute("session_timeout")
     config.register_index_attribute("timeout_pass_on")
     config.register_index_attribute("sessions_enabled")
@@ -760,8 +739,6 @@ def register_hooks():
     config.register_auth_on_action_hook("accessgroup", "change_max_fail_reset")
     config.register_auth_on_action_hook("accessgroup", "enable_sessions")
     config.register_auth_on_action_hook("accessgroup", "disable_sessions")
-    config.register_auth_on_action_hook("accessgroup", "enable_session_master")
-    config.register_auth_on_action_hook("accessgroup", "disable_session_master")
     config.register_auth_on_action_hook("accessgroup", "enable_timeout_pass_on")
     config.register_auth_on_action_hook("accessgroup", "disable_timeout_pass_on")
 
@@ -850,7 +827,6 @@ class AccessGroup(OTPmeObject):
         # Accessgroups should not inherit ACLs by default.
         self.acl_inheritance_enabled = False
         self.sessions_enabled = False
-        self.session_master = False
         self.timeout_pass_on = False
 
         self._sync_fields = {
@@ -880,12 +856,6 @@ class AccessGroup(OTPmeObject):
         object_config = {
                         'SESSIONS'                  : {
                                                         'var_name'  : 'sessions_enabled',
-                                                        'type'      : bool,
-                                                        'required'  : False,
-                                                    },
-
-                        'SESSION_MASTER'            : {
-                                                        'var_name'  : 'session_master',
                                                         'type'      : bool,
                                                         'required'  : False,
                                                     },
@@ -993,6 +963,14 @@ class AccessGroup(OTPmeObject):
         else:
             self.name = name.lower()
 
+    def get_master_group(self):
+        parents = self.parents(recursive=True,
+                            return_type="instance")
+        if not parents:
+            return None
+        master = parents[-1]
+        return master
+
     @assigned_token_cache.cache_method()
     def is_assigned_token(
         self,
@@ -1028,95 +1006,53 @@ class AccessGroup(OTPmeObject):
 
     def parents(
         self,
-        recursive: bool=False,
         sessions: bool=None,
-        session_master: bool=False,
+        recursive: bool=False,
         return_type: str='name',
         skip_disabled: bool=True,
         ):
         """ Get all parent groups of this group. """
-        result = []
         child_attribute = "child_group"
         if sessions:
             child_attribute = "child_session"
-        return_attrs = ['uuid', 'enabled']
-        if session_master:
-            return_attrs.append("session_master")
-        if return_type != "instance":
-            return_attrs.append(return_type)
-        # Get parent accessgroups.
-        parents = backend.search(realm=self.realm,
+        result = backend.search(realm=self.realm,
                                 site=self.site,
                                 object_type="accessgroup",
                                 attribute=child_attribute,
                                 value=self.uuid,
-                                return_attributes=return_attrs)
-        if not parents:
-            return result
-        if recursive:
-            parent_parents = list(parents)
-            while True:
-                check_parents = list(parent_parents)
-                parent_parents = []
-                for uuid in check_parents:
-                    x_parents = backend.search(realm=self.realm,
-                                                site=self.site,
-                                                object_type="accessgroup",
-                                                attribute=child_attribute,
-                                                value=uuid,
-                                                return_attributes=return_attrs)
-                    if not x_parents:
-                        continue
-                    for x_uuid in x_parents:
-                        if x_uuid in parents:
-                            continue
-                        parents[x_uuid] = x_parents[x_uuid]
-                    parent_parents += x_parents
-                if not parent_parents:
-                    break
-
-        # Check for session master.
-        if session_master:
-            return_attr = None
-            for uuid in parents:
-                try:
-                    session_master = parents[uuid]['session_master'][0]
-                except:
-                    continue
-                if not session_master:
-                    continue
-                if return_type == "instance":
-                    return_attr = backend.get_object(object_type="accessgroup",
-                                                    uuid=uuid)
-                elif return_type == "uuid":
-                    return_attr = uuid
-                else:
-                    return_attr = parents[uuid][return_type]
-            return return_attr
-
-        for uuid in parents:
+                                return_type="instance")
+        _result = []
+        for x_ag in result:
             if skip_disabled:
-                try:
-                    group_enabled = parents[uuid]['enabled'][0]
-                except:
-                    group_enabled = False
-                if not group_enabled:
+                if not x_ag.enabled:
                     continue
-            if return_type == "instance":
-                p = backend.get_object(object_type="accessgroup", uuid=uuid)
-                result.append(p)
-            elif return_type == "uuid":
-                result.append(uuid)
+            if return_type == "uuid":
+                _result.append(x_ag.uuid)
+            elif return_type == "name":
+                _result.append(x_ag.name)
+            elif return_type == "oid":
+                _result.append(x_ag.oid)
+            elif return_type == "read_oid":
+                _result.append(x_ag.oid.read_oid)
+            elif return_type == "full_oid":
+                _result.append(x_ag.oid.full_oid)
+            elif return_type == "instance":
+                _result.append(x_ag)
             else:
-                return_attribute = parents[uuid][return_type]
-                result.append(return_attribute)
-        return result
+                msg = _("Unsupported return type: {return_type}")
+                msg = msg.format(return_type=return_type)
+                raise OTPmeException(msg)
+            if not recursive:
+                continue
+            _result += x_ag.parents(recursive=recursive,
+                                    sessions=sessions,
+                                    return_type=return_type)
+        return _result
 
     def childs(
         self,
         recursive: bool=False,
         sessions: bool=False,
-        session_master: bool=False,
         return_type: str='name',
         skip_disabled: bool=True,
         ):
@@ -1126,8 +1062,6 @@ class AccessGroup(OTPmeObject):
         if sessions:
             join_attribute = "child_session"
         return_attrs = ['uuid', 'enabled']
-        if session_master:
-            return_attrs.append("session_master")
         if return_type != "instance":
             return_attrs.append(return_type)
         # Get child accessgroups/sessions.
@@ -1163,25 +1097,6 @@ class AccessGroup(OTPmeObject):
                 if not child_childs:
                     break
 
-        # Check for session master.
-        if session_master:
-            return_attr = None
-            for uuid in childs:
-                try:
-                    session_master = childs[uuid]['session_master'][0]
-                except:
-                    continue
-                if not session_master:
-                    continue
-                if return_type == "instance":
-                    return_attr = backend.get_object(object_type="accessgroup",
-                                                    uuid=uuid)
-                elif return_type == "uuid":
-                    return_attr = uuid
-                else:
-                    return_attr = childs[uuid][return_type]
-            return return_attr
-
         for uuid in childs:
             if skip_disabled:
                 try:
@@ -1199,33 +1114,6 @@ class AccessGroup(OTPmeObject):
                 return_attribute = childs[uuid][return_type]
                 result.append(return_attribute)
         return result
-
-    def get_session_master(self, return_type: str='name'):
-        """ Get session master of session tree. """
-        # Check if we are the session master.
-        if self.session_master:
-            if return_type == "name":
-                return self.name
-            if return_type == "uuid":
-                return self.uuid
-            if return_type == "instance":
-                return self
-
-        # Try to get session master from parent sessions.
-        session_master = self.parents(recursive=True,
-                                    sessions=True,
-                                    session_master=True,
-                                    return_type=return_type)
-        if session_master:
-            return session_master
-
-        # Try to get session master from child sessions.
-        session_master = self.childs(recursive=True,
-                                    sessions=True,
-                                    session_master=True,
-                                    return_type=return_type)
-        if session_master:
-            return session_master
 
     @check_acls(['add:child_group'])
     @object_lock()
@@ -1254,8 +1142,19 @@ class AccessGroup(OTPmeObject):
             return callback.error(msg)
 
         if group.uuid in self.childs(return_type="uuid"):
+            msg = _("Group is already a child group of this group.")
+            return callback.error(msg)
+
+        result = backend.search(realm=self.realm,
+                                site=self.site,
+                                object_type="accessgroup",
+                                attribute="child_group",
+                                value=group.uuid,
+                                return_type="name")
+        if result:
+            group_name = result[0]
             msg = _("Group is already in child groups of group '{group_name}'.")
-            msg = msg.format(group_name=self.name)
+            msg = msg.format(group_name=group_name)
             return callback.error(msg)
 
         if run_policies:
@@ -1348,19 +1247,19 @@ class AccessGroup(OTPmeObject):
             return callback.error(msg)
 
         if group.uuid in self.childs(sessions=True, return_type="uuid"):
-            msg = _("Group is already in child sessions of group '{group_name}'.")
-            msg = msg.format(group_name=self.name)
+            msg = _("Group is already a child sessions of this group.")
             return callback.error(msg)
 
-        # Get session master of own session tree.
-        session_master = self.get_session_master()
-        # Get session master of child session tree.
-        child_session_master = group.get_session_master()
-
-        # Check if there is a session master in both session trees.
-        if (session_master and child_session_master) \
-        and (session_master != child_session_master):
-            msg = _("Cannot add group as child session because both session trees contain a session master.")
+        result = backend.search(realm=self.realm,
+                                site=self.site,
+                                object_type="accessgroup",
+                                attribute="child_session",
+                                value=group.uuid,
+                                return_type="name")
+        if result:
+            group_name = result[0]
+            msg = _("Group is already in child sessions of group '{group_name}'.")
+            msg = msg.format(group_name=group_name)
             return callback.error(msg)
 
         if run_policies:
@@ -1698,75 +1597,6 @@ class AccessGroup(OTPmeObject):
         self.update_index("sessions_enabled", self.sessions_enabled)
         return self._cache(callback=callback)
 
-    @check_acls(['enable:session_master'])
-    @object_lock()
-    @audit_log()
-    def enable_session_master(
-        self,
-        run_policies: bool=True,
-        _caller: str="API",
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Enable session master feature for this group. """
-        if self.session_master:
-            return callback.error("Group is already session master.")
-        # Check if there is already a session master in our session tree.
-        session_master = self.get_session_master()
-        if session_master:
-            msg = _("Cannot enable session master. Session master already exists in session tree: '{session_master}'.")
-            msg = msg.format(session_master=session_master)
-            return callback.error(msg)
-
-        if self.session_master:
-            msg = _("Session master already enabled for this group.")
-            return callback.error(msg)
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("enable_session_master",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-        self.session_master = True
-        # Update index.
-        self.update_index("session_master", self.session_master)
-        return self._cache(callback=callback)
-
-    @check_acls(['disable:session_master'])
-    @object_lock()
-    @audit_log()
-    def disable_session_master(
-        self,
-        run_policies: bool=True,
-        _caller: str="API",
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Disable session master feature for this access group. """
-        if not self.session_master:
-            msg = _("Session master already disabled for this group.")
-            return callback.error(msg)
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("disable_session_master",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-        self.session_master = False
-        # Update index.
-        self.update_index("session_master", self.session_master)
-        return self._cache(callback=callback)
-
     @check_acls(['enable:timeout_pass_on'])
     @object_lock()
     @audit_log()
@@ -1868,7 +1698,6 @@ class AccessGroup(OTPmeObject):
         self.add_index("max_fail", self.max_fail)
         self.add_index("max_fail_reset", self.max_fail_reset)
         self.add_index("max_sessions", self.max_sessions)
-        self.add_index("session_master", self.session_master)
         self.add_index("session_timeout", self.session_timeout)
         self.add_index("timeout_pass_on", self.timeout_pass_on)
         self.add_index("sessions_enabled", self.sessions_enabled)
@@ -2198,13 +2027,6 @@ class AccessGroup(OTPmeObject):
         or self.verify_acl("disable:sessions"):
             sessions_enabled = str(self.sessions_enabled)
         lines.append(f'SESSIONS="{sessions_enabled}"')
-
-        session_master = ""
-        if self.verify_acl("view:session_master") \
-        or self.verify_acl("enable:session_master") \
-        or self.verify_acl("disable:session_master"):
-            session_master = str(self.session_master)
-        lines.append(f'SESSION_MASTER="{session_master}"')
 
         timeout_pass_on = ""
         if self.verify_acl("view:timeout_pass_on") \

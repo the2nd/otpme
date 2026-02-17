@@ -32,7 +32,7 @@ def register():
 def register_config():
     """ Register config stuff. """
     # Use session from otpme-agent to connect to daemons.
-    config.register_config_var("use_agent", None, "auto")
+    #config.register_config_var("use_agent", None, "auto")
 
 def atfork():
     """ Make sure we close connections on fork. """
@@ -310,12 +310,12 @@ def get(daemon, **kwargs):
     #        to an other realm....
     if use_agent is None:
         if realm and realm != config.realm:
-            if config.use_agent and not config.use_api:
+            if not config.use_api:
                 log_msg = _("Cannot use agent connection for other realms.", log=True)[1]
                 logger.warning(log_msg)
             use_agent = False
         else:
-            use_agent = config.use_agent
+            use_agent = "auto"
         # No agent in daemon mode.
         if config.daemon_mode:
             use_agent = False

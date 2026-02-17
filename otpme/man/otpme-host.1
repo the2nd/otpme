@@ -1,0 +1,305 @@
+.TH OTPME-HOST 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-host \- manage OTPme hosts
+.SH SYNOPSIS
+.B otpme-host
+.I command
+[\fIoptions\fR] [\fIhost\fR]
+.SH DESCRIPTION
+.B otpme-host
+manages host objects in the OTPme system. Hosts are client machines (e.g. notebooks, workstations) that are joined to the OTPme realm and on which users log in. Hosts have certificates, can be configured with tokens, roles, dynamic groups, and sync settings.
+.SH COMMANDS
+.SS Host Management
+.TP
+.B add \fIhost\fR
+Create a new host.
+.TP
+.B del \fIhost\fR
+Delete a host.
+.TP
+.B show \fR[\fIhost\fR]
+Display host information. Without arguments, shows all hosts.
+.TP
+.B list \fR[\fIregex\fR]
+List hosts, optionally filtered by regex pattern.
+.TP
+.B enable \fIhost\fR
+Enable a disabled host.
+.TP
+.B disable \fIhost\fR
+Disable a host without deleting it.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIhost\fR \fIunit\fR
+Move host to a different unit.
+.TP
+.B touch \fIhost\fR
+Re-index the object to fix potential index problems.
+.SS Token and Role Assignment
+.TP
+.B add_token \fR[\fB\-i\fR \fIinterfaces\fR] [\fB\-\-no\-auto\-sign\fR] [\fB\-\-sign\fR \fB\-\-tags\fR \fItag1,tag2\fR] \fIhost\fR \fItoken_path\fR
+Add a token to the host. Use \fB\-i\fR to limit login to specific interfaces (e.g. tty, gui, ssh).
+.TP
+.B remove_token \fR[\fB\-\-keep\-sign\fR] \fIhost\fR \fItoken_path\fR
+Remove a token from the host.
+.TP
+.B list_tokens \fIhost\fR
+List tokens assigned to the host.
+.TP
+.B add_role \fIhost\fR \fIrole\fR
+Add a role to the host.
+.TP
+.B remove_role \fIhost\fR \fIrole\fR
+Remove a role from the host.
+.TP
+.B list_roles \fIhost\fR
+List roles assigned to the host.
+.SS Login Control
+.TP
+.B limit_logins \fIhost\fR
+Limit logins to tokens and roles explicitly assigned to this host.
+.TP
+.B unlimit_logins \fIhost\fR
+Allow logins from all authorized tokens.
+.SS User and Group Listing
+.TP
+.B list_users \fIhost\fR
+List users on the host.
+.TP
+.B list_sync_users \fIhost\fR
+List sync users on the host.
+.TP
+.B list_sync_groups \fIhost\fR
+List sync groups on the host.
+.TP
+.B list_dynamic_groups \fIhost\fR
+List dynamic groups of the host.
+.SS Dynamic Groups
+Dynamic groups are local Linux groups (e.g. plugdev) that exist on hosts and nodes. Users are automatically added to these groups when they log in via the OTPme PAM module. This is most commonly used on hosts where users log in interactively.
+.TP
+.B add_dynamic_group \fIhost\fR \fIgroup\fR
+Add a dynamic group to the host.
+.TP
+.B remove_dynamic_group \fIhost\fR \fIgroup\fR
+Remove a dynamic group from the host.
+.SS Sync Configuration
+.TP
+.B add_sync_user \fIhost\fR \fIuser\fR
+Add a sync user to the host.
+.TP
+.B remove_sync_user \fIhost\fR \fIuser\fR
+Remove a sync user from the host.
+.TP
+.B add_sync_group \fIhost\fR \fIgroup\fR
+Add a sync group to the host.
+.TP
+.B remove_sync_group \fIhost\fR \fIgroup\fR
+Remove a sync group from the host.
+.TP
+.B enable_sync_groups \fIhost\fR
+Enable sync groups.
+.TP
+.B disable_sync_groups \fIhost\fR
+Disable sync groups.
+.TP
+.B enable_sync_by_login_token \fIhost\fR
+Enable sync by login token.
+.TP
+.B disable_sync_by_login_token \fIhost\fR
+Disable sync by login token.
+.SS Realm Join/Leave
+.TP
+.B enable_jotp \fIhost\fR
+Enable realm join via JOTP.
+.TP
+.B disable_jotp \fIhost\fR
+Disable realm join via JOTP.
+.TP
+.B enable_lotp \fIhost\fR
+Enable realm leaving via LOTP.
+.TP
+.B disable_lotp \fIhost\fR
+Disable realm leaving via LOTP.
+.TP
+.B enable_jotp_rejoin \fIhost\fR
+Enable printing of rejoin JOTP on realm leave.
+.TP
+.B disable_jotp_rejoin \fIhost\fR
+Disable printing of rejoin JOTP on realm leave.
+.SS Certificate Operations
+.TP
+.B dump_cert \fIhost\fR
+Export the host certificate to stdout.
+.TP
+.B dump_ca_chain \fIhost\fR
+Export the CA certificate chain of the host cert to stdout.
+.TP
+.B renew_cert \fIhost\fR
+Renew the host certificate.
+.TP
+.B public_key \fIhost\fR \fR[\fIpublic_key\fR]
+Set or display the host's public key.
+.SS SSH
+.TP
+.B get_ssh_authorized_keys \fIhost\fR \fR[\fIuser\fR]
+Get SSH authorized keys for the host, optionally for a specific user.
+.SS Policy Management
+.TP
+.B add_policy \fIhost\fR \fIpolicy\fR
+Attach a policy to the host.
+.TP
+.B remove_policy \fIhost\fR \fIpolicy\fR
+Remove a policy from the host.
+.TP
+.B list_policies \fIhost\fR
+List policies attached to the host.
+.SS ACL Management
+.TP
+.B add_acl \fIhost\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fIhost\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIhost\fR
+Display all ACLs for the host.
+.TP
+.B enable_acl_inheritance \fIhost\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIhost\fR
+Disable ACL inheritance.
+.SS Configuration and Attributes
+.TP
+.B config \fIhost\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter.
+.TP
+.B show_config \fIhost\fR
+Show all configuration parameters.
+.TP
+.B description \fIhost\fR \fR[\fIdescription\fR]
+Set host description.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIhost\fR
+Export host configuration.
+.TP
+.B remove_orphans \fIhost\fR
+Remove orphaned object references.
+.SH OPTIONS
+.SS Display Options
+.TP
+.B \-a
+Show all hosts (across all units).
+.TP
+.B \-t
+Show host templates.
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-role\-limit \fIN\fR
+Limit number of roles shown.
+.TP
+.B \-\-token\-limit \fIN\fR
+Limit number of tokens shown.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.TP
+.B \-\-attribute \fIATTR\fR
+Display specific attribute in list command.
+.SS Token Options
+.TP
+.B \-i \fIinterfaces\fR
+Limit login to given interfaces (e.g. tty, gui, ssh).
+.TP
+.B \-\-sign
+Sign the object with default tags.
+.TP
+.B \-\-tags \fItag1,tag2\fR
+Add tags to signature.
+.TP
+.B \-\-no\-auto\-sign
+Do not automatically sign when adding a token.
+.TP
+.B \-\-keep\-sign
+Do not remove any signature when removing a token.
+.SS General Options
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving host.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.SS Managing Hosts
+.TP
+.B otpme-host add notebook1
+Create a new host
+.TP
+.B otpme-host enable_jotp notebook1
+Enable realm join via JOTP
+.SS Token Assignment
+.TP
+.B otpme-host add_token notebook1 alice/totp
+Allow alice's TOTP token to login on host
+.TP
+.B otpme-host add_token \-i ssh notebook1 bob/ssh_key
+Allow bob's SSH key only for SSH interface
+.TP
+.B otpme-host limit_logins notebook1
+Limit logins to explicitly assigned tokens
+.SS Certificate Operations
+.TP
+.B otpme-host dump_cert notebook1
+Export host certificate
+.TP
+.B otpme-host renew_cert notebook1
+Renew the host certificate
+.SS Sync Configuration
+.TP
+.B otpme-host add_sync_user notebook1 alice
+Add sync user
+.TP
+.B otpme-host add_sync_group notebook1 developers
+Add sync group
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme-node (1),
+.BR otpme-token (1),
+.BR otpme-role (1),
+.BR otpme-ca (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

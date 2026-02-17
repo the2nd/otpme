@@ -1,0 +1,375 @@
+.TH OTPME-TOKEN 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-token \- manage OTPme authentication tokens
+.SH SYNOPSIS
+.B otpme-token
+[\fB\-\-type\fR \fItoken_type\fR]
+.I command
+[\fIoptions\fR] [\fItoken\fR]
+.SH DESCRIPTION
+.B otpme-token
+manages authentication tokens in the OTPme system. Tokens are credentials assigned to users. They are identified by their path:
+.IR user / token_name
+(e.g. alice/login).
+.SH TOKEN TYPES
+.TP
+.B hotp
+HMAC-based One-Time Password (RFC 4226).
+.TP
+.B totp
+Time-based One-Time Password (RFC 6238).
+.TP
+.B password
+Static password authentication.
+.TP
+.B ssh
+SSH public key authentication.
+.TP
+.B fido2
+FIDO2/WebAuthn hardware authentication.
+.TP
+.B u2f
+U2F hardware authentication.
+.TP
+.B yubikey_hmac
+YubiKey HMAC-SHA1 challenge-response authentication.
+.TP
+.B yubikey_hotp
+YubiKey OATH HOTP authentication.
+.TP
+.B yubikey_gpg
+YubiKey GPG applet authentication.
+.TP
+.B motp
+Mobile OTP (mOTP).
+.TP
+.B otp_push
+Push notification-based OTP.
+.TP
+.B script_otp
+OTP generation via external script.
+.TP
+.B link
+Link to another user's token.
+.SH COMMANDS
+.SS Token Management
+.TP
+.B add \fItoken\fR
+Add a new token. Requires \fB\-\-type\fR before the command.
+.TP
+.B del \fItoken\fR
+Delete a token.
+.TP
+.B show \fR[\fItoken\fR]
+Display token information.
+.TP
+.B list \fR[\fIregex\fR]
+List tokens, optionally filtered by regex pattern.
+.TP
+.B enable \fItoken\fR
+Enable a disabled token.
+.TP
+.B disable \fItoken\fR
+Disable a token without deleting it.
+.TP
+.B rename \fItoken\fR \fInew_name\fR
+Rename a token.
+.TP
+.B move \fR[\fB\-r\fR] \fItoken\fR \fInew_token_path\fR
+Move token to another user. Use \fB\-r\fR to replace existing token keeping its UUID.
+.TP
+.B touch \fItoken\fR
+Re-index the object to fix potential index problems.
+.SS Token Configuration
+.TP
+.B config \fItoken\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter.
+.TP
+.B show_config \fR[\fItoken\fR]
+Show all configuration parameters.
+.TP
+.B auto_disable \fR[\fB\-u\fR] \fItoken\fR \fItime\fR
+Set auto-disable time (e.g. "1d" or "09:53 13.06.2023"). Use \fB\-u\fR to disable if unused for the given time.
+.TP
+.B description \fItoken\fR \fR[\fIdescription\fR]
+Set token description.
+.TP
+.B test \fItoken\fR \fR[\fIotp|password\fR]
+Test if given OTP/password can be verified by the token.
+.TP
+.B temp_password \fR[\fB\-\-generate\fR] [\fB\-\-duration\fR \fItime\fR] [\fB\-\-remove\fR] \fItoken\fR \fR[\fIpassword\fR]
+Set, generate or remove a temporary password.
+.SS Offline Configuration
+.TP
+.B enable_offline \fItoken\fR
+Enable offline usage (caching) of token.
+.TP
+.B disable_offline \fItoken\fR
+Disable offline usage (caching) of token.
+.TP
+.B offline_expiry \fItoken\fR \fIexpiry\fR
+Set offline expiry timeout.
+.TP
+.B offline_unused_expiry \fItoken\fR \fIexpiry\fR
+Set offline unused expiry timeout.
+.SS Session
+.TP
+.B enable_session_keep \fItoken\fR
+Enable keeping of login session (e.g. on shutdown).
+.TP
+.B disable_session_keep \fItoken\fR
+Disable keeping of login session.
+.SS Auth Script
+.TP
+.B auth_script \fItoken\fR \fIscript\fR
+Change token authorization script.
+.TP
+.B enable_auth_script \fItoken\fR
+Enable token authorization script.
+.TP
+.B disable_auth_script \fItoken\fR
+Disable token authorization script.
+.SS Deploy
+.TP
+.B deploy \fR[\fIoptions\fR] \fItoken\fR
+Deploy a hardware token (fido2, u2f, yubikey_hmac, yubikey_hotp, yubikey_gpg). Options vary by token type.
+.SS Dynamic Groups
+.TP
+.B add_dynamic_group \fItoken\fR \fIgroup\fR
+Add a dynamic group to the token.
+.TP
+.B remove_dynamic_group \fItoken\fR \fIgroup\fR
+Remove a dynamic group from the token.
+.TP
+.B list_dynamic_groups \fItoken\fR
+List dynamic groups of the token.
+.SS Listing
+.TP
+.B list_roles \fR[\fB\-r\fR] \fItoken\fR
+List roles assigned to the token. Use \fB\-r\fR for recursive listing.
+.TP
+.B list_hosts \fItoken\fR
+List hosts this token is assigned to.
+.TP
+.B list_nodes \fItoken\fR
+List nodes this token is assigned to.
+.TP
+.B list_groups \fItoken\fR
+List groups this token is assigned to.
+.TP
+.B list_accessgroups \fItoken\fR
+List access groups this token is assigned to.
+.SS Policy Management
+.TP
+.B add_policy \fItoken\fR \fIpolicy\fR
+Attach a policy to the token.
+.TP
+.B remove_policy \fItoken\fR \fIpolicy\fR
+Remove a policy from the token.
+.TP
+.B list_policies \fItoken\fR
+List policies attached to the token.
+.SS ACL Management
+.TP
+.B add_acl \fItoken\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fItoken\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fItoken\fR
+Display all ACLs for the token.
+.TP
+.B enable_acl_inheritance \fItoken\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fItoken\fR
+Disable ACL inheritance.
+.SS Import/Export
+.TP
+.B export \fItoken\fR
+Export token configuration to stdout.
+.TP
+.B remove_orphans \fItoken\fR
+Remove orphaned object references.
+.SH TOKEN TYPE COMMANDS
+The following commands require \fB\-\-type\fR before the command.
+.SS HOTP / TOTP / mOTP (OTP Tokens)
+.TP
+.B secret \fItoken\fR \fR[\fIsecret\fR]
+Change token secret.
+.TP
+.B show_secret \fItoken\fR
+Show token secret.
+.TP
+.B pin \fR[\fB\-\-generate\fR] \fItoken\fR \fR[\fIpin\fR]
+Change token PIN.
+.TP
+.B show_pin \fItoken\fR
+Show token PIN.
+.TP
+.B enable_pin \fItoken\fR
+Enable token PIN. (HOTP/TOTP only)
+.TP
+.B disable_pin \fItoken\fR
+Disable token PIN. (HOTP/TOTP only)
+.TP
+.B gen \fItoken\fR
+Generate token OTP.
+.TP
+.B gen_mschap \fItoken\fR
+Generate MSCHAP challenge/response from token OTP.
+.TP
+.B gen_qrcode \fItoken\fR
+Generate QR code for token configuration. (HOTP/TOTP only)
+.TP
+.B mode \fItoken\fR \fImode\fR
+Change token operation mode. (HOTP/TOTP only)
+.SS HOTP Specific
+.TP
+.B counter_check_range \fItoken\fR \fR[\fIrange\fR]
+Change OTP counter check range.
+.TP
+.B resync \fItoken\fR \fR[\fIotp\fR]
+Resync counter-based token.
+.TP
+.B get_token_counter \fItoken\fR
+Get token counter value.
+.SS mOTP Specific
+.TP
+.B validity_time \fItoken\fR \fR[\fItime\fR]
+Change OTP validity time.
+.TP
+.B timedrift_tolerance \fItoken\fR \fR[\fItolerance\fR]
+Change OTP timedrift tolerance.
+.SS Password Token
+.TP
+.B password \fR[\fB\-\-generate\fR] \fItoken\fR \fR[\fIpassword\fR]
+Change token password.
+.TP
+.B 2f_token \fItoken\fR \fIsecond_factor_token\fR
+Change second factor token.
+.TP
+.B enable_2f \fItoken\fR
+Enable second factor token.
+.TP
+.B disable_2f \fItoken\fR
+Disable second factor token.
+.TP
+.B enable_mschap \fItoken\fR
+Enable MSCHAP authentication.
+.TP
+.B disable_mschap \fItoken\fR
+Disable MSCHAP authentication.
+.TP
+.B remove_nt_hash \fItoken\fR
+Remove NT hash used for MSCHAP authentication.
+.TP
+.B dump_pass_hash \fItoken\fR
+Dump password hash.
+.TP
+.B set_pass_hash \fItoken\fR \fIfile\fR
+Set password hash from file.
+.TP
+.B upgrade_pass_hash \fItoken\fR \fR[\fIhash_type\fR] \fR[\fIargs\fR]
+Upgrade password hash.
+.SS SSH Token
+.TP
+.B ssh_public_key \fItoken\fR \fR[\fIssh_public_key\fR]
+Change token SSH public key.
+.TP
+.B card_type \fItoken\fR \fR[\fIcard_type\fR]
+Set card type of SSH token (e.g. gpg).
+.TP
+.B key_type \fItoken\fR \fIkey_type\fR
+Set SSH key type (e.g. rsa).
+.TP
+.B password \fR[\fB\-\-generate\fR] \fItoken\fR \fR[\fIpassword\fR]
+Change token password.
+.TP
+.B 2f_token \fItoken\fR \fIsecond_factor_token\fR
+Change second factor token.
+.TP
+.B enable_2f / disable_2f \fItoken\fR
+Enable/disable second factor token.
+.PP
+SSH tokens also support signature commands: \fBsign\fR, \fBresign\fR, \fBverify_sign\fR, \fBget_sign\fR, \fBadd_sign\fR, \fBdel_sign\fR.
+.SS Link Token
+.TP
+.B add \fItoken\fR \fIdestination_token\fR
+Add a link token pointing to destination_token.
+.SS YubiKey HMAC
+.TP
+.B otp_format \fItoken\fR \fR[\fIformat\fR]
+Change token OTP format.
+.TP
+.B validity_time \fItoken\fR \fR[\fItime\fR]
+Change OTP validity time.
+.TP
+.B timedrift_tolerance \fItoken\fR \fR[\fItolerance\fR]
+Change OTP timedrift tolerance.
+.TP
+.B mode \fItoken\fR \fImode\fR
+Change token operation mode.
+.SH OPTIONS
+.TP
+.B \-\-type \fITYPE\fR
+Specify the token type. Required for the \fBadd\fR command and for all type-specific commands. Must be placed before the command.
+.SS Display Options
+.TP
+.B \-a
+Show all tokens.
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-role\-limit \fIN\fR
+Limit number of roles shown.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.SS General Options
+.TP
+.B \-r
+Replace existing token and keep its UUID (for add, move, deploy).
+.TP
+.B \-u
+Disable if unused for the given time (auto_disable).
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.TP
+.B otpme-token \-\-type totp add alice/totp
+Create a TOTP token for user alice
+.TP
+.B otpme-token \-\-type fido2 deploy alice/fido2
+Deploy a FIDO2 token
+.TP
+.B otpme-token test alice/totp
+Test token authentication
+.TP
+.B otpme-token \-\-type link add root/admin_link alice/login
+Create a link token
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme-user (1),
+.BR otpme-role (1),
+.BR otpme-policy (1),
+.BR otpme-accessgroup (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

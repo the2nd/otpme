@@ -1,0 +1,213 @@
+.TH OTPME 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme \- global options for OTPme management commands
+.SH DESCRIPTION
+All OTPme management commands (otpme-user, otpme-token, otpme-client, etc.) share a common set of global options described here. For a conceptual overview of the OTPme system, see
+.BR otpme (7).
+.SH GLOBAL OPTIONS
+.SS Connection Options
+.TP
+.B \-r \fIrealm\fR
+Connect to a specific realm.
+.TP
+.B \-s \fIsite\fR
+Connect to a specific site.
+.TP
+.B \-t \fItimeout\fR
+Connect timeout in seconds.
+.TP
+.B \-tt \fItimeout\fR
+Connection timeout in seconds.
+.TP
+.B \-c \fIconfig_file\fR
+Use alternative config file.
+.TP
+.B \-\-no\-dns
+Do not resolve OTPme site address via DNS.
+.TP
+.B \-\-use\-dns
+Resolve OTPme site address via DNS.
+.TP
+.B \-\-login\-no\-dns
+Do not resolve OTPme login point via DNS.
+.TP
+.B \-\-login\-use\-dns
+Resolve OTPme login point via DNS.
+.SS Authentication Options
+.TP
+.B \-\-use\-ssh\-agent \fR[\fIy|n\fR]
+Use ssh-agent for authentication.
+.TP
+.B \-\-use\-smartcard \fR[\fIy|n\fR]
+Use smartcard for authentication.
+.TP
+.B \-\-stdin\-pass
+Read passphrase from stdin.
+.TP
+.B \-\-auth\-token \fItoken\fR
+Emulate login with given token in API mode.
+.SS Communication Options
+.TP
+.B \-\-socket
+Use mgmtd socket.
+.TP
+.B \-\-api
+Use direct API calls instead of connecting to a daemon.
+.SS General Options
+.TP
+.B \-\-type \fIobject_type\fR
+Object type to act on (e.g. token type).
+.TP
+.B \-f
+Do not ask any user questions.
+.TP
+.B \-\-print\-raw\-sign\-data
+Print raw data to sign instead of sign info.
+.TP
+.B \-\-version
+Show version.
+.TP
+.B \-v
+Enable verbose mode.
+.SS Debug Options
+.TP
+.B \-d
+Enable debug mode. Multiple 'd' will increase debug level.
+.TP
+.B \-da
+Debug function cache adds.
+.TP
+.B \-dA
+Enable debug of transactions.
+.TP
+.B \-db
+Print when objects are read from backend.
+.TP
+.B \-dc
+Print when objects are read from cache.
+.TP
+.B \-dr
+Print file reads.
+.TP
+.B \-dw
+Print file writes.
+.TP
+.B \-dC
+Enable debug logging for client messages.
+.TP
+.B \-dD
+Do not go to background and log to stdout.
+.TP
+.B \-de
+Print tracebacks.
+.TP
+.B \-dee
+Raise debug exceptions.
+.TP
+.B \-dh
+Debug function cache hits.
+.TP
+.B \-dL
+Debug locks.
+.TP
+.B \-dm
+Print loading of OTPme modules.
+.TP
+.B \-dM
+Enable function/method call tracing.
+.TP
+.B \-dN
+Debug network packets.
+.TP
+.B \-dt
+Enable timestamps in debug output.
+.TP
+.B \-dP
+Enable profiling via cProfile.
+.TP
+.B \-dT
+Print warning if function/method call takes longer than \-\-debug\-timing\-limit.
+.TP
+.B \-dTT
+Print timing result after method finishes.
+.TP
+.B \-dTTT
+Print warning each time method call gets slower.
+.TP
+.B \-\-color\-logs
+Use colored logs.
+.TP
+.B \-\-log\-filter \fIdaemon1,daemon2\fR
+Only print log messages for the given daemons.
+.TP
+.B \-\-debug\-daemons \fIdaemon1,daemon2\fR
+Enable debug stuff only for the given daemons.
+.TP
+.B \-\-debug\-users \fIuser1,user2\fR
+Enable debug stuff only for the given users.
+.TP
+.B \-\-debug\-func\-names \fImethod1,method2\fR
+Enable timing for given functions only.
+.TP
+.B \-\-debug\-func\-start \fImethod1,method2\fR
+Start timing on method call.
+.TP
+.B \-\-debug\-func\-caches \fIcache1,cache2\fR
+Enable debug stuff only for the given function caches.
+.TP
+.B \-\-debug\-timing\-limit \fIseconds\fR
+Print warning if function/method call takes longer than given seconds.
+.TP
+.B \-\-debug\-counter\-limit \fIcall_count\fR
+Print warning if function/method is called more than given count.
+.TP
+.B \-\-debug\-profile\-sort \fIcumtime|ncalls|tottime\fR
+Statistic output sorting.
+.SS Job Options
+.TP
+.B \-\-lock\-timeout \fIseconds\fR
+Lock timeout in seconds when starting jobs.
+.TP
+.B \-\-lock\-wait\-timeout \fIseconds\fR
+Lock wait timeout in seconds when starting jobs.
+.TP
+.B \-\-lock\-ignore\-changed\-objects
+Ignore if an object changed while waiting for lock.
+.TP
+.B \-\-job\-timeout \fIseconds\fR
+Job timeout.
+.SS Advanced Options
+.TP
+.B \-\-enable\-typing
+Enable Python type checking.
+.TP
+.B \-\-disable\-locking
+Disable locking in API mode (use with caution).
+.SH SEE ALSO
+.BR otpme (7),
+.BR otpme-accessgroup (1),
+.BR otpme-ca (1),
+.BR otpme-client (1),
+.BR otpme-dictionary (1),
+.BR otpme-group (1),
+.BR otpme-host (1),
+.BR otpme-node (1),
+.BR otpme-policy (1),
+.BR otpme-pool (1),
+.BR otpme-realm (1),
+.BR otpme-resolver (1),
+.BR otpme-role (1),
+.BR otpme-script (1),
+.BR otpme-share (1),
+.BR otpme-site (1),
+.BR otpme-token (1),
+.BR otpme-tool (1),
+.BR otpme-unit (1),
+.BR otpme-user (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

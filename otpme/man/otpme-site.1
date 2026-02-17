@@ -1,0 +1,306 @@
+.TH OTPME-SITE 1 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-site \- manage OTPme sites
+.SH SYNOPSIS
+.B otpme-site
+.I command
+[\fIoptions\fR] [\fIsite\fR]
+.SH DESCRIPTION
+.B otpme-site
+manages sites in the OTPme system. A site contains nodes and has its own CA hierarchy. Sites can establish trust relationships with other sites to enable cross-site authentication and synchronization.
+.SH COMMANDS
+.SS Site Management
+.TP
+.B add \fR[\fIoptions\fR] \fIsite\fR \fInode_name\fR \fIsite_fqdn\fR \fR[\fIsite_address\fR]
+Create a new site with a master node.
+.TP
+.B del \fIsite\fR
+Delete a site.
+.TP
+.B show \fR[\fIsite\fR]
+Display site information.
+.TP
+.B list \fR[\fIregex\fR]
+List sites, optionally filtered by regex pattern.
+.TP
+.B enable \fIsite\fR
+Enable a disabled site.
+.TP
+.B disable \fIsite\fR
+Disable a site without deleting it.
+.TP
+.B touch \fIsite\fR
+Re-index the object to fix potential index problems.
+.SS Site Configuration
+.TP
+.B address \fIsite\fR \fR[\fIip_address\fR]
+Change site IP address.
+.TP
+.B auth_fqdn \fIsite\fR \fR[\fIfqdn\fR]
+Change site auth FQDN.
+.TP
+.B mgmt_fqdn \fIsite\fR \fR[\fIfqdn\fR]
+Change site management FQDN.
+.TP
+.B config \fIsite\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter.
+.TP
+.B show_config \fIsite\fR
+Show all configuration parameters.
+.TP
+.B description \fIsite\fR \fR[\fIdescription\fR]
+Set site description.
+.SS Trust Relationships
+.TP
+.B add_trust \fIsite\fR \fItrusted_site\fR
+Add a trust relationship with another site.
+.TP
+.B del_trust \fIsite\fR \fItrusted_site\fR
+Delete a trust relationship.
+.SS Authentication and Synchronization
+.TP
+.B enable_auth \fIsite\fR
+Enable authentication with site.
+.TP
+.B disable_auth \fIsite\fR
+Disable authentication with site.
+.TP
+.B enable_sync \fIsite\fR
+Enable synchronization with site.
+.TP
+.B disable_sync \fIsite\fR
+Disable synchronization with site.
+.SS Certificate Management
+.TP
+.B dump_cert \fIsite\fR
+Dump site certificate to stdout.
+.TP
+.B dump_key \fR[\fB\-p\fR \fIpassphrase\fR] \fIsite\fR
+Dump site private key to stdout. Use \fB\-p\fR to encrypt with passphrase.
+.TP
+.B dump_ca_chain \fIsite\fR
+Dump site certificate chain to stdout.
+.TP
+.B revoke_cert \fIsite\fR
+Revoke site certificate.
+.TP
+.B renew_cert \fIsite\fR
+Renew site certificate.
+.SS RADIUS Certificate
+.TP
+.B radius_cert \fIsite\fR \fIcert_file\fR
+Change RADIUS certificate.
+.TP
+.B radius_key \fIsite\fR \fIkey_file\fR
+Change RADIUS certificate key.
+.TP
+.B del_radius_cert \fIsite\fR
+Delete RADIUS certificate.
+.TP
+.B del_radius_key \fIsite\fR
+Delete RADIUS key.
+.SS SSO Configuration
+.TP
+.B sso_cert \fIsite\fR \fIcert_file\fR
+Change SSO certificate.
+.TP
+.B sso_key \fIsite\fR \fIkey_file\fR
+Change SSO certificate key.
+.TP
+.B del_sso_cert \fIsite\fR
+Delete SSO certificate.
+.TP
+.B del_sso_key \fIsite\fR
+Delete SSO key.
+.TP
+.B sso_secret \fIsite\fR \fIsecret\fR
+Change SSO secret.
+.TP
+.B sso_csrf_secret \fIsite\fR \fIsecret\fR
+Change SSO CSRF secret.
+.SS Cluster
+.TP
+.B cluster_key \fIsite\fR \fIcluster_key\fR
+Change cluster key.
+.SS FIDO2 CA Certificates
+.TP
+.B add_fido2_ca_cert \fIsite\fR \fIca_cert_file\fR
+Add a FIDO2 CA certificate.
+.TP
+.B del_fido2_ca_cert \fIsite\fR \fIsubject\fR
+Delete a FIDO2 CA certificate by subject.
+.TP
+.B list_fido2_ca_certs \fIsite\fR
+List FIDO2 CA certificates.
+.SS Policy Management
+.TP
+.B add_policy \fIsite\fR \fIpolicy\fR
+Attach a policy to the site.
+.TP
+.B remove_policy \fIsite\fR \fIpolicy\fR
+Remove a policy from the site.
+.TP
+.B list_policies \fIsite\fR
+List policies attached to the site.
+.SS ACL Management
+.TP
+.B add_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] \fIsite\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry. Use \fB\-r\fR for recursive, \fB\-a\fR to apply default ACLs to existing objects.
+.TP
+.B del_acl \fR[\fB\-r\fR] [\fB\-a\fR] [\fB\-\-objects\fR \fItypes\fR] \fIsite\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIsite\fR
+Display all ACLs for the site.
+.SS Extension and Attribute Management
+.TP
+.B add_extension \fIsite\fR \fIextension\fR
+Add an extension to the site.
+.TP
+.B remove_extension \fIsite\fR \fIextension\fR
+Remove an extension from the site.
+.TP
+.B add_attribute \fIsite\fR \fIattribute\fR=\fIvalue\fR
+Add an LDAP attribute to the site.
+.TP
+.B modify_attribute \fIsite\fR \fIattribute\fR \fIold_value\fR \fInew_value\fR
+Modify an LDAP attribute of the site.
+.TP
+.B del_attribute \fIsite\fR \fIattribute\fR=\fIvalue\fR
+Remove an LDAP attribute from the site.
+.TP
+.B add_object_class \fIsite\fR \fIclass\fR
+Add an LDAP object class to the site.
+.TP
+.B del_object_class \fIsite\fR \fIclass\fR
+Remove an LDAP object class from the site.
+.TP
+.B show_ldif \fR[\fB\-a\fR \fIattributes\fR] \fIsite\fR
+Show LDIF representation of the site. Use \fB\-a\fR to show only specific attributes.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIsite\fR
+Export site configuration.
+.TP
+.B remove_orphans \fR[\fB\-r\fR] \fIsite\fR
+Remove orphaned object references. Use \fB\-r\fR for recursive.
+.SH ADD OPTIONS
+These options are used with the \fBadd\fR command:
+.SS CA Certificate Options
+.TP
+.B \-\-ca\-valid \fIDAYS\fR
+CA certificate validity in days.
+.TP
+.B \-\-ca\-key\-len \fIBITS\fR
+Key length for CA certificates in bits.
+.TP
+.B \-\-country \fICOUNTRY\fR
+Set CA certificate country field.
+.TP
+.B \-\-state \fISTATE\fR
+Set CA certificate state field.
+.TP
+.B \-\-locality \fILOCALITY\fR
+Set CA certificate locality field.
+.TP
+.B \-\-organization \fIORG\fR
+Set CA certificate organization field.
+.TP
+.B \-\-ou \fIOU\fR
+Set CA certificate organizational unit field.
+.TP
+.B \-\-email \fIEMAIL\fR
+Set CA certificate email field.
+.SS Site and Node Certificate Options
+.TP
+.B \-\-site\-valid \fIDAYS\fR
+Site certificate validity in days.
+.TP
+.B \-\-site\-key\-len \fIBITS\fR
+Key length for site certificate in bits.
+.TP
+.B \-\-node\-valid \fIDAYS\fR
+Master node certificate validity in days.
+.TP
+.B \-\-node\-key\-len \fIBITS\fR
+Key length for master node certificate in bits.
+.SS Dictionary and ID Range Options
+.TP
+.B \-\-no\-dicts
+Do not add any word dictionaries for password strength checking.
+.TP
+.B \-\-dicts \fIdict1,dict2\fR
+Add the given word dictionaries for password strength checking.
+.TP
+.B \-\-id\-ranges \fIrange1,range2\fR
+ID ranges to add.
+.SH OPTIONS
+.SS Display Options
+.TP
+.B \-a
+Show all sites.
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.TP
+.B \-\-attribute \fIATTR\fR
+Display specific attribute in list command.
+.SS General Options
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.TP
+.B \-\-objects \fItype1,type2\fR
+Limit ACL operations to specific object types.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.TP
+.B otpme-site add mysite node1 site.example.com 10.0.0.1
+Create a new site
+.TP
+.B otpme-site add_trust mysite othersite
+Add trust relationship
+.TP
+.B otpme-site dump_cert mysite
+Dump site certificate
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7),
+.BR otpme-realm (1),
+.BR otpme-node (1),
+.BR otpme-ca (1)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3
