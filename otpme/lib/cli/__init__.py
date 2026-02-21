@@ -1234,12 +1234,17 @@ def show_objects(object_type, realm=None, site=None, search_regex=None,
                 except ValueError:
                     name_pos = None
                 if name_pos is not None:
-                    _name = x_row.pop(name_pos)
-                    new_name = " " * tree_level
-                    #new_name += "└─"
-                    new_name += "└"
-                    new_name += _name
-                    x_row.insert(name_pos, new_name)
+                    if csv:
+                        x_row.pop(name_pos)
+                        x_rel_path = x['rel_path']
+                        x_row.insert(name_pos, x_rel_path)
+                    else:
+                        _name = x_row.pop(name_pos)
+                        new_name = " " * tree_level
+                        #new_name += "└─"
+                        new_name += "└"
+                        new_name += _name
+                        x_row.insert(name_pos, new_name)
 
         # Switch row values based on output fields given.
         for x in row_switches:

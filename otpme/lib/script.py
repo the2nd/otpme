@@ -217,6 +217,9 @@ def run(script_type, script_path, realm=None, site=None, options=None,
             # (e.g. no otpme variable).
             else:
                 command_line.append(i)
+    elif variables:
+        for var_name in variables:
+            script_env[var_name] = str(variables[var_name])
 
     # Warn if script runs as root.
     if user == "root":

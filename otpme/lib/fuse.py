@@ -34,6 +34,8 @@ from otpme.lib.third_party import mfusepy as fuse
 
 diriv_cache = {}
 filesize_cache = {}
+getattr_cache = {}
+getxattr_cache = {}
 path_hash_cache = {}
 no_such_file_cache = {}
 no_such_data_cache = {}
@@ -515,14 +517,32 @@ class OTPmeFS(fuse.Operations):
 
     @fuse.overrides(fuse.Operations)
     def getattr(self, path: str, fh: Optional[int] = None):
+        global getattr_cache
         if config.debug_enabled:
             self.logger.debug(f"getattr method called for path: {path}")
-        method_data = encode_method_call(method_name="getattr", path=path)
-        command_args = {'method_data':method_data}
-        status, \
-        response_code, \
-        response, \
-        binary_data = self.send(command="fsop_getattr", command_args=command_args)
+        try:
+            getattr_cached_data = getattr_cache[path]
+            cache_time = getattr_cached_data['cache_time']
+            now = time.time()
+            use_cache = False
+            if (now - cache_time) <= 5:
+                use_cache = True
+        except KeyError:
+            use_cache = False
+        if use_cache:
+            try:
+                response = getattr_cached_data['result']
+                status = True
+            except KeyError:
+                status = False
+                response_code = getattr_cached_data['exc']
+        else:
+            method_data = encode_method_call(method_name="getattr", path=path)
+            command_args = {'method_data':method_data}
+            status, \
+            response_code, \
+            response, \
+            binary_data = self.send(command="fsop_getattr", command_args=command_args)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"getattr failed for path: {path}")
@@ -667,6 +687,8 @@ class OTPmeFS(fuse.Operations):
 
     @fuse.overrides(fuse.Operations)
     def readdir(self, path: str, fh: int) -> fuse.ReadDirResult:
+        global getattr_cache
+        global getxattr_cache
         if config.debug_enabled:
             self.logger.debug(f"readdir method called for path: {path}")
         method_data = encode_method_call(method_name="readdir", path=path)
@@ -681,7 +703,10 @@ class OTPmeFS(fuse.Operations):
             raise fuse.FuseOSError(response_code)
         if config.debug_enabled:
             self.logger.debug(f"readdir successful for path: {path}")
-        return response
+        readdir_result = response['readdir']
+        getattr_cache = getattr_cache | response['getattr']
+        getxattr_cache = getxattr_cache | response['getxattr']
+        return readdir_result
 
     @fuse.overrides(fuse.Operations)
     def readlink(self, path: str) -> str:
@@ -924,17 +949,38 @@ class OTPmeFS(fuse.Operations):
     @fuse.overrides(fuse.Operations)
     def getxattr(self, path: str, name: str, position: int = 0) -> bytes:
         """Get extended attributes (including POSIX ACLs)"""
+        global getxattr_cache
         if config.debug_enabled:
             self.logger.debug(f"getxattr method called for path: {path}")
-        method_data = encode_method_call(method_name="getxattr",
-                                        path=path,
-                                        name=name,
-                                        position=position)
-        command_args = {'method_data':method_data}
-        status, \
-        response_code, \
-        response, \
-        binary_data = self.send(command="fsop_getxattr", command_args=command_args)
+        try:
+            getxattr_cached_data = getxattr_cache[path][name]
+            cache_time = getxattr_cached_data['cache_time']
+            now = time.time()
+            use_cache = False
+            if (now - cache_time) <= 5:
+                use_cache = True
+        except KeyError:
+            use_cache = False
+        if use_cache:
+            try:
+                binary_data = bytes.fromhex(getxattr_cached_data['result'])
+                response = "getxattr data."
+                status = True
+            except KeyError:
+                status = False
+                binary_data = None
+                response = "getxattr failed."
+                response_code = getxattr_cached_data['exc']
+        else:
+            method_data = encode_method_call(method_name="getxattr",
+                                            path=path,
+                                            name=name,
+                                            position=position)
+            command_args = {'method_data':method_data}
+            status, \
+            response_code, \
+            response, \
+            binary_data = self.send(command="fsop_getxattr", command_args=command_args)
         if status is not True:
             if config.debug_enabled:
                 self.logger.debug(f"getxattr failed for path: {path}")

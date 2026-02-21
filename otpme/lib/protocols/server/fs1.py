@@ -197,7 +197,38 @@ class OTPmeFsP1(OTPmeServer1):
 
     @with_root_path()
     def readdir(self, path: str) -> list:
-        result = ['.', '..', *os.listdir(path)]
+        result = {'getattr':{}, 'getxattr':{}}
+        entries = os.listdir(path)
+        for entry in entries:
+            entry_path = os.path.join(path, entry)
+            entry_path = entry_path.replace(self.root, "")
+            # getattr cache.
+            result['getattr'][entry_path] = {}
+            try:
+                x_getattr = self.getattr(entry_path)
+                result['getattr'][entry_path]['result'] = x_getattr
+            except Exception as e:
+                result['getattr'][entry_path]['exc'] = e.errno
+            result['getattr'][entry_path]['cache_time'] = time.time()
+            # getxattr cache.
+            result['getxattr'][entry_path] = {}
+            result['getxattr'][entry_path]['security.selinux'] = {}
+            try:
+                x_getxattr = self.getxattr(entry_path, "security.selinux")
+                result['getxattr'][entry_path]['security.selinux']['result'] = x_getxattr.hex()
+            except Exception as e:
+                result['getxattr'][entry_path]['security.selinux']['exc'] = e.errno
+            result['getxattr'][entry_path]['security.selinux']['cache_time'] = time.time()
+            result['getxattr'][entry_path] = {}
+            result['getxattr'][entry_path]['system.posix_acl_access'] = {}
+            try:
+                x_getxattr = self.getxattr(entry_path, "system.posix_acl_access")
+                result['getxattr'][entry_path]['system.posix_acl_access']['result'] = x_getxattr.hex()
+            except Exception as e:
+                result['getxattr'][entry_path]['system.posix_acl_access']['exc'] = e.errno
+            result['getxattr'][entry_path]['system.posix_acl_access']['cache_time'] = time.time()
+        readdir = ['.', '..', *entries]
+        result['readdir'] = readdir
         return result
 
     @with_root_path(allow_symlinks=True)
@@ -220,7 +251,10 @@ class OTPmeFsP1(OTPmeServer1):
     def symlink(self, target: str, source: str):
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
-        return os.symlink(source, target)
+        result = os.symlink(source, target)
+        if self.force_group_gid:
+            os.lchown(target, -1, self.force_group_gid)
+        return result
 
     @with_root_path()
     def truncate(self, path: str, length: int, fh: Optional[int] = None) -> int:
@@ -348,9 +382,11 @@ class OTPmeFsP1(OTPmeServer1):
     def get_ctime(self, path: str) -> int:
         return os.path.getctime(path)
 
-    @with_root_path()
+    @with_root_path(allow_symlinks=True)
     def getxattr(self, path: str, name: str, position: int = 0) -> bytes:
         """Get extended attributes (including POSIX ACLs)"""
+        if os.path.islink(path):
+            raise OSError(errno.ENODATA, "No such attribute")
         try:
             return xattr.getxattr(path, name)
         except OSError as e:
@@ -519,6 +555,17 @@ class OTPmeFsP1(OTPmeServer1):
                 log_msg = f"{log_msg}: {e}"
                 self.logger.warning(log_msg)
                 return self.build_response(status, message)
+            if share.mount_script_enabled:
+                try:
+                    share.run_mount_script()
+                except Exception as e:
+                    status = status_codes.ERR
+                    message, log_msg = _("Failed to mount share: {share}", log=True)
+                    message = message.format(share=share)
+                    log_msg = log_msg.format(share=share)
+                    log_msg = f"{log_msg}: {e}"
+                    self.logger.warning(log_msg)
+                    return self.build_response(status, message)
             if share.force_group_uuid is not None:
                 group = backend.get_object(uuid=share.force_group_uuid)
                 if not group:

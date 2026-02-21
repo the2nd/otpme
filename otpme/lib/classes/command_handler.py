@@ -2388,16 +2388,19 @@ class CommandHandler(object):
         else:
             otp_count = 1
 
-        epoch_time = command_line[0]
+        epoch_time = int(str(int(command_line[0]))[:-1])
         secret = command_line[1]
         pin = command_line[2]
 
         otps = self.gen_motp(epoch_time=epoch_time,
                             secret=secret, pin=pin,
                             otp_count=otp_count,
-                            otp_len=config.motp_len)
+                            otp_len=6)
         if not otps:
             return ""
+
+        if otp_count == 1:
+            return otps
         otp_list = "\n".join(otps)
 
         return otp_list

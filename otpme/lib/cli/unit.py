@@ -31,6 +31,7 @@ REGISTER_AFTER = ["otpme.lib.filetools"]
 def register():
     return_attributes = [
                         'name',
+                        'rel_path',
                         'policy',
                         'enabled',
                         'unit',
@@ -64,6 +65,7 @@ def row_getter(realm, site, unit_order, unit_data, acls,
     for unit_uuid in unit_order:
         row = []
         unit_name = unit_data[unit_uuid]['name']
+        unit_path = unit_data[unit_uuid]['rel_path']
         try:
             enabled = unit_data[unit_uuid]['enabled'][0]
         except:
@@ -154,6 +156,7 @@ def row_getter(realm, site, unit_order, unit_data, acls,
         # Build row entry.
         entry = {
                 'name'              : unit_name,
+                'rel_path'          : unit_path,
                 'uuid'              : unit_uuid,
                 'unit_uuid'         : unit_unit_uuid,
                 'row'               : row,

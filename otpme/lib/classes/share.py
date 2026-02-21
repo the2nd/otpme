@@ -20,6 +20,7 @@ from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
+from otpme.lib.daemon.scriptd import run_script
 from otpme.lib.classes.otpme_object import OTPmeObject
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import run_pre_post_add_policies
@@ -41,8 +42,15 @@ default_callback = config.get_callback()
 
 DEFAULT_UNIT = "shares"
 REGISTER_BEFORE = []
-REGISTER_AFTER = ["otpme.lib.classes.site"]
+REGISTER_AFTER = [
+                "otpme.lib.classes.site",
+                "otpme.lib.classes.unit",
+                "otpme.lib.classes.script",
+                ]
 SHARES_DIR = os.path.join(config.data_dir, "data", "shares")
+
+ADD_SCRIPT_NAME = "add_share.sh"
+MOUNT_SCRIPT_NAME = "mount_share.sh"
 
 read_acls = []
 write_acls = []
@@ -64,6 +72,9 @@ read_value_acls = {
                                     "force_directory_mode",
                                     "master_password_token",
                                     "master_password_hash_params",
+                                    "add_script",
+                                    "mount_script",
+                                    "mount_script_enabled",
                                 ],
             }
 
@@ -88,15 +99,20 @@ write_value_acls = {
                                 ],
                     "enable"    : [
                                     "read_only",
+                                    "add_script",
+                                    "mount_script",
                                 ],
                     "disable"    : [
                                     "read_only",
+                                    "add_script",
+                                    "mount_script",
                                 ],
                     "edit"    : [
                                     "root_dir",
                                     "force_group",
                                     "force_create_mode",
                                     "force_directory_mode",
+                                    "add_script",
                                 ],
             }
 
@@ -109,14 +125,12 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'args'              : ['root_dir'],
-                    'oargs'             : ['unit', 'encrypted', 'no_key_gen', 'block_size'],
+                    'oargs'             : ['unit', 'force_group', 'encrypted', 'no_key_gen', 'block_size'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
                     'method'            : 'add',
-                    'args'              : ['root_dir'],
-                    'oargs'             : ['unit', 'encrypted', 'no_key_gen', 'block_size'],
+                    'oargs'             : ['unit', 'force_group', 'encrypted', 'no_key_gen', 'block_size'],
                     'job_type'          : 'process',
                     },
                 },
@@ -512,6 +526,31 @@ commands = {
                     },
                 },
             },
+    'mount_script'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_mount_script',
+                    'oargs'             : ['mount_script', 'script_options'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'enable_mount_script'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_mount_script',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'disable_mount_script'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_mount_script',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'description'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -651,9 +690,12 @@ def get_recursive_default_acls(**kwargs):
 
 def register():
     register_oid()
+    register_config()
     register_backend()
+    register_scripts()
     register_object_unit()
     register_sync_settings()
+    register_config_parameters()
     register_commands("share", commands)
     # Register index attributes.
     config.register_index_attribute("share")
@@ -661,11 +703,67 @@ def register():
     config.register_recursive_default_acl("site", "+share")
     config.register_default_acl("unit", "+share")
     config.register_recursive_default_acl("unit", "+share")
+    config.register_auth_on_action_hook("share", "enable_mount_script")
+    config.register_auth_on_action_hook("share", "disable_mount_script")
+    config.register_auth_on_action_hook("share", "change_mount_script")
 
 def register_object_unit():
     """ Register default unit for this object type. """
     config.register_base_object("unit", DEFAULT_UNIT)
     config.register_default_unit("share", DEFAULT_UNIT)
+
+def register_scripts():
+    """ Registger scripts. """
+    config.register_base_object("script", ADD_SCRIPT_NAME)
+    config.register_base_object("script", MOUNT_SCRIPT_NAME)
+
+def register_config_parameters():
+    """ Registger config parameters. """
+    # Object types our config parameters are valid for.
+    object_types = [
+                        'site',
+                        'unit',
+                    ]
+    def script_setter(script_path):
+        result = backend.search(object_type="script",
+                                attribute="rel_path",
+                                value=script_path,
+                                return_type="uuid")
+        if not result:
+            msg = _("Unknown script: {script_path}")
+            msg = msg.format(script_path=script_path)
+            raise UnknownObject(msg)
+        script_uuid = result[0]
+        return script_uuid
+    def script_getter(script_uuid):
+        result = backend.search(object_type="script",
+                                attribute="uuid",
+                                value=script_uuid,
+                                return_type="rel_path")
+        if not result:
+            msg = _("Unknown script: {script_uuid}")
+            msg = msg.format(script_uuid=script_uuid)
+            raise UnknownObject(msg)
+        script_path = result[0]
+        return script_path
+    # Default scripts unit.
+    scripts_unit = config.get_default_unit("script")
+    # Default add script to add to new shares.
+    ADD_SCRIPT_PATH = f"{scripts_unit}/{ADD_SCRIPT_NAME}"
+    config.register_config_parameter(name="default_share_add_script",
+                                    ctype=str,
+                                    getter=script_getter,
+                                    setter=script_setter,
+                                    default_value=ADD_SCRIPT_PATH,
+                                    object_types=object_types)
+    # Default mount script to add to new shares.
+    MOUNT_SCRIPT_PATH = f"{scripts_unit}/{MOUNT_SCRIPT_NAME}"
+    config.register_config_parameter(name="default_share_mount_script",
+                                    ctype=str,
+                                    getter=script_getter,
+                                    setter=script_setter,
+                                    default_value=MOUNT_SCRIPT_PATH,
+                                    object_types=object_types)
 
 def register_oid():
     full_oid_schema = [ 'realm', 'site', 'unit', 'name' ]
@@ -725,6 +823,27 @@ def register_backend():
                                 index_rebuild_func=index_rebuild,
                                 path_getter=path_getter)
 
+def register_config():
+    # Object types our config parameters are valid for.
+    object_types = [
+                    'site',
+                    'unit',
+                    'user',
+                    'token',
+                    ]
+    def share_root_setter(share_root):
+        if not os.path.isdir(share_root):
+            msg = _("Directory does not exists: {share_root}")
+            msg = msg.format(share_root=share_root)
+            raise ValueError(msg)
+        return share_root
+    # Default password hash algo.
+    config.register_config_parameter(name="share_root",
+                                    ctype=str,
+                                    setter=share_root_setter,
+                                    default_value="/otpme-mounts/",
+                                    object_types=object_types)
+
 @match_class_typing
 class Share(OTPmeObject):
     """ Class that implements OTPme share object. """
@@ -752,6 +871,10 @@ class Share(OTPmeObject):
         self.force_group_uuid = None
         self.master_password_tokens = []
         self.master_password_hash_params = {}
+
+        self.add_script = None
+        self.mount_script = None
+        self.mount_script_enabled = False
 
         self._acls = get_acls()
         self._value_acls = get_value_acls()
@@ -882,6 +1005,36 @@ class Share(OTPmeObject):
                                                         'type'      : dict,
                                                         'required'  : False,
                                                     },
+
+                        'ADD_SCRIPT'               : {
+                                                        'var_name'  : 'add_script',
+                                                        'type'      : 'uuid',
+                                                        'required'  : False,
+                                                    },
+
+                        'ADD_SCRIPT_OPTIONS'       : {
+                                                        'var_name'  : 'add_script_options',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+
+                        'MOUNT_SCRIPT'              : {
+                                                        'var_name'  : 'mount_script',
+                                                        'type'      : 'uuid',
+                                                        'required'  : False,
+                                                    },
+
+                        'MOUNT_SCRIPT_OPTIONS'      : {
+                                                        'var_name'  : 'mount_script_options',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+
+                        'MOUNT_SCRIPT_ENABLED'      : {
+                                                        'var_name'  : 'mount_script_enabled',
+                                                        'type'      : bool,
+                                                        'required'  : False,
+                                                    },
                         }
 
         return object_config
@@ -892,7 +1045,7 @@ class Share(OTPmeObject):
     @audit_log()
     def add(
         self,
-        root_dir: str,
+        force_group: str=None,
         encrypted: bool=False,
         key_len: int=32,
         block_size: int=4096,
@@ -906,6 +1059,34 @@ class Share(OTPmeObject):
         result = self._prepare_add(callback=callback, **kwargs)
         if result is False:
             return callback.error()
+        if force_group:
+            self.force_group(group_name=force_group,
+                            verify_acls=False)
+        # Default add script.
+        default_add_script = self.get_config_parameter("default_share_add_script")
+        if default_add_script:
+            if verbose_level > 0:
+                msg = _("Setting default add script: {default_add_script}")
+                msg = msg.format(default_add_script=default_add_script)
+                callback.send(msg)
+            self.change_add_script(default_add_script,
+                                    verify_acls=False,
+                                    callback=callback)
+        # Default mount script.
+        default_mount_script = self.get_config_parameter("default_share_mount_script")
+        if default_mount_script:
+            if verbose_level > 0:
+                msg = _("Setting default mount script: {default_mount_script}")
+                msg = msg.format(default_mount_script=default_mount_script)
+                callback.send(msg)
+            self.change_mount_script(default_mount_script,
+                                    verify_acls=False,
+                                    callback=callback)
+        # Get root dir.
+        root_dir = self.get_config_parameter('share_root')
+        root_dir = os.path.join(root_dir, self.name)
+        # Run share add script.
+        self.run_share_script(self.add_script, root_dir)
         # Check if root dir exists.
         if not self.set_root_dir(root_dir, callback=callback):
             return callback.error()
@@ -936,8 +1117,11 @@ class Share(OTPmeObject):
             except KeyError:
                 msg = _("Share key response misses master password hash parameters.")
                 return callback.error(msg)
-            self.add_token(token_path=config.auth_token.rel_path,
-                            share_key=share_key)
+            if not self.add_token(token_path=config.auth_token.rel_path,
+                            share_key=share_key,
+                            callback=callback):
+                return callback.error()
+        # Add index attributes.
         self.update_index('create_mode', self.create_mode)
         self.update_index('directory_mode', self.create_mode)
         return self._write(callback=callback)
@@ -1301,15 +1485,16 @@ class Share(OTPmeObject):
             return callback.error(msg)
         user = result[0]
 
-        if self.force_group_uuid is not None:
-            group = backend.get_object(uuid=self.force_group_uuid)
-            group_users = group.get_token_users(include_roles=True,
-                                            skip_disabled=True,
-                                            return_type="name")
-            if user.name not in group_users:
-                msg = _("Force group enabled and user not in group: {group_name}")
-                msg = msg.format(group_name=group.name)
-                return callback.error(msg)
+        if not config.auth_user or not config.auth_user.is_admin():
+            if self.force_group_uuid is not None:
+                group = backend.get_object(uuid=self.force_group_uuid)
+                group_users = group.get_token_users(include_roles=True,
+                                                skip_disabled=True,
+                                                return_type="name")
+                if user.name not in group_users:
+                    msg = _("Force group enabled and user not in group: {group_name}")
+                    msg = msg.format(group_name=group.name)
+                    return callback.error(msg)
 
         if self.encrypted:
             existing_key = self.get_share_key(username=user.name)
@@ -1721,6 +1906,189 @@ class Share(OTPmeObject):
 
         return callback.ok(result)
 
+    @check_acls(['edit:add_script'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    def change_add_script(
+        self,
+        add_script: Union[str,None]=None,
+        script_options: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Change share add script. """
+        if script_options:
+            script_options = script_options.split(" ")
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_add_script",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = _("Error running policies: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+
+        return self.change_script(script_var='add_script',
+                        script_options_var='add_script_options',
+                        script_options=script_options,
+                        script=add_script, callback=callback)
+
+    @check_acls(['enable:mount_script'])
+    @object_lock()
+    @audit_log()
+    def enable_mount_script(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Enable user mount script. """
+        if not self.mount_script:
+            msg = "Mount script not configured."
+            return callback.error(msg)
+
+        x = backend.get_object(object_type="script",
+                            uuid=self.mount_script)
+        if not x:
+            msg = _("Script does not exist: {mount_script}")
+            msg = msg.format(mount_script=self.mount_script)
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_mount_script",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = _("Error running policies: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+
+        # Check if mount_script is already enabled.
+        if self.mount_script_enabled:
+            msg = _("Mount script already enabled for this share.")
+            return callback.error(msg)
+
+        self.mount_script_enabled = True
+        self.update_index('mount_script_enabled', self.mount_script_enabled)
+
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:mount_script'])
+    @object_lock()
+    @audit_log()
+    def disable_mount_script(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Disable user mount script. """
+        # Check if mount_script is already disabled.
+        if not self.mount_script_enabled:
+            msg = _("Mount script already disabled for this share.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_mount_script",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = _("Error running policies: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+
+        self.mount_script_enabled = False
+        self.update_index('mount_script_enabled', self.mount_script_enabled)
+
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:mount_script'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    def change_mount_script(
+        self,
+        mount_script: Union[str,None]=None,
+        script_options: Union[str,None]=None,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Change share add script. """
+        if script_options:
+            script_options = script_options.split(" ")
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_mount_script",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = _("Error running policies: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+
+        return self.change_script(script_var='mount_script',
+                        script_options_var='mount_script_options',
+                        script_options=script_options,
+                        script=mount_script, callback=callback)
+
+    def run_mount_script(self):
+        self.run_share_script(self.mount_script, self.root_dir)
+
+    def run_share_script(self, share_script, root_dir):
+        """ Run share script. """
+        share_script_parms = {
+                'options'       : None,
+                'share_name'    : self.name,
+                'share_root'    : root_dir
+                }
+
+        if self.force_group_uuid:
+            group = backend.get_object(uuid=self.force_group_uuid)
+            if group:
+                share_script_parms['force_group'] = group.name
+
+        share_script_oid = backend.get_oid(object_type="script", uuid=share_script)
+        log_msg = _("Starting share script: {share_script_oid}", log=True)[1]
+        log_msg = log_msg.format(share_script_oid=share_script_oid)
+        logger.debug(log_msg)
+
+        # Run share script.
+        try:
+            share_script_result = run_script(script_type="share_script",
+                                        script_uuid=share_script,
+                                        script_parms=share_script_parms,
+                                        user=config.user,
+                                        group=config.group)
+        except Exception as e:
+            log_msg = _("Error running share script: {error}", log=True)[1]
+            log_msg = log_msg.format(error=e)
+            logger.warning(log_msg)
+            raise
+
+        if not share_script_result:
+            msg = _("Failed to run share script.")
+            raise OTPmeException(msg)
+
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show role config. """
         if not self.verify_acl("view_public:object"):
@@ -1850,6 +2218,29 @@ class Share(OTPmeObject):
             lines.append(f'MASTER_PASSWORD_HASH_PARAMS="{self.master_password_hash_params}"')
         else:
             lines.append('MASTER_PASSWORD_HASH_PARAMS=""')
+
+        if self.verify_acl("view:add_script"):
+            add_script = backend.get_object(uuid=self.add_script)
+            lines.append(f'ADD_SCRIPT="{add_script}"')
+        else:
+            lines.append('ADD_SCRIPT=""')
+
+        if self.verify_acl("view:mount_script"):
+            mount_script = backend.get_object(uuid=self.mount_script)
+            lines.append(f'MOUNT_SCRIPT="{mount_script}"')
+        else:
+            lines.append('MOUNT_SCRIPT=""')
+
+        if self.verify_acl("view:mount_script"):
+            lines.append(f'MOUNT_SCRIPT_OPTIONS="{self.mount_script_options}"')
+        else:
+            lines.append('MOUNT_SCRIPT_OPTIONS=""')
+
+        if self.verify_acl("enable:mount_script") \
+        or self.verify_acl("enable:mount_script"):
+            lines.append(f'MOUNT_SCRIPT_ENABLED="{self.mount_script_enabled}"')
+        else:
+            lines.append('MOUNT_SCRIPT_ENABLED=""')
 
         return OTPmeObject.show_config(self,
                                     config_lines=lines,

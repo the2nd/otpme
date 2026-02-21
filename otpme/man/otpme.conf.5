@@ -1,0 +1,544 @@
+.TH OTPME.CONF 5 "2025-12-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme.conf \- OTPme configuration file
+.SH SYNOPSIS
+.I /etc/otpme/otpme.conf
+.SH DESCRIPTION
+The
+.B otpme.conf
+file configures the OTPme authentication system. It uses a simple KEY="VALUE" format. Lines starting with # are comments.
+.PP
+A distribution template is provided at
+.IR /etc/otpme/otpme.conf.dist .
+.SH GENERAL
+.TP
+.B BIN_DIR
+Path to OTPme command binaries.
+.TP
+.B TIMEZONE
+Timezone used for certificates etc. (e.g. "Europe/Berlin").
+.TP
+.B LANGUAGE
+Language for OTPme output (e.g. "en").
+.TP
+.B LOG_LANGUAGE
+Language for log messages.
+.TP
+.B USER
+System user OTPme runs as (default: "otpme").
+.TP
+.B GROUP
+System group OTPme runs as (default: "otpme").
+.TP
+.B HANDLE_FILES_DIRS
+If True, OTPme creates missing directories/files and sets permissions automatically.
+.TP
+.B PINENTRY
+Pinentry program to use (default: "/usr/bin/pinentry").
+.TP
+.B PWGEN
+Path to pwgen binary for password generation.
+.TP
+.B USE_MGMTD_SOCKET
+Enable use of mgmtd socket (\-\-socket) by default. Makes sense on nodes only.
+.SH INDEX DATABASE
+.TP
+.B INDEX
+Index database type: "sqlite3", "postgres" or "mysql". Run "otpme-tool index stop" before changing this.
+.TP
+.B AUTOSTART_INDEX
+Autostart index database on daemon start.
+.SS SQLite3
+.TP
+.B SQLITE3_BIN
+Path to sqlite3 binary.
+.TP
+.B SQLITE3_PRAGMA_SYNCHRONOUS
+SQLite3 synchronous pragma setting (default: "NORMAL").
+.SS PostgreSQL
+.TP
+.B POSTGRES_PG_CTL_BIN
+Path to pg_ctl binary.
+.TP
+.B POSTGRES_PSQL_BIN
+Path to psql binary.
+.TP
+.B POSTGRES_CREATEDB_BIN
+Path to createdb binary.
+.TP
+.B POSTGRES_CREATEUSER_BIN
+Path to createuser binary.
+.TP
+.B POSTGRES_PG_ISREADY_BIN
+Path to pg_isready binary.
+.TP
+.B POSTGRES_DBAPI
+Python DB-API module (default: "psycopg2").
+.TP
+.B POSTGRES_SOCKET_DIR
+PostgreSQL socket directory.
+.TP
+.B POSTGRES_DEFAULT_TEXT_SEARCH_CONFIG
+Default text search config.
+.PP
+Tuning parameters:
+.B POSTGRES_WORK_MEM\fR,
+.B POSTGRES_SHARED_BUFFERS\fR,
+.B POSTGRES_EFFECTIVE_CACHE_SIZE\fR,
+.B POSTGRES_MAINTENANCE_WORK_MEM\fR,
+.B POSTGRES_DYNAMIC_SHARED_MEMORY_TYPE\fR,
+.B POSTGRES_MAX_CONNECTIONS\fR,
+.B POSTGRES_FSYNC\fR,
+.B POSTGRES_SYNCHRONOUS_COMMIT\fR,
+.B POSTGRES_RANDOM_PAGE_COST\fR,
+.B POSTGRES_ENABLE_HASHJOIN\fR.
+.PP
+Autovacuum settings:
+.B POSTGRES_AUTOVACUUM\fR,
+.B POSTGRES_AUTOVACUUM_WORK_MEM\fR,
+.B POSTGRES_AUTOVACUUM_NAPTIME\fR,
+.B POSTGRES_AUTOVACUUM_MAX_WORKERS\fR,
+.B POSTGRES_AUTOVACUUM_FREEZE_MAX_AGE\fR,
+.B POSTGRES_AUTOVACUUM_VACUUM_THRESHOLD\fR,
+.B POSTGRES_AUTOVACUUM_ANALYZE_THRESHOLD\fR.
+.PP
+Localization:
+.B POSTGRES_LC_TIME\fR,
+.B POSTGRES_LC_NUMERIC\fR,
+.B POSTGRES_LC_MESSAGES\fR,
+.B POSTGRES_LC_MONETARY\fR,
+.B POSTGRES_DATESTYLE\fR,
+.B POSTGRES_TIMEZONE\fR,
+.B POSTGRES_LOG_TIMEZONE\fR.
+.PP
+Custom config can be saved to
+.IR /etc/otpme/postgresql.conf .
+.SS MySQL
+.TP
+.B MYSQL_DBAPI
+Python DB-API module (e.g. "cymysql").
+.TP
+.B MYSQL_BIN
+Path to mysql binary.
+.TP
+.B MYSQLD_BIN
+Path to mysqld binary.
+.TP
+.B MYSQL_ADMIN_BIN
+Path to mysqladmin binary.
+.TP
+.B MYSQL_INSTALL_DB
+Path to mysql_install_db binary.
+.TP
+.B MYSQL_SOCKET_DIR
+MySQL socket path.
+.PP
+Tuning parameters:
+.B MYSQL_MAX_CONNECTIONS\fR,
+.B MYSQL_KEY_BUFFER_SIZE\fR,
+.B MYSQL_THREAD_STACK\fR,
+.B MYSQL_MAX_ALLOWED_PACKET\fR,
+.B MYSQL_THREAD_CACHE_SIZE\fR,
+.B MYSQL_QUERY_CACHE_LIMIT\fR,
+.B MYSQL_QUERY_CACHE_SIZE\fR,
+.B MYSQL_EXPIRE_LOGS_DAYS\fR,
+.B MYSQL_MAX_BINLOG_SIZE\fR,
+.B MYSQL_CHARACTER_SET_SERVER\fR,
+.B MYSQL_COLLATION_SERVER\fR,
+.B MYSQL_MYISAM_RECOVER_OPTIONS\fR.
+.PP
+Custom config can be saved to
+.IR /etc/otpme/mysql.conf .
+.SH CACHE
+.TP
+.B CACHE
+Cache daemon: "redis", "memcached" or "memcachedb". Note that memcachedb stores sensitive data on disk. Run "otpme-tool cache stop" before changing this.
+.TP
+.B AUTOSTART_CACHE
+Autostart cache on daemon start.
+.TP
+.B FLUSH_CACHE_ON_START
+Flush cache on daemon start.
+.TP
+.B OBJECT_CACHES
+Comma separated list of object_type:cache_size pairs (e.g. "user:2048,group:512").
+.TP
+.B PICKLE_CACHE_MODULE
+Pickle module for caching: "pickle" or "larch".
+.SS Redis
+.TP
+.B REDIS_CLI_BIN
+Path to redis-cli binary.
+.TP
+.B REDIS_SERVER_BIN
+Path to redis-server binary.
+.TP
+.B REDIS_MAXMEMORY
+Maximum memory for Redis (e.g. "128M").
+.TP
+.B REDIS_MAXMEMORY_POLICY
+Eviction policy: "lru" (volatile-lru) or "lfu" (volatile-lfu, requires Redis 4.0+).
+.TP
+.B REDIS_MAXMEMORY_SAMPLES
+LRU samples count.
+.TP
+.B REDIS_LFU_DECAY_TIME
+LFU decay time.
+.TP
+.B REDIS_LFU_LOG_FACTOR
+LFU log factor.
+.TP
+.B REDIS_LOGLEVEL
+Redis log level (e.g. "notice").
+.TP
+.B REDIS_DATABASES
+Number of Redis databases.
+.TP
+.B REDIS_SOCKET
+Redis socket path.
+.TP
+.B REDIS_PERSISTENCE
+Enable Redis persistence. Note: stores sensitive data on disk.
+.TP
+.B REDIS_CACHE_DIR
+Redis cache directory.
+.PP
+Custom config can be saved to
+.IR /etc/otpme/redis.conf .
+.SS Memcached
+.TP
+.B MEMCACHED_BIN
+Path to memcached binary.
+.TP
+.B MEMCACHED_MAXMEM
+Maximum memory in MB.
+.TP
+.B MEMCACHED_THREADS
+Number of threads.
+.TP
+.B MEMCACHED_MAX_OBJECT_SIZE
+Maximum object size (e.g. "8m"). Increase if role/group objects grow large.
+.TP
+.B MEMCACHED_SOCKET
+Memcached socket path.
+.TP
+.B MEMCACHED_OPTS
+Full custom command line options. If set, all other memcached options are ignored.
+.SS Memcachedb
+.TP
+.B MEMCACHEDB_BIN
+Path to memcachedb binary.
+.TP
+.B MEMCACHEDB_MAXMEM
+Maximum memory in MB.
+.TP
+.B MEMCACHEDB_THREADS
+Number of threads.
+.TP
+.B MEMCACHEDB_CACHE_DIR
+Memcachedb cache directory.
+.TP
+.B MEMCACHEDB_SOCKET
+Memcachedb socket path.
+.TP
+.B MEMCACHEDB_OPTS
+Full custom command line options. If set, all other memcachedb options are ignored.
+.SH FREERADIUS
+.TP
+.B START_FREERADIUS
+Start freeradius with OTPme.
+.TP
+.B FREERADIUS_BIN
+Path to freeradius binary.
+.TP
+.B RADIUS_CACHE_TIME
+Radius cache time in seconds.
+.TP
+.B USE_RADIUS_MOD
+Use OTPme radius module.
+.TP
+.B RADIUS_START_SERVERS
+Number of start servers.
+.TP
+.B RADIUS_MAX_SERVERS
+Maximum number of servers.
+.TP
+.B RADIUS_MIN_SPARE_SERVERS
+Minimum spare servers.
+.TP
+.B RADIUS_MAX_SPARE_SERVERS
+Maximum spare servers.
+.SH ENCRYPTION
+.TP
+.B KEY_COMMAND
+Command or path to get the encryption key. Can be a file path (file:///path/to/key) or a command that outputs the key to stdout.
+.TP
+.B MASTER_KEY_HASH_TYPE
+Hash type for generating master key from password (e.g. "Argon2_i").
+.TP
+.B OFFLINE_TOKEN_HASH_TYPE
+Hash type for offline token encryption key derivation.
+.TP
+.B OBJECT_EXPORT_HASH_TYPE
+Hash type for object export encryption key derivation.
+.SH SSL
+.TP
+.B SSL_SITE_CERT_FILE
+Path to site SSL certificate (default: /etc/otpme/ssl/site_cert.pem).
+.TP
+.B SSL_CERT_FILE
+Path to SSL certificate (default: /etc/otpme/ssl/cert.pem).
+.TP
+.B SSL_KEY_FILE
+Path to SSL private key (default: /etc/otpme/ssl/key.pem).
+.TP
+.B SSL_CA_FILE
+Path to CA certificate (default: /etc/otpme/ssl/ca.pem).
+.TP
+.B HOST_KEY_FILE
+Path to host/node RSA key file (default: /etc/otpme/ssl/hostkey.pem).
+.SH DIRECTORIES
+.TP
+.B DATA_DIR
+Directory for object configs (default: /var/lib/otpme).
+.TP
+.B SPOOL_DIR
+Directory for sessions etc. (default: /var/spool/otpme).
+.TP
+.B CACHE_DIR
+Directory for cached logins etc. (default: /var/cache/otpme).
+.TP
+.B RUN_DIR
+Directory for pidfiles and sockets (default: /var/run/otpme).
+.TP
+.B LOG_DIR
+Directory for logfiles (default: /var/log/otpme).
+.TP
+.B MOUNT_ROOT_DIR
+Mount root directory (default: /otpme).
+.SH DNS
+.TP
+.B LOGIN_USE_DNS
+Use DNS to get login realm/site. Required for cross-site login. DNS records needed:
+.nf
+  _otpme-realm    TXT "realm.example.com"
+  _otpme-site     TXT "sitename"
+  _otpme-login    SRV 10 1 2020 login.example.com.
+  _otpme-join     SRV 10 1 2024 login.example.com.
+.fi
+.TP
+.B USE_DNS
+Use DNS to resolve site address. If False, the configured site IP is used directly.
+.SH LOGIN
+.TP
+.B VALID_LOGIN_USERS
+Comma separated list of users allowed to login. Optionally with UUID (username:uuid).
+.TP
+.B DENY_LOGIN_USERS
+Comma separated list of users denied from login. Optionally with UUID (username:uuid).
+.TP
+.B LOGOUT_PASS_LEN
+Length of Session-Logout-Password (SLP).
+.SH SIGNERS
+.TP
+.B FORCE_TOKEN_SIGNERS
+If True (default), user-defined token signers are ignored. If False, users can define their own. Can also be a comma separated list of usernames whose private signers are ignored.
+.TP
+.B FORCE_KEY_SCRIPT_SIGNERS
+Same rules as FORCE_TOKEN_SIGNERS, for key script signers.
+.TP
+.B FORCE_AGENT_SCRIPT_SIGNERS
+Same rules as FORCE_TOKEN_SIGNERS, for agent script signers.
+.SH SCRIPTS
+.TP
+.B ROOT_SCRIPT_USER
+User to run root scripts as (default: "nobody").
+.TP
+.B ROOT_SCRIPT_GROUP
+Group to run root scripts as (default: "nogroup").
+.SH PAM LOGGING
+.TP
+.B PAM_USE_SYSLOG
+Log PAM events to syslog.
+.TP
+.B PAM_USE_SYSTEMD
+Log PAM events to systemd journal.
+.TP
+.B PAM_USE_LOGFILE
+Log PAM events to logfile.
+.TP
+.B PAM_LOGFILE
+PAM logfile path (default: /var/log/otpme/pam.log).
+.TP
+.B RADIUS_MOD_LOGFILE
+Radius module logfile path (default: /var/log/otpme/radius-module.log).
+.SH AUDIT LOG
+.TP
+.B AUDIT_LOG_ENABLED
+Enable audit logging.
+.TP
+.B AUDIT_LOG_FACILITY
+Syslog facility for audit log (default: "DAEMON").
+.TP
+.B AUDIT_LOG_SERVER
+Audit log server address (e.g. "host:port").
+.TP
+.B AUDIT_LOG_PROTOCOL
+Audit log protocol: "syslog" or "relp".
+.TP
+.B AUDIT_LOG_USE_TLS
+Enable TLS for audit log transport.
+.TP
+.B AUDIT_LOG_CA_CERT
+CA certificate for audit log TLS.
+.TP
+.B AUDIT_LOG_USE_CLIENT_CERT
+Use client certificate for audit log.
+.TP
+.B AUDIT_LOG_CERT
+Client certificate for audit log.
+.TP
+.B AUDIT_LOG_KEY
+Client key for audit log.
+.SH SYSLOG
+.TP
+.B SYSLOG_ENABLED
+Enable syslog logging.
+.TP
+.B SYSLOG_FACILITY
+Syslog facility (default: "DAEMON").
+.TP
+.B SYSLOG_SERVER
+Syslog server address.
+.TP
+.B SYSLOG_PROTOCOL
+Syslog protocol: "syslog" or "relp".
+.TP
+.B SYSLOG_USE_TLS
+Enable TLS for syslog transport.
+.TP
+.B SYSLOG_CA_CERT
+CA certificate for syslog TLS.
+.TP
+.B SYSLOG_USE_CLIENT_CERT
+Use client certificate for syslog.
+.TP
+.B SYSLOG_CERT
+Client certificate for syslog.
+.TP
+.B SYSLOG_KEY
+Client key for syslog.
+.SH SYNCHRONIZATION
+.TP
+.B SYNC_MEM_CACHE
+Cache objects in memory while syncing.
+.TP
+.B SYNC_INTERVAL
+Interval in seconds between sync attempts with master node.
+.TP
+.B SYNC_RETRY_INTERVAL
+Retry interval in seconds if sync fails.
+.TP
+.B SYNC_RETRY_COUNT
+Number of retries to reach consistent state before waiting for SYNC_INTERVAL.
+.TP
+.B SYNC_IGNORE_CHANGED_OBJECTS
+If True, sync objects as received even if they changed during sync. May lead to inconsistent state but helps when objects change frequently.
+.SH DAEMON
+.TP
+.B TWO_NODE_TIMEOUT
+Seconds to wait for second node in two-node clusters.
+.TP
+.B CONTROLD_HEARTBEAT_INTERVAL
+Interval in seconds for heartbeat messages to child daemons.
+.TP
+.B CONTROLD_HEARTBEAT_TIMEOUT
+Timeout in seconds for heartbeat messages.
+.TP
+.B CONTROLD_HEARTBEAT_RETRY_INTERVAL
+Retry interval in seconds for failed heartbeat messages.
+.TP
+.B CONTROLD_HEARTBEAT_RETRY
+Max retries before restarting a child daemon.
+.TP
+.B INTER_DAEMON_COMM_TIMEOUT
+Timeout for inter-daemon communication. Increase if daemons report "not responding" under high load.
+.TP
+.B BACKEND_POLICY_INTERVAL
+Max interval in seconds the backend executes object policies (e.g. autodisable).
+.TP
+.B RELOAD_CONFIG_INTERVAL
+Interval in seconds to check for config file changes.
+.SH AGENT
+.TP
+.B AGENT_CONNECTION_IDLE_TIMEOUT
+Seconds before otpme-agent closes idle daemon connections.
+.TP
+.B AGENT_KEEPALIVE_INTERVAL
+Interval in seconds for keepalive messages to daemons.
+.SH NETWORK
+.TP
+.B SOCKET_SEND_BUFFER
+Socket send buffer size in bytes. Should be high (e.g. 100 MiB) to speed up the OTPme FUSE module.
+.TP
+.B SOCKET_RECEIVE_BUFFER
+Socket receive buffer size in bytes.
+.TP
+.B POSIX_MSGSIZE_MAX
+Max POSIX message queue message size. Set to "auto" to read from /proc/sys/fs/mqueue/msgsize_max.
+.TP
+.B RLIMIT_MSGQUEUE
+Max POSIX message queue size (see getrlimit(2)). Increase for large installations.
+.SH STORAGE
+.TP
+.B OBJECT_JSON_COMPRESSSION
+Compression for object JSON files (e.g. "lz4").
+.TP
+.B PRETTIFY_OBJECT_JSON
+Pretty-print object JSON files.
+.SH LDAP
+.TP
+.B LDAP_VERIFY_ACLS
+Verify ACLs for LDAP access.
+.SH LOGGING
+.TP
+.B LOGLEVEL
+Log level: CRITICAL, ERROR, WARNING, INFO or DEBUG.
+.TP
+.B LOG_AUTH_DATA
+Log authentication data (passwords, challenge/response). Can be True, False or a comma separated list of usernames.
+.TP
+.B TRACEBACKS
+Print Python tracebacks.
+.TP
+.B SHOW_JOB_TITLE
+Show job title in process name.
+.SH FILES
+.TP
+.I /etc/otpme/otpme.conf
+Main configuration file.
+.TP
+.I /etc/otpme/otpme.conf.dist
+Distribution template.
+.TP
+.I /etc/otpme/otpme.key
+Default encryption key file.
+.TP
+.I /etc/otpme/redis.conf
+Custom Redis configuration.
+.TP
+.I /etc/otpme/postgresql.conf
+Custom PostgreSQL configuration.
+.TP
+.I /etc/otpme/mysql.conf
+Custom MySQL configuration.
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme (7)
+
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

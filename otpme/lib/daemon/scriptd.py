@@ -19,6 +19,7 @@ from otpme.lib import config
 from otpme.lib import script
 from otpme.lib import auth_script
 from otpme.lib import push_script
+from otpme.lib import share_script
 from otpme.lib import multiprocessing
 from otpme.lib.daemon.otpme_daemon import OTPmeDaemon
 
@@ -33,6 +34,7 @@ valid_script_classes = {
                             'script'        : script,
                             'auth_script'   : auth_script,
                             'push_script'   : push_script,
+                            'share_script'  : share_script,
                         }
 
 REGISTER_BEFORE = ['otpme.lib.daemon.controld']
@@ -65,6 +67,17 @@ def run_script(script_type, script_uuid, script_parms,
                 'script_type'   : script_type,
                 'script_parms'  : script_parms,
     }
+
+    if config.use_api:
+        request = {
+                    'sender'        : 'api',
+                    'script_request': script_request,
+                }
+        try:
+            handle_script_request(request)
+        except Exception:
+            return False
+        return True
 
     client_id = f"script_client:{stuff.gen_uuid()}"
     script_comm_handler = script_comm_q.get_handler(client_id)
@@ -148,6 +161,11 @@ def handle_script_request(request):
         script_result = None
         script_exception = _("Invalid script type: {type}")
         script_exception = script_exception.format(type=script_type)
+
+    if config.use_api:
+        if script_exception:
+            raise Exception(script_exception)
+        return
 
     # Send response.
     script_response = {

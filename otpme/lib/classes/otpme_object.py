@@ -2321,7 +2321,12 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Resolve value.
         if para_setter:
-            value = para_setter(value)
+            try:
+                value = para_setter(value)
+            except Exception as e:
+                msg = _("Failed to set config parameter: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
 
         try:
             valid_values = parameter_data['valid_values']

@@ -39,6 +39,15 @@ Move user to a different organizational unit.
 .TP
 .B touch \fIuser\fR
 Re-index the object to fix potential index problems.
+.TP
+.B auto_disable \fR[\fB\-u\fR] \fIuser\fR \fItime\fR
+Set auto-disable time (e.g. "1d" or "09:53 13.06.2023"). Use \fB\-u\fR to disable if unused for the given time.
+.TP
+.B enable_auto_mount \fIuser\fR
+Enable auto-mount for user.
+.TP
+.B disable_auto_mount \fIuser\fR
+Disable auto-mount for user.
 .SS Token Management
 .TP
 .B list_tokens \fR[\fIuser\fR]
@@ -252,32 +261,6 @@ Preserve ACLs when moving user.
 .TP
 .B \-\-password \fIPASS\fR
 Password for encrypting exports.
-.SH USER PROPERTIES
-Users have the following key properties:
-.TP
-.B Username
-Unique identifier within the organizational unit.
-.TP
-.B UID
-Unix user ID number (automatically assigned from ID range).
-.TP
-.B Tokens
-Authentication credentials (TOTP, SSH keys, passwords, etc.).
-.TP
-.B Groups
-Group memberships for access control.
-.TP
-.B Roles
-Assigned roles that grant permissions.
-.TP
-.B Policies
-Applied policies that control behavior and access.
-.TP
-.B Unit
-Organizational unit the user belongs to.
-.TP
-.B Keys
-Encryption and signing keys for secure operations.
 .SH EXAMPLES
 .SS Creating Users
 .TP
@@ -367,13 +350,6 @@ Create a user template for developers
 .TP
 .B otpme-user add \-\-template developer_template bob
 Create bob using the developer template
-.SH FILES
-.TP
-.I ~/.otpme/user/
-User-specific OTPme cache directory
-.TP
-.I /var/lib/otpme/objects/user/
-Server-side user storage
 .SH SEE ALSO
 .BR otpme (7),
 .BR otpme-token (1),

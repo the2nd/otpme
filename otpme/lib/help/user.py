@@ -576,7 +576,6 @@ cmd_help = {
                 },
 
 
-
     'get_key_script'    : {
                     '_cmd_usage_help' : _('Usage: otpme-user get_key_script {user} [name|uuid]'),
                     'cmd'   :   '<|object|> [return_type]',

@@ -53,10 +53,11 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share add [--crypt] [--no-key-gen] [--block-size <block_size>] [--key-len <key_len>] {share} {root_dir}'),
-                    'cmd'   :   '--crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --key-len :key_len: <|object|> <root_dir>',
+                    '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--key-len <key_len>] {share}'),
+                    'cmd'   :   '--force-group :force_group: --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --key-len :key_len: <|object|>',
                     '_help' :   {
                                     'cmd'                       : _('Add new share.'),
+                                    '--force-group <group>'     : _('Force group.'),
                                     '--crypt'                   : _('Add encrypted share.'),
                                     '--no-key-gen'              : _('Don\'t generate AES key.'),
                                     '--key-len <key_len>'       : _('Generate AES key of length <key_len>.'),
@@ -160,6 +161,30 @@ cmd_help = {
                     'cmd'   :   '<|object|> <new_name>',
                     '_help' :   {
                                     'cmd'                   : _('Rename share.'),
+                                },
+                },
+
+    'mount_script'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share mount_script {share} {mount_script} -- [script_options]'),
+                    'cmd'   :   '<|object|> <mount_script> [script_options]',
+                    '_help' :   {
+                                    'cmd'                   : _('Change share mount script'),
+                                },
+                },
+
+    'enable_mount_script'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share enable_mount_script {share}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Enable share mount script'),
+                                },
+                },
+
+    'disable_mount_script'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share disable_mount_script {share}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable share mount script'),
                                 },
                 },
 
