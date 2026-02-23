@@ -7539,7 +7539,7 @@ class OTPmeObject(OTPmeBaseObject):
                     verify_status = True
                 except VerificationFailed as e:
                     msg = _("{user_name}: signature verification failed: {sign_info}: {e}")
-                    msg = msg.format(user_name=user_name, sign_info=sign_info, e=e)
+                    msg = msg.format(user_name=user.name, sign_info=sign_info, e=e)
                     callback.error(msg)
                     verify_status = False
                     continue

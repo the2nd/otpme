@@ -1268,6 +1268,8 @@ class OTPmeServer1(object):
         for uuid in verify_tokens:
             verify_token = verify_tokens[uuid]['token']
             is_2f_token = verify_tokens[uuid]['2f']
+            if verify_token.pass_type != "smartcard":
+                continue
             try:
                 smartcard_server_handler = config.get_smartcard_handler(verify_token.token_type)[1]
             except NotRegistered:

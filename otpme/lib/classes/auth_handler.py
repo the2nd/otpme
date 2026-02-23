@@ -2863,6 +2863,7 @@ class AuthHandler(object):
                 auth_response['key_script_path'] = key_script_path
                 auth_response['key_script_opts'] = key_script_opts
                 auth_response['key_script_signs'] = key_script_signs
+                auth_response['key_mode'] = self.user.key_mode
                 # Get shares to mount on client.
                 if self.user.auto_mount:
                     search_attrs = {

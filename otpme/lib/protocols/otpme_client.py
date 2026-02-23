@@ -1141,9 +1141,10 @@ class OTPmeClient(OTPmeClientBase):
                 pass
 
         # Try to get password from user.
-        if self.need_ssh_key_pass and not self.password:
+        password = self.password
+        if self.need_ssh_key_pass and not password:
             try:
-                self.password = self.get_password("Password: ")
+                password = self.get_password("Password: ")
             except Exception as e:
                 error_msg = _("Unable to get SSH key passphrase: {error}")
                 error_msg = error_msg.format(error=e)
@@ -1151,12 +1152,12 @@ class OTPmeClient(OTPmeClientBase):
 
         # If we should use a running ssh-agent, got its PID and a password set
         # the key passphrase.
-        if self.ssh_agent_pid and self.password:
+        if self.ssh_agent_pid and password:
             # Check if SSH token needs a OTP (second factor token enabled)
             if otp_len > 0:
-                ssh_key_pass = self.password[:-otp_len]
+                ssh_key_pass = password[:-otp_len]
             else:
-                ssh_key_pass = self.password
+                ssh_key_pass = password
 
             if not self.agent_conn:
                 self.agent_conn = connections.get("agent",
@@ -1213,9 +1214,10 @@ class OTPmeClient(OTPmeClientBase):
 
         # Get password from user.
         if pass_required:
-            if not self.password:
+            sc_pass = self.password
+            if not sc_pass:
                 try:
-                    self.password = self.get_password("Password: ")
+                    sc_pass = self.get_password("Password: ")
                 except Exception as e:
                     raise AuthFailed(str(e))
 
@@ -1252,7 +1254,7 @@ class OTPmeClient(OTPmeClientBase):
                                                                 error_message_method=self.error_message_method)
         return self.smartcard_client_handler.handle_authentication(smartcard=self.smartcard,
                                                                     smartcard_data=smartcard_data,
-                                                                    password=self.password)
+                                                                    password=self.sc_pass)
 
     def gen_user_keys(self, command_dict):
         """ Handle generation of users private/public keys via key script. """
@@ -2114,6 +2116,7 @@ class OTPmeClient1(OTPmeClientBase):
         # Get logger.
         self.logger = config.logger
 
+        self.sc_pass = None
         self.password = password
         self.send_password = send_password
         self.password_method = password_method
@@ -3513,14 +3516,16 @@ class OTPmeClient1(OTPmeClientBase):
                 raise AuthFailed("No smartcard found.")
 
             if self.smartcard:
-                if pass_required and not self.password:
+                if self.sc_pass is None:
+                    self.sc_pass = self.password
+                if pass_required and not self.sc_pass:
                     try:
-                        self.password = self.get_password("Password: ")
+                        self.sc_pass = self.get_password("Password: ")
                     except Exception as e:
                         self.cleanup()
                         raise AuthFailed(str(e))
                 smartcard_data = self.smartcard_client_handler.handle_preauth(smartcard=self.smartcard,
-                                                                                password=self.password)
+                                                                                password=self.sc_pass)
                 command_args['smartcard_data'] = smartcard_data
 
             ## FIXME: Workaround to get gpg-agent detect yubikey after
@@ -3622,11 +3627,10 @@ class OTPmeClient1(OTPmeClientBase):
         # Set password to use for authentication.
         password = None
         if self.password:
-            if self.password:
-                if not self.send_password:
-                    msg = "Not sending password <send_password=False>"
-                    raise OTPmeException(msg)
-                password = self.password
+            if not self.send_password:
+                msg = "Not sending password <send_password=False>"
+                raise OTPmeException(msg)
+            password = self.password
         elif self.reneg:
             rsp_hash = otpme_pass.gen_one_iter_hash(self.username,
                                             self.rsp,
@@ -4235,96 +4239,102 @@ class OTPmeClient1(OTPmeClientBase):
                 log_msg = log_msg.format(e=e)
                 self.logger.critical(log_msg)
 
-        # Handle offline tokens and save user scripts.
-        if cache_offline_tokens:
-            # Save users SSH/GPG agent script to disk.
+        # Save users SSH/GPG agent script to disk.
+        try:
+            self._offline_token.save_script(script_id="ssh-agent",
+                                script=self.ssh_agent_script,
+                                script_uuid=self.ssh_agent_script_uuid,
+                                script_path=self.ssh_agent_script_path,
+                                script_options=self.ssh_agent_script_opts,
+                                script_signs=self.ssh_agent_script_signs)
+        except Exception as e:
+            log_msg = _("Error saving agent script: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+
+        # Save users key script to disk.
+        try:
+            key_script = self.auth_response['key_script']
+            key_script_uuid = self.auth_response['key_script_uuid']
+            key_script_path = self.auth_response['key_script_path']
+            key_script_opts = self.auth_response['key_script_opts']
+            key_script_signs = self.auth_response['key_script_signs']
+            key_mode = self.auth_response['key_mode']
+        except:
+            key_script = None
+            config.raise_exception()
+            log_msg = _("Invalid auth response: Failed to get key script", log=True)[1]
+            self.logger.warning(log_msg)
+
+        if key_script:
+            # Verify key script at login time to prevent signature
+            # verification issues when being offline.
             try:
-                self._offline_token.save_script(script_id="ssh-agent",
-                                    script=self.ssh_agent_script,
-                                    script_uuid=self.ssh_agent_script_uuid,
-                                    script_path=self.ssh_agent_script_path,
-                                    script_options=self.ssh_agent_script_opts,
-                                    script_signs=self.ssh_agent_script_signs)
+                stuff.verify_key_script(username=self.username,
+                                    key_script=key_script,
+                                    key_script_path=key_script_path,
+                                    signatures=key_script_signs)
+                verify_status = True
             except Exception as e:
-                log_msg = _("Error saving agent script: {e}", log=True)[1]
+                log_msg  = _("Error verifying key script: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                verify_status = False
+
+            if verify_status:
+                try:
+                    self._offline_token.save_script(script_id="key",
+                                        script=key_script,
+                                        script_uuid=key_script_uuid,
+                                        script_path=key_script_path,
+                                        script_options=key_script_opts,
+                                        script_signs=key_script_signs)
+                except Exception as e:
+                    log_msg = _("Error saving key script: {e}", log=True)[1]
+                    log_msg = log_msg.format(e=e)
+                    self.logger.warning(log_msg)
+                # Set key mode.
+                try:
+                    self._offline_token.key_mode = key_mode
+                except Exception as e:
+                    log_msg = _("Error saving key mode: {e}", log=True)[1]
+                    log_msg = log_msg.format(e=e)
+                    self.logger.warning(log_msg)
+
+        # Save users login script to disk.
+        try:
+            login_script = self.auth_response['login_script']
+            login_script_uuid = self.auth_response['login_script_uuid']
+            login_script_path = self.auth_response['login_script_path']
+            login_script_opts = self.auth_response['login_script_opts']
+            login_script_signs = self.auth_response['login_script_signs']
+        except:
+            login_script = None
+            config.raise_exception()
+            log_msg = _("Invalid auth response: Failed to get login script", log=True)[1]
+            self.logger.warning(log_msg)
+
+        if login_script:
+            try:
+                self._offline_token.save_script(script_id="login",
+                                    script=login_script,
+                                    script_uuid=login_script_uuid,
+                                    script_path=login_script_path,
+                                    script_options=login_script_opts,
+                                    script_signs=login_script_signs)
+            except Exception as e:
+                log_msg = _("Error saving login script: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)
 
-            # Save users key script to disk.
+        # Cache offline tokens.
+        if cache_offline_tokens:
             try:
-                key_script = self.auth_response['key_script']
-                key_script_uuid = self.auth_response['key_script_uuid']
-                key_script_path = self.auth_response['key_script_path']
-                key_script_opts = self.auth_response['key_script_opts']
-                key_script_signs = self.auth_response['key_script_signs']
-            except:
-                key_script = None
-                config.raise_exception()
-                log_msg = _("Invalid auth response: Failed to get key script", log=True)[1]
-                self.logger.warning(log_msg)
-
-            if key_script:
-                # Verify key script at login time to prevent signature
-                # verification issues when being offline.
-                try:
-                    stuff.verify_key_script(username=self.username,
-                                        key_script=key_script,
-                                        key_script_path=key_script_path,
-                                        signatures=key_script_signs)
-                    verify_status = True
-                except Exception as e:
-                    log_msg  = _("Error verifying key script: {e}", log=True)[1]
-                    log_msg = log_msg.format(e=e)
-                    self.logger.warning(log_msg)
-                    verify_status = False
-
-                if verify_status:
-                    try:
-                        self._offline_token.save_script(script_id="key",
-                                            script=key_script,
-                                            script_uuid=key_script_uuid,
-                                            script_path=key_script_path,
-                                            script_options=key_script_opts,
-                                            script_signs=key_script_signs)
-                    except Exception as e:
-                        log_msg = _("Error saving key script: {e}", log=True)[1]
-                        log_msg = log_msg.format(e=e)
-                        self.logger.warning(log_msg)
-
-            # Save users login script to disk.
-            try:
-                login_script = self.auth_response['login_script']
-                login_script_uuid = self.auth_response['login_script_uuid']
-                login_script_path = self.auth_response['login_script_path']
-                login_script_opts = self.auth_response['login_script_opts']
-                login_script_signs = self.auth_response['login_script_signs']
-            except:
-                login_script = None
-                config.raise_exception()
-                log_msg = _("Invalid auth response: Failed to get login script", log=True)[1]
-                self.logger.warning(log_msg)
-
-            if login_script:
-                try:
-                    self._offline_token.save_script(script_id="login",
-                                        script=login_script,
-                                        script_uuid=login_script_uuid,
-                                        script_path=login_script_path,
-                                        script_options=login_script_opts,
-                                        script_signs=login_script_signs)
-                except Exception as e:
-                    log_msg = _("Error saving login script: {e}", log=True)[1]
-                    log_msg = log_msg.format(e=e)
-                    self.logger.warning(log_msg)
-
-            # Cache offline tokens.
-            if cache_offline_tokens:
-                try:
-                    self.handle_offline_token(token_instances, session_uuid)
-                except Exception as e:
-                    log_msg = _("Error caching offline tokens: {e}", log=True)[1]
-                    log_msg = log_msg.format(e=e)
-                    self.logger.critical(log_msg, exc_info=True)
+                self.handle_offline_token(token_instances, session_uuid)
+            except Exception as e:
+                log_msg = _("Error caching offline tokens: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.critical(log_msg, exc_info=True)
 
         # Release offline token lock
         self._offline_token.unlock()
@@ -4439,7 +4449,7 @@ class OTPmeClient1(OTPmeClientBase):
             if found_smartcard:
                 enc_challenge = stuff.gen_secret(len=16)
                 enc_pass = self.smartcard_client_handler.handle_offline_token_challenge(smartcard=self.smartcard,
-                                                                                        password=self.password,
+                                                                                        password=self.sc_pass,
                                                                                         enc_challenge=enc_challenge)
             if not enc_pass:
                 if verify_token.pass_type == "static":

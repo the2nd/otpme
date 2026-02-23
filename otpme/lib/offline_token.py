@@ -207,6 +207,8 @@ class OfflineToken(object):
         self.login_token_uuid_file = f"{self.token_cache_dir}/.login_token"
         # Indicates that offline tokens are pinned.
         self.offline_token_pinned_file = f"{self.token_cache_dir}/.pin"
+        # Key mode file.
+        self.key_mode_file = f"{self.offline_dir}/key_mode"
 
     def set_login_token(self, uuid, session_uuid):
         """ Write login token UUID to cache file. """
@@ -1152,6 +1154,34 @@ class OfflineToken(object):
         if os.path.islink(offline_session_link):
             filetools.delete(offline_session_link)
         os.symlink(new_session_file, offline_session_link)
+
+    @property
+    def key_mode(self):
+        """ Read key mode from file. """
+        try:
+            key_mode = filetools.read_file(self.key_mode_file)
+        except Exception as e:
+            msg = _("Error reading key mode file: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg)
+        return key_mode
+
+    @key_mode.setter
+    def key_mode(self, key_mode):
+        """ Save key mode to file. """
+        try:
+            filetools.create_file(self.key_mode_file,
+                                key_mode,
+                                user=self.username,
+                                mode=0o600,
+                                user_acls=self.file_acls)
+            log_msg = _("Saved key mode to file: {key_mode_file}", log=True)[1]
+            log_msg = log_msg.format(key_mode_file=self.key_mode_file)
+            self.logger.debug(log_msg)
+        except Exception as e:
+            msg = _("Error writing key mode file: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg)
 
     def save_script(self, script_id, script_uuid, script, script_path,
         script_options=None, script_signs=None):

@@ -56,10 +56,28 @@ otpme-script = "otpme.command:otpme_commands"
 otpme-policy = "otpme.command:otpme_commands"
 otpme-dictionary = "otpme.command:otpme_commands"
 otpme-resolver = "otpme.command:otpme_commands"
+otpme-share = "otpme.command:otpme_commands"
+otpme-pool = "otpme.command:otpme_commands"
+otpme-mount = "otpme.command:otpme_commands"
+otpme-job = "otpme.command:otpme_commands"
 otpme-pinentry = "otpme.command:otpme_commands"
 otpme-get-authorized-keys = "otpme.command:otpme_commands"
+setreadahead = "otpme.lib.setreadahead:main"
+otpme-install-manpages = "otpme.install_manpages:main"
+otpme-yk-piv = "otpme.yk_piv:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "otpme.__version__"}
 dependencies = {file = ["requirements.txt"]}
 #readme = {file = ["README.md"]}
+
+[tool.setuptools.package-data]
+otpme = [
+    "web/app/static/*",
+    "web/app/templates/*",
+    "locale/*/LC_MESSAGES/*.mo",
+    "locale/*/LC_MESSAGES/*.po",
+    "man/*.1",
+    "man/*.5",
+    "man/*.7"
+]

@@ -84,7 +84,7 @@ def otpme_commands(no_debug=False):
         exit_code = 1
         msg = str(e)
         if len(msg) > 0:
-            if command != "auth" and subcommand != "verify":
+            if command != "auth":
                 error_message(msg, newline=command_handler.newline)
     except Exception as e:
         raise

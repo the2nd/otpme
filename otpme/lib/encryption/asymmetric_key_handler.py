@@ -29,7 +29,7 @@ from otpme.lib.encoding.base import decode
 from otpme.lib.exceptions import *
 
 class AsymmetricKeyHandler(object):
-    def __init__(self, key_file=None, key=None,
+    def __init__(self, key_file=None, key=None, key_password=None,
         password=None, aes_key=None, **kwargs):
         self._public_key = None
         self._private_key = None
@@ -47,7 +47,9 @@ class AsymmetricKeyHandler(object):
                 key = self.decrypt_key(key_pack=key,
                                     password=password,
                                     aes_key=aes_key)
-            self.load_key(key=key)
+            if isinstance(key_password, str):
+                key_password = key_password.encode()
+            self.load_key(key=key, password=key_password)
         else:
             self._private_key = self.gen_key(**kwargs)
         super(AsymmetricKeyHandler, self).__init__()
@@ -227,10 +229,18 @@ class AsymmetricKeyHandler(object):
                                                 encoding=encoding,
                                                 password=password,
                                                 backend=backend)
-        except:
+        except TypeError as e:
+            msg = _("Failed to load private key: {e}")
+            msg = msg.format(e=e)
+            raise TypeError(msg)
+        except ValueError as e:
             self._public_key = self.load_public_key(key_data,
                                                 encoding=encoding,
                                                 backend=backend)
+        except Exception as e:
+            msg = _("Error loading private key: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
 
     def encrypt_key(self, password=None, hash_type=None,
         aes_key=None, encoding="base64"):

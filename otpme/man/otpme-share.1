@@ -8,11 +8,13 @@ otpme-share \- manage OTPme file shares
 .SH DESCRIPTION
 .B otpme-share
 manages file shares in the OTPme system. A share provides access to a directory tree and can optionally be encrypted.
+.PP
+Shares support two types of scripts: An \fBadd script\fR (default: add_share.sh) is automatically executed when a share is created to set up the share directory structure. A \fBmount script\fR (default: mount_share.sh) can be configured to run each time a user mounts the share. Scripts are executed as the OTPme system user and group. The default scripts for new shares can be configured via the \fBdefault_share_add_script\fR and \fBdefault_share_mount_script\fR config parameters at site or unit level.
 .SH COMMANDS
 .SS Share Management
 .TP
-.B add \fR[\fB\-\-crypt\fR] [\fB\-\-no\-key\-gen\fR] [\fB\-\-block\-size\fR \fIsize\fR] [\fB\-\-key\-len\fR \fIlen\fR] \fIshare\fR \fIroot_dir\fR
-Create a new share. Use \fB\-\-crypt\fR to enable encryption.
+.B add \fR[\fB\-\-force\-group\fR \fIgroup\fR] [\fB\-\-crypt\fR] [\fB\-\-no\-key\-gen\fR] [\fB\-\-block\-size\fR \fIsize\fR] [\fB\-\-key\-len\fR \fIlen\fR] \fIshare\fR
+Create a new share. Use \fB\-\-crypt\fR to enable encryption, \fB\-\-force\-group\fR to set forced group.
 .TP
 .B del \fIshare\fR
 Delete a share.
@@ -59,6 +61,17 @@ Make share read-write.
 .TP
 .B description \fIshare\fR \fR[\fIdescription\fR]
 Set share description.
+.SS Mount Script
+A mount script is executed each time the share is mounted by a user. It can be used to perform custom actions during mount, such as preparing the share directory or checking prerequisites. The mount script must be enabled separately after being configured.
+.TP
+.B mount_script \fIshare\fR \fImount_script\fR \fR[\fB\-\-\fR \fIscript_options\fR]
+Change share mount script.
+.TP
+.B enable_mount_script \fIshare\fR
+Enable share mount script.
+.TP
+.B disable_mount_script \fIshare\fR
+Disable share mount script.
 .SS Encryption
 .TP
 .B get_share_key \fIshare\fR \fIuser\fR
@@ -147,6 +160,9 @@ Remove orphaned object references.
 .SH OPTIONS
 .SS Creation Options
 .TP
+.B \-\-force\-group \fIGROUP\fR
+Force group for the share.
+.TP
 .B \-\-crypt
 Enable encryption for the share.
 .TP
@@ -180,6 +196,9 @@ Limit number of tokens shown.
 .TP
 .B \-\-role\-limit \fIN\fR
 Limit number of roles shown.
+.TP
+.B \-\-group\-limit \fIN\fR
+Limit number of groups shown.
 .TP
 .B \-\-policy\-limit \fIN\fR
 Limit number of policies shown.
@@ -217,10 +236,10 @@ Global options are available for all commands. See
 for details.
 .SH EXAMPLES
 .TP
-.B otpme-share add myshare /data/share
+.B otpme-share add myshare
 Create a share
 .TP
-.B otpme-share add \-\-crypt secureshare /data/secure
+.B otpme-share add \-\-crypt secureshare
 Create an encrypted share
 .TP
 .B otpme-share add_token myshare alice/totp
@@ -228,10 +247,6 @@ Add a token to the share
 .TP
 .B otpme-share add_pool myshare europe
 Add a pool to the share
-.SH FILES
-.TP
-.I /var/lib/otpme/
-OTPme data directory
 .SH SEE ALSO
 .BR otpme (1),
 .BR otpme (7),

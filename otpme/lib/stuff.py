@@ -1502,31 +1502,38 @@ def get_key_script(username):
     # Get logger
     logger = config.logger
 
-    command_handler = CommandHandler(interactive=False)
     try:
+        offline_token = OfflineToken()
+        offline_token.set_user(user=username)
         key_script_path, \
         key_script_opts, \
         key_script_uuid, \
         key_script_signs, \
-        key_script = command_handler.get_user_key_script(username=username)
+        key_script = offline_token.get_script(script_id="key")
+        key_mode = offline_token.key_mode
     except Exception as e:
-        log_msg = _("Error getting user key script from server: {e}", log=True)[1]
+        msg, log_msg = _("Unable to get key script from offline tokens: {e}", log=True)
+        msg = msg.format(e=e)
         log_msg = log_msg.format(e=e)
         logger.debug(log_msg)
-        #raise OTPmeException(msg)
 
     if not key_script:
+        command_handler = CommandHandler(interactive=False)
         try:
-            offline_token = OfflineToken()
-            offline_token.set_user(user=username)
             key_script_path, \
             key_script_opts, \
             key_script_uuid, \
             key_script_signs, \
-            key_script = offline_token.get_script(script_id="key")
+            key_script = command_handler.get_user_key_script(username=username)
         except Exception as e:
-            msg, log_msg = _("Unable to get key script from offline tokens: {e}", log=True)
-            msg = msg.format(e=e)
+            log_msg = _("Error getting user key script from server: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            logger.debug(log_msg)
+            raise OTPmeException(msg)
+        try:
+            key_mode = command_handler.get_user_key_mode(username=username)
+        except Exception as e:
+            log_msg = _("Error getting user key mode from server: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
             logger.debug(log_msg)
             raise OTPmeException(msg)
@@ -1541,7 +1548,7 @@ def get_key_script(username):
         raise OTPmeException(msg)
 
     return (key_script_path, key_script_opts, key_script_uuid,
-            key_script_signs, key_script)
+            key_script_signs, key_script, key_mode)
 
 def verify_key_script(username, key_script=None,
     key_script_path=None, signatures=None):
@@ -1560,7 +1567,8 @@ def verify_key_script(username, key_script=None,
             key_script_opts, \
             key_script_uuid, \
             key_script_signs, \
-            key_script = get_key_script(username)
+            key_script, \
+            key_mode = get_key_script(username)
         except Exception as e:
             msg = _("Error getting user key script: {e}")
             msg = msg.format(e=e)
@@ -1626,7 +1634,8 @@ def run_key_script(username, script_command, script_options=None,
             key_script_opts, \
             key_script_uuid, \
             key_script_signs, \
-            key_script = get_key_script(username)
+            key_script, \
+            key_mode = get_key_script(username)
         except Exception as e:
             config.raise_exception()
             msg = _("Error getting user key script: {e}")
@@ -1684,6 +1693,9 @@ def run_key_script(username, script_command, script_options=None,
         api_opt = "--api"
         if api_opt not in script_options:
             script_options.insert(0, api_opt)
+
+    if key_mode == "server":
+        script_options.insert(0, "--server-key")
 
     # Add script options.
     key_script_options += script_options

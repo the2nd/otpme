@@ -1028,10 +1028,6 @@ def register_hooks():
     config.register_auth_on_action_hook("user", "change_login_script")
     config.register_auth_on_action_hook("user", "change_auth_script")
     config.register_auth_on_action_hook("user", "move")
-    config.register_auth_on_action_hook("user", "sign")
-    config.register_auth_on_action_hook("user", "verify")
-    config.register_auth_on_action_hook("user", "encrypt")
-    config.register_auth_on_action_hook("user", "decrypt")
     config.register_auth_on_action_hook("user", "add_photo")
     config.register_auth_on_action_hook("user", "del_photo")
     config.register_auth_on_action_hook("user", "dump_photo")
@@ -2452,7 +2448,7 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        if self.public_key != None and not force:
+        if self.public_key is not None and not force:
             if self.confirmation_policy != "force":
                 ask = callback.ask("Replace existing public key?: ")
                 if str(ask).lower() != "y":
@@ -2707,7 +2703,7 @@ class User(OTPmeObject):
         if encrypt_key and not aes_key:
             aes_key = aes.gen_key()
             aes_key_enc = callback.encrypt(aes_key, use_rsa_key=False)
-            if len(aes_key_enc) == 0:
+            if aes_key_enc is None or len(aes_key_enc) == 0:
                 msg = ("Got no encrypted AES key from client.")
                 return callback.error(msg)
 
@@ -3221,7 +3217,7 @@ class User(OTPmeObject):
         try:
             decrypted_data = key.decrypt(ciphertext=data)
         except Exception as e:
-            config.raise_exception()
+            #config.raise_exception()
             msg = _("Error decrypting data: {e}")
             msg = msg.format(e=e)
             return callback.error(msg)

@@ -27,6 +27,7 @@ modules = [
         'otpme.lib.token.totp.totp',
         'otpme.lib.token.u2f.u2f',
         'otpme.lib.token.fido2.fido2',
+        'otpme.lib.token.yubikey_piv.yubikey_piv',
         'otpme.lib.token.yubikey_hmac.yubikey_hmac',
         ]
 

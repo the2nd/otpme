@@ -143,7 +143,7 @@ cmd_help = {
 
 
     'public_key'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user public_key {user}'),
+                    '_cmd_usage_help' : _('Usage: otpme-user public_key {user} {public_key}'),
                     'cmd'   :   '<|object|> <public_key>',
                     '_help' :   {
                                     'cmd'                   : _('Set user\'s RSA public key'),

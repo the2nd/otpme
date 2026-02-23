@@ -19,6 +19,7 @@ modules = [
         'otpme.lib.smartcard.fido2.fido2',
         'otpme.lib.smartcard.yubikey_hmac.yubikey_hmac',
         'otpme.lib.smartcard.yubikey_hotp.yubikey_hotp',
+        'otpme.lib.smartcard.yubikey_piv.yubikey_piv',
         'otpme.lib.smartcard.yubikey_gpg.yubikey_gpg',
         ]
 

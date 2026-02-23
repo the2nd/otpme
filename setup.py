@@ -209,12 +209,40 @@ data_files = [
                         'deploy/pam/pam-python/README',
                     ]
                 ),
-                #('share/man/man1',
-                #    [
-                #        "man/otpme-controld.1",
-                #        "man/otpme-tool.1",
-                #  ]
-                #),
+                ('/usr/share/man/man1',
+                    [
+                        "otpme/man/otpme.1",
+                        "otpme/man/otpme-accessgroup.1",
+                        "otpme/man/otpme-ca.1",
+                        "otpme/man/otpme-client.1",
+                        "otpme/man/otpme-dictionary.1",
+                        "otpme/man/otpme-group.1",
+                        "otpme/man/otpme-host.1",
+                        "otpme/man/otpme-node.1",
+                        "otpme/man/otpme-policy.1",
+                        "otpme/man/otpme-pool.1",
+                        "otpme/man/otpme-realm.1",
+                        "otpme/man/otpme-resolver.1",
+                        "otpme/man/otpme-role.1",
+                        "otpme/man/otpme-script.1",
+                        "otpme/man/otpme-share.1",
+                        "otpme/man/otpme-site.1",
+                        "otpme/man/otpme-token.1",
+                        "otpme/man/otpme-tool.1",
+                        "otpme/man/otpme-unit.1",
+                        "otpme/man/otpme-user.1",
+                    ]
+                ),
+                ('/usr/share/man/man5',
+                    [
+                        "otpme/man/otpme.conf.5",
+                    ]
+                ),
+                ('/usr/share/man/man7',
+                    [
+                        "otpme/man/otpme.7",
+                    ]
+                ),
                 #('lib/otpme/freeradius',
                 #    [
                 #        "otpme/lib/freeradius/otpme.py",
@@ -248,6 +276,12 @@ setup(
     #keywords='OTP, U2F, fido2, two factor authentication, PAM, LDAP',
 
     packages=find_packages(),
+
+    entry_points={
+        'console_scripts': [
+            'otpme-yk-piv = otpme.yk_piv:main',
+        ],
+    },
 
     #scripts=scripts,
     data_files=data_files,

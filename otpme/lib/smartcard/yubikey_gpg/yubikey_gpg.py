@@ -105,9 +105,9 @@ class YubikeygpgClientHandler(object):
 
             # We cannot backup and restore at the same time.
             if gpg_restore_file and gpg_backup_file:
-                return self.get_help(command="deploy",
-                                    subcommand=token_type,
-                                    command_map=command_map)
+                return command_handler.get_help(command="deploy",
+                                                subcommand=token_type,
+                                                command_map=command_map)
 
             # Start yubikey deploy.
             ssh_public_key = deploy.gpg_applet(gpg_backup_file,
