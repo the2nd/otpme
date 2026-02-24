@@ -164,6 +164,12 @@ def restore_object(object_data, callback=default_callback, **kwargs):
                                                 callback=callback,
                                                 verify_acls=False)
     if object_id.object_type == "token":
+        token = backend.get_object(uuid=object_uuid)
+        if token:
+            owner = backend.get_object(uuid=token.owner_uuid)
+            if token.uuid not in owner.tokens:
+                owner.tokens.append(token.uuid)
+                owner._write()
         token_groups = object_data['token_groups']
         for x in token_groups:
             x_group_uuid = x[0]

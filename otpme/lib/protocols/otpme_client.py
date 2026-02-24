@@ -1214,10 +1214,10 @@ class OTPmeClient(OTPmeClientBase):
 
         # Get password from user.
         if pass_required:
-            sc_pass = self.password
-            if not sc_pass:
+            self.sc_pass = self.password
+            if not self.sc_pass:
                 try:
-                    sc_pass = self.get_password("Password: ")
+                    self.sc_pass = self.get_password("Password: ")
                 except Exception as e:
                     raise AuthFailed(str(e))
 
@@ -1551,6 +1551,9 @@ class OTPmeClient(OTPmeClientBase):
                                                     encrypted_share_key,
                                                     key_mode,
                                                     encode=False)
+        if not decrypted_share_key:
+            msg = _("Key script returned emtpy share key.")
+            raise OTPmeException(msg)
         # Encrypt share key with key script.
         encrypted_share_key = stuff.encrypt_share_key(username,
                                                     share_user,

@@ -237,15 +237,15 @@ def write_entry(trash_id, object_id, object_data, deleted_by):
         raise OTPmeException(msg)
 
 def add(object_id, deleted_by, callback=default_callback):
-    trash_id = get_trash_id()
-    trash_file = get_trash_file(object_id, trash_id=trash_id)
-    deleted_by_file = get_deleted_by_file(trash_id)
     try:
         trash_data = backup.backup_object(object_id)
     except Exception as e:
         msg = _("Failed to create object trash data: {object_id}: {error}")
         msg = msg.format(object_id=object_id, error=e)
         return callback.error(msg)
+    trash_id = get_trash_id()
+    trash_file = get_trash_file(object_id, trash_id=trash_id)
+    deleted_by_file = get_deleted_by_file(trash_id)
     filetools.create_file(path=trash_file, content=trash_data)
     filetools.create_file(path=deleted_by_file, content=deleted_by)
     # Cluster trash write.

@@ -75,6 +75,11 @@ class YubikeypivClientHandler(object):
                 exception = command_handler.get_help(message=msg)
                 raise ShowHelp(exception)
 
+        try:
+            add_user_key = local_command_args['add_user_key']
+        except:
+            add_user_key = False
+
         # Handle deployment of yubikey PIV applet.
         public_key = None
         if no_token_write:
@@ -84,11 +89,6 @@ class YubikeypivClientHandler(object):
                                             PublicFormat.SubjectPublicKeyInfo)
             public_key = public_key.decode()
         else:
-            try:
-                add_user_key = local_command_args['add_user_key']
-            except:
-                add_user_key = False
-
             try:
                 key_len = local_command_args['key_len']
             except:
