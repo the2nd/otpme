@@ -749,7 +749,11 @@ class PasswordToken(Token):
                 pass_policy = result[0]
                 if pass_policy.require_special:
                     symbols = True
-            new_pass = stuff.gen_password(pass_len, symbols=symbols)
+                    # FIXME: make this an policy option.
+                    exclude_chars = '^~`\|'
+            new_pass = stuff.gen_password(pass_len,
+                                        symbols=symbols,
+                                        exclude_chars=exclude_chars)
         else:
             new_pass = password
 

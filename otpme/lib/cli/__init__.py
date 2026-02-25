@@ -1453,7 +1453,7 @@ def show_sessions(search_regex=None, sort_by="creation_time", reverse_sort=False
 
     # Get all sessions.
     search_attrs = {}
-    if search_regex:
+    if search_regex and user_list:
         search_attrs['user_uuid'] = {'values':user_list}
     else:
         search_attrs['uuid'] = {'value':"*"}

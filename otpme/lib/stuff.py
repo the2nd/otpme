@@ -242,8 +242,8 @@ def gen_secret(len=32, encoding="hex"):
             raise OTPmeException(msg)
     return secret
 
-def gen_password(len=16, capital=True, numbers=True,
-    symbols=False, secure=False, ambiguous=False, count=1):
+def gen_password(len=16, capital=True, numbers=True, symbols=False,
+    secure=False, ambiguous=False, exclude_chars=None, count=1):
     """ Generate password via pwgen. """
     from subprocess import Popen
     from subprocess import PIPE
@@ -261,6 +261,9 @@ def gen_password(len=16, capital=True, numbers=True,
         pwgen_cmd.append("-0")
     if symbols:
         pwgen_cmd.append("-y")
+        if exclude_chars:
+            pwgen_cmd.append("-r")
+            pwgen_cmd.append(exclude_chars)
     if secure:
         pwgen_cmd.append("-s")
     if ambiguous:

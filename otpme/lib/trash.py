@@ -75,6 +75,7 @@ commands = {
                                         ],
                     'oargs'             : [
                                         'objects',
+                                        'keep_trash',
                                         ],
                     'job_type'          : 'process',
                     },
@@ -296,7 +297,8 @@ def delete(trash_id=None, cluster=True, callback=default_callback, **kwargs):
         cluster_event.wait()
     return callback.ok()
 
-def restore(trash_id=None, objects=None, callback=default_callback, **kwargs):
+def restore(trash_id=None, objects=None, keep_trash=False,
+    callback=default_callback, **kwargs):
     if not trash_id:
         msg = _("Need <trash_id>.")
         raise OTPmeException(msg)
@@ -376,13 +378,14 @@ def restore(trash_id=None, objects=None, callback=default_callback, **kwargs):
                 return callback.abort()
             restore_counter += 1
 
-    if restore_objects_count == restore_counter:
-        try:
-            delete(trash_id, cluster=True, callback=callback)
-        except Exception as e:
-            msg = _("Failed to remove trash entry: {trash_id}: {e}")
-            msg = msg.format(trash_id=trash_id, e=e)
-            return callback.error(msg)
+    if not keep_trash:
+        if restore_objects_count == restore_counter:
+            try:
+                delete(trash_id, cluster=True, callback=callback)
+            except Exception as e:
+                msg = _("Failed to remove trash entry: {trash_id}: {e}")
+                msg = msg.format(trash_id=trash_id, e=e)
+                return callback.error(msg)
 
     msg = _("Restored {restore_counter} objects.")
     msg = msg.format(restore_counter=restore_counter)

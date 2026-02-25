@@ -615,6 +615,11 @@ class OTPmeConfig(object):
         self.register_config_var("valid_login_users", [None, list], None,
                                 config_file_parameter="VALID_LOGIN_USERS")
 
+        self.register_config_var("allow_dynamic_groups", [None, list], None,
+                                config_file_parameter="ALLOW_DYNAMIC_GROUPS")
+        self.register_config_var("deny_dynamic_groups", [None, list], None,
+                                config_file_parameter="DENY_DYNAMIC_GROUPS")
+
         self.register_config_var("object_caches", [None, list], None,
                                 config_file_parameter="OBJECT_CACHES")
 

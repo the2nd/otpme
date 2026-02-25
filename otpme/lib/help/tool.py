@@ -174,7 +174,7 @@ cmd_help = {
                 },
 
     'sync'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool sync [sites|objects|token_data|ssh_authorized_keys|nsscache]'),
+                    '_cmd_usage_help' : _('Usage: otpme-tool sync --realm {realm} --site {site} [sites|objects|token_data|ssh_authorized_keys|nsscache]'),
                     'cmd'   :   '--realm :realm: --site :site: [sync_type]',
                     '_help' :   {
                                     'cmd'                   : _('tell OTPme daemon to start sync with master node.'),
@@ -185,7 +185,7 @@ cmd_help = {
 
 
     'resync'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-tool resync [objects|token_data|ssh_authorized_keys|nsscache]'),
+                    '_cmd_usage_help' : _('Usage: otpme-tool resync --realm {realm} --site {site} [objects|token_data|ssh_authorized_keys|nsscache]'),
                     'cmd'   :   '--realm :realm: --site :site: <sync_type>',
                     '_help' :   {
                                     'cmd'                   : _('Tell OTPme daemon to start resync the given data type.'),

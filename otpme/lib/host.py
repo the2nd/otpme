@@ -45,49 +45,85 @@ def register():
     multiprocessing.register_shared_dict("host_data")
     config.register_property(name="host_data", getx=host_data_getter)
 
-def get_file_owner_group():
-    # Permissions for cert/key files.
-    file_mode = 0o640
-    files = {
-            config.ssl_cert_file        : file_mode,
-            config.ssl_key_file         : file_mode,
-            config.ssl_ca_file          : file_mode,
-            config.ssl_site_cert_file   : file_mode,
-            }
-    # File owner.
-    #file_owner = config.user
-    file_owner = "root"
+def get_ssl_file_perms():
     # Realm users group may not exist (e.g. on realm init)
     try:
         stuff.group_exists(config.realm_users_group)
-        file_group = config.realm_users_group
+        realm_users_group = config.realm_users_group
     except:
-        file_group = config.group
-    return files, file_owner, file_group, file_mode
+        raise
+        realm_users_group = config.group
+
+    files = {
+            config.ssl_cert_file    : {
+                                        'file_owner'    : config.user,
+                                        'file_group'    : realm_users_group,
+                                        'file_mode'     : 0o640,
+                                    },
+            config.ssl_key_file    : {
+                                        'file_owner'    : config.user,
+                                        'file_group'    : realm_users_group,
+                                        'file_mode'     : 0o640,
+                                    },
+            config.ssl_ca_file    : {
+                                        'file_owner'    : config.user,
+                                        'file_group'    : realm_users_group,
+                                        'file_mode'     : 0o640,
+                                    },
+            config.ssl_site_cert_file    : {
+                                        'file_owner'    : config.user,
+                                        'file_group'    : realm_users_group,
+                                        'file_mode'     : 0o640,
+                                    },
+            config.host_key_file    : {
+                                        'file_owner'    : config.user,
+                                        'file_group'    : "root",
+                                        'file_mode'     : 0o600,
+                                    },
+        }
+    return files
+
+def get_file_owner_group(file):
+    ssl_files_data = get_ssl_file_perms()
+    try:
+        file_data = ssl_files_data[file]
+    except KeyError:
+        msg = _("Missing file permissions: {file}")
+        msg = msg.format(file=file)
+        raise OTPmeException(msg)
+    try:
+        file_owner = file_data['file_owner']
+    except KeyError:
+        msg = _("Missing owner for file: {file}")
+        msg = msg.format(file=file)
+        raise OTPmeException(msg)
+    try:
+        file_group = file_data['file_group']
+    except KeyError:
+        msg = _("Missing group for file: {file}")
+        msg = msg.format(file=file)
+        raise OTPmeException(msg)
+    try:
+        file_mode = file_data['file_mode']
+    except KeyError:
+        msg = _("Missing mode for file: {file}")
+        msg = msg.format(file=file)
+        raise OTPmeException(msg)
+    return file_owner, file_group, file_mode
 
 def set_ssl_file_perms():
-    files, file_owner, file_group, file_mode = get_file_owner_group()
-    filetools.ensure_fs_permissions(files=files,
-                                    user=file_owner,
-                                    group=file_group)
-    # Handle special permissions of hostkey file.
-    files = {
-            config.host_key_file        : 0o600,
-            }
-    filetools.ensure_fs_permissions(files=files,
-                                    #user=config.user,
-                                    #group=config.group)
-                                    user="root",
-                                    group="root")
+    files = get_ssl_file_perms()
+    for file in files:
+        file_owner, file_group, file_mode = get_file_owner_group(file)
+        filetools.set_fs_ownership(path=file, user=file_owner, group=file_group)
+        filetools.set_fs_permissions(path=file, mode=file_mode)
 
 def update_ssl_files(host_cert=None, host_key=None,
     ca_data=None, site_cert=None, host_auth_key=None):
     """ Update SSL cert/key files. """
-    # File owner/group.
-    files, file_owner, file_group, file_mode = get_file_owner_group()
-
     # Create cert file if it does not exist.
     if host_cert:
+        file_owner, file_group, file_mode = get_file_owner_group(config.ssl_cert_file)
         cert_dir = os.path.dirname(config.ssl_cert_file)
         if not os.path.exists(cert_dir):
             if not config.handle_files_dirs:
@@ -114,6 +150,7 @@ def update_ssl_files(host_cert=None, host_key=None,
 
     # Create key file if it does not exist.
     if host_key:
+        file_owner, file_group, file_mode = get_file_owner_group(config.ssl_key_file)
         key_dir = os.path.dirname(config.ssl_key_file)
         if not os.path.exists(key_dir):
             if not config.handle_files_dirs:
@@ -140,6 +177,7 @@ def update_ssl_files(host_cert=None, host_key=None,
 
     # Create CA file if it does not exist.
     if ca_data:
+        file_owner, file_group, file_mode = get_file_owner_group(config.ssl_ca_file)
         ca_data_dir = os.path.dirname(config.ssl_ca_file)
         if not os.path.exists(ca_data_dir):
             if not config.handle_files_dirs:
@@ -166,6 +204,7 @@ def update_ssl_files(host_cert=None, host_key=None,
 
     # Create site cert file if it does not exist.
     if site_cert:
+        file_owner, file_group, file_mode = get_file_owner_group(config.ssl_site_cert_file)
         site_cert_dir = os.path.dirname(config.ssl_site_cert_file)
         if not os.path.exists(site_cert_dir):
             if not config.handle_files_dirs:
@@ -192,6 +231,7 @@ def update_ssl_files(host_cert=None, host_key=None,
 
     # Create host key file if it does not exist.
     if host_auth_key:
+        file_owner, file_group, file_mode = get_file_owner_group(config.host_key_file)
         key_dir = os.path.dirname(config.host_key_file)
         if not os.path.exists(key_dir):
             if not config.handle_files_dirs:

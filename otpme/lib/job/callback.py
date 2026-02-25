@@ -3,7 +3,6 @@
 import os
 import sys
 import time
-import functools
 from functools import wraps
 
 try:
@@ -183,13 +182,6 @@ class JobCallback(object):
                 if self._exception:
                     raise self._exception
             return method(self, *args, **kwargs)
-
-        # Update func/method.
-        functools.update_wrapper(wrapper, method)
-        if not hasattr(wrapper, '__wrapped__'):
-            # Python 2.7
-            wrapper.__wrapped__ = method
-
         return wrapper
 
     def exception(self, exception):

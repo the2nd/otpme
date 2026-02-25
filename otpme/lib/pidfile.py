@@ -17,7 +17,7 @@ from otpme.lib import filetools
 
 from otpme.lib.exceptions import *
 
-def pidfile_handler(pidfile):
+def pidfile_handler(pidfile, proc_name="Process"):
     """ Decorator to handle pidfile. """
     def wrapper(func):
         @wraps(func)
@@ -25,8 +25,8 @@ def pidfile_handler(pidfile):
             # Check for running process via PIDFILE.
             pid = is_running(pidfile)
             if pid:
-                msg = _("nsscache already running with PID: {pid}")
-                msg = msg.format(pid=pid)
+                msg = _("{proc_name} already running with PID: {pid}")
+                msg = msg.format(proc_name=proc_name, pid=pid)
                 raise AlreadyRunning(msg)
             # Create PIDFILE.
             create_pidfile(pidfile)
@@ -49,14 +49,14 @@ def is_running(pidfile):
     # Get logger.
     logger = config.logger
     try:
-        nsscache_pid = filetools.read_file(pidfile)
+        pid = filetools.read_file(pidfile)
     except Exception as e:
         log_msg = _("Failed to read pidfile: {e}", log=True)[1]
         log_msg = log_msg.format(e=e)
         logger.warning(log_msg)
         return True
-    if stuff.check_pid(nsscache_pid):
-        return nsscache_pid
+    if stuff.check_pid(pid):
+        return pid
     log_msg = _("Removing stale pidfile: {pidfile}", log=True)[1]
     log_msg = log_msg.format(pidfile=pidfile)
     logger.warning(log_msg)

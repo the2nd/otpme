@@ -851,12 +851,15 @@ class ControlDaemon(UnixDaemon):
         host_data_reload_interval = 30
         # Set shorter interval for first keepalive packet because hostd will
         # start first sync after receiving the first keepalive packet.
-        keepalive_interval = 3
+        first_run = True
+        # Interval in seconds we check for child daemons to be healthy.
+        keepalive_interval = config.controld_heartbeat_interval
         while True:
             # Get next interval we have to wait for.
-            time.sleep(keepalive_interval)
-            # Interval in seconds we check for child daemons to be healthy.
-            keepalive_interval = config.controld_heartbeat_interval
+            if first_run:
+                first_run = False
+            else:
+                time.sleep(keepalive_interval)
             # Send keepalive command to command process.
             self.comm_handler.send(self.child_comm_id, command="send_keepalive")
             # Try to update our host data.

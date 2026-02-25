@@ -3537,19 +3537,13 @@ class Token(OTPmeObject):
         # Update object config.
         self.update_object_config()
 
-        # Actually move token in backend.
-        if not replace:
-            try:
-                backend.rename_object(old_oid, new_oid)
-            except Exception as e:
-                config.raise_exception()
-                msg = _("Error renaming {object_type} '{new_name}': {error}")
-                msg = msg.format(object_type=self.type, new_name=new_oid.name, error=e)
-                return callback.error(msg)
+        # Delete old token.
+        backend.delete_object(old_oid, cluster=True)
 
         # Set token UUID of replaced token.
-        if old_token_uuid:
-            self.uuid = old_token_uuid
+        if replace:
+            if old_token_uuid:
+                self.uuid = old_token_uuid
 
         # Write token before adding it to new owner.
         self._write(callback=callback)

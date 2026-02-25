@@ -107,7 +107,7 @@ cmd_help = {
 
 
     'move'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token move {src_user/token} {dst_user/token}'),
+                    '_cmd_usage_help' : _('Usage: otpme-token move -r {src_user/token} {dst_user/token}'),
                     'cmd'   :   '-r :replace=True: <|object|> <new_token_path>',
                     '_help' :   {
                                     'cmd'                   : _('Move token.'),

@@ -310,6 +310,13 @@ VALID_LOGIN_USERS=""
 # if one of username or UUID matches.
 DENY_LOGIN_USERS=""
 
+# Comma separated list of dynamic groups users are allowed to assigned to. If you
+# set this to False, no dynamic groups are allowed. If its set to "" all dynamic
+# groups are allow except those who are listend in DENY_DYNAMIC_GROUPS.
+ALLOW_DYNAMIC_GROUPS=""
+# Comma separated list of dynamic groups users are NOT allowed to assigned to.
+DENY_DYNAMIC_GROUPS=""
+
 # If set to True, user defined signers are ignored (default).
 # If set to False users can define their own token signers.
 # If set to a comma separated list of usernames, the private

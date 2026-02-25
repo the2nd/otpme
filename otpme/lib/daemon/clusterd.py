@@ -216,6 +216,10 @@ def cluster_sync_object(action, object_id=None, object_uuid=None,
         if cluster_journal_entry.committed:
             cluster_journal_entry.release()
             while True:
+                events = cluster_journal_entry.get_object_events()
+                for object_event in events:
+                    object_event.set()
+                    object_event.unlink()
                 try:
                     cluster_journal_entry.delete()
                     cluster_journal_entry = ClusterJournalEntry(journal_id=journal_id,

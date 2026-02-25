@@ -162,12 +162,21 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
 
         # Get token owner name.
         owner_name = None
+        default_token = None
+        return_attrs = ['name', 'default_token']
         owner_result = backend.search(object_type="user",
                                     attribute="uuid",
                                     value=owner_uuid,
-                                    return_type="name")
+                                    return_attributes=return_attrs)
         if owner_result:
-            owner_name = owner_result[0]
+            try:
+                owner_name = owner_result[owner_uuid]['name'][0]
+            except KeyError:
+                pass
+            try:
+                default_token = owner_result[owner_uuid]['default_token'][0]
+            except KeyError:
+                pass
 
         # Tokenname.
         if "token" in output_fields:
@@ -175,6 +184,9 @@ def row_getter(realm, site, token_order, token_data, acls, id_attr=None,
                 msg = _("{id_attr} (orphan)")
                 msg = msg.format(id_attr=_id_attr)
                 _id_attr = msg
+            if default_token:
+                if token_uuid == default_token:
+                    _id_attr = _id_attr + "*"
             row.append(_id_attr)
         # Token type.
         if "type" in output_fields:

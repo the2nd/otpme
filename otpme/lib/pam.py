@@ -496,34 +496,48 @@ class PamHandler(object):
             return
         if not self.login_token:
             return
-        log_msg = _("Getting dynamic groups from hostd.", log=True)[1]
-        self.logger.debug(log_msg)
-        # Get connection to hostd.
-        try:
-            hostd_conn = connections.get("hostd")
-        except Exception as e:
-            self.cleanup()
-            log_msg = _("Unable to get connection to hostd: {error}", log=True)[1]
-            log_msg = log_msg.format(error=e)
-            self.logger.warning(log_msg)
-            return self.pamh.PAM_SYSTEM_ERR
-        # Get dynamics groups of host.
-        dynamic_groups = hostd_conn.get_host_dynamic_groups()
-        # Get dynamics groups of token/roles.
-        dynamic_groups += hostd_conn.get_token_dynamic_groups(self.login_token)
-        # Get current user groups.
-        current_groups = os.getgroups()
-        for group in dynamic_groups:
+        # Handle dynamic groups
+        if config.allow_dynamic_groups is not False:
+            log_msg = _("Getting dynamic groups from hostd.", log=True)[1]
+            self.logger.debug(log_msg)
+            # Get connection to hostd.
             try:
-                group_id = grp.getgrnam(group)[2]
-            except KeyError:
-                continue
-            log_msg = _("Adding users dynamic group membership: {group_name}", log=True)[1]
-            log_msg = log_msg.format(group_name=group)
-            self.logger.info(log_msg)
-            current_groups.append(group_id)
-        current_groups = list(set(current_groups))
-        os.setgroups(current_groups)
+                hostd_conn = connections.get("hostd")
+            except Exception as e:
+                self.cleanup()
+                log_msg = _("Unable to get connection to hostd: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                return self.pamh.PAM_SYSTEM_ERR
+            # Get dynamics groups of host.
+            dynamic_groups = hostd_conn.get_host_dynamic_groups()
+            # Get dynamics groups of token/roles.
+            dynamic_groups += hostd_conn.get_token_dynamic_groups(self.login_token)
+            # Get current user groups.
+            current_groups = os.getgroups()
+            for group in dynamic_groups:
+                if isinstance(config.deny_dynamic_groups, list):
+                    if group in config.deny_dynamic_groups:
+                        log_msg = _("Denied dynamic group membership: {group_name}", log=True)[1]
+                        log_msg = log_msg.format(group_name=group)
+                        self.logger.warning(log_msg)
+                        continue
+                if isinstance(config.allow_dynamic_groups, list):
+                    if group not in config.allow_dynamic_groups:
+                        log_msg = _("Denied dynamic group membership: {group_name}", log=True)[1]
+                        log_msg = log_msg.format(group_name=group)
+                        self.logger.warning(log_msg)
+                        continue
+                try:
+                    group_id = grp.getgrnam(group)[2]
+                except KeyError:
+                    continue
+                log_msg = _("Adding users dynamic group membership: {group_name}", log=True)[1]
+                log_msg = log_msg.format(group_name=group)
+                self.logger.info(log_msg)
+                current_groups.append(group_id)
+            current_groups = list(set(current_groups))
+            os.setgroups(current_groups)
         return self.pamh.PAM_SUCCESS
 
     def get_ssh_agent_ctrl(self, session_id=None):

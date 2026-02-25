@@ -2180,9 +2180,10 @@ class HostDaemon(OTPmeDaemon):
                 continue
 
             # Send TERM signal to sync process.
-            if sync_child.is_alive():
+            try:
                 sync_child.terminate()
-
+            except OSError:
+                pass
             try:
                 sync_child.join()
             except OSError:

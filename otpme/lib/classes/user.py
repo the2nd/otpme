@@ -1126,7 +1126,7 @@ def register_config_parameters():
                                     ctype=bool,
                                     default_value=True,
                                     object_types=object_types)
-    ## Automatically start token deployment on user creation?
+    ## FIXME: Automatically start token deployment on user creation?
     #config.register_config_parameter(name="deploy_default_token",
     #                                ctype=bool,
     #                                default_value=True,

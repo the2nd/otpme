@@ -219,7 +219,7 @@ def update_object(object_id, action):
                     group=config.group,
                     mode=0o660)
 
-@pidfile_handler(config.nsscache_pidfile)
+@pidfile_handler(config.nsscache_pidfile, proc_name="nsscache")
 def update(realm, site, resync=False, cache_resync=False, lock=None):
     """ Update nsscache cache files. """
     from otpme.lib import backend

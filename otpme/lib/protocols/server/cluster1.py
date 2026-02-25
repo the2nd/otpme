@@ -1050,7 +1050,6 @@ class OTPmeClusterP1(OTPmeServer1):
                     status = True
                     message = _("Master failover started.")
                     config.master_failover = True
-                    time.sleep(3)
                     running_jobs = self.get_running_jobs()
                     if running_jobs:
                         status = False

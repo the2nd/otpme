@@ -29,10 +29,11 @@ cmd_help = {
                 },
 
     'restore'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-trash restore --objects <object_id_1,object_id_2> {trash_id}'),
-                    'cmd'   :   '--objects :[objects]: [|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-trash restore --keep --objects <object_id_1,object_id_2> {trash_id}'),
+                    'cmd'   :   '--objects :[objects]: --keep :keep_trash=True: [|object|]',
                     '_help' :   {
                                     'cmd'                   : _('Restore object(s).'),
+                                    '--keep'                : _('Keep copy of object in trash.'),
                                 },
                 },
 

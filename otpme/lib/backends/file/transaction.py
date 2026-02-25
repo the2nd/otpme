@@ -1525,11 +1525,12 @@ class ObjectTransaction(BaseTransaction):
         """ Add object to journal. """
         read_oid = object_id.read_oid
         full_oid = object_id.full_oid
+        x_oc = stuff.copy_object(object_config)
         try:
             object_configs = self.journal_objects[read_oid]
         except KeyError:
             object_configs = []
-        object_configs.append(object_config)
+        object_configs.append(x_oc)
         self.journal_objects[read_oid] = object_configs
         # Handle UUID/OID mapping.
         try:
@@ -1799,7 +1800,7 @@ class ObjectTransaction(BaseTransaction):
             journal_file = journal_entry['journal_file']
             try:
                 kwargs = journal_entry['kwargs']
-            except:
+            except KeyError:
                 kwargs = {}
 
             if action == "index_add":

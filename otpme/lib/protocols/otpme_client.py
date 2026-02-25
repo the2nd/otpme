@@ -1214,10 +1214,10 @@ class OTPmeClient(OTPmeClientBase):
 
         # Get password from user.
         if pass_required:
-            self.sc_pass = self.password
             if not self.sc_pass:
+                prompt = _("Smartcard password: ")
                 try:
-                    self.sc_pass = self.get_password("Password: ")
+                    self.sc_pass = self.get_password(prompt)
                 except Exception as e:
                     raise AuthFailed(str(e))
 
@@ -2098,7 +2098,7 @@ class OTPmeClient1(OTPmeClientBase):
         login_interface="tty", logout=False, reneg=False, add_agent_acl=False,
         agent_acls=None, add_agent_session=None, add_login_session=None,
         mount_shares=False, offline_token=None, login_session_id=None,
-        cache_login_tokens=False, send_password=True, password_method=None,
+        cache_login_tokens=False, sc_pass=None, send_password=True, password_method=None,
         password=None, cleanup_method=None, check_offline_pass_strength=False,
         offline_iterations_by_score={}, offline_key_derivation_func=None,
         offline_key_func_opts=None, sync_token_data=False, request_jwt=None,
@@ -2119,7 +2119,7 @@ class OTPmeClient1(OTPmeClientBase):
         # Get logger.
         self.logger = config.logger
 
-        self.sc_pass = None
+        self.sc_pass = sc_pass
         self.password = password
         self.send_password = send_password
         self.password_method = password_method
@@ -3519,11 +3519,10 @@ class OTPmeClient1(OTPmeClientBase):
                 raise AuthFailed("No smartcard found.")
 
             if self.smartcard:
-                if self.sc_pass is None:
-                    self.sc_pass = self.password
-                if pass_required and not self.sc_pass:
+                if pass_required and self.sc_pass is None:
+                    prompt = _("Smartcard password: ")
                     try:
-                        self.sc_pass = self.get_password("Password: ")
+                        self.sc_pass = self.get_password(prompt)
                     except Exception as e:
                         self.cleanup()
                         raise AuthFailed(str(e))

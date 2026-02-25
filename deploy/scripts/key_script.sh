@@ -2,6 +2,8 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 # Distributed under the terms of the GNU General Public License v2
 
+#cat private_key.pem | otpme-yk-piv --import
+
 unset LANG
 
 source /etc/otpme/otpme.conf
@@ -39,6 +41,7 @@ ENC_TYPE="AES"
 AES_KEY_ENC="rsa"
 CIPHER="aes-256-cbc"
 ITERATIONS="5000000"
+KEY_MODE="client"
 
 PASS_DECRYPT_SCRIPT='#!/bin/bash
 SELF_LINES="$(head -n '$SCRIPT_LINES_OFFSET' "$0" | grep "#OTPME_SCRIPT_LINES:" | cut -d ":" -f 2)"
@@ -83,7 +86,7 @@ exit
 # Get command line options
 get_opts () {
         # Get options
-        if ! ARGS=`getopt -n $BASENAME -l help -l api -l auth-token -l rsa -l no-rsa -l salt-file -l key-enc -l use-gpg -l yubikey-hmac -l server-key -l force-pass -l no-self-decrypt u:b:h $*` ; then
+        if ! ARGS=`getopt -n $BASENAME -l help -l api -l auth-token -l rsa -l no-rsa -l salt-file -l key-enc -l use-gpg -l yubikey-hmac -l yubikey-piv -l server-key -l force-pass -l no-self-decrypt u:b:h $*` ; then
                 show_help
                 return 1
         fi
@@ -99,6 +102,14 @@ get_opts () {
 								show_help
 								return 1
 							fi
+							shift
+                        ;;
+
+
+                        --yubikey-piv)
+							shift
+							YUBIKEY_PIV="true"
+							YUBIKEY_SLOT="$1"
 							shift
                         ;;
 
@@ -270,6 +281,7 @@ show_help () {
 	echo "	--salt-file <file>			Use <file> as salt for AES encryption"
 	echo "	--key-enc <rsa|aes|gpg>		Force encryption of AES keys with the given encrytion type (e.g. gpg)"
 	echo "	--use-gpg <id>				Use given GPG key (e.g. to en/decrypt RSA private key)"
+	echo "	--yubikey-piv <slot>		Use yubikey PIV mode for private key operations."
 	echo "	--yubikey-hmac <slot>		Use yubikey in HMAC challenge/response mode to derive AES passphrase."
 	echo "	--no-self-decrypt			Do not add self decryption script to encrypted file."
 }
@@ -279,7 +291,11 @@ message () {
 }
 
 error_message () {
-	echo "$*" 1>&2
+	if [ "$TTY" != "" ] ; then
+		tty_message "$*"
+	else
+		echo "$*" 1>&2
+	fi
 }
 
 tty_message () {
@@ -461,9 +477,14 @@ read_pass_from_tty () {
 		PROMPT="$1"
 	fi
 	if [ "$GPG_TTY" = "" ] ; then
-		GPG_TTY="$(otpme-tool get_tty)"
+		export GPG_TTY="$(otpme-tool get_tty)"
+		if [ "$GPG_TTY" = "" ] ; then
+		        export GPG_TTY="$SSH_TTY"
+		fi
+
 	fi
-	echo -e "SETDESC Private key password for command $COMMAND\nSETPROMPT $PROMPT:\nGETPIN\n" | $PINENTRY -T "$GPG_TTY" | grep "^D " | cut -d' ' -f2-
+	PIN="$(echo -e "SETDESC Private key password for command $COMMAND\nSETPROMPT $PROMPT:\nGETPIN\n" | $PINENTRY -T "$GPG_TTY" | grep "^D " | cut -d' ' -f2-)"
+	echo "$PIN"
 	#echo -n "$PROMPT" > /dev/tty
 	#read -s PASSWORD < /dev/tty
 	#echo > /dev/tty
@@ -572,7 +593,13 @@ decrypt_file () {
 		fi
 		# Handle RSA encrypted AES key.
 		if [ "$KEY_ENC_TYPE" = "rsa" ] ; then
-			if [ "$KEY_MODE" = "server" ] ; then
+			if [ "$YUBIKEY_PIV" = "true" ] ; then
+				export PIN="$(read_pass_from_tty "Token PIN: ")"
+				if [ "$PIN" = "" ] ; then
+					exit 1
+				fi
+				AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | otpme-yk-piv --decrypt --pin "env:PIN")"
+			elif [ "$KEY_MODE" = "server" ] ; then
 				if [ "$_OTPME_KEYSCRIPT_KEY_PASS" = "" ] ; then
 					#if ! AES_KEY="$(otpme-user $OTPME_OPTS decrypt --data "$AES_KEY_ENCRYPTED" "$_OTPME_KEYSCRIPT_USER" | base64 -d)" ; then
 					if ! AES_KEY="$(echo -n "$AES_KEY_ENCRYPTED" | otpme-user $OTPME_OPTS decrypt --stdin-data "$_OTPME_KEYSCRIPT_USER" | base64 -d)" ; then
@@ -583,7 +610,7 @@ decrypt_file () {
 						return 1
 					fi
 				fi
-			else
+			elif [ "$KEY_MODE" = "client" ] ; then
 				PRIVATE_KEY="$(get_private_key)"
 				AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | openssl pkeyutl -decrypt -inkey <(echo -n "$PRIVATE_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256)"
 			fi
@@ -594,7 +621,13 @@ decrypt_file () {
 
 	# Handle RSA encrypted data.
 	if [ "$ENC_TYPE" = "RSA" ] ; then
-		if [ "$KEY_MODE" = "server" ] ; then
+		if [ "$YUBIKEY_PIV" = "true" ] ; then
+			export PIN="$(read_pass_from_tty "Token PIN: ")"
+			if [ "$PIN" = "" ] ; then
+				exit 1
+			fi
+			echo -n "$RSA_DATA" | otpme-yk-piv --decrypt --pin "env:PIN"
+		elif [ "$KEY_MODE" = "server" ] ; then
 			RSA_DATA="$(cat)"
 			if [ "$_OTPME_KEYSCRIPT_KEY_PASS" = "" ] ; then
 				#otpme-user $OTPME_OPTS decrypt --data "$RSA_DATA" "$_OTPME_KEYSCRIPT_USER"
@@ -602,7 +635,7 @@ decrypt_file () {
 			else
 				echo "$_OTPME_KEYSCRIPT_KEY_PASS" | $(which otpme-user) $OTPME_OPTS decrypt --data "$RSA_DATA" --stdin-pass "$_OTPME_KEYSCRIPT_USER"
 			fi
-		else
+		elif [ "$KEY_MODE" = "client" ] ; then
 			PRIVATE_KEY="$(get_private_key)"
 			base64 -d | openssl pkeyutl -decrypt  -inkey <(echo -n "$PRIVATE_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
 		fi
@@ -622,9 +655,17 @@ if ! get_opts "$@" ; then
 	exit 1
 fi
 
-if [ "$KEY_MODE" = "" ] ; then
-	KEY_MODE="$(otpme-user $OTPME_OPTS get_key_mode $_OTPME_KEYSCRIPT_USER)"
+if [ "$OTPME_USER_SITE" = "" ] ; then
+	OTPME_USER_SITE="$(otpme-tool get_user_site)"
 fi
+
+if [ "$OTPME_USER_SITE" != "" ] ; then
+	OTPME_OPTS="$OTPME_OPTS -s $OTPME_USER_SITE"
+fi
+
+#if [ "$KEY_MODE" = "" ] ; then
+#	KEY_MODE="$(otpme-user $OTPME_OPTS get_key_mode $_OTPME_KEYSCRIPT_USER)"
+#fi
 
 case "$COMMAND" in
 	export_key)
@@ -699,11 +740,17 @@ case "$COMMAND" in
 	;;
 
 	rsa_decrypt)
-		if [ "$KEY_MODE" = "server" ] ; then
+		if [ "$YUBIKEY_PIV" = "true" ] ; then
+			export PIN="$(read_pass_from_tty "Token PIN: ")"
+			if [ "$PIN" = "" ] ; then
+				exit 1
+			fi
+			cat - | base64 -d | otpme-yk-piv --decrypt --pin "env:PIN"
+		elif [ "$KEY_MODE" = "server" ] ; then
 			#DATA="$(cat -)"
 			#otpme-user $OTPME_OPTS decrypt --data "$DATA" "$_OTPME_KEYSCRIPT_USER" | base64 -d
 			cat - | otpme-user $OTPME_OPTS decrypt --stdin-data "$_OTPME_KEYSCRIPT_USER" | base64 -d
-		else
+		elif [ "$KEY_MODE" = "client" ] ; then
 			PRIVATE_KEY="$(get_private_key)"
 			cat - | base64 -d | openssl pkeyutl -decrypt -inkey <(echo -n "$PRIVATE_KEY") -in /dev/stdin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
 		fi
@@ -720,7 +767,15 @@ case "$COMMAND" in
 			error_message "$BASENAME: No such file or directory: $FILE"
 			exit 1
 		fi
-		if [ "$KEY_MODE" = "server" ] ; then
+		if [ "$YUBIKEY_PIV" = "true" ] ; then
+			export PIN="$(read_pass_from_tty "Token PIN: ")"
+			if [ "$PIN" = "" ] ; then
+				exit 1
+			fi
+			if ! SIGNATURE="$(cat "$FILE" | otpme-yk-piv --sign --pin "env:PIN" | base64 -w 0)" ; then
+				exit 1
+			fi
+		elif [ "$KEY_MODE" = "server" ] ; then
 			SHA256_SUM="$(sha256sum "$FILE" | awk '{ print $1 }')"
 			if [ "$_OTPME_KEYSCRIPT_KEY_PASS" = "" ] ; then
 				if ! SIGNATURE="$(otpme-user $OTPME_OPTS sign_data --digest "$SHA256_SUM" "$_OTPME_KEYSCRIPT_USER")" ; then
@@ -731,7 +786,7 @@ case "$COMMAND" in
 					exit 1
 				fi
 			fi
-		else
+		elif [ "$KEY_MODE" = "client" ] ; then
 			PRIVATE_KEY="$(get_private_key)"
 			# Sign PKCS1_v1_5
 			#OPENSSL_SIGN_CMD="openssl dgst -sha256 -sign /dev/stdin "$FILE""
@@ -768,7 +823,7 @@ case "$COMMAND" in
 
 		SIGNER="$(cat "$SIG_FILE" | grep "^USERNAME=" | cut -d '"' -f 2)"
 		if [ "$SIGNER" == "" ] ; then
-			echo "Unable to get signer from signature file: $SIG_FILE" > /dev/stderr
+			error_message "Unable to get signer from signature file: $SIG_FILE"
 			exit 1
 		fi
 		SIGNER_PUBLIC_KEY="$(otpme-user $OTPME_OPTS dump_key "$SIGNER" | base64 -d)"
@@ -777,8 +832,8 @@ case "$COMMAND" in
 		#OPENSSL_VERIFY_CMD="openssl dgst -sha256 -verify /dev/stdin -signature "$TMP_FILE" "$FILE""
 		# Sign PKCS1_PSS
 		OPENSSL_VERIFY_CMD="openssl dgst -sha256 -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-2 -verify /dev/stdin -signature "$TMP_FILE" "$FILE""
-		rm "$TMP_FILE"
 		echo "$SIGNER_PUBLIC_KEY" | $OPENSSL_VERIFY_CMD
+		rm "$TMP_FILE"
 	;;
 
 	encrypt)
