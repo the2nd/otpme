@@ -51,7 +51,6 @@ def get_ssl_file_perms():
         stuff.group_exists(config.realm_users_group)
         realm_users_group = config.realm_users_group
     except:
-        raise
         realm_users_group = config.group
 
     files = {
