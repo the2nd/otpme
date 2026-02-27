@@ -1,224 +1,221 @@
-# OTPME-SCRIPT(1)
-
-## NAME
+# NAME
 
 otpme-script - manage OTPme scripts
 
-## SYNOPSIS
+# SYNOPSIS
 
-**otpme-script**
-*command*
-[*options*] [*script*]
+**otpme-script** *command* \[*options*\] \[*script*\]
 
-## DESCRIPTION
+# DESCRIPTION
 
-**otpme-script**
-manages scripts in the OTPme system. Scripts are stored as OTPme objects and can be signed to ensure integrity. They are used for various purposes such as login scripts and key scripts.
+**otpme-script** manages scripts in the OTPme system. Scripts are stored
+as OTPme objects and can be signed to ensure integrity. They are used
+for various purposes such as login scripts and key scripts.
 
-## COMMANDS
+# COMMANDS
 
-### Script Management
+## Script Management
 
-**add [**-r**] *name* *script***
-:   Add a new script. Use **-r** to replace an existing script while keeping its UUID.
+**add \[**-r**\] *name* *script***  
+Add a new script. Use **-r** to replace an existing script while keeping
+its UUID.
 
-**del *script***
-:   Delete a script.
+**del *script***  
+Delete a script.
 
-**show [*script*]**
-:   Display script information.
+**show \[*script*\]**  
+Display script information.
 
-**list [*regex*]**
-:   List scripts, optionally filtered by regex pattern.
+**list \[*regex*\]**  
+List scripts, optionally filtered by regex pattern.
 
-**enable *script***
-:   Enable a disabled script.
+**enable *script***  
+Enable a disabled script.
 
-**disable *script***
-:   Disable a script without deleting it.
+**disable *script***  
+Disable a script without deleting it.
 
-**rename *script* *new_name***
-:   Rename a script.
+**rename *script* *new_name***  
+Rename a script.
 
-**copy *script* *dst_script***
-:   Copy a script and its signatures.
+**copy *script* *dst_script***  
+Copy a script and its signatures.
 
-**move [**--keep-acls**] *script* *unit***
-:   Move script to a different unit.
+**move \[**--keep-acls**\] *script* *unit***  
+Move script to a different unit.
 
-**touch *script***
-:   Re-index the object to fix potential index problems.
+**touch *script***  
+Re-index the object to fix potential index problems.
 
-### Script Operations
+## Script Operations
 
-**dump *script***
-:   Dump script contents to stdout.
+**dump *script***  
+Dump script contents to stdout.
 
-**edit *script***
-:   Edit a script.
+**edit *script***  
+Edit a script.
 
-**run [**--type** *script_type*] *script***
-:   Run a script. Use **--type** to run as a specific script type (e.g. key_script).
+**run \[**--type** *script_type*\] *script***  
+Run a script. Use **--type** to run as a specific script type (e.g.
+key_script).
 
-### Signature Management
+## Signature Management
 
-**sign [**--stdin-pass**] [**--tags** *tag1,tag2*] *script***
-:   Sign a script. Use **--stdin-pass** to read the RSA private key passphrase from stdin.
+**sign \[**--stdin-pass**\] \[**--tags** *tag1,tag2*\] *script***  
+Sign a script. Use **--stdin-pass** to read the RSA private key
+passphrase from stdin.
 
-**resign [**--stdin-pass**] *script***
-:   Re-sign all script signatures.
+**resign \[**--stdin-pass**\] *script***  
+Re-sign all script signatures.
 
-**verify_sign [**--user** *username*] [**--tags** *tag1,tag2*] *script***
-:   Verify script signature(s).
+**verify_sign \[**--user** *username*\] \[**--tags** *tag1,tag2*\] *script***  
+Verify script signature(s).
 
-**get_sign [**--user** *username*] [**--tags** *tag1,tag2*] *script***
-:   Get script signature(s).
+**get_sign \[**--user** *username*\] \[**--tags** *tag1,tag2*\] *script***  
+Get script signature(s).
 
-**get_sign_data [**--tags** *tag1,tag2*] *script***
-:   Get the data to be signed from a script.
+**get_sign_data \[**--tags** *tag1,tag2*\] *script***  
+Get the data to be signed from a script.
 
-**add_sign [**--tags** *tag1,tag2*] *script* *signature***
-:   Add a signature to a script.
+**add_sign \[**--tags** *tag1,tag2*\] *script* *signature***  
+Add a signature to a script.
 
-**del_sign [**--user** *username*] [**--tags** *tag1,tag2*] *script***
-:   Delete a signature from a script.
+**del_sign \[**--user** *username*\] \[**--tags** *tag1,tag2*\] *script***  
+Delete a signature from a script.
 
-### Policy Management
+## Policy Management
 
-**add_policy *script* *policy***
-:   Attach a policy to the script.
+**add_policy *script* *policy***  
+Attach a policy to the script.
 
-**remove_policy *script* *policy***
-:   Remove a policy from the script.
+**remove_policy *script* *policy***  
+Remove a policy from the script.
 
-**list_policies *script***
-:   List policies attached to the script.
+**list_policies *script***  
+List policies attached to the script.
 
-### ACL Management
+## ACL Management
 
-**add_acl *script* *owner_type* *owner* *acl***
-:   Add an access control entry.
+**add_acl *script* *owner_type* *owner* *acl***  
+Add an access control entry.
 
-**del_acl *script* *acl***
-:   Remove an access control entry.
+**del_acl *script* *acl***  
+Remove an access control entry.
 
-**show_acls *script***
-:   Display all ACLs for the script.
+**show_acls *script***  
+Display all ACLs for the script.
 
-**enable_acl_inheritance *script***
-:   Enable ACL inheritance from parent objects.
+**enable_acl_inheritance *script***  
+Enable ACL inheritance from parent objects.
 
-**disable_acl_inheritance *script***
-:   Disable ACL inheritance.
+**disable_acl_inheritance *script***  
+Disable ACL inheritance.
 
-### Configuration
+## Configuration
 
-**description *script* [*description*]**
-:   Set script description.
+**description *script* \[*description*\]**  
+Set script description.
 
-### Import/Export
+## Import/Export
 
-**export [**--password** *PASS*] *script***
-:   Export script configuration.
+**export \[**--password** *PASS*\] *script***  
+Export script configuration.
 
-**remove_orphans *script***
-:   Remove orphaned object references.
+**remove_orphans *script***  
+Remove orphaned object references.
 
-## OPTIONS
+# OPTIONS
 
-### Display Options
+## Display Options
 
-**-a**
-:   Show all scripts.
+**-a**  
+Show all scripts.
 
-**-z *SIZE***
-:   Limit output size.
+**-z *SIZE***  
+Limit output size.
 
-**--fields *FIELD1,FIELD2***
-:   Display only specified fields.
+**--fields *FIELD1,FIELD2***  
+Display only specified fields.
 
-**--policy-limit *N***
-:   Limit number of policies shown.
+**--policy-limit *N***  
+Limit number of policies shown.
 
-**--sort-by *FIELD***
-:   Sort output by field.
+**--sort-by *FIELD***  
+Sort output by field.
 
-**--reverse**
-:   Reverse sort order.
+**--reverse**  
+Reverse sort order.
 
-**--raw**
-:   Output without headers/borders.
+**--raw**  
+Output without headers/borders.
 
-**--csv**
-:   Output as CSV.
+**--csv**  
+Output as CSV.
 
-**--csv-sep *SEP***
-:   CSV separator character.
+**--csv-sep *SEP***  
+CSV separator character.
 
-### General Options
+## General Options
 
-**-r**
-:   Replace existing script and keep its UUID.
+**-r**  
+Replace existing script and keep its UUID.
 
-**--keep-acls**
-:   Preserve ACLs when moving script.
+**--keep-acls**  
+Preserve ACLs when moving script.
 
-**--password *PASS***
-:   Password for encrypting exports.
+**--password *PASS***  
+Password for encrypting exports.
 
-**--stdin-pass**
-:   Read RSA private key passphrase from stdin.
+**--stdin-pass**  
+Read RSA private key passphrase from stdin.
 
-**--tags *tag1,tag2***
-:   Tags for signatures.
+**--tags *tag1,tag2***  
+Tags for signatures.
 
-**--user *username***
-:   Select signature by username.
+**--user *username***  
+Select signature by username.
 
-Global options are available for all commands. See
-[otpme(1)](otpme.md)
-for details.
+Global options are available for all commands. See **otpme**(1) for
+details.
 
-## CONFIG PARAMETERS
+# CONFIG PARAMETERS
 
-Configuration parameters can be set with the **config** command and displayed with **show_config**.
-For a complete description of all available parameters and their applicable object types, see
-[otpme(7)](otpme.7.md).
+Configuration parameters can be set with the **config** command and
+displayed with **show_config**. For a complete description of all
+available parameters and their applicable object types, see
+**otpme**(7).
 
-## EXAMPLES
+# EXAMPLES
 
-**otpme-script add myscript /path/to/script.sh**
-:   Add a new script
+**otpme-script add myscript /path/to/script.sh**  
+Add a new script
 
-**otpme-script sign myscript**
-:   Sign a script
+**otpme-script sign myscript**  
+Sign a script
 
-**otpme-script dump myscript**
-:   Show script contents
+**otpme-script dump myscript**  
+Show script contents
 
-**otpme-script edit myscript**
-:   Edit a script
+**otpme-script edit myscript**  
+Edit a script
 
-## FILES
+# FILES
 
-*/var/lib/otpme/*
-:   OTPme data directory
+*/var/lib/otpme/*  
+OTPme data directory
 
-## SEE ALSO
+# SEE ALSO
 
-[otpme(1)](otpme.md),
-[otpme(7)](otpme.7.md),
-[otpme-user(1)](otpme-user.md),
-[otpme-token(1)](otpme-token.md)
+**otpme**(1), **otpme**(7), **otpme-user**(1), **otpme-token**(1)
 
-## AUTHOR
+# AUTHOR
 
-the2nd <the2nd@otpme.org>
+the2nd \<the2nd@otpme.org\>
 
-## NOTE
+# NOTE
 
 This manual page was created with AI assistance.
 
-## COPYRIGHT
+# COPYRIGHT
 
 Copyright © 2014-2025 the2nd. License: GPLv3

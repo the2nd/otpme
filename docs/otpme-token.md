@@ -1,517 +1,522 @@
-# OTPME-TOKEN(1)
-
-## NAME
+# NAME
 
 otpme-token - manage OTPme authentication tokens
 
-## SYNOPSIS
+# SYNOPSIS
 
-**otpme-token**
-[**--type** *token_type*]
-*command*
-[*options*] [*token*]
+**otpme-token** \[**--type** *token_type*\] *command* \[*options*\]
+\[*token*\]
 
-## DESCRIPTION
+# DESCRIPTION
 
-**otpme-token**
-manages authentication tokens in the OTPme system. Tokens are credentials assigned to users. They are identified by their path:
-user / token_name
-(e.g. alice/login).
+**otpme-token** manages authentication tokens in the OTPme system.
+Tokens are credentials assigned to users. They are identified by their
+path: *user*/*token_name* (e.g. alice/login).
 
-## TOKEN TYPES
+# TOKEN TYPES
 
-**hotp**
-:   HMAC-based One-Time Password (RFC 4226).
+**hotp**  
+HMAC-based One-Time Password (RFC 4226).
 
-**totp**
-:   Time-based One-Time Password (RFC 6238).
+**totp**  
+Time-based One-Time Password (RFC 6238).
 
-**password**
-:   Static password authentication.
+**password**  
+Static password authentication.
 
-**ssh**
-:   SSH public key authentication.
+**ssh**  
+SSH public key authentication.
 
-**fido2**
-:   FIDO2/WebAuthn hardware authentication.
+**fido2**  
+FIDO2/WebAuthn hardware authentication.
 
-**u2f**
-:   U2F hardware authentication.
+**u2f**  
+U2F hardware authentication.
 
-**yubikey_hmac**
-:   YubiKey HMAC-SHA1 challenge-response authentication.
+**yubikey_hmac**  
+YubiKey HMAC-SHA1 challenge-response authentication.
 
-**yubikey_hotp**
-:   YubiKey OATH HOTP authentication.
+**yubikey_hotp**  
+YubiKey OATH HOTP authentication.
 
-**yubikey_gpg**
-:   YubiKey GPG applet authentication.
+**yubikey_gpg**  
+YubiKey GPG applet authentication.
 
-**motp**
-:   Mobile OTP (mOTP).
+**motp**  
+Mobile OTP (mOTP).
 
-**otp_push**
-:   Push notification-based OTP.
+**otp_push**  
+Push notification-based OTP.
 
-**script_otp**
-:   OTP generation via external script.
+**script_otp**  
+OTP generation via external script.
 
-**link**
-:   Link to another user's token.
+**link**  
+Link to another user's token.
 
-## COMMANDS
+# COMMANDS
 
-### Token Management
+## Token Management
 
-**add *token***
-:   Add a new token. Requires **--type** before the command.
+**add *token***  
+Add a new token. Requires **--type** before the command.
 
-**del *token***
-:   Delete a token.
+**del *token***  
+Delete a token.
 
-**show [*token*]**
-:   Display token information.
+**show \[*token*\]**  
+Display token information.
 
-**list [*regex*]**
-:   List tokens, optionally filtered by regex pattern.
+**list \[*regex*\]**  
+List tokens, optionally filtered by regex pattern.
 
-**enable *token***
-:   Enable a disabled token.
+**enable *token***  
+Enable a disabled token.
 
-**disable *token***
-:   Disable a token without deleting it.
+**disable *token***  
+Disable a token without deleting it.
 
-**rename *token* *new_name***
-:   Rename a token.
+**rename *token* *new_name***  
+Rename a token.
 
-**move [**-r**] *token* *new_token_path***
-:   Move token to another user. Use **-r** to replace existing token keeping its UUID.
+**move \[**-r**\] *token* *new_token_path***  
+Move token to another user. Use **-r** to replace existing token keeping
+its UUID.
 
-**touch *token***
-:   Re-index the object to fix potential index problems.
+**touch *token***  
+Re-index the object to fix potential index problems.
 
-### Token Configuration
+## Token Configuration
 
-**config [**-d**] *token* *parameter* [*value*]**
-:   Set or display a configuration parameter. Use **-d** to delete (reset to default).
+**config \[**-d**\] *token* *parameter* \[*value*\]**  
+Set or display a configuration parameter. Use **-d** to delete (reset to
+default).
 
-**show_config *token* [*parameter*]**
-:   Show all configuration parameters.
+**show_config *token* \[*parameter*\]**  
+Show all configuration parameters.
 
-**auto_disable [**-u**] *token* *time***
-:   Set auto-disable time (e.g. "1d" or "09:53 13.06.2023"). Use **-u** to disable if unused for the given time.
+**auto_disable \[**-u**\] *token* *time***  
+Set auto-disable time (e.g. "1d" or "09:53 13.06.2023"). Use **-u** to
+disable if unused for the given time.
 
-**description *token* [*description*]**
-:   Set token description.
+**description *token* \[*description*\]**  
+Set token description.
 
-**test *token* [*otp|password*]**
-:   Test if given OTP/password can be verified by the token.
+**test *token* \[*otp\|password*\]**  
+Test if given OTP/password can be verified by the token.
 
-**temp_password [**--generate**] [**--duration** *time*] [**--remove**] *token* [*password*]**
-:   Set, generate or remove a temporary password.
+**temp_password \[**--generate**\] \[**--duration** *time*\] \[**--remove**\] *token* \[*password*\]**  
+Set, generate or remove a temporary password.
 
-### Offline Configuration
+## Offline Configuration
 
-**enable_offline *token***
-:   Enable offline usage (caching) of token.
+**enable_offline *token***  
+Enable offline usage (caching) of token.
 
-**disable_offline *token***
-:   Disable offline usage (caching) of token.
+**disable_offline *token***  
+Disable offline usage (caching) of token.
 
-**offline_expiry *token* *expiry***
-:   Set offline expiry timeout.
+**offline_expiry *token* *expiry***  
+Set offline expiry timeout.
 
-**offline_unused_expiry *token* *expiry***
-:   Set offline unused expiry timeout.
+**offline_unused_expiry *token* *expiry***  
+Set offline unused expiry timeout.
 
-### Session
+## Session
 
-**enable_session_keep *token***
-:   Enable keeping of login session (e.g. on shutdown).
+**enable_session_keep *token***  
+Enable keeping of login session (e.g. on shutdown).
 
-**disable_session_keep *token***
-:   Disable keeping of login session.
+**disable_session_keep *token***  
+Disable keeping of login session.
 
-### Auth Script
+## Auth Script
 
-**auth_script *token* *script***
-:   Change token authorization script.
+**auth_script *token* *script***  
+Change token authorization script.
 
-**enable_auth_script *token***
-:   Enable token authorization script.
+**enable_auth_script *token***  
+Enable token authorization script.
 
-**disable_auth_script *token***
-:   Disable token authorization script.
+**disable_auth_script *token***  
+Disable token authorization script.
 
-### Deploy
+## Deploy
 
-Hardware tokens must be deployed before use. Deployment configures the physical device and registers the token in OTPme. Use **--type** before the command to specify the token type.
+Hardware tokens must be deployed before use. Deployment configures the
+physical device and registers the token in OTPme. Use **--type** before
+the command to specify the token type.
 
-**deploy **--list-token-types****
-:   List deployable token types.
+**deploy **--list-token-types****  
+List deployable token types.
 
-### Deploy - FIDO2 and U2F
+## Deploy - FIDO2 and U2F
 
-**deploy [**-d**] [**-r**] *token***
-:   Register a FIDO2 or U2F hardware key. The device must be connected and will prompt for a touch.
+**deploy \[**-d**\] \[**-r**\] *token***  
+Register a FIDO2 or U2F hardware key. The device must be connected and
+will prompt for a touch.
 
-**-r**
-:   Replace existing token (keep UUID).
+**-r**  
+Replace existing token (keep UUID).
 
-**-d**
-:   Enable debug output.
+**-d**  
+Enable debug output.
 
-### Deploy - YubiKey HMAC-SHA1
+## Deploy - YubiKey HMAC-SHA1
 
-**deploy [**-d**] [**-r**] [**-n**] [**-s** *slot*] [*token*]**
-:   Write HMAC-SHA1 configuration to a YubiKey slot.
+**deploy \[**-d**\] \[**-r**\] \[**-n**\] \[**-s** *slot*\] \[*token*\]**  
+Write HMAC-SHA1 configuration to a YubiKey slot.
 
-**-s *slot***
-:   Write configuration to the given YubiKey slot.
+**-s *slot***  
+Write configuration to the given YubiKey slot.
 
-**-n**
-:   Do not reconfigure the YubiKey hardware — only register token data in OTPme.
+**-n**  
+Do not reconfigure the YubiKey hardware — only register token data in
+OTPme.
 
-**-r**
-:   Replace existing token (keep UUID).
+**-r**  
+Replace existing token (keep UUID).
 
-**-d**
-:   Enable debug output.
+**-d**  
+Enable debug output.
 
-### Deploy - YubiKey OATH HOTP
+## Deploy - YubiKey OATH HOTP
 
-**deploy [**-d**] [**-r**] [**-s** *slot*] [*token*]**
-:   Write OATH HOTP configuration to a YubiKey slot.
+**deploy \[**-d**\] \[**-r**\] \[**-s** *slot*\] \[*token*\]**  
+Write OATH HOTP configuration to a YubiKey slot.
 
-**-s *slot***
-:   Write configuration to the given YubiKey slot.
+**-s *slot***  
+Write configuration to the given YubiKey slot.
 
-**-r**
-:   Replace existing token (keep UUID).
+**-r**  
+Replace existing token (keep UUID).
 
-**-d**
-:   Enable debug output.
+**-d**  
+Enable debug output.
 
-### Deploy - YubiKey GPG Applet
+## Deploy - YubiKey GPG Applet
 
-**deploy [**-d**] [**-r**] [**-n**] [**--backup** *file*] [**--restore** *file*] [*token*]**
-:   Initialize the GPG applet on a YubiKey and generate RSA keys. Prompts for real name, email, PIN and Admin PIN. Default backup path: */dev/shm/<username>.gpg*.
+**deploy \[**-d**\] \[**-r**\] \[**-n**\] \[**--backup** *file*\] \[**--restore** *file*\] \[*token*\]**  
+Initialize the GPG applet on a YubiKey and generate RSA keys. Prompts
+for real name, email, PIN and Admin PIN. Default backup path:
+*/dev/shm/\<username\>.gpg*.
 
-**--backup *file***
-:   Write GPG backup to *file*.
+**--backup *file***  
+Write GPG backup to *file*.
 
-**--restore *file***
-:   Restore GPG configuration from backup *file*.
+**--restore *file***  
+Restore GPG configuration from backup *file*.
 
-**-n**
-:   Do not initialize the GPG applet — only register token data in OTPme.
+**-n**  
+Do not initialize the GPG applet — only register token data in OTPme.
 
-**-r**
-:   Replace existing token (keep UUID).
+**-r**  
+Replace existing token (keep UUID).
 
-**-d**
-:   Enable debug output.
+**-d**  
+Enable debug output.
 
-### Deploy - YubiKey PIV Applet
+## Deploy - YubiKey PIV Applet
 
-**deploy [**-d**] [**-r**] [**-n**] [**--key-len** *bits*] [**--backup** *file*] [**--restore** *file*] [**--restore-from-server**] [**--backup-key-file** *file*] [**--add-user-key**] [*token*]**
-:   Initialize the PIV applet on a YubiKey and generate an RSA key. Default backup path: */dev/shm/<username>_<token>.pem*.
+**deploy \[**-d**\] \[**-r**\] \[**-n**\] \[**--key-len** *bits*\] \[**--backup** *file*\] \[**--restore** *file*\] \[**--restore-from-server**\] \[**--backup-key-file** *file*\] \[**--add-user-key**\] \[*token*\]**  
+Initialize the PIV applet on a YubiKey and generate an RSA key. Default
+backup path: */dev/shm/\<username\>\_\<token\>.pem*.
 
-**--key-len *bits***
-:   Generate RSA key with the given key length in bits.
+**--key-len *bits***  
+Generate RSA key with the given key length in bits.
 
-**--backup *file***
-:   Write key backup to *file*.
+**--backup *file***  
+Write key backup to *file*.
 
-**--restore *file***
-:   Restore key from backup *file*.
+**--restore *file***  
+Restore key from backup *file*.
 
-**--restore-from-server**
-:   Restore key from an existing token on the server. Requires **--backup-key-file**.
+**--restore-from-server**  
+Restore key from an existing token on the server. Requires
+**--backup-key-file**.
 
-**--backup-key-file *file***
-:   Backup key file used to decrypt the private key backup when restoring from server.
+**--backup-key-file *file***  
+Backup key file used to decrypt the private key backup when restoring
+from server.
 
-**--add-user-key**
-:   Register the token's RSA public key as the user's public key.
+**--add-user-key**  
+Register the token's RSA public key as the user's public key.
 
-**-n**
-:   Do not initialize the PIV applet — only register token data in OTPme.
+**-n**  
+Do not initialize the PIV applet — only register token data in OTPme.
 
-**-r**
-:   Replace existing token (keep UUID).
+**-r**  
+Replace existing token (keep UUID).
 
-**-d**
-:   Enable debug output.
+**-d**  
+Enable debug output.
 
-### Dynamic Groups
+## Dynamic Groups
 
-**add_dynamic_group *token* *group***
-:   Add a dynamic group to the token.
+**add_dynamic_group *token* *group***  
+Add a dynamic group to the token.
 
-**remove_dynamic_group *token* *group***
-:   Remove a dynamic group from the token.
+**remove_dynamic_group *token* *group***  
+Remove a dynamic group from the token.
 
-**list_dynamic_groups *token***
-:   List dynamic groups of the token.
+**list_dynamic_groups *token***  
+List dynamic groups of the token.
 
-### Listing
+## Listing
 
-**list_roles [**-r**] *token***
-:   List roles assigned to the token. Use **-r** for recursive listing.
+**list_roles \[**-r**\] *token***  
+List roles assigned to the token. Use **-r** for recursive listing.
 
-**list_hosts *token***
-:   List hosts this token is assigned to.
+**list_hosts *token***  
+List hosts this token is assigned to.
 
-**list_nodes *token***
-:   List nodes this token is assigned to.
+**list_nodes *token***  
+List nodes this token is assigned to.
 
-**list_groups *token***
-:   List groups this token is assigned to.
+**list_groups *token***  
+List groups this token is assigned to.
 
-**list_accessgroups *token***
-:   List access groups this token is assigned to.
+**list_accessgroups *token***  
+List access groups this token is assigned to.
 
-### Policy Management
+## Policy Management
 
-**add_policy *token* *policy***
-:   Attach a policy to the token.
+**add_policy *token* *policy***  
+Attach a policy to the token.
 
-**remove_policy *token* *policy***
-:   Remove a policy from the token.
+**remove_policy *token* *policy***  
+Remove a policy from the token.
 
-**list_policies *token***
-:   List policies attached to the token.
+**list_policies *token***  
+List policies attached to the token.
 
-### ACL Management
+## ACL Management
 
-**add_acl *token* *owner_type* *owner* *acl***
-:   Add an access control entry.
+**add_acl *token* *owner_type* *owner* *acl***  
+Add an access control entry.
 
-**del_acl *token* *acl***
-:   Remove an access control entry.
+**del_acl *token* *acl***  
+Remove an access control entry.
 
-**show_acls *token***
-:   Display all ACLs for the token.
+**show_acls *token***  
+Display all ACLs for the token.
 
-**enable_acl_inheritance *token***
-:   Enable ACL inheritance from parent objects.
+**enable_acl_inheritance *token***  
+Enable ACL inheritance from parent objects.
 
-**disable_acl_inheritance *token***
-:   Disable ACL inheritance.
+**disable_acl_inheritance *token***  
+Disable ACL inheritance.
 
-### Import/Export
+## Import/Export
 
-**export *token***
-:   Export token configuration to stdout.
+**export *token***  
+Export token configuration to stdout.
 
-**remove_orphans *token***
-:   Remove orphaned object references.
+**remove_orphans *token***  
+Remove orphaned object references.
 
-## TOKEN TYPE COMMANDS
+# TOKEN TYPE COMMANDS
 
 The following commands require **--type** before the command.
 
-### HOTP / TOTP / mOTP (OTP Tokens)
+## HOTP / TOTP / mOTP (OTP Tokens)
 
-**secret *token* [*secret*]**
-:   Change token secret.
+**secret *token* \[*secret*\]**  
+Change token secret.
 
-**show_secret *token***
-:   Show token secret.
+**show_secret *token***  
+Show token secret.
 
-**pin [**--generate**] *token* [*pin*]**
-:   Change token PIN.
+**pin \[**--generate**\] *token* \[*pin*\]**  
+Change token PIN.
 
-**show_pin *token***
-:   Show token PIN.
+**show_pin *token***  
+Show token PIN.
 
-**enable_pin *token***
-:   Enable token PIN. (HOTP/TOTP only)
+**enable_pin *token***  
+Enable token PIN. (HOTP/TOTP only)
 
-**disable_pin *token***
-:   Disable token PIN. (HOTP/TOTP only)
+**disable_pin *token***  
+Disable token PIN. (HOTP/TOTP only)
 
-**gen *token***
-:   Generate token OTP.
+**gen *token***  
+Generate token OTP.
 
-**gen_mschap *token***
-:   Generate MSCHAP challenge/response from token OTP.
+**gen_mschap *token***  
+Generate MSCHAP challenge/response from token OTP.
 
-**gen_qrcode *token***
-:   Generate QR code for token configuration. (HOTP/TOTP only)
+**gen_qrcode *token***  
+Generate QR code for token configuration. (HOTP/TOTP only)
 
-**mode *token* *mode***
-:   Change token operation mode. (HOTP/TOTP only)
+**mode *token* *mode***  
+Change token operation mode. (HOTP/TOTP only)
 
-### HOTP Specific
+## HOTP Specific
 
-**counter_check_range *token* [*range*]**
-:   Change OTP counter check range.
+**counter_check_range *token* \[*range*\]**  
+Change OTP counter check range.
 
-**resync *token* [*otp*]**
-:   Resync counter-based token.
+**resync *token* \[*otp*\]**  
+Resync counter-based token.
 
-**get_token_counter *token***
-:   Get token counter value.
+**get_token_counter *token***  
+Get token counter value.
 
-### mOTP Specific
+## mOTP Specific
 
-**validity_time *token* [*time*]**
-:   Change OTP validity time.
+**validity_time *token* \[*time*\]**  
+Change OTP validity time.
 
-**timedrift_tolerance *token* [*tolerance*]**
-:   Change OTP timedrift tolerance.
+**timedrift_tolerance *token* \[*tolerance*\]**  
+Change OTP timedrift tolerance.
 
-### Password Token
+## Password Token
 
-**password [**--generate**] *token* [*password*]**
-:   Change token password.
+**password \[**--generate**\] *token* \[*password*\]**  
+Change token password.
 
-**2f_token *token* *second_factor_token***
-:   Change second factor token.
+**2f_token *token* *second_factor_token***  
+Change second factor token.
 
-**enable_2f *token***
-:   Enable second factor token.
+**enable_2f *token***  
+Enable second factor token.
 
-**disable_2f *token***
-:   Disable second factor token.
+**disable_2f *token***  
+Disable second factor token.
 
-**enable_mschap *token***
-:   Enable MSCHAP authentication.
+**enable_mschap *token***  
+Enable MSCHAP authentication.
 
-**disable_mschap *token***
-:   Disable MSCHAP authentication.
+**disable_mschap *token***  
+Disable MSCHAP authentication.
 
-**remove_nt_hash *token***
-:   Remove NT hash used for MSCHAP authentication.
+**remove_nt_hash *token***  
+Remove NT hash used for MSCHAP authentication.
 
-**dump_pass_hash *token***
-:   Dump password hash.
+**dump_pass_hash *token***  
+Dump password hash.
 
-**set_pass_hash *token* *file***
-:   Set password hash from file.
+**set_pass_hash *token* *file***  
+Set password hash from file.
 
-**upgrade_pass_hash *token* [*hash_type*] [*args*]**
-:   Upgrade password hash.
+**upgrade_pass_hash *token* \[*hash_type*\] \[*args*\]**  
+Upgrade password hash.
 
-### SSH Token
+## SSH Token
 
-**ssh_public_key *token* [*ssh_public_key*]**
-:   Change token SSH public key.
+**ssh_public_key *token* \[*ssh_public_key*\]**  
+Change token SSH public key.
 
-**card_type *token* [*card_type*]**
-:   Set card type of SSH token (e.g. gpg).
+**card_type *token* \[*card_type*\]**  
+Set card type of SSH token (e.g. gpg).
 
-**key_type *token* *key_type***
-:   Set SSH key type (e.g. rsa).
+**key_type *token* *key_type***  
+Set SSH key type (e.g. rsa).
 
-**password [**--generate**] *token* [*password*]**
-:   Change token password.
+**password \[**--generate**\] *token* \[*password*\]**  
+Change token password.
 
-**2f_token *token* *second_factor_token***
-:   Change second factor token.
+**2f_token *token* *second_factor_token***  
+Change second factor token.
 
-**enable_2f / disable_2f *token***
-:   Enable/disable second factor token.
+**enable_2f / disable_2f *token***  
+Enable/disable second factor token.
 
-SSH tokens also support signature commands: **sign**, **resign**, **verify_sign**, **get_sign**, **add_sign**, **del_sign**.
+SSH tokens also support signature commands: **sign**, **resign**,
+**verify_sign**, **get_sign**, **add_sign**, **del_sign**.
 
-### Link Token
+## Link Token
 
-**add *token* *destination_token***
-:   Add a link token pointing to destination_token.
+**add *token* *destination_token***  
+Add a link token pointing to destination_token.
 
-### YubiKey HMAC
+## YubiKey HMAC
 
-**otp_format *token* [*format*]**
-:   Change token OTP format.
+**otp_format *token* \[*format*\]**  
+Change token OTP format.
 
-**validity_time *token* [*time*]**
-:   Change OTP validity time.
+**validity_time *token* \[*time*\]**  
+Change OTP validity time.
 
-**timedrift_tolerance *token* [*tolerance*]**
-:   Change OTP timedrift tolerance.
+**timedrift_tolerance *token* \[*tolerance*\]**  
+Change OTP timedrift tolerance.
 
-**mode *token* *mode***
-:   Change token operation mode.
+**mode *token* *mode***  
+Change token operation mode.
 
-## OPTIONS
+# OPTIONS
 
-**--type *TYPE***
-:   Specify the token type. Required for the **add** command and for all type-specific commands. Must be placed before the command.
+**--type *TYPE***  
+Specify the token type. Required for the **add** command and for all
+type-specific commands. Must be placed before the command.
 
-### Display Options
+## Display Options
 
-**-a**
-:   Show all tokens.
+**-a**  
+Show all tokens.
 
-**-z *SIZE***
-:   Limit output size.
+**-z *SIZE***  
+Limit output size.
 
-**--fields *FIELD1,FIELD2***
-:   Display only specified fields.
+**--fields *FIELD1,FIELD2***  
+Display only specified fields.
 
-**--role-limit *N***
-:   Limit number of roles shown.
+**--role-limit *N***  
+Limit number of roles shown.
 
-**--policy-limit *N***
-:   Limit number of policies shown.
+**--policy-limit *N***  
+Limit number of policies shown.
 
-### General Options
+## General Options
 
-**-r**
-:   Replace existing token and keep its UUID (for add, move, deploy).
+**-r**  
+Replace existing token and keep its UUID (for add, move, deploy).
 
-**-u**
-:   Disable if unused for the given time (auto_disable).
+**-u**  
+Disable if unused for the given time (auto_disable).
 
-Global options are available for all commands. See
-[otpme(1)](otpme.md)
-for details.
+Global options are available for all commands. See **otpme**(1) for
+details.
 
-## CONFIG PARAMETERS
+# CONFIG PARAMETERS
 
-Configuration parameters can be set with the **config** command und displayed with **show_config**.
-For a complete description of all available parameters and their applicable object types, see
-[otpme(7)](otpme.7.md).
+Configuration parameters can be set with the **config** command und
+displayed with **show_config**. For a complete description of all
+available parameters and their applicable object types, see
+**otpme**(7).
 
-## EXAMPLES
+# EXAMPLES
 
-**otpme-token --type totp add alice/totp**
-:   Create a TOTP token for user alice
+**otpme-token --type totp add alice/totp**  
+Create a TOTP token for user alice
 
-**otpme-token --type fido2 deploy alice/fido2**
-:   Deploy a FIDO2 token
+**otpme-token --type fido2 deploy alice/fido2**  
+Deploy a FIDO2 token
 
-**otpme-token test alice/totp**
-:   Test token authentication
+**otpme-token test alice/totp**  
+Test token authentication
 
-**otpme-token --type link add root/admin_link alice/login**
-:   Create a link token
+**otpme-token --type link add root/admin_link alice/login**  
+Create a link token
 
-## FILES
+# FILES
 
-*/var/lib/otpme/*
-:   OTPme data directory
+*/var/lib/otpme/*  
+OTPme data directory
 
-## SEE ALSO
+# SEE ALSO
 
-[otpme(1)](otpme.md),
-[otpme(7)](otpme.7.md),
-[otpme-user(1)](otpme-user.md),
-[otpme-role(1)](otpme-role.md),
-[otpme-policy(1)](otpme-policy.md),
-[otpme-accessgroup(1)](otpme-accessgroup.md)
+**otpme**(1), **otpme**(7), **otpme-user**(1), **otpme-role**(1),
+**otpme-policy**(1), **otpme-accessgroup**(1)
 
-## AUTHOR
+# AUTHOR
 
-the2nd <the2nd@otpme.org>
+the2nd \<the2nd@otpme.org\>
 
-## NOTE
+# NOTE
 
 This manual page was created with AI assistance.
 
-## COPYRIGHT
+# COPYRIGHT
 
 Copyright © 2014-2025 the2nd. License: GPLv3
