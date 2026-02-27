@@ -45,7 +45,7 @@ class LoginHandler(object):
         return agent_conn
 
     def login(self, realm=None, site=None, username=None, password=None,
-        send_password=True, login_interface="tty", use_smartcard=False,
+        send_password="auto", login_interface="tty", use_smartcard=False,
         start_ssh_agent=False, use_ssh_agent="auto", password_method=None,
         ssh_agent_method=None, need_ssh_key_pass=False, change_user=False,
         endpoint=True, unlock=False, interactive=False, add_agent_session=None,

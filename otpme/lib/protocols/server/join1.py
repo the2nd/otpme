@@ -657,7 +657,7 @@ class OTPmeJoinP1(OTPmeServer1):
 
         if finish:
             # When finalizing the join process we need an JOTP.
-            if not jotp:
+            if not self.authenticated and not jotp:
                 msg = (_("Need JOTP to finalize join process."))
                 raise OTPmeException(msg)
 

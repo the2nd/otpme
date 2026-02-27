@@ -44,7 +44,7 @@ class PamHandler(object):
         self.password = None
         self.user_uuid = None
         self.offline_login = False
-        self.send_password = True
+        self.send_password = "auto"
         self.allow_null_passwords = False
         self.connect_timeout = 3
         self.connection_timeout = 30
@@ -192,10 +192,10 @@ class PamHandler(object):
             if arg == "nullok":
                 self.allow_null_passwords = True
             if arg == "send_password":
-                if val.lower() == "true":
-                    self.send_password = True
-                elif val.lower() == "false":
+                if val.lower() == "false":
                     self.send_password = False
+                elif val.lower() == "auto":
+                    self.send_password = "auto"
                 else:
                     log_msg = _("Ignoring unknown value for send_password: {value}", log=True)[1]
                     log_msg = log_msg.format(value=val)

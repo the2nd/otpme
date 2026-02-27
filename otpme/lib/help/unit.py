@@ -48,8 +48,8 @@ cmd_help = {
                 },
 
     'show_config'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit show_config {unit}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-unit show_config {unit} [parameter]'),
+                    'cmd'   :   '<|object|> [parameter]',
                     '_help' :   {
                                     'cmd'                   : _('Show unit\'s config parameters'),
                                 },
@@ -104,10 +104,11 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-unit config {unit} {param} [value]'),
-                    'cmd'   :   '<|object|> <parameter> [value]',
+                    '_cmd_usage_help' : _('Usage: otpme-unit config -d {unit} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: <|object|> <parameter> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to unit.'),
+                                    '-d'                    : _('Delete config parameter.'),
                                 },
                 },
 

@@ -102,16 +102,17 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-role config {role} {param} [value]'),
-                    'cmd'   :   '<|object|> <parameter> [value]',
+                    '_cmd_usage_help' : _('Usage: otpme-role config -d {role} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: <|object|> <parameter> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to role.'),
+                                    '-d'                    : _('Delete config parameter.'),
                                 },
                 },
 
     'show_config'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-role show_config {role}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-role show_config {role} [parameter]'),
+                    'cmd'   :   '<|object|> [parameter]',
                     '_help' :   {
                                     'cmd'                   : _('Show role config parameters'),
                                 },

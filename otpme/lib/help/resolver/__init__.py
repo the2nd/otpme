@@ -81,10 +81,11 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-resolver config {resolver} {param} [value]'),
-                    'cmd'   :   '<|object|> <parameter> [value]',
+                    '_cmd_usage_help' : _('Usage: otpme-resolver config -d {resolver} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: <|object|> <parameter> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to resolver.'),
+                                    '-d'                    : _('Delete config parameter.'),
                                 },
                 },
 

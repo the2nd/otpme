@@ -359,7 +359,7 @@ def register_config_parameters():
     #     delete child objects)
     #   - paranoid (Ask user for almost anything)
     valid_confirmation_polies = ['paranoid', 'normal', 'force']
-    def confirmation_policy_setter(confirmation_policy):
+    def confirmation_policy_setter(confirmation_policy, **kwargs):
         if confirmation_policy not in valid_confirmation_polies:
             msg = "Invalid confirmation policy: {policy}"
             msg = msg.format(policy=confirmation_policy)
@@ -2244,7 +2244,7 @@ class OTPmeObject(OTPmeBaseObject):
     #    return valid_config_params
 
     @config_cache.cache_method()
-    def get_config_parameter(self, parameter: str):
+    def get_config_parameter(self, parameter: str, recursive: bool=True):
         """ Get config parameter. """
         # Try to get config parameter.
         parameter_data = config.get_config_parameter(parameter)
@@ -2253,13 +2253,6 @@ class OTPmeObject(OTPmeBaseObject):
             para_getter = parameter_data['getter']
         except:
             para_getter = None
-        # Try to get the default value.
-        try:
-            default_value = parameter_data['default']
-            if para_getter:
-                default_value = para_getter(default_value)
-        except:
-            default_value = None
 
         # If we have an authenticated user we have to check from users token on
         # because user/token settings are preferred over object settings.
@@ -2268,6 +2261,7 @@ class OTPmeObject(OTPmeBaseObject):
         else:
             parent_object = self
 
+        value = None
         while True:
             try:
                 value = parent_object.config_params[parameter]
@@ -2279,12 +2273,12 @@ class OTPmeObject(OTPmeBaseObject):
             if value:
                 break
 
+            if not recursive:
+                break
+
             parent_object = parent_object.get_parent_object(run_policies=False)
             if not parent_object:
                 break
-
-        if value is None:
-            value = default_value
 
         return value
 
@@ -2294,16 +2288,48 @@ class OTPmeObject(OTPmeBaseObject):
         self,
         parameter: str,
         value: Union[str,int,float,None]=None,
+        delete: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
         """ Set config parameter. """
+        # Delete config parameter.
+        if delete:
+            try:
+                self.config_params.pop(parameter)
+            except KeyError:
+                msg = _("Config parameter not set.")
+                return callback.error(msg)
+            config_cache.invalidate()
+            return self._cache(callback=callback)
+
         # Try to get config parameter.
         try:
             parameter_data = config.get_config_parameter(parameter)
         except NotRegistered:
             msg = _("Invalid parameter: {obj}: {param}")
             msg = msg.format(obj=self, param=parameter)
+            return callback.error(msg)
+        try:
+            warn_if_exists = parameter_data['warn_if_exists']
+        except KeyError:
+            warn_if_exists = False
+        if warn_if_exists:
+            if parameter in self.config_params:
+                msg = _("Warning, parameter already set. Override?: ")
+                answer = callback.ask(msg)
+                if answer.lower() != "y":
+                    return callback.abort()
+        if value is None:
+            # Try to get the default value.
+            try:
+                value = parameter_data['default']
+                if para_getter:
+                    value = para_getter(value)
+            except:
+                pass
+        if value is None:
+            msg = _("Cannot determine default value.")
             return callback.error(msg)
         # Get value type.
         value_type = parameter_data['type']
@@ -2313,16 +2339,10 @@ class OTPmeObject(OTPmeBaseObject):
         except:
             para_setter = None
 
-        # Delete config parameter.
-        if value is None:
-            self.config_params.pop(parameter)
-            config_cache.invalidate()
-            return self._cache(callback=callback)
-
         # Resolve value.
         if para_setter:
             try:
-                value = para_setter(value)
+                value = para_setter(value, config_object=self, callback=callback)
             except Exception as e:
                 msg = _("Failed to set config parameter: {e}")
                 msg = msg.format(e=e)
@@ -8517,9 +8537,30 @@ class OTPmeObject(OTPmeBaseObject):
 
     def show_config_parameters(
         self,
+        parameter: str=None,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        if parameter is not None:
+            try:
+                para_data = config.get_config_parameter(parameter)
+            except NotRegistered:
+                msg = _("Unknown parameter: {parameter}")
+                msg = msg.format(parameter=parameter)
+                return callback.error(msg)
+            try:
+                para_getter = para_data['getter']
+            except:
+                para_getter = None
+            try:
+                value = self.config_params[parameter]
+            except KeyError:
+                msg = _("Parameter not set: {parameter}")
+                msg = msg.format(parameter=parameter)
+                return callback.error(msg)
+            if para_getter:
+                value = para_getter(value)
+            return callback.ok(value)
         config_params = {}
         for para in sorted(self.config_params):
             try:

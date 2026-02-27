@@ -49,7 +49,7 @@ class YubikeyHotpClientHandler(object):
         pre_deploy_args = {}
         return pre_deploy_args
 
-    def handle_deploy(self, command_handler, no_token_write=False, pre_deploy_result=None, **kwargs):
+    def handle_deploy(self, command_handler, pre_deploy_result=None, **kwargs):
         # Get command syntax.
         try:
             command_syntax = command_map['token']['yubikey_hotp']['deploy']['cmd']
@@ -122,12 +122,8 @@ class YubikeyHotpClientHandler(object):
         deploy_args['secret_encoding'] = "hex"
         deploy_args['pin'] = pin
 
-        if no_token_write:
-            return deploy_args
-
         if not config.force:
-            message(_("WARNING!!!!!!! You will lose any key/password "
-                    "configured for the given slot!!!"))
+            message(_("WARNING!!!!!!! You will lose any key/password configured for the given slot!!!"))
             msg = _("Write HOTP secret to slot '{slot}'?: ")
             msg = msg.format(slot=slot)
             ask = cli.user_input(msg)

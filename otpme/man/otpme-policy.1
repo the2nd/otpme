@@ -75,11 +75,11 @@ Rename a policy.
 Move policy to a different unit.
 .SS Policy Configuration
 .TP
-.B show_config \fIpolicy\fR
+.B show_config \fIpolicy\fR [\fIparameter\fR]
 Show all policy configuration parameters.
 .TP
-.B config \fIpolicy\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set or display a configuration parameter.
+.B config \fR[\fB\-d\fR] \fIpolicy\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter. Use \fB\-d\fR to delete (reset to default).
 .TP
 .B description \fIpolicy\fR \fR[\fIdescription\fR]
 Set policy description.
@@ -358,6 +358,10 @@ Limit number of policies shown.
 Global options are available for all commands. See
 .BR otpme (1)
 for details.
+.SH CONFIG PARAMETERS
+Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
+For a complete description of all available parameters and their applicable object types, see
+.BR otpme (7).
 .SH EXAMPLES
 .SS Password Policy
 .TP

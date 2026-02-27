@@ -307,16 +307,17 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-user config {user} {param} [value]'),
-                    'cmd'   :   '<|object|> <parameter> [value]',
+                    '_cmd_usage_help' : _('Usage: otpme-user config -d {user} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: <|object|> <parameter> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to user.'),
+                                    '-d'                    : _('Delete config parameter.'),
                                 },
                 },
 
     'show_config'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-user show_config {user}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-user show_config {user} [parameter]'),
+                    'cmd'   :   '<|object|> [parameter]',
                     '_help' :   {
                                     'cmd'                   : _('Show user config parameters'),
                                 },

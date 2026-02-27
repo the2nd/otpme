@@ -82,10 +82,10 @@ Move token to another user. Use \fB\-r\fR to replace existing token keeping its 
 Re-index the object to fix potential index problems.
 .SS Token Configuration
 .TP
-.B config \fItoken\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set or display a configuration parameter.
+.B config \fR[\fB\-d\fR] \fItoken\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter. Use \fB\-d\fR to delete (reset to default).
 .TP
-.B show_config \fR[\fItoken\fR]
+.B show_config \fItoken\fR [\fIparameter\fR]
 Show all configuration parameters.
 .TP
 .B auto_disable \fR[\fB\-u\fR] \fItoken\fR \fItime\fR
@@ -130,9 +130,99 @@ Enable token authorization script.
 .B disable_auth_script \fItoken\fR
 Disable token authorization script.
 .SS Deploy
+Hardware tokens must be deployed before use. Deployment configures the physical device and registers the token in OTPme. Use \fB\-\-type\fR before the command to specify the token type.
 .TP
-.B deploy \fR[\fIoptions\fR] \fItoken\fR
-Deploy a hardware token (fido2, u2f, yubikey_hmac, yubikey_hotp, yubikey_gpg). Options vary by token type.
+.B deploy \fB\-\-list\-token\-types\fR
+List deployable token types.
+.SS Deploy \- FIDO2 and U2F
+.TP
+.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] \fItoken\fR
+Register a FIDO2 or U2F hardware key. The device must be connected and will prompt for a touch.
+.TP
+.B \-r
+Replace existing token (keep UUID).
+.TP
+.B \-d
+Enable debug output.
+.SS Deploy \- YubiKey HMAC\-SHA1
+.TP
+.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-n\fR] [\fB\-s\fR \fIslot\fR] [\fItoken\fR]
+Write HMAC\-SHA1 configuration to a YubiKey slot.
+.TP
+.B \-s \fIslot\fR
+Write configuration to the given YubiKey slot.
+.TP
+.B \-n
+Do not reconfigure the YubiKey hardware — only register token data in OTPme.
+.TP
+.B \-r
+Replace existing token (keep UUID).
+.TP
+.B \-d
+Enable debug output.
+.SS Deploy \- YubiKey OATH HOTP
+.TP
+.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-s\fR \fIslot\fR] [\fItoken\fR]
+Write OATH HOTP configuration to a YubiKey slot.
+.TP
+.B \-s \fIslot\fR
+Write configuration to the given YubiKey slot.
+.TP
+.B \-r
+Replace existing token (keep UUID).
+.TP
+.B \-d
+Enable debug output.
+.SS Deploy \- YubiKey GPG Applet
+.TP
+.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-n\fR] [\fB\-\-backup\fR \fIfile\fR] [\fB\-\-restore\fR \fIfile\fR] [\fItoken\fR]
+Initialize the GPG applet on a YubiKey and generate RSA keys. Prompts for real name, email, PIN and Admin PIN. Default backup path: \fI/dev/shm/<username>.gpg\fR.
+.TP
+.B \-\-backup \fIfile\fR
+Write GPG backup to \fIfile\fR.
+.TP
+.B \-\-restore \fIfile\fR
+Restore GPG configuration from backup \fIfile\fR.
+.TP
+.B \-n
+Do not initialize the GPG applet — only register token data in OTPme.
+.TP
+.B \-r
+Replace existing token (keep UUID).
+.TP
+.B \-d
+Enable debug output.
+.SS Deploy \- YubiKey PIV Applet
+.TP
+.B deploy \fR[\fB\-d\fR] [\fB\-r\fR] [\fB\-n\fR] [\fB\-\-key\-len\fR \fIbits\fR] [\fB\-\-backup\fR \fIfile\fR] [\fB\-\-restore\fR \fIfile\fR] [\fB\-\-restore\-from\-server\fR] [\fB\-\-backup\-key\-file\fR \fIfile\fR] [\fB\-\-add\-user\-key\fR] [\fItoken\fR]
+Initialize the PIV applet on a YubiKey and generate an RSA key. Default backup path: \fI/dev/shm/<username>_<token>.pem\fR.
+.TP
+.B \-\-key\-len \fIbits\fR
+Generate RSA key with the given key length in bits.
+.TP
+.B \-\-backup \fIfile\fR
+Write key backup to \fIfile\fR.
+.TP
+.B \-\-restore \fIfile\fR
+Restore key from backup \fIfile\fR.
+.TP
+.B \-\-restore\-from\-server
+Restore key from an existing token on the server. Requires \fB\-\-backup\-key\-file\fR.
+.TP
+.B \-\-backup\-key\-file \fIfile\fR
+Backup key file used to decrypt the private key backup when restoring from server.
+.TP
+.B \-\-add\-user\-key
+Register the token's RSA public key as the user's public key.
+.TP
+.B \-n
+Do not initialize the PIV applet — only register token data in OTPme.
+.TP
+.B \-r
+Replace existing token (keep UUID).
+.TP
+.B \-d
+Enable debug output.
 .SS Dynamic Groups
 .TP
 .B add_dynamic_group \fItoken\fR \fIgroup\fR
@@ -342,6 +432,10 @@ Disable if unused for the given time (auto_disable).
 Global options are available for all commands. See
 .BR otpme (1)
 for details.
+.SH CONFIG PARAMETERS
+Configuration parameters can be set with the \fBconfig\fR command und displayed with \fBshow_config\fR.
+For a complete description of all available parameters and their applicable object types, see
+.BR otpme (7).
 .SH EXAMPLES
 .TP
 .B otpme-token \-\-type totp add alice/totp

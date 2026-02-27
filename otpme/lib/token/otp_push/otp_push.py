@@ -231,7 +231,7 @@ def register_config_params():
                     'site',
                     'unit',
                 ]
-    def script_setter(script_path):
+    def script_setter(script_path, **kwargs):
         result = backend.search(object_type="script",
                                 attribute="rel_path",
                                 value=script_path,
@@ -303,6 +303,7 @@ class OtppushToken(Token):
         self.push_token = None
         self.allow_offline = None
         self.password_hash = None
+        self.send_password = True
         #self.valid_modes = [ 'mode1', 'mode2']
         self.mschap_enabled = False
 

@@ -145,6 +145,7 @@ class ScriptToken(Token):
         self.auth_script_enabled = None
         self.allow_offline = None
         self.need_password = True
+        self.send_password = True
 
     def _get_object_config(self):
         """ Merge token config with config from parent class. """

@@ -755,6 +755,15 @@ class MessageQueue(object):
                 log_msg = log_msg.format(queue_name=self.queue_name, e=e)
                 self.logger.critical(log_msg)
                 raise
+            queue_path = f"/dev/mqueue{self.queue_name}"
+            uid = pwd.getpwnam(config.user).pw_uid
+            gid = grp.getgrnam(config.group).gr_gid
+            try:
+                os.chown(queue_path, uid, gid)
+            except FileNotFoundError:
+                pass
+            except PermissionError:
+                pass
             self._queue = queue
         return self._queue
 

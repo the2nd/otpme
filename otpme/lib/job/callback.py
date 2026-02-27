@@ -31,6 +31,7 @@ from otpme.lib.protocols.utils import move_objects
 from otpme.lib.protocols.utils import gen_share_key
 from otpme.lib.protocols.utils import gen_user_keys
 from otpme.lib.protocols.utils import send_keepalive
+from otpme.lib.protocols.utils import gen_backup_rsa_key
 from otpme.lib.protocols.utils import reencrypt_share_key
 from otpme.lib.protocols.utils import create_remote_job
 from otpme.lib.protocols.utils import change_user_default_group
@@ -583,6 +584,24 @@ class JobCallback(object):
         message_id = self._gen_message_id()
         # Build message string.
         message = gen_share_key(message_id, key_len=key_len, key_mode=key_mode)
+        # Send message.
+        response = self._send_message(message_id, message, timeout=timeout)
+        return response
+
+    @handle_exception
+    def gen_backup_rsa_key(self, key_name, key_len, timeout=1):
+        """ Send message to client to generate privat/public backup keys. """
+        # If the callback is disabled we do not send anything to the client.
+        if not self.enabled:
+            raise OTPmeException(self.api_exception)
+        if self.api_mode:
+            raise OTPmeException(self.api_exception)
+        # Gen message ID.
+        message_id = self._gen_message_id()
+        # Build message string.
+        message = gen_backup_rsa_key(message_id,
+                                    key_name=key_name,
+                                    key_len=key_len)
         # Send message.
         response = self._send_message(message_id, message, timeout=timeout)
         return response

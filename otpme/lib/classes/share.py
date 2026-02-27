@@ -665,7 +665,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
-                    'args'              : ['parameter', 'value'],
+                    'args'              : ['parameter'],
+                    'oargs'             : ['value', 'delete'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -724,7 +725,7 @@ def register_config_parameters():
                         'site',
                         'unit',
                     ]
-    def script_setter(script_path):
+    def script_setter(script_path, **kwargs):
         result = backend.search(object_type="script",
                                 attribute="rel_path",
                                 value=script_path,
@@ -735,7 +736,7 @@ def register_config_parameters():
             raise UnknownObject(msg)
         script_uuid = result[0]
         return script_uuid
-    def script_getter(script_uuid):
+    def script_getter(script_uuid, **kwargs):
         result = backend.search(object_type="script",
                                 attribute="uuid",
                                 value=script_uuid,

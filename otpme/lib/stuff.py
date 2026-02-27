@@ -1505,20 +1505,21 @@ def get_key_script(username):
     # Get logger
     logger = config.logger
 
-    try:
-        offline_token = OfflineToken()
-        offline_token.set_user(user=username)
-        key_script_path, \
-        key_script_opts, \
-        key_script_uuid, \
-        key_script_signs, \
-        key_script = offline_token.get_script(script_id="key")
-        key_mode = offline_token.key_mode
-    except Exception as e:
-        msg, log_msg = _("Unable to get key script from offline tokens: {e}", log=True)
-        msg = msg.format(e=e)
-        log_msg = log_msg.format(e=e)
-        logger.debug(log_msg)
+    if not config.fetch_scripts:
+        try:
+            offline_token = OfflineToken()
+            offline_token.set_user(user=username)
+            key_script_path, \
+            key_script_opts, \
+            key_script_uuid, \
+            key_script_signs, \
+            key_script = offline_token.get_script(script_id="key")
+            key_mode = offline_token.key_mode
+        except Exception as e:
+            msg, log_msg = _("Unable to get key script from offline tokens: {e}", log=True)
+            msg = msg.format(e=e)
+            log_msg = log_msg.format(e=e)
+            logger.debug(log_msg)
 
     if not key_script:
         command_handler = CommandHandler(interactive=False)

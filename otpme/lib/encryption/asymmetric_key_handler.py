@@ -225,20 +225,21 @@ class AsymmetricKeyHandler(object):
             msg = ("Need 'key' or 'key_file'!")
             raise OTPmeException(msg)
         try:
-            self._private_key = self.load_private_key(key_data,
-                                                encoding=encoding,
-                                                password=password,
-                                                backend=backend)
-        except TypeError as e:
-            msg = _("Failed to load private key: {e}")
-            msg = msg.format(e=e)
-            raise TypeError(msg)
-        except ValueError as e:
             self._public_key = self.load_public_key(key_data,
                                                 encoding=encoding,
                                                 backend=backend)
+        except ValueError as e:
+            try:
+                self._private_key = self.load_private_key(key_data,
+                                                    encoding=encoding,
+                                                    password=password,
+                                                    backend=backend)
+            except TypeError as e:
+                msg = _("Failed to load private key: {e}")
+                msg = msg.format(e=e)
+                raise TypeError(msg)
         except Exception as e:
-            msg = _("Error loading private key: {e}")
+            msg = _("Error loading public key: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg)
 

@@ -177,7 +177,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
-                    'oargs'              : [],
+                    'oargs'              : ['parameter'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -668,7 +668,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
-                    'args'              : ['parameter', 'value'],
+                    'args'              : ['parameter'],
+                    'oargs'             : ['value', 'delete'],
                     'job_type'          : 'thread',
                     },
                 },

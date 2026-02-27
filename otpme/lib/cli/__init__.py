@@ -360,7 +360,7 @@ def get_password(prompt='Password: ', min_len=8):
     del(password2)
     return new_password
 
-def get_opts(command_syntax, command_line, command_args,
+def get_opts(command_syntax, command_line, command_args={},
     ignore_unknown_opts=False):
     """
     Parse given command line and get opts from it.

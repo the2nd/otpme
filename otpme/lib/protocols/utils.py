@@ -160,6 +160,16 @@ def auth_jwt(message_id, username, reason, challenge):
             }
     return request
 
+def gen_backup_rsa_key(message_id, key_name, key_len):
+    """ Sends request to client to generate private/public backup keys. """
+    request = {
+            'message_id'    : message_id,
+            'command'       : 'OTPME_GEN_BACKUP_RSA_KEY',
+            'key_name'      : key_name,
+            'key_len'       : key_len,
+            }
+    return request
+
 def gen_user_keys(message_id, username, key_len, stdin_pass=False):
     """ Sends request to client to generate users private/public keys. """
     request = {

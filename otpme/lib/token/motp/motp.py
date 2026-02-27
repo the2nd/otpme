@@ -333,6 +333,7 @@ class MotpToken(Token):
         self.keep_session = False
         self.pin_mandatory = True
         self.need_password = True
+        self.send_password = True
         #self.valid_otp_formats = [ '6digit" ]
         self.offset = 0
         self.validity_time = None

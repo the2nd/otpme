@@ -5817,11 +5817,16 @@ class CommandHandler(object):
         self.init()
 
         self.command_args['pre_deploy'] = True
-        pre_deploy_args = smartcard_client_handler.get_pre_deploy_args()
+        pre_deploy_args = smartcard_client_handler.get_pre_deploy_args(command_handler=self)
         self.command_args['pre_deploy_args'] = pre_deploy_args
         # Build command line for "user deploy_token" command
-        user_name = object_identifier.split("/")[0]
-        token_name = object_identifier.split("/")[1]
+        try:
+            user_name = object_identifier.split("/")[0]
+            token_name = object_identifier.split("/")[1]
+        except Exception:
+            msg = _("Invalid token path: {token_path}")
+            msg = msg.format(token_path=object_identifier)
+            raise OTPmeException(msg)
         # Get token type to deploy on server side.
         token_type = smartcard_client_handler.token_type
 

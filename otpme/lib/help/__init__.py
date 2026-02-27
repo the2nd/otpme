@@ -82,12 +82,14 @@ register_global_opt("-t <timeout>", "Connect timeout in seconds")
 register_global_opt("-tt <timeout>", "Connection timeout in seconds")
 register_global_opt("-c <config_file>", "Use alternative config file")
 register_global_opt("-f", "Do not ask any user questions")
+register_global_opt("-u <username>", "User used for authentication (e.g. realm join)")
 register_global_opt("--no-dns", "Do not resolve OTPme site address via DNS")
 register_global_opt("--use-dns", "Resolve OTPme site address via DNS")
 register_global_opt("--login-no-dns", "Do not resolve OTPme login point via DNS")
 register_global_opt("--login-use-dns", "Resolve OTPme login point via DNS")
 register_global_opt("--use-ssh-agent [y|n]", "Use ssh-agent for authentication")
 register_global_opt("--use-smartcard [y|n]", "Use smartcard for authentication")
+register_global_opt("--fetch-scripts", "Fetch scripts from server instead of using cached ones.")
 register_global_opt("--stdin-pass", "Read passphrase from stdin")
 register_global_opt("--socket", "Use mgmtd socket.")
 register_global_opt("--api", "Use direct API calls instead of connecting to a daemon")
@@ -479,6 +481,9 @@ def get_main_opts(clear_cache=False, mod_name=None):
         elif sys.argv[0] == "--login-no-dns":
             main_opts['login_use_dns'] = False
             sys.argv.pop(0)
+        elif sys.argv[0] == "--fetch-scripts":
+            main_opts['fetch_scripts'] = True
+            sys.argv.pop(0)
         elif sys.argv[0] == "--login-use-dns":
             main_opts['login_use_dns'] = True
             sys.argv.pop(0)
@@ -523,6 +528,11 @@ def get_main_opts(clear_cache=False, mod_name=None):
             sys.argv.pop(0)
             main_opts['force_logfile'] = str(sys.argv[0])
             sys.argv.pop(0)
+        elif sys.argv[0] == "-u":
+            sys.argv.pop(0)
+            username = sys.argv[0]
+            sys.argv.pop(0)
+            main_opts['login_user'] = username
         elif sys.argv[0] == "-t":
             sys.argv.pop(0)
             try:

@@ -358,6 +358,9 @@ class OTPmeConfig(object):
         self.register_config_var("password_hash_salt", str, None)
         # Cluster key used to secure cluster communication.
         self.register_config_var("cluster_key", str, None)
+        # Do sync on master node failover.
+        self.register_config_var("master_failover_sync", bool, False,
+                            config_file_parameter="MASTER_FAILOVER_SYNC")
         # Wait for objects to be written to cluster nodes.
         self.register_config_var("wait_for_cluster_writes", bool, True)
 
@@ -607,6 +610,8 @@ class OTPmeConfig(object):
                                     'agent_script',
                                     ]
         self.register_config_var("valid_private_signer_types", list, valid_private_signer_types)
+
+        self.register_config_var("fetch_scripts", bool, False)
 
         self.register_config_var("_login_user", str, None)
 
@@ -1379,7 +1384,7 @@ class OTPmeConfig(object):
 
     def register_config_parameter(self, name, ctype,
         default_value=None, valid_values=None, object_types=[],
-        getter=None, setter=None):
+        getter=None, setter=None, warn_if_exists=False):
         """ Register config parameter. """
         if name in self.valid_config_params:
             msg = _("Config parameter already registered: {name}")
@@ -1392,6 +1397,7 @@ class OTPmeConfig(object):
                                             'object_types'  : object_types,
                                             'getter'        : getter,
                                             'setter'        : setter,
+                                            'warn_if_exists': warn_if_exists,
                                         }
     def get_config_parameter(self, name):
         try:

@@ -322,6 +322,7 @@ class YubikeyhmacToken(Token):
         self.hmac_challenge = None
         self.slot = DEFAULT_SLOT
         self.need_password = True
+        self.send_password = True
         self.offline_pinnable = True
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
         self.supported_hardware_tokens = [ 'yubikey_hmac' ]

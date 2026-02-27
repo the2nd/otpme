@@ -48,8 +48,8 @@ cmd_help = {
                 },
 
     'show_config'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-site show_config {site}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-site show_config {site} [parameter]'),
+                    'cmd'   :   '<|object|> [parameter]',
                     '_help' :   {
                                     'cmd'                   : _('Show site\'s config parameters'),
                                 },
@@ -112,10 +112,11 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-site config {site} {param} [value]'),
-                    'cmd'   :   '<|object|> <parameter> [value]',
+                    '_cmd_usage_help' : _('Usage: otpme-site config -d {site} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: <|object|> <parameter> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to site.'),
+                                    '-d'                    : _('Delete config parameter.'),
                                 },
                 },
 

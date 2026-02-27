@@ -148,10 +148,10 @@ Enable ACL inheritance from parent objects.
 Disable ACL inheritance.
 .SS Configuration and Attributes
 .TP
-.B config \fIclient\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set or display a configuration parameter.
+.B config \fR[\fB\-d\fR] \fIclient\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter. Use \fB\-d\fR to delete (reset to default).
 .TP
-.B show_config \fIclient\fR
+.B show_config \fIclient\fR [\fIparameter\fR]
 Show all configuration parameters.
 .TP
 .B description \fIclient\fR \fR[\fIdescription\fR]
@@ -224,6 +224,10 @@ Password for encrypting exports.
 Global options are available for all commands. See
 .BR otpme (1)
 for details.
+.SH CONFIG PARAMETERS
+Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
+For a complete description of all available parameters and their applicable object types, see
+.BR otpme (7).
 .SH EXAMPLES
 .SS Creating and Configuring Clients
 .TP

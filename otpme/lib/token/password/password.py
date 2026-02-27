@@ -325,6 +325,7 @@ class PasswordToken(Token):
         # Set default values.
         self.password_hash = None
         self.need_password = True
+        self.send_password = True
         self.auth_script_enabled = False
         self.allow_offline = False
         self.offline_expiry = 0

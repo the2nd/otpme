@@ -1098,6 +1098,10 @@ class OTPmeClient(OTPmeClientBase):
 
     def passauth(self, command_dict):
         """ Ask user to authenticate with password/OTP. """
+        if self.login:
+            if not self.clear_text_auth_available:
+                msg = _("Not sending passwort for login without clear text auth.")
+                raise OTPmeException(msg)
         pass_len = command_dict['pass_len']
         pass_prompt = command_dict['prompt']
 
@@ -1212,15 +1216,6 @@ class OTPmeClient(OTPmeClientBase):
         smartcard_data = command_dict['smartcard_data']
         pass_required = smartcard_data['pass_required']
 
-        # Get password from user.
-        if pass_required:
-            if not self.sc_pass:
-                prompt = _("Smartcard password: ")
-                try:
-                    self.sc_pass = self.get_password(prompt)
-                except Exception as e:
-                    raise AuthFailed(str(e))
-
         # If we have no smartcard and not yet tried to detect
         # one do it now.
         if self.use_smartcard and self.smartcard is None:
@@ -1241,6 +1236,15 @@ class OTPmeClient(OTPmeClientBase):
             msg = msg.format(smartcard_type=smartcard_type)
             raise OTPmeException(msg)
 
+        # Get password from user.
+        if pass_required:
+            if not self.sc_pass:
+                prompt = _("Smartcard password: ")
+                try:
+                    self.sc_pass = self.get_password(prompt)
+                except Exception as e:
+                    raise AuthFailed(str(e))
+
         token_rel_path = smartcard_data['token_path']
         try:
             smartcard_client_handler = config.get_smartcard_handler(smartcard_type)[0]
@@ -1255,6 +1259,91 @@ class OTPmeClient(OTPmeClientBase):
         return self.smartcard_client_handler.handle_authentication(smartcard=self.smartcard,
                                                                     smartcard_data=smartcard_data,
                                                                     password=self.sc_pass)
+
+    def gen_backup_rsa_key(self, command_dict):
+        """ Handle RSA backup key pair. """
+        from otpme.lib.encryption.rsa import RSAKey
+        key_name = command_dict['key_name']
+        key_len = command_dict['key_len']
+        msg = _("Got key len: {key_len}")
+        msg = msg.format(key_len=key_len)
+        self.message_method(msg)
+        msg = _("You can configure the key len with the config parameter <private_key_backup_key_len>.")
+        self.message_method(msg)
+        backup_file = os.path.join("/dev/shm", key_name + ".pem")
+        input_prefill = backup_file
+        prompt = _("Private key backup file: ")
+        while True:
+            try:
+                backup_file = cli.user_input(prompt=prompt,
+                                        prefill=input_prefill)
+            except Exception as e:
+                msg = _("Error reading user input: {error}")
+                msg = msg.format(error=e)
+                raise OTPmeException(msg)
+            backup_dir = os.path.dirname(backup_file)
+            if not os.path.isdir(backup_dir):
+                msg = _("No such file or directory: {backup_dir}")
+                msg = msg.format(backup_dir=backup_dir)
+                self.error_message_method(msg)
+                continue
+            if not os.path.exists(backup_file):
+                break
+            msg = _("File already exists: {backup_file}")
+            msg = msg.format(backup_file=backup_file)
+            self.error_message_method(msg)
+            try:
+                answer = cli.user_input(prompt="Overwrite?: ")
+            except Exception as e:
+                error_msg = _("Error reading user input: {error}")
+                error_msg = error_msg.format(error=e)
+                raise OTPmeException(error_msg)
+            if answer.lower() != "y":
+                continue
+            try:
+                os.remove(backup_file)
+            except Exception as e:
+                msg = _("Error removing backup file: {e}")
+                msg = msg.format(e=e)
+                self.error_message_method(msg)
+                continue
+            break
+        try:
+            backup_key = RSAKey(bits=key_len)
+        except Exception as e:
+            msg = _("Error generating RSA key: {e}")
+            msg = msg.format(e=e)
+            raise ValueError(msg)
+        while True:
+            password1 = self.get_password(prompt="Private key export password:")
+            password2 = self.get_password(prompt="Reenter password:")
+            if password1 == password2:
+                password = password1
+                break
+            msg = _("Sorry, passwords do not match.")
+            self.error_message_method(msg)
+        private_key_pem = backup_key.export_private_key(encoding="PEM",
+                                    key_format="openssl",
+                                    password=password)
+        try:
+            fd = open(backup_file, "w")
+        except Exception as e:
+            msg = _("Failed to open backup file: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
+        try:
+            fd.write(private_key_pem)
+        except Exception as e:
+            msg = _("Failed to write backup file: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
+        finally:
+            fd.close()
+        msg = _("Private key written to: {backup_file}")
+        msg = msg.format(backup_file=backup_file)
+        self.message_method(msg)
+        public_key = backup_key.public_key_base64
+        return public_key
 
     def gen_user_keys(self, command_dict):
         """ Handle generation of users private/public keys via key script. """
@@ -1890,6 +1979,13 @@ class OTPmeClient(OTPmeClientBase):
                 except Exception as e:
                     exception = e
 
+            elif client_command == "GEN_BACKUP_RSA_KEY":
+                send_request = True
+                try:
+                    request = self.gen_backup_rsa_key(response)
+                except Exception as e:
+                    exception = e
+
             elif client_command == "SIGN":
                 send_request = True
                 try:
@@ -2090,7 +2186,7 @@ class OTPmeClient(OTPmeClientBase):
 
 class OTPmeClient1(OTPmeClientBase):
     """ Class that implements OTPme client. """
-    def __init__(self, daemon, connection, use_smartcard=False, use_ssh_agent=None,
+    def __init__(self, daemon, connection, use_smartcard="auto", use_ssh_agent=None,
         start_ssh_agent=None, ssh_agent_method=None, endpoint=True, otpme_agent_user=None,
         start_otpme_agent=None, handle_user_auth=True, handle_host_auth=True,
         need_ssh_key_pass=False, aes_pass=None, client=None, username=None,
@@ -2098,11 +2194,12 @@ class OTPmeClient1(OTPmeClientBase):
         login_interface="tty", logout=False, reneg=False, add_agent_acl=False,
         agent_acls=None, add_agent_session=None, add_login_session=None,
         mount_shares=False, offline_token=None, login_session_id=None,
-        cache_login_tokens=False, sc_pass=None, send_password=True, password_method=None,
-        password=None, cleanup_method=None, check_offline_pass_strength=False,
-        offline_iterations_by_score={}, offline_key_derivation_func=None,
-        offline_key_func_opts=None, sync_token_data=False, request_jwt=None,
-        verify_jwt=None, jwt_challenge=None, jwt_key=None, jwt_auth=False,
+        cache_login_tokens=False, sc_pass=None, send_password="auto",
+        password_method=None, password=None, cleanup_method=None,
+        check_offline_pass_strength=False, offline_iterations_by_score={},
+        offline_key_derivation_func=None, offline_key_func_opts=None,
+        sync_token_data=False, request_jwt=None, verify_jwt=None,
+        jwt_challenge=None, jwt_key=None, jwt_auth=False,
         check_login_status=True, allow_untrusted=False, do_preauth=True,
         check_connected_site=True, verify_preauth=None,
         login_redirect=False, **kwargs):
@@ -2123,6 +2220,7 @@ class OTPmeClient1(OTPmeClientBase):
         self.password = password
         self.send_password = send_password
         self.password_method = password_method
+        self.clear_text_auth_available = False
 
         # Set connection.
         self.connection = connection
@@ -2307,7 +2405,6 @@ class OTPmeClient1(OTPmeClientBase):
         # Will hold SSH public keys received from server.
         self.ssh_public_keys = {}
         self.ssh_auth_key = None
-        # Indicates that we should check the login status of the user.
         self.check_login_status = check_login_status
         # Indicates if we should cache login tokens received from authd.
         self.cache_login_tokens = cache_login_tokens
@@ -2516,6 +2613,7 @@ class OTPmeClient1(OTPmeClientBase):
                             send_password=self.send_password,
                             password_method=self.password_method,
                             login_interface=self.login_interface,
+                            clear_text_auth_available=self.clear_text_auth_available,
                             rsp=self.rsp,
                             srp=self.srp,
                             slp=self.slp,
@@ -3123,6 +3221,13 @@ class OTPmeClient1(OTPmeClientBase):
                 self.logger.warning(log_msg)
 
         if self.username:
+            # Check if clear-text auth is possible.
+            try:
+                self.clear_text_auth_available = self.preauth_response['clear_text_token_found']
+            except KeyError:
+                self.clear_text_auth_available = False
+            if self.send_password == "auto":
+                self.send_password = self.clear_text_auth_available
             # Get smartcard options from preauth response.
             try:
                 self.smartcard_options = self.preauth_response['token_options']
@@ -3495,7 +3600,7 @@ class OTPmeClient1(OTPmeClientBase):
                                                                 token_options=self.smartcard_options[rel_path],
                                                                 message_method=self.message_method,
                                                                 error_message_method=self.error_message_method)
-                self.use_smartcard = True
+                self.use_smartcard = "auto"
                 sc_types.append(sc_type)
                 break
             if not self.use_smartcard:
@@ -3658,12 +3763,16 @@ class OTPmeClient1(OTPmeClientBase):
             password = None
 
         if self.auth_type is None:
-            if self.use_smartcard:
+            if self.use_smartcard and self.smartcard:
                 self.auth_type = "smartcard"
         if self.auth_type is None:
             if self.jwt_auth:
                 self.auth_type = "jwt"
         if self.auth_type is None:
+            if self.login:
+                if not self.clear_text_auth_available:
+                    msg = _("No token to authenticate found.")
+                    raise OTPmeException(msg)
             self.auth_type = "clear-text"
 
         if self.auth_type == "ssh":

@@ -1153,7 +1153,7 @@ class OTPmeClusterP1(OTPmeServer1):
                         clusterd_conn.close()
 
             # Do final sync.
-            if status:
+            if status and config.master_failover_sync:
                 from otpme.lib.classes.command_handler import CommandHandler
                 # Sync data objects and sessions.
                 try:

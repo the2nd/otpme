@@ -236,6 +236,338 @@ During an online login, the token configuration and session data are encrypted a
 When the server is unreachable, credentials are verified against the local cache. Already used OTPs are tracked locally to prevent replay attacks. Configurable expiration times control how long the offline cache remains valid (by login age and by inactivity).
 .PP
 When the server becomes available again, the hostd synchronizes used OTPs and token counters back to the server.
+.SH CONFIG PARAMETERS
+Configuration parameters are set per-object using the \fBconfig\fR command and displayed with \fBshow_config\fR.
+Parameters set on a parent object (e.g. site or unit) act as defaults for all child objects unless overridden locally.
+The column \fIObject types\fR lists on which object types each parameter can be set.
+.PP
+.B otpme-site config mysite parameter \fR[\fIvalue\fR]
+.br
+.B otpme-site config \-d mysite parameter
+.SS General
+.TP
+.B confirmation_policy \fR(str, default: paranoid)
+Controls when OTPme asks for user confirmation.
+Valid values: \fBparanoid\fR (ask for almost anything), \fBnormal\fR (ask in important cases, e.g. when deleting an object will also delete child objects), \fBforce\fR (never ask for confirmation).
+.br
+Object types: all tree objects
+.TP
+.B auto_sign \fR(bool, default: false)
+If enabled, the user is offered to sign the object after each change.
+.br
+Object types: site, unit, token, script
+.TP
+.B auto_revoke \fR(bool, default: true)
+If enabled, object signatures are automatically revoked when the object is changed.
+.br
+Object types: site, unit, token, script
+.SS Key Backup
+.TP
+.B private_key_backup_key \fR(str)
+Public RSA key (base64-encoded) used for encryption of user private key backups. If not set, a new key pair is generated automatically.
+.br
+Object types: site, unit
+.TP
+.B private_key_backup_key_len \fR(int, default: 2048)
+RSA key length for the private key backup key. Valid values: 2048, 4096.
+.br
+Object types: site, unit
+.SS Password Hashing
+.TP
+.B default_pw_hash_type \fR(str, default: Argon2_i)
+Default hash algorithm for new password tokens. Available types depend on registered hash modules (e.g. Argon2_i, Argon2_d, PBKDF2, HKDF).
+.br
+Object types: site, unit, user, token
+.TP
+.B session_hash_type \fR(str, default: Argon2_i)
+Hash algorithm used for session passwords.
+.br
+Object types: site, unit, user, token
+.SS Session
+.TP
+.B static_pass_timeout \fR(int, default: 15)
+Timeout in minutes for static password sessions.
+.br
+Object types: site, unit, host, node
+.TP
+.B static_pass_unused_timeout \fR(int, default: 5)
+Timeout in minutes for unused static password sessions.
+.br
+Object types: site, unit, host, node
+.SS User Scripts
+.TP
+.B default_key_script \fR(str)
+Path of the default key script added to new users.
+.br
+Object types: site, unit
+.TP
+.B default_auth_script \fR(str)
+Path of the default auth script added to new users.
+.br
+Object types: site, unit
+.TP
+.B default_agent_script \fR(str)
+Path of the default agent script added to new users.
+.br
+Object types: site, unit
+.TP
+.B default_login_script \fR(str)
+Path of the default login script added to new users.
+.br
+Object types: site, unit
+.SS User Management
+.TP
+.B failed_pass_history \fR(int, default: 16)
+Number of failed login passwords to remember. Multiple failed login attempts with the same wrong password do not count as separate failures and will not lock the account.
+.br
+Object types: site, unit, user
+.TP
+.B add_default_token \fR(bool, default: true)
+If enabled, a default token is automatically created for new users.
+.br
+Object types: site, unit
+.TP
+.B default_token_name \fR(str, default: login)
+Name of the default token created for new users.
+.br
+Object types: site, unit
+.TP
+.B default_token_type \fR(str, default: hotp)
+Token type of the default token created for new users.
+.br
+Object types: site, unit
+.TP
+.B user_key_len \fR(int, default: 2048)
+RSA key length for user keys. Valid values: 2048, 4096.
+.br
+Object types: realm, site, unit, user
+.TP
+.B allow_default_token_rename \fR(bool, default: false)
+If enabled, users are allowed to rename their default token.
+.br
+Object types: site, unit, user
+.TP
+.B allow_default_token_deletion \fR(bool, default: false)
+If enabled, users are allowed to delete their default token.
+.br
+Object types: site, unit, user
+.TP
+.B allow_temp_paswords \fR(bool, default: false)
+If enabled, temporary passwords can be set on tokens.
+.br
+Object types: site, unit, user, token
+.TP
+.B password_allowed_chars \fR(str, default: 0-9A-Za-z!@#$%^&*()_+-={}[]|\\:;<>.?/)
+Character set allowed in passwords (used by the password policy).
+.br
+Object types: site, unit, user
+.SS Certificates
+.TP
+.B cert_key_len \fR(int, default: 2048)
+RSA key length for CA-issued certificates. Valid values: 2048, 4096.
+.br
+Object types: site, unit, ca
+.TP
+.B cert_sign_algo \fR(str, default: sha256)
+Signature algorithm for certificates. Valid values: sha256, sha512.
+.br
+Object types: site, unit, ca
+.TP
+.B crl_sign_algo \fR(str, default: sha256)
+Signature algorithm for certificate revocation lists. Valid values: sha256, sha512.
+.br
+Object types: site, unit, ca
+.SS File Shares
+.TP
+.B default_share_add_script \fR(str)
+Path of the default script used when adding new shares.
+.br
+Object types: site, unit
+.TP
+.B default_share_mount_script \fR(str)
+Path of the default script used to mount shares.
+.br
+Object types: site, unit
+.TP
+.B share_root \fR(str, default: /otpme-mounts/)
+Root directory for new shares. A new share automatically gets \fIshare_root\fR/\fIsharename\fR as its root directory (e.g. with \fBshare_root=/otpme-mounts/\fR a share named \fBprojects\fR gets \fB/otpme-mounts/projects\fR as its root directory).
+.br
+Object types: site, unit
+.SS HOTP Tokens
+.TP
+.B hotp_check_range \fR(int, default: 32)
+Counter check range for HOTP authentication.
+.br
+Object types: site, unit, user
+.TP
+.B hotp_resync_check_range \fR(int, default: 1024)
+Counter check range for HOTP token resynchronization.
+.br
+Object types: site, unit, user
+.TP
+.B hotp_default_pin_len \fR(int, default: 4)
+Default PIN length for new HOTP tokens.
+.br
+Object types: site, unit, user
+.TP
+.B hotp_secret_len \fR(int, default: 10)
+Default secret length in bytes for new HOTP tokens.
+.br
+Object types: site, unit, user
+.SS TOTP Tokens
+.TP
+.B totp_default_pin_len \fR(int, default: 4)
+Default PIN length for new TOTP tokens.
+.br
+Object types: site, unit, user
+.TP
+.B totp_secret_len \fR(int, default: 10)
+Default secret length in bytes for new TOTP tokens.
+.br
+Object types: site, unit, user
+.SS mOTP Tokens
+.TP
+.B motp_validity_time \fR(int, default: 60)
+OTP validity window in seconds for mOTP tokens.
+.br
+Object types: site, unit, user
+.TP
+.B motp_timedrift_tolerance \fR(int, default: 15)
+Time drift tolerance in seconds for mOTP tokens.
+.br
+Object types: site, unit, user
+.TP
+.B motp_default_pin_len \fR(int, default: 4)
+Default PIN length for new mOTP tokens.
+.br
+Object types: site, unit, user
+.TP
+.B motp_len \fR(int, default: 6)
+Length of generated mOTP values.
+.br
+Object types: site, unit, user
+.TP
+.B motp_secret_len \fR(int, default: 16)
+Default secret length in bytes for new mOTP tokens.
+.br
+Object types: site, unit, user
+.SS Static Password Tokens
+.TP
+.B default_static_pass_len \fR(int, default: 10)
+Default length for generated static passwords.
+.br
+Object types: site, unit, user
+.SS Hardware Tokens
+.TP
+.B check_fido2_attestation_cert \fR(bool, default: false)
+If enabled, the FIDO2 attestation certificate is verified during token deployment.
+.br
+Object types: site, unit, user, token
+.TP
+.B check_u2f_attestation_cert \fR(bool, default: false)
+If enabled, the U2F attestation certificate is verified during token deployment.
+.br
+Object types: site, unit, user, token
+.SS OTP Push Tokens
+.TP
+.B otp_push_default_pass_len \fR(int, default: 6)
+Default length of generated OTP push passwords.
+.br
+Object types: site, unit, user
+.TP
+.B default_otp_push_script \fR(str)
+Path of the default script used for OTP push delivery.
+.br
+Object types: realm, site, unit
+.SS YubiKey HMAC Tokens
+.TP
+.B otpme_hmac_otp_len \fR(int, default: 16)
+OTP length for YubiKey HMAC tokens.
+.br
+Object types: site, unit, user
+.TP
+.B otpme_hmac_secret_len \fR(int, default: 16)
+Default secret length in bytes for YubiKey HMAC tokens.
+.br
+Object types: site, unit, user
+.SS Hash Parameters (Argon2)
+.TP
+.B default_pw_hash_argon2i_iterations \fR(int, default: 3)
+Argon2i iteration count.
+.br
+Object types: site, unit, user, token
+.TP
+.B default_pw_hash_argon2i_min_mem \fR(int, default: 65536)
+Argon2i minimum memory in KB.
+.br
+Object types: site, unit, user, token
+.TP
+.B default_pw_hash_argon2i_max_mem \fR(int, default: 262144)
+Argon2i maximum memory in KB.
+.br
+Object types: site, unit, user, token
+.TP
+.B default_pw_hash_argon2i_threads \fR(int, default: 4)
+Argon2i thread count.
+.br
+Object types: site, unit, user, token
+.TP
+.B default_pw_hash_argon2i_key_len \fR(int, default: 128)
+Argon2i derived key length in bytes.
+.br
+Object types: site, unit, user, token
+.TP
+.B default_pw_hash_argon2d_iter \fR(int, default: 3)
+Argon2d iteration count.
+.br
+Object types: site, unit, user, token
+.TP
+.B default_pw_hash_argon2d_min_mem \fR(int, default: 65536)
+Argon2d minimum memory in KB.
+.br
+Object types: site, unit, user, token
+.TP
+.B default_pw_hash_argon2d_max_mem \fR(int, default: 262144)
+Argon2d maximum memory in KB.
+.br
+Object types: site, unit, user, token
+.TP
+.B default_pw_hash_argon2d_threads \fR(int, default: 4)
+Argon2d thread count.
+.br
+Object types: site, unit, user, token
+.TP
+.B default_pw_hash_argon2d_key_len \fR(int, default: 128)
+Argon2d derived key length in bytes.
+.br
+Object types: site, unit, user, token
+.SS Hash Parameters (PBKDF2)
+.TP
+.B default_pw_hash_pbkdf2_iter \fR(int, default: 100000)
+PBKDF2 iteration count.
+.br
+Object types: site, unit, user, token
+.TP
+.B default_pw_hash_pbkdf2_algo \fR(str, default: SHA256)
+PBKDF2 hash algorithm.
+.br
+Object types: site, unit, user, token
+.TP
+.B default_pw_hash_pbkdf2_key_len \fR(int, default: 128)
+PBKDF2 derived key length in bytes.
+.br
+Object types: site, unit, user, token
+.SS Hash Parameters (HKDF)
+.TP
+.B default_pw_hash_hkdf_algo \fR(str, default: SHA256)
+HKDF hash algorithm.
+.br
+Object types: site, unit, user, token
+.TP
+.B default_pw_hash_hkdf_key_len \fR(int, default: 32)
+HKDF derived key length in bytes.
+.br
+Object types: site, unit, user, token
 .SH FILES
 .TP
 .I /etc/otpme/otpme.conf

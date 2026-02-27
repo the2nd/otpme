@@ -84,10 +84,10 @@ Remove a policy from the user.
 List policies attached to the user.
 .SS User Configuration
 .TP
-.B config \fIuser\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set or display a configuration parameter.
+.B config \fR[\fB\-d\fR] \fIuser\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter. Use \fB\-d\fR to delete (reset to default).
 .TP
-.B show_config \fR[\fIuser\fR]
+.B show_config \fIuser\fR [\fIparameter\fR]
 Show all configuration parameters.
 .TP
 .B description \fIuser\fR \fR[\fIdescription\fR]
@@ -261,6 +261,10 @@ Preserve ACLs when moving user.
 .TP
 .B \-\-password \fIPASS\fR
 Password for encrypting exports.
+.SH CONFIG PARAMETERS
+Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
+For a complete description of all available parameters and their applicable object types, see
+.BR otpme (7).
 .SH EXAMPLES
 .SS Creating Users
 .TP

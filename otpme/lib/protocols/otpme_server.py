@@ -1235,6 +1235,7 @@ class OTPmeServer1(object):
 
         # Build dict with possible tokens to authenticate.
         verify_tokens = {}
+        clear_text_token_found = False
         for token in valid_user_tokens:
             # Make sure we resolve token links.
             if token.destination_token:
@@ -1261,6 +1262,8 @@ class OTPmeServer1(object):
                     log_msg = _("Unable to load second factor token of '{token_path}': {error}", log=True)[1]
                     log_msg = log_msg.format(token_path=verify_token.rel_path, error=e)
                     self.logger.critical(log_msg)
+            if verify_token.send_password:
+                clear_text_token_found = True
 
         # Get smartcard options.
         token_options = {}
@@ -1339,6 +1342,7 @@ class OTPmeServer1(object):
                     'ecdh_server_pub'       : ecdh_server_pub_pem,
                     'token_options'         : token_options,
                     'ssh_public_keys'       : ssh_public_keys,
+                    'clear_text_token_found': clear_text_token_found,
                     'agent_script'          : agent_script,
                     'agent_script_uuid'     : agent_script_uuid,
                     'agent_script_path'     : agent_script_path,

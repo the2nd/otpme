@@ -267,7 +267,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
-                    'oargs'              : [],
+                    'oargs'              : ['parameter'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -777,7 +777,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
-                    'args'              : ['parameter', 'value'],
+                    'args'              : ['parameter'],
+                    'oargs'             : ['value', 'delete'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -850,6 +851,52 @@ def register_config():
     config.register_config_var("sso_user_role", str, SSO_USER_ROLE)
     config.register_base_object("role", SSO_USER_ROLE)
 
+    # Object types our config parameter is valid for.
+    object_types = [
+                    'site',
+                    'unit',
+                    ]
+    def public_key_setter(public_key=None, config_object=None, callback=JobCallback, **kwargs):
+        from otpme.lib.encoding.base import decode
+        from otpme.lib.encryption.rsa import RSAKey
+        if public_key:
+            public_key = decode(public_key, "base64")
+            try:
+                RSAKey(key=public_key)
+            except Exception as e:
+                msg = _("Invalid public key.")
+                raise ValueError(msg)
+            return public_key
+        try:
+            key_len = config_object.get_config_parameter("private_key_backup_key_len")
+        except:
+            key_len = 2048
+        key_name = f"{config_object.type}-{config_object.name}-{config_object.uuid}"
+        public_key = callback.gen_backup_rsa_key(key_name=key_name,
+                                                key_len=key_len)
+        return public_key
+
+    # Public key used for encryption of user private keys.
+    config.register_config_parameter(name="private_key_backup_key",
+                                    ctype=str,
+                                    warn_if_exists=True,
+                                    setter=public_key_setter,
+                                    object_types=object_types)
+
+    def key_len_setter(key_len, callback=JobCallback, **kwargs):
+        if key_len not in [2048, 4096]:
+            msg = _("Invalid key length")
+            raise ValueError(msg)
+        return key_len
+
+    # Public key used for encryption of user private keys.
+    config.register_config_parameter(name="private_key_backup_key_len",
+                                    ctype=int,
+                                    setter=key_len_setter,
+                                    default_value=2048,
+                                    object_types=object_types)
+
+
     # Object types our config parameters are valid for.
     object_types = [
                     'site',
@@ -857,7 +904,7 @@ def register_config():
                     'user',
                     'token',
                     ]
-    def hash_type_setter(hash_type):
+    def hash_type_setter(hash_type, **kwargs):
         if hash_type not in config.get_hash_types():
             msg = "Invalid hash type: {hash_type}"
             msg = msg.format(hash_type=hash_type)
@@ -2369,6 +2416,11 @@ class Site(OTPmeObject):
             config.site_init = False
             return add_result
 
+        # Add default config parameters.
+        for parameter in config.valid_config_params:
+            default_value = config.valid_config_params[parameter]['default']
+            self.set_config_param(parameter, default_value)
+
         config.site_init = False
 
         # Update index.
@@ -3089,11 +3141,6 @@ class Site(OTPmeObject):
         # Write objects.
         callback.write_modified_objects()
         cache.flush()
-
-        # Add default config parameters.
-        for parameter in config.valid_config_params:
-            default_value = config.valid_config_params[parameter]['default']
-            self.set_config_param(parameter, default_value)
 
         # Add template objects.
         self.add_object_templates(callback=callback)

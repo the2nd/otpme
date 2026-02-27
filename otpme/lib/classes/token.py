@@ -193,7 +193,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
-                    'oargs'              : [],
+                    'oargs'              : ['parameter'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -561,7 +561,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
-                    'args'              : ['parameter', 'value'],
+                    'args'              : ['parameter'],
+                    'oargs'             : ['value', 'delete'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -936,6 +937,7 @@ class Token(OTPmeObject):
         self.pin_enabled = None
         self.pin_mandatory = None
         self.need_password = False
+        self.send_password = False
         # False means token type does not have a password.
         self.password_hash = False
         self.nt_hash = None

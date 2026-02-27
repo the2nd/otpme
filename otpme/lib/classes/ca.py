@@ -182,7 +182,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
-                    'oargs'              : [],
+                    'oargs'              : ['parameter'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -480,7 +480,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
-                    'args'              : ['parameter', 'value'],
+                    'args'              : ['parameter'],
+                    'oargs'             : ['value', 'delete'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -558,7 +559,7 @@ def register_config():
                         'ca',
                     ]
     # Length for certificate keys.
-    def key_len_setter(key_len):
+    def key_len_setter(key_len, **kwargs):
         valid_key_lens = [2048, 4096]
         if key_len not in valid_key_lens:
             msg = _("Invalid key len.")
@@ -571,7 +572,7 @@ def register_config():
                                     valid_values=VALID_CERT_KEY_LENS,
                                     object_types=object_types)
     # Sign algorithm for certificates.
-    def sign_algo_setter(sign_algo):
+    def sign_algo_setter(sign_algo, **kwargs):
         valid_sign_algos = ["sha256", "sha512"]
         if sign_algo not in valid_sign_algos:
             msg = _("Invalid sign algo.")

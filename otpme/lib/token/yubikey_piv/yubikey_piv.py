@@ -56,6 +56,7 @@ read_value_acls = {
                             "secret",
                             "auth_script",
                             "public_key",
+                            "private_key_backup",
                             "offline_status",
                             "offline_expiry",
                             "offline_unused_expiry",
@@ -100,6 +101,14 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'dump_key',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'dump_private_key_backup'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_private_key_backup',
                     'job_type'          : 'process',
                     },
                 },
@@ -225,6 +234,11 @@ class YubikeypivToken(Token):
                                             'type'          : str,
                                             'required'      : False,
                                         },
+            'PRIVATE_KEY_BACKUP'        : {
+                                            'var_name'      : 'private_key_backup',
+                                            'type'          : dict,
+                                            'required'      : False,
+                                        },
             }
 
         # Use parent class method to merge token configs.
@@ -301,6 +315,21 @@ class YubikeypivToken(Token):
         """ Dump tokens RSA public key. """
         return callback.ok(self.public_key)
 
+    @check_acls(['view:private_key_backup'])
+    @audit_log()
+    def get_private_key_backup(
+        self,
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Dump tokens RSA public key. """
+        if not self.private_key_backup:
+            msg = _("No backup exists.")
+            return callback.error(msg)
+        return callback.ok(dict(self.private_key_backup))
+
     def test(self, callback: JobCallback=default_callback, **kwargs):
         """ Test if smartcard connected to the client can be verfied. """
         ok_message = _("Token verified successful: {token_path}")
@@ -346,12 +375,42 @@ class YubikeypivToken(Token):
         return True
 
     @object_lock(full_lock=True)
+    def pre_deploy(
+        self,
+        pre_deploy_args: dict={},
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        ):
+        """ Deploy token. """
+        response = {}
+        try:
+            restore_from_server = pre_deploy_args['restore_from_server']
+        except KeyError:
+            restore_from_server = False
+        try:
+            private_key_backup_key = self.get_config_parameter("private_key_backup_key")
+        except:
+            private_key_backup_key = None
+        if restore_from_server:
+            try:
+                response['private_key_backup'] = self.get_private_key_backup()
+            except Exception as e:
+                msg = _("Failed to get backup: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+        if private_key_backup_key:
+            response['private_key_backup_key'] = private_key_backup_key
+        return callback.ok(response)
+
+    @object_lock(full_lock=True)
     @backend.transaction
     @audit_log()
     def deploy(
         self,
         public_key: str,
         add_user_key: bool=False,
+        private_key_backup: Union[dict,None]=None,
         _caller: str="API",
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -375,6 +434,8 @@ class YubikeypivToken(Token):
             user.change_public_key(public_key=pub_key_b64,
                                     verify_acls=False,
                                     force=True)
+        if private_key_backup:
+            self.private_key_backup = private_key_backup
         return self._cache(callback=callback)
 
     @object_lock(full_lock=True)

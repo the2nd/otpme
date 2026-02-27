@@ -91,16 +91,17 @@ cmd_help = {
                 },
 
     'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-host config {host} {param} [value]'),
-                    'cmd'   :   '<|object|> <parameter> [value]',
+                    '_cmd_usage_help' : _('Usage: otpme-host config -d {host} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: <|object|> <parameter> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to host.'),
+                                    '-d'                    : _('Delete config parameter.'),
                                 },
                 },
 
     'show_config'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-host show_config {host}'),
-                    'cmd'   :   '<|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-host show_config {host} [parameter]'),
+                    'cmd'   :   '<|object|> [parameter]',
                     '_help' :   {
                                     'cmd'                   : _('Show host config parameters'),
                                 },

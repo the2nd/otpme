@@ -241,7 +241,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
-                    'oargs'              : [],
+                    'oargs'              : ['parameter'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -907,7 +907,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'set_config_param',
-                    'args'              : ['parameter', 'value'],
+                    'args'              : ['parameter'],
+                    'oargs'             : ['value', 'delete'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -1051,7 +1052,7 @@ def register_config_parameters():
                         'site',
                         'unit',
                     ]
-    def script_setter(script_path):
+    def script_setter(script_path, **kwargs):
         result = backend.search(object_type="script",
                                 attribute="rel_path",
                                 value=script_path,
@@ -1137,7 +1138,7 @@ def register_config_parameters():
                                     default_value="login",
                                     object_types=object_types)
     # Default token type to add.
-    def default_token_setter(token_type):
+    def default_token_setter(token_type, **kwargs):
         token_types = config.get_sub_object_types("token")
         if token_type not in token_types:
             msg = "Invalid token type: {token_type}"
@@ -4015,6 +4016,11 @@ class User(OTPmeObject):
 
         if token.exists():
             if replace:
+                if not force:
+                    msg = _("WARNING. Replacing the token will permanently delete all token data, including private key backups. Replace token?: ")
+                    answer = callback.ask(msg)
+                    if answer.lower() != "y":
+                        return callback.abort()
                 if not self.add_token(token_name=token_name,
                                     token_type=token_type,
                                     replace=replace,
@@ -4023,7 +4029,7 @@ class User(OTPmeObject):
                                     callback=callback):
                     return callback.error("Error replacing token.")
             else:
-                if not smartcard_type in token.supported_hardware_tokens:
+                if smartcard_type not in token.supported_hardware_tokens:
                     msg = _("Existing token '{token_rel_path} ({token_token_type})' does not support hardware token type: {smartcard_type}")
                     msg = msg.format(token_rel_path=token.rel_path, token_token_type=token.token_type, smartcard_type=smartcard_type)
                     return callback.error(msg)

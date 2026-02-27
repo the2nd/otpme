@@ -132,16 +132,17 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-token config {token} {param} [value]'),
-                    'cmd'   :   '<|object|> <parameter> [value]',
+                    '_cmd_usage_help' : _('Usage: otpme-token config -d {token} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: <|object|> <parameter> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to token.'),
+                                    '-d'                    : _('Delete config parameter.'),
                                 },
                 },
 
     'show_config'      : {
-                    '_cmd_usage_help' : _('Usage: otpme-token show_config {token}'),
-                    'cmd'   :   '[|object|]',
+                    '_cmd_usage_help' : _('Usage: otpme-token show_config {token} [parameter]'),
+                    'cmd'   :   '[|object|] [parameter]',
                     '_help' :   {
                                     'cmd'                   : _('Show token config parameters.'),
                                 },

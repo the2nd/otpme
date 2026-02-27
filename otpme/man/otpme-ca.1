@@ -55,10 +55,10 @@ Export the certificate revocation list to stdout.
 Remove outdated certificates from the CRL.
 .SS Configuration
 .TP
-.B config \fIca\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set or display a configuration parameter.
+.B config \fR[\fB\-d\fR] \fIca\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set or display a configuration parameter. Use \fB\-d\fR to delete (reset to default).
 .TP
-.B show_config \fIca\fR
+.B show_config \fIca\fR [\fIparameter\fR]
 Show all configuration parameters.
 .TP
 .B description \fIca\fR \fR[\fIdescription\fR]
@@ -158,6 +158,10 @@ Password for encrypting exports.
 Global options are available for all commands. See
 .BR otpme (1)
 for details.
+.SH CONFIG PARAMETERS
+Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
+For a complete description of all available parameters and their applicable object types, see
+.BR otpme (7).
 .SH EXAMPLES
 .SS Creating a CA
 .TP
