@@ -228,7 +228,7 @@ otpme-tool sync
 id alice
 
 # Inspect the group.
-otpme-group show staff
+otpme-group show staff$
 otpme-group list_tokens staff
 otpme-group list_users staff
 ```
@@ -254,7 +254,7 @@ otpme-tool sync
 id alice
 
 # Inspect the role.
-otpme-role show management-user
+otpme-role show management-user$
 otpme-role list_tokens management-user
 otpme-role list_users management-user
 ```
@@ -291,7 +291,7 @@ otpme-group add_role management management-user
 
 ## 15. Units
 
-Units are organisational containers for users, groups, tokens and other objects.
+Units are organisational containers for users, groups and other objects (tokens are bound to users, not to units).
 They can be used to delegate administration — e.g. allowing department
 executives to manage users within their own unit:
 
@@ -303,4 +303,57 @@ otpme-unit add management/groups
 # Move user and group into the appropriate units.
 otpme-user move alice management/users
 otpme-group move management management/groups
+```
+
+## 16. Delegate Unit Administration
+
+To allow a dedicated manager user to administer objects within a unit, create
+the manager user inside the unit and grant them the necessary ACLs.
+
+The `-r` flag on `add` replaces an existing token (useful when re-running
+the setup). For easy testing the password is set to a fixed value here.
+
+```bash
+# Add management manager user joe.
+otpme-user add management/users/joe
+otpme-token --type password add -r joe/login
+otpme-token -f --type password password joe/login password
+```
+
+Grant joe the right to create, delete and edit users and their tokens within
+the `management/users` unit. The `+` prefix means the ACL applies to the
+object itself, `++` means it applies recursively to child objects:
+
+```bash
+otpme-unit add_acl management/users token joe/login "add:user"
+otpme-unit add_acl management/users token joe/login "delete:user"
+otpme-unit add_acl management/users token joe/login "+user:edit"
+otpme-unit add_acl management/users token joe/login "+user:enable"
+otpme-unit add_acl management/users token joe/login "+user:disable"
+otpme-unit add_acl management/users token joe/login "+user:add:attribute"
+otpme-unit add_acl management/users token joe/login "+user:add:token"
+otpme-unit add_acl management/users token joe/login "+user:delete:token"
+otpme-unit add_acl management/users token joe/login "+user:delete"
+otpme-unit add_acl management/users token joe/login "++token:edit"
+otpme-unit add_acl management/users token joe/login "++token:enable"
+otpme-unit add_acl management/users token joe/login "++token:disable"
+```
+
+Allow joe to set the default group of users to `management` and to
+add/remove tokens from the `management-user` role:
+
+```bash
+# Allow joe to add users to the management default group.
+otpme-group add_acl management token joe/login "add:default_group_user"
+# Allow joe to add/remove tokens from the management-user role.
+otpme-role add_acl management-user token joe/login "add:token"
+otpme-role add_acl management-user token joe/login "remove:token"
+```
+
+With these ACLs in place, joe can now add users to the unit and assign them
+to the group and role directly at creation time using `--group` and `--role`:
+
+```bash
+otpme-user add --group management --role management-user management/users/user1
+otpme-token --type password add user1/wlan
 ```
