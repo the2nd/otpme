@@ -11,6 +11,7 @@ theme:
     - search.highlight
 
 nav:
+  - Home: index.md
   - Overview: otpme.md
   - Configuration File: otpme.conf.5.md
   - Config Parameters: otpme.7.md
