@@ -31,5 +31,6 @@ OTPme is an authentication system supporting hardware tokens, smartcards and one
 
 | Page | Description |
 |------|-------------|
-| [otpme.7](otpme.7.md) | Config parameters reference |
+| [otpme.7](otpme.7.md) | Architecture and config parameters reference |
+| [otpme](otpme.md) | Command overview and global options |
 | [otpme.conf.5](otpme.conf.5.md) | Configuration file reference |

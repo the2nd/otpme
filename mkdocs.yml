@@ -12,9 +12,9 @@ theme:
 
 nav:
   - Home: index.md
+  - Architecture & Config Parameters: otpme.7.md
   - Overview: otpme.md
   - Configuration File: otpme.conf.5.md
-  - Config Parameters: otpme.7.md
   - Commands:
     - otpme-user: otpme-user.md
     - otpme-group: otpme-group.md
