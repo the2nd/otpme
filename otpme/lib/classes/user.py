@@ -1157,7 +1157,7 @@ def register_config_parameters():
                         'unit',
                         'user',
                     ]
-    def user_key_len_setter(key_len):
+    def user_key_len_setter(key_len, **kwargs):
         valid_key_lens = [2048, 4096]
         if key_len not in valid_key_lens:
             msg = "Invalid key len: {key_len}"

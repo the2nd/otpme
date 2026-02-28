@@ -343,10 +343,10 @@ class YubikeypivClientHandler(object):
             signature = smartcard.sign_challenge(slot="AUTHENTICATION",
                                             pin=password,
                                             challenge=challenge)
-        except OTPmeException as e:
+        except Exception as e:
             msg = _("Error signing challenge with smartcard: {error}")
             msg = msg.format(error=e)
-            raise AuthFailed(msg)
+            raise SmartcardAuthFailed(msg)
         smartcard_data = self.token_options.copy()
         smartcard_data['signature'] = signature
         smartcard_data['token_rel_path'] = self.token_rel_path
@@ -359,10 +359,10 @@ class YubikeypivClientHandler(object):
             signature = smartcard.sign_challenge(slot="AUTHENTICATION",
                                             pin=password,
                                             challenge=challenge)
-        except OTPmeException as e:
+        except Exception as e:
             msg = _("Error sending signing challenge with smartcard: {error}")
             msg = msg.format(error=e)
-            raise AuthFailed(msg)
+            raise SmartcardAuthFailed(msg)
         return signature
 
     def handle_offline_token_challenge(self, smartcard, password, enc_challenge, **kwargs):
@@ -394,10 +394,10 @@ class YubikeypivClientHandler(object):
             signature = smartcard.sign_challenge(slot="AUTHENTICATION",
                                             pin=password,
                                             challenge=challenge)
-        except OTPmeException as e:
+        except Exception as e:
             msg = _("Error signing challenge with smartcard: {error}")
             msg = msg.format(error=e)
-            raise AuthFailed(msg)
+            raise SmartcardAuthFailed(msg)
         smartcard_data = {
                         'challenge' : challenge,
                         'signature' : signature,

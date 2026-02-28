@@ -832,7 +832,7 @@ def register_config():
                     'user',
                     'token',
                     ]
-    def share_root_setter(share_root):
+    def share_root_setter(share_root, **kwargs):
         if not os.path.isdir(share_root):
             msg = _("Directory does not exists: {share_root}")
             msg = msg.format(share_root=share_root)

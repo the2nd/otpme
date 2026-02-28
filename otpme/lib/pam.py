@@ -592,7 +592,7 @@ class PamHandler(object):
                 # if agent scripts signers are configured.
                 verify_signs = "auto"
 
-        log_msg = _("Staring ssh-agent...", log=True)[1]
+        log_msg = _("Starting ssh-agent...", log=True)[1]
         self.logger.debug(log_msg)
         # Start SSH agent.
         ssh_auth_sock, \
@@ -1958,6 +1958,14 @@ class PamHandler(object):
                 log_msg = _("Failed to start SSH agent: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
                 self.logger.warning(log_msg)
+
+        if self.auth_status:
+            if self.ssh_agent_status():
+                log_msg = _("Adding key to ssh-agent...", log=True)[1]
+                self.logger.debug(log_msg)
+                os.environ['PIN'] = self.password
+                self.ssh_agent.add_key()
+                os.environ.pop("PIN")
 
         # Close connetions etc.
         self.cleanup()

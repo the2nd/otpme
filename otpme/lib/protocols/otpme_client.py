@@ -2690,7 +2690,6 @@ class OTPmeClient1(OTPmeClientBase):
     def preauth_check(self):
         """ Do preauth check with daemon. """
         preauth_args = {}
-        need_token = False
 
         # Set requesting client.
         preauth_args['client'] = self.client
@@ -2715,6 +2714,7 @@ class OTPmeClient1(OTPmeClientBase):
         preauth_args['jwt_auth'] = self.jwt_auth
 
         # Add username if we have one.
+        need_token = False
         if self.username:
             preauth_args['username'] = self.username
             need_token = True
@@ -3222,12 +3222,13 @@ class OTPmeClient1(OTPmeClientBase):
 
         if self.username:
             # Check if clear-text auth is possible.
-            try:
-                self.clear_text_auth_available = self.preauth_response['clear_text_token_found']
-            except KeyError:
-                self.clear_text_auth_available = False
-            if self.send_password == "auto":
-                self.send_password = self.clear_text_auth_available
+            if self.login:
+                try:
+                    self.clear_text_auth_available = self.preauth_response['clear_text_token_found']
+                except KeyError:
+                    self.clear_text_auth_available = False
+                if self.send_password == "auto":
+                    self.send_password = self.clear_text_auth_available
             # Get smartcard options from preauth response.
             try:
                 self.smartcard_options = self.preauth_response['token_options']

@@ -283,3 +283,6 @@ class LoginInterfaceException(PolicyException):
 class LockWaitAbortObjectDeleted(LockWaitAbort):
     pass
 
+class SmartcardAuthFailed(AuthFailed):
+    pass
+

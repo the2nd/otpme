@@ -1,6 +1,9 @@
 import sys
+import datetime
 import getpass
 
+from cryptography import x509
+from cryptography.x509.oid import NameOID
 from yubikit.piv import SLOT
 from yubikit.piv import PivSession
 from yubikit.piv import PIN_POLICY
@@ -53,6 +56,21 @@ def import_rsa_key(
         piv = PivSession(conn)
         piv.authenticate(mgmt_key)
         piv.put_key(slot, private_key, PIN_POLICY.ONCE, TOUCH_POLICY.NEVER)
+        # Write a self-signed certificate so OpenSC can expose the public key
+        # via PKCS#11 (required e.g. for SSH logins with ssh-keygen -D).
+        subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "OTPme PIV")])
+        now = datetime.datetime.utcnow()
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(subject)
+            .public_key(private_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now)
+            .not_valid_after(now + datetime.timedelta(days=365 * 10))
+            .sign(private_key, hashes.SHA256())
+        )
+        piv.put_certificate(slot, cert)
     print(f"Key imported to slot {slot.name}.")
 
 

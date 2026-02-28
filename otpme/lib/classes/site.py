@@ -3142,6 +3142,14 @@ class Site(OTPmeObject):
         callback.write_modified_objects()
         cache.flush()
 
+        # Add default config parameters. This need to be run two times
+        # (e.g. after scripts are created). Once here and again in add().
+        for parameter in config.valid_config_params:
+            default_value = config.valid_config_params[parameter]['default']
+            if default_value is None:
+                continue
+            self.set_config_param(parameter, default_value, callback=callback)
+
         # Add template objects.
         self.add_object_templates(callback=callback)
 

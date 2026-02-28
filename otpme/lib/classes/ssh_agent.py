@@ -173,6 +173,17 @@ class SSHAgent(object):
                                 additional_opts=additional_opts)
 
 
+    def add_key(self, verify_signs=None, additional_opts=[]):
+        """ Send 'add_key' command to agent script """
+        self.run_ssh_agent_script(command="add_key",
+                                verify_signs=verify_signs,
+                                additional_opts=additional_opts)
+        return self.ssh_auth_sock, \
+                self.ssh_agent_pid, \
+                self.ssh_agent_name, \
+                self.gpg_agent_info
+
+
     def unlock(self, verify_signs=None, additional_opts=[]):
         """ Send 'unlock' command to agent script """
         self.run_ssh_agent_script(command="unlock",
