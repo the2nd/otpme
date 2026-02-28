@@ -87,12 +87,6 @@ Remove an LDAP object class from the realm.
 Show LDIF representation of the realm. Use \fB\-a\fR to show only specific attributes.
 .SS Configuration and Attributes
 .TP
-.B config \fIrealm\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set or display a configuration parameter.
-.TP
-.B show_config \fIrealm\fR [\fIparameter\fR]
-Show all configuration parameters.
-.TP
 .B description \fIrealm\fR \fR[\fIdescription\fR]
 Set realm description.
 .TP
@@ -195,10 +189,6 @@ Password for encrypting exports.
 Global options are available for all commands. See
 .BR otpme (1)
 for details.
-.SH CONFIG PARAMETERS
-Configuration parameters can be set with the \fBconfig\fR command and displayed with \fBshow_config\fR.
-For a complete description of all available parameters and their applicable object types, see
-.BR otpme (7).
 .SH EXAMPLES
 .SS Initializing a Realm
 .TP

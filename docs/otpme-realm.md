@@ -103,12 +103,6 @@ attributes.
 
 ## Configuration and Attributes
 
-**config *realm* *parameter* \[*value*\]**  
-Set or display a configuration parameter.
-
-**show_config *realm* \[*parameter*\]**  
-Show all configuration parameters.
-
 **description *realm* \[*description*\]**  
 Set realm description.
 
@@ -219,13 +213,6 @@ Password for encrypting exports.
 
 Global options are available for all commands. See **otpme**(1) for
 details.
-
-# CONFIG PARAMETERS
-
-Configuration parameters can be set with the **config** command and
-displayed with **show_config**. For a complete description of all
-available parameters and their applicable object types, see
-**otpme**(7).
 
 # EXAMPLES
 
