@@ -1,0 +1,36 @@
+site_name: OTPme Documentation
+site_url: https://otpme.readthedocs.io
+docs_dir: docs
+theme:
+  name: material
+  palette:
+    primary: indigo
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+
+nav:
+  - Overview: otpme.md
+  - Configuration File: otpme.conf.5.md
+  - Config Parameters: otpme.7.md
+  - Commands:
+    - otpme-user: otpme-user.md
+    - otpme-group: otpme-group.md
+    - otpme-role: otpme-role.md
+    - otpme-accessgroup: otpme-accessgroup.md
+    - otpme-token: otpme-token.md
+    - otpme-policy: otpme-policy.md
+    - otpme-resolver: otpme-resolver.md
+    - otpme-dictionary: otpme-dictionary.md
+    - otpme-site: otpme-site.md
+    - otpme-realm: otpme-realm.md
+    - otpme-unit: otpme-unit.md
+    - otpme-ca: otpme-ca.md
+    - otpme-host: otpme-host.md
+    - otpme-node: otpme-node.md
+    - otpme-client: otpme-client.md
+    - otpme-script: otpme-script.md
+    - otpme-share: otpme-share.md
+    - otpme-pool: otpme-pool.md
+    - otpme-tool: otpme-tool.md
