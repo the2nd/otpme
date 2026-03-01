@@ -3,6 +3,53 @@
 This guide walks through the initial setup of an OTPme realm and explains
 common day-to-day administration tasks using a practical example.
 
+## Prerequisites
+
+### Testing without hosts and clients
+
+If you just want to try out OTPme on a single node without setting up hosts or
+RADIUS clients, you can initialize the realm with `localhost 127.0.0.1` as the
+node FQDN and address. You can always migrate to a fully functional setup later.
+
+### DNS records for a production setup
+
+When using OTPme with real hosts and clients, the following DNS records are
+required. The example uses the realm `otpme.org`, site `muenchen` and a
+floating cluster IP `192.168.1.100`:
+
+```
+$ORIGIN _tcp.muenchen.otpme.org.
+_otpme-join    SRV 10 1 2024 login.muenchen.otpme.org.
+_otpme-login   SRV 10 1 2020 login.muenchen.otpme.org.
+_otpme-realm   TXT "otpme.org"
+_otpme-site    TXT "muenchen"
+
+$ORIGIN muenchen.otpme.org.
+login          A   192.168.1.100
+node1          A   192.168.1.1
+node2          A   192.168.1.2
+```
+
+`node1`, `node2` etc. must match the hostnames and IPs of your actual nodes.
+
+### Load balancing
+
+For load-balanced authentication and login requests across multiple nodes, set
+an auth FQDN for the site and add a round-robin DNS record for it:
+
+```bash
+otpme-site auth_fqdn muenchen auth.muenchen.otpme.org
+```
+
+```
+$ORIGIN muenchen.otpme.org.
+auth    A   192.168.1.1
+        A   192.168.1.2
+```
+
+If you only have one site you can use the realm domain directly for all records
+(e.g. `auth.otpme.org` instead of `auth.muenchen.otpme.org`).
+
 ## 1. Initialize a Realm
 
 The first step is to initialize a realm. This creates the root CA, the master
