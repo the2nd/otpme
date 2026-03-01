@@ -27,12 +27,6 @@ OTPme is an authentication system supporting hardware tokens, smartcards and one
 | [otpme-pool](otpme-pool.md) | Manage pools |
 | [otpme-tool](otpme-tool.md) | OTPme tools |
 
-## Guides
-
-| Page | Description |
-|------|-------------|
-| [Getting Started](getting-started.md) | Step-by-step guide: realm setup, users, WLAN access, groups and roles |
-
 ## Reference
 
 | Page | Description |
@@ -40,3 +34,4 @@ OTPme is an authentication system supporting hardware tokens, smartcards and one
 | [otpme.7](otpme.7.md) | Architecture and config parameters reference |
 | [otpme](otpme.md) | Command overview and global options |
 | [otpme.conf.5](otpme.conf.5.md) | Configuration file reference |
+| [Getting Started](getting-started.md) | Step-by-step guide: realm setup, users, WLAN access, groups and roles |
