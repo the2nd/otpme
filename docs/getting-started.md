@@ -321,8 +321,8 @@ otpme-token -f --type password password joe/login password
 ```
 
 Grant joe the right to create, delete and edit users and their tokens within
-the `management/users` unit. The `+` prefix means the ACL applies to the
-object itself, `++` means it applies recursively to child objects:
+the `management/users` unit. The `+` prefix means the ACL is inherited within
+the unit, `++` means it is inherited recursively into sub-units:
 
 ```bash
 otpme-unit add_acl management/users token joe/login "add:user"
@@ -334,9 +334,9 @@ otpme-unit add_acl management/users token joe/login "+user:add:attribute"
 otpme-unit add_acl management/users token joe/login "+user:add:token"
 otpme-unit add_acl management/users token joe/login "+user:delete:token"
 otpme-unit add_acl management/users token joe/login "+user:delete"
-otpme-unit add_acl management/users token joe/login "++token:edit"
-otpme-unit add_acl management/users token joe/login "++token:enable"
-otpme-unit add_acl management/users token joe/login "++token:disable"
+otpme-unit add_acl management/users token joe/login "+token:edit"
+otpme-unit add_acl management/users token joe/login "+token:enable"
+otpme-unit add_acl management/users token joe/login "+token:disable"
 ```
 
 Allow joe to set the default group of users to `management` and to
@@ -357,3 +357,73 @@ to the group and role directly at creation time using `--group` and `--role`:
 otpme-user add --group management --role management-user management/users/user1
 otpme-token --type password add user1/wlan
 ```
+
+## 17. Simplify User Creation with Policies
+
+Having to specify `--group` and `--role` on every `otpme-user add` call is
+tedious. Policies can automate these assignments so that new users created
+within a unit get the right group and role automatically.
+
+First, create a unit for the policies:
+
+```bash
+otpme-unit add management/policies
+```
+
+### Default Groups Policy
+
+Configure that new users in the `management/users` unit automatically get
+`management` as their default group:
+
+```bash
+# Add default groups policy.
+otpme-policy --type defaultgroups add management/policies/management-groups
+# Configure that the default group of new users will be management.
+otpme-policy --type defaultgroups default_group management-groups management
+# Remove the existing default policy from the unit.
+otpme-unit remove_policy management/users default_groups
+# Add the new default groups policy to the unit.
+otpme-unit add_policy management/users management-groups
+```
+
+### Default Roles Policy
+
+Configure that new users in the unit are automatically added to the
+`management-user` role:
+
+```bash
+# Add default roles policy.
+otpme-policy --type defaultroles add management/policies/management-roles
+# Configure that new users will be added to the management-user role.
+otpme-policy --type defaultroles add_default_role management-roles management-user
+# Remove the existing default policy from the unit.
+otpme-unit remove_policy management/users default_roles
+# Add the new default roles policy to the unit.
+otpme-unit add_policy management/users management-roles
+```
+
+### Remove Object Templates Policy
+
+If object templates are not needed, remove that policy from the unit:
+
+```bash
+otpme-unit remove_policy management/users object_templates
+```
+
+### Default Units Policy
+
+To allow joe to add users without having to specify the target unit each
+time, assign a `defaultunits` policy directly to joe:
+
+```bash
+# Add default units policy.
+otpme-policy --type defaultunits add management/policies/management-units
+# Set the default unit for new users.
+otpme-policy --type defaultunits set_unit management-units user management/users
+# Add the policy to user joe.
+otpme-user add_policy joe management-units
+```
+
+Joe can now create users with a simple `otpme-user add <username>` and they
+will automatically land in `management/users`, get `management` as their
+default group and be assigned the `management-user` role.
