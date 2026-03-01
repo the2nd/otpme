@@ -390,8 +390,9 @@ Allow joe to set the default group of users to `management` and to
 add/remove tokens from the `management-user` role:
 
 ```bash
-# Allow joe to add users to the management default group.
+# Allow joe to add/remove users to/from the management default group.
 otpme-group add_acl management token joe/login "add:default_group_user"
+otpme-group add_acl management token joe/login "remove:default_group_user"
 # Allow joe to add/remove tokens from the management-user role.
 otpme-role add_acl management-user token joe/login "add:token"
 otpme-role add_acl management-user token joe/login "remove:token"
