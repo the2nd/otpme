@@ -266,8 +266,13 @@ class DefaultgroupsPolicy(Policy):
                 if result:
                     default_group = result[0]
                     if child_object.group != default_group:
-                        child_object.change_group(default_group,
-                                            callback=callback)
+                        try:
+                            child_object.change_group(default_group,
+                                                    callback=callback)
+                        except Exception as e:
+                            msg = str(e)
+                            raise self.policy_exception(msg)
+
         elif hook_name == "set_groups":
             # Handle default groups if user does have a default token.
             if self.default_groups and child_object.default_token:

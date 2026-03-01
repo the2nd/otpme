@@ -2852,8 +2852,6 @@ class Site(OTPmeObject):
     @object_lock(full_lock=True)
     def add_base_objects(
         self,
-        #dictionaries: List=[],
-        #no_dicts: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
@@ -3202,6 +3200,19 @@ class Site(OTPmeObject):
                 msg = _("Problem adding user: {e}")
                 msg = msg.format(e=e)
                 raise OTPmeException(msg)
+
+        # Dicts where created before default policies so we have
+        # to call add_default_policies() now.
+        dicts = backend.search(object_type="dictionary",
+                                attribute="name",
+                                value="*",
+                                return_type="instance")
+        for dictionary in dicts:
+            dictionary.add_default_policies()
+
+        # Write objects.
+        callback.write_modified_objects()
+        cache.flush()
 
         # Create admin user.
         return self.add_admin_user(callback=callback)

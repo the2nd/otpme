@@ -253,16 +253,16 @@ def merge_value_acls(dict1, dict2):
     """ Merge two value ACL dicts/lists without duplicates. """
     if len(dict1) > len(dict2):
         iter_dict = dict1
-        new_dict = dict(dict2)
+        new_dict = stuff.copy_object(dict2)
     else:
         iter_dict = dict2
-        new_dict = dict(dict1)
+        new_dict = stuff.copy_object(dict1)
 
     for a in iter_dict:
-        if not a in new_dict:
+        if a not in new_dict:
             new_dict[a] = []
         for v in iter_dict[a]:
-            if not v in new_dict[a]:
+            if v not in new_dict[a]:
                 new_dict[a].append(v)
     return new_dict
 

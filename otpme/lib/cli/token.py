@@ -18,8 +18,8 @@ from otpme.lib.cli import get_policies_string
 from otpme.lib.cli import get_auth_script_string
 from otpme.lib.classes.user import user_failcount
 from otpme.lib.classes.user import user_is_blocked
-from otpme.lib.classes.policy import get_acls
-from otpme.lib.classes.policy import get_value_acls
+from otpme.lib.classes.token import get_acls
+from otpme.lib.classes.token import get_value_acls
 from otpme.lib.classes.role import get_roles as _get_roles
 
 from otpme.lib.exceptions import *
@@ -63,10 +63,14 @@ def register():
     for acl in read_value_acls:
         for x in read_value_acls[acl]:
             x_acl = f"{acl}:{x}"
+            if x_acl in read_acls:
+                continue
             read_acls.append(x_acl)
     for acl in write_value_acls:
         for x in write_value_acls[acl]:
             x_acl = f"{acl}:{x}"
+            if x_acl in write_acls:
+                continue
             write_acls.append(x_acl)
     for sub_type in config.get_sub_object_types("token"):
         x_module_path = f"otpme.lib.token.{sub_type}.{sub_type}"
@@ -80,12 +84,18 @@ def register():
         for acl in x_read_value_acls:
             for x in x_read_value_acls[acl]:
                 x_acl = f"{acl}:{x}"
+                if x_acl in read_acls:
+                    continue
                 read_acls.append(x_acl)
         for acl in x_write_value_acls:
             for x in x_write_value_acls[acl]:
                 x_acl = f"{acl}:{x}"
+                if x_acl in write_acls:
+                    continue
                 write_acls.append(x_acl)
-
+    # Remove duplicates.
+    read_acls = set(read_acls)
+    write_acls = set(write_acls)
     register_cli(name="token",
                 id_attr="rel_path",
                 table_headers=table_headers,

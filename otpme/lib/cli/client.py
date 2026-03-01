@@ -62,6 +62,9 @@ def register():
         for x in write_value_acls[acl]:
             x_acl = f"{acl}:{x}"
             write_acls.append(x_acl)
+    # Remove duplicates.
+    read_acls = set(read_acls)
+    write_acls = set(write_acls)
     register_cli(name="client",
                 table_headers=table_headers,
                 return_attributes=return_attributes,

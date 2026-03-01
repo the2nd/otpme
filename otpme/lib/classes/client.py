@@ -52,7 +52,6 @@ write_acls =  [
 read_value_acls =    {
                     "view"      : [
                                 "token",
-                                "group",
                                 "accessgroup",
                                 "secret",
                                 "login_url",

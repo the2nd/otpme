@@ -152,7 +152,7 @@ def init(init_file_dir_perms=False):
     config.dogpile_caching = False
 
 def is_available(write=True):
-    """ Check if backend is available. """
+    """ Check if index is available. """
     if write:
         if not os.access(INDEX_DIR, os.W_OK):
             return False

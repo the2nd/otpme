@@ -173,6 +173,7 @@ def get_value_acls(read_value_acls, write_value_acls, split=False):
                                     otpme_object_write_value_acls)
         return _read_value_acls, _write_value_acls
     global_value_acls = get_global_value_acls()
+    global_value_acls = stuff.copy_object(global_value_acls)
     _acls = otpme_acl.merge_value_acls(read_value_acls, write_value_acls)
     _acls = otpme_acl.merge_value_acls(_acls, global_value_acls)
     return _acls
@@ -193,8 +194,8 @@ def get_recursive_default_acls(recursive_default_acls):
 def get_global_acls(split=False):
     """ Get all supported object ACLs """
     if split:
-        return global_read_acls, global_write_acls
-    _acls = otpme_acl.merge_acls(global_read_acls, global_write_acls)
+        return list(global_read_acls), list(global_write_acls)
+    _acls = otpme_acl.merge_acls(list(global_read_acls), list(global_write_acls))
     return _acls
 
 def get_global_value_acls(split=False):
@@ -4534,6 +4535,8 @@ class OTPmeObject(OTPmeBaseObject):
 
         # Merge ignore_policy_types.
         ignore_policy_types += self.ignore_policy_types
+        if child_object:
+            ignore_policy_types += child_object.ignore_policy_types
         ignore_policy_types = list(set(ignore_policy_types))
 
         for x in policies:
@@ -5738,6 +5741,10 @@ class OTPmeObject(OTPmeBaseObject):
             # default ACL.
             if acl.object_type is None or acl.object_type == self.type:
                 apply_id = acl.apply_id
+            elif supported_acl:
+                # If the ACL is not for this object but a supported default acl
+                # add it by acl id.
+                apply_id = acl.id
         else:
             if supported_acl:
                 apply_id = acl.id
@@ -5812,6 +5819,20 @@ class OTPmeObject(OTPmeBaseObject):
                         default_acl = f"+{object_type}:{a}"
                         acls.append(default_acl)
 
+                    # Get subtye ACLs.
+                    sub_types = config.get_sub_object_types(object_type)
+                    for sub_type in sub_types:
+                        object_module_path = f"otpme.lib.{object_type}.{sub_type}.{sub_type}"
+                        object_module = importlib.import_module(object_module_path)
+                        for a in object_module.get_acls():
+                            default_acl = f"+{object_type}:{a}"
+                            acls.append(default_acl)
+                        value_acls = object_module.get_value_acls()
+                        for a in value_acls:
+                            for v in value_acls[a]:
+                                default_acl = f"+{object_type}:{a}:{v}"
+                                acls.append(default_acl)
+
                     # Get extension ACLs.
                     for a in utils.get_acls(object_type):
                         default_acl = f"+{object_type}:{a}"
@@ -5830,6 +5851,21 @@ class OTPmeObject(OTPmeBaseObject):
                         for v in value_acls[a]:
                             default_acl = f"+{object_type}:{a}:{v}"
                             acls.append(default_acl)
+
+                    # Get subtye ACLs.
+                    sub_types = config.get_sub_object_types(object_type)
+                    for sub_type in sub_types:
+                        object_module_path = f"otpme.lib.{object_type}.{sub_type}.{sub_type}"
+                        object_module = importlib.import_module(object_module_path)
+                        for a in object_module.get_acls():
+                            default_acl = f"+{object_type}:{a}"
+                            acls.append(default_acl)
+                        value_acls = object_module.get_value_acls()
+                        for a in value_acls:
+                            for v in value_acls[a]:
+                                default_acl = f"+{object_type}:{a}:{v}"
+                                acls.append(default_acl)
+
                 else:
                     default_acl = f"+{i}"
                     acls.append(default_acl)
@@ -5865,6 +5901,21 @@ class OTPmeObject(OTPmeBaseObject):
                         for v in value_acls[a]:
                             default_acl = f"++{object_type}:{a}:{v}"
                             acls.append(default_acl)
+
+                    # Get subtye ACLs.
+                    sub_types = config.get_sub_object_types(object_type)
+                    for sub_type in sub_types:
+                        object_module_path = f"otpme.lib.{object_type}.{sub_type}.{sub_type}"
+                        object_module = importlib.import_module(object_module_path)
+                        for a in object_module.get_acls():
+                            default_acl = f"++{object_type}:{a}"
+                            acls.append(default_acl)
+                        value_acls = object_module.get_value_acls()
+                        for a in value_acls:
+                            for v in value_acls[a]:
+                                default_acl = f"++{object_type}:{a}:{v}"
+                                acls.append(default_acl)
+
                 else:
                     default_acl = f"++{i}"
                     acls.append(default_acl)
@@ -5914,12 +5965,15 @@ class OTPmeObject(OTPmeBaseObject):
                 add_status = self.add_acl(acl=recursive_apply_id,
                                         owner_uuid=acl.owner_uuid,
                                         verify_acls=verify_acls,
+                                        raise_exception=True,
                                         verbose_level=verbose_level,
                                         callback=callback,
                                         **kwargs)
                 if not add_status:
                     exception = "Failed to add recursive ACL: {acl}"
                     exception = exception.format(acl=acl.id)
+            except ValueError as e:
+                pass
             except Exception as e:
                 if not exception:
                     exception = str(e)
@@ -5930,12 +5984,15 @@ class OTPmeObject(OTPmeBaseObject):
                 add_status = self.add_acl(acl=apply_id,
                                         owner_uuid=acl.owner_uuid,
                                         verify_acls=verify_acls,
+                                        raise_exception=True,
                                         verbose_level=verbose_level,
                                         callback=callback,
                                         **kwargs)
                 if not add_status:
                     exception = "Failed to add ACL: {acl}"
                     exception = exception.format(acl=acl.id)
+            except ValueError as e:
+                pass
             except Exception as e:
                 if not exception:
                     exception = str(e)
@@ -6196,6 +6253,7 @@ class OTPmeObject(OTPmeBaseObject):
         recursive_acls: bool=False,
         apply_default_acls: bool=False,
         _acl_objects: List=[],
+        raise_exception: bool=False,
         force: bool=False,
         verify_acls: bool=True,
         run_policies: bool=True,
@@ -6359,6 +6417,8 @@ class OTPmeObject(OTPmeBaseObject):
                 if not recursive_acls or (recursive_acls and _acl_objects):
                     exception = _("Unsupported ACL: {object_oid}: {acl_id}")
                     exception = exception.format(object_oid=self.oid, acl_id=_acl.id)
+                    if raise_exception:
+                        raise ValueError(exception)
 
         # Add ACL (or default ACL) to the object if there was no exception.
         if valid_acl and raw_acl:

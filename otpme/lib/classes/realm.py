@@ -112,6 +112,7 @@ commands = {
                                             'node_key_len',
                                             'node_valid',
                                             'no_dicts',
+                                            'no_index_indices',
                                             'dictionaries',
                                             'id_ranges',
                                             'site_address',
@@ -1174,6 +1175,7 @@ class Realm(OTPmeObject):
         node_key_len: Union[int,None]=None,
         id_ranges: Union[str,None]=None,
         no_dicts: bool=False,
+        no_index_indices: bool=False,
         dictionaries: List=[],
         callback: JobCallback=default_callback,
         **kwargs,
@@ -1523,10 +1525,11 @@ class Realm(OTPmeObject):
             first_node.add_policy(policy.name, verify_acls=False)
 
         # Make sure DB indices are created after adding all objects.
-        msg = _("Creating DB indexes...")
-        callback.send(msg)
-        _index = config.get_index_module()
-        _index.command("create_db_indices")
+        if not no_index_indices:
+            msg = _("Creating DB indexes...")
+            callback.send(msg)
+            _index = config.get_index_module()
+            _index.command("create_db_indices")
 
         # We finished our realm init.
         config.realm_init = False

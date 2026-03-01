@@ -746,6 +746,7 @@ class PasswordToken(Token):
             result = owner.get_policies(policy_type="password",
                                             return_type="instance")
             symbols = False
+            exclude_chars = None
             if result:
                 pass_policy = result[0]
                 if pass_policy.require_special:

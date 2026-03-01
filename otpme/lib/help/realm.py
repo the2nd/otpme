@@ -22,7 +22,7 @@ cmd_help = {
 
     'init'      : {
                     '_cmd_usage_help' : _('Usage: otpme-realm init {realm} {site} {fqdn} [address]'),
-                    'cmd'   :   '--country :ca_country: --state :ca_state: --locality :ca_locality: --organization :ca_organization: --ou :ca_ou: --email :ca_email: --ca-valid :ca_valid: --ca-key-len :ca_key_len: --site-valid :site_valid: --site-key-len :site_key_len: --node-valid :node_valid: --node-key-len :node_key_len: --no-dicts :no_dicts=True: --dicts ::[dictionaries]:: --id-ranges ::id_ranges:: <|object|> <realm_master> <site_fqdn> [site_address]',
+                    'cmd'   :   '--country :ca_country: --state :ca_state: --locality :ca_locality: --organization :ca_organization: --ou :ca_ou: --email :ca_email: --ca-valid :ca_valid: --ca-key-len :ca_key_len: --site-valid :site_valid: --site-key-len :site_key_len: --node-valid :node_valid: --node-key-len :node_key_len: --no-dicts :no_dicts=True: --dicts ::[dictionaries]:: --id-ranges ::id_ranges:: --no-index-indices :no_index_indices=True: <|object|> <realm_master> <site_fqdn> [site_address]',
                     '_help' :   {
                                     'cmd'                               : _('Init realm'),
                                     '--ca-valid'                        : _('CA certificates validity in days.'),
@@ -40,6 +40,7 @@ cmd_help = {
                                     '--no-dicts'                        : _('Do not add any word dictionaries (strength checker).'),
                                     '--dicts <dict1,dict2>'             : _('Add the given word dictionaries (strength checker).'),
                                     '--id-ranges <id_range_1,id_range2>': _('ID ranges to add.'),
+                                    '--no-index-indices'                : _('Do not create index DB indices.'),
                                 },
                 },
 

@@ -14,8 +14,8 @@ from otpme.lib.humanize import units
 from otpme.lib.cli import register_cli
 from otpme.lib.cli import get_unit_string
 from otpme.lib.cli import get_policies_string
-from otpme.lib.classes.client import get_acls
-from otpme.lib.classes.client import get_value_acls
+from otpme.lib.classes.dictionary import get_acls
+from otpme.lib.classes.dictionary import get_value_acls
 
 from otpme.lib.exceptions import *
 
@@ -53,6 +53,9 @@ def register():
         for x in write_value_acls[acl]:
             x_acl = f"{acl}:{x}"
             write_acls.append(x_acl)
+    # Remove duplicates.
+    read_acls = set(read_acls)
+    write_acls = set(write_acls)
     register_cli(name="dictionary",
                 table_headers=table_headers,
                 return_attributes=return_attributes,

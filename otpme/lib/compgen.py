@@ -22,6 +22,61 @@ from otpme.lib.help.register import register_help
 
 register_help()
 
+def process_acls(default_acls, all_acls, recursive=False):
+    from otpme.lib import config
+    for acl in default_acls:
+        if acl.startswith("+"):
+            acl_otype = acl.split("+")[1].split(":")[0]
+            # Handle subtypes.
+            sub_types = config.get_sub_object_types(acl_otype)
+            if sub_types:
+                for sub_type in sub_types:
+                    object_module_path = f"otpme.lib.{acl_otype}.{sub_type}.{sub_type}"
+                    object_module = importlib.import_module(object_module_path)
+                    for a in object_module.get_acls():
+                        default_acl = f"+{acl_otype}:{a}"
+                        if recursive:
+                            default_acl = f"+{default_acl}"
+                        if default_acl in all_acls:
+                            continue
+                        all_acls.append(default_acl)
+                    x_value_acls = object_module.get_value_acls()
+                    for a in x_value_acls:
+                        for x_acl in x_value_acls[a]:
+                            default_acl = f"+{acl_otype}:{a}:{x_acl}"
+                            if recursive:
+                                default_acl = f"+{default_acl}"
+                            if default_acl in all_acls:
+                                continue
+                            all_acls.append(default_acl)
+            # Handle object default ACLs.
+            object_module_path = f"otpme.lib.classes.{acl_otype}"
+            object_module = importlib.import_module(object_module_path)
+            for a in object_module.get_acls():
+                default_acl = f"+{acl_otype}:{a}"
+                if recursive:
+                    default_acl = f"+{default_acl}"
+                if default_acl in all_acls:
+                    continue
+                all_acls.append(default_acl)
+            x_value_acls = object_module.get_value_acls()
+            for a in x_value_acls:
+                for x_acl in x_value_acls[a]:
+                    default_acl = f"+{acl_otype}:{a}:{x_acl}"
+                    if recursive:
+                        default_acl = f"+{default_acl}"
+                    if default_acl in all_acls:
+                        continue
+                    all_acls.append(default_acl)
+        else:
+            default_acl = f"+{acl}"
+            if recursive:
+                default_acl = f"+{default_acl}"
+            if default_acl in all_acls:
+                continue
+            all_acls.append(default_acl)
+    return all_acls
+
 def show_compgen():
     """ Print valid compgen commands """
     from otpme.lib import config
@@ -434,62 +489,13 @@ def show_compgen():
                         if acl_str in all_acls:
                             continue
                         all_acls.append(acl_str)
+                # Add default ACLs.
                 x_default_acls = x_get_default_acls()
-                for acl in x_default_acls:
-                    if acl.startswith("+"):
-                        acl_otype = acl.split("+")[1].split(":")[0]
-                        sub_types = config.get_sub_object_types(acl_otype)
-                        if sub_types:
-                            for sub_type in sub_types:
-                                object_module_path = f"otpme.lib.{acl_otype}.{sub_type}.{sub_type}"
-                                object_module = importlib.import_module(object_module_path)
-                                for a in object_module.get_acls():
-                                    default_acl = f"+{acl_otype}:{a}"
-                                    if default_acl in all_acls:
-                                        continue
-                                    all_acls.append(default_acl)
-
-                        object_module_path = f"otpme.lib.classes.{acl_otype}"
-                        object_module = importlib.import_module(object_module_path)
-                        for a in object_module.get_acls():
-                            acl = a.replace("+", "")
-                            default_acl = f"+{acl_otype}:{acl}"
-                            if default_acl in all_acls:
-                                continue
-                            all_acls.append(default_acl)
-                    else:
-                        default_acl = f"+{acl}"
-                        if default_acl in all_acls:
-                            continue
-                        all_acls.append(default_acl)
+                all_acls = process_acls(x_default_acls, all_acls)
+                # Add recursive default ACLs.
                 x_recursive_default_acls = x_get_recursive_default_acls()
-                for acl in x_recursive_default_acls:
-                    if acl.startswith("+"):
-                        acl_otype = acl.split("+")[1].split(":")[0]
-                        sub_types = config.get_sub_object_types(acl_otype)
-                        if sub_types:
-                            for sub_type in sub_types:
-                                object_module_path = f"otpme.lib.{acl_otype}.{sub_type}.{sub_type}"
-                                object_module = importlib.import_module(object_module_path)
-                                for a in object_module.get_acls():
-                                    default_acl = f"++{acl_otype}:{a}"
-                                    if default_acl in all_acls:
-                                        continue
-                                    all_acls.append(default_acl)
+                all_acls = process_acls(x_recursive_default_acls, all_acls, recursive=True)
 
-                        object_module_path = f"otpme.lib.classes.{acl_otype}"
-                        object_module = importlib.import_module(object_module_path)
-                        for a in object_module.get_acls():
-                            acl = a.replace("+", "")
-                            default_acl = f"++{acl_otype}:{acl}"
-                            if default_acl in all_acls:
-                                continue
-                            all_acls.append(default_acl)
-                    else:
-                        default_acl = f"++{acl}"
-                        if default_acl in all_acls:
-                            continue
-                        all_acls.append(default_acl)
             all_acls = "\n".join(all_acls)
             print(all_acls)
             return

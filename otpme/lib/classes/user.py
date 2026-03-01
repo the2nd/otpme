@@ -1774,6 +1774,9 @@ class User(OTPmeObject):
             result = new_group.add_default_group_user(self.uuid,
                                                 verify_acls=verify_acls,
                                                 callback=callback)
+            if not result:
+                msg = _("Failed to change user default group.")
+                raise OTPmeException(msg)
         if cross_site_add:
             msg = _("Setting group: {new_group_name}")
             msg = msg.format(new_group_name=new_group.name)
@@ -1784,7 +1787,7 @@ class User(OTPmeObject):
                                                             callback=callback)
             if not result:
                 msg = _("Failed to change user default group.")
-                return callback.error(msg)
+                raise OTPmeException(msg)
 
         if local_remove:
             old_group.remove_default_group_user(self.uuid,
@@ -1802,8 +1805,8 @@ class User(OTPmeObject):
                 callback.forget_modified_objects()
                 # Abort global transaction.
                 backend.abort_transaction()
-                msg = "Failed to change user default group."
-                return callback.error()
+                msg = _("Failed to change user default group.")
+                raise OTPmeException(msg)
 
         if transaction_started:
             backend.end_transaction()
@@ -1815,8 +1818,8 @@ class User(OTPmeObject):
                                                                 new_group=new_group,
                                                                 callback=callback)
             if not result:
-                msg = "Failed to change user default group."
-                return callback.error()
+                msg = _("Failed to change user default group.")
+                raise OTPmeException(msg)
 
         # Set new group UUID and update index and extensions.
         self._group_uuid = new_group.uuid
@@ -2368,15 +2371,19 @@ class User(OTPmeObject):
                 return callback.error(msg)
 
         try:
-            self._change_group(group_uuid,
-                            verify_acls=True,
-                            callback=callback)
+            change_result = self._change_group(group_uuid,
+                                            verify_acls=True,
+                                            callback=callback)
         except UnknownObject as e:
             msg = str(e)
             return callback.error(msg, exception=UnknownObject)
         except PermissionDenied as e:
            msg = "Permission denied while setting group."
            return callback.error(msg, exception=PermissionDenied)
+
+        if not change_result:
+            msg = _("Failed to change default group.")
+            raise OTPmeException(msg)
 
         return self._cache(callback=callback)
 
@@ -5121,11 +5128,6 @@ class User(OTPmeObject):
                 msg = msg.format(group=group)
                 return callback.error(msg)
             default_group = result[0]
-            if verify_acls:
-                if not default_group.verify_acl('add:default_group_user'):
-                    msg = _("Group: {group}: Permission denied")
-                    msg = msg.format(group=group)
-                    return callback.error(msg)
 
         check_exists = True
         if force:
@@ -5191,19 +5193,19 @@ class User(OTPmeObject):
                 msg = str(e)
                 return callback.error(msg)
 
-        # If not group was set by policies set default users group.
+        # If no group was set by policies set default users group.
         if self.group is None:
-            if default_group.realm==config.realm and default_group.site == config.site:
+            if default_group.realm == config.realm and default_group.site == config.site:
                 try:
                     self._change_group(default_group.uuid,
-                                    new_user=True,
-                                    verify_acls=verify_acls,
-                                    callback=callback)
+                                        new_user=True,
+                                        verify_acls=verify_acls,
+                                        callback=callback)
                 except UnknownObject as e:
                     msg = str(e)
                     return callback.error(msg, exception=UnknownObject)
-                except PermissionDenied as e:
-                   msg = "Permission denied while setting group."
+                except OTPmeException as e:
+                   msg = _("Failed to set group.")
                    return callback.error(msg, exception=PermissionDenied)
             else:
                 ignore_missing_attributes.append("gidNumber")

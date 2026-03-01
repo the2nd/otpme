@@ -523,7 +523,8 @@ class CommandHandler(object):
             config.locking_enabled = False
             # Make sure index is ready.
             _index = config.get_index_module()
-            _index.command("init")
+            if not _index.is_available():
+                _index.command("init")
             if not _index.status():
                 _index.start()
             # Make sure cache is started.
@@ -630,6 +631,10 @@ class CommandHandler(object):
 
             if subcommand == "config":
                 register_module('otpme.lib.token.fido2.fido2')
+
+            if subcommand == "add_acl":
+                from otpme.lib.register import register_modules
+                register_modules()
 
             # Handle post object registration stuff.
             config.handle_post_object_registration()
