@@ -354,8 +354,11 @@ With these ACLs in place, joe can now add users to the unit and assign them
 to the group and role directly at creation time using `--group` and `--role`:
 
 ```bash
+# Login as joe and add a test user.
+otpme-tool login joe
 otpme-user add --group management --role management-user management/users/user1
 otpme-token --type password add user1/wlan
+otpme-tool logout
 ```
 
 ## 17. Simplify User Creation with Policies
