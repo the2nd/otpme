@@ -24,14 +24,14 @@ fi
 mkdir -p "$OUT_DIR"
 count=0
 
-for src in "$MAN_DIR"/*.{1,5,7}; do
+for src in "$MAN_DIR"/*.{1,5,7,8}; do
     [[ -f "$src" ]] || continue
     base=$(basename "$src")
     ext="${base##*.}"
     name="${base%.*}"
 
-    # Section 5 and 7 keep their section number in the filename
-    if [[ "$ext" == "5" || "$ext" == "7" ]]; then
+    # Section 5, 7 and 8 keep their section number in the filename
+    if [[ "$ext" == "5" || "$ext" == "7" || "$ext" == "8" ]]; then
         dst="$OUT_DIR/${base}.md"
     else
         dst="$OUT_DIR/${name}.md"
