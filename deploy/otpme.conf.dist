@@ -22,6 +22,9 @@ USE_MGMTD_SOCKET="False"
 # How long to wait for second node in two node clusters to appear.
 TWO_NODE_TIMEOUT="3"
 
+# Do a sync on master node failover.
+MASTER_FAILOVER_SYNC="False"
+
 # Index DB type. If you have a lot of users an experience
 # bad performance consider switching to mysql or postgres.
 # NOTE: Please make sure you run "otpme-tool index stop" BEFORE changing this parameter!

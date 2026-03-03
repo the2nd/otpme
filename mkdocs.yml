@@ -15,6 +15,8 @@ nav:
   - Architecture & Config Parameters: otpme.7.md
   - Overview: otpme.md
   - Configuration File: otpme.conf.5.md
+  - Getting Started: getting-started.md
+  - PAM Module: pam_otpme.8.md
   - Commands:
     - otpme-user: otpme-user.md
     - otpme-group: otpme-group.md

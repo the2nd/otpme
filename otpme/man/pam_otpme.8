@@ -1,0 +1,272 @@
+.TH PAM_OTPME 8 "2025" "OTPme" "System Administration"
+.SH NAME
+pam_otpme \- PAM module for OTPme authentication with offline login support
+.SH SYNOPSIS
+.nf
+auth [success=1 default=ignore] pam_python.so pam_otpme.py [\fIoptions\fR...]
+.fi
+.SH DESCRIPTION
+.B pam_otpme
+is a PAM module that authenticates users against an OTPme realm.
+It is loaded via
+.B pam_python.so
+and supports online authentication against the OTPme daemon as well as fully
+offline logins using locally cached credentials.
+.PP
+When a user logs in online, the module can cache the user's token credentials
+on the local host so that subsequent logins succeed even when the OTPme server
+is unreachable.
+Offline caching must be enabled individually for each token on the server:
+.PP
+.nf
+otpme-token enable_offline <token>
+.fi
+.PP
+Offline credentials are protected by a key derivation function (KDF) whose
+parameters can be tuned based on the strength of the user's password.
+.PP
+In addition to offline tokens, the module supports
+.IR "offline session keeping" .
+When enabled for a token, the login session is cached alongside the offline
+credentials and automatically restored on the next offline login.
+Session keeping is enabled per token on the server:
+.PP
+.nf
+otpme-token enable_session_keep <token>
+.fi
+.PP
+If the user has shares configured and auto-mount is enabled, shares are
+mounted automatically when a session is restored from cache:
+.PP
+.nf
+otpme-user enable_auto_mount <user>
+.fi
+.PP
+The module also supports hardware smartcards (e.g. YubiKey HMAC-SHA1) and SSH
+key authentication via an SSH agent (e.g. YubiKey with GPG applet combined with
+an OTPme
+.B ssh
+token).
+.SH INSTALLATION
+.B pam_python.so
+must be installed before
+.B pam_otpme
+can be used.
+On Debian and Ubuntu install the distribution package:
+.PP
+.nf
+apt-get install libpam-python
+.fi
+.PP
+The
+.B pam_otpme.py
+script is installed as part of OTPme and is typically located in the OTPme
+Python package directory.
+.SH OPTIONS
+Options are passed as space-separated arguments after
+.B pam_otpme.py
+on the PAM configuration line.
+.TP
+.B cache_login_tokens
+Cache login tokens that are configured for offline usage on the server.
+This enables subsequent offline logins after a successful online
+authentication.
+.TP
+.B try_first_pass
+Try to reuse the password supplied by a previously stacked PAM module.
+If no password is available, prompt the user.
+.TP
+.B use_first_pass
+Use the password supplied by a previously stacked PAM module.
+Fail immediately if no password is available.
+.TP
+.B nullok
+Allow authentication with an empty password.
+.TP
+.BI send_password= auto|false
+Controls whether the user's password is sent to the OTPme server.
+.RS
+.TP
+.B auto
+Send the password only if the server requests it (default).
+.TP
+.B false
+Never send the password to the server.
+Useful for token types that do not require the password on the server side
+(e.g. SSH tokens).
+.RE
+.TP
+.BI use_smartcard= auto|true|false
+Controls smartcard usage (e.g. YubiKey HMAC-SHA1).
+.RS
+.TP
+.B auto
+Use a locally connected smartcard if one is detected (default).
+.TP
+.B true
+Require a smartcard; login without one is not possible.
+.TP
+.B false
+Ignore any connected smartcard.
+.RE
+.TP
+.BI use_ssh_agent= auto|true|false
+Controls authentication via SSH key from an SSH agent (e.g. YubiKey with
+GPG applet used together with an OTPme
+.B ssh
+token).
+.RS
+.TP
+.B auto
+Use the SSH agent if a suitable key is available (default).
+.TP
+.B true
+Require a valid SSH key from the agent; login without one is not possible.
+.TP
+.B false
+Do not use and do not start an SSH agent.
+.RE
+.TP
+.BI start_ssh_agent= auto|true|false
+Controls whether an SSH agent is started at login.
+.RS
+.TP
+.B auto
+Decide based on public keys received from the server (default).
+.TP
+.B true
+Always start an SSH agent.
+.TP
+.B false
+Never start an SSH agent.
+.RE
+.TP
+.B unlock_via_offline_token
+When set, screen unlock uses the locally cached offline token and does not
+send an authentication request to the OTPme server.
+.TP
+.BI offline_key_func= func [; opt = val ,...]
+Key derivation function used to encrypt the locally cached offline token.
+The function name and its options are separated by
+.BR ; ,
+individual options by
+.BR , ,
+and key/value pairs by
+.BR : .
+.PP
+.RS
+The only supported function is
+.BR Argon2_i .
+Available options:
+.TS
+l l l.
+Option	Description	Default
+_
+iterations	Number of iterations	3
+min_mem	Minimum memory in KiB	65536
+max_mem	Maximum memory in KiB	262144
+threads	Number of threads	4
+.TE
+.PP
+Example:
+.PP
+.nf
+offline_key_func=Argon2_i;min_mem:65536,max_mem:262144,iterations:6,threads:4
+.fi
+.RE
+.TP
+.BI check_offline_pass_strength= policy ; score : iterations [,...]
+Dynamically adjust the number of KDF iterations based on the strength of the
+user's password.
+A weaker password receives more iterations; a stronger password needs fewer.
+.PP
+.RS
+The first parameter specifies the OTPme password policy used to calculate the
+strength score.
+Use
+.B auto
+to use the policy assigned to the host.
+.PP
+The second parameter (after
+.BR ; )
+is a comma-separated list of
+.IB score : iterations
+pairs that map a strength score to a number of KDF iterations.
+.PP
+Example:
+.PP
+.nf
+check_offline_pass_strength=password_strength;0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3
+.fi
+.RE
+.TP
+.B offline_greeting
+Display a greeting message after a successful offline login.
+.TP
+.B online_greeting
+Display a greeting message after a successful online login.
+.TP
+.BI message_timeout= seconds
+Duration in seconds for which PAM messages are displayed.
+Default:
+.BR 2 .
+.TP
+.B show_errors
+Show OTPme-specific login error messages to the user via the PAM conversation
+interface.
+.TP
+.BI connect_timeout= seconds
+Timeout in seconds when establishing a connection to the OTPme server.
+Default:
+.BR 3 .
+.TP
+.BI connection_timeout= seconds
+Timeout in seconds when waiting for a response from the OTPme server.
+Default:
+.BR 30 .
+.TP
+.B create_home
+Create the user's home directory on first login if it does not exist.
+.TP
+.BI home_skel= path
+Path to a skeleton directory used when creating a new home directory.
+Requires
+.BR create_home .
+.TP
+.B debug
+Enable verbose debug logging.
+.SH EXAMPLES
+A typical PAM entry that enables offline caching, smartcard and SSH agent
+support, adaptive KDF iterations and debug output:
+.PP
+.nf
+auth [success=1 default=ignore] pam_python.so pam_otpme.py \\
+    try_first_pass \\
+    cache_login_tokens \\
+    use_smartcard=auto \\
+    use_ssh_agent=auto \\
+    offline_key_func=Argon2_i;min_mem:65536,max_mem:262144,iterations:6,threads:4 \\
+    check_offline_pass_strength=password_strength;0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3 \\
+    debug
+.fi
+.PP
+A minimal entry for online-only authentication:
+.PP
+.nf
+auth [success=1 default=ignore] pam_python.so pam_otpme.py try_first_pass
+.fi
+.SH FILES
+.TP
+.I /var/cache/otpme/offline/
+Directory where offline token credentials and cached login sessions are stored.
+.SH SEE ALSO
+.BR otpme-tool (1),
+.BR otpme.conf (5),
+.BR pam (7),
+.BR pam_python (8)
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

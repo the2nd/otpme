@@ -9,7 +9,7 @@ otpme-install-manpages
 ```
 
 ## Install debian dependencies
-apt-get install python3.11-venv gobjc++ python3-pybind11 python3-dev build-essential cmake gcc dbus-x11 freeradius freeradius-python3 libacl1-dev libnss-cache liboath0 liboath-dev libpcsclite1 libpq-dev libre2-9 libre2-dev libsystemd-dev pkg-config postgresql postgresql-server-dev-all pwgen pyflakes3 redis redis-server redis-tools libpcsclite-dev ykcs11 fuse3
+apt-get install python3.11-venv gobjc++ python3-pybind11 python3-dev build-essential cmake gcc dbus-x11 freeradius freeradius-python3 libacl1-dev libnss-cache liboath0 liboath-dev libpcsclite1 libpq-dev libre2-9 libre2-dev libsystemd-dev pkg-config postgresql postgresql-server-dev-all pwgen pyflakes3 redis redis-server redis-tools libpcsclite-dev ykcs11 fuse3 libpam-python
 
 ### Disable installed services
 systemctl stop redis  

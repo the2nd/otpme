@@ -571,3 +571,117 @@ otpme-group add mysyncgroup
 otpme-group add_sync_user mysyncgroup alice
 otpme-host add_sync_group <yourhostname> mysyncgroup
 ```
+
+## 19. Configure the PAM Module
+
+To enable OTPme logins on a host, the PAM module must be deployed. Copy the
+module and the OTPme PAM configuration files into place:
+
+```bash
+# Copy the PAM module.
+cp /opt/otpme/lib/python3.11/site-packages/etc/otpme/deploy/pam/pam-python/pam_otpme.py \
+    /lib/security/
+# Copy OTPme PAM configuration files.
+cp /opt/otpme/lib/python3.11/site-packages/etc/otpme/deploy/pam/otpme-* /etc/pam.d/
+```
+
+Then edit the PAM file for the service you want to protect (e.g.
+`/etc/pam.d/login`). Comment out the default includes and add the OTPme ones:
+
+```
+# Comment out the default includes:
+#@include common-auth
+#@include common-account
+#@include common-session
+
+# Add OTPme includes:
+@include otpme-auth
+@include otpme-account
+@include otpme-session
+```
+
+You should now be able to log in as user joe from any TTY. To test, use
+`login` and monitor `/var/log/syslog` for details:
+
+```bash
+login joe
+```
+
+## 20. Offline Logins
+
+Offline login support must be enabled per token. Once enabled, the token
+credentials are cached locally after a successful online login and can be
+used when the OTPme server is unreachable.
+
+```bash
+otpme-token enable_offline joe/login
+```
+
+With session keeping enabled, the login session is additionally cached and
+automatically loaded into `otpme-agent` on the next offline login:
+
+```bash
+otpme-token enable_session_keep joe/login
+```
+
+After logging in online as joe, verify that the offline token was cached:
+
+```bash
+otpme-tool show_offline_token
+```
+
+For hosts with special security requirements, offline tokens can be pinned.
+This ensures that only login with the pinned token is possible, preventing
+even an administrator with server access from authorising a login with a
+different token:
+
+```bash
+otpme-tool pin_offline_token
+```
+
+### Restrict Which Users May Log In
+
+The following options in `/etc/otpme/otpme.conf` control which users are
+allowed to log in to a specific host:
+
+```
+# Allow only the listed users to log in.
+VALID_LOGIN_USERS="joe,alice"
+
+# Allow all users except the listed ones.
+DENY_LOGIN_USERS="alice"
+```
+
+## 21. Dynamic Groups
+
+Dynamic groups allow OTPme to add users to local POSIX groups (via
+`setgroups()`) at login time — for example to grant access to `plugdev` for
+USB device handling. They can be configured on hosts, tokens and roles.
+
+```bash
+# Add all users that log in to this host to the plugdev group.
+otpme-host add_dynamic_group <yourhostname> plugdev
+
+# Add to plugdev for users authenticating with a specific token.
+otpme-token add_dynamic_group joe/login plugdev
+
+# Add to plugdev for all members of a role.
+otpme-role add_dynamic_group management-user plugdev
+```
+
+For hosts with strict security requirements, dynamic group assignment can be
+restricted in `/etc/otpme/otpme.conf`:
+
+```
+# Only allow assignment to the listed dynamic groups.
+ALLOW_DYNAMIC_GROUPS="plugdev"
+
+# Set to False to disable dynamic groups entirely on this host.
+ALLOW_DYNAMIC_GROUPS="False"
+
+# Leave empty to allow all dynamic groups except those listed in DENY_DYNAMIC_GROUPS.
+ALLOW_DYNAMIC_GROUPS=""
+
+# Block specific dynamic groups.
+DENY_DYNAMIC_GROUPS="wheel"
+```
