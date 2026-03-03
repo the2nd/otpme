@@ -478,3 +478,96 @@ otpme-user add_policy joe management-units
 Joe can now create users with a simple `otpme-user add <username>` and they
 will automatically land in `management/users`, get `management` as their
 default group and be assigned the `management-user` role.
+
+## 18. Joining a Host to the Realm
+
+Before a host can authenticate users via OTPme, it must be joined to the realm.
+The join command must always be run as root on the host itself. It creates the
+host object in the realm automatically.
+
+```bash
+otpme-tool join
+```
+
+### Joining as an Ordinary User
+
+To allow a non-root user like joe to join hosts, grant the necessary ACLs on
+the `JOIN` access group and the `hosts` unit:
+
+```bash
+otpme-accessgroup add_acl JOIN token joe/login "join:host"
+otpme-accessgroup add_acl JOIN token joe/login "leave:host"
+otpme-unit add_acl hosts token joe/login-piv "add:host"
+```
+
+Joe can then join a host on the host itself:
+
+```bash
+# First remove any existing host object.
+otpme-tool leave            # run on the host
+otpme-host del <yourhostname>   # run on a node
+# Now join as joe.
+otpme-tool -u joe join
+```
+
+### Joining via JOTP
+
+An alternative is to pre-create the host object in the realm first. This is
+useful when you want to let a user join one specific host without granting the
+general right to join any host. When a host object is created, a JOTP
+(join one-time password) is displayed. The host can then join using that JOTP:
+
+```bash
+# Remove existing host object and re-create it to get a fresh JOTP.
+otpme-tool leave
+otpme-host del <yourhostname>
+otpme-host add <yourhostname>
+# On the host, join using the JOTP. A LOTP is displayed which can be used to leave.
+otpme-tool join --jotp <jotp>
+```
+
+### Allow Users to Log in to a Host
+
+By default, login to a host is restricted: only tokens explicitly assigned to
+the host (directly or via a role) are permitted, and only users with such
+tokens are synced to the host. To allow joe to log in, assign his token:
+
+```bash
+otpme-host add_token <yourhostname> joe/login
+```
+
+Trigger a sync on the host and verify the user is available:
+
+```bash
+otpme-tool sync
+id joe
+otpme-tool login joe
+```
+
+### Unlimit Logins
+
+To allow all realm users to log in and be synced to a host, remove the login
+restriction entirely:
+
+```bash
+otpme-host unlimit_logins <yourhostname>
+```
+
+### Controlling Which Users Are Synced
+
+Without unlimiting logins, there are several ways to control which users get
+synced to a host:
+
+```bash
+# Add a specific user as a sync user directly on the host.
+otpme-host add_sync_user <yourhostname> <username>
+
+# Add sync users to a role — all role members will be synced to hosts
+# that have the role assigned.
+otpme-role add_sync_user management-user alice
+
+# Use a dedicated sync group.
+otpme-group add mysyncgroup
+otpme-group add_sync_user mysyncgroup alice
+otpme-host add_sync_group <yourhostname> mysyncgroup
+```
