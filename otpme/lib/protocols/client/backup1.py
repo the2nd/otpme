@@ -907,6 +907,19 @@ class OTPmeBackupP1(OTPmeFsClient1):
             status_code = 400
         return status_code, binary_data
 
+    def read_cryptfs_settings(self):
+        command_args = {}
+        try:
+            status, \
+            status_code, \
+            response, \
+            binary_data = self.send(command="read_cryptfs_settings",
+                                    command_args=command_args)
+        except Exception as e:
+            config.raise_exception()
+            status_code = 400
+        return status_code, binary_data
+
     def get_chunk(self, h):
         command_args = {'h': h}
         try:

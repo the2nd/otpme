@@ -405,3 +405,8 @@ AGENT_KEEPALIVE_INTERVAL="5"
 # Interval in seconds we will check if config file or reload file has changed
 # and a reload is needed.
 RELOAD_CONFIG_INTERVAL="10"
+
+# Is this a backup server? If set to "True" backupd is started.
+BACKUP_SERVER="False"
+# Backup root dir. All backups repositories will be created in this directory.
+BACKUP_DIR="/var/backups"

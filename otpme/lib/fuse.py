@@ -69,6 +69,9 @@ def read_cryptfs_settings(path):
         msg = _("Failed to read cryptfs settings: {e}")
         msg = msg.format(e=e)
         raise OTPmeException(msg)
+    return load_cryptfs_settings(fs_data)
+
+def load_cryptfs_settings(fs_data):
     try:
         fs_data = json.loads(fs_data)
     except Exception as e:
@@ -96,7 +99,7 @@ def init_cryptfs(path, block_size, hash_params):
         msg = msg.format(e=e)
         raise OTPmeException(msg)
     try:
-        os.chmod(conf_file, 0o600)
+        os.chmod(conf_file, 0o644)
     except Exception as e:
         msg = _("Failed to set config file permissions: {conf_file}: {e}")
         msg = msg.format(conf_file=conf_file, e=e)
@@ -145,6 +148,7 @@ class OTPmeFS(fuse.Operations):
         self.logger = logger
         self.add_share_key = False
         self.master_password = None
+        self.restore_share = False
         config.daemon_mode = True
 
     def get_user(self):
@@ -266,6 +270,10 @@ class OTPmeFS(fuse.Operations):
                                     raise OSError(errno.EINVAL, mount_response)
                         time.sleep(1)
                         continue
+                    try:
+                        self.restore_share = mount_response['restore_share']
+                    except KeyError:
+                        pass
                     try:
                         nodes = mount_response['nodes']
                         if not nodes:
@@ -1092,6 +1100,13 @@ class EncryptedFS(OTPmeFS):
         self.aesgcm = AESGCM(self.content_key)
         self.aesgcm_names = AESGCM(self.name_key)
 
+    def check_restore_share(self, path):
+        if not self.restore_share:
+            return False
+        if path != "/":
+            return False
+        return True
+
     def _b64e(self, b: bytes) -> str:
         return base64.urlsafe_b64encode(b).decode('ascii').rstrip('=')
 
@@ -1205,8 +1220,13 @@ class EncryptedFS(OTPmeFS):
         comps = self._split_components(plain_path)
         enc_parts = []
         enc_dir = '/'
+        counter = 0
         for name in comps:
-            enc_name = self._to_fs_name(enc_dir, name, use_diriv_cache=use_diriv_cache)
+            counter += 1
+            if counter == 1:
+                enc_name = name
+            else:
+                enc_name = self._to_fs_name(enc_dir, name, use_diriv_cache=use_diriv_cache)
             enc_parts.append(enc_name)
             enc_dir = self._join_enc(enc_parts)
         enc_path = self._join_enc(enc_parts)
@@ -1608,10 +1628,13 @@ class EncryptedFS(OTPmeFS):
         enc_entries = super().readdir(enc_dir, fh)
         plain = []
         for e in enc_entries:
-            pt = self._from_fs_name(enc_dir, e)
-            if pt is None:
-                continue
-            plain.append(pt)
+            if self.check_restore_share(path):
+                plain.append(e)
+            else:
+                pt = self._from_fs_name(enc_dir, e)
+                if pt is None:
+                    continue
+                plain.append(pt)
         return plain
 
     def read(self, path, size, offset, fh):
@@ -1869,6 +1892,10 @@ class EncryptedFS(OTPmeFS):
             enc = self._map_plain_to_enc(path, use_diriv_cache=True)
         num_blocks = encrypted_size // self.block_with_metadata_size
         if encrypted_size % self.block_with_metadata_size != 0:
+            # For restore shares file sizes are saved to the file. If the user does not
+            # have permissions to the file, backupd returns the file size (metadata size).
+            if self.restore_share:
+                return encrypted_size
             self.logger.error(f"Invalid encrypted file size for {path}: {encrypted_size}, not a multiple of {self.block_with_metadata_size}")
             raise fuse.FuseOSError(errno.EIO)
         unencrypted_size = (num_blocks - 1) * self.block_size if num_blocks > 0 else 0

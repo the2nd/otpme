@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NOTE: This script was written by claude code!
 """
 OTPMe Backup CLI — thin wrapper around otpme.lib.classes.backup.
 

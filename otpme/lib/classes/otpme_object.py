@@ -2280,14 +2280,19 @@ class OTPmeObject(OTPmeBaseObject):
         except:
             para_getter = None
 
-        # If we have an authenticated user we have to check from users token on
+        # If we have an authenticated user we have to check users token first
         # because user/token settings are preferred over object settings.
         if config.auth_token:
-            parent_object = config.auth_token
-        else:
-            parent_object = self
+            try:
+                value = config.auth_token.config_params[parameter]
+                if para_getter:
+                    value = para_getter(value)
+                return value
+            except Exception:
+                pass
 
         value = None
+        parent_object = self
         while True:
             try:
                 value = parent_object.config_params[parameter]

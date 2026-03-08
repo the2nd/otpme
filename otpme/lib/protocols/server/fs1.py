@@ -3,6 +3,7 @@
 import os
 import grp
 import zlib
+import errno
 import setproctitle
 
 try:
@@ -20,6 +21,7 @@ from otpme.lib import connections
 from otpme.lib import multiprocessing
 from otpme.lib.fuse import init_cryptfs
 from otpme.lib.fuse import read_cryptfs_settings
+from otpme.lib.fuse import load_cryptfs_settings
 from otpme.lib.classes.backup import CHUNK_SIZE
 from otpme.lib.classes.backup import FLAG_ZLIB
 from otpme.lib.classes.backup import decrypt_block
@@ -36,6 +38,8 @@ default_callback = config.get_callback()
 REGISTER_BEFORE = []
 REGISTER_AFTER = ['otpme.lib.protocols.otpme_server']
 PROTOCOL_VERSION = "OTPme-fs-1.0"
+
+blob_cache = {}
 
 def register():
     config.register_otpme_protocol("fsd", PROTOCOL_VERSION, server=True)
@@ -212,7 +216,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                 self.restore_share = restore_share
                 self.encrypted = restore_share.encrypted
                 # Get backup key
-                backup_key = share.get_config_parameter("backup_key")
+                backup_key = restore_share.get_config_parameter("backup_key")
                 if not backup_key:
                     status = status_codes.UNKNOWN_OBJECT
                     message = _("Unable to find backup key for share: {share}")
@@ -232,15 +236,47 @@ class OTPmeFsP1(OTPmeFsServer1):
                 repo_id = f"share/{self.restore_share.site}/{self.restore_share.name}"
                 self.backupd_conn = self.get_backupd_conn(host)
                 try:
-                    fs_data = self.backupd_conn.mount(repo_id,
-                                                username=self.username,
-                                                default_group=default_group,
-                                                groups=groups)
+                    self.backupd_conn.mount(repo_id,
+                                            username=self.username,
+                                            default_group=default_group,
+                                            groups=groups)
                 except Exception as e:
                     status = False
                     message = _("Failed to mount restore share: {share_name}")
                     message = message.format(share_name=share.name)
                     return self.build_response(status, message)
+                if self.encrypted:
+                    try:
+                        file_data = self.backupd_conn.read_cryptfs_settings()[1]
+                    except Exception as e:
+                        status = False
+                        message = _("Failed to read cryptfs settings from backup server: {share_name}")
+                        message = message.format(share_name=share.name)
+                        return self.build_response(status, message)
+                    try:
+                        file_data = file_data.decode()
+                        lines = file_data.strip().split("\n")
+                        chunk_hashes = [l for l in lines[1:] if l]
+                        buf = b""
+                        for h in chunk_hashes:
+                            blob = self.backupd_conn.get_chunk(h)[1]
+                            # Decrypt and decompress.
+                            flag, encrypted = blob[:1], blob[1:]
+                            data = decrypt_block(self.aes_key, encrypted)
+                            if flag == FLAG_ZLIB:
+                                data = zlib.decompress(data)
+                            buf += data
+                    except Exception as e:
+                        status = False
+                        message = _("Failed to decrypt cryptfs settings: {share_name}")
+                        message = message.format(share_name=share.name)
+                        return self.build_response(status, message)
+                    try:
+                        fs_data = load_cryptfs_settings(buf)
+                    except Exception as e:
+                        status = status_codes.UNKNOWN_OBJECT
+                        message = _("Failed to load cryptfs settings.")
+                        return self.build_response(status, message)
             else:
                 if not os.path.exists(share.root_dir):
                     status = status_codes.UNKNOWN_OBJECT
@@ -366,6 +402,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                         self.logger.warning(log_msg)
                         return self.build_response(status, message)
                 else:
+                    if self.restore_share:
+                        share = restore_share
                     share_key = share.get_share_key(username=config.auth_user.name,
                                                     verify_acls=False)
                     if not share_key:
@@ -406,6 +444,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                 mount_result = {'nodes':share_node_fqdns}
             self.set_proctitle(self.username, share)
             if self.encrypted:
+                if self.restore_share:
+                    mount_result['restore_share'] = True
                 mount_result['share_key'] = share_key
                 mount_result['block_size'] = self.block_size
                 mount_result['master_password_hash_params'] = master_password_hash_params
@@ -805,7 +845,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing path.")
                 return self.build_response(status, message)
-            status, message = self.backupd_conn.release(path)
+            status, message = self.release(path)
             return self.build_response(status, message)
 
         elif command == "getxattr":
@@ -887,7 +927,11 @@ class OTPmeFsP1(OTPmeFsServer1):
             raise UnknownCommand(msg)
 
     def restore_read(self, path, size, offset):
+        # NOTE: This method was written by claude code!
+        global blob_cache
         file_data = self.backupd_conn.read_restore_file(path)[1]
+        if not file_data:
+            return errno.ENOENT, None
         file_data = file_data.decode()
         # Read chunk hashes from the data/ entry file.
         # Format: first line = "<size> <mtime>", remaining lines = chunk hashes.
@@ -908,7 +952,16 @@ class OTPmeFsP1(OTPmeFsServer1):
             if i >= len(chunk_hashes):
                 break
             h = chunk_hashes[i]
-            blob = self.backupd_conn.get_chunk(h)[1]
+            try:
+                blob = blob_cache[path][h]
+            except KeyError as e:
+                try:
+                    blobs = blob_cache[path]
+                except KeyError:
+                    blobs = {}
+                    blob_cache[path] = blobs
+                blob = self.backupd_conn.get_chunk(h)[1]
+                blobs[h] = blob
             # Decrypt and decompress.
             flag, encrypted = blob[:1], blob[1:]
             data = decrypt_block(self.aes_key, encrypted)
@@ -918,3 +971,13 @@ class OTPmeFsP1(OTPmeFsServer1):
         # Slice to the requested range within the chunk-aligned buffer.
         chunk_offset = offset - (first_chunk * CHUNK_SIZE)
         return True, buf[chunk_offset:chunk_offset + size]
+
+    def release(self, path: str) -> int:
+        global blob_cache
+        if not self.restore_share:
+            return super().release(path)
+        try:
+            blob_cache.pop(path)
+        except KeyError:
+            pass
+        return self.backupd_conn.release(path)

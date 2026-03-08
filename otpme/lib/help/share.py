@@ -53,8 +53,8 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--key-len <key_len>] {share}'),
-                    'cmd'   :   '--force-group :force_group: --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --key-len :key_len: <|object|>',
+                    '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--key-len <key_len>] [--restore <restore_share>] {share}'),
+                    'cmd'   :   '--force-group :force_group: --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --key-len :key_len: --restore :restore_share: --restore-token :restore_token: <|object|>',
                     '_help' :   {
                                     'cmd'                       : _('Add new share.'),
                                     '--force-group <group>'     : _('Force group.'),
@@ -62,6 +62,8 @@ cmd_help = {
                                     '--no-key-gen'              : _('Don\'t generate AES key.'),
                                     '--key-len <key_len>'       : _('Generate AES key of length <key_len>.'),
                                     '--block-size <blocksize>'  : _('Encrypted share block size (default 4096).'),
+                                    '--restore <restore_share>' : _('Add restore share.'),
+                                    '--restore-token <token>'   : _('Add token restore share  (required for encrypted shares).'),
                                 },
                 },
 

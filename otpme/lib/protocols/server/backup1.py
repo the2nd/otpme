@@ -18,10 +18,12 @@ except:
 
 from otpme.lib import config
 from otpme.lib import pidfile
+from otpme.lib.fuse import CONF_FILE
 from otpme.lib import multiprocessing
 
 from otpme.lib.protocols import status_codes
 from otpme.lib.classes.backup import BackupServer
+from otpme.lib.multiprocessing import drop_privileges
 from otpme.lib.protocols.server.fs import OTPmeFsServer1
 
 from otpme.lib.exceptions import *
@@ -72,6 +74,10 @@ class OTPmeBackupP1(OTPmeFsServer1):
         self.require_master_node = False
         # We need a clean cluster status.
         self.require_cluster_status = False
+        # Will hold username/groups to drop permissions to.
+        self.username = None
+        self.default_group = None
+        self.groups = None
         # Will hold repository name.
         self.repository = None
         # Will hold repository root when mounting as fuse fs.
@@ -190,6 +196,7 @@ class OTPmeBackupP1(OTPmeFsServer1):
                             "finalize_snapshot",
                             "apply_retention",
                             "read_restore_file",
+                            "read_cryptfs_settings",
                             "get_chunk",
                         ]
 
@@ -335,6 +342,24 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = message.format(root=self.root)
                 return self.build_response(status, message)
             try:
+                self.username = command_args['username']
+            except KeyError:
+                status = status_codes.UNKNOWN_OBJECT
+                message = _("Missing username.")
+                return self.build_response(status, message)
+            try:
+                self.default_group = command_args['default_group']
+            except KeyError:
+                status = status_codes.UNKNOWN_OBJECT
+                message = _("Missing default_group.")
+                return self.build_response(status, message)
+            try:
+                self.groups = command_args['groups']
+            except KeyError:
+                status = status_codes.UNKNOWN_OBJECT
+                message = _("Missing groups.")
+                return self.build_response(status, message)
+            try:
                 repository = command_args['repository']
             except KeyError:
                 status = status_codes.UNKNOWN_OBJECT
@@ -366,9 +391,55 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 log_msg = f"{log_msg}: {e}"
                 self.logger.warning(log_msg)
                 return self.build_response(status, message)
+            try:
+                drop_privileges(user=self.username, group=self.default_group, groups=self.groups)
+            except Exception as e:
+                status = status_codes.PERMISSION_DENIED
+                message, log_msg = _("Failed to drop privileges: {error}", log=True)
+                message = message.format(error=e)
+                log_msg = log_msg.format(error=e)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
             self.set_proctitle(self.repository, action="mount")
             message = _("Repository mounted.")
             return self.build_response(status, message)
+
+        elif command == "read_cryptfs_settings":
+            if not self.root:
+                status = False
+                message = _("Mount first.")
+                return self.build_response(status, message)
+            backup_handler = BackupServer(self.root)
+            snaps = backup_handler.list_snapshots()
+            if not snaps:
+                status = False
+                message = _("Repository has no snapshots.")
+                return self.build_response(status, message)
+            snap = snaps[-1]['name']
+            data_dir = f"{self.root}/snapshots/{snap}/data"
+            data_file = os.path.join(data_dir, CONF_FILE)
+            try:
+                fd = open(data_file, "rb")
+            except Exception as e:
+                log_msg = _("Failed to open cryptfs file: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                status = False
+                message = _("Failed to open cryptfs file.")
+                return self.build_response(status, message)
+            try:
+                binary_data = fd.read()
+            except Exception as e:
+                log_msg = _("Failed to read cryptfs file: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                status = False
+                message = _("Failed to read cryptfs file.")
+                return self.build_response(status, message)
+            status = True
+            message = _("Cryptfs data.")
+            self.set_proctitle(self.repository, action="read_cryptfs_settings")
+            return self.build_response(status, message, binary_data=binary_data)
 
         elif command == "read_restore_file":
             if not self.root:
@@ -820,8 +891,9 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 original_size = int(first_line.split()[0])
                 result["st_size"] = original_size
                 # Approximate block count (512-byte blocks).
+                # FIXME: get blocksize of underlying fs?
                 result["st_blocks"] = (original_size + 511) // 512
-            except (OSError, ValueError, IndexError):
+            except (IOError, OSError, ValueError, IndexError) as e:
                 pass
         return result
 

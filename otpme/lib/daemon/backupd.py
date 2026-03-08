@@ -233,7 +233,8 @@ class BackupDaemon(OTPmeDaemon):
         # Run in loop unitl we get a signal.
         while True:
             try:
-                recv_timeout = 30
+                # fuck
+                recv_timeout = 3
                 # Try to read daemon message.
                 try:
                     sender, \

@@ -125,12 +125,12 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'oargs'             : ['unit', 'force_group', 'encrypted', 'no_key_gen', 'block_size'],
+                    'oargs'             : ['unit', 'force_group', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
                     'method'            : 'add',
-                    'oargs'             : ['unit', 'force_group', 'encrypted', 'no_key_gen', 'block_size'],
+                    'oargs'             : ['unit', 'force_group', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1069,6 +1069,8 @@ class Share(OTPmeObject):
         key_len: int=32,
         block_size: int=4096,
         no_key_gen: bool=False,
+        restore_share: str=None,
+        restore_token: str=None,
         verify_acls: bool=True,
         verbose_level: int=0,
         callback: JobCallback=default_callback,
@@ -1078,6 +1080,55 @@ class Share(OTPmeObject):
         result = self._prepare_add(callback=callback, **kwargs)
         if result is False:
             return callback.error()
+        if restore_share:
+            result = backend.search(object_type="share",
+                                    attribute="name",
+                                    value=restore_share,
+                                    realm=config.realm,
+                                    site=config.site,
+                                    return_type="instance")
+            share = result[0]
+            if not share:
+                msg = _("Unknown share: {restore_share}")
+                msg = msg.format(restore_share=restore_share)
+                return callback.error(msg)
+            if share.encrypted:
+                if not restore_token:
+                    msg = _("Restore token required for encrypted shares.")
+                    return callback.error(msg)
+            result = backend.search(object_type="token",
+                                    attribute="rel_path",
+                                    value=restore_token,
+                                    return_type="uuid")
+            if not result:
+                msg = _("Unknown token.")
+                return callback.error(msg)
+            token_uuid = result[0]
+            if token_uuid not in share.tokens:
+                msg = _("Token not assigned to share.")
+                return callback.error(msg)
+            share_key = None
+            if share.encrypted:
+                token_user = restore_token.split("/")[0]
+                share_key = share.get_share_key(username=token_user)
+                if not share_key:
+                    msg = _("No share key available for user: {user}")
+                    msg = msg.format(user=token_user)
+                    return callback.error(msg)
+            if not self.add_token(token_path=restore_token,
+                                    share_key=share_key,
+                                    callback=callback):
+                msg = _("Failed to add token: {token}")
+                msg = msg.format(token=restore_token)
+                return callback.error(msg)
+            self.restore_share = share.uuid
+            self.encrypted = share.encrypted
+            # Add object using parent class.
+            add_result = super(Share, self).add(verify_acls=verify_acls,
+                                            verbose_level=verbose_level,
+                                            callback=callback, **kwargs)
+            return self._write(callback=callback)
+
         if force_group:
             self.force_group(group_name=force_group,
                             verify_acls=False)

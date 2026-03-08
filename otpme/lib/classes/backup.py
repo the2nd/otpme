@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2014 the2nd <the2nd@otpme.org>
+# NOTE: This module was written by claude code!
 import os
 import stat
 import zlib
@@ -244,7 +244,7 @@ class BackupServer:
         if not p.exists():
             p.parent.mkdir(exist_ok=True)
             p.write_bytes(blob)
-            p.chmod(0o600)
+            p.chmod(0o644)
             self.inode_count += 1
 
     def retrieve_block(self, h: str) -> bytes:
