@@ -91,10 +91,11 @@ cmd_help = {
                 },
 
     'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-host config -d {host} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: <|object|> <parameter> [value]',
+                    '_cmd_usage_help' : _('Usage: otpme-host config -d -a {host} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to host.'),
+                                    '-a'                    : _('Append value to config parameter.'),
                                     '-d'                    : _('Delete config parameter.'),
                                 },
                 },

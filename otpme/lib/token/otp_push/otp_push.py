@@ -208,6 +208,7 @@ def register_hooks():
     config.register_auth_on_action_hook("token", "change_phone_number")
     config.register_auth_on_action_hook("token", "change_push_token")
     config.register_auth_on_action_hook("token", "change_push_script")
+    config.register_auth_on_action_hook("token", "show_config_parameters")
 
 def register_token_type():
     """ Register token type. """

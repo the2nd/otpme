@@ -405,7 +405,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
-                    'oargs'             : ['value', 'delete'],
+                    'oargs'             : ['value', 'append', 'delete'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -470,6 +470,7 @@ def register_hooks():
     config.register_auth_on_action_hook("script", "sign")
     config.register_auth_on_action_hook("script", "add_sign")
     config.register_auth_on_action_hook("script", "del_sign")
+    config.register_auth_on_action_hook("script", "show_config_parameters")
 
 def register_backend():
     """ Register object for the file backend. """

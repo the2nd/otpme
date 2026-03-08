@@ -703,7 +703,8 @@ class JoinHandler(object):
         host_cert_req = None
         # Generate new host cert CSR and key if needed.
         if not master_node_join:
-            if not host_cert or not host_key:
+            if not host_key:
+                host_cert = None
                 host_cert_req, host_key = self.gen_host_cert_req(key_len=host_key_len)
 
         # Generate host auth key.

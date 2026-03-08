@@ -291,6 +291,7 @@ def register_hooks():
     config.register_auth_on_action_hook("policy", "change_pin_min_len")
     config.register_auth_on_action_hook("policy", "change_strength_checker")
     config.register_auth_on_action_hook("policy", "change_strength_checker_opts")
+    config.register_auth_on_action_hook("policy", "show_config_parameters")
 
 def register_policy_type():
     """ Register policy type. """

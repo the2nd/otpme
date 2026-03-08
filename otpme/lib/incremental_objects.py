@@ -23,7 +23,11 @@ class IncrementaObject(object):
         return normal_value
 
     def set_incremental_attrs(self, value, dict_path, _set=False):
-        if isinstance(value, list):
+        if isinstance(value, IncrementalList):
+            inc_value = value
+        elif isinstance(value, IncrementalDict):
+            inc_value = value
+        elif isinstance(value, list):
             _list = value
             if _set:
                 _list = []
@@ -130,6 +134,10 @@ class IncrementalDict(IncrementaObject):
             add_value = False
         if isinstance(value, dict):
             add_value = False
+        if isinstance(value, IncrementalList):
+            add_value = False
+        if isinstance(value, IncrementalDict):
+            add_value = False
         if not add_value:
             return
         self.incremental_add(key, value)
@@ -220,6 +228,11 @@ class IncrementalList(list, IncrementaObject):
                                     self.type,
                                     self.dict_path,
                                     item))
+
+    def __iadd__(self, l):
+        for x in l:
+            self.append(x)
+        return self
 
     def __setitem__(self, index, item):
         self.incremental_add(item, index=index)

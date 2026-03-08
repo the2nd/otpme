@@ -253,6 +253,9 @@ class OTPmeConfig(object):
         # Session reneg timeout (--reneg-timeout).
         self.register_config_var("reneg_timeout", int, 30)
         self.register_config_var("daemons", list, [])
+        # Is this host a OTPme backup server?
+        self.register_config_var("backup_server", bool, False,
+                                config_file_parameter="BACKUP_SERVER")
 
         # Inter-daemon communication timeout.
         self.register_config_var("inter_daemon_comm_timeout", int, 2,
@@ -458,6 +461,8 @@ class OTPmeConfig(object):
                                 config_file_parameter="LOG_DIR")
         self.register_config_var("mount_root_dir", str, "/otpme",
                                 config_file_parameter="MOUNT_ROOT_DIR")
+        self.register_config_var("backup_dir", str, "/var/backups",
+                                config_file_parameter="BACKUP_DIR")
 
         # Set some default filenames.
         self.register_config_var("config_file_name", str, None)
@@ -637,6 +642,7 @@ class OTPmeConfig(object):
                     'clusterd'  : '2025',
                     'ldapd'     : '2026',
                     'fsd'       : '2027',
+                    'backupd'   : '2028',
                     }
         self.register_config_var("default_ports", dict, default_ports)
 
@@ -649,6 +655,7 @@ class OTPmeConfig(object):
                     'clusterd'  : '2025',
                     'ldapd'     : '2026',
                     'fsd'       : '2027',
+                    'backupd'   : '2028',
                     }
         self.register_config_var("default_listen_ports", dict, default_listen_ports)
 
@@ -1384,20 +1391,23 @@ class OTPmeConfig(object):
 
     def register_config_parameter(self, name, ctype,
         default_value=None, valid_values=None, object_types=[],
-        getter=None, setter=None, warn_if_exists=False):
+        getter=None, setter=None, deller=None, warn_if_exists=False,
+        default_genner=None):
         """ Register config parameter. """
         if name in self.valid_config_params:
             msg = _("Config parameter already registered: {name}")
             msg = msg.format(name=name)
             raise AlreadyRegistered(msg)
         self.valid_config_params[name] = {
-                                            'type'          : ctype,
-                                            'default'       : default_value,
-                                            'valid_values'  : valid_values,
-                                            'object_types'  : object_types,
-                                            'getter'        : getter,
-                                            'setter'        : setter,
-                                            'warn_if_exists': warn_if_exists,
+                                            'type'              : ctype,
+                                            'default'           : default_value,
+                                            'valid_values'      : valid_values,
+                                            'object_types'      : object_types,
+                                            'getter'            : getter,
+                                            'setter'            : setter,
+                                            'deller'            : deller,
+                                            'default_genner'    : default_genner,
+                                            'warn_if_exists'    : warn_if_exists,
                                         }
     def get_config_parameter(self, name):
         try:

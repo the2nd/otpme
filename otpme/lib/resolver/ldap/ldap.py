@@ -296,6 +296,7 @@ def register_hooks():
     config.register_auth_on_action_hook("resolver", "change_login_dn")
     config.register_auth_on_action_hook("resolver", "change_ldap_base")
     config.register_auth_on_action_hook("resolver", "change_login_password")
+    config.register_auth_on_action_hook("resolver", "show_config_parameters")
 
 class LdapResolver(Resolver):
     """ Class that implements OTPme LDAP resolver. """

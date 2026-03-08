@@ -1748,7 +1748,8 @@ class EncryptedFS(OTPmeFS):
         except Exception as e:
             self.logger.error(f"Write failed: {e}")
             raise fuse.FuseOSError(errno.EIO) from e
-        del serialized_data
+        finally:
+            del serialized_data
         return len(data)
 
     #def write(self, path, data, offset, fh):

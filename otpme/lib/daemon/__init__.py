@@ -16,6 +16,8 @@ modules = [
         'otpme.lib.daemon.ldapd',
         'otpme.lib.daemon.httpd',
         'otpme.lib.daemon.clusterd',
+        'otpme.lib.daemon.fsd',
+        'otpme.lib.daemon.backupd',
         ]
 
 def register():

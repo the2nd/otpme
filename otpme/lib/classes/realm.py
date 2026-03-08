@@ -565,6 +565,7 @@ def register_hooks():
     config.register_auth_on_action_hook("realm", "enable_auth")
     config.register_auth_on_action_hook("realm", "disable_auth")
     config.register_auth_on_action_hook("realm", "update_ca_data")
+    config.register_auth_on_action_hook("realm", "show_config_parameters")
 
 def register_dn():
     """ Register DN attribute. """

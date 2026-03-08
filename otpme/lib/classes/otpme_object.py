@@ -868,6 +868,20 @@ class OTPmeBaseObject(OTPmeLockObject):
         backend.set_last_used(self.type, self.uuid, timestamp)
 
     @property
+    def last_backup(self):
+        """ Get last backup timestamp. """
+        values = self.get_index("last_backup")
+        if not values:
+            return
+        return values[0]
+
+    @last_backup.setter
+    def last_backup(self, timestamp):
+        """ Set last backup timestamp. """
+        self.update_index("last_backup", timestamp)
+        self._cache()
+
+    @property
     def cache_expire_time(self):
         if self.is_special_object():
             return
@@ -1724,6 +1738,17 @@ class OTPmeBaseObject(OTPmeLockObject):
         now = time.time_ns()
         self.index_journal.append([now, 'add', key, value])
 
+    def get_index(
+        self,
+        key: Union[str,int,float],
+        ):
+        """ Get attribute from object index. """
+        try:
+            values = self.index[key]
+        except KeyError:
+            return
+        return values
+
     def del_index(
         self,
         key: Union[str,int,float],
@@ -2268,10 +2293,10 @@ class OTPmeObject(OTPmeBaseObject):
                 value = parent_object.config_params[parameter]
                 if para_getter:
                     value = para_getter(value)
-            except:
+            except Exception as e:
                 value = None
 
-            if value:
+            if value is not None:
                 break
 
             if not recursive:
@@ -2282,94 +2307,6 @@ class OTPmeObject(OTPmeBaseObject):
                 break
 
         return value
-
-    @check_acls(acls=['add:config'])
-    @audit_log()
-    def set_config_param(
-        self,
-        parameter: str,
-        value: Union[str,int,float,None]=None,
-        delete: bool=False,
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Set config parameter. """
-        # Delete config parameter.
-        if delete:
-            try:
-                self.config_params.pop(parameter)
-            except KeyError:
-                msg = _("Config parameter not set.")
-                return callback.error(msg)
-            config_cache.invalidate()
-            return self._cache(callback=callback)
-
-        # Try to get config parameter.
-        try:
-            parameter_data = config.get_config_parameter(parameter)
-        except NotRegistered:
-            msg = _("Invalid parameter: {obj}: {param}")
-            msg = msg.format(obj=self, param=parameter)
-            return callback.error(msg)
-        try:
-            warn_if_exists = parameter_data['warn_if_exists']
-        except KeyError:
-            warn_if_exists = False
-        if warn_if_exists:
-            if parameter in self.config_params:
-                msg = _("Warning, parameter already set. Override?: ")
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
-        if value is None:
-            # Try to get the default value.
-            try:
-                value = parameter_data['default']
-                if para_getter:
-                    value = para_getter(value)
-            except:
-                pass
-        if value is None:
-            msg = _("Cannot determine default value.")
-            return callback.error(msg)
-        # Get value type.
-        value_type = parameter_data['type']
-        # Try to get getter.
-        try:
-            para_setter = parameter_data['setter']
-        except:
-            para_setter = None
-
-        # Resolve value.
-        if para_setter:
-            try:
-                value = para_setter(value, config_object=self, callback=callback)
-            except Exception as e:
-                msg = _("Failed to set config parameter: {e}")
-                msg = msg.format(e=e)
-                return callback.error(msg)
-
-        try:
-            valid_values = parameter_data['valid_values']
-        except:
-            valid_values = []
-
-        if not isinstance(value, value_type):
-            msg = _("Parameter <{parameter}> needs to be of type: {value_type}")
-            msg = msg.format(parameter=parameter, value_type=value_type)
-            return callback.error(msg)
-
-        if valid_values:
-            if value not in valid_values:
-                msg = _("Invalid value: {param}: {val}")
-                msg = msg.format(param=parameter, val=value)
-                return callback.error(msg)
-
-        self.config_params[parameter] = value
-
-        config_cache.invalidate()
-
-        return self._cache(callback=callback)
 
     def _get_base_config(self):
         """ Get base object config """
@@ -8595,12 +8532,161 @@ class OTPmeObject(OTPmeBaseObject):
             return_status = status
         return return_status
 
-    def show_config_parameters(
+    @check_acls(acls=['add:config'])
+    @audit_log()
+    def set_config_param(
         self,
-        parameter: str=None,
+        parameter: str,
+        value: Union[str,int,float,None]=None,
+        delete: bool=False,
+        append: bool=False,
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        """ Set config parameter. """
+        # Try to get config parameter.
+        try:
+            parameter_data = config.get_config_parameter(parameter)
+        except NotRegistered:
+            msg = _("Invalid parameter: {obj}: {param}")
+            msg = msg.format(obj=self, param=parameter)
+            return callback.error(msg)
+        # Delete config parameter.
+        if delete:
+            if value:
+                try:
+                    self.config_params[parameter].remove(value)
+                except KeyError:
+                    msg = _("Config parameter not set.")
+                    return callback.error(msg)
+                except ValueError:
+                    msg = _("Config parameter does not have value: {value}")
+                    msg = msg.format(value=value)
+                    return callback.error(msg)
+                config_cache.invalidate()
+                return self._cache(callback=callback)
+            else:
+                try:
+                    deller = parameter_data['deller']
+                except KeyError:
+                    deller = None
+                if deller:
+                    try:
+                        deller(self, callback=callback)
+                    except Exception as e:
+                        msg = _("Failed to run deller.")
+                        return callback.error(msg)
+                try:
+                    self.config_params.pop(parameter)
+                except KeyError:
+                    msg = _("Config parameter not set.")
+                    return callback.error(msg)
+                config_cache.invalidate()
+                return self._cache(callback=callback)
+        try:
+            object_types = parameter_data['object_types']
+        except:
+            object_types = []
+        if self.type not in object_types:
+            msg = _("Config parameter not valid for object type: {object_type}")
+            msg = msg.format(object_type=self.type)
+            return callback.error(msg)
+        try:
+            warn_if_exists = parameter_data['warn_if_exists']
+        except KeyError:
+            warn_if_exists = False
+        if warn_if_exists and not append:
+            if parameter in self.config_params:
+                msg = _("Warning, parameter already set. Override?: ")
+                answer = callback.ask(msg)
+                if answer.lower() != "y":
+                    return callback.abort()
+        if value is None:
+            # Try to get the default value.
+            try:
+                value = parameter_data['default']
+                if para_getter:
+                    value = para_getter(value)
+            except:
+                pass
+        if value is None:
+            # Try to get the default value genner.
+            try:
+                default_genner = parameter_data['default_genner']
+                value = default_genner()
+            except:
+                pass
+        if value is None:
+            msg = _("Cannot determine default value.")
+            return callback.error(msg)
+        # Get value type.
+        value_type = parameter_data['type']
+        # Try to get getter.
+        try:
+            para_setter = parameter_data['setter']
+        except:
+            para_setter = None
+
+        # Resolve value.
+        if para_setter:
+            try:
+                value = para_setter(value, config_object=self, callback=callback)
+            except Exception as e:
+                msg = _("Failed to set config parameter: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+
+        try:
+            valid_values = parameter_data['valid_values']
+        except:
+            valid_values = []
+
+        if not isinstance(value, value_type):
+            msg = _("Parameter <{parameter}> needs to be of type: {value_type}")
+            msg = msg.format(parameter=parameter, value_type=value_type)
+            return callback.error(msg)
+
+        if valid_values:
+            if value not in valid_values:
+                msg = _("Invalid value: {param}: {val}")
+                msg = msg.format(param=parameter, val=value)
+                return callback.error(msg)
+
+        if parameter not in self.config_params:
+            append = False
+
+        if append:
+            self.config_params[parameter] += value
+        else:
+            # We need to pop out paramter which may be a list
+            # to prevent problems with IncrementalList().
+            try:
+                self.config_params.pop(parameter)
+            except KeyError:
+                pass
+            self.config_params[parameter] = value
+
+        config_cache.invalidate()
+
+        return self._write(callback=callback)
+
+    @check_acls(acls=['view:config'])
+    def show_config_parameters(
+        self,
+        parameter: str=None,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        if run_policies:
+            try:
+                self.run_policies("show_config_parameters",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                msg = str(e)
+                return callback.error(msg)
         if parameter is not None:
             try:
                 para_data = config.get_config_parameter(parameter)
@@ -8644,7 +8730,7 @@ class OTPmeObject(OTPmeBaseObject):
         **kwargs,
         ):
         """ Show object config. """
-        if not self.verify_acl("view_public:object"):
+        if not self.verify_acl("view:object"):
             msg = ("Permission denied.")
             return callback.error(msg, exception=PermissionDenied)
 

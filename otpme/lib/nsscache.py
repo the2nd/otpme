@@ -14,6 +14,7 @@ from otpme.lib import oid
 from otpme.lib import config
 from otpme.lib import locking
 from otpme.lib import filetools
+from otpme.lib import nsswitch
 from otpme.lib.pidfile import pidfile_handler
 
 from otpme.lib.exceptions import *
@@ -571,6 +572,14 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             logger.debug(log_msg)
             shadow_map_entry = None
             if object_type == "user":
+                # Skip users that already exist in another NSS source.
+                nss_source = nsswitch.user_exists(object_name, skip_sources=['cache'])
+                if nss_source:
+                    log_msg = ("Skipping nsscache export, user already "
+                               "exists in NSS source '%s': %s"
+                               % (nss_source, object_name))
+                    logger.warning(log_msg)
+                    continue
                 try:
                     cn = object_attrs[uuid]['ldif:cn'][0]
                 except:
@@ -625,6 +634,14 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                 #shadow_map_entry.flag = int(nss_entry[8])
 
             if object_type == "group":
+                # Skip groups that already exist in another NSS source.
+                nss_source = nsswitch.group_exists(object_name, skip_sources=['cache'])
+                if nss_source:
+                    log_msg = ("Skipping nsscache export, group already "
+                               "exists in NSS source '%s': %s"
+                               % (nss_source, object_name))
+                    logger.warning(log_msg)
+                    continue
                 try:
                     gidnumber = object_attrs[uuid]['ldif:gidNumber'][0]
                 except Exception as e:
@@ -642,6 +659,11 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
                 map_entry.passwd = 'x'
                 map_entry.gid = gidnumber
                 if group_members is not None:
+                    # Make sure root is not in any OTPme group.
+                    try:
+                        group_members.remove(config.admin_user_name)
+                    except ValueError:
+                        pass
                     map_entry.members = group_members
             nsscache_update_entries[object_type][map_entry.name] = (map_entry, shadow_map_entry)
 

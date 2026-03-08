@@ -343,22 +343,23 @@ class OTPmeDaemon(object):
                 self.logger.critical(log_msg)
 
     def default_startup(self, use_ssl=True, ssl_verify_client=True,
-        handler_args={}, dont_drop_privileges=False):
+        handler_args={}, dont_drop_privileges=False, listen=True):
         """ Do default daemon startup stuff. """
-        # Set connection handler.
-        try:
-            self.set_connection_handler(handler_args=handler_args)
-        except Exception as e:
-            log_msg = _("Failed to set connection handler: {error}", log=True)[1]
-            log_msg = log_msg.format(error=e)
-            self.logger.critical(log_msg)
-        # Setup sockets.
-        try:
-            self.setup_sockets(use_ssl=use_ssl, ssl_verify_client=ssl_verify_client)
-        except Exception as e:
-            log_msg = _("Failed to setup sockets: {error}", log=True)[1]
-            log_msg = log_msg.format(error=e)
-            self.logger.critical(log_msg)
+        if listen:
+            # Set connection handler.
+            try:
+                self.set_connection_handler(handler_args=handler_args)
+            except Exception as e:
+                log_msg = _("Failed to set connection handler: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
+            # Setup sockets.
+            try:
+                self.setup_sockets(use_ssl=use_ssl, ssl_verify_client=ssl_verify_client)
+            except Exception as e:
+                log_msg = _("Failed to setup sockets: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
         # We can drop privileges AFTER sockets are created. This is needed when
         # listening to well known ports (<1024), which requires root privileges.
         if not dont_drop_privileges:
@@ -368,13 +369,14 @@ class OTPmeDaemon(object):
                 log_msg = _("Failed to drop privileges: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
                 self.logger.critical(log_msg)
-        # Start listening on sockets.
-        try:
-            self.listen()
-        except Exception as e:
-            log_msg = _("Failed to listen on sockets: {error}", log=True)[1]
-            log_msg = log_msg.format(error=e)
-            self.logger.critical(log_msg)
+        if listen:
+            # Start listening on sockets.
+            try:
+                self.listen()
+            except Exception as e:
+                log_msg = _("Failed to listen on sockets: {error}", log=True)[1]
+                log_msg = log_msg.format(error=e)
+                self.logger.critical(log_msg)
         # Some logging.
         log_msg = _("{full_name} started", log=True)[1]
         log_msg = log_msg.format(full_name=self.full_name)

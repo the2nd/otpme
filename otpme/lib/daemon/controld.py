@@ -34,6 +34,7 @@ from otpme.lib.daemon.hostd import HostDaemon
 from otpme.lib.daemon.joind import JoinDaemon
 from otpme.lib.daemon.httpd import HttpDaemon
 from otpme.lib.daemon.scriptd import ScriptDaemon
+from otpme.lib.daemon.backupd import BackupDaemon
 from otpme.lib.daemon.clusterd import ClusterDaemon
 from otpme.lib.daemon.unix_daemon import UnixDaemon
 #from otpme.lib.multiprocessing import handle_exit
@@ -512,6 +513,7 @@ class ControlDaemon(UnixDaemon):
                     'clusterd',
                     'httpd',
                     'fsd',
+                    'backupd',
                     ]
 
             # Set child daemons.
@@ -525,12 +527,17 @@ class ControlDaemon(UnixDaemon):
             child_daemons["syncd"] = {}
             child_daemons["scriptd"] = {}
             child_daemons["clusterd"] = {}
+            child_daemons["backupd"] = {}
 
         if config.host_data['type'] == "host":
             # Daemons we have to handle and its start order.
             self.daemons = [ 'hostd' ]
+            if config.backup_server:
+                self.daemons.append("backupd")
             # Set child daemons.
             child_daemons['hostd'] = ""
+            if config.backup_server:
+                child_daemons["backupd"] = {}
 
         # Stop child daemons not needed anymore.
         all_childs = set(list(self.childs) + list(child_daemons))
@@ -922,10 +929,10 @@ class ControlDaemon(UnixDaemon):
                 try:
                     start_status = self.ensure_daemons()
                 except Exception as e:
+                    start_status = False
                     log_msg = _("Failed to start daemons: {error}", log=True)[1]
                     log_msg = log_msg.format(error=e)
                     self.logger.critical(log_msg)
-                    pass
                 if start_status is False:
                     # Inform main process about failure.
                     self.comm_handler.send(sender, command="startup_failed")
@@ -1077,6 +1084,8 @@ class ControlDaemon(UnixDaemon):
             daemon_class = ScriptDaemon
         elif daemon_name == "fsd":
             daemon_class = FsDaemon
+        elif daemon_name == "backupd":
+            daemon_class = BackupDaemon
         elif daemon_name == "clusterd":
             daemon_class = ClusterDaemon
         else:

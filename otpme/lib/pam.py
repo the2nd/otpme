@@ -59,7 +59,6 @@ class PamHandler(object):
         self.offline_sessions = {}
         self.offline_token = None
         self.offline = False
-        self.realm_login = False
         self.login_status = False
         self.auth_status = False
         self.auth_failed = False
@@ -208,8 +207,6 @@ class PamHandler(object):
                 self.create_home_directory = True
             if arg == "home_skel":
                 self.home_skeleton = val
-            if arg == "realm_login":
-                self.realm_login = True
             if arg == "use_smartcard":
                 if val.lower() == "true":
                     self.use_smartcard = True
@@ -1783,7 +1780,7 @@ class PamHandler(object):
 
             # Try to auth/login user via OTPme servers.
             try:
-                self.online_auth(login=self.realm_login)
+                self.online_auth(login=True)
             except Exception:
                 # Try to get realm/site to connect to via DNS.
                 x = net.get_otpme_site(config.realm)
@@ -1798,7 +1795,7 @@ class PamHandler(object):
                             try:
                                 self.online_auth(realm=realm,
                                                 site=site,
-                                                login=self.realm_login)
+                                                login=True)
                             except Exception:
                                 pass
 
@@ -1926,7 +1923,6 @@ class PamHandler(object):
         # make sure it is deactivated here. Same goes for triggering
         # "sync_token_data" hostd command.
         if self.login_status is not False \
-        or not self.realm_login \
         or not self.cache_login_tokens \
         or self.offline:
             # Trigger sync.

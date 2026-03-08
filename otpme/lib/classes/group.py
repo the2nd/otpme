@@ -558,7 +558,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
-                    'oargs'             : ['value', 'delete'],
+                    'oargs'             : ['value', 'append', 'delete'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -1166,17 +1166,18 @@ class Group(OTPmeObject):
             msg = msg.format(group_name=self.name)
             return callback.error(msg)
 
-        if self.default_group_users:
-            msg = _("The group has default group users assigned.")
-            return callback.error(msg)
+        if not force:
+            if self.default_group_users:
+                msg = _("The group has default group users assigned.")
+                return callback.error(msg)
 
-        if self.tokens:
-            msg = _("The group has tokens assigned.")
-            return callback.error(msg)
+            if self.tokens:
+                msg = _("The group has tokens assigned.")
+                return callback.error(msg)
 
-        if self.roles:
-            msg = _("The group has roles assigned.")
-            return callback.error(msg)
+            if self.roles:
+                msg = _("The group has roles assigned.")
+                return callback.error(msg)
 
         if run_policies:
             try:

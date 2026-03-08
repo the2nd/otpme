@@ -302,6 +302,7 @@ def register_hooks():
     config.register_auth_on_action_hook("token", "add_sign")
     config.register_auth_on_action_hook("token", "del_sign")
     config.register_auth_on_action_hook("token", "change_ssh_public_key")
+    config.register_auth_on_action_hook("token", "show_config_parameters")
 
 def register_token_type():
     """ Register token type. """

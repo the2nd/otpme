@@ -608,6 +608,7 @@ def get_db_engine():
         #        print(statement)
         #        print(f"Total Time: {total}")
 
+    if not Session:
         # Create dogpile cache regions.
         sessionmaker_kwargs = {'bind':engine}
         if config.dogpile_caching:

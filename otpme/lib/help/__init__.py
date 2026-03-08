@@ -18,13 +18,15 @@ from otpme.lib.exceptions import *
 global_opts = []
 
 command_map = {
-    # ::        = required opt
-    # :         = optional opt
-    # :[name]:  = opt is a list (e.g. val1,val2,val3,...)
-    # :{name}:  = opt is a dict (e.g. arg1=val1,arg2=val2,...)
-    # <>        = required para
-    # []        = optional para
-    # |object|  = OTPme object
+    # ::            = required opt
+    # :             = optional opt
+    # :[name]:      = opt is a list (e.g. val1,val2,val3,...)
+    # :{name}:      = opt is a dict (e.g. arg1=val1,arg2=val2,...)
+    # <>            = required para
+    # []            = optional para
+    # |object|      = OTPme object
+    # :+name+:      = Allow multiple occurance of the opt.
+    # <file:name>   = Read file
     }
 
 debug_opts_mapping = {

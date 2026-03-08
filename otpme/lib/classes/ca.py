@@ -481,7 +481,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
-                    'oargs'             : ['value', 'delete'],
+                    'oargs'             : ['value', 'append', 'delete'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -661,6 +661,7 @@ def register_backend():
 def register_sync_settings():
     """ Register sync settings. """
     config.register_object_sync(host_type="node", object_type="ca")
+    config.register_object_sync(host_type="host", object_type="ca")
 
 @match_class_typing
 class Ca(OTPmeObject):
@@ -710,6 +711,20 @@ class Ca(OTPmeObject):
 
         self._sync_fields = {
                     'node'  : {
+                        'untrusted'  : [
+                            "EXTENSIONS",
+                            "OBJECT_CLASSES",
+                            "EXTENSION_ATTRIBUTES",
+                            "CRL",
+                            ],
+                        },
+                    'host'  : {
+                        'trusted'  : [
+                            "EXTENSIONS",
+                            "OBJECT_CLASSES",
+                            "EXTENSION_ATTRIBUTES",
+                            "CRL",
+                            ],
                         'untrusted'  : [
                             "EXTENSIONS",
                             "OBJECT_CLASSES",

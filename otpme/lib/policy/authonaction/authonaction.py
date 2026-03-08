@@ -228,6 +228,7 @@ def register_hooks():
     config.register_auth_on_action_hook("policy", "remove_hook")
     config.register_auth_on_action_hook("policy", "change_reauth_expiry")
     config.register_auth_on_action_hook("policy", "change_reauth_timeout")
+    config.register_auth_on_action_hook("policy", "show_config_parameters")
 
 def register_shared_objects():
     from otpme.lib.multiprocessing import register_shared_dict

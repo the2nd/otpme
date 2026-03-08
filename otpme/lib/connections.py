@@ -287,6 +287,9 @@ def get(daemon, **kwargs):
     # Connections to clusterd work independently of the agent
     if daemon == "clusterd":
         use_agent = False
+    # Connections to backupd work independently of the agent
+    if daemon == "backupd":
+        use_agent = False
 
     if node and not socket_uri:
         try:
@@ -328,6 +331,8 @@ def get(daemon, **kwargs):
     if daemon == "syncd":
         need_user = False
     if daemon == "clusterd":
+        need_user = False
+    if daemon == "backupd":
         need_user = False
     if config.use_socket:
         username = config.system_user()

@@ -348,6 +348,8 @@ class JobCallback(object):
                 else:
                     # For API/RAPI calls we have to set the return value.
                     self.job.return_value = message
+        else:
+            raise_exception = True
 
         if raise_exception:
             # If we got no exception to raise use the default.

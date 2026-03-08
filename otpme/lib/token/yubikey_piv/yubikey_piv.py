@@ -179,6 +179,7 @@ def register():
 
 def register_hooks():
     config.register_auth_on_action_hook("token", "public_key")
+    config.register_auth_on_action_hook("token", "show_config_parameters")
 
 def register_token_type():
     """ Register token type. """

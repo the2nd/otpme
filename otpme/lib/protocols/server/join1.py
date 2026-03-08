@@ -1199,7 +1199,7 @@ class OTPmeJoinP1(OTPmeServer1):
             self.job_uuid = stuff.gen_uuid()
         if not self.callback:
             self.callback = JobCallback(uuid=self.job_uuid, client=self.client)
-            # Disable sending of client messages.
+            # Disable sending of client messages, raise exceptions instead.
             self.callback.disable()
 
         # Add job to running jobs to prevent master failover while host/node join.

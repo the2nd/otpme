@@ -669,7 +669,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
-                    'oargs'             : ['value', 'delete'],
+                    'oargs'             : ['value', 'append', 'delete'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -919,9 +919,9 @@ class Node(OTPmeHost):
             return node_vote
 
         result = backend.search(object_type="script",
-                                    attribute="uuid",
-                                    value=self.vote_script,
-                                    return_type="instance")
+                                attribute="uuid",
+                                value=self.vote_script,
+                                return_type="instance")
         if not result:
             log_msg = _("Unknown vote script: {vote_script}", log=True)[1]
             log_msg = log_msg.format(vote_script=self.vote_script)
@@ -1049,6 +1049,36 @@ class Node(OTPmeHost):
                 return callback.error(msg)
         return super(Node, self).disable(*args, callback=callback, **kwargs)
 
+    @backend.transaction
+    def add(
+        self,
+        _caller: str="API",
+        verbose_level: int=0,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Add node. """
+        # Add object using parent class.
+        add_result = super(Node, self).add(verbose_level=verbose_level,
+                                            callback=callback, **kwargs)
+        default_excludes = [
+                             'proc',
+                             'sys',
+                             'snap',
+                             'mnt',
+                             'tmp',
+                             'run',
+                             'dev',
+                             'var/tmp',
+                             'var/run',
+                             'otpme',
+                             'otpme-mounts',
+                            ]
+        self.set_config_param(parameter='backup_excludes',
+                            value=default_excludes,
+                            callback=callback)
+        return add_result
+
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
         """ Show host config. """
         if not self.verify_acl("view_public:object"):
@@ -1129,6 +1159,17 @@ class Node(OTPmeHost):
         if self.public_key:
             public_key = self.public_key
         lines.append(f'PUBLIC_KEY="{public_key}"')
+
+        vote_script = ""
+        vote_script_enabled = ""
+        if self.verify_acl("view:vote_script"):
+            if self.vote_script:
+                vote_script = backend.get_oid(self.vote_script, instance=True)
+                if vote_script:
+                    vote_script = vote_script.rel_path
+            vote_script_enabled = self.vote_script_enabled
+        lines.append(f'VOTE_SCRIPT="{vote_script}"')
+        lines.append(f'VOTE_SCRIPT_ENABLED="{vote_script_enabled}"')
 
         return super(Node, self).show_config(
                                 config_lines=lines,

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# NOTE: This module was written by claude code!
 import sys
 import datetime
 import getpass

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# NOTE: This module was written by claude code!
 import os
 import sys
 import getpass
@@ -29,6 +31,18 @@ from cryptography.hazmat.primitives.serialization import NoEncryption
 from cryptography.hazmat.primitives.serialization import PrivateFormat
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
+from otpme.lib.smartcard.yubikey.piv import slot_map
+from otpme.lib.smartcard.yubikey.piv import reset
+from otpme.lib.smartcard.yubikey.piv import change_pin
+from otpme.lib.smartcard.yubikey.piv import change_puk
+from otpme.lib.smartcard.yubikey.piv import decrypt
+from otpme.lib.smartcard.yubikey.piv import sign
+from otpme.lib.smartcard.yubikey.piv import verify
+from otpme.lib.smartcard.yubikey.piv import list_keys
+from otpme.lib.smartcard.yubikey.piv import import_rsa_key
+from otpme.lib.smartcard.yubikey.piv import derive_password
+
+
 def _resolve_pin(pin_arg):
     """Resolve PIN similar to openssl -pass: pass:<val>, file:<path>, fd:<n>, env:<var>."""
     if pin_arg is None:
@@ -44,18 +58,6 @@ def _resolve_pin(pin_arg):
     if pin_arg.startswith("env:"):
         return os.environ[pin_arg[4:]]
     return pin_arg
-
-
-from otpme.lib.smartcard.yubikey.piv import slot_map
-from otpme.lib.smartcard.yubikey.piv import reset
-from otpme.lib.smartcard.yubikey.piv import change_pin
-from otpme.lib.smartcard.yubikey.piv import change_puk
-from otpme.lib.smartcard.yubikey.piv import decrypt
-from otpme.lib.smartcard.yubikey.piv import sign
-from otpme.lib.smartcard.yubikey.piv import verify
-from otpme.lib.smartcard.yubikey.piv import list_keys
-from otpme.lib.smartcard.yubikey.piv import import_rsa_key
-from otpme.lib.smartcard.yubikey.piv import derive_password
 
 
 def main():

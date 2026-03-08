@@ -728,6 +728,9 @@ class CommandHandler(object):
         if command == "trash":
             return self.handle_trash_command(command, subcommand, command_line)
 
+        if command == "backup":
+            return self.handle_backup_command(command, subcommand, command_line)
+
         if command == "pinentry":
             self.start_pinentry()
             return ""
@@ -1212,6 +1215,335 @@ class CommandHandler(object):
                 print(msg)
                 continue
             shutil.rmtree(x_path)
+
+    def get_backupd_conn(self, host):
+        try:
+            backupd_conn = connections.get("backupd",
+                                        node=host,
+                                        timeout=3600,
+                                        auto_auth=False,
+                                        auto_preauth=True,
+                                        encrypt_session=False,
+                                        verify_preauth=False,
+                                        interactive=False)
+        except Exception as e:
+            msg = _("Failed to get backup connection: {host_name}: {e}")
+            msg = msg.format(host_name=host, e=e)
+            raise OTPmeException(msg)
+        return backupd_conn
+
+    def load_backup_object(self, backup_object):
+        # FIXME: make this a constant in config?
+        KEY_LEN = 64
+        try:
+            object_type = backup_object.split(":")[0]
+            object_name = backup_object.split(":")[1]
+        except IndexError as e:
+            msg = _("Invalid backup object: {backup_object}")
+            msg = msg.format(backup_object=backup_object)
+            raise OTPmeException(msg)
+        backup_key = None
+        backup_repo_password = None
+        if object_type == "share":
+            o = backend.get_object(object_type=object_type,
+                                        name=object_name,
+                                        realm=config.realm,
+                                        site=config.site)
+            if not o:
+                msg = _("Unknown share: {share_name}")
+                msg = msg.format(share_name=object_name)
+                raise OTPmeException(msg)
+            source_dir = o.root_dir
+            repository = f"{o.type}/{o.site}/{o.name}"
+        elif object_type == "node":
+            o = backend.get_object(object_type=object_type,
+                                        name=object_name,
+                                        realm=config.realm,
+                                        site=config.site)
+            if not o:
+                msg = _("Unknown node: {node_name}")
+                msg = msg.format(node_name=object_name)
+                raise OTPmeException(msg)
+            if o.uuid != config.uuid:
+                msg = _("You have to run this command on node: {node_name}")
+                msg = msg.format(node_name=o.name)
+                raise OTPmeException(msg)
+            source_dir = "/"
+            repository = f"{o.type}/{o.site}/{o.name}"
+        else:
+            msg = _("Backup not supported for object type: {object_type}")
+            msg = msg.format(object_type=object_type)
+            raise OTPmeException(msg)
+        backup_enabled = o.get_config_parameter("backup_enabled")
+        backup_server = o.get_config_parameter("backup_server")
+        backup_key = o.get_config_parameter("backup_key")
+        backup_repo_password = o.get_config_parameter("backup_repo_password")
+        backup_excludes = o.get_config_parameter("backup_excludes")
+        backup_includes = o.get_config_parameter("backup_includes")
+        backup_exclude_special = o.get_config_parameter("backup_exclude_special")
+        if not backup_server:
+            msg = _("No backup server configured for object: {backup_object}")
+            msg = msg.format(backup_object=backup_object)
+            raise OTPmeException(msg)
+        if not backup_repo_password:
+            msg = _("No backup repository password configured for object: {backup_object}")
+            msg = msg.format(backup_object=backup_object)
+            raise OTPmeException(msg)
+        if not backup_key:
+            msg = _("No backup key configured for object: {backup_object}")
+            msg = msg.format(backup_object=backup_object)
+            raise OTPmeException(msg)
+        key_len = len(backup_key)
+        if key_len != KEY_LEN:
+            msg = _("Invalid AES key len: required {KEY_LEN}, got {key_len}")
+            msg = msg.format(KEY_LEN=KEY_LEN, key_len=key_len)
+            raise OTPmeException(msg)
+        aes_key = bytes.fromhex(backup_key)
+        return (repository,
+                source_dir,
+                backup_server,
+                backup_repo_password,
+                aes_key,
+                backup_excludes,
+                backup_includes,
+                backup_exclude_special,
+                backup_enabled)
+
+    def handle_backup_command(self, command, subcommand, command_line):
+        """ Handle backup command. """
+        if config.system_user() != "root":
+            msg = ("You must be root for this command.")
+            raise OTPmeException(msg)
+        # Register modules.
+        register_module('otpme.lib.classes.share')
+        register_module('otpme.lib.classes.node')
+        # Init cache.
+        cache.init()
+        cache.enable()
+        self.init(use_backend=True)
+
+        # Get command syntax.
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except:
+            msg = _("Unknown command: {subcommand}")
+            msg = msg.format(subcommand=subcommand)
+            return self.get_help(msg)
+
+        # Parse command line.
+        try:
+            object_cmd, \
+            object_required, \
+            object_identifier, \
+            command_args = cli.get_opts(command_syntax=command_syntax,
+                                        command_line=command_line,
+                                        command_args=self.command_args)
+        except Exception as e:
+            if str(e) == "help":
+                return self.get_help()
+            elif str(e) != "":
+                return self.get_help(str(e))
+
+        if subcommand == "start":
+            try:
+                backup_object = command_args['backup_object']
+            except KeyError:
+                return self.get_help()
+            try:
+                exclude = command_args['exclude']
+            except KeyError:
+                exclude = []
+            try:
+                include = command_args['include']
+            except KeyError:
+                include = []
+            try:
+                skip_special = command_args['skip_special']
+            except KeyError:
+                skip_special = None
+            try:
+                dry_run = command_args['dry_run']
+            except KeyError:
+                dry_run = False
+            return self.start_backup(backup_object,
+                                    exclude=exclude,
+                                    include=include,
+                                    skip_special=skip_special,
+                                    dry_run=dry_run)
+        if subcommand == "list":
+            try:
+                backup_object = command_args['backup_object']
+            except KeyError:
+                return self.get_help()
+            return self.list_backup_snapshots(backup_object)
+
+        if subcommand == "ls":
+            try:
+                backup_object = command_args['backup_object']
+            except KeyError:
+                return self.get_help()
+            try:
+                snap_name = command_args['snap_name']
+            except KeyError:
+                return self.get_help()
+            try:
+                path = command_args['path']
+            except KeyError:
+                path = None
+            return self.list_backup_snapshot(backup_object, snap_name, path)
+
+        if subcommand == "restore":
+            try:
+                backup_object = command_args['backup_object']
+            except KeyError:
+                return self.get_help()
+            try:
+                snap_name = command_args['snap_name']
+            except KeyError:
+                snap_name = None
+            try:
+                destination_dir = command_args['destination_dir']
+            except KeyError:
+                return self.get_help()
+            try:
+                path = command_args['path']
+            except KeyError:
+                path = None
+            try:
+                dry_run = command_args['dry_run']
+            except KeyError:
+                dry_run = False
+            return self.restore_from_snapshot(backup_object,
+                                            destination_dir,
+                                            snap_name,
+                                            path,
+                                            dry_run=dry_run)
+
+    def start_backup(self, backup_object, exclude=[], include=[], skip_special=None, dry_run=False):
+        from otpme.lib.classes.backup import BackupClient
+        special_files = True
+        if skip_special:
+            special_files = False
+        repository, \
+        source_dir, \
+        backup_server, \
+        repo_pass, \
+        aes_key, \
+        backup_excludes, \
+        backup_includes, \
+        backup_exclude_special, \
+        backup_enabled = self.load_backup_object(backup_object)
+        if not backup_enabled:
+            if not config.force:
+                msg = _("Backups disabled for object: {backup_object}")
+                msg = msg.format(backup_object=backup_object)
+                raise OTPmeException(msg)
+        if not os.path.exists(source_dir):
+            msg = _("Source directory does not exist: {source_dir}")
+            msg = msg.format(source_dir=source_dir)
+            raise OTPmeException(msg)
+        if not exclude:
+            exclude = backup_excludes
+        if not include:
+            include = backup_includes
+        if skip_special is None:
+            if backup_exclude_special:
+                special_files = False
+        log_msg = _("Starting backup: {backup_object}", log=True)[1]
+        log_msg = log_msg.format(backup_object=backup_object)
+        if not dry_run:
+            self.logger.info(log_msg)
+            backupd_conn = self.get_backupd_conn(backup_server)
+            backupd_conn.open_repository(repository=repository,
+                                        password=repo_pass,
+                                        write=True)
+            backupd_conn.start_backup()
+        client = BackupClient(server=backupd_conn, key=aes_key, compress=True)
+        client.backup(source=source_dir,
+                    special_files=special_files,
+                    excludes=exclude,
+                   includes=include,
+                    dry_run=dry_run)
+        # Remove outdated backups.
+        backupd_conn.apply_retention()
+
+    def list_backup_snapshots(self, backup_object):
+        repository, \
+        source_dir, \
+        backup_server, \
+        repo_pass, \
+        aes_key, \
+        backup_excludes, \
+        backup_includes, \
+        backup_exclude_special, \
+        backup_enabled = self.load_backup_object(backup_object)
+        backupd_conn = self.get_backupd_conn(backup_server)
+        backupd_conn.open_repository(repository=repository, password=repo_pass)
+        snaps = backupd_conn.list_snapshots()
+        if not snaps:
+            print("No backups found.")
+        else:
+            print(f"{'NAME':<30}  {'FILES':>7}  {'INODES':>7}  {'REFS':>7}  {'START':<20}  {'END':<20}  {'DURATION':<14}  STATUS")
+            print("-" * 140)
+            for s in snaps:
+                if s["running"]:
+                    since = s["running_since"] or "?"
+                    status = f"RUNNING since {since}"
+                elif s["complete"]:
+                    status = "ok"
+                else:
+                    status = "INCOMPLETE"
+                start = s.get("start_time", "") or ""
+                end = s.get("end_time", "") or ""
+                dur = s.get("duration", "") or ""
+                print(f"{s['name']:<30}  {s['files']:>7}  {s['inodes']:>7}  {s['refs']:>7}  {start:<20}  {end:<20}  {dur:<14}  {status}")
+            total_files = sum(s['files'] for s in snaps)
+            total_inodes = sum(s['inodes'] for s in snaps)
+            total_refs = sum(s['refs'] for s in snaps)
+            print("-" * 140)
+            print(f"{'TOTAL':<30}  {total_files:>7}  {total_inodes:>7}  {total_refs:>7}")
+
+    def list_backup_snapshot(self, backup_object, snap_name, path=None):
+        from otpme.lib.classes.backup import BackupClient
+        repository, \
+        source_dir, \
+        backup_server, \
+        repo_pass, \
+        aes_key, \
+        backup_excludes, \
+        backup_includes, \
+        backup_exclude_special, \
+        backup_enabled = self.load_backup_object(backup_object)
+        backupd_conn = self.get_backupd_conn(backup_server)
+        backupd_conn.open_repository(repository=repository, password=repo_pass)
+        client = BackupClient(server=backupd_conn)
+        entries = client.list_contents(snap_name, path)
+        if not entries:
+            print("No entries found.")
+        else:
+            for line in client.format_contents(entries):
+                print(line)
+
+    def restore_from_snapshot(self, backup_object, destination_dir,
+        snap_name=None, path=None, dry_run=False):
+        from otpme.lib.classes.backup import BackupClient
+        repository, \
+        source_dir, \
+        backup_server, \
+        repo_pass, \
+        aes_key, \
+        backup_excludes, \
+        backup_includes, \
+        backup_exclude_special, \
+        backup_enabled = self.load_backup_object(backup_object)
+        backupd_conn = self.get_backupd_conn(backup_server)
+        backupd_conn.open_repository(repository=repository, password=repo_pass)
+        backupd_conn.start_restore()
+        if snap_name is None:
+            snaps = backupd_conn.list_snapshots()
+            snap_name = snaps[-1]['name']
+        client = BackupClient(server=backupd_conn, key=aes_key)
+        client.restore(snap_name, destination_dir, path, dry_run=dry_run)
 
     def handle_tool_command(self, command, subcommand, command_line):
         """ Handle tool command. """
@@ -1806,7 +2138,8 @@ class CommandHandler(object):
             msg = "Radius request successful."
             print(msg)
         else:
-            msg = f"Unknown command: {command}"
+            msg = _("Unknown command: {command}")
+            msg = msg.format(command=command)
             raise Exception(msg)
 
     def handle_show_sessions_command(self, command_line):

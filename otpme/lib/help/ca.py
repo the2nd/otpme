@@ -104,10 +104,11 @@ cmd_help = {
     #            },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-ca config -d {ca} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: <|object|> <parameter> [value]',
+                    '_cmd_usage_help' : _('Usage: otpme-ca config -d -a {ca} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to CA.'),
+                                    '-a'                    : _('Append value to config parameter.'),
                                     '-d'                    : _('Delete config parameter.'),
                                 },
                 },

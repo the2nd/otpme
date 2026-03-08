@@ -154,6 +154,7 @@ def register():
 def register_hooks():
     config.register_auth_on_action_hook("policy", "change_force_pass_types")
     config.register_auth_on_action_hook("policy", "change_force_token_types")
+    config.register_auth_on_action_hook("policy", "show_config_parameters")
 
 def register_policy_type():
     """ Register policy type. """

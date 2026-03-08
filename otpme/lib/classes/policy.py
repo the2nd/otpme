@@ -332,7 +332,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
-                    'oargs'             : ['value', 'delete'],
+                    'oargs'             : ['value', 'append', 'delete'],
                     'job_type'          : 'thread',
                     },
                 },

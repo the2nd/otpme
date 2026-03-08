@@ -141,6 +141,7 @@ def register():
 
 def register_hooks():
     config.register_auth_on_action_hook("policy", "set_template")
+    config.register_auth_on_action_hook("policy", "show_config_parameters")
 
 def register_policy_type():
     """ Register policy type. """

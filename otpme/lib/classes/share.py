@@ -578,6 +578,15 @@ commands = {
                     },
                 },
             },
+    'show_config'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'show_config_parameters',
+                    'oargs'              : ['parameter'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     '_show_config'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -666,7 +675,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
-                    'oargs'             : ['value', 'delete'],
+                    'oargs'             : ['value', 'append', 'delete'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -707,6 +716,7 @@ def register():
     config.register_auth_on_action_hook("share", "enable_mount_script")
     config.register_auth_on_action_hook("share", "disable_mount_script")
     config.register_auth_on_action_hook("share", "change_mount_script")
+    config.register_auth_on_action_hook("share", "show_config_parameters")
 
 def register_object_unit():
     """ Register default unit for this object type. """
@@ -873,6 +883,8 @@ class Share(OTPmeObject):
         self.master_password_tokens = []
         self.master_password_hash_params = {}
 
+        self.restore_share = None
+
         self.add_script = None
         self.mount_script = None
         self.mount_script_enabled = False
@@ -1034,6 +1046,12 @@ class Share(OTPmeObject):
                         'MOUNT_SCRIPT_ENABLED'      : {
                                                         'var_name'  : 'mount_script_enabled',
                                                         'type'      : bool,
+                                                        'required'  : False,
+                                                    },
+
+                        'RESTORE_SHARE'             : {
+                                                        'var_name'  : 'restore_share',
+                                                        'type'      : 'uuid',
                                                         'required'  : False,
                                                     },
                         }

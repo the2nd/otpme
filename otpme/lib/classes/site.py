@@ -2,6 +2,7 @@
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
+from datetime import datetime
 from cryptography import x509
 from typing import List
 from typing import Union
@@ -778,7 +779,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'set_config_param',
                     'args'              : ['parameter'],
-                    'oargs'             : ['value', 'delete'],
+                    'oargs'             : ['value', 'append', 'delete'],
                     'job_type'          : 'thread',
                     },
                 },
@@ -838,6 +839,7 @@ def register_dn():
 
 def register_config():
     """ Register config stuff. """
+    config.register_index_attribute("backup_enabled")
     config.register_config_var("default_site_validity", int, 5475)
     config.register_config_var("default_site_key_len", int, 2048)
     # Register SSO base client and accessgroup.
@@ -889,13 +891,212 @@ def register_config():
             raise ValueError(msg)
         return key_len
 
-    # Public key used for encryption of user private keys.
+    # Private key backup key len.
     config.register_config_parameter(name="private_key_backup_key_len",
                                     ctype=int,
                                     setter=key_len_setter,
                                     default_value=2048,
                                     object_types=object_types)
 
+    # Object types our config parameter is valid for.
+    object_types = [
+                    'site',
+                    'unit',
+                    'node',
+                    'share',
+                    ]
+    def backup_enabled_setter(backup_enabled, config_object, **kwargs):
+        config_object.update_index('backup_enabled', backup_enabled)
+        return backup_enabled
+    def backup_enabled_deller(config_object, **kwargs):
+        config_object.del_index('backup_enabled')
+    # Enable/disable backups.
+    config.register_config_parameter(name="backup_enabled",
+                                    ctype=bool,
+                                    setter=backup_enabled_setter,
+                                    deller=backup_enabled_deller,
+                                    object_types=object_types)
+
+    # Exclude special files?
+    config.register_config_parameter(name="backup_exclude_special",
+                                    ctype=bool,
+                                    object_types=object_types)
+
+    # Object types our config parameter is valid for.
+    object_types = [
+                    'site',
+                    'unit',
+                    'node',
+                    'share',
+                    ]
+    def backup_server_setter(backup_server, callback=JobCallback, **kwargs):
+        result = backend.search(object_types=['node', 'host'],
+                                attribute="name",
+                                value=backup_server,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown backup server: {backup_server}")
+            msg = msg.format(backup_server=backup_server)
+            raise ValueError(msg)
+        backup_server = result[0]
+        fqdn = backup_server.fqdn
+        return fqdn
+
+    # Backup server to use.
+    config.register_config_parameter(name="backup_server",
+                                    ctype=str,
+                                    setter=backup_server_setter,
+                                    object_types=object_types)
+
+    def backup_time_setter(backup_time, **kwargs):
+        try:
+            start_time = backup_time.split("-")[0]
+            end_time = backup_time.split("-")[1]
+        except Exception:
+            msg = _("Invalid backup time.")
+            raise ValueError(msg)
+        try:
+            datetime.strptime(start_time, "%H:%M")
+        except ValueError:
+            msg = _("Invalid time.")
+            raise ValueError(msg)
+        try:
+            datetime.strptime(end_time, "%H:%M")
+        except ValueError:
+            msg = _("Invalid time.")
+            raise ValueError(msg)
+        return backup_time
+    # Backup excludes.
+    config.register_config_parameter(name="backup_time",
+                                    ctype=str,
+                                    setter=backup_time_setter,
+                                    object_types=object_types)
+
+    def backup_interval_setter(backup_interval, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            backup_interval = units.time2int(backup_interval, time_unit="s")
+        except Exception:
+            msg = _("Invalid backup interval.")
+            raise ValueError(msg)
+        return backup_interval
+
+    def backup_interval_getter(backup_interval, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            backup_interval = units.int2time(backup_interval, time_unit="s")[0]
+        except Exception:
+            msg = _("Invalid backup interval.")
+            raise ValueError(msg)
+        return backup_interval
+
+    # Backup excludes.
+    config.register_config_parameter(name="backup_interval",
+                                    ctype=int,
+                                    setter=backup_interval_setter,
+                                    getter=backup_interval_getter,
+                                    object_types=object_types)
+
+    # Object types our config parameter is valid for.
+    object_types = [
+                    'node',
+                    'share',
+                    ]
+    def excludes_setter(excludes, **kwargs):
+        if isinstance(excludes, str):
+            excludes = excludes.split(",")
+        return excludes
+    # Backup excludes.
+    config.register_config_parameter(name="backup_excludes",
+                                    ctype=list,
+                                    warn_if_exists=True,
+                                    setter=excludes_setter,
+                                    object_types=object_types)
+    def includes_setter(includes, **kwargs):
+        if isinstance(includes, str):
+            includes = includes.split(",")
+        return includes
+    # Backup includes.
+    config.register_config_parameter(name="backup_includes",
+                                    ctype=list,
+                                    warn_if_exists=True,
+                                    setter=includes_setter,
+                                    object_types=object_types)
+
+    # Object types our config parameter is valid for.
+    object_types = [
+                    'site',
+                    'unit',
+                    'node',
+                    'share',
+                    ]
+    def backup_key_setter(backup_key, callback=default_callback, **kwargs):
+        KEY_LEN = 64
+        key_len = len(str(backup_key))
+        if key_len != KEY_LEN:
+            msg = _("Invalid AES key len: required {KEY_LEN}, got {key_len}")
+            msg = msg.format(KEY_LEN=KEY_LEN, key_len=key_len)
+            raise ValueError(msg)
+        try:
+            enc_mod = config.get_encryption_module("FERNET")
+        except Exception as e:
+            msg = _("Failed to load backup key encryption: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg)
+        backup_key = enc_mod.encrypt(config.master_key, backup_key)
+        return backup_key
+    def backup_key_getter(backup_key, callback=default_callback, **kwargs):
+        try:
+            enc_mod = config.get_encryption_module("FERNET")
+        except Exception as e:
+            msg = _("Failed to load backup key encryption: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg)
+        backup_key = enc_mod.decrypt(config.master_key, backup_key)
+        return backup_key
+    def backup_key_default_genner():
+        key = os.urandom(32)
+        key = key.hex()
+        return key
+    # Backup key used for encrypting backups.
+    config.register_config_parameter(name="backup_key",
+                                    ctype=str,
+                                    warn_if_exists=True,
+                                    setter=backup_key_setter,
+                                    getter=backup_key_getter,
+                                    default_genner=backup_key_default_genner,
+                                    object_types=object_types)
+
+    # Object types our config parameter is valid for.
+    object_types = [
+                    'node',
+                    'share',
+                    ]
+    def backup_pass_setter(backup_pass, callback=default_callback, **kwargs):
+        try:
+            enc_mod = config.get_encryption_module("FERNET")
+        except Exception as e:
+            msg = _("Failed to load backup key encryption: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg)
+        backup_pass = enc_mod.encrypt(config.master_key, backup_pass)
+        return backup_pass
+    def backup_pass_getter(backup_pass, callback=default_callback, **kwargs):
+        try:
+            enc_mod = config.get_encryption_module("FERNET")
+        except Exception as e:
+            msg = _("Failed to load backup key encryption: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg)
+        backup_pass = enc_mod.decrypt(config.master_key, backup_pass)
+        return backup_pass
+    # Backup repo password used for authentication to backup server.
+    config.register_config_parameter(name="backup_repo_password",
+                                    ctype=str,
+                                    setter=backup_pass_setter,
+                                    getter=backup_pass_getter,
+                                    warn_if_exists=True,
+                                    object_types=object_types)
 
     # Object types our config parameters are valid for.
     object_types = [
@@ -950,6 +1151,7 @@ def register_hooks():
     config.register_auth_on_action_hook("site", "renew_cert")
     config.register_auth_on_action_hook("site", "add_trust")
     config.register_auth_on_action_hook("site", "del_trust")
+    config.register_auth_on_action_hook("site", "show_config_parameters")
 
 def register_oid():
     full_oid_schema = [ 'realm', 'name' ]

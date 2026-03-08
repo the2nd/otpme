@@ -258,6 +258,24 @@ cmd_help = {
                                 },
                 },
 
+     'config'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-share config -d -a {share} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
+                    '_help' :   {
+                                    'cmd'                   : _('Add config parameter to share.'),
+                                    '-a'                    : _('Append value to config parameter.'),
+                                    '-d'                    : _('Delete config parameter.'),
+                                },
+                },
+
+    'show_config'      : {
+                    '_cmd_usage_help' : _('Usage: otpme-share show_config {share} [parameter]'),
+                    'cmd'   :   '<|object|> [parameter]',
+                    '_help' :   {
+                                    'cmd'                   : _('Show share\'s config parameters'),
+                                },
+                },
+
     '_show_supported_acls'    : {
                     'cmd'   :   '<|object|>',
                 },

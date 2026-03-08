@@ -90,10 +90,11 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-node config -d {node} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: <|object|> <parameter> [value]',
+                    '_cmd_usage_help' : _('Usage: otpme-node config -d -a {node} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to node.'),
+                                    '-a'                    : _('Append value to config parameter.'),
                                     '-d'                    : _('Delete config parameter.'),
                                 },
                 },
@@ -102,7 +103,7 @@ cmd_help = {
                     '_cmd_usage_help' : _('Usage: otpme-node show_config {node} [parameter]'),
                     'cmd'   :   '<|object|> [parameter]',
                     '_help' :   {
-                                    'cmd'                   : _('Show node config parameters'),
+                                    'cmd'                   : _('Show node\'s config parameters'),
                                 },
                 },
 

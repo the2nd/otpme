@@ -1500,6 +1500,8 @@ class OTPmeSyncP1(OTPmeClient1):
 
         for uuid in user_uuids:
             user = backend.get_object(uuid=uuid)
+            if not user:
+                continue
             if user.realm != self.connection.realm:
                 continue
             if user.site != self.connection.site:

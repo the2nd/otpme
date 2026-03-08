@@ -2192,6 +2192,8 @@ class HostDaemon(OTPmeDaemon):
                 sync_child.close()
             except OSError:
                 pass
+            except ValueError:
+                pass
             # We need to remove child from sync childs because this
             # may affect other running sync childs.
             self.sync_childs[sync_type] = None

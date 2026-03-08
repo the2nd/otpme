@@ -96,10 +96,11 @@ cmd_help = {
                 },
 
      'config'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup config -d {accessgroup} {param} [value]'),
-                    'cmd'   :   '-d :delete=True: <|object|> <parameter> [value]',
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup config -d -a {accessgroup} {param} [value]'),
+                    'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',
                     '_help' :   {
                                     'cmd'                   : _('Add config parameter to accessgroup.'),
+                                    '-a'                    : _('Append value to config parameter.'),
                                     '-d'                    : _('Delete config parameter.'),
                                 },
                 },

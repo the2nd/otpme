@@ -21,7 +21,7 @@ def main():
         sys.exit(1)
 
     installed = 0
-    for dest, pattern in [("man1", "*.1"), ("man7", "*.7"), ("man5", "*.5")]:
+    for dest, pattern in [("man1", "*.1"), ("man5", "*.5"), ("man7", "*.7"), ("man8", "*.8")]:
         pages = glob.glob(os.path.join(man_dir, pattern))
         if not pages:
             continue

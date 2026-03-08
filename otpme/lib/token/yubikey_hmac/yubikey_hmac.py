@@ -247,6 +247,7 @@ def register():
 def register_hooks():
     config.register_auth_on_action_hook("token", "gen_mschap")
     config.register_auth_on_action_hook("token", "show_secret")
+    config.register_auth_on_action_hook("token", "show_config_parameters")
 
 def register_token_type():
     """ Register token type. """
