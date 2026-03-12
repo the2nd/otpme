@@ -95,6 +95,9 @@ class ConnectSocket(object):
             # Set send/recv buffer.
             self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, config.socket_send_buffer)
             self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, config.socket_receive_buffer)
+            # Disable Nagle's algorithm for lower latency.
+            if self.protocol == "tcp":
+                self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
             # Create SSL socket if requested.
             if self.use_ssl and cert and key:

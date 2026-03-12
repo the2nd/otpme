@@ -1002,6 +1002,17 @@ def register_config():
                     'node',
                     'share',
                     ]
+    def backup_mode_setter(mode, **kwargs):
+        if mode not in ['pack', 'tree']:
+            msg = _("Invalid backup mode.")
+            raise OTPmeException(msg)
+        return mode
+    # Backup mode.
+    config.register_config_parameter(name="backup_mode",
+                                    ctype=str,
+                                    warn_if_exists=True,
+                                    setter=backup_mode_setter,
+                                    object_types=object_types)
     def excludes_setter(excludes, **kwargs):
         if isinstance(excludes, str):
             excludes = excludes.split(",")
@@ -1037,22 +1048,31 @@ def register_config():
             msg = _("Invalid AES key len: required {KEY_LEN}, got {key_len}")
             msg = msg.format(KEY_LEN=KEY_LEN, key_len=key_len)
             raise ValueError(msg)
+        my_site = backend.get_object(object_type="site",
+                                    uuid=config.site_uuid)
         try:
-            enc_mod = config.get_encryption_module("FERNET")
+            backup_key = my_site._key.encrypt(cleartext=backup_key,
+                                            algorithm="SHA256",
+                                            cipher='PKCS1_OAEP')
         except Exception as e:
-            msg = _("Failed to load backup key encryption: {error}")
+            msg = _("Failed to encrypt preauth key: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg)
-        backup_key = enc_mod.encrypt(config.master_key, backup_key)
+        backup_key = backup_key.hex()
         return backup_key
     def backup_key_getter(backup_key, callback=default_callback, **kwargs):
+        backup_key = bytes.fromhex(backup_key)
+        my_site = backend.get_object(object_type="site",
+                                    uuid=config.site_uuid)
         try:
-            enc_mod = config.get_encryption_module("FERNET")
+            backup_key = my_site._key.decrypt(ciphertext=backup_key,
+                                            algorithm="SHA256",
+                                            cipher='PKCS1_OAEP')
         except Exception as e:
-            msg = _("Failed to load backup key encryption: {error}")
+            msg = _("Failed to encrypt preauth key: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg)
-        backup_key = enc_mod.decrypt(config.master_key, backup_key)
+        backup_key = backup_key.decode()
         return backup_key
     def backup_key_default_genner():
         key = os.urandom(32)
@@ -1073,22 +1093,31 @@ def register_config():
                     'share',
                     ]
     def backup_pass_setter(backup_pass, callback=default_callback, **kwargs):
+        my_site = backend.get_object(object_type="site",
+                                    uuid=config.site_uuid)
         try:
-            enc_mod = config.get_encryption_module("FERNET")
+            backup_pass = my_site._key.encrypt(cleartext=backup_pass,
+                                            algorithm="SHA256",
+                                            cipher='PKCS1_OAEP')
         except Exception as e:
-            msg = _("Failed to load backup key encryption: {error}")
+            msg = _("Failed to encrypt preauth key: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg)
-        backup_pass = enc_mod.encrypt(config.master_key, backup_pass)
+        backup_pass = backup_pass.hex()
         return backup_pass
     def backup_pass_getter(backup_pass, callback=default_callback, **kwargs):
+        backup_pass = bytes.fromhex(backup_pass)
+        my_site = backend.get_object(object_type="site",
+                                    uuid=config.site_uuid)
         try:
-            enc_mod = config.get_encryption_module("FERNET")
+            backup_pass = my_site._key.decrypt(ciphertext=backup_pass,
+                                            algorithm="SHA256",
+                                            cipher='PKCS1_OAEP')
         except Exception as e:
-            msg = _("Failed to load backup key encryption: {error}")
+            msg = _("Failed to encrypt preauth key: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg)
-        backup_pass = enc_mod.decrypt(config.master_key, backup_pass)
+        backup_pass = backup_pass.decode()
         return backup_pass
     # Backup repo password used for authentication to backup server.
     config.register_config_parameter(name="backup_repo_password",

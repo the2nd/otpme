@@ -21,14 +21,15 @@ cmd_help = {
     '_usage_help'               : _("Usage: otpme-backup {command}"),
 
     'start'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-backup start [--dry-run] [--skip-special] [--exclude <path>] [--include <path>] {backup_object}'),
-                    'cmd'   :   '--exclude :+exclude+: --include :+include+: --skip-special :skip_special=True: --dry-run :dry_run=True: <backup_object>',
+                    '_cmd_usage_help' : _('Usage: otpme-backup start [--dry-run] [--skip-special] [--exclude <path>] [--include <path>] [--apply-retention] {backup_object}'),
+                    'cmd'   :   '--exclude :+exclude+: --include :+include+: --skip-special :skip_special=True: --apply-retention :apply_retention=True: --dry-run :dry_run=True: <backup_object>',
                     '_help' :   {
                                     'cmd'                           : _('Start backup for object <backup_object>.'),
                                     '--dry-run'                     : _('Just print what would be backed-up.'),
                                     '--exclude <path>'              : _('Exclude <path> from backup.'),
                                     '--include <path>'              : _('Include <path> in backup.'),
                                     '--skip-special'                : _('Skip special files (device files etc.).'),
+                                    '--apply-retention'             : _('Instruct server to apply backup retention.'),
                                 },
                 },
 

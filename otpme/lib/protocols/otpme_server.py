@@ -119,6 +119,10 @@ class OTPmeServer1(object):
             self.allow_sotp_reuse
         except:
             self.allow_sotp_reuse = False
+        try:
+            self.check_peer_disabled
+        except:
+            self.check_peer_disabled = True
 
         self.session_reneg = False
 
@@ -495,11 +499,12 @@ class OTPmeServer1(object):
                     self.new_connection = False
 
         # Make sure peer is not disabled.
-        if self.peer and not self.peer.enabled:
-            status = status_codes.HOST_DISABLED
-            message = _("{peer_type} is disabled: {peer_fqdn}")
-            message = message.format(peer_type=self.peer.type, peer_fqdn=self.peer.fqdn)
-            return self.build_response(status, message, encrypt=False)
+        if self.check_peer_disabled:
+            if self.peer and not self.peer.enabled:
+                status = status_codes.HOST_DISABLED
+                message = _("{peer_type} is disabled: {peer_fqdn}")
+                message = message.format(peer_type=self.peer.type, peer_fqdn=self.peer.fqdn)
+                return self.build_response(status, message, encrypt=False)
 
         enc_key = None
         enc_mod = None

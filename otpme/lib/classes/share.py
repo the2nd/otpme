@@ -884,6 +884,7 @@ class Share(OTPmeObject):
         self.master_password_hash_params = {}
 
         self.restore_share = None
+        self.track_last_used = True
 
         self.add_script = None
         self.mount_script = None
@@ -1087,11 +1088,11 @@ class Share(OTPmeObject):
                                     realm=config.realm,
                                     site=config.site,
                                     return_type="instance")
-            share = result[0]
-            if not share:
+            if not result:
                 msg = _("Unknown share: {restore_share}")
                 msg = msg.format(restore_share=restore_share)
                 return callback.error(msg)
+            share = result[0]
             if share.encrypted:
                 if not restore_token:
                     msg = _("Restore token required for encrypted shares.")
@@ -1172,6 +1173,9 @@ class Share(OTPmeObject):
         if self.encrypted and add_result and not no_key_gen:
             msg = _("Generating AES key for encrypted share...")
             callback.send(msg)
+            if not config.auth_user:
+                msg = _("Unable to add share without auth user.")
+                return callback.error(msg)
             key_mode = config.auth_user.key_mode
             share_key_response = callback.gen_share_key(key_len=key_len, key_mode=key_mode)
             if not share_key_response:
@@ -1567,24 +1571,42 @@ class Share(OTPmeObject):
                     return callback.error(msg)
 
         if self.encrypted:
-            existing_key = self.get_share_key(username=user.name)
-            if not existing_key and not share_key:
-                msg = _("Sending request to re-encrypt share key for user: {user_name}")
-                msg = msg.format(user_name=user.name)
-                callback.send(msg)
-                auth_user = backend.get_object(uuid=config.auth_user.uuid)
-                key_mode = auth_user.key_mode
-                auth_user_share_key = self.get_share_key(username=auth_user.name)
-                if not auth_user_share_key:
-                    msg = _("You dont have a share key for share: {share_name}")
-                    msg = msg.format(share_name=self.name)
+            if self.restore_share:
+                result = backend.search(object_type="share",
+                                        attribute="uuid",
+                                        value=self.restore_share,
+                                        realm=config.realm,
+                                        site=config.site,
+                                        return_type="instance")
+                if not result:
+                    msg = _("Unknown share: {restore_share}")
+                    msg = msg.format(restore_share=self.restore_share)
                     return callback.error(msg)
-                share_key = callback.reencrypt_share_key(share_user=user.name,
-                                                        share_key=auth_user_share_key,
-                                                        key_mode=key_mode)
+                share = result[0]
+                share_key = share.get_share_key(username=token_user)
                 if not share_key:
-                    msg = _("Failed to receive share key from client.")
+                    msg = _("No share key available for user: {user}")
+                    msg = msg.format(user=token_user)
                     return callback.error(msg)
+            else:
+                existing_key = self.get_share_key(username=user.name)
+                if not existing_key and not share_key:
+                    msg = _("Sending request to re-encrypt share key for user: {user_name}")
+                    msg = msg.format(user_name=user.name)
+                    callback.send(msg)
+                    auth_user = backend.get_object(uuid=config.auth_user.uuid)
+                    key_mode = auth_user.key_mode
+                    auth_user_share_key = self.get_share_key(username=auth_user.name)
+                    if not auth_user_share_key:
+                        msg = _("You dont have a share key for share: {share_name}")
+                        msg = msg.format(share_name=self.name)
+                        return callback.error(msg)
+                    share_key = callback.reencrypt_share_key(share_user=user.name,
+                                                            share_key=auth_user_share_key,
+                                                            key_mode=key_mode)
+                    if not share_key:
+                        msg = _("Failed to receive share key from client.")
+                        return callback.error(msg)
             if share_key:
                 if not self.add_share_key(username=user.name,
                                     share_key=share_key,
@@ -2290,13 +2312,17 @@ class Share(OTPmeObject):
             lines.append('MASTER_PASSWORD_HASH_PARAMS=""')
 
         if self.verify_acl("view:add_script"):
-            add_script = backend.get_object(uuid=self.add_script)
+            add_script = None
+            if self.add_script:
+                add_script = backend.get_object(uuid=self.add_script)
             lines.append(f'ADD_SCRIPT="{add_script}"')
         else:
             lines.append('ADD_SCRIPT=""')
 
         if self.verify_acl("view:mount_script"):
-            mount_script = backend.get_object(uuid=self.mount_script)
+            mount_script = None
+            if self.mount_script:
+                mount_script = backend.get_object(uuid=self.mount_script)
             lines.append(f'MOUNT_SCRIPT="{mount_script}"')
         else:
             lines.append('MOUNT_SCRIPT=""')

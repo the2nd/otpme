@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import signal
+import setproctitle
 from datetime import datetime
 
 try:
@@ -51,7 +52,17 @@ class BackupDaemon(OTPmeDaemon):
         self.shutdown_backup_childs()
         return super(BackupDaemon, self).signal_handler(_signal, frame)
 
-    def in_backup_window(self, start_time, end_time):
+    def set_proctitle(self, backup_object):
+        """ Set proctitle to contain backup object. """
+        if config.use_api:
+            return
+        proctitle = setproctitle.getproctitle()
+        new_proctitle ="{proctitle} Backup: {backup_object}"
+        new_proctitle = new_proctitle.format(proctitle=proctitle,
+                                            backup_object=backup_object)
+        setproctitle.setproctitle(new_proctitle)
+
+    def in_backup_window(self, now, start_time, end_time):
         try:
             start_time = datetime.strptime(start_time, "%H:%M").time()
         except ValueError:
@@ -64,7 +75,7 @@ class BackupDaemon(OTPmeDaemon):
             msg = "Invalid end time."
             raise ValueError(msg)
 
-        now = datetime.now().time()
+        #now = datetime.now().time()
 
         if start_time <= end_time:
             in_window = start_time <= now <= end_time
@@ -113,8 +124,9 @@ class BackupDaemon(OTPmeDaemon):
                 log_msg = msg.format(backup_time=backup_time)
                 self.logger.warning(log_msg)
                 continue
+            now = datetime.now().time()
             try:
-                if not self.in_backup_window(start_time, end_time):
+                if not self.in_backup_window(now, start_time, end_time):
                     continue
             except ValueError as e:
                 log_msg = str(e)
@@ -133,7 +145,9 @@ class BackupDaemon(OTPmeDaemon):
                     self.logger.warning(log_msg)
                     continue
                 if backup_age < backup_interval:
-                    continue
+                    last_backup = datetime.fromtimestamp(o.last_backup).time()
+                    if self.in_backup_window(last_backup, start_time, end_time):
+                        continue
             try:
                 backup_child = self.backup_childs[o.uuid]
             except KeyError:
@@ -141,8 +155,14 @@ class BackupDaemon(OTPmeDaemon):
             else:
                 if backup_child.is_alive():
                     continue
-                backup_child.join()
-                backup_child.close()
+                try:
+                    backup_child.join()
+                except Exception:
+                    pass
+                try:
+                    backup_child.close()
+                except Exception:
+                    pass
                 self.backup_childs.pop(o.uuid)
             # Create child process that will do the backup.
             backup_child = multiprocessing.start_process(name=self.name,
@@ -153,6 +173,8 @@ class BackupDaemon(OTPmeDaemon):
 
     def start_backup(self, o):
         multiprocessing.atfork(exit_on_signal=True)
+        backup_object = f"{o.type}/{o.name}"
+        self.set_proctitle(backup_object)
         banner = f"{config.log_name}: {o.type}:{o.name}"
         self.logger = log.setup_logger(banner=banner, pid=True,
                                         existing_logger=config.logger)
@@ -233,8 +255,7 @@ class BackupDaemon(OTPmeDaemon):
         # Run in loop unitl we get a signal.
         while True:
             try:
-                # fuck
-                recv_timeout = 3
+                recv_timeout = 10
                 # Try to read daemon message.
                 try:
                     sender, \

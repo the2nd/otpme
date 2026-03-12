@@ -178,6 +178,7 @@ class OTPmeFS(fuse.Operations):
                                     password=sotp,
                                     use_ssh_agent=False,
                                     use_smartcard=False,
+                                    encrypt_session=False,
                                     timeout=300)
         except Exception as e:
             msg = _("Failed to get daemon connection: {e}")
@@ -1081,6 +1082,7 @@ class EncryptedFS(OTPmeFS):
         self.block_with_metadata_size = self.block_size + self.metadata_size
         self.max_name = 255
         self.null_block = b'\x00' * self.block_size
+        #self._read_file_size_cache = {}
 
     def set_block_size(self, block_size):
         self.block_size = block_size
@@ -1222,7 +1224,8 @@ class EncryptedFS(OTPmeFS):
         enc_dir = '/'
         counter = 0
         for name in comps:
-            counter += 1
+            if self.restore_share:
+                counter += 1
             if counter == 1:
                 enc_name = name
             else:
@@ -1258,20 +1261,21 @@ class EncryptedFS(OTPmeFS):
             raise fuse.FuseOSError(errno.EIO) from e
 
     def _decrypt_blocks(self, encrypted_data, block_count):
-        decrypted_data = bytearray()
+        mv = memoryview(encrypted_data)
+        data_len = len(encrypted_data)
+        decrypted_data = bytearray(block_count * self.block_size)
         offset = 0
+        dec_offset = 0
         blocks_processed = 0
-        while offset < len(encrypted_data) and blocks_processed < block_count:
-            block_len = struct.unpack('!I', encrypted_data[offset:offset + 4])[0]
+        while offset < data_len and blocks_processed < block_count:
+            block_len = struct.unpack('!I', mv[offset:offset + 4])[0]
             if block_len == 0:
-                block = encrypted_data[offset + 8:offset + 8 + self.block_size]
+                block = bytes(mv[offset + 8:offset + 8 + self.block_size])
                 block_len = len(block)
                 if block == self.null_block:
-                    decrypted_data.extend(block)
-                    offset += 8
-                    offset += block_len
-                    offset += self.nonce_size
-                    offset += self.tag_size
+                    decrypted_data[dec_offset:dec_offset + block_len] = block
+                    dec_offset += block_len
+                    offset += 8 + block_len + self.nonce_size + self.tag_size
                     blocks_processed += 1
                     continue
                 log_msg = _("Found invalid block without block len that is not a null block.", log=True)[1]
@@ -1284,20 +1288,21 @@ class EncryptedFS(OTPmeFS):
             if block_len != self.block_size:
                 self.logger.error(f"Invalid block length: {block_len}, expected {self.block_size}")
                 raise fuse.FuseOSError(errno.EIO)
-            if offset + block_len + self.nonce_size + self.tag_size > len(encrypted_data):
+            if offset + block_len + self.nonce_size + self.tag_size > data_len:
                 self.logger.error(f"Invalid block structure at offset {offset}, not enough data for block")
                 raise fuse.FuseOSError(errno.EIO)
-            block = encrypted_data[offset:offset + block_len]
+            block = bytes(mv[offset:offset + block_len])
             offset += block_len
-            nonce = encrypted_data[offset:offset + self.nonce_size]
+            nonce = bytes(mv[offset:offset + self.nonce_size])
             offset += self.nonce_size
-            tag = encrypted_data[offset:offset + self.tag_size]
+            tag = bytes(mv[offset:offset + self.tag_size])
             offset += self.tag_size
             if config.debug_enabled:
                 self.logger.debug(f"Decrypting block_len: {block_len}, nonce: {nonce.hex()}, tag: {tag.hex()}")
             try:
                 decrypted_block = self.aesgcm.decrypt(nonce, block + tag, None)
-                decrypted_data.extend(decrypted_block)
+                decrypted_data[dec_offset:dec_offset + len(decrypted_block)] = decrypted_block
+                dec_offset += len(decrypted_block)
             except Exception as e:
                 self.logger.error(f"Decryption failed for block {blocks_processed}: {e}")
                 raise fuse.FuseOSError(errno.EIO) from e
@@ -1305,9 +1310,59 @@ class EncryptedFS(OTPmeFS):
         if blocks_processed < block_count:
             self.logger.error(f"Expected {block_count} blocks, but processed {blocks_processed}")
             raise fuse.FuseOSError(errno.EIO)
-        if len(decrypted_data) < block_count * self.block_size:
-            decrypted_data.extend(b'\x00' * (block_count * self.block_size - len(decrypted_data)))
         return bytes(decrypted_data)
+
+    #def _decrypt_blocks(self, encrypted_data, block_count):
+    #    decrypted_data = bytearray()
+    #    offset = 0
+    #    blocks_processed = 0
+    #    while offset < len(encrypted_data) and blocks_processed < block_count:
+    #        block_len = struct.unpack('!I', encrypted_data[offset:offset + 4])[0]
+    #        if block_len == 0:
+    #            block = encrypted_data[offset + 8:offset + 8 + self.block_size]
+    #            block_len = len(block)
+    #            if block == self.null_block:
+    #                decrypted_data.extend(block)
+    #                offset += 8
+    #                offset += block_len
+    #                offset += self.nonce_size
+    #                offset += self.tag_size
+    #                blocks_processed += 1
+    #                continue
+    #            log_msg = _("Found invalid block without block len that is not a null block.", log=True)[1]
+    #            self.logger.error(log_msg)
+    #            raise fuse.FuseOSError(errno.EIO)
+    #        # Add block_len and unencrypted_block_len to offset.
+    #        offset += 8
+    #        if config.debug_enabled:
+    #            self.logger.debug(f"Reading block {blocks_processed} at offset {offset - 4}, block_len: {block_len}")
+    #        if block_len != self.block_size:
+    #            self.logger.error(f"Invalid block length: {block_len}, expected {self.block_size}")
+    #            raise fuse.FuseOSError(errno.EIO)
+    #        if offset + block_len + self.nonce_size + self.tag_size > len(encrypted_data):
+    #            self.logger.error(f"Invalid block structure at offset {offset}, not enough data for block")
+    #            raise fuse.FuseOSError(errno.EIO)
+    #        block = encrypted_data[offset:offset + block_len]
+    #        offset += block_len
+    #        nonce = encrypted_data[offset:offset + self.nonce_size]
+    #        offset += self.nonce_size
+    #        tag = encrypted_data[offset:offset + self.tag_size]
+    #        offset += self.tag_size
+    #        if config.debug_enabled:
+    #            self.logger.debug(f"Decrypting block_len: {block_len}, nonce: {nonce.hex()}, tag: {tag.hex()}")
+    #        try:
+    #            decrypted_block = self.aesgcm.decrypt(nonce, block + tag, None)
+    #            decrypted_data.extend(decrypted_block)
+    #        except Exception as e:
+    #            self.logger.error(f"Decryption failed for block {blocks_processed}: {e}")
+    #            raise fuse.FuseOSError(errno.EIO) from e
+    #        blocks_processed += 1
+    #    if blocks_processed < block_count:
+    #        self.logger.error(f"Expected {block_count} blocks, but processed {blocks_processed}")
+    #        raise fuse.FuseOSError(errno.EIO)
+    #    if len(decrypted_data) < block_count * self.block_size:
+    #        decrypted_data.extend(b'\x00' * (block_count * self.block_size - len(decrypted_data)))
+    #    return bytes(decrypted_data)
 
     def open(self, path: str, flags):
         accmode = flags & os.O_ACCMODE
@@ -1336,6 +1391,7 @@ class EncryptedFS(OTPmeFS):
 
     def release(self, path: str, fh: int=None):
         enc = self._map_plain_to_enc(path, use_diriv_cache=True)
+        #self._read_file_size_cache.pop(enc, None)
         try:
             return super().release(enc, 0)
         except Exception as e:
@@ -1650,6 +1706,11 @@ class EncryptedFS(OTPmeFS):
         read_size = block_count * self.block_with_metadata_size
         if config.debug_enabled:
             self.logger.debug(f"Read offset: {read_offset}, read size: {read_size}")
+        #try:
+        #    encrypted_size = self._read_file_size_cache[enc]
+        #except KeyError:
+        #    encrypted_size = self._get_file_size(enc)
+        #    self._read_file_size_cache[enc] = encrypted_size
         encrypted_size = self._get_file_size(enc)
         if encrypted_size == 0:
             if config.debug_enabled:
@@ -1773,6 +1834,7 @@ class EncryptedFS(OTPmeFS):
             raise fuse.FuseOSError(errno.EIO) from e
         finally:
             del serialized_data
+        #self._read_file_size_cache.pop(enc, None)
         return len(data)
 
     #def write(self, path, data, offset, fh):
@@ -1893,7 +1955,7 @@ class EncryptedFS(OTPmeFS):
         num_blocks = encrypted_size // self.block_with_metadata_size
         if encrypted_size % self.block_with_metadata_size != 0:
             # For restore shares file sizes are saved to the file. If the user does not
-            # have permissions to the file, backupd returns the file size (metadata size).
+            # have permissions to the file, backupd returns the file size of the metadata file.
             if self.restore_share:
                 return encrypted_size
             self.logger.error(f"Invalid encrypted file size for {path}: {encrypted_size}, not a multiple of {self.block_with_metadata_size}")
@@ -1917,6 +1979,7 @@ class EncryptedFS(OTPmeFS):
 
     def truncate(self, path, length, fh=None):
         enc = self._map_plain_to_enc(path)
+        #self._read_file_size_cache.pop(enc, None)
         if config.debug_enabled:
             self.logger.debug(f"Truncating {path} to {length} bytes")
 

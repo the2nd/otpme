@@ -62,6 +62,19 @@ def _ensure_shims():
 
 _ensure_shims()
 
+# Add PYTHONPATH.
+PYTHONPATH_FILE = "/etc/otpme/PYTHONPATH"
+if os.path.exists(PYTHONPATH_FILE):
+    fd = open(PYTHONPATH_FILE, "r")
+    try:
+        for x in fd.readlines():
+            x = x.replace("\n", "")
+            if x in sys.path:
+                continue
+            sys.path.insert(0, x)
+    finally:
+        fd.close()
+
 from otpme.lib.classes.backup import BackupServer, BackupClient, cmd_verify
 
 
@@ -99,6 +112,8 @@ def main():
                     help="Include paths matching fnmatch pattern, overrides --exclude (repeatable)")
     p.add_argument("--dry-run", action="store_true",
                     help="Show what would be backed up without storing anything")
+    p.add_argument("--mode", choices=["tree", "pack"], default=None,
+                    help="Repository mode: 'tree' (default, FUSE-mountable) or 'pack' (index-only, no tree/meta files)")
 
     p = sub.add_parser("restore", help="Restore a backup (or a single file/dir)")
     p.add_argument("snapshot", help="Snapshot name")
@@ -122,13 +137,17 @@ def main():
 
     sub.add_parser("gc", help="Garbage-collect orphaned blocks")
 
+    sub.add_parser("repack", help="Compact partially-dead pack files to reclaim space")
+
+    sub.add_parser("rebuild-index", help="Rebuild pack index from pack files")
+
     p = sub.add_parser("retention", help="Apply retention policy and delete old snapshots")
-    p.add_argument("--daily", type=int, default=0,
-                    help="Number of daily snapshots to keep (default: 0)")
-    p.add_argument("--weekly", type=int, default=0,
-                    help="Number of weekly snapshots to keep (default: 0)")
-    p.add_argument("--monthly", type=int, default=0,
-                    help="Number of monthly snapshots to keep (default: 0)")
+    p.add_argument("--daily", type=int, default=None,
+                    help="Number of daily snapshots to keep (overrides .daily file)")
+    p.add_argument("--weekly", type=int, default=None,
+                    help="Number of weekly snapshots to keep (overrides .weekly file)")
+    p.add_argument("--monthly", type=int, default=None,
+                    help="Number of monthly snapshots to keep (overrides .monthly file)")
     p.add_argument("--dry-run", action="store_true",
                     help="Show what would be deleted without actually deleting")
 
@@ -145,15 +164,20 @@ def main():
     # Create server (storage-only, no password needed)
     server = BackupServer(args.backup_dir)
 
-    # Create client (needs password or key for crypto)
-    if args.key:
-        server.init_repository()
-        raw_key = bytes.fromhex(args.key)
-        client = BackupClient(server, key=raw_key, compress=not args.no_compress)
-    else:
-        pw_file = args.password_file
-        password = Path(pw_file).read_text().strip() if pw_file else getpass.getpass("Backup password: ")
-        client = BackupClient(server, password=password, compress=not args.no_compress)
+    # Commands that need crypto (client)
+    needs_client = args.command in ("backup", "restore", "verify", "ls")
+
+    client = None
+    if needs_client:
+        mode = getattr(args, 'mode', None)
+        server.init_repository(mode=mode)
+        if args.key:
+            raw_key = bytes.fromhex(args.key)
+            client = BackupClient(server, key=raw_key, compress=not args.no_compress)
+        else:
+            pw_file = args.password_file
+            password = Path(pw_file).read_text().strip() if pw_file else getpass.getpass("Backup password: ")
+            client = BackupClient(server, password=password, compress=not args.no_compress)
 
     if args.command == "backup":
         client.backup(args.source, args.name,
@@ -171,8 +195,9 @@ def main():
         if not snaps:
             print("No backups found.")
         else:
-            print(f"{'NAME':<30}  {'FILES':>7}  {'INODES':>7}  {'REFS':>7}  {'START':<20}  {'END':<20}  {'DURATION':<14}  STATUS")
-            print("-" * 140)
+            from otpme.lib.classes.backup import _format_size
+            print(f"{'NAME':<30}  {'FILES':>7}  {'INODES':>7}  {'DATA':>10}  {'STORED':>10}  {'START':<20}  {'END':<20}  {'DURATION':<14}  STATUS")
+            print("-" * 160)
             for s in snaps:
                 if s["running"]:
                     since = s["running_since"] or "?"
@@ -184,12 +209,15 @@ def main():
                 start = s.get("start_time", "") or ""
                 end = s.get("end_time", "") or ""
                 dur = s.get("duration", "") or ""
-                print(f"{s['name']:<30}  {s['files']:>7}  {s['inodes']:>7}  {s['refs']:>7}  {start:<20}  {end:<20}  {dur:<14}  {status}")
+                data = _format_size(s.get("total_bytes", 0))
+                stored = _format_size(s.get("stored_bytes", 0))
+                print(f"{s['name']:<30}  {s['files']:>7}  {s['inodes']:>7}  {data:>10}  {stored:>10}  {start:<20}  {end:<20}  {dur:<14}  {status}")
             total_files = sum(s['files'] for s in snaps)
             total_inodes = sum(s['inodes'] for s in snaps)
-            total_refs = sum(s['refs'] for s in snaps)
-            print("-" * 140)
-            print(f"{'TOTAL':<30}  {total_files:>7}  {total_inodes:>7}  {total_refs:>7}")
+            sum_data = sum(s.get('total_bytes', 0) for s in snaps)
+            sum_stored = sum(s.get('stored_bytes', 0) for s in snaps)
+            print("-" * 160)
+            print(f"{'TOTAL':<30}  {total_files:>7}  {total_inodes:>7}  {_format_size(sum_data):>10}  {_format_size(sum_stored):>10}")
     elif args.command == "ls":
         entries = client.list_contents(args.snapshot, args.path)
         if not entries:
@@ -202,10 +230,14 @@ def main():
     elif args.command == "gc":
         removed = server.gc_orphaned_blocks()
         print(f"Removed {removed} orphaned blocks")
+    elif args.command == "repack":
+        from otpme.lib.classes.backup import _format_size
+        saved = server.repack()
+        print(f"Reclaimed {_format_size(saved)}")
+    elif args.command == "rebuild-index":
+        count = server.rebuild_pack_index()
+        print(f"Rebuilt index with {count} entries")
     elif args.command == "retention":
-        if not (args.daily or args.weekly or args.monthly):
-            print("Error: specify at least one of --daily, --weekly, --monthly")
-            sys.exit(1)
         deleted = server.apply_retention(
             daily=args.daily, weekly=args.weekly, monthly=args.monthly,
             dry_run=getattr(args, 'dry_run', False))

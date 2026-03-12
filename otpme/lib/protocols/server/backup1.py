@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import re
+import gzip
 import stat
 import errno
 import setproctitle
@@ -17,7 +19,6 @@ except:
     pass
 
 from otpme.lib import config
-from otpme.lib import pidfile
 from otpme.lib.fuse import CONF_FILE
 from otpme.lib import multiprocessing
 
@@ -43,17 +44,35 @@ def fix_snapshot_path():
     def wrapper(f):
         @wraps(f)
         def wrapped(self, path, *args, **kwargs):
+            try:
+                skip = kwargs.pop('skip')
+            except KeyError:
+                skip = False
             if path == "/":
+                self.snapshot = None
                 path = path.split("/")
                 path.insert(1, "snapshots")
                 path = "/".join(path)
-            if path != "/" and not path.startswith("/snapshots"):
+            if path != "/" and not path.startswith("/snapshots") and not path.startswith("/tree"):
                 path = path.split("/")
                 path_len = len(path)
-                path.insert(1, "snapshots")
+                path.insert(1, "tree")
                 if path_len > 1:
-                    path.insert(3, "data")
+                    self.snapshot = path.pop(2)
                 path = "/".join(path)
+                if not skip:
+                    if self.snapshot:
+                        is_dir = False
+                        try:
+                            result = self.getattr(path, None, skip=True)
+                        except Exception as e:
+                            pass
+                        else:
+                            mode = result.get("st_mode", 0)
+                            if stat.S_ISDIR(mode):
+                                is_dir = True
+                        if not is_dir:
+                            path = f"{path}-{self.snapshot}"
             return f(self, path, *args, **kwargs)
         return wrapped
     return wrapper
@@ -84,6 +103,8 @@ class OTPmeBackupP1(OTPmeFsServer1):
         self.root = None
         # Will hold repository root when doing backup actions.
         self.backup_root = None
+        # Snapshot to process.
+        self.snapshot = None
         # Get logger.
         self.logger = config.logger
         # Dont compress filesystem data.
@@ -94,8 +115,8 @@ class OTPmeBackupP1(OTPmeFsServer1):
         self.client_password = None
         # Password file.
         self.pass_file = None
-        # PID file.
-        self.pidfile = None
+        # Allow backup of disabled nodes.
+        self.check_peer_disabled = False
         # Call parent class init.
         OTPmeFsServer1.__init__(self, **kwargs)
 
@@ -107,7 +128,7 @@ class OTPmeBackupP1(OTPmeFsServer1):
         multiprocessing.atfork(quiet=True)
 
     def set_proctitle(self, repository, action):
-        """ Set proctitle to contain sharename. """
+        """ Set proctitle to contain repository and action. """
         if config.use_api:
             return
         new_proctitle ="{proctitle} Repository: {repository} Action: {action}"
@@ -177,27 +198,31 @@ class OTPmeBackupP1(OTPmeFsServer1):
                             "open_repository",
                             "start_backup",
                             "start_restore",
+                            "get_mode",
                             "get_salt",
                             "list_snapshots",
                             "create_snapshot",
                             "write_entry",
-                            "get_file_entry",
-                            "copy_refs",
                             "block_exists",
                             "store_block",
                             "retrieve_block",
-                            "add_ref",
                             "set_entry_metadata",
+                            "set_dirs_metadata",
                             "snap_dir",
                             "list_entries",
                             "link_entry",
-                            "get_entry_metadata",
+                            "get_entry_full",
+                            "read_index",
+
+                            "link_unchanged_entries",
                             "set_running",
                             "finalize_snapshot",
                             "apply_retention",
                             "read_restore_file",
                             "read_cryptfs_settings",
                             "get_chunk",
+                            "lock_repo",
+                            "unlock_repo",
                         ]
 
         # Check if we got a valid command.
@@ -269,13 +294,6 @@ class OTPmeBackupP1(OTPmeFsServer1):
                     status = status_codes.PERMISSION_DENIED
                     message = _("Permission denied.")
                     return self.build_response(status, message)
-            if write:
-                self.pidfile = os.path.join(self.backup_root, "running")
-                pid = pidfile.is_running(self.pidfile)
-                if pid:
-                    status = status_codes.PERMISSION_DENIED
-                    message = _("Backup repository locked.")
-                    return self.build_response(status, message)
             self.backup_handler = BackupServer(self.backup_root)
             self.set_proctitle(self.repository, action="open")
             message = _("Repository openend.")
@@ -287,6 +305,10 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = _("Open repository first.")
                 message = message.format(repository=self.repository)
                 return self.build_response(status, message)
+            try:
+                mode = command_args['mode']
+            except KeyError:
+                mode = "pack"
             if os.path.exists(self.pass_file):
                 try:
                     self.verify_client_pass()
@@ -297,7 +319,7 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = True
                 message = _("Password verified.")
             else:
-                self.backup_handler.init_repository()
+                self.backup_handler.init_repository(mode=mode)
                 try:
                     fd = open(self.pass_file, "w")
                 except Exception as e:
@@ -315,7 +337,6 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = True
                 message = _("Repository initialized.")
             self.set_proctitle(self.repository, action="backup")
-            pidfile.create_pidfile(self.pidfile)
             return self.build_response(status, message)
 
         elif command == "start_restore":
@@ -391,6 +412,8 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 log_msg = f"{log_msg}: {e}"
                 self.logger.warning(log_msg)
                 return self.build_response(status, message)
+            self.backup_handler = BackupServer(self.root)
+            self.backup_handler.load_pack_index()
             try:
                 drop_privileges(user=self.username, group=self.default_group, groups=self.groups)
             except Exception as e:
@@ -416,8 +439,9 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = _("Repository has no snapshots.")
                 return self.build_response(status, message)
             snap = snaps[-1]['name']
-            data_dir = f"{self.root}/snapshots/{snap}/data"
-            data_file = os.path.join(data_dir, CONF_FILE)
+            tree_dir = f"{self.root}/tree/"
+            data_file = os.path.join(tree_dir, CONF_FILE)
+            data_file = f"{data_file}-{snap}"
             try:
                 fd = open(data_file, "rb")
             except Exception as e:
@@ -428,13 +452,22 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = _("Failed to open cryptfs file.")
                 return self.build_response(status, message)
             try:
-                binary_data = fd.read()
+                raw_data = fd.read()
             except Exception as e:
                 log_msg = _("Failed to read cryptfs file: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)
                 status = False
                 message = _("Failed to read cryptfs file.")
+                return self.build_response(status, message)
+            try:
+                binary_data = gzip.decompress(raw_data)
+            except Exception as e:
+                log_msg = _("Failed to decrompress cryptfs file: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                status = False
+                message = _("Failed to decrompress cryptfs file.")
                 return self.build_response(status, message)
             status = True
             message = _("Cryptfs data.")
@@ -453,10 +486,12 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing path.")
                 return self.build_response(status, message)
-            restore_path = path.split("/")
-            restore_path.insert(2, "data")
-            restore_path = "/".join(restore_path)
-            restore_file = f"{self.root}/snapshots/{restore_path}"
+            path = path.split("/")
+            snapshot = path.pop(1)
+            path.insert(1, "tree")
+            path = "/".join(path)
+            path = f"{path}-{snapshot}"
+            restore_file = f"{self.root}/{path}"
             try:
                 fd = open(restore_file, "rb")
             except Exception as e:
@@ -467,13 +502,22 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = _("Failed to open restore file.")
                 return self.build_response(status, message)
             try:
-                binary_data = fd.read()
+                raw_data = fd.read()
             except Exception as e:
                 log_msg = _("Failed to read restore file: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)
                 status = False
                 message = _("Failed to read restore file.")
+                return self.build_response(status, message)
+            try:
+                binary_data = gzip.decompress(raw_data)
+            except Exception as e:
+                log_msg = _("Failed to decrompress restore file: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.warning(log_msg)
+                status = False
+                message = _("Failed to decrompress restore file.")
                 return self.build_response(status, message)
             status = True
             message = _("Restore file data.")
@@ -492,26 +536,14 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing chunk.")
                 return self.build_response(status, message)
-            chunk_dir = h[:2]
-            chunk_dir = f"{self.root}/objects/{chunk_dir}"
-            chunk_file = f"{chunk_dir}/{h}"
             try:
-                fd = open(chunk_file, "rb")
+                binary_data = self.backup_handler.retrieve_block(h)
             except Exception as e:
-                log_msg = _("Failed to open chunk file: {e}", log=True)[1]
+                log_msg = _("Failed to read block: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)
                 status = False
-                message = _("Failed to open chunk file.")
-                return self.build_response(status, message)
-            try:
-                binary_data = fd.read()
-            except Exception as e:
-                log_msg = _("Failed to read chunk file: {e}", log=True)[1]
-                log_msg = log_msg.format(e=e)
-                self.logger.warning(log_msg)
-                status = False
-                message = _("Failed to read chunk file.")
+                message = _("Failed to read block.")
                 return self.build_response(status, message)
             status = True
             message = _("Chunk file data.")
@@ -521,6 +553,14 @@ class OTPmeBackupP1(OTPmeFsServer1):
         elif not self.backup_handler:
             message = _("Please open repository first.")
             status = False
+            return self.build_response(status, message)
+
+        elif command == "get_mode":
+            try:
+                message = self.backup_handler.get_mode()
+            except Exception as e:
+                status = False
+                message = f"{command}: {e}"
             return self.build_response(status, message)
 
         elif command == "get_salt":
@@ -581,52 +621,6 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = f"{command}: {e}"
             return self.build_response(status, message)
 
-        elif command == "get_file_entry":
-            try:
-                snap_name = command_args['snap_name']
-            except KeyError:
-                status = False
-                message = _("Missing snap_name.")
-                return self.build_response(status, message)
-            try:
-                path = command_args['path']
-            except KeyError:
-                status = False
-                message = _("Missing path.")
-                return self.build_response(status, message)
-            try:
-                message = self.backup_handler.get_file_entry(snap_name, path)
-            except Exception as e:
-                status = False
-                message = f"{command}: {e}"
-            return self.build_response(status, message)
-
-        elif command == "copy_refs":
-            try:
-                from_snap = command_args['from_snap']
-            except KeyError:
-                status = False
-                message = _("Missing from_snap.")
-                return self.build_response(status, message)
-            try:
-                to_snap = command_args['to_snap']
-            except KeyError:
-                status = False
-                message = _("Missing to_snap.")
-                return self.build_response(status, message)
-            try:
-                chunk_hashes = command_args['chunk_hashes']
-            except KeyError:
-                status = False
-                message = _("Missing chunk_hashes.")
-                return self.build_response(status, message)
-            try:
-                message = self.backup_handler.copy_refs(from_snap, to_snap, chunk_hashes)
-            except Exception as e:
-                status = False
-                message = f"{command}: {e}"
-            return self.build_response(status, message)
-
         elif command == "block_exists":
             try:
                 h = command_args['h']
@@ -671,26 +665,6 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = f"{command}: {e}"
             return self.build_response(status, message, binary_data=binary_data)
 
-        elif command == "add_ref":
-            try:
-                snap_name = command_args['snap_name']
-            except KeyError:
-                status = False
-                message = _("Missing snap_name.")
-                return self.build_response(status, message)
-            try:
-                h = command_args['h']
-            except KeyError:
-                status = False
-                message = _("Missing h.")
-                return self.build_response(status, message)
-            try:
-                message = self.backup_handler.add_ref(snap_name, h)
-            except Exception as e:
-                status = False
-                message = f"{command}: {e}"
-            return self.build_response(status, message)
-
         elif command == "set_entry_metadata":
             try:
                 snap_name = command_args['snap_name']
@@ -712,6 +686,26 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 return self.build_response(status, message)
             try:
                 message = self.backup_handler.set_entry_metadata(snap_name, path, metadata)
+            except Exception as e:
+                status = False
+                message = f"{command}: {e}"
+            return self.build_response(status, message)
+
+        elif command == "set_dirs_metadata":
+            try:
+                snap_name = command_args['snap_name']
+            except KeyError:
+                status = False
+                message = _("Missing snap_name.")
+                return self.build_response(status, message)
+            try:
+                dir_entries = command_args['dir_entries']
+            except KeyError:
+                status = False
+                message = _("Missing dir_entries.")
+                return self.build_response(status, message)
+            try:
+                message = self.backup_handler.set_dirs_metadata(snap_name, dir_entries)
             except Exception as e:
                 status = False
                 message = f"{command}: {e}"
@@ -744,8 +738,9 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing filter_path.")
                 return self.build_response(status, message)
+            full = command_args.get('full', False)
             try:
-                message = self.backup_handler.list_entries(snap_name, filter_path)
+                message = self.backup_handler.list_entries(snap_name, filter_path, full=full)
             except Exception as e:
                 status = False
                 message = f"{command}: {e}"
@@ -770,19 +765,22 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing rel.")
                 return self.build_response(status, message)
+            is_dir = command_args.get('is_dir', None)
+            index_line = command_args.get('index_line', None)
+            meta = command_args.get('meta', None)
             try:
-                message = self.backup_handler.link_entry(prev_snap, snap_name, rel)
+                message = self.backup_handler.link_entry(prev_snap, snap_name, rel, is_dir=is_dir, index_line=index_line, meta=meta)
             except Exception as e:
                 status = False
                 message = f"{command}: {e}"
             return self.build_response(status, message)
 
-        elif command == "get_entry_metadata":
+        elif command == "get_entry_full":
             try:
-                prev_snap = command_args['prev_snap']
+                snap_name = command_args['snap_name']
             except KeyError:
                 status = False
-                message = _("Missing prev_snap.")
+                message = _("Missing snap_name.")
                 return self.build_response(status, message)
             try:
                 rel = command_args['rel']
@@ -791,7 +789,49 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = _("Missing rel.")
                 return self.build_response(status, message)
             try:
-                message = self.backup_handler.get_entry_metadata(prev_snap, rel)
+                message = self.backup_handler.get_entry_full(snap_name, rel)
+            except Exception as e:
+                status = False
+                message = f"{command}: {e}"
+            return self.build_response(status, message)
+
+        elif command == "read_index":
+            try:
+                snap_name = command_args['snap_name']
+            except KeyError:
+                status = False
+                message = _("Missing snap_name.")
+                return self.build_response(status, message)
+            try:
+                message = self.backup_handler.read_index(snap_name)
+            except Exception as e:
+                status = False
+                message = f"{command}: {e}"
+            return self.build_response(status, message)
+
+
+        elif command == "link_unchanged_entries":
+            try:
+                prev_snap = command_args['prev_snap']
+            except KeyError:
+                status = False
+                message = _("Missing prev_snap.")
+                return self.build_response(status, message)
+            try:
+                snap_name = command_args['snap_name']
+            except KeyError:
+                status = False
+                message = _("Missing snap_name.")
+                return self.build_response(status, message)
+            try:
+                entries = command_args['entries']
+            except KeyError:
+                status = False
+                message = _("Missing entries.")
+                return self.build_response(status, message)
+            try:
+                message = self.backup_handler.link_unchanged_entries(
+                    prev_snap, snap_name, entries)
             except Exception as e:
                 status = False
                 message = f"{command}: {e}"
@@ -818,58 +858,60 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing name.")
                 return self.build_response(status, message)
+            total_bytes = command_args.get('total_bytes', 0)
+            stored_bytes = command_args.get('stored_bytes', 0)
+            chunk_hashes_list = command_args.get('chunk_hashes', [])
+            chunk_hashes = set(chunk_hashes_list) if chunk_hashes_list else None
             try:
-                message = self.backup_handler.finalize_snapshot(name)
+                message = self.backup_handler.finalize_snapshot(
+                    name, total_bytes=total_bytes, stored_bytes=stored_bytes,
+                    chunk_hashes=chunk_hashes)
             except Exception as e:
                 status = False
                 message = f"{command}: {e}"
-            os.remove(self.pidfile)
             return self.build_response(status, message)
 
         elif command == "apply_retention":
-            daily_file = os.path.join(self.backup_root, ".daily")
-            weekly_file = os.path.join(self.backup_root, ".weekly")
-            monthly_file = os.path.join(self.backup_root, ".monthly")
-            status = True
-            apply_retention = True
-            keep_daily = self.read_keep_file(daily_file)
-            if keep_daily is None:
+            try:
+                message = self.backup_handler.apply_retention()
+            except Exception as e:
                 status = False
-                apply_retention = False
-                message = _("Failed to read daily keep file.")
-            keep_weekly = self.read_keep_file(weekly_file)
-            if keep_weekly is None:
-                status = False
-                apply_retention = False
-                message = _("Failed to read weekly keep file.")
-            keep_monthly = self.read_keep_file(monthly_file)
-            if keep_monthly is None:
-                status = False
-                apply_retention = False
-                message = _("Failed to read monthly keep file.")
-            if apply_retention:
-                if keep_daily == 0 and keep_weekly == 0 and keep_monthly == 0:
-                    apply_retention = False
-                    message = _("No retention configured.")
-            if apply_retention:
-                try:
-                    message = self.backup_handler.apply_retention(daily=keep_daily,
-                                                                weekly=keep_weekly,
-                                                                monthly=keep_monthly)
-                except Exception as e:
-                    status = False
-                    message = f"{command}: {e}"
+                message = f"{command}: {e}"
             return self.build_response(status, message)
 
-    @fix_snapshot_path()
+        elif command == "lock_repo":
+            if not self.backup_handler:
+                status = False
+                message = _("Open repository first.")
+                return self.build_response(status, message)
+            try:
+                self.backup_handler.lock_repo()
+                self.backup_handler.load_pack_index()
+                message = _("Repository locked.")
+            except Exception as e:
+                status = False
+                message = str(e)
+            return self.build_response(status, message)
+
+        elif command == "unlock_repo":
+            if not self.backup_handler:
+                status = False
+                message = _("Open repository first.")
+                return self.build_response(status, message)
+            try:
+                self.backup_handler.unlock_repo()
+                message = _("Repository unlocked.")
+            except Exception as e:
+                status = False
+                message = str(e)
+            return self.build_response(status, message)
+
     def chmod(self, path: str, mode: int) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
 
-    @fix_snapshot_path()
     def chown(self, path: str, uid: int, gid: int) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
 
-    @fix_snapshot_path()
     def create(self, path: str, mode, fi=None) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
 
@@ -877,7 +919,7 @@ class OTPmeBackupP1(OTPmeFsServer1):
     def getattr(self, path: str, fh: Optional[int] = None) -> dict[str, Any]:
         result = super().getattr(path, fh)
         mode = result.get("st_mode", 0)
-        # Directories are real dirs in data/ — nothing to fix.
+        # Directories are real dirs in tree/ — nothing to fix.
         if stat.S_ISDIR(mode):
             return result
         # For regular files the data/ entry is a small text file whose first
@@ -886,39 +928,68 @@ class OTPmeBackupP1(OTPmeFsServer1):
         if stat.S_ISREG(mode):
             try:
                 file_path = self.get_full_file_path(path)
-                with open(file_path, "r") as f:
-                    first_line = f.readline()
-                original_size = int(first_line.split()[0])
+                with gzip.open(file_path, 'rt') as f:
+                    f.readline()  # line 0: rel_path (skip)
+                    size_line = f.readline()  # line 1: "<size> <mtime>"
+                original_size = int(size_line.split()[0])
                 result["st_size"] = original_size
-                # Approximate block count (512-byte blocks).
-                # FIXME: get blocksize of underlying fs?
+                # fuse.py recalculates: new_blocks = (st_blocks * st_blksize) // PREFERRED_BLOCK_SIZE
+                # du interprets final st_blocks as 512-byte units.
+                # By setting st_blksize = PREFERRED_BLOCK_SIZE (4 MiB), the division
+                # becomes a no-op and st_blocks passes through unchanged.
                 result["st_blocks"] = (original_size + 511) // 512
+                result["st_blksize"] = 4194304
             except (IOError, OSError, ValueError, IndexError) as e:
                 pass
         return result
 
-    @fix_snapshot_path()
     def mkdir(self, path: str, mode: int) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
 
     @fix_snapshot_path()
     def readdir(self, path: str) -> list:
         result = super().readdir(path)
-        if len(path.split("/")) < 4:
+        if not self.snapshot:
             return result
+        readdir_result = []
+        x_result = result['readdir']
+        getattr_data = result['getattr']
+        for x in x_result:
+            if x == ".":
+                x_mode = 16888
+            elif x == "..":
+                x_mode = 16888
+            else:
+                x_path = path + "/" + x
+                x_data = getattr_data[x_path]['result']
+                x_mode = x_data.get("st_mode", 0)
+            if stat.S_ISDIR(x_mode):
+                readdir_result.append(x)
+                continue
+            if not x.endswith(self.snapshot):
+                continue
+            entry = re.sub(f'(.*)-{self.snapshot}$', r'\1', x)
+            readdir_result.append(entry)
+        result['readdir'] = readdir_result
         for x_path in dict(result['getattr']):
             x_data = result['getattr'].pop(x_path)
+            if not x_path.endswith(self.snapshot):
+                continue
             x_path = x_path.split("/")
             x_path.pop(1)
-            x_path.pop(2)
+            x_path.insert(1, self.snapshot)
             x_path = "/".join(x_path)
-            result['getattr'][x_path] = x_data
+            x_path = x_path.replace("-" + self.snapshot, "")
+            x_path = re.sub(f'(.*)-{self.snapshot}$', r'\1', x_path)
         for x_path in dict(result['getxattr']):
             x_data = result['getxattr'].pop(x_path)
+            if not x_path.endswith(self.snapshot):
+                continue
             x_path = x_path.split("/")
             x_path.pop(1)
-            x_path.pop(2)
+            x_path.insert(1, self.snapshot)
             x_path = "/".join(x_path)
+            x_path = re.sub(f'(.*)-{self.snapshot}$', r'\1', x_path)
             result['getxattr'][x_path] = x_data
         return result
 
@@ -926,27 +997,21 @@ class OTPmeBackupP1(OTPmeFsServer1):
     def readlink(self, path: str) -> str:
         return super().readlink(path)
 
-    @fix_snapshot_path()
     def rename(self, old: str, new: str):
         raise PermissionError(errno.EROFS, "Permission denied")
 
-    @fix_snapshot_path()
     def rmdir(self, path: str) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
 
-    @fix_snapshot_path()
     def symlink(self, target: str, source: str):
         raise PermissionError(errno.EROFS, "Permission denied")
 
-    @fix_snapshot_path()
     def truncate(self, path: str, length: int, fh: Optional[int] = None) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
 
-    @fix_snapshot_path()
     def unlink(self, path: str) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
 
-    @fix_snapshot_path()
     def utimens(self, path: str, times: Optional[tuple[int, int]] = None) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
 
@@ -968,7 +1033,6 @@ class OTPmeBackupP1(OTPmeFsServer1):
     def read(self, path: str, size: int, offset: int) -> bytes:
         return super().read(path, size, offset)
 
-    @fix_snapshot_path()
     def write(self, path: str, data, offset: int) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
 
@@ -980,7 +1044,6 @@ class OTPmeBackupP1(OTPmeFsServer1):
     def access(self, path: str, amode: int) -> int:
         return super().access(path, amode)
 
-    @fix_snapshot_path()
     def link(self, target: str, source: str):
         raise PermissionError(errno.EROFS, "Permission denied")
 
@@ -1001,7 +1064,6 @@ class OTPmeBackupP1(OTPmeFsServer1):
         """Get extended attributes (including POSIX ACLs)"""
         return super().getxattr(path, name, position)
 
-    @fix_snapshot_path()
     def setxattr(self, path: str, name: str, value: bytes, options: int, position: int = 0) -> int:
         """Set extended attributes (including POSIX ACLs)"""
         raise PermissionError(errno.EROFS, "Permission denied")
@@ -1011,7 +1073,6 @@ class OTPmeBackupP1(OTPmeFsServer1):
         """List all extended attributes"""
         return super().listxattr(path)
 
-    @fix_snapshot_path()
     def removexattr(self, path: str, name: str) -> int:
         """Remove extended attributes"""
         raise PermissionError(errno.EROFS, "Permission denied")

@@ -154,6 +154,9 @@ class ListenSocket(object):
             # Set send/recv buffer.
             self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, config.socket_send_buffer)
             self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, config.socket_receive_buffer)
+            # Disable Nagle's algorithm for lower latency.
+            if self.protocol == "tcp":
+                self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         if not self.blocking:
             self._socket.setblocking(0)
@@ -461,6 +464,9 @@ class ListenSocket(object):
             new_client_socket = None
             try:
                 new_connection, new_client_socket = self._socket.accept()
+                # Disable Nagle's algorithm on accepted connection.
+                if self.protocol == "tcp":
+                    new_connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 # Perform SSL handshake manually to catch errors with client info
                 if self.use_ssl:
                     try:

@@ -37,27 +37,15 @@ def recv(socket_handler, **kwargs):
         return b""
     # Get data length.
     data_len = struct.unpack(">I", header)[0]
-    # Set receive buffer depending on data length.
-    if data_len > 16384:
-        recv_buffer = data_len
-    elif data_len > 8192:
-        recv_buffer = 8192
-    elif data_len > 4096:
-        recv_buffer = 4096
-    else:
-        recv_buffer = 2048
-    # Now receive data.
-    # https://docs.python.org/2/howto/sockets.html
-    chunks = []
+    # Receive into pre-allocated buffer to avoid copies.
+    buf = memoryview(bytearray(data_len))
     bytes_recvd = 0
     while bytes_recvd < data_len:
-        _recv_buff = min(data_len - bytes_recvd, recv_buffer)
-        chunk = socket_handler.raw_recv(_recv_buff)
+        chunk = socket_handler.raw_recv(data_len - bytes_recvd)
         if not chunk:
             msg = ("Broken connection while receiving data.")
             raise OTPmeException(msg)
-        chunks.append(chunk)
-        bytes_recvd = bytes_recvd + len(chunk)
-    # Join chunks.
-    received = b''.join(chunks)
-    return received
+        chunk_len = len(chunk)
+        buf[bytes_recvd:bytes_recvd + chunk_len] = chunk
+        bytes_recvd += chunk_len
+    return bytes(buf)

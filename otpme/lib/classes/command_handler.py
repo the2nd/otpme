@@ -1243,6 +1243,7 @@ class CommandHandler(object):
             msg = msg.format(backup_object=backup_object)
             raise OTPmeException(msg)
         backup_key = None
+        backup_mode = None
         backup_repo_password = None
         if object_type == "share":
             o = backend.get_object(object_type=object_type,
@@ -1253,6 +1254,7 @@ class CommandHandler(object):
                 msg = _("Unknown share: {share_name}")
                 msg = msg.format(share_name=object_name)
                 raise OTPmeException(msg)
+            backup_mode = "tree"
             source_dir = o.root_dir
             repository = f"{o.type}/{o.site}/{o.name}"
         elif object_type == "node":
@@ -1268,12 +1270,16 @@ class CommandHandler(object):
                 msg = _("You have to run this command on node: {node_name}")
                 msg = msg.format(node_name=o.name)
                 raise OTPmeException(msg)
+            backup_mode = "pack"
             source_dir = "/"
             repository = f"{o.type}/{o.site}/{o.name}"
         else:
             msg = _("Backup not supported for object type: {object_type}")
             msg = msg.format(object_type=object_type)
             raise OTPmeException(msg)
+        mode = o.get_config_parameter("backup_mode")
+        if mode:
+            backup_mode = mode
         backup_enabled = o.get_config_parameter("backup_enabled")
         backup_server = o.get_config_parameter("backup_server")
         backup_key = o.get_config_parameter("backup_key")
@@ -1307,7 +1313,8 @@ class CommandHandler(object):
                 backup_excludes,
                 backup_includes,
                 backup_exclude_special,
-                backup_enabled)
+                backup_enabled,
+                backup_mode)
 
     def handle_backup_command(self, command, subcommand, command_line):
         """ Handle backup command. """
@@ -1362,13 +1369,23 @@ class CommandHandler(object):
             except KeyError:
                 skip_special = None
             try:
+                apply_retention = command_args['apply_retention']
+            except KeyError:
+                apply_retention = False
+            try:
                 dry_run = command_args['dry_run']
             except KeyError:
                 dry_run = False
+            try:
+                mode = command_args['mode']
+            except KeyError:
+                mode = None
             return self.start_backup(backup_object,
+                                    mode=mode,
                                     exclude=exclude,
                                     include=include,
                                     skip_special=skip_special,
+                                    apply_retention=apply_retention,
                                     dry_run=dry_run)
         if subcommand == "list":
             try:
@@ -1419,7 +1436,8 @@ class CommandHandler(object):
                                             path,
                                             dry_run=dry_run)
 
-    def start_backup(self, backup_object, exclude=[], include=[], skip_special=None, dry_run=False):
+    def start_backup(self, backup_object, exclude=[], include=[],
+        skip_special=None, apply_retention=True, mode=None, dry_run=False):
         from otpme.lib.classes.backup import BackupClient
         special_files = True
         if skip_special:
@@ -1432,7 +1450,8 @@ class CommandHandler(object):
         backup_excludes, \
         backup_includes, \
         backup_exclude_special, \
-        backup_enabled = self.load_backup_object(backup_object)
+        backup_enabled, \
+        backup_mode = self.load_backup_object(backup_object)
         if not backup_enabled:
             if not config.force:
                 msg = _("Backups disabled for object: {backup_object}")
@@ -1449,25 +1468,35 @@ class CommandHandler(object):
         if skip_special is None:
             if backup_exclude_special:
                 special_files = False
-        log_msg = _("Starting backup: {backup_object}", log=True)[1]
-        log_msg = log_msg.format(backup_object=backup_object)
+        backupd_conn = self.get_backupd_conn(backup_server)
+        backupd_conn.open_repository(repository=repository,
+                                    password=repo_pass,
+                                    write=True)
         if not dry_run:
+            if mode is None:
+                mode = backup_mode
+            log_msg = _("Starting backup: {backup_object}", log=True)[1]
+            log_msg = log_msg.format(backup_object=backup_object)
             self.logger.info(log_msg)
-            backupd_conn = self.get_backupd_conn(backup_server)
-            backupd_conn.open_repository(repository=repository,
-                                        password=repo_pass,
-                                        write=True)
-            backupd_conn.start_backup()
+            backupd_conn.start_backup(mode=backup_mode)
         client = BackupClient(server=backupd_conn, key=aes_key, compress=True)
         client.backup(source=source_dir,
                     special_files=special_files,
                     excludes=exclude,
                    includes=include,
                     dry_run=dry_run)
-        # Remove outdated backups.
+        if not apply_retention:
+            return
+        log_msg = _("Applying retention: {backup_object}", log=True)[1]
+        log_msg = log_msg.format(backup_object=backup_object)
+        self.logger.info(log_msg)
         backupd_conn.apply_retention()
+        log_msg = _("Backup finished: {backup_object}", log=True)[1]
+        log_msg = log_msg.format(backup_object=backup_object)
+        self.logger.info(log_msg)
 
     def list_backup_snapshots(self, backup_object):
+        from otpme.lib.classes.backup import _format_size
         repository, \
         source_dir, \
         backup_server, \
@@ -1476,15 +1505,16 @@ class CommandHandler(object):
         backup_excludes, \
         backup_includes, \
         backup_exclude_special, \
-        backup_enabled = self.load_backup_object(backup_object)
+        backup_enabled, \
+        backup_mode = self.load_backup_object(backup_object)
         backupd_conn = self.get_backupd_conn(backup_server)
         backupd_conn.open_repository(repository=repository, password=repo_pass)
         snaps = backupd_conn.list_snapshots()
         if not snaps:
             print("No backups found.")
         else:
-            print(f"{'NAME':<30}  {'FILES':>7}  {'INODES':>7}  {'REFS':>7}  {'START':<20}  {'END':<20}  {'DURATION':<14}  STATUS")
-            print("-" * 140)
+            print(f"{'NAME':<30}  {'FILES':>7}  {'INODES':>7}  {'DATA':>10}  {'STORED':>10}  {'START':<20}  {'END':<20}  {'DURATION':<14}  STATUS")
+            print("-" * 160)
             for s in snaps:
                 if s["running"]:
                     since = s["running_since"] or "?"
@@ -1496,12 +1526,15 @@ class CommandHandler(object):
                 start = s.get("start_time", "") or ""
                 end = s.get("end_time", "") or ""
                 dur = s.get("duration", "") or ""
-                print(f"{s['name']:<30}  {s['files']:>7}  {s['inodes']:>7}  {s['refs']:>7}  {start:<20}  {end:<20}  {dur:<14}  {status}")
+                data = _format_size(s.get("total_bytes", 0))
+                stored = _format_size(s.get("stored_bytes", 0))
+                print(f"{s['name']:<30}  {s['files']:>7}  {s['inodes']:>7}  {data:>10}  {stored:>10}  {start:<20}  {end:<20}  {dur:<14}  {status}")
             total_files = sum(s['files'] for s in snaps)
             total_inodes = sum(s['inodes'] for s in snaps)
-            total_refs = sum(s['refs'] for s in snaps)
-            print("-" * 140)
-            print(f"{'TOTAL':<30}  {total_files:>7}  {total_inodes:>7}  {total_refs:>7}")
+            sum_data = sum(s.get('total_bytes', 0) for s in snaps)
+            sum_stored = sum(s.get('stored_bytes', 0) for s in snaps)
+            print("-" * 160)
+            print(f"{'TOTAL':<30}  {total_files:>7}  {total_inodes:>7}  {_format_size(sum_data):>10}  {_format_size(sum_stored):>10}")
 
     def list_backup_snapshot(self, backup_object, snap_name, path=None):
         from otpme.lib.classes.backup import BackupClient
@@ -1513,7 +1546,8 @@ class CommandHandler(object):
         backup_excludes, \
         backup_includes, \
         backup_exclude_special, \
-        backup_enabled = self.load_backup_object(backup_object)
+        backup_enabled, \
+        backup_mode = self.load_backup_object(backup_object)
         backupd_conn = self.get_backupd_conn(backup_server)
         backupd_conn.open_repository(repository=repository, password=repo_pass)
         client = BackupClient(server=backupd_conn)
@@ -1535,7 +1569,8 @@ class CommandHandler(object):
         backup_excludes, \
         backup_includes, \
         backup_exclude_special, \
-        backup_enabled = self.load_backup_object(backup_object)
+        backup_enabled, \
+        backup_mode = self.load_backup_object(backup_object)
         backupd_conn = self.get_backupd_conn(backup_server)
         backupd_conn.open_repository(repository=repository, password=repo_pass)
         backupd_conn.start_restore()

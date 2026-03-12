@@ -2,8 +2,11 @@
 # NOTE: This module was written by claude code!
 import os
 import stat
+import gzip
 import zlib
+import fcntl
 import shutil
+import struct
 import fnmatch
 import posix1e
 import hashlib
@@ -41,7 +44,7 @@ Architecture
    zlib compression                      retrieve_block(hash) → blob
    AES-GCM encryption                   create_snapshot(name)
    ───── sends encrypted blob ────→      write_entry(name, path, meta)
-   ←──── receives encrypted blob ──      add_ref(name, hash)
+   ←──── receives encrypted blob ──
    AES-GCM decryption                   list_entries(name) → [entry...]
    zlib decompression                    list_snapshots() → [...]
    File writing + metadata restore       delete_snapshot(name)
@@ -54,34 +57,47 @@ Storage layout
 
   backup_dir/
   ├── key.salt                   # PBKDF2 salt (600 000 iterations → AES-256 key)
-  ├── objects/                   # Content-addressable encrypted block store
-  │   └── XX/                   #   first 2 hex chars of SHA-256
-  │       └── <sha256>          #   flag(1) + nonce(12) + AES-GCM(zlib(data)) + tag(16)
+  ├── packs/                     # Pack-based encrypted block store
+  │   ├── XX/                   #   first 2 hex chars of 6-digit pack ID
+  │   │   └── pack-XXXXXX.dat  #   concatenated entries: 64B hash + 4B len + blob
+  │   └── index.gz              #   gzip master index: hash\\tpack_id\\toffset\\tlength
+  ├── tree/                      # Shared directory tree with all backup entries
+  │   ├── etc/                  #   mirrors the original directory structure
+  │   │   └── cfg-<snap>        #   files get "-<snap_name>" suffix
+  │   └── home/
+  │       └── user/
+  │           └── doc-<snap>
   └── snapshots/
       └── <name>/
-          ├── data/             # *Real* filesystem tree — permissions, ACLs,
-          │   ├── etc/          #   ownership, timestamps are set on the actual
-          │   │   └── cfg       #   files/dirs.  File content = chunk-hash list.
-          │   └── home/
-          │       └── user/
-          │           └── doc
-          └── refs/             # Hardlinks into objects/ — reference counting!
-              ├── <hash1> ──→ objects/a1/<hash1>
-              └── <hash2> ──→ objects/b3/<hash2>
+          ├── meta/              # Only for directories: sha256(rel_path) named files
+          │   └── <hash_b>       # standalone file for dirs (metadata carrier)
+          └── index              # Tab-separated index of all entries (gzip-compressed)
 
-File content format (regular files in data/)
-============================================
+  For directories, meta/ files carry filesystem metadata (permissions, ACLs,
+  ownership, timestamps) as actual file attributes.  For non-directory entries,
+  metadata is stored directly on the tree/ file — no meta/ entry exists.
 
-  <size> <mtime>                 ← first line: decimal size + original mtime
-  <sha256_chunk_hash_1>          ← one hash per line, in order
+File content format (meta/ and tree/ entries)
+=============================================
+
+  <rel_path>                      ← line 0: original relative path
+  <size> <mtime>                  ← line 1 (regular files): decimal size + mtime
+  <sha256_chunk_hash_1>           ← lines 2+: one hash per line, in order
   <sha256_chunk_hash_2>
   ...
+
+  Special entry types use a type marker on line 1:
+  DIR, SYMLINK, HARDLINK, BLOCKDEV, CHARDEV, FIFO, SOCKET
 
 Snapshot deletion & garbage collection
 ======================================
 
-  1. shutil.rmtree(snapshots/<name>)   — removes data/ AND refs/ (hardlinks)
-  2. Scan objects/:  any chunk with st_nlink == 1  → orphaned → delete
+  1. Read index — for non-dir entries, delete tree/ file (via suffix)
+  2. Remove snapshots/<name>/ directory
+  3. Clean up empty tree/ directories (bottom-up)
+  4. Scan all remaining snapshot chunks files to collect live hashes
+  5. Remove dead hashes from pack index; delete fully empty pack files
+  6. Flush updated index.gz atomically
 
 """
 
@@ -128,16 +144,43 @@ def decrypt_block(key: bytes, blob: bytes) -> bytes:
 # ACL helpers (module-level, used by BackupClient)
 # ---------------------------------------------------------------------------
 
+def _format_size(nbytes: int) -> str:
+    """Format byte count as human-readable string (e.g. '1.2 GiB')."""
+    if nbytes < 1024:
+        return f"{nbytes} B"
+    for unit in ("KiB", "MiB", "GiB", "TiB"):
+        nbytes /= 1024
+        if nbytes < 1024 or unit == "TiB":
+            return f"{nbytes:.1f} {unit}"
+
+
 def _get_acl_text(path: str) -> Optional[str]:
     try:
         acl = posix1e.ACL(file=path)
+        # Only return ACL text if it contains extended entries (named user/group/mask).
+        # Minimal ACLs (user::, group::, other::) are already covered by mode bits.
+        has_extended = any(
+            e.tag_type in (posix1e.ACL_USER, posix1e.ACL_GROUP, posix1e.ACL_MASK)
+            for e in acl
+        )
+        if not has_extended:
+            return None
         return acl.to_any_text(options=posix1e.TEXT_NUMERIC_IDS).decode()
     except (OSError, IOError):
         return None
 
 def _set_acl_text(path: str, acl_text: str) -> None:
     try:
-        posix1e.ACL(text=acl_text).applyto(path)
+        acl = posix1e.ACL(text=acl_text)
+        # Skip minimal ACLs — they only have user::, group::, other::
+        # and are already covered by chmod. Applying them can cause EINVAL.
+        has_extended = any(
+            e.tag_type in (posix1e.ACL_USER, posix1e.ACL_GROUP, posix1e.ACL_MASK)
+            for e in acl
+        )
+        if not has_extended:
+            return
+        acl.applyto(path)
     except (OSError, IOError) as exc:
         logger.debug("setacl %s: %s", path, exc)
     return
@@ -205,17 +248,91 @@ class BackupServer:
 
     def __init__(self, backup_dir: str):
         self.root          = Path(backup_dir)
-        self.objects_dir   = self.root / "objects"
+        self.packs_dir     = self.root / "packs"
+        self.tree_dir      = self.root / "tree"
         self.snapshots_dir = self.root / "snapshots"
         self.salt_file     = self.root / "key.salt"
+        self.mode_file     = self.root / "mode"
+        self.mode          = None  # loaded by _load_mode()
         self.file_count    = 0
         self.inode_count   = 0
-        self.ref_count     = 0
+        self._lock_fd      = None
+        self._lock_count   = 0
+        # Pack-file state
+        self._pack_index        = {}    # hash -> (pack_id, offset, length)
+        self._pack_index_loaded = False
+        self._active_pack_fd    = None
+        self._active_pack_id    = None
+        self._active_pack_size  = 0
+        self._max_pack_size     = 512 * 1024 * 1024  # 512 MiB
+        self._index_dirty       = False
 
-    def init_repository(self):
+    # -- repository locking --
+
+    def lock_repo(self) -> None:
+        """Acquire an exclusive lock on the repository (reentrant).
+
+        Uses fcntl.flock on a lockfile — automatically released when
+        the file descriptor is closed or the process dies.
+        Raises RuntimeError if the repository is locked by another process.
+        """
+        if self._lock_count > 0:
+            self._lock_count += 1
+            return
+        self.root.mkdir(parents=True, exist_ok=True)
+        lock_path = self.root / ".lock"
+        fd = open(lock_path, "w")
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (OSError, IOError):
+            fd.close()
+            raise RuntimeError("Backup repository is locked by another process.")
+        fd.write(str(os.getpid()) + "\n")
+        fd.flush()
+        self._lock_fd = fd
+        self._lock_count = 1
+        self._load_mode()
+        self.load_pack_index()
+
+    def unlock_repo(self) -> None:
+        """Release the repository lock (reentrant)."""
+        if self._lock_count > 1:
+            self._lock_count -= 1
+            return
+        self._seal_active_pack()
+        self._flush_pack_index()
+        self._pack_index_loaded = False
+        if self._lock_fd is not None:
+            try:
+                fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+                self._lock_fd.close()
+            except (OSError, IOError):
+                pass
+            self._lock_fd = None
+        self._lock_count = 0
+
+    def _load_mode(self):
+        """Read repository mode from mode file, default to 'tree'."""
+        if self.mode_file.exists():
+            self.mode = self.mode_file.read_text().strip()
+        else:
+            self.mode = "tree"
+
+    def get_mode(self) -> str:
+        """Return the repository mode ('tree' or 'pack')."""
+        if self.mode is None:
+            self._load_mode()
+        return self.mode
+
+    def init_repository(self, mode=None):
         """Create the backup directory structure if it doesn't exist."""
         self.root.mkdir(parents=True, exist_ok=True)
-        self.objects_dir.mkdir(exist_ok=True)
+        if not self.mode_file.exists() and mode:
+            self.mode_file.write_text(mode)
+        self._load_mode()
+        self.packs_dir.mkdir(exist_ok=True)
+        if self.mode != "pack":
+            self.tree_dir.mkdir(exist_ok=True)
         self.snapshots_dir.mkdir(exist_ok=True)
 
     # -- salt management --
@@ -230,46 +347,328 @@ class BackupServer:
         self.salt_file.chmod(0o600)
         return salt
 
-    # -- block operations --
+    # -- pack-file helpers --
 
-    def _block_path(self, h: str) -> Path:
-        return self.objects_dir / h[:2] / h
+    def _pack_path(self, pack_id: int) -> Path:
+        bucket = f"{pack_id:06x}"[:2]
+        return self.packs_dir / bucket / f"pack-{pack_id:06x}.dat"
+
+    def _next_pack_id(self) -> int:
+        """Determine the next pack ID from existing pack files."""
+        max_id = -1
+        if self.packs_dir.exists():
+            for bucket_dir in self.packs_dir.iterdir():
+                if not bucket_dir.is_dir():
+                    continue
+                for pack_file in bucket_dir.iterdir():
+                    name = pack_file.name
+                    if name.startswith("pack-") and name.endswith(".dat"):
+                        try:
+                            pid = int(name[5:-4], 16)
+                            if pid > max_id:
+                                max_id = pid
+                        except ValueError:
+                            pass
+        return max_id + 1
+
+    def _ensure_active_pack(self) -> None:
+        """Open or rotate the active pack file."""
+        if self._active_pack_fd is not None:
+            if self._active_pack_size >= self._max_pack_size:
+                self._rotate_pack()
+            return
+        # Open a new pack
+        if self._active_pack_id is None:
+            self._active_pack_id = self._next_pack_id()
+        p = self._pack_path(self._active_pack_id)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        # Resume existing pack if it was left from a previous session
+        if p.exists():
+            self._active_pack_size = p.stat().st_size
+        else:
+            self._active_pack_size = 0
+        self._active_pack_fd = open(p, 'ab')
+
+    def _rotate_pack(self) -> None:
+        """Close the active pack and open a new one."""
+        if self._active_pack_fd is not None:
+            self._active_pack_fd.close()
+            self._active_pack_fd = None
+        self._active_pack_id += 1
+        self._active_pack_size = 0
+        self._ensure_active_pack()
+
+    def _seal_active_pack(self) -> None:
+        """Close the active pack file descriptor."""
+        if self._active_pack_fd is not None:
+            self._active_pack_fd.close()
+            self._active_pack_fd = None
+
+    # -- pack index persistence --
+
+    def load_pack_index(self) -> None:
+        """Load packs/index.gz into self._pack_index."""
+        if self._pack_index_loaded:
+            return
+        idx_path = self.packs_dir / "index.gz"
+        self._pack_index = {}
+        if idx_path.exists():
+            raw = gzip.decompress(idx_path.read_bytes()).decode('utf-8')
+            for line in raw.split('\n'):
+                if not line:
+                    continue
+                parts = line.split('\t')
+                if len(parts) != 4:
+                    continue
+                h, pack_id, offset, length = parts
+                self._pack_index[h] = (int(pack_id), int(offset), int(length))
+        self._pack_index_loaded = True
+        self._index_dirty = False
+
+    def _flush_pack_index(self) -> None:
+        """Atomically write self._pack_index to packs/index.gz."""
+        if not self._index_dirty:
+            return
+        self.packs_dir.mkdir(parents=True, exist_ok=True)
+        lines = []
+        for h, (pack_id, offset, length) in self._pack_index.items():
+            lines.append(f"{h}\t{pack_id}\t{offset}\t{length}")
+        data = ('\n'.join(lines) + '\n').encode('utf-8') if lines else b''
+        compressed = gzip.compress(data)
+        tmp_path = self.packs_dir / "index.gz.tmp"
+        tmp_path.write_bytes(compressed)
+        tmp_path.rename(self.packs_dir / "index.gz")
+        self._index_dirty = False
+
+    # -- block operations (pack-based) --
 
     def block_exists(self, h: str) -> bool:
-        return self._block_path(h).exists()
+        return h in self._pack_index
 
     def store_block(self, h: str, blob: bytes) -> None:
-        """Store a pre-encrypted blob under its plaintext hash."""
-        p = self._block_path(h)
-        if not p.exists():
-            p.parent.mkdir(exist_ok=True)
-            p.write_bytes(blob)
-            p.chmod(0o644)
-            self.inode_count += 1
+        """Append a pre-encrypted blob to the active pack file."""
+        if h in self._pack_index:
+            return  # dedup
+        self._ensure_active_pack()
+        offset = self._active_pack_size
+        hash_bytes = h.encode('ascii')
+        length_bytes = struct.pack('>I', len(blob))
+        self._active_pack_fd.write(hash_bytes + length_bytes + blob)
+        self._active_pack_fd.flush()
+        self._active_pack_size += 64 + 4 + len(blob)
+        self._pack_index[h] = (self._active_pack_id, offset, len(blob))
+        self._index_dirty = True
+        self.inode_count += 1
 
     def retrieve_block(self, h: str) -> bytes:
-        """Return the encrypted blob for a given hash (no decryption)."""
-        return self._block_path(h).read_bytes()
+        """Return the encrypted blob for a given hash from its pack file."""
+        pack_id, offset, length = self._pack_index[h]
+        with open(self._pack_path(pack_id), 'rb') as f:
+            f.seek(offset + 68)  # skip 64-byte hash + 4-byte length
+            return f.read(length)
+
+    # -- path helpers --
+
+    @staticmethod
+    def _path_hash(rel_path: str) -> str:
+        """Return SHA-256 hex digest of a relative path (used for meta/ filenames)."""
+        return hashlib.sha256(rel_path.encode("utf-8")).hexdigest()
+
+    def _tree_entry_path(self, rel_path: str, snap_name: str) -> str:
+        """Return the full path for a non-directory entry in tree/."""
+        dirname = os.path.dirname(rel_path)
+        basename = os.path.basename(rel_path)
+        tree_name = f"{basename}-{snap_name}"
+        if dirname:
+            return os.path.join(str(self.tree_dir), dirname, tree_name)
+        return os.path.join(str(self.tree_dir), tree_name)
+
+    def _meta_entry_path(self, snap_name: str, rel_path: str) -> str:
+        """Return bucketed path for a meta/ entry: meta/XX/<hash>."""
+        path_hash = self._path_hash(rel_path)
+        meta_dir = str(self.snap_meta_dir(snap_name))
+        return os.path.join(meta_dir, path_hash[:2], path_hash)
+
+    @staticmethod
+    def _write_gz(path: str, text: str) -> None:
+        """Write text as gzip-compressed file."""
+        with open(path, 'wb') as fh:
+            fh.write(gzip.compress(text.encode('utf-8')))
+
+    @staticmethod
+    def _read_gz(path: str) -> str:
+        """Read a gzip-compressed (or plain) text file."""
+        with open(path, 'rb') as fh:
+            raw = fh.read()
+        if raw[:2] == b'\x1f\x8b':
+            return gzip.decompress(raw).decode('utf-8')
+        return raw.decode('utf-8')
 
     # -- snapshot management --
 
-    def snap_data_dir(self, name: str) -> Path:
-        return self.snapshots_dir / name / "data"
+    def snap_meta_dir(self, name: str) -> Path:
+        return self.snapshots_dir / name / "meta"
 
-    def snap_refs_dir(self, name: str) -> Path:
-        return self.snapshots_dir / name / "refs"
 
     def snap_dir(self, name: str) -> Path:
         return self.snapshots_dir / name
 
+    def snap_index_path(self, name: str) -> Path:
+        """Return path to the snapshot index file."""
+        return self.snap_dir(name) / "index"
+
+    def snap_chunks_path(self, name: str) -> Path:
+        """Return path to the snapshot chunks file."""
+        return self.snap_dir(name) / "chunks"
+
+    def _read_index_file(self, snap_name: str) -> str:
+        """Read index file content, handling both plain and gzip-compressed formats."""
+        index_path = self.snap_index_path(snap_name)
+        if not index_path.exists():
+            return ""
+        raw = index_path.read_bytes()
+        if raw[:2] == b'\x1f\x8b':
+            return gzip.decompress(raw).decode("utf-8")
+        return raw.decode("utf-8")
+
+    def _compress_index(self, snap_name: str) -> None:
+        """Compress the index file with gzip (in-place replacement)."""
+        index_path = self.snap_index_path(snap_name)
+        if not index_path.exists():
+            return
+        raw = index_path.read_bytes()
+        if raw[:2] == b'\x1f\x8b':
+            return  # Already compressed
+        index_path.write_bytes(gzip.compress(raw))
+
+    def _write_chunks_file(self, snap_name: str, chunk_hashes: set = None) -> None:
+        """Write a gzip-compressed chunks file (one hash per line)."""
+        if not chunk_hashes:
+            return
+        data = "\n".join(sorted(chunk_hashes)) + "\n"
+        self.snap_chunks_path(snap_name).write_bytes(gzip.compress(data.encode()))
+
+    def read_chunks_file(self, snap_name: str) -> set:
+        """Read the chunks file and return a set of chunk hashes."""
+        chunks_path = self.snap_chunks_path(snap_name)
+        if chunks_path.exists():
+            raw = chunks_path.read_bytes()
+            if raw[:2] == b'\x1f\x8b':
+                content = gzip.decompress(raw).decode()
+            else:
+                content = raw.decode()
+            return {h for h in content.strip().split("\n") if h}
+        return set()
+
+    @staticmethod
+    def _build_index_line(meta: dict, pack_mode: bool = False) -> str:
+        """Build a tab-separated index line from a meta dict.
+
+        Format: <ctime>\\t<type>\\t<mode>\\t<uid>\\t<gid>\\t<size>\\t<mtime>\\t<rel_path>[\\t<extra>]
+        In pack_mode, appends: \\t<atime>\\t<acl>
+        """
+        entry_type = meta["type"]
+        size = meta.get("size", 0) if entry_type == "file" else 0
+        extra = ""
+        if entry_type == "symlink":
+            extra = f"\t{meta.get('symlink_target', '')}"
+        elif entry_type == "hardlink":
+            extra = f"\t{meta.get('link_target', '')}"
+        elif entry_type in ("blockdev", "chardev"):
+            extra = f"\t{meta.get('devmajor', 0)},{meta.get('devminor', 0)}"
+        elif entry_type == "file":
+            chunk_hashes = meta.get("chunk_hashes", [])
+            if chunk_hashes:
+                extra = f"\t{','.join(chunk_hashes)}"
+        line = (f"{meta.get('ctime', 0)!r}\t{entry_type}\t{meta['mode']}\t"
+                f"{meta['uid']}\t{meta['gid']}\t{size}\t{meta['mtime']!r}\t"
+                f"{meta['rel_path']}{extra}")
+        if pack_mode:
+            if not extra:
+                line += "\t"  # ensure extra field is present (even if empty)
+            acl = meta.get('acl', '') or ''
+            acl = acl.replace('\\', '\\\\').replace('\n', '\\n').replace('\t', '\\t')
+            line += f"\t{meta.get('atime', 0)!r}\t{acl}"
+        return line
+
+    @staticmethod
+    def _parse_index_line(line: str) -> Optional[dict]:
+        """Parse a tab-separated index line into a dict.
+
+        Returns dict with ctime, type, mode, uid, gid, size, mtime, rel_path,
+        and optionally symlink_target, link_target, devmajor, devminor.
+        Returns None for unparseable lines.
+        """
+        fields = line.split("\t")
+        if len(fields) < 8:
+            return None
+        entry = {
+            "ctime": float(fields[0]),
+            "type": fields[1],
+            "mode": int(fields[2]),
+            "uid": int(fields[3]),
+            "gid": int(fields[4]),
+            "size": int(fields[5]),
+            "mtime": float(fields[6]),
+            "rel_path": fields[7],
+        }
+        extra = fields[8] if len(fields) > 8 else None
+        if entry["type"] == "symlink" and extra is not None:
+            entry["symlink_target"] = extra
+        elif entry["type"] == "hardlink" and extra is not None:
+            entry["link_target"] = extra
+        elif entry["type"] in ("blockdev", "chardev") and extra is not None:
+            parts = extra.split(",")
+            entry["devmajor"] = int(parts[0])
+            entry["devminor"] = int(parts[1]) if len(parts) > 1 else 0
+        elif entry["type"] == "file" and extra:
+            entry["chunk_hashes"] = extra.split(",")
+        # Pack-mode extended fields: atime (field 9), acl (field 10)
+        if len(fields) > 9:
+            try:
+                entry["atime"] = float(fields[9])
+            except (ValueError, IndexError):
+                entry["atime"] = 0.0
+        if len(fields) > 10 and fields[10]:
+            acl = fields[10].replace('\\n', '\n').replace('\\t', '\t').replace('\\\\', '\\')
+            entry["acl"] = acl
+        return entry
+
+    def read_index(self, snap_name: str) -> dict:
+        """Read the snapshot index and return {rel_path: index_line} dict.
+
+        Returns the raw index line per path so callers can extract ctime
+        or pass the line directly to link_entry.
+        """
+        content = self._read_index_file(snap_name)
+        if not content:
+            return {}
+        result = {}
+        for line in content.strip().split("\n"):
+            if not line:
+                continue
+            fields = line.split("\t")
+            if len(fields) >= 8:
+                result[fields[7]] = line
+            elif len(fields) == 2:
+                # Legacy format: <ctime>\t<rel_path>
+                result[fields[1]] = line
+            else:
+                result[fields[0]] = line
+        return result
+
     def create_snapshot(self, name: str) -> None:
-        """Create data/ and refs/ directories for a new snapshot."""
+        """Create meta/ directory and index file for a new snapshot."""
         self.file_count = 0
         self.inode_count = 0
         self.ref_count = 0
         self.start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.snap_data_dir(name).mkdir(parents=True, exist_ok=True)
-        self.snap_refs_dir(name).mkdir(parents=True, exist_ok=True)
+        if self.mode != "pack":
+            self.snap_meta_dir(name).mkdir(parents=True, exist_ok=True)
+        else:
+            self.snap_dir(name).mkdir(parents=True, exist_ok=True)
+        # Create empty index file
+        self.snap_index_path(name).write_text("")
 
     def set_running(self, name: str) -> None:
         """Write a pidfile to mark the snapshot as currently running."""
@@ -310,8 +709,15 @@ class BackupServer:
             # Process exists but we can't signal it
             return True
 
-    def finalize_snapshot(self, name: str) -> None:
+    def finalize_snapshot(self, name: str,
+                          total_bytes: int = 0,
+                          stored_bytes: int = 0,
+                          chunk_hashes: set = None) -> None:
         """Mark a snapshot as complete and write stats from internal counters."""
+        self._compress_index(name)
+        self._write_chunks_file(name, chunk_hashes)
+        self._seal_active_pack()
+        self._flush_pack_index()
         self.clear_running(name)
         marker = self.snap_dir(name) / "complete"
         end_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -319,9 +725,10 @@ class BackupServer:
         stats = {
             "files": self.file_count,
             "inodes": self.inode_count,
-            "refs": self.ref_count,
             "start_time": start_time,
             "end_time": end_time,
+            "total_bytes": total_bytes,
+            "stored_bytes": stored_bytes,
         }
         lines = [f"{k}={v}" for k, v in stats.items()]
         marker.write_text("\n".join(lines) + "\n")
@@ -352,68 +759,90 @@ class BackupServer:
         return (self.snap_dir(name) / "complete").exists()
 
     def write_entry(self, snap_name: str, rel_path: str, meta: dict) -> None:
-        """Create a single entry (file/dir/symlink) in the snapshot data/ tree.
+        """Create a single entry in the snapshot.
+
+        For directories: creates the dir in tree/ and a metadata file in meta/.
+        For all other types: creates a file in tree/<dir>/<name>-<snap>.
+
+        File content format:
+            Line 1: relative path
+            Line 2+: type-specific data
 
         Only creates the filesystem object — does NOT apply metadata.
-        Call set_entry_metadata() separately (deepest-first) to avoid
-        directory mtime clobbering.
-
-        meta dict keys:
-            type:           "file" | "dir" | "symlink"
-            symlink_target: str (only for type=symlink)
-            size:           int (original file size, only for type=file)
-            chunk_hashes:   list[str] (only for type=file)
+        Call set_entry_metadata() after write_entry().  For directories,
+        defer the call until all files are written (deepest-first) so
+        that tree/ directory mtimes are not clobbered.
         """
-        data_dir = self.snap_data_dir(snap_name)
-        dst = os.path.join(str(data_dir), rel_path) if rel_path != "." else str(data_dir)
         entry_type = meta["type"]
 
-        if entry_type == "dir":
-            os.makedirs(dst, exist_ok=True)
+        if self.mode != "pack":
+            if entry_type == "dir":
+                tree_dir_path = os.path.join(str(self.tree_dir), rel_path) if rel_path != "." else str(self.tree_dir)
+                os.makedirs(tree_dir_path, exist_ok=True)
+                meta_path = self._meta_entry_path(snap_name, rel_path)
+                os.makedirs(os.path.dirname(meta_path), exist_ok=True)
+                self._write_gz(meta_path, f"{rel_path}\nDIR\n")
+                self.inode_count += 1
 
-        elif entry_type == "symlink":
-            if os.path.lexists(dst):
-                os.unlink(dst)
-            os.symlink(meta["symlink_target"], dst)
+            elif entry_type == "symlink":
+                tree_path = self._tree_entry_path(rel_path, snap_name)
+                os.makedirs(os.path.dirname(tree_path), exist_ok=True)
+                self._write_gz(tree_path, f"{rel_path}\nSYMLINK\n{meta['symlink_target']}\n")
+                self.file_count += 1
+                self.inode_count += 1
 
-        elif entry_type == "hardlink":
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            with open(dst, "w") as fh:
-                fh.write(f"HARDLINK\n{meta['link_target']}\n")
+            elif entry_type == "hardlink":
+                tree_path = self._tree_entry_path(rel_path, snap_name)
+                os.makedirs(os.path.dirname(tree_path), exist_ok=True)
+                self._write_gz(tree_path, f"{rel_path}\nHARDLINK\n{meta['link_target']}\n")
+                self.file_count += 1
+                self.inode_count += 1
 
-        elif entry_type in ("blockdev", "chardev"):
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            with open(dst, "w") as fh:
-                fh.write(f"{entry_type.upper()}\n{meta['devmajor']} {meta['devminor']}\n")
+            elif entry_type in ("blockdev", "chardev"):
+                tree_path = self._tree_entry_path(rel_path, snap_name)
+                os.makedirs(os.path.dirname(tree_path), exist_ok=True)
+                self._write_gz(tree_path, f"{rel_path}\n{entry_type.upper()}\n{meta['devmajor']} {meta['devminor']}\n")
+                self.file_count += 1
+                self.inode_count += 1
 
-        elif entry_type == "fifo":
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            with open(dst, "w") as fh:
-                fh.write("FIFO\n")
+            elif entry_type in ("fifo", "socket"):
+                tree_path = self._tree_entry_path(rel_path, snap_name)
+                os.makedirs(os.path.dirname(tree_path), exist_ok=True)
+                self._write_gz(tree_path, f"{rel_path}\n{entry_type.upper()}\n")
+                self.file_count += 1
+                self.inode_count += 1
 
-        elif entry_type == "socket":
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            with open(dst, "w") as fh:
-                fh.write("SOCKET\n")
-
-        elif entry_type == "file":
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            content = f"{meta['size']} {meta['mtime']!r}\n"
-            chunk_hashes = meta.get("chunk_hashes", [])
-            content += "\n".join(chunk_hashes)
-            if chunk_hashes:
-                content += "\n"
-            with open(dst, "w") as fh:
-                fh.write(content)
-
-        if entry_type == "dir":
-            self.inode_count += 1
+            elif entry_type == "file":
+                tree_path = self._tree_entry_path(rel_path, snap_name)
+                os.makedirs(os.path.dirname(tree_path), exist_ok=True)
+                content = f"{rel_path}\n{meta['size']} {meta['mtime']!r}\n"
+                chunk_hashes = meta.get("chunk_hashes", [])
+                content += "\n".join(chunk_hashes)
+                if chunk_hashes:
+                    content += "\n"
+                self._write_gz(tree_path, content)
+                self.file_count += 1
+                self.inode_count += 1
         else:
-            self.file_count += 1
-            self.inode_count += 1
+            # Pack mode: only count, no filesystem writes
+            if entry_type == "dir":
+                self.inode_count += 1
+            else:
+                self.file_count += 1
+                self.inode_count += 1
+
+        # Append to index with full metadata for fast listing
+        idx_meta = dict(meta)
+        idx_meta["rel_path"] = rel_path
+        pack_mode = (self.mode == "pack")
+        with open(str(self.snap_index_path(snap_name)), "a") as fh:
+            fh.write(self._build_index_line(idx_meta, pack_mode=pack_mode) + "\n")
 
     def set_entry_metadata(self, snap_name: str, rel_path: str, meta: dict) -> None:
-        """Apply ownership, permissions, ACLs, and timestamps to a data/ entry.
+        """Apply ownership, permissions, ACLs, and timestamps to an entry.
+
+        For directories: applies to both the meta/ file and the tree/ dir.
+        For non-dirs: applies directly to the tree/ file.
 
         meta dict keys:
             type:           "file" | "dir" | "symlink"
@@ -422,201 +851,349 @@ class BackupServer:
             atime, mtime:   float
             acl:            str or None
         """
-        data_dir = self.snap_data_dir(snap_name)
-        dst = os.path.join(str(data_dir), rel_path) if rel_path != "." else str(data_dir)
-        is_link = (meta["type"] == "symlink")
+        if self.mode == "pack":
+            return
+        if meta.get("type") == "dir":
+            meta_path = self._meta_entry_path(snap_name, rel_path)
+            tree_dir_path = os.path.join(str(self.tree_dir), rel_path) if rel_path != "." else str(self.tree_dir)
+            targets = [meta_path, tree_dir_path]
+        else:
+            targets = [self._tree_entry_path(rel_path, snap_name)]
 
-        try:
-            os.lchown(dst, meta["uid"], meta["gid"])
-        except (PermissionError, OSError) as exc:
-            logger.debug("lchown %s: %s", dst, exc)
-
-        if not is_link:
+        for target in targets:
             try:
-                os.chmod(dst, stat.S_IMODE(meta["mode"]))
+                os.chown(target, meta["uid"], meta["gid"])
             except (PermissionError, OSError) as exc:
-                logger.debug("chmod %s: %s", dst, exc)
+                logger.debug("chown %s: %s", target, exc)
+
+            try:
+                os.chmod(target, stat.S_IMODE(meta["mode"]))
+            except (PermissionError, OSError) as exc:
+                logger.debug("chmod %s: %s", target, exc)
             if meta.get("acl"):
-                _set_acl_text(dst, meta["acl"])
+                _set_acl_text(target, meta["acl"])
 
-        try:
-            os.utime(dst, (meta["atime"], meta["mtime"]), follow_symlinks=False)
-        except (OSError, AttributeError):
-            pass
+            try:
+                os.utime(target, (meta["atime"], meta["mtime"]))
+            except (OSError, AttributeError):
+                pass
 
-    def get_file_entry(self, snap_name: str, rel_path: str) -> Optional[dict]:
-        """Read a single file entry from an existing snapshot.
+    def set_dirs_metadata(self, snap_name: str, dir_entries: list) -> None:
+        """Apply metadata for multiple directories in one call.
 
-        Returns {"mtime": float, "size": int, "chunk_hashes": [str]} or None.
+        dir_entries is a list of (rel_path, meta) tuples.
+        Sorts deepest-first internally so tree/ directory mtimes
+        are not clobbered by later operations.
         """
-        data_dir = self.snap_data_dir(snap_name)
-        dst = os.path.join(str(data_dir), rel_path)
+        if self.mode == "pack":
+            return
+        for rel_path, meta in sorted(dir_entries, key=lambda e: e[0], reverse=True):
+            self.set_entry_metadata(snap_name, rel_path, meta)
+
+    def get_entry_full(self, snap_name: str, rel_path: str) -> Optional[dict]:
+        """Read all info for an entry in one shot (single lstat + open + ACL read).
+
+        For non-dirs reads from tree/ file, for dirs from meta/ file.
+        Returns dict with mode, uid, gid, mtime, acl, and for regular files
+        also file_size, file_mtime, chunk_hashes.  Returns None if not found.
+        """
+        if self.mode == "pack":
+            # Pack mode: read from index
+            content = self._read_index_file(snap_name)
+            if not content:
+                return None
+            for line in content.strip().split("\n"):
+                if not line:
+                    continue
+                parsed = self._parse_index_line(line)
+                if parsed is None:
+                    continue
+                if parsed["rel_path"] != rel_path:
+                    continue
+                result = {
+                    "mode": parsed["mode"],
+                    "uid": parsed["uid"],
+                    "gid": parsed["gid"],
+                    "mtime": parsed["mtime"],
+                    "acl": parsed.get("acl"),
+                }
+                if parsed["type"] == "file":
+                    result["type_line"] = f"{parsed['size']} {parsed['mtime']!r}"
+                    result["file_size"] = parsed["size"]
+                    result["file_mtime"] = parsed["mtime"]
+                    result["chunk_hashes"] = parsed.get("chunk_hashes", [])
+                elif parsed["type"] == "dir":
+                    result["type_line"] = "DIR"
+                else:
+                    result["type_line"] = parsed["type"].upper()
+                return result
+            return None
+
+        # Tree mode: read from tree/ and meta/ files
+        tree_path = self._tree_entry_path(rel_path, snap_name)
+        if os.path.lexists(tree_path):
+            entry_path = tree_path
+        else:
+            # Fall back to meta/ (dirs, bucketed)
+            entry_path = self._meta_entry_path(snap_name, rel_path)
         try:
-            st = os.lstat(dst)
+            st = os.lstat(entry_path)
         except OSError:
             return None
         if not stat.S_ISREG(st.st_mode):
             return None
-        with open(dst, "r") as fh:
-            lines = fh.read().strip().split("\n")
-        if not lines:
-            return None
-        header = lines[0].split()
-        size = int(header[0])
-        # mtime stored in header since format v2; fall back to lstat
-        mtime = float(header[1]) if len(header) > 1 else st.st_mtime
-        chunk_hashes = [h for h in lines[1:] if h] if len(lines) > 1 else []
-        return {
-            "mtime": mtime,
-            "size": size,
-            "chunk_hashes": chunk_hashes,
-        }
-
-    def get_entry_metadata(self, snap_name: str, rel_path: str) -> Optional[dict]:
-        """Read metadata (mode, uid, gid, acl) of a data/ entry.
-
-        Returns dict with mode, uid, gid, acl keys, or None.
-        """
-        data_dir = self.snap_data_dir(snap_name)
-        dst = os.path.join(str(data_dir), rel_path)
-        try:
-            st = os.lstat(dst)
-        except OSError:
-            return None
-        acl = _get_acl_text(dst) if not stat.S_ISLNK(st.st_mode) else None
-        return {
+        acl = _get_acl_text(entry_path)
+        result = {
             "mode": st.st_mode,
             "uid": st.st_uid,
             "gid": st.st_gid,
+            "mtime": st.st_mtime,
             "acl": acl,
         }
+        lines = self._read_gz(entry_path).strip().split("\n")
+        if len(lines) >= 2:
+            type_line = lines[1]
+            result["type_line"] = type_line
+            if type_line and type_line[0].isdigit():
+                header = type_line.split()
+                result["file_size"] = int(header[0])
+                result["file_mtime"] = float(header[1]) if len(header) > 1 else st.st_mtime
+                result["chunk_hashes"] = [h for h in lines[2:] if h] if len(lines) > 2 else []
+        return result
 
-    def link_entry(self, from_snap: str, to_snap: str, rel_path: str) -> bool:
-        """Hardlink a data/ entry from one snapshot to another.
+    def link_entry(self, from_snap: str, to_snap: str, rel_path: str,
+                   is_dir: bool = None, index_line: str = None,
+                   meta: dict = None) -> bool:
+        """Link an entry from one snapshot to another (for unchanged entries).
 
-        Returns True if the link was created, False if the source doesn't exist.
-        Parent directories in the target are created as needed.
+        For directories: hardlinks meta/ file and ensures tree/ dir exists.
+        For non-dirs: hardlinks tree/ file only (no meta/ entry).
+        Returns True on success, False if source doesn't exist.
+
+        index_line: raw index line to copy into the new snapshot's index.
+        meta:       dict to build index line from (used when metadata changed).
+        If neither is given, a minimal fallback line is written.
         """
-        src = os.path.join(str(self.snap_data_dir(from_snap)), rel_path)
-        dst = os.path.join(str(self.snap_data_dir(to_snap)), rel_path)
-        if not os.path.lexists(src):
-            return False
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        os.link(src, dst)
+        if self.mode == "pack":
+            # Pack mode: no hardlinks, only write index line
+            self.file_count += 1
+            if index_line is not None:
+                line = index_line
+            elif meta is not None:
+                idx_meta = dict(meta)
+                idx_meta["rel_path"] = rel_path
+                pack_mode = True
+                line = self._build_index_line(idx_meta, pack_mode=pack_mode)
+            else:
+                line = f"0\tunknown\t0\t0\t0\t0\t0\t{rel_path}"
+            with open(str(self.snap_index_path(to_snap)), "a") as fh:
+                fh.write(line + "\n")
+            return True
+
+        if is_dir is None:
+            # Determine type from index_line if available
+            if index_line:
+                parsed = self._parse_index_line(index_line)
+                is_dir = parsed is not None and parsed["type"] == "dir"
+            else:
+                # Fall back to checking tree/ path
+                src_tree = self._tree_entry_path(rel_path, from_snap)
+                is_dir = not os.path.lexists(src_tree)
+
+        if is_dir:
+            # Ensure tree/ directory exists (shared across snapshots)
+            tree_dir_path = os.path.join(str(self.tree_dir), rel_path) if rel_path != "." else str(self.tree_dir)
+            os.makedirs(tree_dir_path, exist_ok=True)
+            # Hardlink meta/ entry (dirs, bucketed)
+            src_meta = self._meta_entry_path(from_snap, rel_path)
+            dst_meta = self._meta_entry_path(to_snap, rel_path)
+            if not os.path.lexists(src_meta):
+                return False
+            os.makedirs(os.path.dirname(dst_meta), exist_ok=True)
+            os.link(src_meta, dst_meta)
+        else:
+            # Hardlink tree/ entry: old snap → new snap
+            src_tree = self._tree_entry_path(rel_path, from_snap)
+            dst_tree = self._tree_entry_path(rel_path, to_snap)
+            if not os.path.lexists(src_tree):
+                return False
+            os.makedirs(os.path.dirname(dst_tree), exist_ok=True)
+            os.link(src_tree, dst_tree)
+
         self.file_count += 1
+
+        # Append to index
+        if index_line is not None:
+            line = index_line
+        elif meta is not None:
+            idx_meta = dict(meta)
+            idx_meta["rel_path"] = rel_path
+            line = self._build_index_line(idx_meta)
+        else:
+            line = f"0\tunknown\t0\t0\t0\t0\t0\t{rel_path}"
+        with open(str(self.snap_index_path(to_snap)), "a") as fh:
+            fh.write(line + "\n")
+
         return True
 
-    def copy_refs(self, from_snap: str, to_snap: str, chunk_hashes: list) -> None:
-        """Copy refs from one snapshot to another for the given chunk hashes."""
-        for h in chunk_hashes:
-            self.add_ref(to_snap, h)
 
-    def add_ref(self, snap_name: str, chunk_hash: str) -> None:
-        """Create a hardlink in refs/ pointing to the object block."""
-        refs_dir = self.snap_refs_dir(snap_name)
-        ref_path = refs_dir / chunk_hash
-        if ref_path.exists():
-            return
-        obj_path = self._block_path(chunk_hash)
-        os.link(obj_path, ref_path)
-        self.ref_count += 1
+    def link_unchanged_entries(self, from_snap: str, to_snap: str,
+                              entries: list) -> int:
+        """Server-side batch fast path: link multiple unchanged entries at once.
 
-    def list_entries(self, snap_name: str, filter_path: Optional[str] = None) -> list:
-        """Walk snapshot data/ and yield entry dicts with metadata.
+        entries is a list of (rel_path, is_dir, index_line) tuples.
+
+        For each entry:
+        - For dirs: ensures tree/ dir exists, hardlinks meta/ from previous snap
+        - For non-dirs: hardlinks tree/ entry only (no meta/)
+        - Appends index_line to new snapshot's index
+
+        Returns the number of successfully linked entries.
+        """
+        index_path = str(self.snap_index_path(to_snap))
+        linked = 0
+
+        if self.mode == "pack":
+            # Pack mode: no hardlinks, only write index lines
+            index_buf = []
+            for rel_path, is_dir, index_line in entries:
+                self.file_count += 1
+                index_buf.append(index_line)
+                linked += 1
+        else:
+            tree_dir = str(self.tree_dir)
+            index_buf = []
+            for rel_path, is_dir, index_line in entries:
+                if is_dir:
+                    tree_dir_path = os.path.join(tree_dir, rel_path) if rel_path != "." else tree_dir
+                    os.makedirs(tree_dir_path, exist_ok=True)
+                    # Hardlink meta/ entry (dirs, bucketed)
+                    src_meta = self._meta_entry_path(from_snap, rel_path)
+                    dst_meta = self._meta_entry_path(to_snap, rel_path)
+                    if not os.path.lexists(src_meta):
+                        continue
+                    os.makedirs(os.path.dirname(dst_meta), exist_ok=True)
+                    os.link(src_meta, dst_meta)
+                else:
+                    # Hardlink tree/ entry only (no meta/ for non-dirs)
+                    src_tree = self._tree_entry_path(rel_path, from_snap)
+                    dst_tree = self._tree_entry_path(rel_path, to_snap)
+                    if not os.path.lexists(src_tree):
+                        continue
+                    os.makedirs(os.path.dirname(dst_tree), exist_ok=True)
+                    os.link(src_tree, dst_tree)
+
+                self.file_count += 1
+                index_buf.append(index_line)
+                linked += 1
+
+        # Batch-write all index lines at once
+        if index_buf:
+            with open(index_path, "a") as fh:
+                fh.write("\n".join(index_buf) + "\n")
+
+        return linked
+
+
+    def list_entries(self, snap_name: str, filter_path: Optional[str] = None,
+                     full: bool = False) -> list:
+        """Read snapshot index and return entry dicts with metadata.
+
+        When full=False (default), returns data from the index only — no
+        filesystem access needed.  When full=True, also reads meta/ files
+        for chunk_hashes and ACLs (needed for restore).
 
         Returns list of dicts with keys:
-            src_path:       absolute path in data/ tree
-            rel_path:       relative path within data/
-            type:           "file" | "dir" | "symlink" | "hardlink"
-            mode, uid, gid, atime, mtime: from lstat
-            acl:            str or None
+            rel_path:       relative path (adjusted for filter_path)
+            type:           "file" | "dir" | "symlink" | "hardlink" | ...
+            mode, uid, gid, mtime: from index
             symlink_target: str or None
-            link_target:    str (only for type=hardlink, rel_path of link source)
-            size:           int (from first line of chunk-hash file, for files)
+            link_target:    str (only for type=hardlink)
+            size:           int (for files)
+          When full=True, additionally:
+            acl:            str or None
             chunk_hashes:   list[str] (for files)
         """
-        data_dir = self.snap_data_dir(snap_name)
-        if not data_dir.exists():
+        content = self._read_index_file(snap_name)
+        if not content:
             raise FileNotFoundError(f"Snapshot not found: {snap_name}")
 
         if filter_path is not None:
             filter_path = filter_path.strip("/")
-            walk_root = os.path.join(str(data_dir), filter_path)
-            if not os.path.lexists(walk_root):
-                raise FileNotFoundError(
-                    f"Path '{filter_path}' not found in snapshot '{snap_name}'"
-                )
-        else:
-            walk_root = str(data_dir)
+
+        index_lines = content.strip().split("\n")
+        meta_dir = str(self.snap_meta_dir(snap_name))
 
         entries = []
-        for src_entry, st in _walk(walk_root):
-            rel = os.path.relpath(src_entry, walk_root)
-            mode = st.st_mode
-            entry = {
-                "src_path": src_entry,
-                "rel_path": rel,
-                "mode": mode,
-                "uid": st.st_uid,
-                "gid": st.st_gid,
-                "atime": st.st_atime,
-                "mtime": st.st_mtime,
-            }
-
-            if stat.S_ISDIR(mode):
-                entry["type"] = "dir"
-                entry["acl"] = _get_acl_text(src_entry)
-                entry["symlink_target"] = None
-                entry["size"] = 0
-                entry["chunk_hashes"] = []
-
-            elif stat.S_ISLNK(mode):
-                entry["type"] = "symlink"
-                entry["symlink_target"] = os.readlink(src_entry)
-                entry["acl"] = None
-                entry["size"] = 0
-                entry["chunk_hashes"] = []
-
-            elif stat.S_ISREG(mode):
-                # Read file content to determine type (file vs hardlink marker)
-                with open(src_entry, "r") as fh:
-                    lines = fh.read().strip().split("\n")
-                marker = lines[0] if lines else ""
-                if marker == "HARDLINK":
-                    entry["type"] = "hardlink"
-                    entry["link_target"] = lines[1] if len(lines) > 1 else ""
-                    entry["acl"] = None
-                    entry["symlink_target"] = None
-                    entry["size"] = 0
-                    entry["chunk_hashes"] = []
-                elif marker in ("BLOCKDEV", "CHARDEV"):
-                    entry["type"] = marker.lower()
-                    majmin = lines[1].split() if len(lines) > 1 else ["0", "0"]
-                    entry["devmajor"] = int(majmin[0])
-                    entry["devminor"] = int(majmin[1])
-                    entry["acl"] = None
-                    entry["symlink_target"] = None
-                    entry["size"] = 0
-                    entry["chunk_hashes"] = []
-                elif marker in ("FIFO", "SOCKET"):
-                    entry["type"] = marker.lower()
-                    entry["acl"] = None
-                    entry["symlink_target"] = None
-                    entry["size"] = 0
-                    entry["chunk_hashes"] = []
-                else:
-                    entry["type"] = "file"
-                    entry["acl"] = _get_acl_text(src_entry)
-                    entry["symlink_target"] = None
-                    header = lines[0].split() if lines else []
-                    entry["size"] = int(header[0]) if header else 0
-                    entry["chunk_hashes"] = [h for h in lines[1:] if h] if len(lines) > 1 else []
-
-            else:
+        found_filter = False
+        for line in index_lines:
+            if not line:
                 continue
+
+            parsed = self._parse_index_line(line)
+            if parsed is None:
+                continue
+
+            rel_path = parsed["rel_path"]
+
+            # Apply filter
+            if filter_path is not None:
+                if rel_path != filter_path and not rel_path.startswith(filter_path + "/"):
+                    continue
+                found_filter = True
+                display_rel = os.path.relpath(rel_path, filter_path) if rel_path != filter_path else "."
+            else:
+                display_rel = rel_path
+
+            entry = {
+                "rel_path": display_rel,
+                "type": parsed["type"],
+                "mode": parsed["mode"],
+                "uid": parsed["uid"],
+                "gid": parsed["gid"],
+                "size": parsed["size"],
+                "mtime": parsed["mtime"],
+                "symlink_target": parsed.get("symlink_target"),
+                "link_target": parsed.get("link_target"),
+            }
+            if "devmajor" in parsed:
+                entry["devmajor"] = parsed["devmajor"]
+                entry["devminor"] = parsed["devminor"]
+
+            if full:
+                if self.mode == "pack":
+                    # Pack mode: all metadata comes from the index
+                    entry["atime"] = parsed.get("atime", 0.0)
+                    entry["acl"] = parsed.get("acl")
+                    if parsed["type"] == "file":
+                        entry["chunk_hashes"] = parsed.get("chunk_hashes", [])
+                    else:
+                        entry["chunk_hashes"] = []
+                else:
+                    if parsed["type"] == "dir":
+                        # Dirs use meta/ (bucketed)
+                        entry_path = self._meta_entry_path(snap_name, rel_path)
+                    else:
+                        # Non-dirs read directly from tree/
+                        entry_path = self._tree_entry_path(rel_path, snap_name)
+                    st = os.lstat(entry_path)
+                    entry["atime"] = st.st_atime
+                    entry["acl"] = _get_acl_text(entry_path)
+                    if parsed["type"] == "file":
+                        lines = self._read_gz(entry_path).strip().split("\n")
+                        entry["chunk_hashes"] = [h for h in lines[2:] if h] if len(lines) > 2 else []
+                    else:
+                        entry["chunk_hashes"] = []
 
             entries.append(entry)
 
+        if filter_path is not None and not found_filter:
+            raise FileNotFoundError(
+                f"Path '{filter_path}' not found in snapshot '{snap_name}'"
+            )
+
+        # Sort by rel_path for consistent output (dirs before their contents)
+        entries.sort(key=lambda e: e["rel_path"])
         return entries
 
     def list_snapshots(self) -> list:
@@ -642,7 +1219,6 @@ class BackupServer:
             stats = self.read_complete_stats(snap.name)
             file_count = stats.get("files", 0)
             inode_count = stats.get("inodes", 0)
-            ref_count = stats.get("refs", 0)
             start_time = stats.get("start_time", "")
             end_time = stats.get("end_time", "")
 
@@ -667,34 +1243,94 @@ class BackupServer:
                 except (ValueError, TypeError):
                     pass
 
+            total_bytes = stats.get("total_bytes", 0)
+            stored_bytes = stats.get("stored_bytes", 0)
+
             result.append({
                 "name": snap.name,
                 "files": file_count,
                 "inodes": inode_count,
-                "refs": ref_count,
                 "created": ts,
                 "start_time": start_time,
                 "end_time": end_time,
                 "duration": duration,
+                "total_bytes": total_bytes,
+                "stored_bytes": stored_bytes,
                 "complete": complete,
                 "running": running,
                 "running_since": running_since,
             })
         return result
 
-    def delete_snapshot(self, snap_name: str) -> int:
-        """Delete a snapshot and run GC.  Returns number of orphaned blocks removed."""
+    def _remove_snapshot(self, snap_name: str) -> None:
+        """Remove a snapshot's tree/ entries and snapshot directory (no GC)."""
         snap_dir = self.snap_dir(snap_name)
         if not snap_dir.exists():
             raise FileNotFoundError(f"Snapshot not found: {snap_name}")
 
-        logger.info("Deleting snapshot '%s' ...", snap_name)
-        shutil.rmtree(snap_dir)
-        logger.info("Snapshot removed.  Running garbage collection ...")
+        # Remove tree/ entries for non-dir entries using the index file
+        if self.mode != "pack":
+            content = self._read_index_file(snap_name)
+            if content:
+                for line in content.strip().split("\n"):
+                    if not line:
+                        continue
+                    parsed = self._parse_index_line(line)
+                    if parsed is None or parsed["type"] == "dir":
+                        continue
+                    rel_path = parsed["rel_path"]
+                    tree_path = self._tree_entry_path(rel_path, snap_name)
+                    try:
+                        os.unlink(tree_path)
+                    except OSError:
+                        pass
+                    # Remove parent dirs if empty, up to tree_dir
+                    parent = os.path.dirname(tree_path)
+                    while parent != str(self.tree_dir):
+                        try:
+                            os.rmdir(parent)
+                        except OSError:
+                            break
+                        parent = os.path.dirname(parent)
 
-        removed = self.gc_orphaned_blocks()
-        logger.info("GC done: %d orphaned blocks removed", removed)
-        return removed
+        # Remove snapshot directory (meta/ + complete + running + index)
+        shutil.rmtree(snap_dir)
+
+    def delete_snapshot(self, snap_name: str) -> int:
+        """Delete a snapshot and run GC.  Returns number of orphaned blocks removed."""
+        self.lock_repo()
+        self.load_pack_index()
+        try:
+            return self._delete_snapshot_locked(snap_name)
+        finally:
+            self.unlock_repo()
+
+    def _delete_snapshot_locked(self, snap_name: str) -> int:
+        """Internal delete — caller must hold the lock."""
+        logger.info("Deleting snapshot '%s' ...", snap_name)
+        dead_hashes = self.read_chunks_file(snap_name)
+        self._remove_snapshot(snap_name)
+
+        if not dead_hashes:
+            logger.info("GC done: 0 orphaned blocks removed")
+            return 0
+
+        # Collect live hashes from all remaining snapshots
+        live_hashes = set()
+        if self.snapshots_dir.exists():
+            for snap in self.snapshots_dir.iterdir():
+                if not snap.is_dir():
+                    continue
+                live_hashes |= self.read_chunks_file(snap.name)
+
+        orphaned = dead_hashes - live_hashes
+        if not orphaned:
+            logger.info("GC done: 0 orphaned blocks removed")
+            return 0
+
+        self._gc_remove_from_index(orphaned)
+        logger.info("GC done: %d orphaned blocks removed", len(orphaned))
+        return len(orphaned)
 
     @staticmethod
     def _parse_snap_date(name: str):
@@ -730,7 +1366,22 @@ class BackupServer:
                 pass
         return None
 
-    def apply_retention(self, daily: int = 0, weekly: int = 0, monthly: int = 0, dry_run: bool = False) -> list:
+    def _read_retention_file(self, name: str) -> int:
+        """Read a retention value from a file in the repository root.
+
+        Returns the integer value from the file, or 0 if the file
+        does not exist or cannot be parsed.
+        """
+        path = self.root / name
+        if not path.exists():
+            return 0
+        try:
+            return int(path.read_text().strip())
+        except (ValueError, OSError):
+            return 0
+
+    def apply_retention(self, daily: int = None, weekly: int = None,
+                        monthly: int = None, dry_run: bool = False) -> list:
         """Delete snapshots that fall outside the retention policy.
 
         Keeps the *newest* snapshot per calendar day / ISO week / month,
@@ -738,14 +1389,35 @@ class BackupServer:
         ``monthly`` monthly snapshots.  Any snapshot not covered by at
         least one retention bucket is deleted.
 
+        If daily/weekly/monthly are not passed (None), values are read
+        from .daily/.weekly/.monthly files in the repository root.
+        A missing file means 0 (no retention limit for that bucket).
+
         Returns the list of deleted snapshot names.
         """
+        if daily is None:
+            daily = self._read_retention_file(".daily")
+        if weekly is None:
+            weekly = self._read_retention_file(".weekly")
+        if monthly is None:
+            monthly = self._read_retention_file(".monthly")
+        self.lock_repo()
+        self.load_pack_index()
+        try:
+            return self._apply_retention_locked(daily, weekly, monthly, dry_run)
+        finally:
+            self.unlock_repo()
+
+    def _apply_retention_locked(self, daily, weekly, monthly, dry_run):
         snaps = self.list_snapshots()
         if not snaps:
             return []
 
+        # If no retention configured at all, nothing to do.
+        if not daily and not weekly and not monthly:
+            return []
+
         # Build (name, datetime) pairs sorted newest-first.
-        # Parse date from the snapshot name itself.
         entries = []
         for s in snaps:
             name = s["name"]
@@ -756,64 +1428,233 @@ class BackupServer:
             entries.append((name, dt))
         entries.sort(key=lambda e: e[1], reverse=True)
 
-        # For each bucket type, group snapshots by period,
-        # then keep all snapshots in the N most recent periods.
-        def _pick(key_func, keep_count):
-            """Return set of snapshot names to keep."""
-            if keep_count <= 0:
-                return set()
-            groups = {}
-            for name, dt in entries:
-                k = key_func(dt)
-                if k not in groups:
-                    groups[k] = []
-                groups[k].append(name)
-            # groups is ordered newest-first because entries are
-            kept_periods = list(groups.keys())[:keep_count]
-            result = set()
-            for k in kept_periods:
-                result.update(groups[k])
-            return result
+        # Retention cascade: daily → weekly → monthly.
+        #
+        # - daily=N:   keep ALL snapshots from the N most recent days
+        # - weekly=M:  for snapshots older than the daily window, keep
+        #              the NEWEST snapshot per calendar week, M weeks back
+        # - monthly=L: for snapshots older than daily+weekly, keep
+        #              the NEWEST snapshot per month, L months back
 
         keep = set()
-        keep |= _pick(lambda dt: dt.date(), daily)
-        keep |= _pick(lambda dt: dt.isocalendar()[:2], weekly)
-        keep |= _pick(lambda dt: (dt.year, dt.month), monthly)
+
+        # Group by day
+        day_groups = {}
+        for name, dt in entries:
+            k = dt.date()
+            if k not in day_groups:
+                day_groups[k] = []
+            day_groups[k].append(name)
+
+        # Daily: keep all snapshots from the N newest days
+        daily_days = list(day_groups.keys())[:daily] if daily > 0 else []
+        daily_cutoff = set()
+        for k in daily_days:
+            keep.update(day_groups[k])
+            daily_cutoff.update(day_groups[k])
+
+        # Weekly: from snapshots NOT covered by daily, keep newest per week
+        weekly_kept_weeks = set()
+        if weekly > 0:
+            week_groups = {}
+            for name, dt in entries:
+                if name in daily_cutoff:
+                    continue
+                k = dt.isocalendar()[:2]
+                if k not in week_groups:
+                    week_groups[k] = name  # newest (entries are newest-first)
+            kept_weeks = list(week_groups.keys())[:weekly]
+            weekly_kept_weeks = set(kept_weeks)
+            for k in kept_weeks:
+                keep.add(week_groups[k])
+
+        # Monthly: from snapshots outside daily days AND outside weekly weeks,
+        # keep newest per month
+        if monthly > 0:
+            daily_days_set = set(daily_days)
+            month_groups = {}
+            for name, dt in entries:
+                # Skip snapshots from days covered by daily
+                if dt.date() in daily_days_set:
+                    continue
+                # Skip snapshots from weeks covered by weekly
+                if dt.isocalendar()[:2] in weekly_kept_weeks:
+                    continue
+                k = (dt.year, dt.month)
+                if k not in month_groups:
+                    month_groups[k] = name
+            kept_months = list(month_groups.keys())[:monthly]
+            for k in kept_months:
+                keep.add(month_groups[k])
 
         deleted = []
+        dead_hashes = set()
         for name, _ in entries:
             if name not in keep:
                 if dry_run:
                     logger.info("Retention: would delete snapshot '%s'", name)
                 else:
                     logger.info("Retention: deleting snapshot '%s'", name)
-                    snap_dir = self.snap_dir(name)
-                    if snap_dir.exists():
-                        shutil.rmtree(snap_dir)
+                    dead_hashes |= self.read_chunks_file(name)
+                    self._remove_snapshot(name)
                 deleted.append(name)
 
-        if deleted and not dry_run:
-            removed = self.gc_orphaned_blocks()
-            logger.info("Retention GC: %d orphaned blocks removed", removed)
+        if deleted and not dry_run and dead_hashes:
+            # Collect live hashes from remaining snapshots
+            live_hashes = set()
+            if self.snapshots_dir.exists():
+                for snap in self.snapshots_dir.iterdir():
+                    if not snap.is_dir():
+                        continue
+                    live_hashes |= self.read_chunks_file(snap.name)
+            orphaned = dead_hashes - live_hashes
+            if orphaned:
+                self._gc_remove_from_index(orphaned)
+                logger.info("Retention GC: %d orphaned blocks removed", len(orphaned))
 
         return deleted
 
     def gc_orphaned_blocks(self) -> int:
-        """Delete blocks in objects/ whose link count is 1 (no snapshot refs)."""
-        removed = 0
-        for prefix_dir in self.objects_dir.iterdir():
-            if not prefix_dir.is_dir():
+        """Remove blocks from pack index not referenced by any snapshot.
+
+        Fully empty pack files are deleted; partially empty packs
+        keep their dead space until repack is run.
+        """
+        self.lock_repo()
+        self.load_pack_index()
+        try:
+            return self._gc_orphaned_blocks_locked()
+        finally:
+            self.unlock_repo()
+
+    def _gc_orphaned_blocks_locked(self) -> int:
+        live_hashes = set()
+        if self.snapshots_dir.exists():
+            for snap in self.snapshots_dir.iterdir():
+                if not snap.is_dir():
+                    continue
+                live_hashes |= self.read_chunks_file(snap.name)
+
+        orphaned = set(self._pack_index.keys()) - live_hashes
+        if not orphaned:
+            return 0
+
+        self._gc_remove_from_index(orphaned)
+        return len(orphaned)
+
+    def _gc_remove_from_index(self, orphaned: set) -> None:
+        """Remove orphaned hashes from pack index, delete fully empty packs."""
+        # Build pack -> hashes mapping
+        pack_hashes = {}
+        for h, (pid, _, _) in self._pack_index.items():
+            pack_hashes.setdefault(pid, set()).add(h)
+
+        for h in orphaned:
+            del self._pack_index[h]
+
+        # Delete fully empty pack files + empty bucket dirs
+        for pid, hashes in pack_hashes.items():
+            if hashes.issubset(orphaned):
+                p = self._pack_path(pid)
+                p.unlink(missing_ok=True)
+                try:
+                    p.parent.rmdir()
+                except OSError:
+                    pass
+
+        self._index_dirty = True
+        self._flush_pack_index()
+
+    def repack(self) -> int:
+        """Rewrite partially-dead packs to reclaim space. Returns bytes saved."""
+        self.lock_repo()
+        self.load_pack_index()
+        try:
+            return self._repack_locked()
+        finally:
+            self.unlock_repo()
+
+    def _repack_locked(self) -> int:
+        """Rewrite packs that contain dead entries."""
+        live_by_pack = {}
+        for h, (pid, offset, length) in self._pack_index.items():
+            live_by_pack.setdefault(pid, []).append((h, offset, length))
+
+        saved = 0
+        for pid, entries in live_by_pack.items():
+            pack_path = self._pack_path(pid)
+            if not pack_path.exists():
                 continue
-            for block_file in prefix_dir.iterdir():
-                if block_file.stat().st_nlink == 1:
-                    block_file.unlink()
-                    removed += 1
-            # remove empty prefix dir
-            try:
-                prefix_dir.rmdir()
-            except OSError:
-                pass
-        return removed
+            pack_size = pack_path.stat().st_size
+            live_size = sum(64 + 4 + length for _, _, length in entries)
+            if live_size >= pack_size:
+                continue  # no dead space
+
+            # Rewrite pack with only live entries
+            tmp_path = pack_path.with_suffix('.tmp')
+            with open(pack_path, 'rb') as src, open(tmp_path, 'wb') as dst:
+                new_offset = 0
+                for h, offset, length in sorted(entries, key=lambda e: e[1]):
+                    src.seek(offset)
+                    entry_data = src.read(64 + 4 + length)
+                    dst.write(entry_data)
+                    self._pack_index[h] = (pid, new_offset, length)
+                    new_offset += 64 + 4 + length
+            tmp_path.rename(pack_path)
+            saved += pack_size - new_offset
+
+        if saved > 0:
+            self._index_dirty = True
+            self._flush_pack_index()
+        return saved
+
+    def rebuild_pack_index(self) -> int:
+        """Rebuild index.gz by scanning all pack-*.dat files. Returns entry count."""
+        self.lock_repo()
+        self.load_pack_index()
+        try:
+            return self._rebuild_pack_index_locked()
+        finally:
+            self.unlock_repo()
+
+    def _rebuild_pack_index_locked(self) -> int:
+        self._pack_index = {}
+        count = 0
+        if not self.packs_dir.exists():
+            self._index_dirty = True
+            self._flush_pack_index()
+            return 0
+
+        for bucket_dir in sorted(self.packs_dir.iterdir()):
+            if not bucket_dir.is_dir():
+                continue
+            for pack_file in sorted(bucket_dir.iterdir()):
+                name = pack_file.name
+                if not (name.startswith("pack-") and name.endswith(".dat")):
+                    continue
+                try:
+                    pid = int(name[5:-4], 16)
+                except ValueError:
+                    continue
+                file_size = pack_file.stat().st_size
+                offset = 0
+                with open(pack_file, 'rb') as f:
+                    while offset + 68 <= file_size:
+                        f.seek(offset)
+                        header = f.read(68)
+                        if len(header) < 68:
+                            break
+                        h = header[:64].decode('ascii', errors='replace')
+                        blob_len = struct.unpack('>I', header[64:68])[0]
+                        if offset + 68 + blob_len > file_size:
+                            break
+                        self._pack_index[h] = (pid, offset, blob_len)
+                        count += 1
+                        offset += 68 + blob_len
+
+        self._index_dirty = True
+        self._flush_pack_index()
+        return count
 
 
 # ---------------------------------------------------------------------------
@@ -916,29 +1757,45 @@ class BackupClient:
         snap_name = name or datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
 
         if not dry_run:
-            # Determine previous complete snapshot for mtime-based skip
+            self.server.lock_repo()
+        try:
+            return self._backup_locked(source, snap_name, special_files,
+                                        excludes, includes, dry_run)
+        finally:
+            if not dry_run:
+                self.server.unlock_repo()
+
+    def _backup_locked(self, source, snap_name, special_files, excludes,
+                        includes, dry_run):
+        if not dry_run:
+            # Determine previous complete snapshot for change detection
             prev_snap = None
+            prev_index = {}
             snaps = self.server.list_snapshots()
             for s in reversed(snaps):
                 if s["complete"]:
                     prev_snap = s["name"]
+                    prev_index = self.server.read_index(prev_snap)
                     break
 
             self.server.create_snapshot(snap_name)
             self.server.set_running(snap_name)
 
+        repo_mode = self.server.get_mode()
+
         total_bytes = 0
         stored_bytes = 0
+        all_chunk_hashes = set()
         file_count = 0
         dedup_blocks = 0
         new_blocks = 0
         skipped_files = 0
+        unchanged_entries = []  # (rel_path, is_dir, index_line) for batch link
 
         # Two passes:
-        #   pass 1 — create entries in data/ via server + store blocks
-        #   pass 2 — set metadata via server (deepest first so dir mtime isn't clobbered)
+        #   create entries via server + store blocks, apply metadata inline
 
-        entries = []  # list of (rel_path, meta) for deferred metadata pass
+        dir_entries = []  # (rel_path, meta) for deferred directory metadata pass
         seen_inodes = {}  # (dev, ino) -> rel_path for hardlink detection
         excluded_dirs = []  # relative prefixes of excluded directories
         included_dirs = []  # relative prefixes of included directories
@@ -1022,6 +1879,29 @@ class BackupClient:
                     seen_inodes[(st.st_dev, st.st_ino)] = rel
                 continue
 
+            # Fast path: if ctime unchanged, nothing has changed at all
+            prev_line = prev_index.get(rel) if prev_snap else None
+            if prev_line is not None:
+                try:
+                    prev_ctime = float(prev_line.split("\t", 1)[0])
+                except (ValueError, IndexError):
+                    prev_ctime = None
+            else:
+                prev_ctime = None
+            if prev_ctime is not None and prev_ctime == st.st_ctime:
+                is_dir = (entry_type == "dir")
+                if entry_type == "file":
+                    if st.st_nlink > 1:
+                        seen_inodes[ino_key] = rel
+                    file_count += 1
+                    skipped_files += 1
+                    # Extract chunk hashes from previous index line
+                    prev_fields = prev_line.split("\t")
+                    if len(prev_fields) >= 9 and prev_fields[1] == "file" and prev_fields[8]:
+                        all_chunk_hashes.update(prev_fields[8].split(","))
+                unchanged_entries.append((rel, is_dir, prev_line))
+                continue
+
             try:
                 if entry_type == "dir":
                     meta = {
@@ -1030,9 +1910,24 @@ class BackupClient:
                         "uid": st.st_uid, "gid": st.st_gid,
                         "atime": st.st_atime, "mtime": st.st_mtime,
                         "acl": _get_acl_text(fpath),
+                        "ctime": st.st_ctime,
                     }
-                    self.server.write_entry(snap_name, rel, meta)
-                    entries.append((rel, meta))
+                    # Reuse previous snapshot's meta/ entry if unchanged
+                    linked = False
+                    if prev_snap:
+                        prev = self.server.get_entry_full(prev_snap, rel)
+                        cur_acl = meta["acl"]
+                        if (prev
+                                and prev["uid"] == st.st_uid
+                                and prev["gid"] == st.st_gid
+                                and stat.S_IMODE(prev["mode"]) == stat.S_IMODE(mode)
+                                and prev.get("mtime") == st.st_mtime
+                                and prev["acl"] == cur_acl):
+                            linked = self.server.link_entry(prev_snap, snap_name, rel,
+                                                            is_dir=True, meta=meta)
+                    if not linked:
+                        self.server.write_entry(snap_name, rel, meta)
+                    dir_entries.append((rel, meta))
 
                 elif entry_type == "file":
                     if st.st_nlink > 1:
@@ -1043,33 +1938,39 @@ class BackupClient:
                     # mtime-based skip: reuse data entry + refs from previous snapshot
                     skipped = False
                     if prev_snap:
-                        prev_entry = self.server.get_file_entry(prev_snap, rel)
-                        if (prev_entry
-                                and prev_entry["mtime"] == st.st_mtime
-                                and prev_entry["size"] == st.st_size):
-                            chunk_hashes = prev_entry["chunk_hashes"]
-                            self.server.copy_refs(prev_snap, snap_name, chunk_hashes)
+                        prev = self.server.get_entry_full(prev_snap, rel)
+                        if (prev and "file_size" in prev
+                                and prev["file_mtime"] == st.st_mtime
+                                and prev["file_size"] == st.st_size):
+                            chunk_hashes = prev["chunk_hashes"]
+                            all_chunk_hashes.update(chunk_hashes)
                             # Link data entry if metadata unchanged, else write new
-                            prev_meta = self.server.get_entry_metadata(prev_snap, rel)
                             cur_acl = _get_acl_text(fpath)
-                            if (prev_meta
-                                    and prev_meta["uid"] == st.st_uid
-                                    and prev_meta["gid"] == st.st_gid
-                                    and stat.S_IMODE(prev_meta["mode"]) == stat.S_IMODE(mode)
-                                    and prev_meta["acl"] == cur_acl):
-                                self.server.link_entry(prev_snap, snap_name, rel)
+                            if (prev["uid"] == st.st_uid
+                                    and prev["gid"] == st.st_gid
+                                    and stat.S_IMODE(prev["mode"]) == stat.S_IMODE(mode)
+                                    and prev["acl"] == cur_acl):
+                                self.server.link_entry(prev_snap, snap_name, rel,
+                                                        is_dir=False, meta={
+                                                            "type": "file", "mode": mode,
+                                                            "uid": st.st_uid, "gid": st.st_gid,
+                                                            "size": st.st_size, "mtime": st.st_mtime,
+                                                            "ctime": st.st_ctime,
+                                                        })
                             else:
                                 meta = {
                                     "type": "file",
                                     "mode": mode,
                                     "uid": st.st_uid, "gid": st.st_gid,
                                     "atime": st.st_atime, "mtime": st.st_mtime,
+                                    "ctime": st.st_ctime,
                                     "acl": cur_acl,
                                     "size": st.st_size,
                                     "chunk_hashes": chunk_hashes,
                                 }
                                 self.server.write_entry(snap_name, rel, meta)
-                                entries.append((rel, meta))
+                                if repo_mode != "pack":
+                                    self.server.set_entry_metadata(snap_name, rel, meta)
                             skipped_files += 1
                             skipped = True
 
@@ -1090,94 +1991,116 @@ class BackupClient:
                                     stored_bytes += len(chunk)
                                     new_blocks += 1
                                 chunk_hashes.append(h)
-                                self.server.add_ref(snap_name, h)
+                                all_chunk_hashes.add(h)
+
+                        # Check if file changed while we were reading it
+                        try:
+                            st2 = os.lstat(fpath)
+                            if st2.st_mtime != st.st_mtime or st2.st_size != st.st_size:
+                                logger.warning("File changed during backup: %s", fpath)
+                        except OSError:
+                            logger.warning("File vanished during backup: %s", fpath)
 
                         meta = {
                             "type": "file",
                             "mode": mode,
                             "uid": st.st_uid, "gid": st.st_gid,
                             "atime": st.st_atime, "mtime": st.st_mtime,
+                            "ctime": st.st_ctime,
                             "acl": _get_acl_text(fpath),
                             "size": st.st_size,
                             "chunk_hashes": chunk_hashes,
                         }
                         self.server.write_entry(snap_name, rel, meta)
-                        entries.append((rel, meta))
+                        if repo_mode != "pack":
+                            self.server.set_entry_metadata(snap_name, rel, meta)
 
                 elif entry_type == "symlink":
-                    prev_meta = self.server.get_entry_metadata(prev_snap, rel) if prev_snap else None
-                    if (prev_meta
-                            and prev_meta["uid"] == st.st_uid
-                            and prev_meta["gid"] == st.st_gid
-                            and self.server.link_entry(prev_snap, snap_name, rel)):
+                    prev = self.server.get_entry_full(prev_snap, rel) if prev_snap else None
+                    meta = {
+                        "type": "symlink",
+                        "mode": mode,
+                        "uid": st.st_uid, "gid": st.st_gid,
+                        "atime": st.st_atime, "mtime": st.st_mtime,
+                        "ctime": st.st_ctime,
+                        "symlink_target": os.readlink(fpath),
+                    }
+                    if (prev
+                            and prev["uid"] == st.st_uid
+                            and prev["gid"] == st.st_gid
+                            and self.server.link_entry(prev_snap, snap_name, rel,
+                                                        is_dir=False, meta=meta)):
                         pass
                     else:
-                        meta = {
-                            "type": "symlink",
-                            "mode": mode,
-                            "uid": st.st_uid, "gid": st.st_gid,
-                            "atime": st.st_atime, "mtime": st.st_mtime,
-                            "symlink_target": os.readlink(fpath),
-                        }
                         self.server.write_entry(snap_name, rel, meta)
-                        entries.append((rel, meta))
+                        if repo_mode != "pack":
+                            self.server.set_entry_metadata(snap_name, rel, meta)
 
                 elif entry_type == "hardlink":
-                    prev_meta = self.server.get_entry_metadata(prev_snap, rel) if prev_snap else None
-                    if (prev_meta
-                            and prev_meta["uid"] == st.st_uid
-                            and prev_meta["gid"] == st.st_gid
-                            and self.server.link_entry(prev_snap, snap_name, rel)):
+                    prev = self.server.get_entry_full(prev_snap, rel) if prev_snap else None
+                    meta = {
+                        "type": "hardlink",
+                        "link_target": seen_inodes[ino_key],
+                        "mode": mode,
+                        "uid": st.st_uid, "gid": st.st_gid,
+                        "atime": st.st_atime, "mtime": st.st_mtime,
+                        "ctime": st.st_ctime,
+                    }
+                    if (prev
+                            and prev["uid"] == st.st_uid
+                            and prev["gid"] == st.st_gid
+                            and self.server.link_entry(prev_snap, snap_name, rel,
+                                                        is_dir=False, meta=meta)):
                         pass
                     else:
-                        meta = {
-                            "type": "hardlink",
-                            "link_target": seen_inodes[ino_key],
-                            "mode": mode,
-                            "uid": st.st_uid, "gid": st.st_gid,
-                            "atime": st.st_atime, "mtime": st.st_mtime,
-                        }
                         self.server.write_entry(snap_name, rel, meta)
-                        entries.append((rel, meta))
+                        if repo_mode != "pack":
+                            self.server.set_entry_metadata(snap_name, rel, meta)
                     continue
 
                 elif entry_type in ("blockdev", "chardev"):
-                    prev_meta = self.server.get_entry_metadata(prev_snap, rel) if prev_snap else None
-                    if (prev_meta
-                            and prev_meta["uid"] == st.st_uid
-                            and prev_meta["gid"] == st.st_gid
-                            and stat.S_IMODE(prev_meta["mode"]) == stat.S_IMODE(mode)
-                            and self.server.link_entry(prev_snap, snap_name, rel)):
+                    prev = self.server.get_entry_full(prev_snap, rel) if prev_snap else None
+                    meta = {
+                        "type": entry_type,
+                        "mode": mode,
+                        "uid": st.st_uid, "gid": st.st_gid,
+                        "atime": st.st_atime, "mtime": st.st_mtime,
+                        "ctime": st.st_ctime,
+                        "devmajor": os.major(st.st_rdev),
+                        "devminor": os.minor(st.st_rdev),
+                    }
+                    if (prev
+                            and prev["uid"] == st.st_uid
+                            and prev["gid"] == st.st_gid
+                            and stat.S_IMODE(prev["mode"]) == stat.S_IMODE(mode)
+                            and self.server.link_entry(prev_snap, snap_name, rel,
+                                                        is_dir=False, meta=meta)):
                         pass
                     else:
-                        meta = {
-                            "type": entry_type,
-                            "mode": mode,
-                            "uid": st.st_uid, "gid": st.st_gid,
-                            "atime": st.st_atime, "mtime": st.st_mtime,
-                            "devmajor": os.major(st.st_rdev),
-                            "devminor": os.minor(st.st_rdev),
-                        }
                         self.server.write_entry(snap_name, rel, meta)
-                        entries.append((rel, meta))
+                        if repo_mode != "pack":
+                            self.server.set_entry_metadata(snap_name, rel, meta)
 
                 elif entry_type in ("fifo", "socket"):
-                    prev_meta = self.server.get_entry_metadata(prev_snap, rel) if prev_snap else None
-                    if (prev_meta
-                            and prev_meta["uid"] == st.st_uid
-                            and prev_meta["gid"] == st.st_gid
-                            and stat.S_IMODE(prev_meta["mode"]) == stat.S_IMODE(mode)
-                            and self.server.link_entry(prev_snap, snap_name, rel)):
+                    prev = self.server.get_entry_full(prev_snap, rel) if prev_snap else None
+                    meta = {
+                        "type": entry_type,
+                        "mode": mode,
+                        "uid": st.st_uid, "gid": st.st_gid,
+                        "atime": st.st_atime, "mtime": st.st_mtime,
+                        "ctime": st.st_ctime,
+                    }
+                    if (prev
+                            and prev["uid"] == st.st_uid
+                            and prev["gid"] == st.st_gid
+                            and stat.S_IMODE(prev["mode"]) == stat.S_IMODE(mode)
+                            and self.server.link_entry(prev_snap, snap_name, rel,
+                                                        is_dir=False, meta=meta)):
                         pass
                     else:
-                        meta = {
-                            "type": entry_type,
-                            "mode": mode,
-                            "uid": st.st_uid, "gid": st.st_gid,
-                            "atime": st.st_atime, "mtime": st.st_mtime,
-                        }
                         self.server.write_entry(snap_name, rel, meta)
-                        entries.append((rel, meta))
+                        if repo_mode != "pack":
+                            self.server.set_entry_metadata(snap_name, rel, meta)
 
             except (PermissionError, OSError) as exc:
                 logger.warning("Skipping %s: %s", fpath, exc)
@@ -1185,9 +2108,18 @@ class BackupClient:
         if dry_run:
             return snap_name
 
-        # Pass 2: metadata via server — deepest paths first
-        for rel, meta in sorted(entries, key=lambda e: e[0], reverse=True):
-            self.server.set_entry_metadata(snap_name, rel, meta)
+        # Batch-link all ctime-unchanged entries in one roundtrip
+        if unchanged_entries:
+            if repo_mode == "tree":
+                logger.info("Linking unchanged entries: %d", len(unchanged_entries))
+            self.server.link_unchanged_entries(prev_snap, snap_name,
+                                               unchanged_entries)
+
+        # Deferred: set directory metadata deepest-first so mtime isn't
+        # clobbered by later file creation in tree/.
+        if dir_entries and repo_mode != "pack":
+            logger.info("Processing changed directories: %d", len(dir_entries))
+            self.server.set_dirs_metadata(snap_name, dir_entries)
 
         total_mb  = total_bytes  / 1024 ** 2
         stored_mb = stored_bytes / 1024 ** 2
@@ -1206,7 +2138,10 @@ class BackupClient:
         logger.info("Done: %d files, %d skipped, %d new blocks, %d dedup blocks", file_count, skipped_files, new_blocks, dedup_blocks)
         logger.info("Data: %.1f MiB total → %.1f MiB stored (%.1f%% saved)", total_mb, stored_mb, saved_pct)
         logger.info("Duration: %s", duration)
-        self.server.finalize_snapshot(snap_name)
+        self.server.finalize_snapshot(snap_name,
+                                      total_bytes=total_bytes,
+                                      stored_bytes=stored_bytes,
+                                      chunk_hashes=all_chunk_hashes)
         logger.info("Snapshot: %s", self.server.snap_dir(snap_name))
         return snap_name
 
@@ -1214,13 +2149,20 @@ class BackupClient:
                 filter_path: Optional[str] = None,
                 dry_run: bool = False) -> None:
         """Restore a snapshot (or a single file/dir) to dest."""
+        self.server.lock_repo()
+        try:
+            self._restore_locked(snap_name, dest, filter_path, dry_run)
+        finally:
+            self.server.unlock_repo()
+
+    def _restore_locked(self, snap_name, dest, filter_path, dry_run):
         if filter_path is not None:
             logger.info("Restoring '%s:%s' → %s", snap_name, filter_path, dest)
         else:
             logger.info("Restoring '%s' → %s", snap_name, dest)
 
         dest = os.path.abspath(dest)
-        entry_list = self.server.list_entries(snap_name, filter_path)
+        entry_list = self.server.list_entries(snap_name, filter_path, full=True)
 
         if not entry_list:
             logger.warning("No entries found")
@@ -1344,23 +2286,46 @@ class BackupClient:
 
     @staticmethod
     def format_contents(entries: list) -> list:
-        """Format a list of snapshot entries into human-readable strings."""
+        """Format a list of snapshot entries into human-readable strings.
+
+        Output resembles ls -l: type+perms owner:group size mtime path
+        """
         _type_char = {
             "file": "-", "dir": "d", "symlink": "l", "hardlink": "h",
             "blockdev": "b", "chardev": "c", "fifo": "p", "socket": "s",
         }
+        def _mode_str(mode_int):
+            """Convert mode bits to rwxrwxrwx string."""
+            m = stat.S_IMODE(mode_int)
+            parts = []
+            for shift in (6, 3, 0):
+                parts.append("r" if m & (4 << shift) else "-")
+                parts.append("w" if m & (2 << shift) else "-")
+                parts.append("x" if m & (1 << shift) else "-")
+            s = list("".join(parts))
+            if m & stat.S_ISUID:
+                s[2] = "s" if s[2] == "x" else "S"
+            if m & stat.S_ISGID:
+                s[5] = "s" if s[5] == "x" else "S"
+            if m & stat.S_ISVTX:
+                s[8] = "t" if s[8] == "x" else "T"
+            return "".join(s)
+
         lines = []
         for e in entries:
             tc = _type_char.get(e["type"], "?")
+            perms = _mode_str(e.get("mode", 0))
             size = e.get("size", 0)
+            mtime = e.get("mtime", 0)
+            mtime_str = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M") if mtime else "                "
             rel = e["rel_path"]
             suffix = ""
             if e["type"] == "symlink":
-                suffix = f" -> {e['symlink_target']}"
+                suffix = f" -> {e.get('symlink_target', '')}"
             elif e["type"] == "hardlink":
-                suffix = f" => {e['link_target']}"
+                suffix = f" => {e.get('link_target', '')}"
             lines.append(
-                f"{tc} {e['uid']:>5}:{e['gid']:<5} {size:>10}  {rel}{suffix}"
+                f"{tc}{perms} {e.get('uid', 0):>5}:{e.get('gid', 0):<5} {size:>10} {mtime_str}  {rel}{suffix}"
             )
         return lines
 
@@ -1370,62 +2335,66 @@ class BackupClient:
 # ---------------------------------------------------------------------------
 
 def cmd_verify(server: BackupServer, client: BackupClient, snap_name: str) -> bool:
-    data_dir = server.snap_data_dir(snap_name)
-    refs_dir = server.snap_refs_dir(snap_name)
-    if not data_dir.exists():
+    server.lock_repo()
+    server.load_pack_index()
+    try:
+        return _cmd_verify_locked(server, client, snap_name)
+    finally:
+        server.unlock_repo()
+
+
+def _cmd_verify_locked(server: BackupServer, client: BackupClient, snap_name: str) -> bool:
+    content = server._read_index_file(snap_name)
+    if not content:
         raise FileNotFoundError(f"Snapshot not found: {snap_name}")
 
     errors = 0
     checked = 0
 
-    for dirpath, _, filenames in os.walk(str(data_dir)):
-        for fname in filenames:
-            fpath = os.path.join(dirpath, fname)
-            st = os.lstat(fpath)
-            if not stat.S_ISREG(st.st_mode):
+    for line in content.strip().split("\n"):
+        if not line:
+            continue
+        parsed = server._parse_index_line(line)
+        if parsed is None or parsed["type"] != "file":
+            continue
+
+        rel_path = parsed["rel_path"]
+        if server.mode == "pack":
+            # Pack mode: chunk_hashes are in the index
+            chunk_hashes = parsed.get("chunk_hashes", [])
+        else:
+            tree_path = server._tree_entry_path(rel_path, snap_name)
+            try:
+                lines = server._read_gz(tree_path).strip().split("\n")
+                chunk_hashes = [h for h in lines[2:] if h] if len(lines) > 2 else []
+            except OSError:
+                logger.error("Missing tree entry for %s", rel_path)
+                errors += 1
                 continue
 
-            with open(fpath, "r") as fh:
-                lines = fh.read().strip().split("\n")
+        for h in chunk_hashes:
+            if not h:
+                continue
+            checked += 1
 
-            if not lines:
+            # Check block exists
+            if not server.block_exists(h):
+                logger.error("Missing block %s  (%s)", h[:16], rel_path)
+                errors += 1
                 continue
 
-            # Skip non-file marker entries (hardlinks, devices, fifos, sockets)
-            if lines[0] in ("HARDLINK", "BLOCKDEV", "CHARDEV", "FIFO", "SOCKET"):
+            # Decrypt and verify hash
+            try:
+                encrypted_blob = server.retrieve_block(h)
+                data = client.decrypt_block(encrypted_blob)
+            except Exception as exc:
+                logger.error("Decrypt error %s  (%s): %s", h[:16], rel_path, exc)
+                errors += 1
                 continue
 
-            chunk_hashes = [h for h in lines[1:] if h] if len(lines) > 1 else []
-
-            for h in chunk_hashes:
-                if not h:
-                    continue
-                checked += 1
-
-                # Check ref hardlink exists
-                if not (refs_dir / h).exists():
-                    logger.error("Missing ref %s  (%s)", h[:16], fpath)
-                    errors += 1
-                    continue
-
-                # Check block exists
-                if not server.block_exists(h):
-                    logger.error("Missing block %s  (%s)", h[:16], fpath)
-                    errors += 1
-                    continue
-
-                # Decrypt and verify hash
-                try:
-                    encrypted_blob = server.retrieve_block(h)
-                    data = client.decrypt_block(encrypted_blob)
-                except Exception as exc:
-                    logger.error("Decrypt error %s  (%s): %s", h[:16], fpath, exc)
-                    errors += 1
-                    continue
-
-                if hashlib.sha256(data).hexdigest() != h:
-                    logger.error("Hash mismatch %s  (%s)", h[:16], fpath)
-                    errors += 1
+            if hashlib.sha256(data).hexdigest() != h:
+                logger.error("Hash mismatch %s  (%s)", h[:16], rel_path)
+                errors += 1
 
     if errors == 0:
         print(f"OK  {snap_name}: {checked} blocks verified")

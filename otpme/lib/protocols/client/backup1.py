@@ -91,8 +91,8 @@ class OTPmeBackupP1(OTPmeFsClient1):
 
         return status
 
-    def start_backup(self):
-        command_args = {}
+    def start_backup(self, mode="pack"):
+        command_args = {'mode':mode}
         try:
             status, \
             status_code, \
@@ -128,6 +128,25 @@ class OTPmeBackupP1(OTPmeFsClient1):
             raise OTPmeException(response)
 
         return status
+
+    def get_mode(self):
+        command_args = {}
+        try:
+            status, \
+            status_code, \
+            response, \
+            binary_data = self.send(command="get_mode",
+                                    command_args=command_args)
+        except Exception as e:
+            config.raise_exception()
+            status = False
+            response = str(e)
+
+        if status is False:
+            config.raise_exception()
+            raise OTPmeException(response)
+
+        return response
 
     def get_salt(self):
         command_args = {}
@@ -167,6 +186,40 @@ class OTPmeBackupP1(OTPmeFsClient1):
 
         return response
 
+    def lock_repo(self):
+        command_args = {}
+        try:
+            status, \
+            status_code, \
+            response, \
+            binary_data = self.send(command="lock_repo",
+                                    command_args=command_args)
+        except Exception as e:
+            config.raise_exception()
+            status = False
+            response = str(e)
+
+        if status is False:
+            config.raise_exception()
+            raise OTPmeException(response)
+
+    def unlock_repo(self):
+        command_args = {}
+        try:
+            status, \
+            status_code, \
+            response, \
+            binary_data = self.send(command="unlock_repo",
+                                    command_args=command_args)
+        except Exception as e:
+            config.raise_exception()
+            status = False
+            response = str(e)
+
+        if status is False:
+            config.raise_exception()
+            raise OTPmeException(response)
+
     def create_snapshot(self, snap_name):
         command_args = {
                         'snap_name'     : snap_name,
@@ -199,51 +252,6 @@ class OTPmeBackupP1(OTPmeFsClient1):
             status_code, \
             response, \
             binary_data = self.send(command="write_entry",
-                                    command_args=command_args)
-        except Exception as e:
-            config.raise_exception()
-            status = False
-            response = str(e)
-
-        if status is False:
-            config.raise_exception()
-            raise OTPmeException(response)
-
-        return status
-
-    def get_file_entry(self, snap_name, path):
-        command_args = {
-                        'snap_name'     : snap_name,
-                        'path'          : path,
-                    }
-        try:
-            status, \
-            status_code, \
-            response, \
-            binary_data = self.send(command="get_file_entry",
-                                    command_args=command_args)
-        except Exception as e:
-            config.raise_exception()
-            status = False
-            response = str(e)
-
-        if status is False:
-            config.raise_exception()
-            raise OTPmeException(response)
-
-        return response
-
-    def copy_refs(self, from_snap, to_snap, chunk_hashes):
-        command_args = {
-                        'from_snap'     : from_snap,
-                        'to_snap'       : to_snap,
-                        'chunk_hashes'  : chunk_hashes,
-                    }
-        try:
-            status, \
-            status_code, \
-            response, \
-            binary_data = self.send(command="copy_refs",
                                     command_args=command_args)
         except Exception as e:
             config.raise_exception()
@@ -315,16 +323,17 @@ class OTPmeBackupP1(OTPmeFsClient1):
 
         return binary_data
 
-    def add_ref(self, snap_name, h):
+    def set_entry_metadata(self, snap_name, path, metadata):
         command_args = {
                         'snap_name'     : snap_name,
-                        'h'             : h,
+                        'path'          : path,
+                        'metadata'      : metadata,
                     }
         try:
             status, \
             status_code, \
             response, \
-            binary_data = self.send(command="add_ref",
+            binary_data = self.send(command="set_entry_metadata",
                                     command_args=command_args)
         except Exception as e:
             config.raise_exception()
@@ -337,17 +346,16 @@ class OTPmeBackupP1(OTPmeFsClient1):
 
         return status
 
-    def set_entry_metadata(self, snap_name, path, metadata):
+    def set_dirs_metadata(self, snap_name, dir_entries):
         command_args = {
                         'snap_name'     : snap_name,
-                        'path'          : path,
-                        'metadata'      : metadata,
+                        'dir_entries'   : dir_entries,
                     }
         try:
             status, \
             status_code, \
             response, \
-            binary_data = self.send(command="set_entry_metadata",
+            binary_data = self.send(command="set_dirs_metadata",
                                     command_args=command_args)
         except Exception as e:
             config.raise_exception()
@@ -381,10 +389,11 @@ class OTPmeBackupP1(OTPmeFsClient1):
 
         return response
 
-    def list_entries(self, snap_name, filter_path):
+    def list_entries(self, snap_name, filter_path, full=False):
         command_args = {
                         'snap_name'     : snap_name,
                         'filter_path'   : filter_path,
+                        'full'          : full,
                     }
         try:
             status, \
@@ -403,11 +412,15 @@ class OTPmeBackupP1(OTPmeFsClient1):
 
         return response
 
-    def link_entry(self, prev_snap, snap_name, rel):
+    def link_entry(self, prev_snap, snap_name, rel, is_dir=None,
+                   index_line=None, meta=None):
         command_args = {
                         'snap_name'     : snap_name,
                         'prev_snap'     : prev_snap,
                         'rel'           : rel,
+                        'is_dir'        : is_dir,
+                        'index_line'    : index_line,
+                        'meta'          : meta,
                     }
         try:
             status, \
@@ -426,16 +439,60 @@ class OTPmeBackupP1(OTPmeFsClient1):
 
         return response
 
-    def get_entry_metadata(self, prev_snap, rel):
+    def get_entry_full(self, snap_name, rel):
         command_args = {
-                        'prev_snap'     : prev_snap,
+                        'snap_name'     : snap_name,
                         'rel'           : rel,
                     }
         try:
             status, \
             status_code, \
             response, \
-            binary_data = self.send(command="get_entry_metadata",
+            binary_data = self.send(command="get_entry_full",
+                                    command_args=command_args)
+        except Exception as e:
+            config.raise_exception()
+            status = False
+            response = str(e)
+
+        if status is False:
+            config.raise_exception()
+            raise OTPmeException(response)
+
+        return response
+
+    def read_index(self, snap_name):
+        command_args = {
+                        'snap_name'     : snap_name,
+                    }
+        try:
+            status, \
+            status_code, \
+            response, \
+            binary_data = self.send(command="read_index",
+                                    command_args=command_args)
+        except Exception as e:
+            config.raise_exception()
+            status = False
+            response = str(e)
+
+        if status is False:
+            config.raise_exception()
+            raise OTPmeException(response)
+
+        return response
+
+    def link_unchanged_entries(self, prev_snap, snap_name, entries):
+        command_args = {
+                        'prev_snap'     : prev_snap,
+                        'snap_name'     : snap_name,
+                        'entries'       : entries,
+                    }
+        try:
+            status, \
+            status_code, \
+            response, \
+            binary_data = self.send(command="link_unchanged_entries",
                                     command_args=command_args)
         except Exception as e:
             config.raise_exception()
@@ -469,9 +526,12 @@ class OTPmeBackupP1(OTPmeFsClient1):
 
         return response
 
-    def finalize_snapshot(self, name):
+    def finalize_snapshot(self, name, total_bytes=0, stored_bytes=0, chunk_hashes=None):
         command_args = {
-                        'name'     : name,
+                        'name'          : name,
+                        'total_bytes'   : total_bytes,
+                        'stored_bytes'  : stored_bytes,
+                        'chunk_hashes'  : sorted(chunk_hashes) if chunk_hashes else [],
                     }
         try:
             status, \
