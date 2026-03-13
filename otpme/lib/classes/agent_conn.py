@@ -219,9 +219,12 @@ class AgentConn(object):
             raise Exception(msg)
         return response
 
-    def umount_shares(self):
+    def umount_shares(self, shares=[]):
         """ Send share umount request to otpme-agent. """
-        status, status_code, response = self.send("umount_shares")
+        command_args = {
+                        'shares' : shares,
+                    }
+        status, status_code, response = self.send("umount_shares", command_args)
         if status_code != status_codes.OK:
             msg = _("Failed to umount shares: {response}")
             msg = msg.format(response=response)

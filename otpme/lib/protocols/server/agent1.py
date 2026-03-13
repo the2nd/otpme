@@ -27,6 +27,7 @@ from otpme.lib.fuse import mount_share_proc
 #from otpme.lib.encoding.base import encode
 #from otpme.lib.encoding.base import decode
 from otpme.lib.protocols import status_codes
+from otpme.lib.fuse import remove_mount_dirs
 from otpme.lib.fuse import prepare_mount_point
 from otpme.lib.protocols.request import decode_request
 from otpme.lib.protocols.response import build_response
@@ -536,7 +537,7 @@ class OTPmeAgentP1(object):
                         log_msg = log_msg.format(error=e)
                         self.logger.warning(log_msg)
                         continue
-                    if os.path.ismount(mount_point):
+                    if stuff.is_mounted(mount_point):
                         status = False
                         msg, log_msg = _("Share already mounted: {share_id}: {mount_point}", log=True)
                         msg = msg.format(share_id=share_id, mount_point=mount_point)
@@ -599,10 +600,17 @@ class OTPmeAgentP1(object):
                 shares = {}
             if not shares:
                 message = _("No shares mounted.")
+            try:
+                umount_shares = command_args['shares']
+            except KeyError:
+                umount_shares = []
             if shares:
                 messages = []
+                mountpoints = []
                 umounted_shares = []
                 for share_id in shares:
+                    if umount_shares and share_id not in umount_shares:
+                        continue
                     share_site = shares[share_id]['site']
                     share_name = shares[share_id]['name']
                     mount_point = get_mount_point(login_user, share_site, share_name)
@@ -617,6 +625,9 @@ class OTPmeAgentP1(object):
                             log_msg = log_msg.format(mount_point=mount_point, error=e)
                             self.logger.warning(log_msg)
                             messages.append(msg)
+                            continue
+                    if not os.path.exists(mount_point):
+                        continue
                     try:
                         os.rmdir(mount_point)
                     except Exception as e:
@@ -624,6 +635,20 @@ class OTPmeAgentP1(object):
                         log_msg = log_msg.format(mount_point=mount_point, error=e)
                         self.logger.warning(log_msg)
                     umounted_shares.append(share_id)
+                    mountpoints.append(mount_point)
+                # Remove mountpoints etc.
+                if len(umounted_shares) == len(shares):
+                    remove_mount_dirs(mountpoints)
+                for share_id in umounted_shares:
+                    try:
+                        shares.pop(share_id)
+                    except KeyError:
+                        pass
+                try:
+                    self.session['mounted_shares'] = shares
+                    self.login_sessions[self.login_pid] = self.session
+                except KeyError:
+                    pass
                 msg = _("Shares unmounted: {shares}")
                 msg = msg.format(shares=umounted_shares)
                 messages.append(msg)

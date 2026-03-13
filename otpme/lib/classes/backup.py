@@ -495,11 +495,18 @@ class BackupServer:
         """Return SHA-256 hex digest of a relative path (used for meta/ filenames)."""
         return hashlib.sha256(rel_path.encode("utf-8")).hexdigest()
 
+    def _gen_hash_name(self, name: str, snap_name: str) -> str:
+        short = hashlib.sha1(name.encode("utf-8")).hexdigest()[:16]
+        tree_name = f"{short}-{snap_name}.longname"
+        return tree_name
+
     def _tree_entry_path(self, rel_path: str, snap_name: str) -> str:
         """Return the full path for a non-directory entry in tree/."""
         dirname = os.path.dirname(rel_path)
         basename = os.path.basename(rel_path)
         tree_name = f"{basename}-{snap_name}"
+        if len(tree_name.encode("utf-8")) > 255:
+            tree_name = self._gen_hash_name(basename, snap_name)
         if dirname:
             return os.path.join(str(self.tree_dir), dirname, tree_name)
         return os.path.join(str(self.tree_dir), tree_name)
@@ -1078,7 +1085,7 @@ class BackupServer:
             index_buf = []
             for rel_path, is_dir, index_line in entries:
                 if is_dir:
-                    tree_dir_path = os.path.join(tree_dir, rel_path) if rel_path != "." else tree_dir
+                    tree_dir_path = os.path.join(str(self.tree_dir), rel_path) if rel_path != "." else str(self.tree_dir)
                     os.makedirs(tree_dir_path, exist_ok=True)
                     # Hardlink meta/ entry (dirs, bucketed)
                     src_meta = self._meta_entry_path(from_snap, rel_path)

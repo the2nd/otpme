@@ -460,6 +460,16 @@ def get_signal_name(sig_number):
     signal_name = signal.Signals(sig_number).name
     return signal_name
 
+def is_mounted(mount_point):
+    """ Check if path is a mount point via /proc/mounts. """
+    mount_point = os.path.normpath(os.path.abspath(mount_point))
+    with open('/proc/mounts', 'r') as f:
+        for line in f:
+            fields = line.split()
+            if len(fields) >= 2 and os.path.normpath(fields[1]) == mount_point:
+                return True
+    return False
+
 def check_pid(pid):
     """ Check if PID is running. """
     import psutil
@@ -1756,7 +1766,7 @@ def encrypt_share_key(username, share_user, share_key, key_mode, disable_ctrl_c=
     return encrypted_share_key
 
 def decrypt_share_key(username, encrypted_share_key,
-    key_mode, encode=True, disable_ctrl_c=False):
+    key_mode, share=None, encode=True, disable_ctrl_c=False):
     import base64
     # Make sure share key is bytes.
     if isinstance(encrypted_share_key, str):
@@ -1766,6 +1776,11 @@ def decrypt_share_key(username, encrypted_share_key,
     # Add key mode.
     if key_mode == "server":
         script_command.append("--server-key")
+    # Add key script reason.
+    if share is not None:
+        reason = f"Share: {share}"
+        script_command.append("--reason")
+        script_command.append(reason)
     # Run key script.
     proc = run_key_script(username=username,
                         call=False,

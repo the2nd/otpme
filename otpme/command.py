@@ -193,7 +193,7 @@ if "--type" in sys.argv:
 config.cli_object_type = object_type
 
 # Load OTPme config.
-config.load(quiet=True)
+config.load(command=command, quiet=True)
 # Register help after loading config (e.g. gettext configured).
 register_help()
 

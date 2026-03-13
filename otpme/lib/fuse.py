@@ -334,11 +334,13 @@ class OTPmeFS(fuse.Operations):
                                     self.fsd_conn = None
                                     raise OSError(errno.EACCES, _("No share key received"))
                                 # Decrypt share key with key script.
+                                share_id = f"{self.share_site}/{self.share}"
                                 try:
                                     share_key = stuff.decrypt_share_key(self.username,
                                                                         share_key,
                                                                         key_mode=None,
-                                                                        encode=False)
+                                                                        encode=False,
+                                                                        share=share_id)
                                 except Exception as e:
                                     log_msg = _("Failed to decrypt share key: {share}: {e}", log=True)[1]
                                     log_msg = log_msg.format(share=self.share, e=e)
@@ -2134,7 +2136,7 @@ def get_mount_point(username, share_site, share_name):
 
 def prepare_mount_point(username, share_site, share):
     mount_point = get_mount_point(username, share_site, share)
-    if os.path.ismount(mount_point):
+    if stuff.is_mounted(mount_point):
         msg = _("Already mounted: {mount_point}")
         msg = msg.format(mount_point=mount_point)
         raise OTPmeException(msg)
@@ -2148,6 +2150,26 @@ def prepare_mount_point(username, share_site, share):
     finally:
         os.umask(old_usmask)
     return mount_point
+
+def remove_mount_dirs(mountpoints):
+    logger = config.logger
+    for mount_point in mountpoints:
+        site_dir = os.path.dirname(mount_point)
+        if os.path.exists(site_dir):
+            try:
+                os.rmdir(site_dir)
+            except Exception as e:
+                log_msg = _("Failed to rmdir mountpoint dir: {site_dir}: {error}", log=True)[1]
+                log_msg = log_msg.format(site_dir=site_dir, error=e)
+                logger.warning(log_msg)
+        user_dir = os.path.dirname(site_dir)
+    if os.path.exists(user_dir):
+        try:
+            os.rmdir(user_dir)
+        except Exception as e:
+            log_msg = _("Failed to rmdir user mountpoint dir: {user_dir}: {error}", log=True)[1]
+            log_msg = log_msg.format(user_dir=user_dir, error=e)
+            logger.warning(log_msg)
 
 def mount_share_proc(share, share_site, mount, nodes, encrypted, **kwargs):
     new_proctitle = f"otpme-mount {share} {mount}"

@@ -72,7 +72,16 @@ def fix_snapshot_path():
                             if stat.S_ISDIR(mode):
                                 is_dir = True
                         if not is_dir:
-                            path = f"{path}-{self.snapshot}"
+                            x = f"{path}-{self.snapshot}"
+                            if len(x) <= 255:
+                                path = x
+                            else:
+                                basename = os.path.basename(path)
+                                file_name = self.backup_handler._gen_hash_name(basename,
+                                                                            self.snapshot)
+                                path = path.split("/")
+                                path[-1] = file_name
+                                path = "/".join(path)
             return f(self, path, *args, **kwargs)
         return wrapped
     return wrapper
@@ -480,48 +489,24 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = _("Mount first.")
                 message = message.format(repository=self.repository)
                 return self.build_response(status, message)
+            self.set_proctitle(self.repository, action="read_restore_file")
             try:
                 path = command_args['path']
             except KeyError:
                 status = False
                 message = _("Missing path.")
                 return self.build_response(status, message)
-            path = path.split("/")
-            snapshot = path.pop(1)
-            path.insert(1, "tree")
-            path = "/".join(path)
-            path = f"{path}-{snapshot}"
-            restore_file = f"{self.root}/{path}"
             try:
-                fd = open(restore_file, "rb")
+                binary_data = self.read_restore_file(path)
             except Exception as e:
-                log_msg = _("Failed to open restore file: {e}", log=True)[1]
+                log_msg = _("Failed to load restore file: {e}", log=True)[1]
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)
                 status = False
-                message = _("Failed to open restore file.")
-                return self.build_response(status, message)
-            try:
-                raw_data = fd.read()
-            except Exception as e:
-                log_msg = _("Failed to read restore file: {e}", log=True)[1]
-                log_msg = log_msg.format(e=e)
-                self.logger.warning(log_msg)
-                status = False
-                message = _("Failed to read restore file.")
-                return self.build_response(status, message)
-            try:
-                binary_data = gzip.decompress(raw_data)
-            except Exception as e:
-                log_msg = _("Failed to decrompress restore file: {e}", log=True)[1]
-                log_msg = log_msg.format(e=e)
-                self.logger.warning(log_msg)
-                status = False
-                message = _("Failed to decrompress restore file.")
+                message = _("Failed to load restore file.")
                 return self.build_response(status, message)
             status = True
             message = _("Restore file data.")
-            self.set_proctitle(self.repository, action="read_restore_file")
             return self.build_response(status, message, binary_data=binary_data)
 
         elif command == "get_chunk":
@@ -906,6 +891,51 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = str(e)
             return self.build_response(status, message)
 
+    def load_longname(self, file_path):
+        longname_file = f"{self.root}/{file_path}"
+        with gzip.open(longname_file, 'rt') as f:
+            file_path = f.readline().replace("\n", "")
+        return file_path
+
+    def resolve_longname(self, path, name):
+        if not name.endswith(".longname"):
+            msg = _("Not logname.")
+            raise OTPmeException(msg)
+        file_path = f"{path}/{name}"
+        name = re.sub('(.*).longname$', r'\1', name)
+        if not name.endswith(self.snapshot):
+            msg = _("Not from this snapshot.")
+            raise OTPmeException(msg)
+        file_path = self.load_longname(file_path)
+        entry = os.path.basename(file_path)
+        return name, entry, True
+
+    @fix_snapshot_path()
+    def read_restore_file(self, path):
+        restore_file = f"{self.root}/{path}"
+        try:
+            fd = open(restore_file, "rb")
+        except Exception as e:
+            log_msg = _("Failed to open restore file: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            raise OTPmeException(log_msg)
+        try:
+            raw_data = fd.read()
+        except Exception as e:
+            log_msg = _("Failed to read restore file: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            raise OTPmeException(log_msg)
+        try:
+            binary_data = gzip.decompress(raw_data)
+        except Exception as e:
+            log_msg = _("Failed to decrompress restore file: {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            self.logger.warning(log_msg)
+            raise OTPmeException(log_msg)
+        return binary_data
+
     def chmod(self, path: str, mode: int) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
 
@@ -966,20 +996,34 @@ class OTPmeBackupP1(OTPmeFsServer1):
             if stat.S_ISDIR(x_mode):
                 readdir_result.append(x)
                 continue
-            if not x.endswith(self.snapshot):
-                continue
-            entry = re.sub(f'(.*)-{self.snapshot}$', r'\1', x)
+            try:
+                x, entry, longname = self.resolve_longname(path, x)
+            except Exception as e:
+                longname = False
+            if not longname:
+                if not x.endswith(self.snapshot):
+                    continue
+                entry = re.sub(f'(.*)-{self.snapshot}$', r'\1', x)
             readdir_result.append(entry)
         result['readdir'] = readdir_result
         for x_path in dict(result['getattr']):
             x_data = result['getattr'].pop(x_path)
+            if x_path.endswith(".longname"):
+                longname = x_path
+                x_path = re.sub('(.*).longname$', r'\1', x_path)
+            else:
+                longname = False
             if not x_path.endswith(self.snapshot):
                 continue
-            x_path = x_path.split("/")
+            if longname:
+                longname = self.load_longname(longname)
+                x_path = x_path.split("/")
+                x_path[-1] = longname
+            else:
+                x_path = x_path.split("/")
             x_path.pop(1)
             x_path.insert(1, self.snapshot)
             x_path = "/".join(x_path)
-            x_path = x_path.replace("-" + self.snapshot, "")
             x_path = re.sub(f'(.*)-{self.snapshot}$', r'\1', x_path)
         for x_path in dict(result['getxattr']):
             x_data = result['getxattr'].pop(x_path)

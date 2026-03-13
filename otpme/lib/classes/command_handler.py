@@ -5948,9 +5948,6 @@ class CommandHandler(object):
 
     def handle_mount(self, command, subcommand):
         import argparse
-        from otpme.lib import cli
-        from otpme.lib import multiprocessing
-        from otpme.lib.fuse import mount_share
         parser = argparse.ArgumentParser()
         parser.add_argument("--foreground", dest="foreground", action="store_true", help="Run in foreground")
         parser.add_argument("--list", dest="list_shares", action="store_true", help="List shares")
@@ -5959,47 +5956,138 @@ class CommandHandler(object):
         parser.add_argument("--encrypted", dest="encrypted", action="store_true", help="Share is encrypted")
         parser.add_argument("--add-share-key", dest="add_share_key", action="store_true", help="Add share key to share")
         parser.add_argument("--master-password-mount", dest="master_password_mount", action="store_true", help="Use master password to mount encrypted share.")
+        parser.add_argument("-a", dest="mount_all", action="store_true", help="Mount all shares")
+        parser.add_argument("-u", dest="umount", action="store_true", help="Mount all shares")
         parser.add_argument('share', nargs='?')
         parser.add_argument('mount', nargs='?')
         args = parser.parse_args(sys.argv)
 
-        if args.add_share_key:
-            if not args.master_password_mount:
-                msg = "Need --master-password-mount with --add-share-key"
-                raise OTPmeException(msg)
-            if config.login_user != "root":
-                msg = "You must be root for --add-share-key."
-                raise OTPmeException(msg)
-        self.init(use_backend=False)
-        hard = False
-        nodes = None
-        encrypted = None
-        if args.hard:
-            hard = True
-        if args.nodes:
-            nodes = args.nodes.split(",")
-        if args.encrypted:
-            encrypted = True
+        share_id = args.share
+        mount_point = args.mount
         master_password_mount = args.master_password_mount
-        try:
-            login_session_id = self.get_login_session_id()
-        except Exception as e:
-            msg = f"Unable to get login session ID: {e}"
-            raise OTPmeException(msg)
+        add_share_key = args.add_share_key
+        foreground = args.foreground
+        encrypted = args.encrypted
+        hard = args.hard
+
         if args.list_shares:
             response = self.send_command(daemon="mgmtd",
                                     command="get_shares",
                                     parse_command_syntax=False,
                                     client_type="RAPI")
             return response
-        share_id = args.share
+
+        # Mount all shares.
+        if args.mount_all and not args.umount:
+            if mount_point:
+                msg = _("Mountpoint not valid with -a")
+                raise OTPmeException(msg)
+            if foreground:
+                msg = _("--foreground not valid with -a")
+                raise OTPmeException(msg)
+            if master_password_mount:
+                msg = _("--master-password-mount not valid with -a")
+                raise OTPmeException(msg)
+            if add_share_key:
+                msg = _("--add-share-key not valid with -a")
+                raise OTPmeException(msg)
+            response = self.send_command(daemon="mgmtd",
+                                    command="get_shares",
+                                    parse_command_syntax=False,
+                                    client_type="RAPI")
+            mount_error = False
+            for share_id in response:
+                encrypted = response[share_id]['encrypted']
+                nodes = response[share_id]['nodes']
+                try:
+                    self.mount_share(share_id=share_id,
+                                    encrypted=encrypted,
+                                    hard=hard,
+                                    nodes=nodes)
+                except Exception as e:
+                    msg = _("Failed to mount share: {share_id}: {e}")
+                    msg = msg.format(share_id=share_id, e=e)
+                    error_message(msg)
+                    mount_error = True
+            if mount_error:
+                msg = _("Mount failure.")
+                raise OTPmeException(msg)
+            return
+
+        # Umount all shares.
+        if args.mount_all and args.umount:
+            try:
+                agent_conn = connections.get("agent")
+            except Exception as e:
+                msg = _("Error getting agent connection: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg)
+            # Umount shares.
+            try:
+                agent_conn.umount_shares()
+            except Exception as e:
+                msg = _("Error unmounting shares: {error}")
+                msg = msg.format(error=e)
+                raise Exception(msg)
+            return
+
+        # Umount share.
+        if args.umount:
+            if not share_id:
+                msg = _("Command misses share ID.")
+                raise OTPmeException(msg)
+            try:
+                agent_conn = connections.get("agent")
+            except Exception as e:
+                msg = _("Error getting agent connection: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg)
+            # Umount shares.
+            try:
+                agent_conn.umount_shares(shares=[share_id])
+            except Exception as e:
+                msg = _("Error unmounting shares: {error}")
+                msg = msg.format(error=e)
+                raise Exception(msg)
+            return
+
+        nodes = None
+        if args.nodes:
+            nodes = args.nodes.split(",")
+        return self.mount_share(share_id=share_id,
+                                mount_point=mount_point,
+                                encrypted=encrypted,
+                                hard=hard,
+                                nodes=nodes,
+                                master_password_mount=master_password_mount,
+                                add_share_key=add_share_key,
+                                foreground=foreground)
+
+    def mount_share(self, share_id, mount_point=None, encrypted=False,
+        nodes=None, hard=False, master_password_mount=False,
+        add_share_key=False, foreground=False):
+        from otpme.lib import cli
+        from otpme.lib import multiprocessing
+        from otpme.lib.fuse import mount_share
+        if add_share_key:
+            if not master_password_mount:
+                msg = "Need --master-password-mount with --add-share-key"
+                raise OTPmeException(msg)
+            if config.login_user != "root":
+                msg = "You must be root for --add-share-key."
+                raise OTPmeException(msg)
+        self.init(use_backend=False)
+        try:
+            login_session_id = self.get_login_session_id()
+        except Exception as e:
+            msg = f"Unable to get login session ID: {e}"
+            raise OTPmeException(msg)
         try:
             share_site = share_id.split("/")[0]
             share_name = share_id.split("/")[1]
         except:
             msg = f"Invalid share: {share_id}"
             raise OTPmeException(msg)
-        mount_point = args.mount
         if nodes is None or mount_point is None:
             command_args = {'share_id':share_id}
             response = self.send_command(daemon="mgmtd",
@@ -6033,7 +6121,7 @@ class CommandHandler(object):
                 msg = msg.format(e=e)
                 raise OTPmeException(msg)
         os.environ['OTPME_LOGIN_SESSION'] = login_session_id
-        if args.foreground:
+        if foreground:
             mount_share(share_name,
                         share_site,
                         mount_point,
@@ -6041,15 +6129,15 @@ class CommandHandler(object):
                         encrypted,
                         hard=hard,
                         master_password=master_password,
-                        add_share_key=args.add_share_key,
-                        foreground=args.foreground)
+                        add_share_key=add_share_key,
+                        foreground=foreground)
         else:
             mount_proc = multiprocessing.start_process(name="mount",
                                                     target=mount_share,
                                                     target_args=(share_name, share_site, mount_point, nodes, encrypted),
                                                     target_kwargs={
                                                                     'master_password'   : master_password,
-                                                                    'add_share_key'     : args.add_share_key,
+                                                                    'add_share_key'     : add_share_key,
                                                                     'hard'              : hard,
                                                                     'foreground'        : False,
                                                                 },

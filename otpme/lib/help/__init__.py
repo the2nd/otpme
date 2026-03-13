@@ -531,10 +531,11 @@ def get_main_opts(clear_cache=False, mod_name=None):
             main_opts['force_logfile'] = str(sys.argv[0])
             sys.argv.pop(0)
         elif sys.argv[0] == "-u":
-            sys.argv.pop(0)
-            username = sys.argv[0]
-            sys.argv.pop(0)
-            main_opts['login_user'] = username
+            if config.command != "mount":
+                sys.argv.pop(0)
+                username = sys.argv[0]
+                sys.argv.pop(0)
+                main_opts['login_user'] = username
         elif sys.argv[0] == "-t":
             sys.argv.pop(0)
             try:

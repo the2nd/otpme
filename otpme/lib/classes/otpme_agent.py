@@ -26,6 +26,7 @@ from otpme.lib import init_otpme
 from otpme.lib import connections
 from otpme.lib import multiprocessing
 from otpme.lib.fuse import get_mount_point
+from otpme.lib.fuse import remove_mount_dirs
 from otpme.lib.protocols import status_codes
 #from otpme.lib.messages import error_message
 from otpme.lib.register import register_module
@@ -431,6 +432,7 @@ class OTPmeAgent(UnixDaemon):
             except KeyError:
                 shares = []
             messages = []
+            mountpoints = []
             umounted_shares = []
             for share_id in shares:
                 share_name = shares[share_id]['name']
@@ -452,7 +454,10 @@ class OTPmeAgent(UnixDaemon):
                     log_msg = _("Failed to rmdir mountpoint: {mount_point}: {error}", log=True)[1]
                     log_msg = log_msg.format(mount_point=mount_point, error=e)
                     self.logger.warning(log_msg)
+                mountpoints.append(mount_point)
                 umounted_shares.append(share_id)
+            # Remove user mount dirs.
+            remove_mount_dirs(mountpoints)
             if umounted_shares:
                 log_msg = _("Shares unmounted: {shares}", log=True)[1]
                 log_msg = log_msg.format(shares=umounted_shares)

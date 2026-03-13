@@ -156,6 +156,8 @@ class OTPmeConfig(object):
         self.register_config_var("ldap_verify_acls", bool, False,
                                 config_file_parameter="LDAP_VERIFY_ACLS")
         self.register_config_var("_logger", None, None)
+        # OTPme command that was called.
+        self.register_config_var("command", None, None)
         # Index type to use.
         self.register_config_var("index_type", str, "postgres",
                                 config_file_parameter="INDEX")
@@ -904,12 +906,14 @@ class OTPmeConfig(object):
         builtins._ = get_locales
 
 
-    def load(self, quiet=False, configure_logger=None):
+    def load(self, command=None, quiet=False, configure_logger=None):
         """ Load config. """
         from otpme.lib import filetools
         from otpme.lib.register import register_module
         # Set own PID.
         self.my_pid = os.getpid()
+        # Set command.
+        self.command = command
 
         # Setup locale.
         self.setup_locale("en")
