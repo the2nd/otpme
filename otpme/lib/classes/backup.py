@@ -266,6 +266,9 @@ class BackupServer:
         self._active_pack_size  = 0
         self._max_pack_size     = 512 * 1024 * 1024  # 512 MiB
         self._index_dirty       = False
+        # Parsed snapshot index cache for pack mode (snap_name -> {rel_path -> parsed})
+        self._snap_index_cache  = {}
+        self._snap_index_cache_name = None
 
     # -- repository locking --
 
@@ -323,6 +326,24 @@ class BackupServer:
         if self.mode is None:
             self._load_mode()
         return self.mode
+
+    def _get_parsed_snap_index(self, snap_name: str) -> dict:
+        """Return {rel_path: parsed_dict} for a snapshot, cached."""
+        if self._snap_index_cache_name == snap_name:
+            return self._snap_index_cache
+        content = self._read_index_file(snap_name)
+        result = {}
+        if content:
+            for line in content.strip().split("\n"):
+                if not line:
+                    continue
+                parsed = self._parse_index_line(line)
+                if parsed is None:
+                    continue
+                result[parsed["rel_path"]] = parsed
+        self._snap_index_cache = result
+        self._snap_index_cache_name = snap_name
+        return result
 
     def init_repository(self, mode=None):
         """Create the backup directory structure if it doesn't exist."""
@@ -898,36 +919,28 @@ class BackupServer:
         also file_size, file_mtime, chunk_hashes.  Returns None if not found.
         """
         if self.mode == "pack":
-            # Pack mode: read from index
-            content = self._read_index_file(snap_name)
-            if not content:
+            # Pack mode: O(1) lookup from cached parsed index
+            index = self._get_parsed_snap_index(snap_name)
+            parsed = index.get(rel_path)
+            if parsed is None:
                 return None
-            for line in content.strip().split("\n"):
-                if not line:
-                    continue
-                parsed = self._parse_index_line(line)
-                if parsed is None:
-                    continue
-                if parsed["rel_path"] != rel_path:
-                    continue
-                result = {
-                    "mode": parsed["mode"],
-                    "uid": parsed["uid"],
-                    "gid": parsed["gid"],
-                    "mtime": parsed["mtime"],
-                    "acl": parsed.get("acl"),
-                }
-                if parsed["type"] == "file":
-                    result["type_line"] = f"{parsed['size']} {parsed['mtime']!r}"
-                    result["file_size"] = parsed["size"]
-                    result["file_mtime"] = parsed["mtime"]
-                    result["chunk_hashes"] = parsed.get("chunk_hashes", [])
-                elif parsed["type"] == "dir":
-                    result["type_line"] = "DIR"
-                else:
-                    result["type_line"] = parsed["type"].upper()
-                return result
-            return None
+            result = {
+                "mode": parsed["mode"],
+                "uid": parsed["uid"],
+                "gid": parsed["gid"],
+                "mtime": parsed["mtime"],
+                "acl": parsed.get("acl"),
+            }
+            if parsed["type"] == "file":
+                result["type_line"] = f"{parsed['size']} {parsed['mtime']!r}"
+                result["file_size"] = parsed["size"]
+                result["file_mtime"] = parsed["mtime"]
+                result["chunk_hashes"] = parsed.get("chunk_hashes", [])
+            elif parsed["type"] == "dir":
+                result["type_line"] = "DIR"
+            else:
+                result["type_line"] = parsed["type"].upper()
+            return result
 
         # Tree mode: read from tree/ and meta/ files
         tree_path = self._tree_entry_path(rel_path, snap_name)
