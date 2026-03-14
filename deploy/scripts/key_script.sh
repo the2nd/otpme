@@ -82,11 +82,10 @@ exit
 #OTPME_DECRYPT_SCRIPT_END#
 '
 
-
 # Get command line options
 get_opts () {
         # Get options
-        if ! ARGS=`getopt -n $BASENAME -l help -l api -l auth-token -l rsa -l no-rsa -l salt-file -l key-enc -l use-gpg -l yubikey-hmac -l yubikey-piv -l server-key -l force-pass -l no-self-decrypt u:b:h $*` ; then
+        if ! ARGS=`getopt -n $BASENAME -l help -l api -l auth-token -l rsa -l no-rsa -l salt-file -l key-enc -l use-gpg -l yubikey-hmac -l yubikey-piv -l use-agent-piv -l server-key -l force-pass -l no-self-decrypt -l reason u:b:h $*` ; then
                 show_help
                 return 1
         fi
@@ -105,6 +104,11 @@ get_opts () {
 							shift
                         ;;
 
+
+                        --use-agent-piv)
+							shift
+							USE_AGENT_PIV="true"
+                        ;;
 
                         --yubikey-piv)
 							shift
@@ -137,6 +141,13 @@ get_opts () {
                         -b)
 							shift
 							KEY_LEN="$1"
+							shift
+                        ;;
+
+
+                        --reason)
+							shift
+							REASON="$1"
 							shift
                         ;;
 
@@ -483,7 +494,11 @@ read_pass_from_tty () {
 		fi
 
 	fi
-	PIN="$(echo -e "SETDESC Private key password for command $COMMAND\nSETPROMPT $PROMPT:\nGETPIN\n" | $PINENTRY -T "$GPG_TTY" | grep "^D " | cut -d' ' -f2-)"
+	if [ "$REASON" != "" ] ; then
+		PIN="$(echo -e "SETDESC Private key password for command $COMMAND ($REASON)\nSETPROMPT $PROMPT:\nGETPIN\n" | $PINENTRY -T "$GPG_TTY" | grep "^D " | cut -d' ' -f2-)"
+	else
+		PIN="$(echo -e "SETDESC Private key password for command $COMMAND\nSETPROMPT $PROMPT:\nGETPIN\n" | $PINENTRY -T "$GPG_TTY" | grep "^D " | cut -d' ' -f2-)"
+	fi
 	echo "$PIN"
 	#echo -n "$PROMPT" > /dev/tty
 	#read -s PASSWORD < /dev/tty
@@ -594,11 +609,23 @@ decrypt_file () {
 		# Handle RSA encrypted AES key.
 		if [ "$KEY_ENC_TYPE" = "rsa" ] ; then
 			if [ "$YUBIKEY_PIV" = "true" ] ; then
-				export PIN="$(read_pass_from_tty "Token PIN: ")"
-				if [ "$PIN" = "" ] ; then
-					exit 1
+				if [ "$USE_AGENT_PIV" = "true" ] ; then
+					USE_AGENT_OPT="--use-agent"
+					if ! otpme-yk-piv --piv-check > /dev/null 2>&1 ; then
+						export PIN="$(read_pass_from_tty "Token PIN: ")"
+						if [ "$PIN" = "" ] ; then
+							exit 1
+						fi
+						otpme-yk-piv --piv-login --pin "env:PIN" > /dev/null 2>&1
+					fi
+				else
+					export PIN="$(read_pass_from_tty "Token PIN: ")"
+					if [ "$PIN" = "" ] ; then
+						exit 1
+					fi
+					PIN_OPT="--pin env:PIN"
 				fi
-				AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | otpme-yk-piv --decrypt --pin "env:PIN")"
+				AES_KEY="$(echo "$AES_KEY_ENCRYPTED" | base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt $PIN_OPT)"
 			elif [ "$KEY_MODE" = "server" ] ; then
 				if [ "$_OTPME_KEYSCRIPT_KEY_PASS" = "" ] ; then
 					#if ! AES_KEY="$(otpme-user $OTPME_OPTS decrypt --data "$AES_KEY_ENCRYPTED" "$_OTPME_KEYSCRIPT_USER" | base64 -d)" ; then
@@ -622,11 +649,23 @@ decrypt_file () {
 	# Handle RSA encrypted data.
 	if [ "$ENC_TYPE" = "RSA" ] ; then
 		if [ "$YUBIKEY_PIV" = "true" ] ; then
-			export PIN="$(read_pass_from_tty "Token PIN: ")"
-			if [ "$PIN" = "" ] ; then
-				exit 1
+			if [ "$USE_AGENT_PIV" = "true" ] ; then
+				USE_AGENT_OPT="--use-agent"
+				if ! otpme-yk-piv --piv-check > /dev/null 2>&1 ; then
+					export PIN="$(read_pass_from_tty "Token PIN: ")"
+					if [ "$PIN" = "" ] ; then
+						exit 1
+					fi
+					otpme-yk-piv --piv-login --pin "env:PIN" > /dev/null 2>&1
+				fi
+			else
+				export PIN="$(read_pass_from_tty "Token PIN: ")"
+				if [ "$PIN" = "" ] ; then
+					exit 1
+				fi
+				PIN_OPT="--pin env:PIN"
 			fi
-			echo -n "$RSA_DATA" | otpme-yk-piv --decrypt --pin "env:PIN"
+			echo -n "$RSA_DATA" | otpme-yk-piv $USE_AGENT_OPT --decrypt $PIN_OPT
 		elif [ "$KEY_MODE" = "server" ] ; then
 			RSA_DATA="$(cat)"
 			if [ "$_OTPME_KEYSCRIPT_KEY_PASS" = "" ] ; then
@@ -741,11 +780,23 @@ case "$COMMAND" in
 
 	rsa_decrypt)
 		if [ "$YUBIKEY_PIV" = "true" ] ; then
-			export PIN="$(read_pass_from_tty "Token PIN: ")"
-			if [ "$PIN" = "" ] ; then
-				exit 1
+			if [ "$USE_AGENT_PIV" = "true" ] ; then
+				USE_AGENT_OPT="--use-agent"
+				if ! otpme-yk-piv --piv-check > /dev/null 2>&1 ; then
+					export PIN="$(read_pass_from_tty "Token PIN: ")"
+					if [ "$PIN" = "" ] ; then
+						exit 1
+					fi
+					otpme-yk-piv --piv-login --pin "env:PIN" > /dev/null 2>&1
+				fi
+			else
+				export PIN="$(read_pass_from_tty "Token PIN: ")"
+				if [ "$PIN" = "" ] ; then
+					exit 1
+				fi
+				PIN_OPT="--pin env:PIN"
 			fi
-			cat - | base64 -d | otpme-yk-piv --decrypt --pin "env:PIN"
+			cat - | base64 -d | otpme-yk-piv $USE_AGENT_OPT --decrypt $PIN_OPT
 		elif [ "$KEY_MODE" = "server" ] ; then
 			#DATA="$(cat -)"
 			#otpme-user $OTPME_OPTS decrypt --data "$DATA" "$_OTPME_KEYSCRIPT_USER" | base64 -d
@@ -768,11 +819,23 @@ case "$COMMAND" in
 			exit 1
 		fi
 		if [ "$YUBIKEY_PIV" = "true" ] ; then
-			export PIN="$(read_pass_from_tty "Token PIN: ")"
-			if [ "$PIN" = "" ] ; then
-				exit 1
+			if [ "$USE_AGENT_PIV" = "true" ] ; then
+				USE_AGENT_OPT="--use-agent"
+				if ! otpme-yk-piv --piv-check > /dev/null 2>&1 ; then
+					export PIN="$(read_pass_from_tty "Token PIN: ")"
+					if [ "$PIN" = "" ] ; then
+						exit 1
+					fi
+					otpme-yk-piv --piv-login --pin "env:PIN" > /dev/null 2>&1
+				fi
+			else
+				export PIN="$(read_pass_from_tty "Token PIN: ")"
+				if [ "$PIN" = "" ] ; then
+					exit 1
+				fi
+				PIN_OPT="--pin env:PIN"
 			fi
-			if ! SIGNATURE="$(cat "$FILE" | otpme-yk-piv --sign --pin "env:PIN" | base64 -w 0)" ; then
+			if ! SIGNATURE="$(cat "$FILE" | otpme-yk-piv --use-agent --sign $PIN_OPT | base64 -w 0)" ; then
 				exit 1
 			fi
 		elif [ "$KEY_MODE" = "server" ] ; then

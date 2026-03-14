@@ -1652,6 +1652,12 @@ class CommandHandler(object):
                 raise OTPmeException(_("Not logged in."))
             return login_token
 
+        if subcommand == "get_login_token_type":
+            login_token = self.get_login_token_type()
+            if not login_token:
+                raise OTPmeException(_("Not logged in."))
+            return login_token
+
         if subcommand == "get_login_pass_type":
             login_pass_type = self.get_login_pass_type()
             if not login_pass_type:
@@ -4435,36 +4441,9 @@ class CommandHandler(object):
 
         return mschap_data
 
-    def get_login_pass_type(self):
-        """ Get login token from otpme-agent. """
-        from otpme.lib import connections
-        agent_conn = None
-        login_pass_type = None
-
-        # Try to get agent connection.
-        try:
-            agent_conn = connections.get("agent")
-        except Exception as e:
-            msg = _("Unable to get agent connection: {e}")
-            msg = msg.format(e=e)
-            raise OTPmeException(msg)
-
-        # Try to get login token.
-        try:
-            login_pass_type = agent_conn.get_login_pass_type()
-        except Exception as e:
-            msg = _("Error getting login pass type from agent: {e}")
-            msg = msg.format(e=e)
-            raise OTPmeException(msg)
-
-        return login_pass_type
-
     def get_login_token(self):
         """ Get login token from otpme-agent. """
         from otpme.lib import connections
-        agent_conn = None
-        login_token = None
-
         # Try to get agent connection.
         try:
             agent_conn = connections.get("agent")
@@ -4472,7 +4451,6 @@ class CommandHandler(object):
             msg = _("Unable to get agent connection: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg)
-
         # Try to get login token.
         try:
             login_token = agent_conn.get_login_token()
@@ -4480,8 +4458,45 @@ class CommandHandler(object):
             msg = _("Error getting login user from agent: {e}")
             msg = msg.format(e=e)
             raise OTPmeException(msg)
-
         return login_token
+
+    def get_login_token_type(self):
+        """ Get login token type from otpme-agent. """
+        from otpme.lib import connections
+        # Try to get agent connection.
+        try:
+            agent_conn = connections.get("agent")
+        except Exception as e:
+            msg = _("Unable to get agent connection: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
+        # Try to get login token type.
+        try:
+            login_token_type = agent_conn.get_login_token_type()
+        except Exception as e:
+            msg = _("Error getting login user from agent: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
+        return login_token_type
+
+    def get_login_pass_type(self):
+        """ Get login token from otpme-agent. """
+        from otpme.lib import connections
+        # Try to get agent connection.
+        try:
+            agent_conn = connections.get("agent")
+        except Exception as e:
+            msg = _("Unable to get agent connection: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
+        # Try to get login token.
+        try:
+            login_pass_type = agent_conn.get_login_pass_type()
+        except Exception as e:
+            msg = _("Error getting login pass type from agent: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
+        return login_pass_type
 
     def start_sync(self, sync_type, resync=False, realm=None, site=None):
         """ Tell daemon to start sync. """

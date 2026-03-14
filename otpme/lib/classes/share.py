@@ -1608,13 +1608,10 @@ class Share(OTPmeObject):
                         msg = _("Failed to receive share key from client.")
                         return callback.error(msg)
             if share_key:
-                if not self.add_share_key(username=user.name,
+                self.add_share_key(username=user.name,
                                     share_key=share_key,
                                     callback=callback,
-                                    verify_acls=False):
-                    msg = _("Failed to add share key for user: {user}")
-                    msg = msg.format(user=user)
-                    return callback.error(msg)
+                                    verify_acls=False)
 
         return super(Share, self).add_token(token_path=token_path,
                                         callback=callback, **kwargs)

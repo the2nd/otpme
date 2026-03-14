@@ -740,9 +740,15 @@ def get_opts(command_syntax, command_line, command_args={},
                     elif var_type == str:
                         para_val = str(para_val)
                     else:
-                        para_val = stuff.string_to_type(para_val)
+                        if found_end_of_opts:
+                            para_val = " ".join(command_line)
+                        else:
+                            para_val = stuff.string_to_type(para_val)
                     command_args[para_var] = para_val
-                    command_line.pop(0)
+                    if found_end_of_opts:
+                        command_line = []
+                    else:
+                        command_line.pop(0)
                 elif key_name:
                     if "=" in command_line[0]:
                         if not val_name:

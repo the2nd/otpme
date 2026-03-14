@@ -29,6 +29,7 @@ if os.path.exists(PYTHONPATH_FILE):
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.hazmat.primitives.serialization import NoEncryption
 from cryptography.hazmat.primitives.serialization import PrivateFormat
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 from otpme.lib.smartcard.yubikey.piv import slot_map
@@ -60,6 +61,15 @@ def _resolve_pin(pin_arg):
     return pin_arg
 
 
+def _get_agent():
+    """Connect to otpme-agent and return AgentConn."""
+    from otpme.lib.otpme_config import OTPmeConfig
+    OTPmeConfig(tool_name="otpme-yk-piv")
+    from otpme.lib import connections
+    agent_conn = connections.get("agent")
+    return agent_conn
+
+
 def main():
     parser = argparse.ArgumentParser(description="YubiKey PIV management tool")
     parser.add_argument("--slot", default="AUTHENTICATION", choices=slot_map.keys(),
@@ -67,6 +77,8 @@ def main():
     parser.add_argument("--mgmt-key", default=None, help="Management key (hex)")
     parser.add_argument("--pin", default=None, help="PIN")
     parser.add_argument("--serial", type=int, default=None, help="YubiKey serial number")
+    parser.add_argument("--use-agent", action="store_true",
+                        help="Use otpme-agent for PIV operations")
     parser.add_argument("--list", action="store_true", help="List keys on YubiKey")
     parser.add_argument("--reset", action="store_true", help="Reset PIV applet to factory defaults")
     parser.add_argument("--import", dest="import_key", action="store_true",
@@ -89,19 +101,45 @@ def main():
     parser.add_argument("--challenge", default=None, help="Challenge string for password derivation")
     parser.add_argument("--derive-length", type=int, default=32,
                         help="Length of derived password in bytes (default: 32)")
+    parser.add_argument("--piv-login", action="store_true",
+                        help="Login to PIV session via otpme-agent")
+    parser.add_argument("--piv-check", action="store_true",
+                        help="Check if PIV session in otpme-agent is alive")
     args = parser.parse_args()
 
-    if args.derive_password:
+    if args.piv_login:
+        agent = _get_agent()
+        pin = _resolve_pin(args.pin) or getpass.getpass("PIN: ")
+        response = agent.piv_login(pin)
+        print(response)
+
+    elif args.piv_check:
+        agent = _get_agent()
+        if agent.piv_check():
+            print("PIV session is active.")
+        else:
+            print("No active PIV session.")
+            sys.exit(1)
+
+    elif args.derive_password:
         if not args.challenge:
             parser.error("--derive-password requires --challenge")
-        pin = _resolve_pin(args.pin) or getpass.getpass("PIN: ")
-        pw = derive_password(
-            challenge=args.challenge,
-            pin=pin,
-            slot=args.slot,
-            length=args.derive_length,
-            serial=args.serial,
-        )
+        if args.use_agent:
+            agent = _get_agent()
+            pw = agent.piv_derive_password(
+                challenge=args.challenge,
+                slot=args.slot,
+                length=args.derive_length,
+            )
+        else:
+            pin = _resolve_pin(args.pin) or getpass.getpass("PIN: ")
+            pw = derive_password(
+                challenge=args.challenge,
+                pin=pin,
+                slot=args.slot,
+                length=args.derive_length,
+                serial=args.serial,
+            )
         print(pw)
 
     elif args.reset:
@@ -118,13 +156,23 @@ def main():
 
     elif args.decrypt:
         data = sys.stdin.buffer.read()
-        plain_text = decrypt(
-            cipher_text=data,
-            slot=slot_map[args.slot],
-            pin=_resolve_pin(args.pin),
-            padding=args.padding or "oaep",
-            serial=args.serial,
-        )
+        if args.use_agent:
+            agent = _get_agent()
+            data = data.hex()
+            plain_text = agent.piv_decrypt(
+                data=data,
+                slot=args.slot,
+                padding=args.padding or "oaep",
+            )
+            plain_text = bytes.fromhex(plain_text)
+        else:
+            plain_text = decrypt(
+                cipher_text=data,
+                slot=args.slot,
+                pin=_resolve_pin(args.pin),
+                padding=args.padding or "oaep",
+                serial=args.serial,
+            )
         sys.stdout.buffer.write(plain_text)
 
     elif args.verify:
@@ -135,7 +183,6 @@ def main():
             signature = f.read()
         public_key = None
         if args.public_key:
-            from cryptography.hazmat.primitives.serialization import load_pem_public_key
             with open(args.public_key, "rb") as f:
                 public_key = load_pem_public_key(f.read())
         valid = verify(
@@ -153,15 +200,25 @@ def main():
             sys.exit(1)
 
     elif args.sign:
-        pin = _resolve_pin(args.pin) or getpass.getpass("PIN: ")
         data = sys.stdin.buffer.read()
-        signature = sign(
-            data=data,
-            slot=args.slot,
-            pin=pin,
-            padding=args.padding or "pss",
-            serial=args.serial,
-        )
+        if args.use_agent:
+            agent = _get_agent()
+            data = data.hex()
+            signature = agent.piv_sign(
+                data=data,
+                slot=args.slot,
+                padding=args.padding or "pss",
+            )
+            signature = bytes.fromhex(signature)
+        else:
+            pin = _resolve_pin(args.pin) or getpass.getpass("PIN: ")
+            signature = sign(
+                data=data,
+                slot=args.slot,
+                pin=pin,
+                padding=args.padding or "pss",
+                serial=args.serial,
+            )
         sys.stdout.buffer.write(signature)
 
     elif args.import_key:

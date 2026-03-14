@@ -384,21 +384,22 @@ class PamHandler(object):
         self.password = password
         return password
 
-    def cleanup(self):
+    def cleanup(self, keep_ssh_key_pass=False):
         """ Close connections etc. """
-        agent_conn = self.get_agent_connection()
-        try:
-            if agent_conn.check_ssh_key_pass():
-                log_msg = _("Removing SSH key passphrase from agent...", log=True)[1]
-                self.logger.debug(log_msg)
-                try:
-                    agent_conn.del_ssh_key_pass()
-                except Exception as e:
-                    log_msg = _("Error removing SSH key passphrase from agent: {error}", log=True)[1]
-                    log_msg = log_msg.format(error=e)
-                    self.logger.warning(log_msg)
-        finally:
-            agent_conn.close()
+        if not keep_ssh_key_pass:
+            agent_conn = self.get_agent_connection()
+            try:
+                if agent_conn.check_ssh_key_pass():
+                    log_msg = _("Removing SSH key passphrase from agent...", log=True)[1]
+                    self.logger.debug(log_msg)
+                    try:
+                        agent_conn.del_ssh_key_pass()
+                    except Exception as e:
+                        log_msg = _("Error removing SSH key passphrase from agent: {error}", log=True)[1]
+                        log_msg = log_msg.format(error=e)
+                        self.logger.warning(log_msg)
+            finally:
+                agent_conn.close()
         if self.ssh_agent_conn:
             self.ssh_agent_conn.close()
         # Close all connections.
@@ -434,26 +435,59 @@ class PamHandler(object):
 
     def open_session(self):
         """ Get users DISPLAY etc. """
+        if self.pamh.service == "sudo":
+            return self.pamh.PAM_SUCCESS
         # Make sure we got a username from PAM.
         if not self.username:
             return self.pamh.PAM_USER_UNKNOWN
-        display = False
         if self.pamh.xdisplay:
-             display = self.pamh.xdisplay
+             self.display = self.pamh.xdisplay
         else:
             if self.pamh.tty and self.pamh.tty.startswith(":"):
-                display = self.pamh.tty
-        if display:
+                self.display = self.pamh.tty
+        if self.display:
             log_msg = _("Got DISPLAY from PAM session: {display}", log=True)[1]
+            log_msg = log_msg.format(display=self.display)
             self.logger.debug(log_msg)
             home_dir = self.get_home_dir(self.username)
             if os.path.exists(home_dir):
                 display_file = f"{home_dir}/.display"
                 filetools.create_file(display_file,
-                                    content=display,
+                                    content=self.display,
                                     user=self.username,
                                     mode=0o600)
-
+        # Ensure ssh agent.
+        if self.ensure_ssh_agent:
+            # Get SSH agent script.
+            ssh_agent_script_file = os.path.join(self.login_session_dir, "ssh-agent-script.json")
+            if os.path.exists(ssh_agent_script_file):
+                agent_script_data = filetools.read_file(ssh_agent_script_file)
+                agent_script_data = json.loads(agent_script_data)
+                self.ssh_agent_script = agent_script_data['ssh_agent_script']
+                self.ssh_agent_script_uuid = agent_script_data['ssh_agent_script_uuid']
+                self.ssh_agent_script_path = agent_script_data['ssh_agent_script_path']
+                self.ssh_agent_script_opts = agent_script_data['ssh_agent_script_opts']
+                self.ssh_agent_script_signs = agent_script_data['ssh_agent_script_signs']
+                # Start ssh agent.
+                additional_opts = ['--pinentry', config.pinentry]
+                try:
+                    self.start_ssh_agent(additional_opts=additional_opts,
+                                        verify_signs=False)
+                except Exception as e:
+                    log_msg = _("Failed to start SSH agent: {error}", log=True)[1]
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
+        # Try to get ssh key pass from otpme-agent.
+        if self.ssh_agent_status():
+            agent_conn = self.get_agent_connection()
+            ssh_key_pass = agent_conn.get_ssh_key_pass()[1]
+            if ssh_key_pass:
+                log_msg = _("Adding key to ssh-agent...", log=True)[1]
+                self.logger.debug(log_msg)
+                os.environ['PIN'] = ssh_key_pass
+                self.ssh_agent.add_key()
+                os.environ.pop("PIN")
+        self.cleanup()
         return self.pamh.PAM_SUCCESS
 
     def close_session(self):
@@ -590,6 +624,8 @@ class PamHandler(object):
                 verify_signs = "auto"
 
         log_msg = _("Starting ssh-agent...", log=True)[1]
+        if self.display:
+            os.environ['DISPLAY'] = self.display
         self.logger.debug(log_msg)
         # Start SSH agent.
         ssh_auth_sock, \
@@ -1217,6 +1253,7 @@ class PamHandler(object):
             # Set login token to otpme-agent.
             try:
                 agent_conn.set_login_token(self.offline_login_token.rel_path,
+                                            self.offline_login_token.token_type,
                                             self.offline_login_token.pass_type)
             except Exception as e:
                 log_msg = _("Unable to set login token to otpme-agent: {error}", log=True)[1]
@@ -1479,18 +1516,6 @@ class PamHandler(object):
             #os.environ['OTPME_SITE_ADDRESS'] = config.site_address
             self.pamh.env['OTPME_SITE_ADDRESS'] = config.site_address
 
-        # Get DISPLAY from PAM.
-        if self.pamh.xdisplay:
-             self.display = self.pamh.xdisplay
-        else:
-            if self.pamh.tty and self.pamh.tty.startswith(":"):
-                self.display = self.pamh.tty
-        if self.display:
-            log_msg = _("Got DISPLAY from PAM: {self.display}", log=True)[1]
-            self.logger.debug(log_msg)
-            os.environ['DISPLAY'] = self.display
-            self.pamh.env['DISPLAY'] = self.display
-            self.login_interface = "gui"
         if self.pamh.tty:
             self.tty = self.pamh.tty
         else:
@@ -1502,7 +1527,8 @@ class PamHandler(object):
             os.environ['GPG_TTY'] = self.tty
             self.pamh.env['GPG_TTY'] = self.tty
 
-        log_msg = _("Got PAM user: {self.username}", log=True)[1]
+        log_msg = _("Got PAM user: {username}", log=True)[1]
+        log_msg = log_msg.format(username=self.username)
         self.logger.debug(log_msg)
 
         # Get offline token handler.
@@ -1939,6 +1965,8 @@ class PamHandler(object):
         # Deactivate otpme-pinentry auto confirmation.
         self.deactivate_gpg_agent_autoconfirm()
 
+        # Stop ssh agent. It will be started in open_session where we can get
+        # the DISPLAY.
         if self.ssh_agent_status():
             try:
                 self.stop_ssh_agent()
@@ -1946,25 +1974,31 @@ class PamHandler(object):
                 log_msg = _("Failed to stop SSH agent: {error}", log=True)[1]
                 log_msg = log_msg.format(error=e)
                 self.logger.warning(log_msg)
-        if self.ensure_ssh_agent:
-            additional_opts = ['--pinentry', config.pinentry]
-            try:
-                self.start_ssh_agent(additional_opts=additional_opts)
-            except Exception as e:
-                log_msg = _("Failed to start SSH agent: {error}", log=True)[1]
-                log_msg = log_msg.format(error=e)
-                self.logger.warning(log_msg)
 
         if self.auth_status:
-            if self.ssh_agent_status():
-                log_msg = _("Adding key to ssh-agent...", log=True)[1]
+            agent_conn = self.get_agent_connection()
+            if not agent_conn.check_ssh_key_pass():
+                log_msg = _("Adding SSH key passphrase to otpme-agent...", log=True)[1]
                 self.logger.debug(log_msg)
+                try:
+                    agent_conn.add_ssh_key_pass(ssh_agent_pid=os.getpid(),
+                                                ssh_key_pass=self.password)
+                except Exception as e:
+                    msg = (_("Unable to add SSH key passphrase to otpme-agent"))
+                    raise OTPmeException(msg)
+            # For yubikey-piv tokens we unlock the card on login to omit
+            # smartcard pin prompts.
+            try:
+                login_token_type = agent_conn.get_login_token_type()
+            finally:
+                agent_conn.close()
+            if login_token_type == "yubikey_piv":
                 os.environ['PIN'] = self.password
-                self.ssh_agent.add_key()
+                os.system('otpme-yk-piv --piv-login --pin "env:PIN"')
                 os.environ.pop("PIN")
 
         # Close connetions etc.
-        self.cleanup()
+        self.cleanup(keep_ssh_key_pass=True)
 
         log_msg = _("Returning PAM status: {retval}", log=True)[1]
         log_msg = log_msg.format(retval=repr(self.retval))

@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import connections
+from otpme.lib import multiprocessing
 from otpme.lib.protocols import status_codes
 from otpme.lib.register import register_module
 from otpme.lib.encryption import hash_password
@@ -2153,6 +2154,7 @@ def prepare_mount_point(username, share_site, share):
 
 def remove_mount_dirs(mountpoints):
     logger = config.logger
+    user_dir = None
     for mount_point in mountpoints:
         site_dir = os.path.dirname(mount_point)
         if os.path.exists(site_dir):
@@ -2163,7 +2165,7 @@ def remove_mount_dirs(mountpoints):
                 log_msg = log_msg.format(site_dir=site_dir, error=e)
                 logger.warning(log_msg)
         user_dir = os.path.dirname(site_dir)
-    if os.path.exists(user_dir):
+    if user_dir and os.path.exists(user_dir):
         try:
             os.rmdir(user_dir)
         except Exception as e:
@@ -2172,9 +2174,32 @@ def remove_mount_dirs(mountpoints):
             logger.warning(log_msg)
 
 def mount_share_proc(share, share_site, mount, nodes, encrypted, **kwargs):
-    new_proctitle = f"otpme-mount {share} {mount}"
+    logger = config.logger
+    new_proctitle = f"otpme-mount {share_site}/{share} {mount}"
     setproctitle.setproctitle(new_proctitle)
-    mount_share(share, share_site, mount, nodes, encrypted, **kwargs)
+    #mount_share(share, share_site, mount, nodes, encrypted, **kwargs)
+    mount_proc = multiprocessing.start_process(name="mount",
+                                            target=mount_share,
+                                            target_args=(share,
+                                                        share_site,
+                                                        mount,
+                                                        nodes,
+                                                        encrypted),
+                                            target_kwargs=kwargs,
+                                            daemon=False,
+                                            join=True)
+    mount_proc.join()
+    if mount_proc.exitcode != 0:
+        log_msg = _("Failed to mount share: {share}", log=True)[1]
+        log_msg = log_msg.format(share=share)
+        logger.warning(log_msg)
+        return False
+    try:
+        os.system(f"sudo -n setreadahead {mount}")
+    except Exception as e:
+        log_msg = _("Failed to run setreadahead: {mount}: {error}", log=True)[1]
+        log_msg = log_msg.format(mount=mount, error=e)
+        logger.warning(log_msg)
 
 def mount_share(share, share_site, mount, nodes, encrypted=False,
     hard=False, master_password=None, add_share_key=False,

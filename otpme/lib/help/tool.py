@@ -465,6 +465,13 @@ cmd_help = {
                                 },
                 },
 
+    'get_login_token_type'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-tool get_login_token_type'),
+                    '_help' :   {
+                                    'cmd'                   : _('Show token type of currently logged in user'),
+                                },
+                },
+
     'get_login_pass_type'    : {
                     '_cmd_usage_help' : _('Usage: otpme-tool get_login_pass_type'),
                     '_help' :   {

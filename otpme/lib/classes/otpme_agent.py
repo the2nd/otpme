@@ -33,6 +33,12 @@ from otpme.lib.register import register_module
 from otpme.lib.socket.listen import ListenSocket
 from otpme.lib.offline_token import OfflineToken
 from otpme.lib.multiprocessing import start_thread
+from otpme.lib.smartcard.yubikey.piv import get_piv
+from otpme.lib.smartcard.yubikey.piv import slot_map
+from otpme.lib.smartcard.yubikey.piv import sign as piv_sign
+from otpme.lib.smartcard.yubikey.piv import decrypt as piv_decrypt
+from otpme.lib.smartcard.yubikey.piv import get_public_key as piv_get_public_key
+from otpme.lib.smartcard.yubikey.piv import derive_password as piv_derive_password
 from otpme.lib.daemon.unix_daemon import UnixDaemon
 from otpme.lib.multiprocessing import get_sync_manager
 from otpme.lib.classes.conn_handler import ConnHandler
@@ -88,8 +94,31 @@ class OTPmeAgent(UnixDaemon):
         # Create dict to hold daemon connections for all login sessions.
         self.connections = {}
         self.comm_queue = None
+        self.piv_conn = None
+        self.piv_session = None
         # Call parent class init to init UnixDaemon
         super(OTPmeAgent, self).__init__("otpme-agent", pidfile)
+
+    def _close_piv(self):
+        """ Close PIV session and connection. """
+        if self.piv_conn:
+            try:
+                self.piv_conn.close()
+            except Exception:
+                pass
+        self.piv_conn = None
+        self.piv_session = None
+
+    def _check_piv(self):
+        """ Check if PIV session is still alive. """
+        if not self.piv_session:
+            return False
+        try:
+            self.piv_session.get_pin_attempts()
+            return True
+        except Exception:
+            self._close_piv()
+            return False
 
     def signal_handler(self, _signal, frame):
         """ Handle signals. """
@@ -1369,8 +1398,14 @@ class OTPmeAgent(UnixDaemon):
             sender, command, request = comm_handler.recv()
             # Get request data.
             login_pid = request['login_pid']
-            realm = request['realm']
-            site = request['site']
+            try:
+                realm = request['realm']
+            except KeyError:
+                realm = None
+            try:
+                site = request['site']
+            except KeyError:
+                realm = None
             daemon = request['daemon']
             try:
                 use_dns = request['use_dns']
@@ -1457,6 +1492,128 @@ class OTPmeAgent(UnixDaemon):
                         else:
                             message = _("Session renegotiation failed.")
                         status_code = status_codes.ERR
+
+                elif command == "piv_login":
+                    try:
+                        pin = request['pin']
+                    except KeyError:
+                        message = _("Request misses PIN.")
+                        status_code = status_codes.ERR
+                    else:
+                        if self.piv_session:
+                            self._close_piv()
+                        try:
+                            self.piv_session, self.piv_conn = get_piv()
+                        except Exception as e:
+                            message = _("Unable to get PIV session: {e}")
+                            message = message.format(e=e)
+                            status_code = status_codes.ERR
+                        else:
+                            try:
+                                self.piv_session.verify_pin(pin)
+                            except Exception as e:
+                                message = _("PIN verification failed: {e}")
+                                message = message.format(e=e)
+                                status_code = status_codes.ERR
+                            else:
+                                message = _("Smartcard PIN verified.")
+                                status_code = status_codes.OK
+
+                elif command == "piv_check":
+                    if self._check_piv():
+                        message = _("PIV session is active.")
+                        status_code = status_codes.OK
+                    else:
+                        message = _("No active PIV session.")
+                        status_code = status_codes.ERR
+
+                elif command == "piv_sign":
+                    if not self.piv_session:
+                        message = _("No PIV session. Run piv_login first.")
+                        status_code = status_codes.ERR
+                    else:
+                        try:
+                            data = request['data']
+                            slot = request.get('slot', 'AUTHENTICATION')
+                            data = bytes.fromhex(data)
+                            padding = request.get('padding', 'pss')
+                            result = piv_sign(
+                                data=data,
+                                slot=slot,
+                                padding=padding,
+                                piv_session=self.piv_session,
+                            )
+                            message = result.hex()
+                            status_code = status_codes.OK
+                        except Exception as e:
+                            message = _("PIV sign failed: {e}")
+                            message = message.format(e=e)
+                            status_code = status_codes.ERR
+
+                elif command == "piv_decrypt":
+                    if not self.piv_session:
+                        message = _("No PIV session. Run piv_login first.")
+                        status_code = status_codes.ERR
+                    else:
+                        try:
+                            data = request['data']
+                            data = bytes.fromhex(data)
+                            slot = request.get('slot', 'AUTHENTICATION')
+                            padding = request.get('padding', 'oaep')
+                            result = piv_decrypt(
+                                cipher_text=data,
+                                slot=slot,
+                                padding=padding,
+                                piv_session=self.piv_session,
+                            )
+                            message = result.hex()
+                            status_code = status_codes.OK
+                        except Exception as e:
+                            raise
+                            message = _("PIV decrypt failed: {e}")
+                            message = message.format(e=e)
+                            status_code = status_codes.ERR
+
+                elif command == "piv_derive_password":
+                    if not self.piv_session:
+                        message = _("No PIV session. Run piv_login first.")
+                        status_code = status_codes.ERR
+                    else:
+                        try:
+                            challenge = request['challenge']
+                            slot = request.get('slot', 'AUTHENTICATION')
+                            length = request.get('length', 32)
+                            result = piv_derive_password(
+                                challenge=challenge,
+                                slot=slot,
+                                length=length,
+                                piv_session=self.piv_session,
+                            )
+                            message = result
+                            status_code = status_codes.OK
+                        except Exception as e:
+                            message = _("PIV derive password failed: {e}")
+                            message = message.format(e=e)
+                            status_code = status_codes.ERR
+
+                elif command == "piv_get_public_key":
+                    if not self.piv_session:
+                        message = _("No PIV session. Run piv_login first.")
+                        status_code = status_codes.ERR
+                    else:
+                        try:
+                            slot = request.get('slot', 'AUTHENTICATION')
+                            result = piv_get_public_key(
+                                slot=slot_map[slot],
+                                piv_session=self.piv_session,
+                            )
+                            message = result
+                            status_code = status_codes.OK
+                        except Exception as e:
+                            message = _("PIV get public key failed: {e}")
+                            message = message.format(e=e)
+                            status_code = status_codes.ERR
+
                 else:
                     message = _("Unknown agent command.")
                     status_code = status_codes.ERR
@@ -1778,7 +1935,7 @@ class OTPmeAgent(UnixDaemon):
                 if self.config_reload:
                     break
                 # Add login_pid to list of login processes.
-                if not login_pid in self.was_used_by:
+                if login_pid not in self.was_used_by:
                     self.was_used_by.append(login_pid)
 
                 session_type = sessions[login_pid]['session_type']

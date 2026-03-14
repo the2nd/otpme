@@ -17,6 +17,7 @@ except:
 
 from otpme.lib import log
 from otpme.lib import config
+from otpme.lib import script
 from otpme.lib import backend
 from otpme.lib.humanize import units
 from otpme.lib import multiprocessing
@@ -27,11 +28,50 @@ from otpme.lib.classes.command_handler import CommandHandler
 from otpme.lib.exceptions import *
 
 REGISTER_BEFORE = ['otpme.lib.daemon.controld']
-REGISTER_AFTER = []
+REGISTER_AFTER = ['otpme.lib.classes.unit']
 
 def register():
     """ Register OTPme daemon. """
     config.register_otpme_daemon("backupd")
+    register_config_params()
+
+def register_config_params():
+    object_types = [
+                        'share',
+                        'node',
+                    ]
+    def script_setter(script_path, **kwargs):
+        result = backend.search(object_type="script",
+                                attribute="rel_path",
+                                value=script_path,
+                                return_type="uuid")
+        if not result:
+            msg = _("Unknown script: {script_path}")
+            msg = msg.format(script_path=script_path)
+            raise UnknownObject(msg)
+        script_uuid = result[0]
+        return script_uuid
+    def script_getter(script_uuid, **kwargs):
+        result = backend.search(object_type="script",
+                                attribute="uuid",
+                                value=script_uuid,
+                                return_type="rel_path")
+        if not result:
+            msg = _("Unknown script: {script_uuid}")
+            msg = msg.format(script_uuid=script_uuid)
+            raise UnknownObject(msg)
+        script_path = result[0]
+        return script_path
+    # Default scripts unit.
+    scripts_unit = config.get_default_unit("script")
+    # Default mount script to add to new shares.
+    backup_script = f"{scripts_unit}/backup_script.sh"
+    config.register_config_parameter(name="backup_script",
+                                    ctype=str,
+                                    getter=script_getter,
+                                    setter=script_setter,
+                                    default_value=backup_script,
+                                    object_types=object_types)
 
 class BackupDaemon(OTPmeDaemon):
     """ BackupDaemon """
@@ -171,6 +211,28 @@ class BackupDaemon(OTPmeDaemon):
                                                 join=True)
             self.backup_childs[o.uuid] = backup_child
 
+    def run_backup_script(self, script_path, backup_object, hook):
+        # Run backup script.
+        variables = {
+                    'backup_object' : backup_object,
+                    'backup_hook'   : hook,
+                }
+        script_returncode, \
+        script_stdout, \
+        script_stderr, \
+        script_pid = script.run(script_type="backup_script",
+                                script_path=script_path,
+                                variables=variables,
+                                verify_signatures=False,
+                                user="root",
+                                group="root",
+                                call=False)
+        if script_returncode != 0:
+            script_output = script_stdout + script_stderr
+            log_msg = _("Failed to run backup script: {script_path}: {script_output}", log=True)[1]
+            log_msg = log_msg.format(script_path=script_path, script_output=script_output)
+            self.logger.warning(log_msg)
+
     def start_backup(self, o):
         multiprocessing.atfork(exit_on_signal=True)
         backup_object = f"{o.type}/{o.name}"
@@ -178,8 +240,12 @@ class BackupDaemon(OTPmeDaemon):
         banner = f"{config.log_name}: {o.type}:{o.name}"
         self.logger = log.setup_logger(banner=banner, pid=True,
                                         existing_logger=config.logger)
-        backup_start_time = time.time()
         backup_object = f"{o.type}:{o.name}"
+        backup_script = o.get_config_parameter("backup_script")
+        if backup_script:
+            self.run_backup_script(backup_script, backup_object, "pre")
+
+        backup_start_time = time.time()
         command_handler = CommandHandler()
         try:
             command_handler.start_backup(backup_object)
@@ -189,6 +255,8 @@ class BackupDaemon(OTPmeDaemon):
             self.logger.warning(log_msg)
             multiprocessing.cleanup(keep_queues=True)
             sys.exit(1)
+        if backup_script:
+            self.run_backup_script(backup_script, backup_object, "post")
         o.last_backup = backup_start_time
         o._write(update_last_modified=False,
                 update_last_modified_by=False)

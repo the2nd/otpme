@@ -13,7 +13,7 @@ fi
 # Get command line options
 get_opts () {
         # Get options
-        if ! ARGS=$(getopt -n $BASENAME -l help -l pinentry -l gpg-agent -l gpg-smartcard -l yubikey-piv h $*) ; then
+        if ! ARGS=$(getopt -n $BASENAME -l help -l pinentry -l gpg-agent -l gpg-smartcard -l yubikey-piv -l no-confirm h $*) ; then
                 show_help
                 return 1
         fi
@@ -37,6 +37,11 @@ get_opts () {
 
                         --yubikey-piv)
 							export ADD_YUBIKEY_PIV="true"
+							shift
+						;;
+
+                        --no-confirm)
+							export NO_CONFIRM="true"
 							shift
 						;;
 
@@ -90,6 +95,7 @@ show_help () {
 	echo "Options:"
 	echo "	--gpg-smartcard		Enable handling of gpg-agent when used with a smartcard."
 	echo "	--yubikey-piv		Use yubikey PIV on ssh-add."
+	echo "	--no-confirm		Dont confim ssh-agent key usage."
 }
 
 message () {
@@ -140,6 +146,7 @@ case $COMMAND in
 				AGENT_PID="$(pgrep -u "$USER" -f "$SSH_AGENT_NAME")"
 				AGENT_OUT="$AGENT_OUT\nSSH_AGENT_PID=$AGENT_PID;export SSH_AGENT_PID"
 			else
+				#export SSH_ASKPASS=/usr/bin/ssh-askpass
 				AGENT_OUT="$(ssh-agent)"
 			fi
 			echo -e "$AGENT_OUT"
@@ -150,13 +157,17 @@ case $COMMAND in
 		if [ "$ADD_YUBIKEY_PIV" = "true" ] ; then
 			if [ "$PIN" = "" ] ; then
 				echo "Please set PIN variable." > /dev/stderr
-				echo "Please set PIN variable." > /tmp/log
 				exit 1
 			fi
 			PIN_SCRIPT="/tmp/pin-$RANDOM.sh"
-			echo 'echo "$PIN"' > "$PIN_SCRIPT"
+			touch "$PIN_SCRIPT"
 			chmod 700 "$PIN_SCRIPT"
-			SSH_ASKPASS=$PIN_SCRIPT SSH_ASKPASS_REQUIRE=force ssh-add -s /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so
+			echo 'echo "$PIN"' > "$PIN_SCRIPT"
+			KEY_CONFIRM_OPT="-c"
+			if [ "$NO_CONFIRM" = "true" ] ; then
+				KEY_CONFIRM_OPT=""
+			fi
+			SSH_ASKPASS=$PIN_SCRIPT SSH_ASKPASS_REQUIRE=force ssh-add $KEY_CONFIRM_OPT -s /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so
 			rm $PIN_SCRIPT
 		fi
 	;;

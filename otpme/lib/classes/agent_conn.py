@@ -107,6 +107,16 @@ class AgentConn(object):
         login_token = re.sub('.* token: ([^ ]*) .*', r'\1', response)
         return login_token
 
+    def get_login_token_type(self):
+        """ Get login token type from otpme-agent. """
+        status, status_code, response = self.send("status")
+        if status_code != status_codes.OK:
+            msg = _("Failed to get login token: {response}")
+            msg = msg.format(response=response)
+            raise Exception(msg)
+        login_token_type = re.sub('.* type: ([^ ]*) pass_type:.*$', r'\1', response)
+        return login_token_type
+
     def get_login_pass_type(self):
         """ Get login pass type from otpme-agent. """
         status, status_code, response = self.send("status")
@@ -114,7 +124,7 @@ class AgentConn(object):
             msg = _("Failed to get login pass type: {response}")
             msg = msg.format(response=response)
             raise Exception(msg)
-        login_pass_type = re.sub('.* type: ([^ ]*)$', r'\1', response)
+        login_pass_type = re.sub('.* pass_type: ([^ ]*)$', r'\1', response)
         return login_pass_type
 
     def get_offline(self):
@@ -292,10 +302,11 @@ class AgentConn(object):
             raise Exception(msg)
         return response
 
-    def set_login_token(self, login_token, login_pass_type):
+    def set_login_token(self, login_token, login_token_type, login_pass_type):
         """ Set login token to otpme-agent. """
         command_args = {
                         'login_token'       : login_token,
+                        'login_token_type'  : login_token_type,
                         'login_pass_type'   : login_pass_type,
                     }
         status, status_code, response = self.send("set_login_token", command_args)
@@ -366,6 +377,79 @@ class AgentConn(object):
             msg = _("Failed to remove ACL from agent: {response}")
             msg = msg.format(response=response)
             raise Exception(msg)
+
+    def piv_login(self, pin):
+        """ Send yubikey PIV login request to otpme-agent. """
+        command_args = {
+                        'pin' : pin,
+                    }
+        status, status_code, response = self.send("piv_login", command_args)
+        if status_code != status_codes.OK:
+            msg = _("PIV login failed: {response}")
+            msg = msg.format(response=response)
+            raise Exception(msg)
+        return response
+
+    def piv_check(self):
+        """ Check if PIV session in otpme-agent is still alive. """
+        status, status_code, response = self.send("piv_check")
+        if status_code == status_codes.OK:
+            return True
+        return False
+
+    def piv_sign(self, data, slot="AUTHENTICATION", padding="pss"):
+        """ Sign data via PIV session in otpme-agent. """
+        command_args = {
+                        'data'      : data,
+                        'slot'      : slot,
+                        'padding'   : padding,
+                    }
+        status, status_code, response = self.send("piv_sign", command_args)
+        if status_code != status_codes.OK:
+            msg = _("PIV sign failed: {response}")
+            msg = msg.format(response=response)
+            raise Exception(msg)
+        return response
+
+    def piv_decrypt(self, data, slot="KEY_MANAGEMENT", padding="oaep"):
+        """ Decrypt data via PIV session in otpme-agent. """
+        command_args = {
+                        'data'      : data,
+                        'slot'      : slot,
+                        'padding'   : padding,
+                    }
+        status, status_code, response = self.send("piv_decrypt", command_args)
+        if status_code != status_codes.OK:
+            msg = _("PIV decrypt failed: {response}")
+            msg = msg.format(response=response)
+            raise Exception(msg)
+        return response
+
+    def piv_derive_password(self, challenge, slot="AUTHENTICATION", length=32):
+        """ Derive password via PIV session in otpme-agent. """
+        command_args = {
+                        'challenge' : challenge,
+                        'slot'      : slot,
+                        'length'    : length,
+                    }
+        status, status_code, response = self.send("piv_derive_password", command_args)
+        if status_code != status_codes.OK:
+            msg = _("PIV derive password failed: {response}")
+            msg = msg.format(response=response)
+            raise Exception(msg)
+        return response
+
+    def piv_get_public_key(self, slot="AUTHENTICATION"):
+        """ Get public key via PIV session in otpme-agent. """
+        command_args = {
+                        'slot'      : slot,
+                    }
+        status, status_code, response = self.send("piv_get_public_key", command_args)
+        if status_code != status_codes.OK:
+            msg = _("PIV get public key failed: {response}")
+            msg = msg.format(response=response)
+            raise Exception(msg)
+        return response
 
     def connect(self, connect_timeout=None, timeout=None):
         """ Initiate connection with agent socket. """

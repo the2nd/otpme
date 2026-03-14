@@ -262,6 +262,12 @@ class OTPmeAgentP1(object):
                             "add_rsp",
                             "add_acl",
                             "del_acl",
+                            "piv_login",
+                            "piv_check",
+                            "piv_sign",
+                            "piv_decrypt",
+                            "piv_derive_password",
+                            "piv_get_public_key",
                             "set_login_token",
                             "proxy_command",
                             "mount_shares",
@@ -291,6 +297,12 @@ class OTPmeAgentP1(object):
                         "get_ssh_key_pass",
                         "del_ssh_key_pass",
                         "add_rsp",
+                        "piv_login",
+                        "piv_check",
+                        "piv_sign",
+                        "piv_decrypt",
+                        "piv_derive_password",
+                        "piv_get_public_key",
                         "set_login_token",
                         "proxy_command",
                         "mount_shares",
@@ -404,6 +416,10 @@ class OTPmeAgentP1(object):
                 pass
             try:
                 self.login_token = self.session['login_token']
+            except:
+                pass
+            try:
+                self.login_token_type = self.session['login_token_type']
             except:
                 pass
             try:
@@ -546,36 +562,20 @@ class OTPmeAgentP1(object):
                         messages.append(msg)
                         continue
                     os.environ['OTPME_LOGIN_SESSION'] = self.session_id
-                    mount_proc = multiprocessing.start_process(name="mount",
-                                                            target=mount_share_proc,
-                                                            target_args=(share_name,
-                                                                        share_site,
-                                                                        mount_point,
-                                                                        share_nodes,
-                                                                        share_encrypted),
-                                                            target_kwargs={
-                                                                            'logger'    :self.logger,
-                                                                            'foreground':False,
-                                                                        },
-                                                            daemon=False)
-                    mount_proc.join()
-                    if mount_proc.exitcode != 0:
-                        msg, log_msg = _("Failed to mount share: {share_id}", log=True)
-                        msg = msg.format(share_id=share_id)
-                        log_msg = log_msg.format(share_id=share_id)
-                        self.logger.warning(log_msg)
-                        messages.append(msg)
-                        continue
+                    multiprocessing.start_process(name="mount",
+                                                target=mount_share_proc,
+                                                target_args=(share_name,
+                                                            share_site,
+                                                            mount_point,
+                                                            share_nodes,
+                                                            share_encrypted),
+                                                target_kwargs={
+                                                                'logger'    :self.logger,
+                                                                'foreground':False,
+                                                            },
+                                                daemon=False,
+                                                join=True)
                     new_mounts[share_id] = shares[share_id]
-                    try:
-                        os.system(f"sudo -n setreadahead {mount_point}")
-                    except Exception as e:
-                        status = False
-                        msg, log_msg = _("Failed to run setreadahead: {mount_point}: {error}", log=True)
-                        msg = msg.format(mount_point=mount_point, error=e)
-                        log_msg = log_msg.format(mount_point=mount_point, error=e)
-                        self.logger.warning(log_msg)
-                        messages.append(msg)
                 try:
                     mounted_shares = self.session['mounted_shares']
                 except KeyError:
@@ -712,8 +712,10 @@ class OTPmeAgentP1(object):
         elif command == "status":
             if self.rsp:
                 if self.login_token:
-                    message = _("Logged in with token: {token} type: {pass_type}")
-                    message = message.format(token=self.login_token, pass_type=self.login_pass_type)
+                    message = _("Logged in with token: {token} type: {token_type} pass_type: {pass_type}")
+                    message = message.format(token=self.login_token,
+                                            token_type=self.login_token_type,
+                                            pass_type=self.login_pass_type)
                     status = True
                 else:
                     message = _("Logged in as user: {user}")
@@ -721,8 +723,10 @@ class OTPmeAgentP1(object):
                     status = True
             else:
                 if self.login_token:
-                    message = _("Logged in (offline) with token: {token} type: {pass_type}")
-                    message = message.format(token=self.login_token, pass_type=self.login_pass_type)
+                    message = _("Logged in (offline) with token: {token} type: {token_type} pass_type: {pass_type}")
+                    message = message.format(token=self.login_token,
+                                            token_type=self.login_token_type,
+                                            pass_type=self.login_pass_type)
                     status = True
                 else:
                     message = _("Not logged in")
@@ -823,6 +827,12 @@ class OTPmeAgentP1(object):
                 status = False
 
             try:
+                self.login_token_type = command_args['login_token_type']
+            except:
+                message = "AGENT_INCOMPLETE_COMMAND"
+                status = False
+
+            try:
                 self.login_pass_type = command_args['login_pass_type']
             except:
                 message = "AGENT_INCOMPLETE_COMMAND"
@@ -835,6 +845,7 @@ class OTPmeAgentP1(object):
                 session_lock = self.acquire_session_lock(self.session_id)
                 try:
                     self.session['login_token'] = self.login_token
+                    self.session['login_token_type'] = self.login_token_type
                     self.session['login_pass_type'] = self.login_pass_type
                     self.login_sessions[self.login_pid] = self.session
                 finally:
@@ -1326,6 +1337,96 @@ class OTPmeAgentP1(object):
             try:
                 status, message = self.send_command(command="reneg",
                                                 request=reneg_request)
+            except Exception as e:
+                message = str(e)
+                status = False
+
+        elif command == "piv_login":
+            try:
+                pin = command_args['pin']
+            except KeyError:
+                status = False
+                message = _("Request missing PIN.")
+            else:
+                piv_request = {
+                            'pin'       : pin,
+                            'daemon'    : 'agent',
+                            'login_pid' : self.login_pid,
+                            }
+                # Send command to agent parent process.
+                try:
+                    status, message = self.send_command(command="piv_login",
+                                                    request=piv_request)
+                except Exception as e:
+                    message = str(e)
+                    status = False
+
+        elif command == "piv_check":
+            piv_request = {
+                        'daemon'    : 'agent',
+                        'login_pid' : self.login_pid,
+                        }
+            try:
+                status, message = self.send_command(command="piv_check",
+                                                request=piv_request)
+            except Exception as e:
+                message = str(e)
+                status = False
+
+        elif command == "piv_sign":
+            piv_request = {
+                        'data'      : command_args.get('data'),
+                        'slot'      : command_args.get('slot', 'AUTHENTICATION'),
+                        'padding'   : command_args.get('padding', 'pss'),
+                        'daemon'    : 'agent',
+                        'login_pid' : self.login_pid,
+                        }
+            try:
+                status, message = self.send_command(command="piv_sign",
+                                                request=piv_request)
+            except Exception as e:
+                message = str(e)
+                status = False
+
+        elif command == "piv_decrypt":
+            piv_request = {
+                        'data'      : command_args.get('data'),
+                        'slot'      : command_args.get('slot', 'KEY_MANAGEMENT'),
+                        'padding'   : command_args.get('padding', 'oaep'),
+                        'daemon'    : 'agent',
+                        'login_pid' : self.login_pid,
+                        }
+            try:
+                status, message = self.send_command(command="piv_decrypt",
+                                                request=piv_request)
+            except Exception as e:
+                message = str(e)
+                status = False
+
+        elif command == "piv_derive_password":
+            piv_request = {
+                        'challenge' : command_args.get('challenge'),
+                        'slot'      : command_args.get('slot', 'AUTHENTICATION'),
+                        'length'    : command_args.get('length', 32),
+                        'daemon'    : 'agent',
+                        'login_pid' : self.login_pid,
+                        }
+            try:
+                status, message = self.send_command(command="piv_derive_password",
+                                                request=piv_request)
+            except Exception as e:
+                message = str(e)
+                status = False
+
+        elif command == "piv_get_public_key":
+            piv_request = {
+                        'slot'      : command_args.get('slot', 'AUTHENTICATION'),
+                        'daemon'    : 'agent',
+                        'login_pid' : self.login_pid,
+                        }
+            try:
+                status, message = self.send_command(command="piv_get_public_key",
+                                                request=piv_request)
             except Exception as e:
                 message = str(e)
                 status = False

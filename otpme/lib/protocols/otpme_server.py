@@ -2095,6 +2095,7 @@ class OTPmeServer1(object):
 
             # Add offline tokens etc. to auth response.
             auth_response['login_token'] = auth_token.rel_path
+            auth_response['login_token_type'] = verify_token.token_type
             auth_response['login_pass_type'] = verify_token.pass_type
             auth_response['offline_tokens'] = offline_tokens
             auth_response['keep_session'] = keep_session

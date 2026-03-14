@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 # NOTE: This module was written by claude code!
+import os
 import sys
 import datetime
 import getpass
+
+# Use shared PC/SC connection mode to allow concurrent access (e.g. ssh-agent).
+os.environ['YKMAN_NO_EXLUSIVE'] = '1'
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -42,6 +46,10 @@ def _open_piv(serial: int = None):
     device, _ = devices[0]
     return device.open_connection(SmartCardConnection)
 
+def get_piv(serial: int = None):
+    conn = _open_piv(serial)
+    piv_session = PivSession(conn)
+    return piv_session, conn
 
 def import_rsa_key(
     private_key: str,
@@ -120,23 +128,24 @@ def change_puk(old_puk: str = None, new_puk: str = None, serial: int = None):
 def get_public_key(
     slot: SLOT = SLOT.AUTHENTICATION,
     serial: int=None,
+    piv_session: PivSession = None,
 ):
-    with _open_piv(serial) as conn:
-        piv = PivSession(conn)
-        public_key = piv.get_certificate(slot).public_key() if _slot_has_cert(piv, slot) \
-            else piv.get_slot_metadata(slot).public_key
-    return public_key
+    if not piv_session:
+        conn = _open_piv(serial)
+        piv_session = PivSession(conn)
+    if _slot_has_cert(piv_session, slot):
+        return piv_session.get_certificate(slot).public_key()
+    return piv_session.get_slot_metadata(slot).public_key
 
 def decrypt(
     cipher_text: bytes,
-    slot: SLOT = SLOT.KEY_MANAGEMENT,
+    slot: str = "AUTHENTICATION",
     pin: str = None,
     padding: str = "oaep",
     serial: int = None,
+    piv_session: PivSession = None,
 ):
-    if pin is None:
-        pin = getpass.getpass("PIN: ")
-
+    slot = slot_map[slot]
     if padding == "oaep":
         pad = asym_padding.OAEP(
             mgf=asym_padding.MGF1(algorithm=hashes.SHA256()),
@@ -146,12 +155,14 @@ def decrypt(
     else:
         pad = asym_padding.PKCS1v15()
 
-    with _open_piv(serial) as conn:
-        piv = PivSession(conn)
-        piv.verify_pin(pin)
-        plain_text = piv.decrypt(slot, cipher_text, pad)
+    if not piv_session:
+        if pin is None:
+            pin = getpass.getpass("PIN: ")
+        conn = _open_piv(serial)
+        piv_session = PivSession(conn)
+        piv_session.verify_pin(pin)
 
-    return plain_text
+    return piv_session.decrypt(slot, cipher_text, pad)
 
 
 def sign(
@@ -160,6 +171,7 @@ def sign(
     pin: str = None,
     padding: str = "pss",
     serial: int = None,
+    piv_session: PivSession = None,
 ):
     slot = slot_map[slot]
     if padding == "pss":
@@ -170,12 +182,13 @@ def sign(
     else:
         pad = asym_padding.PKCS1v15()
 
-    with _open_piv(serial) as conn:
-        piv = PivSession(conn)
-        piv.verify_pin(pin)
-        meta = piv.get_slot_metadata(slot)
-        signature = piv.sign(slot, meta.key_type, data, hashes.SHA256(), pad)
-        return signature
+    if not piv_session:
+        conn = _open_piv(serial)
+        piv_session = PivSession(conn)
+        piv_session.verify_pin(pin)
+
+    meta = piv_session.get_slot_metadata(slot)
+    return piv_session.sign(slot, meta.key_type, data, hashes.SHA256(), pad)
 
 
 def verify(
@@ -247,19 +260,23 @@ def derive_password(
     slot: str = "AUTHENTICATION",
     length: int = 32,
     serial: int = None,
+    piv_session: PivSession = None,
 ) -> str:
     slot = slot_map[slot]
-    with _open_piv(serial) as conn:
-        piv = PivSession(conn)
-        piv.verify_pin(pin)
-        meta = piv.get_slot_metadata(slot)
-        signature = piv.sign(
-            slot,
-            meta.key_type,
-            challenge.encode(),
-            hashes.SHA256(),
-            asym_padding.PKCS1v15(),
-        )
+
+    if not piv_session:
+        conn = _open_piv(serial)
+        piv_session = PivSession(conn)
+        piv_session.verify_pin(pin)
+
+    meta = piv_session.get_slot_metadata(slot)
+    signature = piv_session.sign(
+        slot,
+        meta.key_type,
+        challenge.encode(),
+        hashes.SHA256(),
+        asym_padding.PKCS1v15(),
+    )
 
     derived = HKDF(
         algorithm=hashes.SHA256(),

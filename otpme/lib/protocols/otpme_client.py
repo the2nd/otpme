@@ -4191,9 +4191,10 @@ class OTPmeClient1(OTPmeClientBase):
 
         # Set login token to otpme-agent.
         login_token = self.auth_response['login_token']
+        login_token_type = self.auth_response['login_token_type']
         login_pass_type = self.auth_response['login_pass_type']
         try:
-            self.agent_conn.set_login_token(login_token, login_pass_type)
+            self.agent_conn.set_login_token(login_token, login_token_type, login_pass_type)
         except Exception as e:
             log_msg = _("Error setting login token to otpme-agent: {error}", log=True)[1]
             log_msg = log_msg.format(error=e)
