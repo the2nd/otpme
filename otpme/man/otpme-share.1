@@ -13,8 +13,8 @@ Shares support two types of scripts: An \fBadd script\fR (default: add_share.sh)
 .SH COMMANDS
 .SS Share Management
 .TP
-.B add \fR[\fB\-\-force\-group\fR \fIgroup\fR] [\fB\-\-crypt\fR] [\fB\-\-no\-key\-gen\fR] [\fB\-\-block\-size\fR \fIsize\fR] [\fB\-\-key\-len\fR \fIlen\fR] \fIshare\fR
-Create a new share. Use \fB\-\-crypt\fR to enable encryption, \fB\-\-force\-group\fR to set forced group.
+.B add \fR[\fB\-\-force\-group\fR \fIgroup\fR] [\fB\-\-force\-directory\-mode\fR \fImode\fR] [\fB\-\-force\-create\-mode\fR \fImode\fR] [\fB\-\-crypt\fR] [\fB\-\-no\-key\-gen\fR] [\fB\-\-block\-size\fR \fIsize\fR] [\fB\-\-key\-len\fR \fIlen\fR] [\fB\-\-restore\fR \fIrestore_share\fR] [\fB\-\-restore\-token\fR \fItoken\fR] \fIshare\fR
+Create a new share. Use \fB\-\-force\-group\fR to set forced group, \fB\-\-force\-directory\-mode\fR and \fB\-\-force\-create\-mode\fR to set permissions for new directories and files. Use \fB\-\-crypt\fR to enable encryption, \fB\-\-restore\fR to add a restore share and \fB\-\-restore\-token\fR for encrypted restore shares.
 .TP
 .B del \fIshare\fR
 Delete a share.
@@ -163,6 +163,12 @@ Remove orphaned object references.
 .B \-\-force\-group \fIGROUP\fR
 Force group for the share.
 .TP
+.B \-\-force\-directory\-mode \fIMODE\fR
+Force directory creation mode.
+.TP
+.B \-\-force\-create\-mode \fIMODE\fR
+Force file creation mode.
+.TP
 .B \-\-crypt
 Enable encryption for the share.
 .TP
@@ -174,6 +180,12 @@ Encrypted share block size (default 4096).
 .TP
 .B \-\-key\-len \fILENGTH\fR
 AES key length.
+.TP
+.B \-\-restore \fIRESTORE_SHARE\fR
+Add restore share.
+.TP
+.B \-\-restore\-token \fITOKEN\fR
+Add token restore share.
 .SS Display Options
 .TP
 .B \-a

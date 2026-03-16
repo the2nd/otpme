@@ -125,12 +125,12 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'missing'    : {
                     'method'            : 'add',
-                    'oargs'             : ['unit', 'force_group', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
+                    'oargs'             : ['unit', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
                     'job_type'          : 'process',
                     },
                 'exists'    : {
                     'method'            : 'add',
-                    'oargs'             : ['unit', 'force_group', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
+                    'oargs'             : ['unit', 'force_group', 'force_create_mode', 'force_directory_mode', 'encrypted', 'no_key_gen', 'block_size', 'restore_share', 'restore_token'],
                     'job_type'          : 'process',
                     },
                 },
@@ -1066,6 +1066,8 @@ class Share(OTPmeObject):
     def add(
         self,
         force_group: str=None,
+        force_create_mode: str=None,
+        force_directory_mode: str=None,
         encrypted: bool=False,
         key_len: int=32,
         block_size: int=4096,
@@ -1093,35 +1095,32 @@ class Share(OTPmeObject):
                 msg = msg.format(restore_share=restore_share)
                 return callback.error(msg)
             share = result[0]
-            if share.encrypted:
-                if not restore_token:
-                    msg = _("Restore token required for encrypted shares.")
+            if restore_token:
+                result = backend.search(object_type="token",
+                                        attribute="rel_path",
+                                        value=restore_token,
+                                        return_type="uuid")
+                if not result:
+                    msg = _("Unknown token.")
                     return callback.error(msg)
-            result = backend.search(object_type="token",
-                                    attribute="rel_path",
-                                    value=restore_token,
-                                    return_type="uuid")
-            if not result:
-                msg = _("Unknown token.")
-                return callback.error(msg)
-            token_uuid = result[0]
-            if token_uuid not in share.tokens:
-                msg = _("Token not assigned to share.")
-                return callback.error(msg)
-            share_key = None
-            if share.encrypted:
-                token_user = restore_token.split("/")[0]
-                share_key = share.get_share_key(username=token_user)
-                if not share_key:
-                    msg = _("No share key available for user: {user}")
-                    msg = msg.format(user=token_user)
+                token_uuid = result[0]
+                if token_uuid not in share.tokens:
+                    msg = _("Token not assigned to share.")
                     return callback.error(msg)
-            if not self.add_token(token_path=restore_token,
-                                    share_key=share_key,
-                                    callback=callback):
-                msg = _("Failed to add token: {token}")
-                msg = msg.format(token=restore_token)
-                return callback.error(msg)
+                share_key = None
+                if share.encrypted:
+                    token_user = restore_token.split("/")[0]
+                    share_key = share.get_share_key(username=token_user)
+                    if not share_key:
+                        msg = _("No share key available for user: {user}")
+                        msg = msg.format(user=token_user)
+                        return callback.error(msg)
+                if not self.add_token(token_path=restore_token,
+                                        share_key=share_key,
+                                        callback=callback):
+                    msg = _("Failed to add token: {token}")
+                    msg = msg.format(token=restore_token)
+                    return callback.error(msg)
             self.restore_share = share.uuid
             self.encrypted = share.encrypted
             # Add object using parent class.
@@ -1133,6 +1132,12 @@ class Share(OTPmeObject):
         if force_group:
             self.force_group(group_name=force_group,
                             verify_acls=False)
+        if force_create_mode:
+            self.force_create_mode(create_mode=force_create_mode,
+                                    verify_acls=False)
+        if force_directory_mode:
+            self.force_directory_mode(create_mode=force_directory_mode,
+                                        verify_acls=False)
         # Default add script.
         default_add_script = self.get_config_parameter("default_share_add_script")
         if default_add_script:
@@ -1197,7 +1202,7 @@ class Share(OTPmeObject):
                 return callback.error()
         # Add index attributes.
         self.update_index('create_mode', self.create_mode)
-        self.update_index('directory_mode', self.create_mode)
+        self.update_index('directory_mode', self.directory_mode)
         return self._write(callback=callback)
 
     @object_lock(full_lock=True)
@@ -2155,6 +2160,11 @@ class Share(OTPmeObject):
             group = backend.get_object(uuid=self.force_group_uuid)
             if group:
                 share_script_parms['force_group'] = group.name
+        # fuck: convert mode to 0660
+        if self.create_mode != 0o000:
+            share_script_parms['force_create_mode'] = str(self.create_mode).replace("o", "")
+        if self.directory_mode != 0o000:
+            share_script_parms['force_directory_mode'] = str(self.directory_mode).replace("o", "")
 
         share_script_oid = backend.get_oid(object_type="script", uuid=share_script)
         log_msg = _("Starting share script: {share_script_oid}", log=True)[1]

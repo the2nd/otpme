@@ -18,7 +18,8 @@ from otpme.lib.encoding.base import decode
 from otpme.lib.exceptions import *
 
 def run(script_uuid, options, share_name, share_root, force_group=None,
-    script_type="share_script", user=None, group=None, groups=None, **kwargs):
+    force_directory_mode=None, force_create_mode=None, script_type="share_script",
+    user=None, group=None, groups=None, **kwargs):
     """ Run share script. """
     # Create dictionary with variables that will be passed to share script.
     variables = {}
@@ -26,6 +27,10 @@ def run(script_uuid, options, share_name, share_root, force_group=None,
     variables["share_root"] = share_root
     if force_group:
         variables["force_group"] = force_group
+    if force_directory_mode:
+        variables["force_directory_mode"] = force_directory_mode
+    if force_create_mode:
+        variables["force_create_mode"] = force_create_mode
 
     result = backend.search(object_type="script",
                             attribute="uuid",
