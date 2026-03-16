@@ -570,6 +570,12 @@ otpme-role add_sync_user management-user alice
 otpme-group add mysyncgroup
 otpme-group add_sync_user mysyncgroup alice
 otpme-host add_sync_group <yourhostname> mysyncgroup
+
+# Finally enable sync groups for the host.
+otpme-host enable_sync_groups <yourhostname>
+
+# If you use sync groups you may want to disable sync-by-login-token.
+otpme-host disable_sync_by_login_token <yourhostname>
 ```
 
 ## 19. Configure the PAM Module
@@ -684,4 +690,115 @@ ALLOW_DYNAMIC_GROUPS=""
 
 # Block specific dynamic groups.
 DENY_DYNAMIC_GROUPS="wheel"
+```
+
+## 22. Extending the Cluster
+
+To achieve high availability and load balancing you can add more nodes to
+the OTPme cluster. Install OTPme on the additional server (see README) and
+run the join command with `--host-type node`:
+
+```bash
+otpme-tool join --host-type node
+```
+
+After joining, the new node starts syncing with the master node (check
+`/var/log/otpme/otpme-clusterd.log`). To verify the cluster status:
+
+```bash
+otpme-cluster status
+```
+
+If the cluster is not fully in sync (indicated by coloured lines in the
+output), use the `--diff` option to show the differences between nodes:
+
+```bash
+# Show object sync checksum differences.
+otpme-cluster status --diff
+
+# Compare full object data (may produce high load and take some time).
+otpme-cluster status --diff --full
+
+# Compare full index object data (may produce high load and take some time).
+otpme-cluster status --diff --full-index
+```
+
+The OTPme cluster always has a master node which holds the floating IP
+configured during `realm init`. All management commands are executed on the
+master node. To failover the master role to another node, log in to the
+target node and run:
+
+```bash
+otpme-cluster master_failover --wait
+```
+
+## 23. Fileserver and Shares
+
+OTPme provides fileserver capabilities using FUSE mounts on the client side.
+Files and directories in the share root (default: `/otpme-mounts/`, see
+`otpme-site show_config <sitename> share_root`) must be available on all
+cluster nodes — using CephFS is recommended, but a central NFS mount also
+works.
+
+### Share Scripts
+
+When a new share is added, OTPme runs a configurable *add script*
+(`otpme-site show_config <sitename> default_share_add_script`). The script
+receives `$share_name`, `$share_root`, `$force_group`, `$force_create_mode`
+and `$force_directory_mode` as environment variables and runs as the OTPme
+system user (`otpme:otpme`), so `sudo(1)` may be needed for privileged
+operations. Storing the actual script under `/otpme-mounts` makes it
+available on all nodes.
+
+```bash
+# Edit the share add script (opens with $EDITOR).
+otpme-script edit scripts/add_share.sh
+```
+
+There is also a *mount script*
+(`otpme-site show_config <sitename> default_share_mount_script`) that runs
+when a client mounts a share. It receives `$share_name` and `$share_root`:
+
+```bash
+# Edit the default mount script.
+otpme-script edit scripts/mount_share.sh
+
+# Override the mount script for a specific share.
+otpme-share mount_script testshare scripts/mount_share_special.sh
+```
+
+To change the default scripts site-wide (can also be set per unit):
+
+```bash
+otpme-site config <sitename> default_share_add_script scripts/share_add_special.sh
+otpme-site config <sitename> default_share_mount_script scripts/share_mount_special.sh
+```
+
+### Adding a Share
+
+The share root directory must exist before creating the share (unless the
+add script handles this):
+
+```bash
+mkdir /otpme-mounts/testshare
+otpme-share add testshare
+```
+
+Shares support three *force* options that control ownership and permissions
+for newly created files and directories:
+
+```bash
+otpme-share add \
+    --force-group management \
+    --force-directory-mode 0o770 \
+    --force-create-mode 0o660 \
+    testshare
+```
+
+These options can also be changed on an existing share:
+
+```bash
+otpme-share force_group testshare testgroup
+otpme-share force_create_mode testshare 0o660
+otpme-share force_directory_mode testshare 0o770
 ```
