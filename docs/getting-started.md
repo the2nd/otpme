@@ -802,3 +802,66 @@ otpme-share force_group testshare testgroup
 otpme-share force_create_mode testshare 0o660
 otpme-share force_directory_mode testshare 0o770
 ```
+
+### Accessing a Share
+
+To allow a user to access the share, add a token or a role:
+
+```bash
+otpme-share add_token testshare joe/login
+```
+
+To test share access, log in on a host or node and mount all shares. They
+will appear under `/otpme/<site>/<share>`:
+
+```bash
+# Mount all shares.
+otpme-mount -a
+
+# Unmount all shares.
+otpme-mount -a -u
+```
+
+To automatically mount shares when a user logs in via the PAM module, enable
+auto-mount for the user:
+
+```bash
+otpme-user enable_auto_mount joe
+```
+
+### Encrypted Shares
+
+OTPme supports encrypted shares where file content and path names are
+encrypted on the client side. Every user who needs access to the share
+(including the creating user) must have a public/private key pair:
+
+```bash
+otpme-user gen_keys root
+otpme-user gen_keys joe
+```
+
+Create an encrypted share — you will be asked for a master password. Store
+this password in a secure place, as it is needed to decrypt the share if the
+last token is removed and no share keys are available any more:
+
+```bash
+otpme-share add --crypt testcrypt
+```
+
+### Using a Yubikey for Key Management
+
+By default the private key created with `gen_keys` is encrypted by the key
+script (`scripts/key_script.sh`) and stored in the user object on the nodes.
+A more secure alternative is to use a Yubikey in PIV mode. The following
+command replaces (`-r`) the user's default token so that the user can only
+log in on hosts where the PAM module is configured and the Yubikey is
+connected. The `--add-user-key` option adds the public key to the token
+user:
+
+```bash
+# WARNING: This resets the PIV applet and erases all PIV keys on the Yubikey.
+otpme-token --type yubikey_piv deploy --add-user-key -r joe/login
+
+# To use a Yubikey that already has a private key configured, add -n:
+otpme-token --type yubikey_piv deploy --add-user-key -n -r joe/login
+```
