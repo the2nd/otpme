@@ -37,6 +37,8 @@ def register():
 
 def register_config_params():
     object_types = [
+                        'site',
+                        'unit',
                         'share',
                         'node',
                     ]

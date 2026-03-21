@@ -1061,6 +1061,11 @@ class Node(OTPmeHost):
         # Add object using parent class.
         add_result = super(Node, self).add(verbose_level=verbose_level,
                                             callback=callback, **kwargs)
+        backup_enabled = self.get_config_parameter("backup_enabled")
+        if backup_enabled:
+            self.set_config_param(parameter='backup_enabled',
+                                value=True,
+                                callback=callback)
         default_excludes = [
                              'proc',
                              'sys',

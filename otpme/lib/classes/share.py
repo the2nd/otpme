@@ -1083,6 +1083,11 @@ class Share(OTPmeObject):
         result = self._prepare_add(callback=callback, **kwargs)
         if result is False:
             return callback.error()
+        backup_enabled = self.get_config_parameter("backup_enabled")
+        if backup_enabled:
+            self.set_config_param(parameter='backup_enabled',
+                                value=True,
+                                callback=callback)
         if restore_share:
             result = backend.search(object_type="share",
                                     attribute="name",

@@ -905,30 +905,22 @@ def register_config():
                     'node',
                     'share',
                     ]
+    # Enable/disable backups.
     def backup_enabled_setter(backup_enabled, config_object, **kwargs):
         config_object.update_index('backup_enabled', backup_enabled)
         return backup_enabled
     def backup_enabled_deller(config_object, **kwargs):
         config_object.del_index('backup_enabled')
-    # Enable/disable backups.
     config.register_config_parameter(name="backup_enabled",
                                     ctype=bool,
                                     setter=backup_enabled_setter,
                                     deller=backup_enabled_deller,
                                     object_types=object_types)
-
     # Exclude special files?
     config.register_config_parameter(name="backup_exclude_special",
                                     ctype=bool,
                                     object_types=object_types)
-
-    # Object types our config parameter is valid for.
-    object_types = [
-                    'site',
-                    'unit',
-                    'node',
-                    'share',
-                    ]
+    # Backup server to use.
     def backup_server_setter(backup_server, callback=JobCallback, **kwargs):
         result = backend.search(object_types=['node', 'host'],
                                 attribute="name",
@@ -941,13 +933,11 @@ def register_config():
         backup_server = result[0]
         fqdn = backup_server.fqdn
         return fqdn
-
-    # Backup server to use.
     config.register_config_parameter(name="backup_server",
                                     ctype=str,
                                     setter=backup_server_setter,
                                     object_types=object_types)
-
+    # Backup time.
     def backup_time_setter(backup_time, **kwargs):
         try:
             start_time = backup_time.split("-")[0]
@@ -966,12 +956,11 @@ def register_config():
             msg = _("Invalid time.")
             raise ValueError(msg)
         return backup_time
-    # Backup excludes.
     config.register_config_parameter(name="backup_time",
                                     ctype=str,
                                     setter=backup_time_setter,
                                     object_types=object_types)
-
+    # Backup interval.
     def backup_interval_setter(backup_interval, **kwargs):
         from otpme.lib.humanize import units
         try:
@@ -980,7 +969,6 @@ def register_config():
             msg = _("Invalid backup interval.")
             raise ValueError(msg)
         return backup_interval
-
     def backup_interval_getter(backup_interval, **kwargs):
         from otpme.lib.humanize import units
         try:
@@ -989,58 +977,12 @@ def register_config():
             msg = _("Invalid backup interval.")
             raise ValueError(msg)
         return backup_interval
-
-    # Backup excludes.
     config.register_config_parameter(name="backup_interval",
                                     ctype=int,
                                     setter=backup_interval_setter,
                                     getter=backup_interval_getter,
                                     object_types=object_types)
-
-    # Object types our config parameter is valid for.
-    object_types = [
-                    'node',
-                    'share',
-                    ]
-    def backup_mode_setter(mode, **kwargs):
-        if mode not in ['pack', 'tree']:
-            msg = _("Invalid backup mode.")
-            raise OTPmeException(msg)
-        return mode
-    # Backup mode.
-    config.register_config_parameter(name="backup_mode",
-                                    ctype=str,
-                                    warn_if_exists=True,
-                                    setter=backup_mode_setter,
-                                    object_types=object_types)
-    def excludes_setter(excludes, **kwargs):
-        if isinstance(excludes, str):
-            excludes = excludes.split(",")
-        return excludes
-    # Backup excludes.
-    config.register_config_parameter(name="backup_excludes",
-                                    ctype=list,
-                                    warn_if_exists=True,
-                                    setter=excludes_setter,
-                                    object_types=object_types)
-    def includes_setter(includes, **kwargs):
-        if isinstance(includes, str):
-            includes = includes.split(",")
-        return includes
-    # Backup includes.
-    config.register_config_parameter(name="backup_includes",
-                                    ctype=list,
-                                    warn_if_exists=True,
-                                    setter=includes_setter,
-                                    object_types=object_types)
-
-    # Object types our config parameter is valid for.
-    object_types = [
-                    'site',
-                    'unit',
-                    'node',
-                    'share',
-                    ]
+    # Backup key used for encrypting backups.
     def backup_key_setter(backup_key, callback=default_callback, **kwargs):
         KEY_LEN = 64
         key_len = len(str(backup_key))
@@ -1078,7 +1020,6 @@ def register_config():
         key = os.urandom(32)
         key = key.hex()
         return key
-    # Backup key used for encrypting backups.
     config.register_config_parameter(name="backup_key",
                                     ctype=str,
                                     warn_if_exists=True,
@@ -1086,12 +1027,7 @@ def register_config():
                                     getter=backup_key_getter,
                                     default_genner=backup_key_default_genner,
                                     object_types=object_types)
-
-    # Object types our config parameter is valid for.
-    object_types = [
-                    'node',
-                    'share',
-                    ]
+    # Backup repo password used for authentication to backup server.
     def backup_pass_setter(backup_pass, callback=default_callback, **kwargs):
         my_site = backend.get_object(object_type="site",
                                     uuid=config.site_uuid)
@@ -1119,14 +1055,48 @@ def register_config():
             raise OTPmeException(msg)
         backup_pass = backup_pass.decode()
         return backup_pass
-    # Backup repo password used for authentication to backup server.
     config.register_config_parameter(name="backup_repo_password",
                                     ctype=str,
                                     setter=backup_pass_setter,
                                     getter=backup_pass_getter,
                                     warn_if_exists=True,
                                     object_types=object_types)
-
+    # Object types our config parameter is valid for.
+    object_types = [
+                    'node',
+                    'share',
+                    ]
+    def backup_mode_setter(mode, **kwargs):
+        if mode not in ['pack', 'tree']:
+            msg = _("Invalid backup mode.")
+            raise OTPmeException(msg)
+        return mode
+    # Backup mode.
+    config.register_config_parameter(name="backup_mode",
+                                    ctype=str,
+                                    warn_if_exists=True,
+                                    setter=backup_mode_setter,
+                                    object_types=object_types)
+    def excludes_setter(excludes, **kwargs):
+        if isinstance(excludes, str):
+            excludes = excludes.split(",")
+        return excludes
+    # Backup excludes.
+    config.register_config_parameter(name="backup_excludes",
+                                    ctype=list,
+                                    warn_if_exists=True,
+                                    setter=excludes_setter,
+                                    object_types=object_types)
+    def includes_setter(includes, **kwargs):
+        if isinstance(includes, str):
+            includes = includes.split(",")
+        return includes
+    # Backup includes.
+    config.register_config_parameter(name="backup_includes",
+                                    ctype=list,
+                                    warn_if_exists=True,
+                                    setter=includes_setter,
+                                    object_types=object_types)
     # Object types our config parameters are valid for.
     object_types = [
                     'site',
