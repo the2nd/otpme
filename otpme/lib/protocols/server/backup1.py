@@ -19,7 +19,6 @@ except:
     pass
 
 from otpme.lib import config
-from otpme.lib.fuse import CONF_FILE
 from otpme.lib import multiprocessing
 
 from otpme.lib.protocols import status_codes
@@ -218,10 +217,14 @@ class OTPmeBackupP1(OTPmeFsServer1):
                             "set_entry_metadata",
                             "set_dirs_metadata",
                             "snap_dir",
-                            "list_entries",
                             "link_entry",
                             "get_entry_full",
-                            "read_index",
+                            "get_snap_index_info",
+                            "get_snap_index_size",
+                            "get_snap_index_chunk",
+                            "open_entry_cursor",
+                            "next_entries",
+                            "close_entry_cursor",
 
                             "link_unchanged_entries",
                             "set_running",
@@ -441,6 +444,12 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = False
                 message = _("Mount first.")
                 return self.build_response(status, message)
+            try:
+                conf_file_name = command_args['conf_file_name']
+            except KeyError:
+                status = False
+                message = _("Missing path.")
+                return self.build_response(status, message)
             backup_handler = BackupServer(self.root)
             snaps = backup_handler.list_snapshots()
             if not snaps:
@@ -449,7 +458,7 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 return self.build_response(status, message)
             snap = snaps[-1]['name']
             tree_dir = f"{self.root}/tree/"
-            data_file = os.path.join(tree_dir, CONF_FILE)
+            data_file = os.path.join(tree_dir, conf_file_name)
             data_file = f"{data_file}-{snap}"
             try:
                 fd = open(data_file, "rb")
@@ -710,27 +719,6 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = f"{command}: {e}"
             return self.build_response(status, message)
 
-        elif command == "list_entries":
-            try:
-                snap_name = command_args['snap_name']
-            except KeyError:
-                status = False
-                message = _("Missing snap_name.")
-                return self.build_response(status, message)
-            try:
-                filter_path = command_args['filter_path']
-            except KeyError:
-                status = False
-                message = _("Missing filter_path.")
-                return self.build_response(status, message)
-            full = command_args.get('full', False)
-            try:
-                message = self.backup_handler.list_entries(snap_name, filter_path, full=full)
-            except Exception as e:
-                status = False
-                message = f"{command}: {e}"
-            return self.build_response(status, message)
-
         elif command == "link_entry":
             try:
                 prev_snap = command_args['prev_snap']
@@ -751,10 +739,9 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = _("Missing rel.")
                 return self.build_response(status, message)
             is_dir = command_args.get('is_dir', None)
-            index_line = command_args.get('index_line', None)
             meta = command_args.get('meta', None)
             try:
-                message = self.backup_handler.link_entry(prev_snap, snap_name, rel, is_dir=is_dir, index_line=index_line, meta=meta)
+                message = self.backup_handler.link_entry(prev_snap, snap_name, rel, is_dir=is_dir, meta=meta)
             except Exception as e:
                 status = False
                 message = f"{command}: {e}"
@@ -780,7 +767,20 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = f"{command}: {e}"
             return self.build_response(status, message)
 
-        elif command == "read_index":
+        elif command == "get_snap_index_info":
+            try:
+                snap_name = command_args.get('snap_name')
+            except KeyError:
+                snap_name = None
+            try:
+                info = self.backup_handler.get_snap_index_info(snap_name)
+                message = f"{info['size']}:{info['fingerprint']}"
+            except Exception as e:
+                status = False
+                message = f"{command}: {e}"
+            return self.build_response(status, message)
+
+        elif command == "get_snap_index_size":
             try:
                 snap_name = command_args['snap_name']
             except KeyError:
@@ -788,12 +788,65 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = _("Missing snap_name.")
                 return self.build_response(status, message)
             try:
-                message = self.backup_handler.read_index(snap_name)
+                message = str(self.backup_handler.get_snap_index_size(snap_name))
             except Exception as e:
                 status = False
                 message = f"{command}: {e}"
             return self.build_response(status, message)
 
+        elif command == "get_snap_index_chunk":
+            try:
+                snap_name = command_args['snap_name']
+                offset = int(command_args['offset'])
+                chunk_size = int(command_args['chunk_size'])
+            except KeyError:
+                status = False
+                message = _("Missing arguments.")
+                return self.build_response(status, message)
+            try:
+                binary_data = self.backup_handler.get_snap_index_chunk(
+                    snap_name, offset, chunk_size)
+                message = "Chunk data."
+            except Exception as e:
+                status = False
+                message = f"{command}: {e}"
+                binary_data = None
+            return self.build_response(status, message, binary_data=binary_data)
+
+        elif command == "open_entry_cursor":
+            try:
+                snap_name = command_args['snap_name']
+            except KeyError:
+                status = False
+                message = _("Missing snap_name.")
+                return self.build_response(status, message)
+            filter_path = command_args.get('filter_path')
+            full = command_args.get('full', False)
+            try:
+                self.backup_handler.open_entry_cursor(snap_name, filter_path, full)
+                message = "Cursor opened."
+            except Exception as e:
+                status = False
+                message = f"{command}: {e}"
+            return self.build_response(status, message)
+
+        elif command == "next_entries":
+            count = int(command_args.get('count', 10000))
+            try:
+                message = self.backup_handler.next_entries(count)
+            except Exception as e:
+                status = False
+                message = f"{command}: {e}"
+            return self.build_response(status, message)
+
+        elif command == "close_entry_cursor":
+            try:
+                self.backup_handler.close_entry_cursor()
+                message = "Cursor closed."
+            except Exception as e:
+                status = False
+                message = f"{command}: {e}"
+            return self.build_response(status, message)
 
         elif command == "link_unchanged_entries":
             try:
@@ -845,12 +898,9 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 return self.build_response(status, message)
             total_bytes = command_args.get('total_bytes', 0)
             stored_bytes = command_args.get('stored_bytes', 0)
-            chunk_hashes_list = command_args.get('chunk_hashes', [])
-            chunk_hashes = set(chunk_hashes_list) if chunk_hashes_list else None
             try:
                 message = self.backup_handler.finalize_snapshot(
-                    name, total_bytes=total_bytes, stored_bytes=stored_bytes,
-                    chunk_hashes=chunk_hashes)
+                    name, total_bytes=total_bytes, stored_bytes=stored_bytes)
             except Exception as e:
                 status = False
                 message = f"{command}: {e}"
@@ -1008,6 +1058,14 @@ class OTPmeBackupP1(OTPmeFsServer1):
         result['readdir'] = readdir_result
         for x_path in dict(result['getattr']):
             x_data = result['getattr'].pop(x_path)
+            x_mode = x_data['result'].get("st_mode", 0)
+            if stat.S_ISDIR(x_mode):
+                x_path = x_path.split("/")
+                x_path.pop(1)
+                x_path.insert(1, self.snapshot)
+                x_path = "/".join(x_path)
+                result['getattr'][x_path] = x_data
+                continue
             if x_path.endswith(".longname"):
                 longname = x_path
                 x_path = re.sub('(.*).longname$', r'\1', x_path)
@@ -1025,6 +1083,7 @@ class OTPmeBackupP1(OTPmeFsServer1):
             x_path.insert(1, self.snapshot)
             x_path = "/".join(x_path)
             x_path = re.sub(f'(.*)-{self.snapshot}$', r'\1', x_path)
+            result['getattr'][x_path] = x_data
         for x_path in dict(result['getxattr']):
             x_data = result['getxattr'].pop(x_path)
             if not x_path.endswith(self.snapshot):

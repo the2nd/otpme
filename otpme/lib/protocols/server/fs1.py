@@ -114,7 +114,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                                             share=share)
         setproctitle.setproctitle(new_proctitle)
 
-    def get_backupd_conn(self, host):
+    def get_backupd_conn(self, host, backup_key=None):
         try:
             backupd_conn = connections.get("backupd",
                                         node=host,
@@ -123,6 +123,7 @@ class OTPmeFsP1(OTPmeFsServer1):
                                         auto_preauth=True,
                                         encrypt_session=False,
                                         verify_preauth=False,
+                                        backup_key=backup_key,
                                         interactive=False)
         except Exception as e:
             msg = _("Failed to get backup connection: {host_name}: {e}")
@@ -235,8 +236,9 @@ class OTPmeFsP1(OTPmeFsServer1):
                     message = _("Unable to find backup host for share: {share}")
                     message = message.format(share=self.share)
                     return self.build_response(status, message)
+                backup_key = restore_share.get_config_parameter("backup_key")
                 repo_id = f"share/{restore_share.site}/{restore_share.name}"
-                self.backupd_conn = self.get_backupd_conn(host)
+                self.backupd_conn = self.get_backupd_conn(host, backup_key=backup_key)
                 try:
                     self.backupd_conn.mount(repo_id,
                                             username=self.username,

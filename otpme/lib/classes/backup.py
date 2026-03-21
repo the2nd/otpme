@@ -7,6 +7,7 @@ import zlib
 import fcntl
 import shutil
 import struct
+import sqlite3
 import fnmatch
 import posix1e
 import hashlib
@@ -14,9 +15,46 @@ from pathlib import Path
 from typing import Optional
 import time
 from datetime import datetime
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM, AESSIV
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes as crypto_hashes
+
+# -- Snap-index binary format constants --
+# Header: type_id(B) mode(H) uid(I) gid(I) size(Q) ctime(d) mtime(d) atime(d)
+_SNAP_HEADER = struct.Struct('>BHIIQddd')
+_SNAP_HEADER_SIZE = _SNAP_HEADER.size  # 43 bytes
+_SNAP_TYPE_IDS = {
+    'file': 0, 'dir': 1, 'symlink': 2, 'hardlink': 3,
+    'blockdev': 4, 'chardev': 5, 'fifo': 6, 'socket': 7,
+}
+_SNAP_ID_TYPES = {v: k for k, v in _SNAP_TYPE_IDS.items()}
+# Offset of ctime (double) inside the header: B+H+I+I+Q = 1+2+4+4+8 = 19
+_SNAP_CTIME_OFFSET = 19
+
+
+
+def _entry_ctime(val):
+    """Extract ctime from a binary snap-index entry without full parse."""
+    return struct.unpack_from('>d', val, _SNAP_CTIME_OFFSET)[0]
+
+
+def _entry_chunk_hashes(val):
+    """Extract chunk hashes from a binary snap-index entry without full parse."""
+    if val[0] != _SNAP_TYPE_IDS['file']:
+        return []
+    off = _SNAP_HEADER_SIZE
+    extra_len = struct.unpack_from('>H', val, off)[0]
+    off += 2
+    if extra_len < 3:
+        return []
+    num_hashes, hash_len = struct.unpack_from('>HB', val, off)
+    if num_hashes == 0 or hash_len == 0:
+        return []
+    off += 3
+    return [val[off + i:off + i + hash_len].hex()
+            for i in range(0, num_hashes * hash_len, hash_len)]
+
+
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -45,7 +83,7 @@ Architecture
    AES-GCM encryption                   create_snapshot(name)
    ───── sends encrypted blob ────→      write_entry(name, path, meta)
    ←──── receives encrypted blob ──
-   AES-GCM decryption                   list_entries(name) → [entry...]
+   AES-GCM decryption                   iter_entries(name) → entry...
    zlib decompression                    list_snapshots() → [...]
    File writing + metadata restore       delete_snapshot(name)
                                          gc_orphaned_blocks()
@@ -60,7 +98,7 @@ Storage layout
   ├── packs/                     # Pack-based encrypted block store
   │   ├── XX/                   #   first 2 hex chars of 6-digit pack ID
   │   │   └── pack-XXXXXX.dat  #   concatenated entries: 64B hash + 4B len + blob
-  │   └── index.gz              #   gzip master index: hash\\tpack_id\\toffset\\tlength
+  │   └── pack_index.db         #   SQLite pack index: hash → (pack_id, offset, length)
   ├── tree/                      # Shared directory tree with all backup entries
   │   ├── etc/                  #   mirrors the original directory structure
   │   │   └── cfg-<snap>        #   files get "-<snap_name>" suffix
@@ -71,7 +109,7 @@ Storage layout
       └── <name>/
           ├── meta/              # Only for directories: sha256(rel_path) named files
           │   └── <hash_b>       # standalone file for dirs (metadata carrier)
-          └── index              # Tab-separated index of all entries (gzip-compressed)
+          └── snap_index.db       # SQLite snap index (normalized: entries + snap_entries)
 
   For directories, meta/ files carry filesystem metadata (permissions, ACLs,
   ownership, timestamps) as actual file attributes.  For non-directory entries,
@@ -97,7 +135,7 @@ Snapshot deletion & garbage collection
   3. Clean up empty tree/ directories (bottom-up)
   4. Scan all remaining snapshot chunks files to collect live hashes
   5. Remove dead hashes from pack index; delete fully empty pack files
-  6. Flush updated index.gz atomically
+  6. Pack-index LMDB is updated transactionally
 
 """
 
@@ -138,6 +176,79 @@ def encrypt_block(key: bytes, plaintext: bytes) -> bytes:
 
 def decrypt_block(key: bytes, blob: bytes) -> bytes:
     return AESGCM(key).decrypt(blob[:NONCE_SIZE], blob[NONCE_SIZE:], None)
+
+
+# ---------------------------------------------------------------------------
+# Path encryption (AES-SIV, deterministic)
+# ---------------------------------------------------------------------------
+# AES-SIV requires a 2×key-size key (256-bit SIV → 512-bit key).
+# We derive a separate path-encryption key from the main key via HMAC.
+
+import hmac as _hmac
+import base64 as _base64
+
+_PATH_KEY_LABEL = b"otpme-backup-path-encryption-v1"
+
+
+def _derive_path_key(key: bytes) -> bytes:
+    """Derive a 64-byte AES-SIV key from the 32-byte main key."""
+    # Two HMAC rounds to get 64 bytes (2×32)
+    k1 = _hmac.new(key, _PATH_KEY_LABEL + b'\x01', 'sha256').digest()
+    k2 = _hmac.new(key, _PATH_KEY_LABEL + b'\x02', 'sha256').digest()
+    return k1 + k2
+
+
+def encrypt_path_component(siv: AESSIV, name: str, parent_ct: bytes) -> str:
+    """Encrypt a single path component using AES-SIV with parent ciphertext as AD.
+
+    Returns base64url-encoded ciphertext (filesystem/LMDB safe, no padding).
+    """
+    ct = siv.encrypt(name.encode('utf-8'), [parent_ct])
+    return _base64.urlsafe_b64encode(ct).rstrip(b'=').decode('ascii')
+
+
+def decrypt_path_component(siv: AESSIV, token: str, parent_ct: bytes) -> str:
+    """Decrypt a single path component. token is base64url-encoded ciphertext."""
+    # Restore padding
+    padded = token + '=' * (-len(token) % 4)
+    ct = _base64.urlsafe_b64decode(padded.encode('ascii'))
+    return siv.decrypt(ct, [parent_ct]).decode('utf-8')
+
+
+def encrypt_path(siv: AESSIV, rel_path: str) -> str:
+    """Encrypt a full relative path, component by component.
+
+    Each component is encrypted with the parent's ciphertext as associated data.
+    Returns encrypted path with '/' separators.
+    """
+    if not rel_path or rel_path == '.':
+        return rel_path
+    parts = rel_path.split('/')
+    enc_parts = []
+    parent_ct = b''  # root has empty parent context
+    for part in parts:
+        enc = encrypt_path_component(siv, part, parent_ct)
+        # Use the raw ciphertext (before base64) as AD for child
+        padded = enc + '=' * (-len(enc) % 4)
+        parent_ct = _base64.urlsafe_b64decode(padded.encode('ascii'))
+        enc_parts.append(enc)
+    return '/'.join(enc_parts)
+
+
+def decrypt_path(siv: AESSIV, enc_path: str) -> str:
+    """Decrypt a full encrypted relative path, component by component."""
+    if not enc_path or enc_path == '.':
+        return enc_path
+    parts = enc_path.split('/')
+    dec_parts = []
+    parent_ct = b''
+    for part in parts:
+        padded = part + '=' * (-len(part) % 4)
+        ct = _base64.urlsafe_b64decode(padded.encode('ascii'))
+        name = siv.decrypt(ct, [parent_ct]).decode('utf-8')
+        parent_ct = ct
+        dec_parts.append(name)
+    return '/'.join(dec_parts)
 
 
 # ---------------------------------------------------------------------------
@@ -259,16 +370,28 @@ class BackupServer:
         self._lock_fd      = None
         self._lock_count   = 0
         # Pack-file state
-        self._pack_index        = {}    # hash -> (pack_id, offset, length)
-        self._pack_index_loaded = False
+        self._pack_db           = None  # sqlite3.Connection for pack index
         self._active_pack_fd    = None
         self._active_pack_id    = None
         self._active_pack_size  = 0
         self._max_pack_size     = 512 * 1024 * 1024  # 512 MiB
-        self._index_dirty       = False
-        # Parsed snapshot index cache for pack mode (snap_name -> {rel_path -> parsed})
-        self._snap_index_cache  = {}
-        self._snap_index_cache_name = None
+        self._commit_interval = 100000  # commit every N puts
+        self._pack_puts_since_commit = 0
+        self._snap_puts_since_commit = 0
+        # Shared snap-index SQLite (single DB for all snapshots)
+        self._snap_db           = None  # sqlite3.Connection
+        self._snap_id_cache     = {}    # snap_name -> snap_id
+        self._snap_entry_id_cache = {}  # snap_name -> set of entry_ids
+        self._active_snap_id    = None  # snap_id of current write session
+        self._snap_puts_since_commit = 0
+        self._chunks_gz         = None  # streaming gzip writer for chunks file
+        # Entry cursor state (for chunked iteration)
+        self._entry_cursor_cur  = None
+        self._entry_cursor_results = None
+        self._entry_cursor_snap = None
+        self._entry_cursor_snap_id = None
+        self._entry_cursor_filter = None
+        self._entry_cursor_full = None
 
     # -- repository locking --
 
@@ -295,7 +418,8 @@ class BackupServer:
         self._lock_fd = fd
         self._lock_count = 1
         self._load_mode()
-        self.load_pack_index()
+        self._open_pack_db()
+        self._recover_pack()
 
     def unlock_repo(self) -> None:
         """Release the repository lock (reentrant)."""
@@ -303,8 +427,7 @@ class BackupServer:
             self._lock_count -= 1
             return
         self._seal_active_pack()
-        self._flush_pack_index()
-        self._pack_index_loaded = False
+        self._close_pack_db()
         if self._lock_fd is not None:
             try:
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
@@ -319,7 +442,7 @@ class BackupServer:
         if self.mode_file.exists():
             self.mode = self.mode_file.read_text().strip()
         else:
-            self.mode = "tree"
+            self.mode = "pack"
 
     def get_mode(self) -> str:
         """Return the repository mode ('tree' or 'pack')."""
@@ -327,23 +450,63 @@ class BackupServer:
             self._load_mode()
         return self.mode
 
-    def _get_parsed_snap_index(self, snap_name: str) -> dict:
-        """Return {rel_path: parsed_dict} for a snapshot, cached."""
-        if self._snap_index_cache_name == snap_name:
-            return self._snap_index_cache
-        content = self._read_index_file(snap_name)
-        result = {}
-        if content:
-            for line in content.strip().split("\n"):
-                if not line:
-                    continue
-                parsed = self._parse_index_line(line)
-                if parsed is None:
-                    continue
-                result[parsed["rel_path"]] = parsed
-        self._snap_index_cache = result
-        self._snap_index_cache_name = snap_name
-        return result
+    def _snap_entry_ids(self, snap_name: str) -> set:
+        """Return cached set of entry_ids for a snapshot."""
+        if snap_name in self._snap_entry_id_cache:
+            return self._snap_entry_id_cache[snap_name]
+        snap_id = self._resolve_snap_id(snap_name)
+        if snap_id == 0:
+            return set()
+        db = self._snap_db
+        if db is None:
+            db_path = self._snap_index_db_path()
+            if not os.path.exists(db_path):
+                return set()
+            db = sqlite3.connect(db_path)
+            try:
+                ids = set(r[0] for r in db.execute(
+                    "SELECT entry_id FROM snap_entries WHERE snap_id=?", (snap_id,)))
+            finally:
+                db.close()
+        else:
+            ids = set(r[0] for r in db.execute(
+                "SELECT entry_id FROM snap_entries WHERE snap_id=?", (snap_id,)))
+        self._snap_entry_id_cache[snap_name] = ids
+        return ids
+
+    def _snap_index_get(self, snap_name: str, rel_path: str) -> bytes:
+        """Look up a single entry from snap-index SQLite. Returns entry_data or None."""
+        entry_ids = self._snap_entry_ids(snap_name)
+        if not entry_ids:
+            return None
+        db = self._snap_db
+        if db is None:
+            db_path = self._snap_index_db_path()
+            if not os.path.exists(db_path):
+                return None
+            db = sqlite3.connect(db_path)
+            try:
+                row = db.execute(
+                    "SELECT entry_id, value FROM entries WHERE key=? ORDER BY entry_id DESC LIMIT 1",
+                    (rel_path,)).fetchone()
+                if row is None or row[0] not in entry_ids:
+                    return None
+                return row[1]
+            finally:
+                db.close()
+        row = db.execute(
+            "SELECT entry_id, value FROM entries WHERE key=? ORDER BY entry_id DESC LIMIT 1",
+            (rel_path,)).fetchone()
+        if row is None or row[0] not in entry_ids:
+            return None
+        return row[1]
+
+    def _snap_index_get_parsed(self, snap_name: str, rel_path: str) -> dict:
+        """Look up a single entry and return parsed dict, or None."""
+        val = self._snap_index_get(snap_name, rel_path)
+        if val is None:
+            return None
+        return self._parse_index_entry(val)
 
     def init_repository(self, mode=None):
         """Create the backup directory structure if it doesn't exist."""
@@ -425,65 +588,170 @@ class BackupServer:
             self._active_pack_fd.close()
             self._active_pack_fd = None
 
-    # -- pack index persistence --
+    def _recover_pack(self) -> int:
+        """Check for uncommitted pack data after a crash and recover it.
 
-    def load_pack_index(self) -> None:
-        """Load packs/index.gz into self._pack_index."""
-        if self._pack_index_loaded:
-            return
-        idx_path = self.packs_dir / "index.gz"
-        self._pack_index = {}
-        if idx_path.exists():
-            raw = gzip.decompress(idx_path.read_bytes()).decode('utf-8')
-            for line in raw.split('\n'):
-                if not line:
-                    continue
-                parts = line.split('\t')
-                if len(parts) != 4:
-                    continue
-                h, pack_id, offset, length = parts
-                self._pack_index[h] = (int(pack_id), int(offset), int(length))
-        self._pack_index_loaded = True
-        self._index_dirty = False
+        Compares the committed pack state (stored in pack_meta) with the
+        actual pack files.  Recovers entries beyond the committed size.
 
-    def _flush_pack_index(self) -> None:
-        """Atomically write self._pack_index to packs/index.gz."""
-        if not self._index_dirty:
+        Returns the number of recovered entries.
+        """
+        row = self._pack_db.execute(
+            "SELECT value FROM pack_meta WHERE key='last_commit'").fetchone()
+        if row is None:
+            return 0
+        committed_pid, committed_size = struct.unpack('>IQ', row[0])
+
+        # Collect all pack files with id >= committed pack, sorted by id.
+        packs_to_check = []
+        if self.packs_dir.exists():
+            for bucket_dir in self.packs_dir.iterdir():
+                if not bucket_dir.is_dir():
+                    continue
+                for pack_file in bucket_dir.iterdir():
+                    name = pack_file.name
+                    if name.startswith("pack-") and name.endswith(".dat"):
+                        try:
+                            pid = int(name[5:-4], 16)
+                        except ValueError:
+                            continue
+                        if pid >= committed_pid:
+                            packs_to_check.append((pid, pack_file))
+        packs_to_check.sort()
+
+        if not packs_to_check:
+            return 0
+
+        first_pid, first_path = packs_to_check[0]
+        if len(packs_to_check) == 1 and first_pid == committed_pid:
+            if first_path.stat().st_size <= committed_size:
+                return 0
+
+        recovered = 0
+        last_pid = committed_pid
+        last_offset = committed_size
+        for pid, pack_path in packs_to_check:
+            file_size = pack_path.stat().st_size
+            start = committed_size if pid == committed_pid else 0
+            offset = start
+            with open(pack_path, 'rb') as f:
+                if start > 0:
+                    f.seek(start)
+                while offset + 68 <= file_size:
+                    header = f.read(68)
+                    if len(header) < 68:
+                        break
+                    h_hex = header[:64].decode('ascii')
+                    blob_len = struct.unpack('>I', header[64:68])[0]
+                    if offset + 68 + blob_len > file_size:
+                        logger.warning(
+                            "Truncated entry in pack %06x at "
+                            "offset %d, truncating pack file.",
+                            pid, offset)
+                        break
+                    f.seek(blob_len, 1)
+                    self._pack_db.execute(
+                        "INSERT OR IGNORE INTO pack_index (hash, pack_id, offset, length) "
+                        "VALUES (?, ?, ?, ?)",
+                        (h_hex, pid, offset, blob_len))
+                    recovered += 1
+                    offset += 68 + blob_len
+            if offset < file_size:
+                with open(pack_path, 'r+b') as trunc_f:
+                    trunc_f.truncate(offset)
+            last_pid = pid
+            last_offset = offset
+
+        if recovered:
+            self._pack_db.execute(
+                "INSERT OR REPLACE INTO pack_meta (key, value) VALUES (?, ?)",
+                ('last_commit', struct.pack('>IQ', last_pid, last_offset)))
+            self._pack_db.commit()
+            logger.info("Recovered %d entries from %d pack(s).",
+                        recovered, len(packs_to_check))
+        return recovered
+
+    # -- pack index (SQLite) --
+
+    def _pack_index_path(self) -> str:
+        """Return path for the pack index SQLite database."""
+        return str(self.packs_dir / "pack_index.db")
+
+    def _open_pack_db(self) -> None:
+        """Open the pack-index SQLite database."""
+        if self._pack_db is not None:
             return
         self.packs_dir.mkdir(parents=True, exist_ok=True)
-        lines = []
-        for h, (pack_id, offset, length) in self._pack_index.items():
-            lines.append(f"{h}\t{pack_id}\t{offset}\t{length}")
-        data = ('\n'.join(lines) + '\n').encode('utf-8') if lines else b''
-        compressed = gzip.compress(data)
-        tmp_path = self.packs_dir / "index.gz.tmp"
-        tmp_path.write_bytes(compressed)
-        tmp_path.rename(self.packs_dir / "index.gz")
-        self._index_dirty = False
+        path = self._pack_index_path()
+        db = sqlite3.connect(path)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA synchronous=NORMAL")
+        db.execute("PRAGMA cache_size=-65536")
+        db.execute("""CREATE TABLE IF NOT EXISTS pack_index (
+            hash TEXT PRIMARY KEY,
+            pack_id INTEGER NOT NULL,
+            offset INTEGER NOT NULL,
+            length INTEGER NOT NULL)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS pack_meta (
+            key TEXT PRIMARY KEY,
+            value BLOB NOT NULL)""")
+        db.execute("BEGIN")
+        self._pack_db = db
+
+    def _close_pack_db(self) -> None:
+        """Commit and close the pack-index SQLite database."""
+        if self._pack_db is not None:
+            # Write commit marker
+            if self._active_pack_id is not None:
+                self._pack_db.execute(
+                    "INSERT OR REPLACE INTO pack_meta (key, value) VALUES (?, ?)",
+                    ('last_commit', struct.pack('>IQ', self._active_pack_id,
+                                                self._active_pack_size)))
+            self._pack_db.commit()
+            self._pack_db.close()
+            self._pack_db = None
+
+    def load_pack_index(self) -> None:
+        """Open the pack-index SQLite database."""
+        self._open_pack_db()
 
     # -- block operations (pack-based) --
 
     def block_exists(self, h: str) -> bool:
-        return h in self._pack_index
+        row = self._pack_db.execute(
+            "SELECT 1 FROM pack_index WHERE hash=?", (h,)).fetchone()
+        return row is not None
 
     def store_block(self, h: str, blob: bytes) -> None:
         """Append a pre-encrypted blob to the active pack file."""
-        if h in self._pack_index:
+        if self.block_exists(h):
             return  # dedup
         self._ensure_active_pack()
         offset = self._active_pack_size
         hash_bytes = h.encode('ascii')
         length_bytes = struct.pack('>I', len(blob))
         self._active_pack_fd.write(hash_bytes + length_bytes + blob)
-        self._active_pack_fd.flush()
         self._active_pack_size += 64 + 4 + len(blob)
-        self._pack_index[h] = (self._active_pack_id, offset, len(blob))
-        self._index_dirty = True
+        self._pack_db.execute(
+            "INSERT OR IGNORE INTO pack_index (hash, pack_id, offset, length) "
+            "VALUES (?, ?, ?, ?)",
+            (h, self._active_pack_id, offset, len(blob)))
+        self._pack_puts_since_commit += 1
+        if self._pack_puts_since_commit >= self._commit_interval:
+            self._active_pack_fd.flush()
+            self._pack_db.commit()
+            self._pack_db.execute("BEGIN")
+            self._pack_puts_since_commit = 0
         self.inode_count += 1
 
     def retrieve_block(self, h: str) -> bytes:
         """Return the encrypted blob for a given hash from its pack file."""
-        pack_id, offset, length = self._pack_index[h]
+        row = self._pack_db.execute(
+            "SELECT pack_id, offset, length FROM pack_index WHERE hash=?",
+            (h,)).fetchone()
+        if row is None:
+            raise KeyError(h)
+        pack_id, offset, length = row
         with open(self._pack_path(pack_id), 'rb') as f:
             f.seek(offset + 68)  # skip 64-byte hash + 4-byte length
             return f.read(length)
@@ -541,149 +809,345 @@ class BackupServer:
     def snap_dir(self, name: str) -> Path:
         return self.snapshots_dir / name
 
-    def snap_index_path(self, name: str) -> Path:
-        """Return path to the snapshot index file."""
-        return self.snap_dir(name) / "index"
+    def _snap_index_db_path(self) -> str:
+        """Return path for the shared snap-index SQLite database."""
+        return str(self.root / "snap_index.db")
 
     def snap_chunks_path(self, name: str) -> Path:
         """Return path to the snapshot chunks file."""
         return self.snap_dir(name) / "chunks"
 
-    def _read_index_file(self, snap_name: str) -> str:
-        """Read index file content, handling both plain and gzip-compressed formats."""
-        index_path = self.snap_index_path(snap_name)
-        if not index_path.exists():
-            return ""
-        raw = index_path.read_bytes()
-        if raw[:2] == b'\x1f\x8b':
-            return gzip.decompress(raw).decode("utf-8")
-        return raw.decode("utf-8")
+    def _open_snap_db(self, readonly: bool = False) -> sqlite3.Connection:
+        """Open the shared snap-index SQLite database."""
+        if self._snap_db is not None:
+            return self._snap_db
+        db_path = self._snap_index_db_path()
+        if readonly and not os.path.exists(db_path):
+            return None
+        uri = f"file:{db_path}?mode=ro" if readonly else db_path
+        if readonly:
+            db = sqlite3.connect(uri, uri=True)
+        else:
+            db = sqlite3.connect(db_path)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA synchronous=NORMAL")
+        db.execute("PRAGMA cache_size=-65536")  # 64 MiB cache
+        if not readonly:
+            db.execute("""CREATE TABLE IF NOT EXISTS entries (
+                entry_id INTEGER PRIMARY KEY,
+                key TEXT NOT NULL,
+                value BLOB NOT NULL)""")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_entries_key ON entries(key)")
+            db.execute("""CREATE TABLE IF NOT EXISTS snap_entries (
+                snap_id INTEGER NOT NULL,
+                entry_id INTEGER NOT NULL,
+                PRIMARY KEY(snap_id, entry_id))""")
+            db.execute("""CREATE TABLE IF NOT EXISTS snap_meta (
+                snap_name TEXT PRIMARY KEY,
+                snap_id INTEGER NOT NULL)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS name_map (
+                hmac_hex TEXT PRIMARY KEY,
+                enc_name BLOB NOT NULL)""")
 
-    def _compress_index(self, snap_name: str) -> None:
-        """Compress the index file with gzip (in-place replacement)."""
-        index_path = self.snap_index_path(snap_name)
-        if not index_path.exists():
-            return
-        raw = index_path.read_bytes()
-        if raw[:2] == b'\x1f\x8b':
-            return  # Already compressed
-        index_path.write_bytes(gzip.compress(raw))
+        self._snap_db = db
+        return db
 
-    def _write_chunks_file(self, snap_name: str, chunk_hashes: set = None) -> None:
-        """Write a gzip-compressed chunks file (one hash per line)."""
-        if not chunk_hashes:
+    def _get_snap_id(self, snap_name: str) -> int:
+        """Get numeric snap_id for a snapshot name. Creates one if missing."""
+        if snap_name in self._snap_id_cache:
+            return self._snap_id_cache[snap_name]
+        db = self._snap_db
+        row = db.execute("SELECT snap_id FROM snap_meta WHERE snap_name=?",
+                         (snap_name,)).fetchone()
+        if row is not None:
+            self._snap_id_cache[snap_name] = row[0]
+            return row[0]
+        # Assign new ID
+        row = db.execute("SELECT MAX(snap_id) FROM snap_meta").fetchone()
+        new_id = (row[0] or 0) + 1
+        db.execute("INSERT INTO snap_meta (snap_name, snap_id) VALUES (?, ?)",
+                   (snap_name, new_id))
+        self._snap_id_cache[snap_name] = new_id
+        return new_id
+
+    def _resolve_snap_id(self, snap_name: str) -> int:
+        """Get snap_id (no creation). Returns 0 if not found."""
+        if snap_name in self._snap_id_cache:
+            return self._snap_id_cache[snap_name]
+        db = self._snap_db
+        if db is None:
+            db_path = self._snap_index_db_path()
+            if not os.path.exists(db_path):
+                return 0
+            db = sqlite3.connect(db_path)
+            try:
+                row = db.execute("SELECT snap_id FROM snap_meta WHERE snap_name=?",
+                                 (snap_name,)).fetchone()
+                if row is None:
+                    return 0
+                self._snap_id_cache[snap_name] = row[0]
+                return row[0]
+            finally:
+                db.close()
+        row = db.execute("SELECT snap_id FROM snap_meta WHERE snap_name=?",
+                         (snap_name,)).fetchone()
+        if row is None:
+            return 0
+        self._snap_id_cache[snap_name] = row[0]
+        return row[0]
+
+    def _open_snap_session(self, snap_name: str) -> None:
+        """Open a shared snap-index SQLite session for snap_name."""
+        if self._active_snap_id is not None:
             return
-        data = "\n".join(sorted(chunk_hashes)) + "\n"
-        self.snap_chunks_path(snap_name).write_bytes(gzip.compress(data.encode()))
+        self._open_snap_db()
+        self._snap_db.execute("BEGIN")
+        self._active_snap_id = self._get_snap_id(snap_name)
+        self._snap_puts_since_commit = 0
+        # Open streaming gzip writer for chunks file
+        chunks_path = self.snap_chunks_path(snap_name)
+        self._chunks_gz = gzip.open(str(chunks_path), 'wt')
+
+    def _close_snap_session(self) -> None:
+        """Commit and close the active snap-index SQLite session."""
+        if self._chunks_gz is not None:
+            self._chunks_gz.close()
+            self._chunks_gz = None
+        if self._snap_db is not None:
+            self._snap_db.commit()
+            self._snap_db.close()
+            self._snap_db = None
+        self._active_snap_id = None
+        self._snap_id_cache = {}
+
+    def _snap_periodic_commit(self) -> None:
+        """Periodic commit of snap writes."""
+        self._snap_puts_since_commit += 1
+        if self._snap_puts_since_commit >= self._commit_interval:
+            self._snap_db.commit()
+            self._snap_db.execute("BEGIN")
+            self._snap_puts_since_commit = 0
+
+    def _snap_index_put(self, snap_name: str, rel_path: str, entry_data: bytes) -> None:
+        """Write a binary entry to the snap-index SQLite.
+
+        Always inserts a new entry row and links it to the snapshot.
+        Orphaned old entries (same key, no snap reference) are cleaned
+        up during snapshot deletion.
+        """
+        snap_id = self._active_snap_id
+        if snap_id is None:
+            snap_id = self._resolve_snap_id(snap_name)
+            if snap_id == 0:
+                raise RuntimeError(f"No snap_id for {snap_name}")
+        self._snap_periodic_commit()
+        cur = self._snap_db.execute(
+            "INSERT INTO entries (key, value) VALUES (?, ?)",
+            (rel_path, entry_data))
+        entry_id = cur.lastrowid
+        self._snap_db.execute(
+            "INSERT OR REPLACE INTO snap_entries (snap_id, entry_id) VALUES (?, ?)",
+            (snap_id, entry_id))
+        # Stream chunk hashes to chunks file
+        if self._chunks_gz is not None:
+            for h in _entry_chunk_hashes(entry_data):
+                self._chunks_gz.write(h + '\n')
+
+    def _snap_index_link(self, snap_name: str, rel_path: str) -> None:
+        """Link an unchanged entry to a new snapshot.
+
+        Finds the most recent entry_id for the given key and links it
+        to the new snapshot via snap_entries.
+        """
+        snap_id = self._active_snap_id
+        if snap_id is None:
+            snap_id = self._resolve_snap_id(snap_name)
+            if snap_id == 0:
+                raise RuntimeError(f"No snap_id for {snap_name}")
+        self._snap_periodic_commit()
+        # Find the latest entry_id for this key
+        row = self._snap_db.execute(
+            "SELECT entry_id FROM entries WHERE key=? ORDER BY entry_id DESC LIMIT 1",
+            (rel_path,)).fetchone()
+        if row is None:
+            return  # entry doesn't exist — skip
+        entry_id = row[0]
+        self._snap_db.execute(
+            "INSERT OR REPLACE INTO snap_entries (snap_id, entry_id) VALUES (?, ?)",
+            (snap_id, entry_id))
+        # Stream chunk hashes to chunks file
+        if self._chunks_gz is not None:
+            val = self._snap_db.execute(
+                "SELECT value FROM entries WHERE entry_id=?",
+                (entry_id,)).fetchone()[0]
+            for h in _entry_chunk_hashes(val):
+                self._chunks_gz.write(h + '\n')
+
+    def _iter_snap_index(self, snap_name: str):
+        """Yield (rel_path, entry_data_bytes) tuples for a snapshot from SQLite."""
+        snap_id = self._resolve_snap_id(snap_name)
+        if snap_id == 0:
+            return
+        db_path = self._snap_index_db_path()
+        if not os.path.exists(db_path):
+            return
+        db = sqlite3.connect(db_path)
+        try:
+            for key, val in db.execute(
+                    "SELECT e.key, e.value FROM snap_entries se "
+                    "JOIN entries e ON e.entry_id = se.entry_id "
+                    "WHERE se.snap_id = ? ORDER BY e.key",
+                    (snap_id,)):
+                yield key, val
+        finally:
+            db.close()
+
 
     def read_chunks_file(self, snap_name: str) -> set:
         """Read the chunks file and return a set of chunk hashes."""
+        return set(self.iter_chunks_file(snap_name))
+
+    def iter_chunks_file(self, snap_name: str):
+        """Yield chunk hashes from the chunks file one at a time (streaming)."""
         chunks_path = self.snap_chunks_path(snap_name)
-        if chunks_path.exists():
-            raw = chunks_path.read_bytes()
-            if raw[:2] == b'\x1f\x8b':
-                content = gzip.decompress(raw).decode()
-            else:
-                content = raw.decode()
-            return {h for h in content.strip().split("\n") if h}
-        return set()
+        if not chunks_path.exists():
+            return
+        try:
+            with gzip.open(str(chunks_path), 'rt') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        yield line
+        except EOFError:
+            pass
 
     @staticmethod
-    def _build_index_line(meta: dict, pack_mode: bool = False) -> str:
-        """Build a tab-separated index line from a meta dict.
+    def _build_index_entry(meta: dict) -> bytes:
+        """Build a binary snap-index value from a meta dict.
 
-        Format: <ctime>\\t<type>\\t<mode>\\t<uid>\\t<gid>\\t<size>\\t<mtime>\\t<rel_path>[\\t<extra>]
-        In pack_mode, appends: \\t<atime>\\t<acl>
+        Format: 43-byte header + 2-byte extra_len + extra + 2-byte acl_len + acl
+        Header: type_id(B) mode(H) uid(I) gid(I) size(Q) ctime(d) mtime(d) atime(d)
         """
         entry_type = meta["type"]
+        type_id = _SNAP_TYPE_IDS[entry_type]
         size = meta.get("size", 0) if entry_type == "file" else 0
-        extra = ""
-        if entry_type == "symlink":
-            extra = f"\t{meta.get('symlink_target', '')}"
-        elif entry_type == "hardlink":
-            extra = f"\t{meta.get('link_target', '')}"
-        elif entry_type in ("blockdev", "chardev"):
-            extra = f"\t{meta.get('devmajor', 0)},{meta.get('devminor', 0)}"
-        elif entry_type == "file":
-            chunk_hashes = meta.get("chunk_hashes", [])
+        header = _SNAP_HEADER.pack(
+            type_id,
+            meta['mode'],
+            meta['uid'],
+            meta['gid'],
+            size,
+            float(meta.get('ctime', 0)),
+            float(meta.get('mtime', 0)),
+            float(meta.get('atime', 0)),
+        )
+        # Type-specific extra data
+        if entry_type == 'symlink':
+            extra = meta.get('symlink_target', '').encode('utf-8')
+        elif entry_type == 'hardlink':
+            extra = meta.get('link_target', '').encode('utf-8')
+        elif entry_type in ('blockdev', 'chardev'):
+            extra = struct.pack('>II', meta.get('devmajor', 0), meta.get('devminor', 0))
+        elif entry_type == 'file':
+            chunk_hashes = meta.get('chunk_hashes', [])
             if chunk_hashes:
-                extra = f"\t{','.join(chunk_hashes)}"
-        line = (f"{meta.get('ctime', 0)!r}\t{entry_type}\t{meta['mode']}\t"
-                f"{meta['uid']}\t{meta['gid']}\t{size}\t{meta['mtime']!r}\t"
-                f"{meta['rel_path']}{extra}")
-        if pack_mode:
-            if not extra:
-                line += "\t"  # ensure extra field is present (even if empty)
-            acl = meta.get('acl', '') or ''
-            acl = acl.replace('\\', '\\\\').replace('\n', '\\n').replace('\t', '\\t')
-            line += f"\t{meta.get('atime', 0)!r}\t{acl}"
-        return line
+                raw_hashes = b''.join(bytes.fromhex(h) for h in chunk_hashes)
+                hash_len = len(raw_hashes) // len(chunk_hashes)
+                extra = struct.pack('>HB', len(chunk_hashes), hash_len) + raw_hashes
+            else:
+                extra = struct.pack('>HB', 0, 0)
+        else:
+            extra = b''
+        # ACL
+        acl = (meta.get('acl', '') or '').encode('utf-8')
+        return header + struct.pack('>H', len(extra)) + extra + struct.pack('>H', len(acl)) + acl
 
     @staticmethod
-    def _parse_index_line(line: str) -> Optional[dict]:
-        """Parse a tab-separated index line into a dict.
+    def _parse_index_entry(val: bytes) -> Optional[dict]:
+        """Parse a binary snap-index value into a dict.
 
-        Returns dict with ctime, type, mode, uid, gid, size, mtime, rel_path,
-        and optionally symlink_target, link_target, devmajor, devminor.
-        Returns None for unparseable lines.
+        Returns dict with type, mode, uid, gid, size, ctime, mtime, atime,
+        and optionally symlink_target, link_target, devmajor, devminor, chunk_hashes, acl.
+        Returns None if data is too short.
         """
-        fields = line.split("\t")
-        if len(fields) < 8:
+        if len(val) < _SNAP_HEADER_SIZE + 2:
+            return None
+        type_id, mode, uid, gid, size, ctime, mtime, atime = _SNAP_HEADER.unpack_from(val)
+        entry_type = _SNAP_ID_TYPES.get(type_id)
+        if entry_type is None:
             return None
         entry = {
-            "ctime": float(fields[0]),
-            "type": fields[1],
-            "mode": int(fields[2]),
-            "uid": int(fields[3]),
-            "gid": int(fields[4]),
-            "size": int(fields[5]),
-            "mtime": float(fields[6]),
-            "rel_path": fields[7],
+            'type': entry_type,
+            'mode': mode,
+            'uid': uid,
+            'gid': gid,
+            'size': size,
+            'ctime': ctime,
+            'mtime': mtime,
+            'atime': atime,
         }
-        extra = fields[8] if len(fields) > 8 else None
-        if entry["type"] == "symlink" and extra is not None:
-            entry["symlink_target"] = extra
-        elif entry["type"] == "hardlink" and extra is not None:
-            entry["link_target"] = extra
-        elif entry["type"] in ("blockdev", "chardev") and extra is not None:
-            parts = extra.split(",")
-            entry["devmajor"] = int(parts[0])
-            entry["devminor"] = int(parts[1]) if len(parts) > 1 else 0
-        elif entry["type"] == "file" and extra:
-            entry["chunk_hashes"] = extra.split(",")
-        # Pack-mode extended fields: atime (field 9), acl (field 10)
-        if len(fields) > 9:
-            try:
-                entry["atime"] = float(fields[9])
-            except (ValueError, IndexError):
-                entry["atime"] = 0.0
-        if len(fields) > 10 and fields[10]:
-            acl = fields[10].replace('\\n', '\n').replace('\\t', '\t').replace('\\\\', '\\')
-            entry["acl"] = acl
+        off = _SNAP_HEADER_SIZE
+        extra_len = struct.unpack_from('>H', val, off)[0]
+        off += 2
+        extra_data = val[off:off + extra_len]
+        off += extra_len
+
+        if entry_type == 'symlink':
+            entry['symlink_target'] = extra_data.decode('utf-8')
+        elif entry_type == 'hardlink':
+            entry['link_target'] = extra_data.decode('utf-8')
+        elif entry_type in ('blockdev', 'chardev') and len(extra_data) >= 8:
+            entry['devmajor'], entry['devminor'] = struct.unpack('>II', extra_data)
+        elif entry_type == 'file' and len(extra_data) >= 3:
+            num_hashes, hash_len = struct.unpack_from('>HB', extra_data)
+            if num_hashes > 0 and hash_len > 0:
+                raw = extra_data[3:]
+                entry['chunk_hashes'] = [
+                    raw[i:i + hash_len].hex()
+                    for i in range(0, num_hashes * hash_len, hash_len)
+                ]
+
+        # ACL
+        if off + 2 <= len(val):
+            acl_len = struct.unpack_from('>H', val, off)[0]
+            off += 2
+            if acl_len > 0 and off + acl_len <= len(val):
+                entry['acl'] = val[off:off + acl_len].decode('utf-8')
         return entry
 
-    def read_index(self, snap_name: str) -> dict:
-        """Read the snapshot index and return {rel_path: index_line} dict.
+    def get_snap_index_info(self, snap_name: str = None) -> dict:
+        """Return size and fingerprint of the shared snap-index SQLite DB.
 
-        Returns the raw index line per path so callers can extract ctime
-        or pass the line directly to link_entry.
+        Returns dict with 'size' (file size) and 'fingerprint' (string
+        that changes whenever the DB content changes).
+        Performs a WAL checkpoint first so the .db file contains all data.
         """
-        content = self._read_index_file(snap_name)
-        if not content:
-            return {}
-        result = {}
-        for line in content.strip().split("\n"):
-            if not line:
-                continue
-            fields = line.split("\t")
-            if len(fields) >= 8:
-                result[fields[7]] = line
-            elif len(fields) == 2:
-                # Legacy format: <ctime>\t<rel_path>
-                result[fields[1]] = line
-            else:
-                result[fields[0]] = line
-        return result
+        db_path = self._snap_index_db_path()
+        if not os.path.exists(db_path):
+            return {'size': 0, 'fingerprint': ''}
+        db = sqlite3.connect(db_path)
+        try:
+            db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            row = db.execute("SELECT COUNT(*) FROM entries").fetchone()
+            entries = row[0] if row else 0
+        finally:
+            db.close()
+        size = os.path.getsize(db_path)
+        mtime = os.path.getmtime(db_path)
+        fp = f"{entries}:{size}:{mtime}"
+        return {'size': size, 'fingerprint': fp}
+
+    def get_snap_index_size(self, snap_name: str) -> int:
+        """Return the file size of the shared snap-index SQLite DB in bytes."""
+        return self.get_snap_index_info(snap_name)['size']
+
+    def get_snap_index_chunk(self, snap_name: str, offset: int, chunk_size: int) -> bytes:
+        """Read a zlib-compressed chunk from the snap-index SQLite DB file."""
+        db_path = self._snap_index_db_path()
+        with open(db_path, 'rb') as f:
+            f.seek(offset)
+            raw = f.read(chunk_size)
+        return zlib.compress(raw, 1)
 
     def create_snapshot(self, name: str) -> None:
         """Create meta/ directory and index file for a new snapshot."""
@@ -695,8 +1159,8 @@ class BackupServer:
             self.snap_meta_dir(name).mkdir(parents=True, exist_ok=True)
         else:
             self.snap_dir(name).mkdir(parents=True, exist_ok=True)
-        # Create empty index file
-        self.snap_index_path(name).write_text("")
+        # Open snap-index session for this snapshot
+        self._open_snap_session(name)
 
     def set_running(self, name: str) -> None:
         """Write a pidfile to mark the snapshot as currently running."""
@@ -739,13 +1203,12 @@ class BackupServer:
 
     def finalize_snapshot(self, name: str,
                           total_bytes: int = 0,
-                          stored_bytes: int = 0,
-                          chunk_hashes: set = None) -> None:
+                          stored_bytes: int = 0) -> None:
         """Mark a snapshot as complete and write stats from internal counters."""
-        self._compress_index(name)
-        self._write_chunks_file(name, chunk_hashes)
+        self._close_snap_session()
+        if self._pack_db is not None:
+            self._pack_db.commit()
         self._seal_active_pack()
-        self._flush_pack_index()
         self.clear_running(name)
         marker = self.snap_dir(name) / "complete"
         end_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -859,12 +1322,11 @@ class BackupServer:
                 self.file_count += 1
                 self.inode_count += 1
 
-        # Append to index with full metadata for fast listing
+        # Append to snap-index LMDB
         idx_meta = dict(meta)
         idx_meta["rel_path"] = rel_path
-        pack_mode = (self.mode == "pack")
-        with open(str(self.snap_index_path(snap_name)), "a") as fh:
-            fh.write(self._build_index_line(idx_meta, pack_mode=pack_mode) + "\n")
+        self._snap_index_put(snap_name, rel_path,
+                             self._build_index_entry(idx_meta))
 
     def set_entry_metadata(self, snap_name: str, rel_path: str, meta: dict) -> None:
         """Apply ownership, permissions, ACLs, and timestamps to an entry.
@@ -926,9 +1388,8 @@ class BackupServer:
         also file_size, file_mtime, chunk_hashes.  Returns None if not found.
         """
         if self.mode == "pack":
-            # Pack mode: O(1) lookup from cached parsed index
-            index = self._get_parsed_snap_index(snap_name)
-            parsed = index.get(rel_path)
+            # Pack mode: O(1) LMDB lookup
+            parsed = self._snap_index_get_parsed(snap_name, rel_path)
             if parsed is None:
                 return None
             result = {
@@ -981,8 +1442,10 @@ class BackupServer:
                 result["chunk_hashes"] = [h for h in lines[2:] if h] if len(lines) > 2 else []
         return result
 
+    _FALLBACK_ENTRY = _SNAP_HEADER.pack(0, 0, 0, 0, 0, 0.0, 0.0, 0.0) + struct.pack('>HH', 3, 0) + struct.pack('>HB', 0, 0)
+
     def link_entry(self, from_snap: str, to_snap: str, rel_path: str,
-                   is_dir: bool = None, index_line: str = None,
+                   is_dir: bool = None, index_val: bytes = None,
                    meta: dict = None) -> bool:
         """Link an entry from one snapshot to another (for unchanged entries).
 
@@ -990,30 +1453,28 @@ class BackupServer:
         For non-dirs: hardlinks tree/ file only (no meta/ entry).
         Returns True on success, False if source doesn't exist.
 
-        index_line: raw index line to copy into the new snapshot's index.
-        meta:       dict to build index line from (used when metadata changed).
-        If neither is given, a minimal fallback line is written.
+        index_val:  raw binary index value to copy into the new snapshot's index.
+        meta:       dict to build index entry from (used when metadata changed).
+        If neither is given, a minimal fallback entry is written.
         """
         if self.mode == "pack":
-            # Pack mode: no hardlinks, only write index line
+            # Pack mode: no hardlinks, only write index entry
             self.file_count += 1
-            if index_line is not None:
-                line = index_line
+            if index_val is not None:
+                val = index_val
             elif meta is not None:
                 idx_meta = dict(meta)
                 idx_meta["rel_path"] = rel_path
-                pack_mode = True
-                line = self._build_index_line(idx_meta, pack_mode=pack_mode)
+                val = self._build_index_entry(idx_meta)
             else:
-                line = f"0\tunknown\t0\t0\t0\t0\t0\t{rel_path}"
-            with open(str(self.snap_index_path(to_snap)), "a") as fh:
-                fh.write(line + "\n")
+                val = self._FALLBACK_ENTRY
+            self._snap_index_put(to_snap, rel_path, val)
             return True
 
         if is_dir is None:
-            # Determine type from index_line if available
-            if index_line:
-                parsed = self._parse_index_line(index_line)
+            # Determine type from index_val if available
+            if index_val:
+                parsed = self._parse_index_entry(index_val)
                 is_dir = parsed is not None and parsed["type"] == "dir"
             else:
                 # Fall back to checking tree/ path
@@ -1042,17 +1503,16 @@ class BackupServer:
 
         self.file_count += 1
 
-        # Append to index
-        if index_line is not None:
-            line = index_line
+        # Append to snap-index LMDB
+        if index_val is not None:
+            val = index_val
         elif meta is not None:
             idx_meta = dict(meta)
             idx_meta["rel_path"] = rel_path
-            line = self._build_index_line(idx_meta)
+            val = self._build_index_entry(idx_meta)
         else:
-            line = f"0\tunknown\t0\t0\t0\t0\t0\t{rel_path}"
-        with open(str(self.snap_index_path(to_snap)), "a") as fh:
-            fh.write(line + "\n")
+            val = self._FALLBACK_ENTRY
+        self._snap_index_put(to_snap, rel_path, val)
 
         return True
 
@@ -1061,33 +1521,26 @@ class BackupServer:
                               entries: list) -> int:
         """Server-side batch fast path: link multiple unchanged entries at once.
 
-        entries is a list of (rel_path, is_dir, index_line) tuples.
+        entries is a list of (rel_path, is_dir) tuples.
 
         For each entry:
-        - For dirs: ensures tree/ dir exists, hardlinks meta/ from previous snap
-        - For non-dirs: hardlinks tree/ entry only (no meta/)
-        - Appends index_line to new snapshot's index
+        - Adds the new snapshot's snap_id to the existing entry in the shared LMDB
+        - For tree mode: also hardlinks tree/meta filesystem entries
 
         Returns the number of successfully linked entries.
         """
-        index_path = str(self.snap_index_path(to_snap))
         linked = 0
 
         if self.mode == "pack":
-            # Pack mode: no hardlinks, only write index lines
-            index_buf = []
-            for rel_path, is_dir, index_line in entries:
+            for rel_path, is_dir in entries:
                 self.file_count += 1
-                index_buf.append(index_line)
+                self._snap_index_link(to_snap, rel_path)
                 linked += 1
         else:
-            tree_dir = str(self.tree_dir)
-            index_buf = []
-            for rel_path, is_dir, index_line in entries:
+            for rel_path, is_dir in entries:
                 if is_dir:
                     tree_dir_path = os.path.join(str(self.tree_dir), rel_path) if rel_path != "." else str(self.tree_dir)
                     os.makedirs(tree_dir_path, exist_ok=True)
-                    # Hardlink meta/ entry (dirs, bucketed)
                     src_meta = self._meta_entry_path(from_snap, rel_path)
                     dst_meta = self._meta_entry_path(to_snap, rel_path)
                     if not os.path.lexists(src_meta):
@@ -1095,7 +1548,6 @@ class BackupServer:
                     os.makedirs(os.path.dirname(dst_meta), exist_ok=True)
                     os.link(src_meta, dst_meta)
                 else:
-                    # Hardlink tree/ entry only (no meta/ for non-dirs)
                     src_tree = self._tree_entry_path(rel_path, from_snap)
                     dst_tree = self._tree_entry_path(rel_path, to_snap)
                     if not os.path.lexists(src_tree):
@@ -1104,117 +1556,157 @@ class BackupServer:
                     os.link(src_tree, dst_tree)
 
                 self.file_count += 1
-                index_buf.append(index_line)
+                self._snap_index_link(to_snap, rel_path)
                 linked += 1
-
-        # Batch-write all index lines at once
-        if index_buf:
-            with open(index_path, "a") as fh:
-                fh.write("\n".join(index_buf) + "\n")
 
         return linked
 
 
-    def list_entries(self, snap_name: str, filter_path: Optional[str] = None,
-                     full: bool = False) -> list:
-        """Read snapshot index and return entry dicts with metadata.
+    def _parse_entry(self, snap_name, rel_path, val, filter_path, full):
+        """Parse a binary index value into an entry dict. Returns None on parse error."""
+        parsed = self._parse_index_entry(val)
+        if parsed is None:
+            return None
 
-        When full=False (default), returns data from the index only — no
-        filesystem access needed.  When full=True, also reads meta/ files
-        for chunk_hashes and ACLs (needed for restore).
+        entry = {
+            "rel_path": rel_path,
+            "type": parsed["type"],
+            "mode": parsed["mode"],
+            "uid": parsed["uid"],
+            "gid": parsed["gid"],
+            "size": parsed["size"],
+            "mtime": parsed["mtime"],
+            "symlink_target": parsed.get("symlink_target"),
+            "link_target": parsed.get("link_target"),
+        }
+        if "devmajor" in parsed:
+            entry["devmajor"] = parsed["devmajor"]
+            entry["devminor"] = parsed["devminor"]
 
-        Returns list of dicts with keys:
-            rel_path:       relative path (adjusted for filter_path)
-            type:           "file" | "dir" | "symlink" | "hardlink" | ...
-            mode, uid, gid, mtime: from index
-            symlink_target: str or None
-            link_target:    str (only for type=hardlink)
-            size:           int (for files)
-          When full=True, additionally:
-            acl:            str or None
-            chunk_hashes:   list[str] (for files)
+        if full:
+            if self.mode == "pack":
+                entry["atime"] = parsed.get("atime", 0.0)
+                entry["acl"] = parsed.get("acl")
+                if parsed["type"] == "file":
+                    entry["chunk_hashes"] = parsed.get("chunk_hashes", [])
+                else:
+                    entry["chunk_hashes"] = []
+            else:
+                if parsed["type"] == "dir":
+                    entry_path = self._meta_entry_path(snap_name, rel_path)
+                else:
+                    entry_path = self._tree_entry_path(rel_path, snap_name)
+                st = os.lstat(entry_path)
+                entry["atime"] = st.st_atime
+                entry["acl"] = _get_acl_text(entry_path)
+                if parsed["type"] == "file":
+                    lines = self._read_gz(entry_path).strip().split("\n")
+                    entry["chunk_hashes"] = [h for h in lines[2:] if h] if len(lines) > 2 else []
+                else:
+                    entry["chunk_hashes"] = []
+
+        return entry
+
+    # -- cursor-based entry iteration (session kept open) --
+
+    def open_entry_cursor(self, snap_name: str, filter_path: Optional[str] = None,
+                          full: bool = False) -> None:
+        """Open a cursor for iterating over snapshot entries.
+
+        The cursor stays open until close_entry_cursor() is called.
+        Use next_entries(count) to read chunks.
         """
-        content = self._read_index_file(snap_name)
-        if not content:
-            raise FileNotFoundError(f"Snapshot not found: {snap_name}")
-
+        self.close_entry_cursor()
         if filter_path is not None:
             filter_path = filter_path.strip("/")
 
-        index_lines = content.strip().split("\n")
-        meta_dir = str(self.snap_meta_dir(snap_name))
+        # Open DB first so _resolve_snap_id can use it (also runs migration)
+        db = self._open_snap_db()
+        if db is None:
+            raise FileNotFoundError(f"Snapshot not found: {snap_name}")
 
+        snap_id = self._resolve_snap_id(snap_name)
+        if snap_id == 0:
+            raise FileNotFoundError(f"Snapshot not found: {snap_name}")
+
+        if filter_path is not None:
+            # 1. Get candidate entry_ids from entries by key range (fast via key index)
+            candidates = db.execute(
+                "SELECT entry_id, key, value FROM entries "
+                "WHERE key=? OR (key>? AND key<?) ORDER BY key",
+                (filter_path, filter_path + "/", filter_path + "/\xff\xff\xff\xff")).fetchall()
+            # 2. Check only these entry_ids against snap_entries (PK lookups)
+            results = []
+            for eid, key, val in candidates:
+                row = db.execute(
+                    "SELECT 1 FROM snap_entries WHERE snap_id=? AND entry_id=?",
+                    (snap_id, eid)).fetchone()
+                if row is not None:
+                    results.append((key, val))
+            self._entry_cursor_results = iter(results)
+        else:
+            # Full scan: JOIN is fine here since we read the entire DB anyway
+            cursor = db.execute(
+                "SELECT e.key, e.value FROM snap_entries se "
+                "JOIN entries e ON e.entry_id = se.entry_id "
+                "WHERE se.snap_id = ? ORDER BY e.key",
+                (snap_id,))
+            self._entry_cursor_results = cursor
+
+        self._entry_cursor_cur = True  # flag: cursor is open
+        self._entry_cursor_snap = snap_name
+        self._entry_cursor_snap_id = snap_id
+        self._entry_cursor_filter = filter_path
+        self._entry_cursor_full = full
+
+    def next_entries(self, count: int = 10000) -> list:
+        """Read the next `count` entries from the open cursor.
+
+        Returns an empty list when exhausted.
+        """
+        if self._entry_cursor_cur is None:
+            return []
+
+        snap_name = self._entry_cursor_snap
+        full = self._entry_cursor_full
+        snap_id = self._entry_cursor_snap_id
+        filter_path = self._entry_cursor_filter
         entries = []
-        found_filter = False
-        for line in index_lines:
-            if not line:
-                continue
 
-            parsed = self._parse_index_line(line)
-            if parsed is None:
-                continue
+        for rel_path, entry_data in self._entry_cursor_results:
+            entry = self._parse_entry(snap_name, rel_path, entry_data, filter_path, full)
+            if entry is not None:
+                entries.append(entry)
+            if len(entries) >= count:
+                break
 
-            rel_path = parsed["rel_path"]
+        if not entries:
+            self.close_entry_cursor()
 
-            # Apply filter
-            if filter_path is not None:
-                if rel_path != filter_path and not rel_path.startswith(filter_path + "/"):
-                    continue
-                found_filter = True
-                display_rel = os.path.relpath(rel_path, filter_path) if rel_path != filter_path else "."
-            else:
-                display_rel = rel_path
-
-            entry = {
-                "rel_path": display_rel,
-                "type": parsed["type"],
-                "mode": parsed["mode"],
-                "uid": parsed["uid"],
-                "gid": parsed["gid"],
-                "size": parsed["size"],
-                "mtime": parsed["mtime"],
-                "symlink_target": parsed.get("symlink_target"),
-                "link_target": parsed.get("link_target"),
-            }
-            if "devmajor" in parsed:
-                entry["devmajor"] = parsed["devmajor"]
-                entry["devminor"] = parsed["devminor"]
-
-            if full:
-                if self.mode == "pack":
-                    # Pack mode: all metadata comes from the index
-                    entry["atime"] = parsed.get("atime", 0.0)
-                    entry["acl"] = parsed.get("acl")
-                    if parsed["type"] == "file":
-                        entry["chunk_hashes"] = parsed.get("chunk_hashes", [])
-                    else:
-                        entry["chunk_hashes"] = []
-                else:
-                    if parsed["type"] == "dir":
-                        # Dirs use meta/ (bucketed)
-                        entry_path = self._meta_entry_path(snap_name, rel_path)
-                    else:
-                        # Non-dirs read directly from tree/
-                        entry_path = self._tree_entry_path(rel_path, snap_name)
-                    st = os.lstat(entry_path)
-                    entry["atime"] = st.st_atime
-                    entry["acl"] = _get_acl_text(entry_path)
-                    if parsed["type"] == "file":
-                        lines = self._read_gz(entry_path).strip().split("\n")
-                        entry["chunk_hashes"] = [h for h in lines[2:] if h] if len(lines) > 2 else []
-                    else:
-                        entry["chunk_hashes"] = []
-
-            entries.append(entry)
-
-        if filter_path is not None and not found_filter:
-            raise FileNotFoundError(
-                f"Path '{filter_path}' not found in snapshot '{snap_name}'"
-            )
-
-        # Sort by rel_path for consistent output (dirs before their contents)
-        entries.sort(key=lambda e: e["rel_path"])
         return entries
+
+    def close_entry_cursor(self) -> None:
+        """Close the entry cursor."""
+        if hasattr(self, '_entry_cursor_cur') and self._entry_cursor_cur is not None:
+            self._entry_cursor_cur = None
+        self._entry_cursor_results = None
+        self._entry_cursor_snap = None
+        self._entry_cursor_snap_id = None
+        self._entry_cursor_filter = None
+        self._entry_cursor_full = None
+
+    def iter_entries(self, snap_name: str, filter_path: Optional[str] = None,
+                     full: bool = False):
+        """Yield entry dicts one by one. For local use (no protocol)."""
+        self.open_entry_cursor(snap_name, filter_path, full)
+        try:
+            while True:
+                batch = self.next_entries(10000)
+                if not batch:
+                    break
+                yield from batch
+        finally:
+            self.close_entry_cursor()
 
     def list_snapshots(self) -> list:
         """Return list of snapshot info dicts."""
@@ -1283,38 +1775,59 @@ class BackupServer:
         return result
 
     def _remove_snapshot(self, snap_name: str) -> None:
-        """Remove a snapshot's tree/ entries and snapshot directory (no GC)."""
+        """Remove a snapshot's tree/ entries, snap directory, and snap-index entries."""
         snap_dir = self.snap_dir(snap_name)
         if not snap_dir.exists():
             raise FileNotFoundError(f"Snapshot not found: {snap_name}")
 
-        # Remove tree/ entries for non-dir entries using the index file
+        # Remove tree/ entries for non-dir entries using the index
         if self.mode != "pack":
-            content = self._read_index_file(snap_name)
-            if content:
-                for line in content.strip().split("\n"):
-                    if not line:
-                        continue
-                    parsed = self._parse_index_line(line)
-                    if parsed is None or parsed["type"] == "dir":
-                        continue
-                    rel_path = parsed["rel_path"]
-                    tree_path = self._tree_entry_path(rel_path, snap_name)
+            for rel_path, val in self._iter_snap_index(snap_name):
+                parsed = self._parse_index_entry(val)
+                if parsed is None or parsed["type"] == "dir":
+                    continue
+                tree_path = self._tree_entry_path(rel_path, snap_name)
+                try:
+                    os.unlink(tree_path)
+                except OSError:
+                    pass
+                parent = os.path.dirname(tree_path)
+                while parent != str(self.tree_dir):
                     try:
-                        os.unlink(tree_path)
+                        os.rmdir(parent)
                     except OSError:
-                        pass
-                    # Remove parent dirs if empty, up to tree_dir
-                    parent = os.path.dirname(tree_path)
-                    while parent != str(self.tree_dir):
-                        try:
-                            os.rmdir(parent)
-                        except OSError:
-                            break
-                        parent = os.path.dirname(parent)
+                        break
+                    parent = os.path.dirname(parent)
 
-        # Remove snapshot directory (meta/ + complete + running + index)
+        # Remove snap_id from shared snap-index LMDB
+        self._remove_snap_from_index(snap_name)
+
+        # Remove snapshot directory (meta/ + complete + running + chunks)
         shutil.rmtree(snap_dir)
+
+    def _remove_snap_from_index(self, snap_name: str) -> None:
+        """Remove a snapshot from the snap-index SQLite."""
+        snap_id = self._resolve_snap_id(snap_name)
+        if snap_id == 0:
+            return
+        db_path = self._snap_index_db_path()
+        if not os.path.exists(db_path):
+            return
+        db = sqlite3.connect(db_path)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA synchronous=NORMAL")
+        try:
+            # Remove all links for this snapshot
+            db.execute("DELETE FROM snap_entries WHERE snap_id=?", (snap_id,))
+            # Remove orphaned entries (not referenced by any snapshot)
+            db.execute("DELETE FROM entries WHERE entry_id NOT IN "
+                       "(SELECT entry_id FROM snap_entries)")
+            # Remove snap metadata
+            db.execute("DELETE FROM snap_meta WHERE snap_name=?", (snap_name,))
+            db.commit()
+        finally:
+            db.close()
+        self._snap_id_cache.pop(snap_name, None)
 
     def delete_snapshot(self, snap_name: str) -> int:
         """Delete a snapshot and run GC.  Returns number of orphaned blocks removed."""
@@ -1325,25 +1838,51 @@ class BackupServer:
         finally:
             self.unlock_repo()
 
+    def _build_live_bloom(self, exclude_set: set = None):
+        """Build a Bloom filter containing all chunk hashes from live snapshots.
+
+        Returns a Bloom filter, or None if there are no live snapshots.
+        Uses pack-index entry count as size estimate for the filter.
+        """
+        from rbloom import Bloom
+        if not self.snapshots_dir.exists():
+            return None
+        excl = exclude_set or set()
+        snaps = [s.name for s in self.snapshots_dir.iterdir()
+                 if s.is_dir() and s.name not in excl]
+        if not snaps:
+            return None
+        # Use pack-index entry count as upper bound for bloom filter size
+        row = self._pack_db.execute("SELECT COUNT(*) FROM pack_index").fetchone()
+        num_entries = row[0] if row[0] > 0 else 1
+        bloom = Bloom(num_entries, 0.01)
+        for snap in snaps:
+            for h in self.iter_chunks_file(snap):
+                bloom.add(h)
+        return bloom
+
     def _delete_snapshot_locked(self, snap_name: str) -> int:
         """Internal delete — caller must hold the lock."""
         logger.info("Deleting snapshot '%s' ...", snap_name)
-        dead_hashes = self.read_chunks_file(snap_name)
+        chunks_path = self.snap_chunks_path(snap_name)
+        has_chunks = chunks_path.exists()
+        # Build Bloom filter of live hashes from all OTHER snapshots
+        bloom = self._build_live_bloom(exclude_set={snap_name})
+
+        # Find orphaned hashes: in dead snapshot but not in any live snapshot
+        orphaned = set()
+        if has_chunks:
+            if bloom is not None:
+                for h in self.iter_chunks_file(snap_name):
+                    if h not in bloom:
+                        orphaned.add(h)
+            else:
+                # No other snapshots — all hashes are orphaned
+                for h in self.iter_chunks_file(snap_name):
+                    orphaned.add(h)
+
         self._remove_snapshot(snap_name)
 
-        if not dead_hashes:
-            logger.info("GC done: 0 orphaned blocks removed")
-            return 0
-
-        # Collect live hashes from all remaining snapshots
-        live_hashes = set()
-        if self.snapshots_dir.exists():
-            for snap in self.snapshots_dir.iterdir():
-                if not snap.is_dir():
-                    continue
-                live_hashes |= self.read_chunks_file(snap.name)
-
-        orphaned = dead_hashes - live_hashes
         if not orphaned:
             logger.info("GC done: 0 orphaned blocks removed")
             return 0
@@ -1508,29 +2047,31 @@ class BackupServer:
                 keep.add(month_groups[k])
 
         deleted = []
-        dead_hashes = set()
+        to_delete = []
         for name, _ in entries:
             if name not in keep:
                 if dry_run:
                     logger.info("Retention: would delete snapshot '%s'", name)
                 else:
-                    logger.info("Retention: deleting snapshot '%s'", name)
-                    dead_hashes |= self.read_chunks_file(name)
-                    self._remove_snapshot(name)
+                    to_delete.append(name)
                 deleted.append(name)
 
-        if deleted and not dry_run and dead_hashes:
-            # Collect live hashes from remaining snapshots
-            live_hashes = set()
-            if self.snapshots_dir.exists():
-                for snap in self.snapshots_dir.iterdir():
-                    if not snap.is_dir():
-                        continue
-                    live_hashes |= self.read_chunks_file(snap.name)
-            orphaned = dead_hashes - live_hashes
+        if to_delete:
+            # Build Bloom filter from snapshots we're keeping
+            exclude_set = set(to_delete)
+            bloom = self._build_live_bloom(exclude_set)
+            # Stream dead hashes and find orphaned
+            orphaned = set()
+            for name in to_delete:
+                logger.info("Retention: deleting snapshot '%s'", name)
+                for h in self.iter_chunks_file(name):
+                    if bloom is None or h not in bloom:
+                        orphaned.add(h)
+                self._remove_snapshot(name)
             if orphaned:
                 self._gc_remove_from_index(orphaned)
-                logger.info("Retention GC: %d orphaned blocks removed", len(orphaned))
+                logger.info("Retention GC: %d orphaned blocks removed",
+                            len(orphaned))
 
         return deleted
 
@@ -1548,14 +2089,15 @@ class BackupServer:
             self.unlock_repo()
 
     def _gc_orphaned_blocks_locked(self) -> int:
-        live_hashes = set()
-        if self.snapshots_dir.exists():
-            for snap in self.snapshots_dir.iterdir():
-                if not snap.is_dir():
-                    continue
-                live_hashes |= self.read_chunks_file(snap.name)
+        # Build Bloom filter of all live hashes
+        bloom = self._build_live_bloom(set())
+        # Scan pack index, find hashes not in live set
+        orphaned = set()
+        for row in self._pack_db.execute("SELECT hash FROM pack_index"):
+            h = row[0]
+            if bloom is None or h not in bloom:
+                orphaned.add(h)
 
-        orphaned = set(self._pack_index.keys()) - live_hashes
         if not orphaned:
             return 0
 
@@ -1566,11 +2108,31 @@ class BackupServer:
         """Remove orphaned hashes from pack index, delete fully empty packs."""
         # Build pack -> hashes mapping
         pack_hashes = {}
-        for h, (pid, _, _) in self._pack_index.items():
+        for h, pid in self._pack_db.execute("SELECT hash, pack_id FROM pack_index"):
             pack_hashes.setdefault(pid, set()).add(h)
 
-        for h in orphaned:
-            del self._pack_index[h]
+        # Delete orphaned entries
+        self._pack_db.executemany(
+            "DELETE FROM pack_index WHERE hash=?",
+            [(h,) for h in orphaned])
+
+        # Update commit marker
+        surviving_pids = set()
+        for pid, hashes in pack_hashes.items():
+            if not hashes.issubset(orphaned):
+                surviving_pids.add(pid)
+
+        if not surviving_pids:
+            self._pack_db.execute("DELETE FROM pack_meta WHERE key='last_commit'")
+        else:
+            max_pid = max(surviving_pids)
+            pack_path = self._pack_path(max_pid)
+            pack_size = pack_path.stat().st_size if pack_path.exists() else 0
+            self._pack_db.execute(
+                "INSERT OR REPLACE INTO pack_meta (key, value) VALUES (?, ?)",
+                ('last_commit', struct.pack('>IQ', max_pid, pack_size)))
+
+        self._pack_db.commit()
 
         # Delete fully empty pack files + empty bucket dirs
         for pid, hashes in pack_hashes.items():
@@ -1582,8 +2144,37 @@ class BackupServer:
                 except OSError:
                     pass
 
-        self._index_dirty = True
-        self._flush_pack_index()
+    def compact(self) -> dict:
+        """Compact databases to reclaim disk space. Returns bytes saved per DB."""
+        self.lock_repo()
+        try:
+            return self._compact_locked()
+        finally:
+            self.unlock_repo()
+
+    def _compact_locked(self) -> dict:
+        """Compact SQLite databases to reclaim disk space."""
+        result = {}
+        for name, path in [('snap_index', self._snap_index_db_path()),
+                           ('pack_index', self._pack_index_path())]:
+            if os.path.exists(path):
+                # Close active connection if it's the pack db
+                if name == 'pack_index' and self._pack_db is not None:
+                    self._pack_db.commit()
+                    self._pack_db.close()
+                    self._pack_db = None
+                old_size = os.path.getsize(path)
+                db = sqlite3.connect(path)
+                try:
+                    db.execute("VACUUM")
+                finally:
+                    db.close()
+                new_size = os.path.getsize(path)
+                result[name] = old_size - new_size
+                # Reopen pack db if we closed it
+                if name == 'pack_index':
+                    self._open_pack_db()
+        return result
 
     def repack(self) -> int:
         """Rewrite partially-dead packs to reclaim space. Returns bytes saved."""
@@ -1597,10 +2188,12 @@ class BackupServer:
     def _repack_locked(self) -> int:
         """Rewrite packs that contain dead entries."""
         live_by_pack = {}
-        for h, (pid, offset, length) in self._pack_index.items():
+        for h, pid, offset, length in self._pack_db.execute(
+                "SELECT hash, pack_id, offset, length FROM pack_index"):
             live_by_pack.setdefault(pid, []).append((h, offset, length))
 
         saved = 0
+        updates = []  # (h, pid, new_offset, length)
         for pid, entries in live_by_pack.items():
             pack_path = self._pack_path(pid)
             if not pack_path.exists():
@@ -1618,18 +2211,26 @@ class BackupServer:
                     src.seek(offset)
                     entry_data = src.read(64 + 4 + length)
                     dst.write(entry_data)
-                    self._pack_index[h] = (pid, new_offset, length)
+                    updates.append((h, pid, new_offset, length))
                     new_offset += 64 + 4 + length
             tmp_path.rename(pack_path)
             saved += pack_size - new_offset
 
-        if saved > 0:
-            self._index_dirty = True
-            self._flush_pack_index()
+        if updates:
+            max_pid = max(live_by_pack.keys())
+            pack_path = self._pack_path(max_pid)
+            pack_size = pack_path.stat().st_size if pack_path.exists() else 0
+            self._pack_db.executemany(
+                "UPDATE pack_index SET offset=?, length=? WHERE hash=?",
+                [(offset, length, h) for h, pid, offset, length in updates])
+            self._pack_db.execute(
+                "INSERT OR REPLACE INTO pack_meta (key, value) VALUES (?, ?)",
+                ('last_commit', struct.pack('>IQ', max_pid, pack_size)))
+            self._pack_db.commit()
         return saved
 
     def rebuild_pack_index(self) -> int:
-        """Rebuild index.gz by scanning all pack-*.dat files. Returns entry count."""
+        """Rebuild pack index by scanning all pack-*.dat files. Returns entry count."""
         self.lock_repo()
         self.load_pack_index()
         try:
@@ -1638,13 +2239,17 @@ class BackupServer:
             self.unlock_repo()
 
     def _rebuild_pack_index_locked(self) -> int:
-        self._pack_index = {}
-        count = 0
+        # Clear existing index
+        self._pack_db.execute("DELETE FROM pack_index")
+        self._pack_db.execute("DELETE FROM pack_meta")
+
         if not self.packs_dir.exists():
-            self._index_dirty = True
-            self._flush_pack_index()
+            self._pack_db.commit()
             return 0
 
+        count = 0
+        last_pid = -1
+        last_offset = 0
         for bucket_dir in sorted(self.packs_dir.iterdir()):
             if not bucket_dir.is_dir():
                 continue
@@ -1668,12 +2273,21 @@ class BackupServer:
                         blob_len = struct.unpack('>I', header[64:68])[0]
                         if offset + 68 + blob_len > file_size:
                             break
-                        self._pack_index[h] = (pid, offset, blob_len)
+                        self._pack_db.execute(
+                            "INSERT OR IGNORE INTO pack_index "
+                            "(hash, pack_id, offset, length) VALUES (?, ?, ?, ?)",
+                            (h, pid, offset, blob_len))
                         count += 1
                         offset += 68 + blob_len
+                if pid > last_pid:
+                    last_pid = pid
+                    last_offset = offset
 
-        self._index_dirty = True
-        self._flush_pack_index()
+        if last_pid >= 0:
+            self._pack_db.execute(
+                "INSERT OR REPLACE INTO pack_meta (key, value) VALUES (?, ?)",
+                ('last_commit', struct.pack('>IQ', last_pid, last_offset)))
+        self._pack_db.commit()
         return count
 
 
@@ -1688,7 +2302,10 @@ class BackupClient:
     operations go through the server interface.
     """
 
-    def __init__(self, server: object, password: str = None, key: bytes = None,
+    _CACHE_BASE = "/var/cache/otpme/backup"
+
+    def __init__(self, server: object = None, password: str = None,
+                 key: bytes = None, salt: bytes = None,
                  compress: bool = True):
         self.server = server
         self.compress = compress
@@ -1697,10 +2314,29 @@ class BackupClient:
                 raise ValueError(f"Key must be {KEY_SIZE} bytes, got {len(key)}")
             self.key = key
         elif password is not None:
-            salt = server.get_salt()
+            if salt is None:
+                if server is None:
+                    raise ValueError("Either server or salt must be provided")
+                salt = server.get_salt()
             self.key = derive_key(password, salt)
-        #else:
-        #    raise ValueError("Either password or key must be provided")
+        # Derive AES-SIV key for path encryption
+        if hasattr(self, 'key'):
+            self._path_key = _derive_path_key(self.key)
+            self._siv = AESSIV(self._path_key)
+        else:
+            self._siv = None
+
+    def encrypt_rel_path(self, rel_path: str) -> str:
+        """Encrypt a relative path for storage on the server."""
+        if self._siv is None or not rel_path or rel_path == '.':
+            return rel_path
+        return encrypt_path(self._siv, rel_path)
+
+    def decrypt_rel_path(self, enc_path: str) -> str:
+        """Decrypt an encrypted relative path from the server."""
+        if self._siv is None or not enc_path or enc_path == '.':
+            return enc_path
+        return decrypt_path(self._siv, enc_path)
 
     @staticmethod
     def hash_block(plaintext: bytes) -> str:
@@ -1722,6 +2358,120 @@ class BackupClient:
         if flag == FLAG_ZLIB:
             data = zlib.decompress(data)
         return data
+
+    def _snap_index_cache_dir(self) -> str:
+        """Return per-repo cache directory for the snap-index.
+
+        Uses the salt as a stable repo identifier (unique per repo).
+        Only one cached copy is kept (overwritten on each download).
+        """
+        salt = self.server.get_salt()
+        repo_hash = hashlib.sha256(salt).hexdigest()[:16]
+        cache_dir = os.path.join(self._CACHE_BASE, repo_hash)
+        # Ensure .nobackup marker exists so the cache is excluded from backups
+        nobackup = os.path.join(self._CACHE_BASE, ".nobackup")
+        if not os.path.exists(nobackup):
+            os.makedirs(self._CACHE_BASE, exist_ok=True)
+            open(nobackup, 'a').close()
+        return cache_dir
+
+    def _open_prev_index(self, prev_snap: str) -> None:
+        """Open access to the previous snapshot's index for lookups.
+
+        For local servers: uses the server's snap-index SQLite directly.
+        For remote servers: downloads compressed snap-index DB to local cache.
+        """
+        self._prev_snap = None
+        self._prev_db = None
+        self._prev_entry_ids = None
+        if prev_snap is None:
+            return
+        if isinstance(self.server, BackupServer):
+            # Local: use server's snap-index directly
+            self._prev_snap = prev_snap
+            return
+        # Remote: download compressed snap-index DB to cache
+        idx_info = self.server.get_snap_index_info(prev_snap)
+        total = idx_info['size']
+        fingerprint = idx_info['fingerprint']
+        if total == 0:
+            return
+        cache_dir = self._snap_index_cache_dir()
+        os.makedirs(cache_dir, exist_ok=True)
+        cached_db = os.path.join(cache_dir, "snap_index.db")
+        fp_file = os.path.join(cache_dir, "fingerprint")
+        # Check if cached copy is still current
+        cached_fp = ''
+        if os.path.exists(fp_file) and os.path.exists(cached_db):
+            cached_fp = open(fp_file).read().strip()
+        if cached_fp == fingerprint and os.path.getsize(cached_db) > 0:
+            logger.info("Snap index cache is current, skipping download")
+        else:
+            chunk_size = 4 * 1024 * 1024  # 4 MiB
+            offset = 0
+            transferred = 0
+            with open(cached_db, 'wb') as f:
+                while offset < total:
+                    compressed = self.server.get_snap_index_chunk(
+                        prev_snap, offset, chunk_size)
+                    if not compressed:
+                        break
+                    chunk = zlib.decompress(compressed)
+                    f.write(chunk)
+                    transferred += len(compressed)
+                    offset += len(chunk)
+            # Save fingerprint for next time
+            with open(fp_file, 'w') as f:
+                f.write(fingerprint + '\n')
+            logger.info("Snap index downloaded (%d bytes, %d compressed)",
+                        total, transferred)
+        self._prev_db = sqlite3.connect(cached_db)
+        self._prev_snap = prev_snap
+
+    def _prev_index_get(self, rel_path: str) -> bytes:
+        """Look up a path in the previous snapshot's index. Returns entry_data or None."""
+        if self._prev_snap is None:
+            return None
+        if isinstance(self.server, BackupServer):
+            # Local: direct lookup via server's snap-index
+            return self.server._snap_index_get(self._prev_snap, rel_path)
+        # Remote: lookup in local cached copy
+        if self._prev_db is None:
+            return None
+        # Lazily load entry_ids for the previous snapshot into memory
+        if self._prev_entry_ids is None:
+            snap_id = self._resolve_prev_snap_id()
+            self._prev_entry_ids = set(r[0] for r in self._prev_db.execute(
+                "SELECT entry_id FROM snap_entries WHERE snap_id=?", (snap_id,)))
+        row = self._prev_db.execute(
+            "SELECT entry_id, value FROM entries WHERE key=? ORDER BY entry_id DESC LIMIT 1",
+            (rel_path,)).fetchone()
+        if row is None or row[0] not in self._prev_entry_ids:
+            return None
+        return row[1]
+
+    def _resolve_prev_snap_id(self) -> int:
+        """Get snap_id for prev_snap from the local SQLite copy (remote case)."""
+        if hasattr(self, '_prev_snap_id_cached'):
+            return self._prev_snap_id_cached
+        if self._prev_db is None:
+            return 0
+        row = self._prev_db.execute("SELECT snap_id FROM snap_meta WHERE snap_name=?",
+                                     (self._prev_snap,)).fetchone()
+        if row is None:
+            return 0
+        self._prev_snap_id_cached = row[0]
+        return row[0]
+
+    def _close_prev_index(self) -> None:
+        """Close prev-index access. Cache is kept for next run."""
+        if self._prev_db is not None:
+            self._prev_db.close()
+            self._prev_db = None
+        self._prev_snap = None
+        self._prev_entry_ids = None
+        if hasattr(self, '_prev_snap_id_cached'):
+            del self._prev_snap_id_cached
 
     def collect_entry(self, fpath: str, source: str) -> Optional[dict]:
         """Collect metadata for a filesystem entry.
@@ -1790,13 +2540,14 @@ class BackupClient:
         if not dry_run:
             # Determine previous complete snapshot for change detection
             prev_snap = None
-            prev_index = {}
             snaps = self.server.list_snapshots()
             for s in reversed(snaps):
                 if s["complete"]:
                     prev_snap = s["name"]
-                    prev_index = self.server.read_index(prev_snap)
                     break
+
+            # Fetch previous index to local LMDB for O(1) lookups
+            self._open_prev_index(prev_snap)
 
             self.server.create_snapshot(snap_name)
             self.server.set_running(snap_name)
@@ -1805,12 +2556,12 @@ class BackupClient:
 
         total_bytes = 0
         stored_bytes = 0
-        all_chunk_hashes = set()
         file_count = 0
         dedup_blocks = 0
         new_blocks = 0
         skipped_files = 0
-        unchanged_entries = []  # (rel_path, is_dir, index_line) for batch link
+        unchanged_entries = []  # (rel_path, is_dir) for batch link
+        _unchanged_flush_size = 10000
 
         # Two passes:
         #   create entries via server + store blocks, apply metadata inline
@@ -1835,6 +2586,7 @@ class BackupClient:
 
         for fpath, st in _walk(source, excluded_dirs=walk_skip_dirs):
             rel = os.path.relpath(fpath, source)
+            enc_rel = self.encrypt_rel_path(rel)
             if rel != ".":
                 # Check if path is inside an included directory (subtree)
                 in_included = any(rel.startswith(d) for d in included_dirs)
@@ -1900,11 +2652,11 @@ class BackupClient:
                 continue
 
             # Fast path: if ctime unchanged, nothing has changed at all
-            prev_line = prev_index.get(rel) if prev_snap else None
-            if prev_line is not None:
+            prev_val = self._prev_index_get(enc_rel) if prev_snap else None
+            if prev_val is not None:
                 try:
-                    prev_ctime = float(prev_line.split("\t", 1)[0])
-                except (ValueError, IndexError):
+                    prev_ctime = _entry_ctime(prev_val)
+                except (struct.error, IndexError):
                     prev_ctime = None
             else:
                 prev_ctime = None
@@ -1912,14 +2664,14 @@ class BackupClient:
                 is_dir = (entry_type == "dir")
                 if entry_type == "file":
                     if st.st_nlink > 1:
-                        seen_inodes[ino_key] = rel
+                        seen_inodes[ino_key] = enc_rel
                     file_count += 1
                     skipped_files += 1
-                    # Extract chunk hashes from previous index line
-                    prev_fields = prev_line.split("\t")
-                    if len(prev_fields) >= 9 and prev_fields[1] == "file" and prev_fields[8]:
-                        all_chunk_hashes.update(prev_fields[8].split(","))
-                unchanged_entries.append((rel, is_dir, prev_line))
+                unchanged_entries.append((enc_rel, is_dir))
+                if len(unchanged_entries) >= _unchanged_flush_size:
+                    self.server.link_unchanged_entries(prev_snap, snap_name,
+                                                       unchanged_entries)
+                    unchanged_entries = []
                 continue
 
             try:
@@ -1935,7 +2687,7 @@ class BackupClient:
                     # Reuse previous snapshot's meta/ entry if unchanged
                     linked = False
                     if prev_snap:
-                        prev = self.server.get_entry_full(prev_snap, rel)
+                        prev = self.server.get_entry_full(prev_snap, enc_rel)
                         cur_acl = meta["acl"]
                         if (prev
                                 and prev["uid"] == st.st_uid
@@ -1943,34 +2695,33 @@ class BackupClient:
                                 and stat.S_IMODE(prev["mode"]) == stat.S_IMODE(mode)
                                 and prev.get("mtime") == st.st_mtime
                                 and prev["acl"] == cur_acl):
-                            linked = self.server.link_entry(prev_snap, snap_name, rel,
+                            linked = self.server.link_entry(prev_snap, snap_name, enc_rel,
                                                             is_dir=True, meta=meta)
                     if not linked:
-                        self.server.write_entry(snap_name, rel, meta)
-                    dir_entries.append((rel, meta))
+                        self.server.write_entry(snap_name, enc_rel, meta)
+                    dir_entries.append((rel, enc_rel, meta))
 
                 elif entry_type == "file":
                     if st.st_nlink > 1:
-                        seen_inodes[ino_key] = rel
+                        seen_inodes[ino_key] = enc_rel
                     file_count += 1
                     chunk_hashes = []
 
                     # mtime-based skip: reuse data entry + refs from previous snapshot
                     skipped = False
                     if prev_snap:
-                        prev = self.server.get_entry_full(prev_snap, rel)
+                        prev = self.server.get_entry_full(prev_snap, enc_rel)
                         if (prev and "file_size" in prev
                                 and prev["file_mtime"] == st.st_mtime
                                 and prev["file_size"] == st.st_size):
                             chunk_hashes = prev["chunk_hashes"]
-                            all_chunk_hashes.update(chunk_hashes)
                             # Link data entry if metadata unchanged, else write new
                             cur_acl = _get_acl_text(fpath)
                             if (prev["uid"] == st.st_uid
                                     and prev["gid"] == st.st_gid
                                     and stat.S_IMODE(prev["mode"]) == stat.S_IMODE(mode)
                                     and prev["acl"] == cur_acl):
-                                self.server.link_entry(prev_snap, snap_name, rel,
+                                self.server.link_entry(prev_snap, snap_name, enc_rel,
                                                         is_dir=False, meta={
                                                             "type": "file", "mode": mode,
                                                             "uid": st.st_uid, "gid": st.st_gid,
@@ -1988,9 +2739,9 @@ class BackupClient:
                                     "size": st.st_size,
                                     "chunk_hashes": chunk_hashes,
                                 }
-                                self.server.write_entry(snap_name, rel, meta)
+                                self.server.write_entry(snap_name, enc_rel, meta)
                                 if repo_mode != "pack":
-                                    self.server.set_entry_metadata(snap_name, rel, meta)
+                                    self.server.set_entry_metadata(snap_name, enc_rel, meta)
                             skipped_files += 1
                             skipped = True
 
@@ -2011,7 +2762,6 @@ class BackupClient:
                                     stored_bytes += len(chunk)
                                     new_blocks += 1
                                 chunk_hashes.append(h)
-                                all_chunk_hashes.add(h)
 
                         # Check if file changed while we were reading it
                         try:
@@ -2031,12 +2781,12 @@ class BackupClient:
                             "size": st.st_size,
                             "chunk_hashes": chunk_hashes,
                         }
-                        self.server.write_entry(snap_name, rel, meta)
+                        self.server.write_entry(snap_name, enc_rel, meta)
                         if repo_mode != "pack":
-                            self.server.set_entry_metadata(snap_name, rel, meta)
+                            self.server.set_entry_metadata(snap_name, enc_rel, meta)
 
                 elif entry_type == "symlink":
-                    prev = self.server.get_entry_full(prev_snap, rel) if prev_snap else None
+                    prev = self.server.get_entry_full(prev_snap, enc_rel) if prev_snap else None
                     meta = {
                         "type": "symlink",
                         "mode": mode,
@@ -2048,16 +2798,16 @@ class BackupClient:
                     if (prev
                             and prev["uid"] == st.st_uid
                             and prev["gid"] == st.st_gid
-                            and self.server.link_entry(prev_snap, snap_name, rel,
+                            and self.server.link_entry(prev_snap, snap_name, enc_rel,
                                                         is_dir=False, meta=meta)):
                         pass
                     else:
-                        self.server.write_entry(snap_name, rel, meta)
+                        self.server.write_entry(snap_name, enc_rel, meta)
                         if repo_mode != "pack":
-                            self.server.set_entry_metadata(snap_name, rel, meta)
+                            self.server.set_entry_metadata(snap_name, enc_rel, meta)
 
                 elif entry_type == "hardlink":
-                    prev = self.server.get_entry_full(prev_snap, rel) if prev_snap else None
+                    prev = self.server.get_entry_full(prev_snap, enc_rel) if prev_snap else None
                     meta = {
                         "type": "hardlink",
                         "link_target": seen_inodes[ino_key],
@@ -2069,17 +2819,17 @@ class BackupClient:
                     if (prev
                             and prev["uid"] == st.st_uid
                             and prev["gid"] == st.st_gid
-                            and self.server.link_entry(prev_snap, snap_name, rel,
+                            and self.server.link_entry(prev_snap, snap_name, enc_rel,
                                                         is_dir=False, meta=meta)):
                         pass
                     else:
-                        self.server.write_entry(snap_name, rel, meta)
+                        self.server.write_entry(snap_name, enc_rel, meta)
                         if repo_mode != "pack":
-                            self.server.set_entry_metadata(snap_name, rel, meta)
+                            self.server.set_entry_metadata(snap_name, enc_rel, meta)
                     continue
 
                 elif entry_type in ("blockdev", "chardev"):
-                    prev = self.server.get_entry_full(prev_snap, rel) if prev_snap else None
+                    prev = self.server.get_entry_full(prev_snap, enc_rel) if prev_snap else None
                     meta = {
                         "type": entry_type,
                         "mode": mode,
@@ -2093,16 +2843,16 @@ class BackupClient:
                             and prev["uid"] == st.st_uid
                             and prev["gid"] == st.st_gid
                             and stat.S_IMODE(prev["mode"]) == stat.S_IMODE(mode)
-                            and self.server.link_entry(prev_snap, snap_name, rel,
+                            and self.server.link_entry(prev_snap, snap_name, enc_rel,
                                                         is_dir=False, meta=meta)):
                         pass
                     else:
-                        self.server.write_entry(snap_name, rel, meta)
+                        self.server.write_entry(snap_name, enc_rel, meta)
                         if repo_mode != "pack":
-                            self.server.set_entry_metadata(snap_name, rel, meta)
+                            self.server.set_entry_metadata(snap_name, enc_rel, meta)
 
                 elif entry_type in ("fifo", "socket"):
-                    prev = self.server.get_entry_full(prev_snap, rel) if prev_snap else None
+                    prev = self.server.get_entry_full(prev_snap, enc_rel) if prev_snap else None
                     meta = {
                         "type": entry_type,
                         "mode": mode,
@@ -2114,24 +2864,23 @@ class BackupClient:
                             and prev["uid"] == st.st_uid
                             and prev["gid"] == st.st_gid
                             and stat.S_IMODE(prev["mode"]) == stat.S_IMODE(mode)
-                            and self.server.link_entry(prev_snap, snap_name, rel,
+                            and self.server.link_entry(prev_snap, snap_name, enc_rel,
                                                         is_dir=False, meta=meta)):
                         pass
                     else:
-                        self.server.write_entry(snap_name, rel, meta)
+                        self.server.write_entry(snap_name, enc_rel, meta)
                         if repo_mode != "pack":
-                            self.server.set_entry_metadata(snap_name, rel, meta)
+                            self.server.set_entry_metadata(snap_name, enc_rel, meta)
 
             except (PermissionError, OSError) as exc:
                 logger.warning("Skipping %s: %s", fpath, exc)
 
         if dry_run:
+            self._close_prev_index()
             return snap_name
 
-        # Batch-link all ctime-unchanged entries in one roundtrip
+        # Flush remaining unchanged entries
         if unchanged_entries:
-            if repo_mode == "tree":
-                logger.info("Linking unchanged entries: %d", len(unchanged_entries))
             self.server.link_unchanged_entries(prev_snap, snap_name,
                                                unchanged_entries)
 
@@ -2139,7 +2888,9 @@ class BackupClient:
         # clobbered by later file creation in tree/.
         if dir_entries and repo_mode != "pack":
             logger.info("Processing changed directories: %d", len(dir_entries))
-            self.server.set_dirs_metadata(snap_name, dir_entries)
+            # dir_entries is (rel, enc_rel, meta); server needs (enc_rel, meta)
+            enc_dir_entries = [(enc_r, m) for _, enc_r, m in dir_entries]
+            self.server.set_dirs_metadata(snap_name, enc_dir_entries)
 
         total_mb  = total_bytes  / 1024 ** 2
         stored_mb = stored_bytes / 1024 ** 2
@@ -2158,10 +2909,10 @@ class BackupClient:
         logger.info("Done: %d files, %d skipped, %d new blocks, %d dedup blocks", file_count, skipped_files, new_blocks, dedup_blocks)
         logger.info("Data: %.1f MiB total → %.1f MiB stored (%.1f%% saved)", total_mb, stored_mb, saved_pct)
         logger.info("Duration: %s", duration)
+        self._close_prev_index()
         self.server.finalize_snapshot(snap_name,
                                       total_bytes=total_bytes,
-                                      stored_bytes=stored_bytes,
-                                      chunk_hashes=all_chunk_hashes)
+                                      stored_bytes=stored_bytes)
         logger.info("Snapshot: %s", self.server.snap_dir(snap_name))
         return snap_name
 
@@ -2182,94 +2933,117 @@ class BackupClient:
             logger.info("Restoring '%s' → %s", snap_name, dest)
 
         dest = os.path.abspath(dest)
-        entry_list = self.server.list_entries(snap_name, filter_path, full=True)
 
-        if not entry_list:
+        # Encrypt filter_path for server-side prefix matching
+        enc_filter = self.encrypt_rel_path(filter_path) if filter_path else None
+
+        # Use cursor-based iteration to avoid loading all entries into RAM.
+        # Determine single-file restore from the first entry.
+        self.server.open_entry_cursor(snap_name, enc_filter, full=True)
+        first_batch = self.server.next_entries(2)
+        if not first_batch:
+            self.server.close_entry_cursor()
             logger.warning("No entries found")
             return
-
-        # Determine if this is a single-file restore
-        single_file = (len(entry_list) == 1 and entry_list[0]["type"] != "dir")
+        single_file = (len(first_batch) == 1 and first_batch[0]["type"] != "dir")
 
         restored = []  # (dst_path, entry) for deferred metadata
+        deferred_hardlinks = []  # (dst_entry, link_src, entry) created after all files
 
-        for entry in entry_list:
-            if single_file:
-                dst_entry = dest
-            else:
-                rel = entry["rel_path"]
-                dst_entry = os.path.join(dest, rel) if rel != "." else dest
+        # Process the first batch, then continue reading
+        pending = first_batch
+        while pending:
+            for entry in pending:
+                # Decrypt rel_path from server
+                entry["rel_path"] = self.decrypt_rel_path(entry["rel_path"])
+                if entry.get("link_target"):
+                    entry["link_target"] = self.decrypt_rel_path(entry["link_target"])
+                # Compute display-relative paths after decryption
+                if filter_path is not None:
+                    entry["rel_path"] = os.path.relpath(entry["rel_path"], filter_path) if entry["rel_path"] != filter_path else "."
+                    if entry.get("link_target"):
+                        entry["link_target"] = os.path.relpath(entry["link_target"], filter_path)
 
-            entry_type = entry["type"]
+                if single_file:
+                    dst_entry = dest
+                else:
+                    rel = entry["rel_path"]
+                    dst_entry = os.path.join(dest, rel) if rel != "." else dest
 
-            if dry_run:
-                rel = entry["rel_path"]
-                msg = "{entry_type}\t{rel}"
-                msg = msg.format(entry_type=entry_type, rel=rel)
-                print(msg)
-                continue
+                entry_type = entry["type"]
 
+                if dry_run:
+                    rel = entry["rel_path"]
+                    msg = "{entry_type}\t{rel}"
+                    msg = msg.format(entry_type=entry_type, rel=rel)
+                    print(msg)
+                    continue
+
+                try:
+                    if entry_type == "dir":
+                        os.makedirs(dst_entry, exist_ok=True)
+
+                    elif entry_type == "symlink":
+                        if os.path.lexists(dst_entry):
+                            os.unlink(dst_entry)
+                        os.symlink(entry["symlink_target"], dst_entry)
+
+                    elif entry_type == "hardlink":
+                        link_target = entry["link_target"]
+                        link_src = os.path.join(dest, link_target)
+                        deferred_hardlinks.append((dst_entry, link_src, entry))
+                        continue
+
+                    elif entry_type in ("blockdev", "chardev"):
+                        os.makedirs(os.path.dirname(dst_entry), exist_ok=True)
+                        if os.path.lexists(dst_entry):
+                            os.unlink(dst_entry)
+                        dev = os.makedev(entry["devmajor"], entry["devminor"])
+                        dev_mode = stat.S_IFBLK if entry_type == "blockdev" else stat.S_IFCHR
+                        os.mknod(dst_entry, dev_mode | stat.S_IMODE(entry["mode"]), dev)
+
+                    elif entry_type == "fifo":
+                        os.makedirs(os.path.dirname(dst_entry), exist_ok=True)
+                        if os.path.lexists(dst_entry):
+                            os.unlink(dst_entry)
+                        os.mkfifo(dst_entry, stat.S_IMODE(entry["mode"]))
+
+                    elif entry_type == "socket":
+                        os.makedirs(os.path.dirname(dst_entry), exist_ok=True)
+                        if os.path.lexists(dst_entry):
+                            os.unlink(dst_entry)
+                        os.mknod(dst_entry, stat.S_IFSOCK | stat.S_IMODE(entry["mode"]))
+
+                    elif entry_type == "file":
+                        os.makedirs(os.path.dirname(dst_entry), exist_ok=True)
+                        msg = "Restoring file: {file}"
+                        msg = msg.format(file=dst_entry)
+                        logger.info(msg)
+                        with open(dst_entry, "wb") as fh:
+                            for h in entry["chunk_hashes"]:
+                                encrypted_blob = self.server.retrieve_block(h)
+                                fh.write(self.decrypt_block(encrypted_blob))
+
+                except (PermissionError, OSError) as exc:
+                    logger.warning("Skipping %s: %s", dst_entry, exc)
+                    continue
+
+                restored.append((dst_entry, entry))
+
+            pending = self.server.next_entries(10000)
+
+        self.server.close_entry_cursor()
+
+        # Create hardlinks now that all target files exist
+        for dst_entry, link_src, entry in deferred_hardlinks:
             try:
-                if entry_type == "dir":
-                    os.makedirs(dst_entry, exist_ok=True)
-
-                elif entry_type == "symlink":
-                    if os.path.lexists(dst_entry):
-                        os.unlink(dst_entry)
-                    os.symlink(entry["symlink_target"], dst_entry)
-
-                elif entry_type == "hardlink":
-                    os.makedirs(os.path.dirname(dst_entry), exist_ok=True)
-                    link_target = entry["link_target"]
-                    if filter_path is not None:
-                        fp = filter_path.strip("/") + "/"
-                        if link_target.startswith(fp):
-                            link_target = link_target[len(fp):]
-                        elif link_target == filter_path.strip("/"):
-                            link_target = "."
-                        else:
-                            logger.warning("Skipping hardlink %s: target %s outside restored path",
-                                           entry["rel_path"], link_target)
-                            continue
-                    link_src = os.path.join(dest, link_target)
-                    if os.path.lexists(dst_entry):
-                        os.unlink(dst_entry)
-                    os.link(link_src, dst_entry)
-
-                elif entry_type in ("blockdev", "chardev"):
-                    os.makedirs(os.path.dirname(dst_entry), exist_ok=True)
-                    if os.path.lexists(dst_entry):
-                        os.unlink(dst_entry)
-                    dev = os.makedev(entry["devmajor"], entry["devminor"])
-                    dev_mode = stat.S_IFBLK if entry_type == "blockdev" else stat.S_IFCHR
-                    os.mknod(dst_entry, dev_mode | stat.S_IMODE(entry["mode"]), dev)
-
-                elif entry_type == "fifo":
-                    os.makedirs(os.path.dirname(dst_entry), exist_ok=True)
-                    if os.path.lexists(dst_entry):
-                        os.unlink(dst_entry)
-                    os.mkfifo(dst_entry, stat.S_IMODE(entry["mode"]))
-
-                elif entry_type == "socket":
-                    os.makedirs(os.path.dirname(dst_entry), exist_ok=True)
-                    if os.path.lexists(dst_entry):
-                        os.unlink(dst_entry)
-                    os.mknod(dst_entry, stat.S_IFSOCK | stat.S_IMODE(entry["mode"]))
-
-                elif entry_type == "file":
-                    os.makedirs(os.path.dirname(dst_entry), exist_ok=True)
-                    msg = "Restoring file: {file}"
-                    msg = msg.format(file=dst_entry)
-                    logger.info(msg)
-                    with open(dst_entry, "wb") as fh:
-                        for h in entry["chunk_hashes"]:
-                            encrypted_blob = self.server.retrieve_block(h)
-                            fh.write(self.decrypt_block(encrypted_blob))
-
+                os.makedirs(os.path.dirname(dst_entry), exist_ok=True)
+                if os.path.lexists(dst_entry):
+                    os.unlink(dst_entry)
+                os.link(link_src, dst_entry)
             except (PermissionError, OSError) as exc:
                 logger.warning("Skipping %s: %s", dst_entry, exc)
                 continue
-
             restored.append((dst_entry, entry))
 
         # Restore metadata (deepest first)
@@ -2295,14 +3069,31 @@ class BackupClient:
 
         logger.info("Restore complete: %s", dest)
 
-    def list_contents(self, snap_name: str,
-                      filter_path: Optional[str] = None) -> list:
-        """Return a list of dicts describing the contents of a snapshot.
-
-        Each dict has keys: type, rel_path, uid, gid, size, and
-        optionally symlink_target / link_target.
-        """
-        return self.server.list_entries(snap_name, filter_path)
+    def print_contents(self, snap_name: str,
+                       filter_path: Optional[str] = None) -> None:
+        """Print snapshot contents chunk-wise (no RAM accumulation)."""
+        enc_filter = self.encrypt_rel_path(filter_path) if filter_path else None
+        self.server.open_entry_cursor(snap_name, enc_filter)
+        try:
+            found = False
+            while True:
+                batch = self.server.next_entries(10000)
+                if not batch:
+                    break
+                found = True
+                # Decrypt rel_paths and compute display-relative paths
+                for entry in batch:
+                    entry["rel_path"] = self.decrypt_rel_path(entry["rel_path"])
+                    if filter_path is not None:
+                        entry["rel_path"] = os.path.relpath(entry["rel_path"], filter_path) if entry["rel_path"] != filter_path else "."
+                    if entry.get("link_target"):
+                        entry["link_target"] = self.decrypt_rel_path(entry["link_target"])
+                for line in self.format_contents(batch):
+                    print(line)
+            if not found:
+                print("No entries found.")
+        finally:
+            self.server.close_entry_cursor()
 
     @staticmethod
     def format_contents(entries: list) -> list:
@@ -2364,21 +3155,18 @@ def cmd_verify(server: BackupServer, client: BackupClient, snap_name: str) -> bo
 
 
 def _cmd_verify_locked(server: BackupServer, client: BackupClient, snap_name: str) -> bool:
-    content = server._read_index_file(snap_name)
-    if not content:
+    snap_id = server._resolve_snap_id(snap_name)
+    if snap_id == 0:
         raise FileNotFoundError(f"Snapshot not found: {snap_name}")
 
     errors = 0
     checked = 0
 
-    for line in content.strip().split("\n"):
-        if not line:
-            continue
-        parsed = server._parse_index_line(line)
+    for rel_path, val in server._iter_snap_index(snap_name):
+        parsed = server._parse_index_entry(val)
         if parsed is None or parsed["type"] != "file":
             continue
 
-        rel_path = parsed["rel_path"]
         if server.mode == "pack":
             # Pack mode: chunk_hashes are in the index
             chunk_hashes = parsed.get("chunk_hashes", [])

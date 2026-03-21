@@ -2202,7 +2202,7 @@ class OTPmeClient1(OTPmeClientBase):
         jwt_challenge=None, jwt_key=None, jwt_auth=False,
         check_login_status=True, allow_untrusted=False, do_preauth=True,
         check_connected_site=True, verify_preauth=None,
-        login_redirect=False, **kwargs):
+        login_redirect=False, backup_key=None, **kwargs):
         # Init parent class.
         super(OTPmeClient1, self).__init__(daemon, **kwargs)
 
@@ -2246,6 +2246,8 @@ class OTPmeClient1(OTPmeClientBase):
         # Set password to use when getting request to decrypt some AES data
         # (e.g. users private RSA key)
         self.aes_pass = aes_pass
+        # Backup AES key.
+        self.backup_key = backup_key
         # Inidicates that we allow sending of authentication data (passwords etc.)
         # to untrusted sites.
         self.allow_untrusted = allow_untrusted

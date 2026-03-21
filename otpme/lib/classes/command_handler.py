@@ -1550,13 +1550,8 @@ class CommandHandler(object):
         backup_mode = self.load_backup_object(backup_object)
         backupd_conn = self.get_backupd_conn(backup_server)
         backupd_conn.open_repository(repository=repository, password=repo_pass)
-        client = BackupClient(server=backupd_conn)
-        entries = client.list_contents(snap_name, path)
-        if not entries:
-            print("No entries found.")
-        else:
-            for line in client.format_contents(entries):
-                print(line)
+        client = BackupClient(server=backupd_conn, key=aes_key)
+        client.print_contents(snap_name, path)
 
     def restore_from_snapshot(self, backup_object, destination_dir,
         snap_name=None, path=None, dry_run=False):
@@ -6112,8 +6107,7 @@ class CommandHandler(object):
                                     client_type="RAPI")
             if nodes is None:
                 nodes = response[share_id]['nodes']
-            if encrypted is None:
-                encrypted = response[share_id]['encrypted']
+            encrypted = response[share_id]['encrypted']
             if mount_point is None:
                 shares = response
                 try:

@@ -1133,11 +1133,15 @@ class Share(OTPmeObject):
             self.force_group(group_name=force_group,
                             verify_acls=False)
         if force_create_mode:
-            self.force_create_mode(create_mode=force_create_mode,
-                                    verify_acls=False)
+            if not self.force_create_mode(create_mode=force_create_mode,
+                                        callback=callback,
+                                        verify_acls=False):
+                return callback.error()
         if force_directory_mode:
-            self.force_directory_mode(create_mode=force_directory_mode,
-                                        verify_acls=False)
+            if not self.force_directory_mode(create_mode=force_directory_mode,
+                                            callback=callback,
+                                            verify_acls=False):
+                return callback.error()
         # Default add script.
         default_add_script = self.get_config_parameter("default_share_add_script")
         if default_add_script:
@@ -1294,6 +1298,9 @@ class Share(OTPmeObject):
             msg = _("Create mode already set to: {create_mode}")
             msg = msg.format(create_mode=self.create_mode)
             return callback.error(msg)
+        if not create_mode.startswith("0o"):
+            msg = _("Invalid mode. Use python format, e.g. 0o700")
+            return callback.error(msg)
         self.create_mode = create_mode
         self.update_index('create_mode', create_mode)
         return self._cache(callback=callback)
@@ -1312,6 +1319,9 @@ class Share(OTPmeObject):
         if self.directory_mode == create_mode:
             msg = _("Create mode already set to: {directory_mode}")
             msg = msg.format(directory_mode=self.directory_mode)
+            return callback.error(msg)
+        if not create_mode.startswith("0o"):
+            msg = _("Invalid mode. Use python format, e.g. 0o700")
             return callback.error(msg)
         self.directory_mode = create_mode
         self.update_index('directory_mode', create_mode)
@@ -2160,7 +2170,6 @@ class Share(OTPmeObject):
             group = backend.get_object(uuid=self.force_group_uuid)
             if group:
                 share_script_parms['force_group'] = group.name
-        # fuck: convert mode to 0660
         if self.create_mode != 0o000:
             share_script_parms['force_create_mode'] = str(self.create_mode).replace("o", "")
         if self.directory_mode != 0o000:

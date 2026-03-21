@@ -137,6 +137,8 @@ def main():
 
     sub.add_parser("gc", help="Garbage-collect orphaned blocks")
 
+    sub.add_parser("compact", help="Compact databases to reclaim disk space")
+
     sub.add_parser("repack", help="Compact partially-dead pack files to reclaim space")
 
     sub.add_parser("rebuild-index", help="Rebuild pack index from pack files")
@@ -219,17 +221,19 @@ def main():
             print("-" * 160)
             print(f"{'TOTAL':<30}  {total_files:>7}  {total_inodes:>7}  {_format_size(sum_data):>10}  {_format_size(sum_stored):>10}")
     elif args.command == "ls":
-        entries = client.list_contents(args.snapshot, args.path)
-        if not entries:
-            print("No entries found.")
-        else:
-            for line in client.format_contents(entries):
-                print(line)
+        client.print_contents(args.snapshot, args.path)
     elif args.command == "verify":
         sys.exit(0 if cmd_verify(server, client, args.snapshot) else 1)
     elif args.command == "gc":
         removed = server.gc_orphaned_blocks()
         print(f"Removed {removed} orphaned blocks")
+    elif args.command == "compact":
+        from otpme.lib.classes.backup import _format_size
+        result = server.compact()
+        for db_name, saved in result.items():
+            print(f"{db_name}: reclaimed {_format_size(saved)}")
+        if not result:
+            print("Nothing to compact.")
     elif args.command == "repack":
         from otpme.lib.classes.backup import _format_size
         saved = server.repack()
