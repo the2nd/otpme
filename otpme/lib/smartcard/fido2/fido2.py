@@ -4,6 +4,7 @@ import os
 import json
 from getpass import getpass
 from fido2.ctap2 import Ctap2
+from fido2.ctap2 import ClientPin
 from fido2.hid import CtapHidDevice
 from fido2.client import Fido2Client
 from fido2.client import UserInteraction
@@ -72,7 +73,7 @@ class Fido2ClientHandler(object):
         self.error_message_method = print
         self.logger = config.logger
 
-    def get_pre_deploy_args(self):
+    def get_pre_deploy_args(self, **kwargs):
         self.detect_fido2_sc()
         pre_deploy_args = {'uv':self.fido2_token.uv}
         return pre_deploy_args
@@ -132,14 +133,15 @@ class Fido2ClientHandler(object):
         deploy_args['registration_data'] = registration_data
         return deploy_args
 
-    def handle_preauth(self, smartcard, **kwargs):
+    def handle_preauth(self, smartcard, password=None, **kwargs):
         rp = self.token_options['rp']
         request_options = self.token_options['request_options']
         is_2f_token = self.token_options['is_2f_token']
         pass_required = self.token_options['pass_required']
         try:
             auth_response = smartcard.authenticate(rp=rp,
-                                request_options=request_options)
+                                            pin=password,
+                                            request_options=request_options)
         except Exception as e:
             msg = _("Failed to authenticate with fido2 token: {error}")
             msg = msg.format(error=e)
@@ -154,12 +156,13 @@ class Fido2ClientHandler(object):
                         }
         return smartcard_data
 
-    def handle_authentication(self, smartcard, smartcard_data, **kwargs):
+    def handle_authentication(self, smartcard, smartcard_data, password=None, **kwargs):
         rp = smartcard_data['rp']
         request_options = smartcard_data['request_options']
         try:
             auth_response = smartcard.authenticate(rp=rp,
-                                request_options=request_options)
+                                            pin=password,
+                                            request_options=request_options)
         except Exception as e:
             msg = _("Failed to authenticate with fido2 token: {error}")
             msg = msg.format(error=e)
@@ -183,7 +186,8 @@ class Fido2ClientHandler(object):
         request_options = json.dumps(dict(request_options))
         try:
             auth_response = smartcard.authenticate(rp=token.rp,
-                                request_options=request_options)
+                                                pin=password,
+                                                request_options=request_options)
         except Exception as e:
             msg = _("Failed to authenticate with fido2 token: {error}")
             msg = msg.format(error=e)
@@ -210,9 +214,13 @@ class Fido2ServerHandler(object):
                                                     user_verification=token.uv)
         request_options = json.dumps(dict(request_options))
         self.token_type = token.token_type
+        pass_required = False
+        if token.uv == "required":
+            pass_required = True
         token_options = {
                     'rp'                : token.rp,
                     'token_type'        : self.token_type,
+                    'pass_required'     : pass_required,
                     'request_options'   : request_options,
                     }
         return token_options
@@ -233,6 +241,7 @@ class Fido2(object):
         self.ctap = None
         self.dev = None
         self.pin = None
+        self._pin = None
         self.uv = None
         if autodetect:
             self.detect()
@@ -266,22 +275,43 @@ class Fido2(object):
         self.ctap = Ctap2(self.dev)
         info = self.ctap.info
 
-        pin_set = info.options.get("clientPin")
-        if pin_set is None:
+        pin_supported = info.options.get("clientPin")
+        if pin_supported is None:
             # Authenticator does not support PIN.
             self.pin = None
-        elif pin_set:
+        elif pin_supported:
             # Authenticator has a PIN set.
             self.pin = True
         else:
             # Authenticator supports PIN but none is set.
-            self.pin = False
+            # Set PIN now.
+            self.pin = self.setup_pin()
 
-        # Prefer UV if supported and configured.
-        if info.options.get("uv") or info.options.get("bioEnroll"):
+        # Require UV if PIN is supported.
+        if pin_supported is not None:
+            self.uv = "required"
+        elif info.options.get("uv") or info.options.get("bioEnroll"):
             self.uv = "preferred"
         else:
             self.uv = "discouraged"
+
+    def setup_pin(self):
+        """ Set PIN on authenticator. """
+        client_pin = ClientPin(self.ctap)
+        while True:
+            pin = getpass("Enter new PIN: ")
+            pin_confirm = getpass("Confirm new PIN: ")
+            if pin != pin_confirm:
+                print("PINs do not match. Please try again.")
+                continue
+            if len(pin) < 4:
+                print("PIN must be at least 4 characters.")
+                continue
+            break
+        client_pin.set_pin(pin)
+        self._pin = pin
+        print("PIN set successfully.")
+        return True
 
     def get_fido2_client(self, rp, pin=None):
         rp = f"https://{rp}"
@@ -295,14 +325,18 @@ class Fido2(object):
         rp = create_options['publicKey']['rp']['id']
         pin = None
         if self.pin:
-            pin = getpass("Enter PIN: ")
+            if self._pin:
+                pin = self._pin
+                self._pin = None
+            else:
+                pin = getpass("Enter PIN: ")
         client = self.get_fido2_client(rp, pin=pin)
         result = client.make_credential(create_options["publicKey"])
         result = json.dumps(dict(result))
         return result
 
-    def authenticate(self, rp, request_options):
-        client = self.get_fido2_client(rp)
+    def authenticate(self, rp, request_options, pin=None):
+        client = self.get_fido2_client(rp, pin=pin)
         request_options = json.loads(request_options)
         results = client.get_assertion(request_options["publicKey"])
         auth_response = results.get_response(0)

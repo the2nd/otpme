@@ -148,7 +148,10 @@ class BackupDaemon(OTPmeDaemon):
                 # Backup of node must be started on node.
                 if o.uuid != config.uuid:
                     continue
-            else:
+            elif o.type == "share":
+                # No backups for restore shares.
+                if o.restore_share:
+                    continue
                 # Share backups only run on master node.
                 if not config.master_node:
                     continue

@@ -8618,8 +8618,9 @@ class OTPmeObject(OTPmeBaseObject):
             # Try to get the default value genner.
             try:
                 default_genner = parameter_data['default_genner']
-                value = default_genner()
-            except:
+                value = default_genner(config_object=self, callback=callback)
+            except Exception as e:
+                print("eee", e)
                 pass
         if value is None:
             msg = _("Cannot determine default value.")

@@ -858,17 +858,8 @@ def register_config():
                     'site',
                     'unit',
                     ]
-    def public_key_setter(public_key=None, config_object=None, callback=JobCallback, **kwargs):
-        from otpme.lib.encoding.base import decode
-        from otpme.lib.encryption.rsa import RSAKey
-        if public_key:
-            public_key = decode(public_key, "base64")
-            try:
-                RSAKey(key=public_key)
-            except Exception as e:
-                msg = _("Invalid public key.")
-                raise ValueError(msg)
-            return public_key
+    def private_key_genner(config_object=None, callback=JobCallback, **kwargs):
+        from otpme.lib.encoding.base import encode
         try:
             key_len = config_object.get_config_parameter("private_key_backup_key_len")
         except:
@@ -876,13 +867,24 @@ def register_config():
         key_name = f"{config_object.type}-{config_object.name}-{config_object.uuid}"
         public_key = callback.gen_backup_rsa_key(key_name=key_name,
                                                 key_len=key_len)
+        public_key = encode(public_key, "base64")
         return public_key
-
+    def public_key_setter(public_key=None, callback=JobCallback, **kwargs):
+        from otpme.lib.encoding.base import decode
+        from otpme.lib.encryption.rsa import RSAKey
+        public_key = decode(public_key, "base64")
+        try:
+            RSAKey(key=public_key)
+        except Exception as e:
+            msg = _("Invalid public key.")
+            raise ValueError(msg)
+        return public_key
     # Public key used for encryption of user private keys.
     config.register_config_parameter(name="private_key_backup_key",
                                     ctype=str,
                                     warn_if_exists=True,
                                     setter=public_key_setter,
+                                    default_genner=private_key_genner,
                                     object_types=object_types)
 
     def key_len_setter(key_len, callback=JobCallback, **kwargs):

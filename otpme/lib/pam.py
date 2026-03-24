@@ -435,6 +435,8 @@ class PamHandler(object):
 
     def open_session(self):
         """ Get users DISPLAY etc. """
+        if self.pamh.service == "su":
+            return self.pamh.PAM_SUCCESS
         if self.pamh.service == "sudo":
             return self.pamh.PAM_SUCCESS
         # Make sure we got a username from PAM.
@@ -865,9 +867,6 @@ class PamHandler(object):
         if verify_token.pass_type == "smartcard":
             found_smartcard = verify_token
 
-        # Get password via PAM if needed.
-        if need_password:
-            password = self.get_password()
 
         # Try to get SSH agent script from offline tokens.
         try:
@@ -892,16 +891,22 @@ class PamHandler(object):
             if not status:
                 raise AuthFailed(response)
 
-        # Split off password, OTP and PIN.
-        result = verify_token.split_password(password)
-        otp = result['otp']
-        pin = result['pin']
-        static_pass = result['pass']
-
-        # Build static password part from password and PIN if given.
-        static_pass_part = static_pass
-        if pin:
-            static_pass_part += str(pin)
+        # Get password via PAM if needed.
+        otp = None
+        pin = None
+        password = None
+        static_pass_part = None
+        if need_password:
+            password = self.get_password()
+            # Split off password, OTP and PIN.
+            result = verify_token.split_password(password)
+            otp = result['otp']
+            pin = result['pin']
+            static_pass = result['pass']
+            # Build static password part from password and PIN if given.
+            static_pass_part = static_pass
+            if pin:
+                static_pass_part += str(pin)
 
         if found_smartcard:
             # If we have a smartcard offline token try to detect local
@@ -981,19 +986,20 @@ class PamHandler(object):
 
                 # When using a hardware token like the yubikey the encryption
                 # passphrase is derived via ssh-agent signing.
-                agent_conn = self.get_agent_connection()
-                try:
-                    if not agent_conn.check_ssh_key_pass():
-                        log_msg = _("Adding SSH key passphrase to otpme-agent...", log=True)[1]
-                        self.logger.debug(log_msg)
-                        try:
-                            agent_conn.add_ssh_key_pass(ssh_agent_pid=ssh_agent_pid,
-                                                        ssh_key_pass=ssh_key_pass)
-                        except Exception as e:
-                            msg = (_("Unable to add SSH key passphrase to otpme-agent"))
-                            raise OTPmeException(msg)
-                finally:
-                    agent_conn.close()
+                if ssh_key_pass:
+                    agent_conn = self.get_agent_connection()
+                    try:
+                        if not agent_conn.check_ssh_key_pass():
+                            log_msg = _("Adding SSH key passphrase to otpme-agent...", log=True)[1]
+                            self.logger.debug(log_msg)
+                            try:
+                                agent_conn.add_ssh_key_pass(ssh_agent_pid=ssh_agent_pid,
+                                                            ssh_key_pass=ssh_key_pass)
+                            except Exception as e:
+                                msg = (_("Unable to add SSH key passphrase to otpme-agent"))
+                                raise OTPmeException(msg)
+                    finally:
+                        agent_conn.close()
 
                 # Try to derive passphrase for offline token decryption via ssh-agent.
                 if need_encryption:
@@ -1975,7 +1981,7 @@ class PamHandler(object):
                 log_msg = log_msg.format(error=e)
                 self.logger.warning(log_msg)
 
-        if self.auth_status:
+        if self.auth_status and self.password:
             agent_conn = self.get_agent_connection()
             if not agent_conn.check_ssh_key_pass():
                 log_msg = _("Adding SSH key passphrase to otpme-agent...", log=True)[1]

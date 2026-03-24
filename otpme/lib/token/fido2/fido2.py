@@ -67,6 +67,7 @@ read_value_acls = {
 
 write_value_acls = {
                 "edit"      : [
+                            "uv",
                             "attestation_cert",
                             "auth_script",
                             "offline_expiry",
@@ -89,6 +90,15 @@ default_acls = []
 recursive_default_acls = []
 
 commands = {
+    'uv'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'set_uv',
+                    'args'              : ['uv'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'test'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -208,7 +218,7 @@ class Fido2Token(Token):
         self.token_type = "fido2"
         # Set password type.
         self.pass_type = "smartcard"
-        self.uv = None
+        self.uv = "discouraged"
         # Set default values.
         self.credential_data = None
         self.attestation_cert = None
@@ -267,6 +277,16 @@ class Fido2Token(Token):
         return offline_config
 
     @property
+    def need_password(self):
+        if self.uv == "required":
+            return True
+        return False
+
+    @need_password.setter
+    def need_password(self, *args, **kwargs):
+        return
+
+    @property
     def rp(self):
         return config.realm
 
@@ -274,6 +294,14 @@ class Fido2Token(Token):
         rp_data = {"id": config.realm, "name": "OTPme RP"}
         fido2_server = Fido2Server(rp_data, attestation="direct")
         return fido2_server
+
+    def set_uv(self, uv, callback=default_callback, **kwargs):
+        if uv not in ['discouraged', 'preferred', 'required']:
+            msg = _("Invalid uv: {uv}")
+            msg = msg.format(uv=uv)
+            return callback.error(msg)
+        self.uv = uv
+        return self._cache(callback=callback)
 
     @object_lock(full_lock=True)
     def pre_deploy(
@@ -285,7 +313,7 @@ class Fido2Token(Token):
         ):
         """ Deploy fido2 token. """
         try:
-            self.uv = pre_deploy_args['uv']
+            self.set_uv(pre_deploy_args['uv'])
         except KeyError:
             msg = _("Missing uv.")
             return callback.error(msg)
@@ -419,7 +447,7 @@ class Fido2Token(Token):
         smartcard_data = {
                     'rp'                : self.rp,
                     'token_path'        : self.rel_path,
-                    'pass_required'     : False,
+                    'pass_required'     : self.need_password,
                     'request_options'   : request_options_json,
                     }
         # Do smartcard authentication on client.
@@ -489,6 +517,8 @@ class Fido2Token(Token):
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []
+
+        lines.append(f'UV="{self.uv}"')
 
         if self.verify_acl("view:credential_data"):
             lines.append(f'CREDENTIAL_DATA="{self.credential_data}"')

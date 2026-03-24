@@ -207,14 +207,6 @@ def encrypt_path_component(siv: AESSIV, name: str, parent_ct: bytes) -> str:
     return _base64.urlsafe_b64encode(ct).rstrip(b'=').decode('ascii')
 
 
-def decrypt_path_component(siv: AESSIV, token: str, parent_ct: bytes) -> str:
-    """Decrypt a single path component. token is base64url-encoded ciphertext."""
-    # Restore padding
-    padded = token + '=' * (-len(token) % 4)
-    ct = _base64.urlsafe_b64decode(padded.encode('ascii'))
-    return siv.decrypt(ct, [parent_ct]).decode('utf-8')
-
-
 def encrypt_path(siv: AESSIV, rel_path: str) -> str:
     """Encrypt a full relative path, component by component.
 
@@ -571,6 +563,7 @@ class BackupServer:
             self._active_pack_size = p.stat().st_size
         else:
             self._active_pack_size = 0
+            self.inode_count += 1
         self._active_pack_fd = open(p, 'ab')
 
     def _rotate_pack(self) -> None:
@@ -742,7 +735,6 @@ class BackupServer:
             self._pack_db.commit()
             self._pack_db.execute("BEGIN")
             self._pack_puts_since_commit = 0
-        self.inode_count += 1
 
     def retrieve_block(self, h: str) -> bytes:
         """Return the encrypted blob for a given hash from its pack file."""
@@ -1315,12 +1307,9 @@ class BackupServer:
                 self.file_count += 1
                 self.inode_count += 1
         else:
-            # Pack mode: only count, no filesystem writes
-            if entry_type == "dir":
-                self.inode_count += 1
-            else:
+            # Pack mode: only count files, no filesystem writes (no inodes)
+            if entry_type != "dir":
                 self.file_count += 1
-                self.inode_count += 1
 
         # Append to snap-index LMDB
         idx_meta = dict(meta)
@@ -2407,7 +2396,7 @@ class BackupClient:
         if cached_fp == fingerprint and os.path.getsize(cached_db) > 0:
             logger.info("Snap index cache is current, skipping download")
         else:
-            chunk_size = 4 * 1024 * 1024  # 4 MiB
+            chunk_size = 64 * 1024 * 1024  # 64 MiB
             offset = 0
             transferred = 0
             with open(cached_db, 'wb') as f:
@@ -2472,42 +2461,6 @@ class BackupClient:
         self._prev_entry_ids = None
         if hasattr(self, '_prev_snap_id_cached'):
             del self._prev_snap_id_cached
-
-    def collect_entry(self, fpath: str, source: str) -> Optional[dict]:
-        """Collect metadata for a filesystem entry.
-
-        Returns a dict suitable for server.write_entry(), or None for
-        unsupported file types (devices, fifos, sockets).
-        """
-        st = os.lstat(fpath)
-        rel = os.path.relpath(fpath, source)
-        mode = st.st_mode
-
-        meta = {
-            "path": rel,
-            "mode": mode,
-            "uid": st.st_uid,
-            "gid": st.st_gid,
-            "atime": st.st_atime,
-            "mtime": st.st_mtime,
-        }
-
-        if stat.S_ISDIR(mode):
-            meta["type"] = "dir"
-            meta["acl"] = _get_acl_text(fpath)
-        elif stat.S_ISLNK(mode):
-            meta["type"] = "symlink"
-            meta["symlink_target"] = os.readlink(fpath)
-        elif stat.S_ISREG(mode):
-            meta["type"] = "file"
-            meta["size"] = st.st_size
-            meta["acl"] = _get_acl_text(fpath)
-            meta["chunk_hashes"] = []  # filled during backup
-        else:
-            logger.debug("Skipping special file %s", fpath)
-            return None
-
-        return meta
 
     def backup(self, source: str, name: Optional[str] = None,
                special_files: bool = False,
@@ -3070,7 +3023,9 @@ class BackupClient:
         logger.info("Restore complete: %s", dest)
 
     def print_contents(self, snap_name: str,
-                       filter_path: Optional[str] = None) -> None:
+                       filter_path: Optional[str] = None,
+                       full_path: bool = False,
+                       recursive: bool = False) -> None:
         """Print snapshot contents chunk-wise (no RAM accumulation)."""
         enc_filter = self.encrypt_rel_path(filter_path) if filter_path else None
         self.server.open_entry_cursor(snap_name, enc_filter)
@@ -3080,14 +3035,26 @@ class BackupClient:
                 batch = self.server.next_entries(10000)
                 if not batch:
                     break
-                found = True
                 # Decrypt rel_paths and compute display-relative paths
+                filtered_batch = []
                 for entry in batch:
                     entry["rel_path"] = self.decrypt_rel_path(entry["rel_path"])
                     if filter_path is not None:
-                        entry["rel_path"] = os.path.relpath(entry["rel_path"], filter_path) if entry["rel_path"] != filter_path else "."
+                        rel = os.path.relpath(entry["rel_path"], filter_path) if entry["rel_path"] != filter_path else "."
+                        # Without --recursive, skip entries deeper than direct children
+                        if not recursive and rel != "." and "/" in rel:
+                            continue
+                        if not full_path:
+                            entry["rel_path"] = rel
+                    elif not recursive and entry["rel_path"] != "." and "/" in entry["rel_path"]:
+                        continue
                     if entry.get("link_target"):
                         entry["link_target"] = self.decrypt_rel_path(entry["link_target"])
+                    filtered_batch.append(entry)
+                if filtered_batch:
+                    found = True
+                    for line in self.format_contents(filtered_batch):
+                        print(line)
                 for line in self.format_contents(batch):
                     print(line)
             if not found:

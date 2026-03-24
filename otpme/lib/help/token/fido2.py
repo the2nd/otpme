@@ -35,4 +35,12 @@ cmd_help = {
                                     '-d'                    : _('Enable token related debug output.'),
                                 },
                     },
+
+    'uv' : {
+                    '_cmd_usage_help' : _('Usage: otpme-token uv <token> <uv>'),
+                    'cmd'   :   '<|object|> <uv>',
+                    '_help' :   {
+                                    'cmd'                   : _('Set user verification.'),
+                                },
+                    },
     }

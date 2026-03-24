@@ -131,6 +131,10 @@ def main():
     p.add_argument("snapshot", help="Snapshot name")
     p.add_argument("path", nargs="?", default=None,
                     help="List only this sub-path (relative to backup root)")
+    p.add_argument("--full-path", action="store_true",
+                    help="Show full paths instead of relative to --path")
+    p.add_argument("-R", "--recursive", action="store_true",
+                    help="List contents recursively (default: direct children only)")
 
     p = sub.add_parser("verify", help="Verify snapshot integrity")
     p.add_argument("snapshot", help="Snapshot name")
@@ -221,7 +225,9 @@ def main():
             print("-" * 160)
             print(f"{'TOTAL':<30}  {total_files:>7}  {total_inodes:>7}  {_format_size(sum_data):>10}  {_format_size(sum_stored):>10}")
     elif args.command == "ls":
-        client.print_contents(args.snapshot, args.path)
+        client.print_contents(args.snapshot, args.path,
+                              full_path=getattr(args, 'full_path', False),
+                              recursive=getattr(args, 'recursive', False))
     elif args.command == "verify":
         sys.exit(0 if cmd_verify(server, client, args.snapshot) else 1)
     elif args.command == "gc":

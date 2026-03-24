@@ -1407,7 +1407,19 @@ class CommandHandler(object):
                 path = command_args['path']
             except KeyError:
                 path = None
-            return self.list_backup_snapshot(backup_object, snap_name, path)
+            try:
+                full_path = command_args['full_path']
+            except KeyError:
+                full_path = False
+            try:
+                recursive = command_args['recursive']
+            except KeyError:
+                recursive = False
+            return self.list_backup_snapshot(backup_object,
+                                            snap_name,
+                                            path,
+                                            full_path=full_path,
+                                            recursive=recursive)
 
         if subcommand == "restore":
             try:
@@ -1536,7 +1548,7 @@ class CommandHandler(object):
             print("-" * 160)
             print(f"{'TOTAL':<30}  {total_files:>7}  {total_inodes:>7}  {_format_size(sum_data):>10}  {_format_size(sum_stored):>10}")
 
-    def list_backup_snapshot(self, backup_object, snap_name, path=None):
+    def list_backup_snapshot(self, backup_object, snap_name, path=None, full_path=False, recursive=False):
         from otpme.lib.classes.backup import BackupClient
         repository, \
         source_dir, \
@@ -1551,7 +1563,7 @@ class CommandHandler(object):
         backupd_conn = self.get_backupd_conn(backup_server)
         backupd_conn.open_repository(repository=repository, password=repo_pass)
         client = BackupClient(server=backupd_conn, key=aes_key)
-        client.print_contents(snap_name, path)
+        client.print_contents(snap_name, path, full_path=full_path, recursive=recursive)
 
     def restore_from_snapshot(self, backup_object, destination_dir,
         snap_name=None, path=None, dry_run=False):

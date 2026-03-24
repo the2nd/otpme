@@ -862,11 +862,15 @@ class OTPmeAgentP1(object):
                 try:
                     self.ssh_agent_pid = command_args['ssh_agent_pid']
                     ssh_key_pass = command_args['ssh_key_pass']
+                    status = True
                 except:
                     message = "AGENT_INCOMPLETE_COMMAND"
                     status = False
 
-                if self.ssh_agent_pid and ssh_key_pass:
+                if not ssh_key_pass:
+                    status = False
+                    message = "Got empty ssh key pass."
+                if status and self.ssh_agent_pid:
                     try:
                         ssh_agent_proc = psutil.Process(int(self.ssh_agent_pid))
                     except:
