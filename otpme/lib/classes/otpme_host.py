@@ -402,7 +402,7 @@ class OTPmeHost(OTPmeClientObject):
                 return callback.error(msg)
             user_uuid = result[0]
 
-        token_types = ['ssh', 'link']
+        token_types = config.get_ssh_token_types()
         valid_tokens = self.get_tokens(token_types=token_types,
                                     user_uuid=user_uuid,
                                     include_roles=True,
@@ -489,7 +489,7 @@ class OTPmeHost(OTPmeClientObject):
                         continue
 
                 # Skip non-SSH tokens.
-                if verify_token.token_type != "ssh":
+                if verify_token.token_type not in token_types:
                     continue
 
                 # Skip SSH token without public key.

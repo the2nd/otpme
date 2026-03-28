@@ -428,6 +428,12 @@ class PamHandler(object):
         remove_autoconfirm(self.pinentry_autoconfirm_file,
                             confirm_key="LOGIN")
 
+    @property
+    def display_file(self):
+        home_dir = self.get_home_dir(self.username)
+        display_file = f"{home_dir}/.display"
+        return display_file
+
     def get_home_dir(self, username):
         home_exp = f"~{username}"
         home_dir = os.path.expanduser(home_exp)
@@ -453,11 +459,16 @@ class PamHandler(object):
             self.logger.debug(log_msg)
             home_dir = self.get_home_dir(self.username)
             if os.path.exists(home_dir):
-                display_file = f"{home_dir}/.display"
-                filetools.create_file(display_file,
+                filetools.create_file(self.display_file,
                                     content=self.display,
                                     user=self.username,
                                     mode=0o600)
+        else:
+            try:
+                os.remove(self.display_file)
+            except:
+                pass
+
         # Ensure ssh agent.
         if self.ensure_ssh_agent:
             # Get SSH agent script.

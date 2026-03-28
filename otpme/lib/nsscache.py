@@ -762,8 +762,10 @@ def update(realm, site, resync=False, cache_resync=False, lock=None):
             if update_needed:
                 # We need merged entries in nsscache_new_entries.
                 for name in nsscache_current_entries[object_type]:
-                    entry = nsscache_current_entries[object_type][name][0]
-                    nsscache_new_entries[object_type].append((entry,))
+                    #entry = nsscache_current_entries[object_type][name][0]
+                    #nsscache_new_entries[object_type].append((entry,))
+                    entry = nsscache_current_entries[object_type][name]
+                    nsscache_new_entries[object_type].append(entry)
 
     # Actually create new/merged maps and write them to nsscache.
     for object_type in object_types:

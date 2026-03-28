@@ -617,6 +617,8 @@ class OTPmeConfig(object):
         self.register_config_var("internal_objects", dict, {})
         # All supported smartcard types.
         self.register_config_var("supported_smartcards", dict, {})
+        # All token types that support ssh auth.
+        self.register_config_var("ssh_token_types", list, [])
         # Timeout for second node to appear in two node clusters.
         self.register_config_var("two_node_timeout", int, 30,
                             config_file_parameter="TWO_NODE_TIMEOUT")
@@ -1443,6 +1445,18 @@ class OTPmeConfig(object):
             msg = msg.format(name=name)
             raise NotRegistered(msg)
         return parameter_data
+
+    def register_ssh_token(self, token_type):
+        """ Register ssh token. """
+        if token_type in self.ssh_token_types:
+            msg = _("Token type already registered: {token_type}")
+            msg = msg.format(token_type=token_type)
+            raise AlreadyRegistered(msg)
+        self.ssh_token_types.append(token_type)
+
+    def get_ssh_token_types(self):
+        """ Get ssh token types. """
+        return list(self.ssh_token_types)
 
     def register_smartcard_type(self, smartcard_type, client_handler, server_handler):
         """ Register supported smartcard type. """

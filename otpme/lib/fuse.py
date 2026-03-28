@@ -298,6 +298,7 @@ class OTPmeFS(fuse.Operations):
                             self.logger.warning(log_msg)
                             self.fsd_conn.close()
                             self.fsd_conn = None
+                            tried_nodes.append(node)
                             raise OSError(errno.ENOENT, _("Missing block size"))
                         # Set block size for encrypted fs.
                         self.set_block_size(block_size)
@@ -311,6 +312,7 @@ class OTPmeFS(fuse.Operations):
                                     self.logger.warning(log_msg)
                                     self.fsd_conn.close()
                                     self.fsd_conn = None
+                                    tried_nodes.append(node)
                                     raise OSError(errno.EACCES, _("No share key received"))
                                 try:
                                     hash_data = hash_password(self.master_password,
@@ -323,6 +325,7 @@ class OTPmeFS(fuse.Operations):
                                     self.logger.warning(log_msg)
                                     self.fsd_conn.close()
                                     self.fsd_conn = None
+                                    tried_nodes.append(node)
                                     raise OSError(errno.EACCES, _("No share key received"))
                             else:
                                 try:
@@ -333,6 +336,7 @@ class OTPmeFS(fuse.Operations):
                                     self.logger.warning(log_msg)
                                     self.fsd_conn.close()
                                     self.fsd_conn = None
+                                    tried_nodes.append(node)
                                     raise OSError(errno.EACCES, _("No share key received"))
                                 # Decrypt share key with key script.
                                 share_id = f"{self.share_site}/{self.share}"
@@ -348,6 +352,7 @@ class OTPmeFS(fuse.Operations):
                                     self.logger.warning(log_msg)
                                     self.fsd_conn.close()
                                     self.fsd_conn = None
+                                    tried_nodes.append(node)
                                     raise OSError(errno.EACCES, _("Failed to decrypt share key"))
                             try:
                                 self.setup_encryption(share_key)
@@ -358,6 +363,7 @@ class OTPmeFS(fuse.Operations):
                                 self.logger.warning(log_msg)
                                 self.fsd_conn.close()
                                 self.fsd_conn = None
+                                tried_nodes.append(node)
                                 raise OSError(errno.EINVAL, msg)
                         # Get max filename length for encrypted shares.
                         statfs = self.statfs(path="/")

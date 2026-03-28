@@ -839,6 +839,7 @@ class Node(OTPmeHost):
         self._default_acls = get_default_acls()
         self._recursive_default_acls = get_recursive_default_acls()
 
+        self.logins_limited = True
         self.vote_script = None
         self.vote_script_enabled = False
 

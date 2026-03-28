@@ -126,10 +126,11 @@ def change_puk(old_puk: str = None, new_puk: str = None, serial: int = None):
 
 
 def get_public_key(
-    slot: SLOT = SLOT.AUTHENTICATION,
+    slot: str = "AUTHENTICATION",
     serial: int=None,
     piv_session: PivSession = None,
 ):
+    slot = slot_map[slot]
     if not piv_session:
         conn = _open_piv(serial)
         piv_session = PivSession(conn)

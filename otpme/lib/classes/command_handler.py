@@ -109,6 +109,7 @@ class CommandHandler(object):
         help_msg = get_help(command=command,
                             subcommand=subcommand,
                             command_map=command_map)
+
         if message:
             help_msg = f"{help_msg}\n\n{message}"
 

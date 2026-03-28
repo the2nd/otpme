@@ -1539,14 +1539,20 @@ class OTPmeAgent(UnixDaemon):
                             slot = request.get('slot', 'AUTHENTICATION')
                             data = bytes.fromhex(data)
                             padding = request.get('padding', 'pss')
-                            result = piv_sign(
-                                data=data,
-                                slot=slot,
-                                padding=padding,
-                                piv_session=self.piv_session,
-                            )
-                            message = result.hex()
-                            status_code = status_codes.OK
+                            try:
+                                result = piv_sign(
+                                    data=data,
+                                    slot=slot,
+                                    padding=padding,
+                                    piv_session=self.piv_session,
+                                )
+                            except Exception as e:
+                                message = _("Sign failed: {e}")
+                                message = message.format(e=e)
+                                status_code = status_codes.ERR
+                            else:
+                                message = result.hex()
+                                status_code = status_codes.OK
                         except Exception as e:
                             message = _("PIV sign failed: {e}")
                             message = message.format(e=e)
@@ -1562,14 +1568,20 @@ class OTPmeAgent(UnixDaemon):
                             data = bytes.fromhex(data)
                             slot = request.get('slot', 'AUTHENTICATION')
                             padding = request.get('padding', 'oaep')
-                            result = piv_decrypt(
-                                cipher_text=data,
-                                slot=slot,
-                                padding=padding,
-                                piv_session=self.piv_session,
-                            )
-                            message = result.hex()
-                            status_code = status_codes.OK
+                            try:
+                                result = piv_decrypt(
+                                    cipher_text=data,
+                                    slot=slot,
+                                    padding=padding,
+                                    piv_session=self.piv_session,
+                                )
+                            except Exception as e:
+                                message = _("Decrypt failed: {e}")
+                                message = message.format(e=e)
+                                status_code = status_codes.ERR
+                            else:
+                                message = result.hex()
+                                status_code = status_codes.OK
                         except Exception as e:
                             raise
                             message = _("PIV decrypt failed: {e}")
@@ -1585,14 +1597,20 @@ class OTPmeAgent(UnixDaemon):
                             challenge = request['challenge']
                             slot = request.get('slot', 'AUTHENTICATION')
                             length = request.get('length', 32)
-                            result = piv_derive_password(
-                                challenge=challenge,
-                                slot=slot,
-                                length=length,
-                                piv_session=self.piv_session,
-                            )
-                            message = result
-                            status_code = status_codes.OK
+                            try:
+                                result = piv_derive_password(
+                                    challenge=challenge,
+                                    slot=slot,
+                                    length=length,
+                                    piv_session=self.piv_session,
+                                )
+                            except Exception as e:
+                                message = _("Sign failed: {e}")
+                                message = message.format(e=e)
+                                status_code = status_codes.ERR
+                            else:
+                                message = result
+                                status_code = status_codes.OK
                         except Exception as e:
                             message = _("PIV derive password failed: {e}")
                             message = message.format(e=e)

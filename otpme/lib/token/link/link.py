@@ -125,6 +125,7 @@ def register():
 def register_token_type():
     """ Register token type. """
     config.register_sub_object_type("token", "link")
+    config.register_ssh_token("link")
 
 @match_class_typing
 class LinkToken(Token):

@@ -53,9 +53,10 @@ write_acls_acls =  [
 
 read_value_acls = {
                 "view"      : [
-                            "secret",
+                            "key_type",
                             "auth_script",
                             "public_key",
+                            "ssh_public_key",
                             "private_key_backup",
                             "offline_status",
                             "offline_expiry",
@@ -66,7 +67,9 @@ read_value_acls = {
 
 write_value_acls = {
                 "edit"      : [
+                            "key_type",
                             "public_key",
+                            "ssh_public_key",
                             "auth_script",
                             "offline_expiry",
                             "offline_unused_expiry",
@@ -101,6 +104,24 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'dump_key',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'ssh_public_key'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_ssh_public_key',
+                    'oargs'             : ['ssh_public_key'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'key_type'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_key_type',
+                    'args'              : ['key_type'],
                     'job_type'          : 'process',
                     },
                 },
@@ -178,12 +199,15 @@ def register():
                     sub_type_attribute="token_type")
 
 def register_hooks():
+    config.register_auth_on_action_hook("token", "key_type")
     config.register_auth_on_action_hook("token", "public_key")
+    config.register_auth_on_action_hook("token", "ssh_public_key")
     config.register_auth_on_action_hook("token", "show_config_parameters")
 
 def register_token_type():
     """ Register token type. """
     config.register_sub_object_type("token", "yubikey_piv")
+    config.register_ssh_token("yubikey_piv")
 
 @match_class_typing
 class YubikeypivToken(Token):
@@ -215,7 +239,11 @@ class YubikeypivToken(Token):
         self.token_type = "yubikey_piv"
         # Set password type.
         self.pass_type = "smartcard"
-        self.secret_len = 0
+        self.public_key = None
+        # Set SSH key type.
+        self.ssh_public_key = None
+        self.key_type = "rsa"
+        self.valid_key_types = [ "rsa", "dsa" ]
         self.auth_script_enabled = False
         self.allow_offline = False
         self.offline_expiry = 0
@@ -227,6 +255,24 @@ class YubikeypivToken(Token):
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
         self.supported_hardware_tokens = [ 'yubikey_piv' ]
 
+        self._sub_sync_fields = {
+                    'host'  : {
+                        'trusted'  : [
+                            "KEY_TYPE",
+                            "SSH_PUBLIC_KEY",
+                            "SIGNATURES",
+                            ]
+                        },
+
+                    'node'  : {
+                        'untrusted'  : [
+                            "KEY_TYPE",
+                            "SSH_PUBLIC_KEY",
+                            "SIGNATURES",
+                            ]
+                        },
+                    }
+
     def _get_object_config(self):
         """ Merge token config with config from parent class. """
         token_config = {
@@ -235,9 +281,19 @@ class YubikeypivToken(Token):
                                             'type'          : str,
                                             'required'      : False,
                                         },
+            'SSH_PUBLIC_KEY'            : {
+                                            'var_name'      : 'ssh_public_key',
+                                            'type'          : str,
+                                            'required'      : False,
+                                        },
             'PRIVATE_KEY_BACKUP'        : {
                                             'var_name'      : 'private_key_backup',
                                             'type'          : dict,
+                                            'required'      : False,
+                                        },
+            'KEY_TYPE'                  : {
+                                            'var_name'      : 'key_type',
+                                            'type'          : str,
                                             'required'      : False,
                                         },
             }
@@ -301,6 +357,82 @@ class YubikeypivToken(Token):
             # Set public key.
             self.public_key = public_key
 
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:ssh_public_key'])
+    @object_lock(full_lock=True)
+    @audit_log()
+    def change_ssh_public_key(
+        self,
+        public_key: str,
+        force: bool=False,
+        verbose_level: int=0,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Set tokens RSA public key. """
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                    callback=callback,
+                                    _caller=_caller)
+                self.run_policies("change_ssh_public_key",
+                                    callback=callback,
+                                    _caller=_caller)
+            except Exception as e:
+                msg = _("Error running policies: {e}")
+                msg = msg.format(e=e)
+                return callback.error(msg)
+
+        if self.ssh_public_key is not None:
+            msg = _("Replace existing SSH public key?: ")
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
+
+        if ssh_public_key == "":
+            self.ssh_public_key = None
+        else:
+            # Set public key.
+            self.ssh_public_key = ssh_public_key
+
+        return self._cache(callback=callback)
+
+    @check_acls(['edit:key_type'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def change_key_type(
+        self,
+        key_type: str="rsa",
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Get supported hardware card/token types. """
+        if not key_type in self.valid_key_types:
+            msg = _("Unsupported key type: {key_type}")
+            msg = msg.format(key_type=key_type)
+            return callback.error(msg)
+        if key_type == self.key_type:
+            msg = _("Key type already set to: {key_type}")
+            msg = msg.format(key_type=key_type)
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_key_type",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception:
+                return callback.error()
+
+        self.key_type = key_type
         return self._cache(callback=callback)
 
     @check_acls(['view:public_key'])
@@ -410,6 +542,8 @@ class YubikeypivToken(Token):
         self,
         public_key: str,
         add_user_key: bool=False,
+        ssh_public_key: str=None,
+        ssh_public_key_type: str=None,
         private_key_backup: Union[dict,None]=None,
         _caller: str="API",
         verbose_level: int=0,
@@ -436,6 +570,9 @@ class YubikeypivToken(Token):
                                     force=True)
         if private_key_backup:
             self.private_key_backup = private_key_backup
+        if ssh_public_key:
+            self.ssh_public_key = ssh_public_key
+            self.key_type = ssh_public_key_type
         return self._cache(callback=callback)
 
     @object_lock(full_lock=True)
@@ -456,6 +593,16 @@ class YubikeypivToken(Token):
             lines.append(f'PUBLIC_KEY="{self.public_key}"')
         else:
             lines.append('PUBLIC_KEY=""')
+
+        if self.verify_acl("view:ssh_public_key"):
+            lines.append(f'SSH_PUBLIC_KEY="{self.ssh_public_key}"')
+        else:
+            lines.append('SSH_PUBLIC_KEY=""')
+
+        if self.verify_acl("view:key_type"):
+            lines.append(f'KEY_TYPE="{self.key_type}"')
+        else:
+            lines.append('KEY_TYPE=""')
 
         return Token.show_config(self,
                                 config_lines=lines,

@@ -185,7 +185,14 @@ def get_help(command, subcommand=None, command_map=None,
         main_command_help = None
 
     command_count = 0
-    for c in sorted(command_map[command][mod_name]):
+    try:
+        cmd_map = command_map[command][mod_name]
+    except KeyError:
+        msg = _("Unknown help: {command}/{mod_name}")
+        msg = msg.format(command=command, mod_name=mod_name)
+        raise OTPmeException(msg)
+
+    for c in sorted(cmd_map):
         opt_count = 0
         if c == "_need_command":
             continue

@@ -321,6 +321,7 @@ def register_hooks():
 def register_token_type():
     """ Register token type. """
     config.register_sub_object_type("token", "ssh")
+    config.register_ssh_token("ssh")
 
 @match_class_typing
 class SshToken(Token):

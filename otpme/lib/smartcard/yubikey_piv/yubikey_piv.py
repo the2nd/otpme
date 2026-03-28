@@ -113,10 +113,14 @@ class YubikeypivClientHandler(object):
                 msg = _("-n conflicts with --restore-from-server")
                 raise OTPmeException(msg)
             # Try to get public key of already initialized yubikey.
-            public_key = piv.get_public_key()
-            public_key = public_key.public_bytes(Encoding.PEM,
+            pub_key = piv.get_public_key()
+            public_key = pub_key.public_bytes(Encoding.PEM,
                                             PublicFormat.SubjectPublicKeyInfo)
             public_key = public_key.decode()
+            ssh_public_key = pub_key.public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
+            ssh_public_key_type, \
+            ssh_public_key = ssh_public_key.decode().split()
+            ssh_public_key_type = ssh_public_key_type.split("-")[1]
         else:
             try:
                 key_len = self.local_command_args['key_len']
@@ -323,6 +327,9 @@ class YubikeypivClientHandler(object):
                                 pin=token_password)
                                 #serial=serial)
             public_key = token_key.export_public_key(encoding="PEM")
+            ssh_public_key_type, \
+            ssh_public_key = token_key.ssh_public_key.decode().split()
+            ssh_public_key_type = ssh_public_key_type.split("-")[1]
 
         # Without public key we cannot continue.
         if not public_key:
@@ -332,6 +339,8 @@ class YubikeypivClientHandler(object):
         deploy_args = {}
         deploy_args['public_key'] = public_key
         deploy_args['add_user_key'] = add_user_key
+        deploy_args['ssh_public_key'] = ssh_public_key
+        deploy_args['ssh_public_key_type'] = ssh_public_key_type
         if private_key_backup:
             deploy_args['private_key_backup'] = private_key_backup
 
@@ -463,3 +472,9 @@ class Yubikeypiv(object):
                                 slot=slot,
                                 length=length)
         return pw
+
+    def get_ssh_public_key(self, slot="AUTHENTICATION"):
+        public_key = piv.get_public_key(slot=slot)
+        ssh_pub = public_key.public_bytes(Encoding.OpenSSH, PublicFormat.OpenSSH)
+        ssh_pub = ssh_pub.decode()
+        return ssh_pub

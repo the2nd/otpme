@@ -297,6 +297,7 @@ def update_authorized_keys():
     # Users we have checked policies for.
     processed_users = {}
     processed_tokens = {}
+    ssh_token_types = config.get_ssh_token_types()
     # Check for valid signatures, policy restrictions etc.
     for token_uuid in all_ssh_keys:
         token_entry = all_ssh_keys[token_uuid]
@@ -351,7 +352,7 @@ def update_authorized_keys():
             verify_token = dst_token
             check_tokens.append(dst_token)
 
-        if verify_token.token_type != "ssh":
+        if verify_token.token_type not in ssh_token_types:
             log_msg = f"{no_ssh_token_msg}: {verify_token}"
             logger.debug(log_msg)
             continue
