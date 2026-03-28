@@ -865,3 +865,124 @@ otpme-token --type yubikey_piv deploy --add-user-key -r joe/login
 # To use a Yubikey that already has a private key configured, add -n:
 otpme-token --type yubikey_piv deploy --add-user-key -n -r joe/login
 ```
+
+To use the Yubikey in PIV mode with the key script, configure the user's key
+script options. The `--use-agent-piv` option delegates PIV operations to the
+otpme-agent so you do not have to enter the PIV PIN on every operation:
+
+```bash
+otpme-user key_script joe scripts/key_script.sh -- --yubikey-piv AUTHENTICATION --use-agent-piv
+```
+
+To add the Yubikey PIV key to the ssh-agent on login via the PAM module,
+configure the agent script with `--yubikey-piv`. By default the key is added
+with confirmation enabled (ssh-askpass is called on each use). To disable
+confirmation add `--no-confirm`:
+
+```bash
+otpme-user agent_script joe scripts/agent_script.sh -- --yubikey-piv --no-confirm
+```
+
+## 24. Encrypting, Decrypting and Signing Files
+
+After logging in as a user with a key pair (see above), you can use
+`otpme-tool` to encrypt, decrypt, sign and verify files:
+
+```bash
+# Create a test file.
+echo test > test.txt
+
+# Encrypt the file.
+otpme-tool encrypt test.txt test.txt.enc
+
+# Decrypt the file to stdout.
+otpme-tool decrypt test.txt.enc /dev/stdout
+```
+
+Signing and verifying works similarly:
+
+```bash
+# Sign a file.
+otpme-tool sign test.txt test.txt.sig
+
+# Verify the signature.
+otpme-tool verify test.txt.sig test.txt
+```
+
+### Script Signature Verification
+
+Signing can also be used to sign OTPme scripts such as the agent script. A
+host can then be configured to verify script signatures before executing
+them. To sign the agent script with the root user on the master node:
+
+```bash
+otpme-script sign scripts/agent_script.sh
+```
+
+On the host that should verify the agent script signature, add root as a
+trusted signer. After this, the PAM module will verify the script signature
+on login — if no valid signature from user root exists, the script will not
+run:
+
+```bash
+otpme-tool add_signer --signer-type agent_script "user|realm/root"
+
+# Show configured signers.
+otpme-tool show_signer
+```
+
+### Token Signature Verification (SSH)
+
+Besides scripts, it is also possible to sign tokens. Currently SSH tokens
+are supported. This allows a host to only accept SSH public keys that have
+been signed by a trusted user.
+
+First, add an SSH token and assign it to the host:
+
+```bash
+# Add SSH token with the user's public key.
+otpme-token --type ssh add joe/ssh "<ssh_public_key>"
+
+# Add the token to the host.
+otpme-host add_token <yourhostname> joe/ssh
+
+# Trigger sync and verify the key is available.
+otpme-tool sync
+otpme-get-authorized-keys joe
+```
+
+Now add a token signer on the host. After this, only signed SSH keys will be
+accepted:
+
+```bash
+# Add token signer (run on host as root).
+otpme-tool add_signer --signer-type token "user|realm/root"
+otpme-tool sync
+
+# The SSH key should no longer be shown — it is not signed yet.
+otpme-get-authorized-keys joe
+```
+
+Sign the SSH token on the master node, then sync again:
+
+```bash
+# Sign SSH token (run on master node).
+otpme-token --type ssh sign joe/ssh
+
+# Trigger sync on the host.
+otpme-tool sync
+
+# Now the SSH public key should be shown — it is signed by root.
+otpme-get-authorized-keys joe
+```
+
+## 25. SSH Login Configuration
+
+To allow SSH logins using OTPme-managed authorized keys, add the following
+to your SSH configuration (e.g. `/etc/ssh/sshd_config.d/otpme.conf`):
+
+```
+AuthorizedKeysCommand /opt/otpme/bin/otpme-get-authorized-keys
+AuthorizedKeysCommandUser root
+PermitUserEnvironment yes
+```

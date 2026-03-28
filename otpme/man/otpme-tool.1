@@ -314,13 +314,13 @@ Sync objects even if they changed while syncing.
 .SS Signer Options
 .TP
 .B \-\-private
-Operate on signer of the logged in user.
+Operate on a signer of the logged in user instead of a system-wide signer. Without this option, signer commands operate on the host's signer configuration (root only).
 .TP
 .B \-\-no\-pin
-Do not pin signature keys.
+Do not pin signature keys. By default signer keys are pinned, which means only the exact key present at the time the signer was added is trusted. With \fB\-\-no\-pin\fR, any valid key of the signer object is accepted.
 .TP
 .B \-\-signer\-type \fITYPE\fR
-Signer type.
+The type of scripts this signer is trusted for. Supported types: \fBtoken\fR, \fBkey_script\fR, \fBpush_script\fR, \fBauth_script\fR, \fBlogin_script\fR, \fBagent_script\fR.
 .TP
 .B \-\-tag \fITAG\fR
 Add tag to signer (can be used multiple times).

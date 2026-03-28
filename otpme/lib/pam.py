@@ -630,11 +630,17 @@ class PamHandler(object):
             os.environ['DISPLAY'] = self.display
         self.logger.debug(log_msg)
         # Start SSH agent.
-        ssh_auth_sock, \
-        ssh_agent_pid, \
-        ssh_agent_name, \
-        gpg_agent_info = self.ssh_agent.start(additional_opts=additional_opts,
-                                                verify_signs=verify_signs)
+        try:
+            ssh_auth_sock, \
+            ssh_agent_pid, \
+            ssh_agent_name, \
+            gpg_agent_info = self.ssh_agent.start(additional_opts=additional_opts,
+                                                    verify_signs=verify_signs)
+        except Exception as e:
+            msg = _("Failed to start ssh agent: {e}")
+            msg = msg.format(e=e)
+            self.logger.warning(msg)
+            return False
 
         # Set PAM env variables of the SSH agent.
         if gpg_agent_info:
@@ -670,7 +676,12 @@ class PamHandler(object):
         if not self.ssh_agent:
             self.ssh_agent = self.get_ssh_agent_ctrl()
 
-        self.ssh_agent.stop(verify_signs=verify_signs)
+        try:
+            self.ssh_agent.stop(verify_signs=verify_signs)
+        except Exception as e:
+            msg = _("Failed to run ssh agent status: {e}")
+            msg = msg.format(e=e)
+            self.logger.warning(msg)
 
     def ssh_agent_status(self, verify_signs=None):
         """ Check SSH/GPG agent status """
@@ -683,7 +694,12 @@ class PamHandler(object):
         if not self.ssh_agent:
             self.ssh_agent = self.get_ssh_agent_ctrl()
 
-        return self.ssh_agent.status(verify_signs=verify_signs)
+        try:
+            return self.ssh_agent.status(verify_signs=verify_signs)
+        except Exception as e:
+            msg = _("Failed to run ssh agent status: {e}")
+            msg = msg.format(e=e)
+            return False
 
     def run_login_script(self, verify_signs=None):
         """ Run users login script. """

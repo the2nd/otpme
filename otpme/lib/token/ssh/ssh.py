@@ -106,6 +106,20 @@ default_acls = []
 recursive_default_acls = []
 
 commands = {
+    'add'   : {
+            'OTPme-mgmt-1.0'    : {
+                'missing'    : {
+                    'method'            : 'add',
+                    'oargs'             : ['public_key'],
+                    'job_type'          : 'process',
+                    },
+                'exists'    : {
+                    'method'            : 'add',
+                    'oargs'              : ['public_key'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'password'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {

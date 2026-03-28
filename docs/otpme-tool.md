@@ -343,13 +343,20 @@ Sync objects even if they changed while syncing.
 ## Signer Options
 
 **--private**  
-Operate on signer of the logged in user.
+Operate on a signer of the logged in user instead of a system-wide
+signer. Without this option, signer commands operate on the host's
+signer configuration (root only).
 
 **--no-pin**  
-Do not pin signature keys.
+Do not pin signature keys. By default signer keys are pinned, which
+means only the exact key present at the time the signer was added is
+trusted. With **--no-pin**, any valid key of the signer object is
+accepted.
 
 **--signer-type *TYPE***  
-Signer type.
+The type of scripts this signer is trusted for. Supported types:
+**token**, **key_script**, **push_script**, **auth_script**,
+**login_script**, **agent_script**.
 
 **--tag *TAG***  
 Add tag to signer (can be used multiple times).

@@ -480,7 +480,7 @@ commands = {
                 'exists'    : {
                     'method'            : 'add_token',
                     'args'              : ['token_name'],
-                    'oargs'             : ['token_type', 'destination_token', 'replace', 'gen_qrcode', 'enable_mschap', 'password'],
+                    'oargs'             : ['token_type', 'destination_token', 'replace', 'gen_qrcode', 'enable_mschap', 'password', 'public_key'],
                     'job_type'          : 'process',
                     },
                 },
@@ -4224,7 +4224,8 @@ class User(OTPmeObject):
                                     verbose_level=verbose_level,
                                     force=True,
                                     callback=callback,
-                                    _caller=_caller)
+                                    _caller=_caller,
+                                    **kwargs)
             if not add_status:
                 return callback.error("Error creating token object.")
 
