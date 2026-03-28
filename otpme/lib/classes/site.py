@@ -999,7 +999,7 @@ def register_config():
                                             algorithm="SHA256",
                                             cipher='PKCS1_OAEP')
         except Exception as e:
-            msg = _("Failed to encrypt preauth key: {error}")
+            msg = _("Failed to encrypt backup key: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg)
         backup_key = backup_key.hex()
@@ -1008,12 +1008,14 @@ def register_config():
         backup_key = bytes.fromhex(backup_key)
         my_site = backend.get_object(object_type="site",
                                     uuid=config.site_uuid)
+        if not my_site._key:
+            return "<hidden>"
         try:
             backup_key = my_site._key.decrypt(ciphertext=backup_key,
                                             algorithm="SHA256",
                                             cipher='PKCS1_OAEP')
         except Exception as e:
-            msg = _("Failed to encrypt preauth key: {error}")
+            msg = _("Failed to decrypt backup key: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg)
         backup_key = backup_key.decode()
@@ -1038,7 +1040,7 @@ def register_config():
                                             algorithm="SHA256",
                                             cipher='PKCS1_OAEP')
         except Exception as e:
-            msg = _("Failed to encrypt preauth key: {error}")
+            msg = _("Failed to encrypt backup repo password: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg)
         backup_pass = backup_pass.hex()
@@ -1047,12 +1049,14 @@ def register_config():
         backup_pass = bytes.fromhex(backup_pass)
         my_site = backend.get_object(object_type="site",
                                     uuid=config.site_uuid)
+        if not my_site._key:
+            return "<hidden>"
         try:
             backup_pass = my_site._key.decrypt(ciphertext=backup_pass,
                                             algorithm="SHA256",
                                             cipher='PKCS1_OAEP')
         except Exception as e:
-            msg = _("Failed to encrypt preauth key: {error}")
+            msg = _("Failed to decrypt backup repo password: {error}")
             msg = msg.format(error=e)
             raise OTPmeException(msg)
         backup_pass = backup_pass.decode()

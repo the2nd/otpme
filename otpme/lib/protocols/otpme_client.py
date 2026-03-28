@@ -194,12 +194,12 @@ class OTPmeClientBase(object):
 
 class OTPmeClient(OTPmeClientBase):
     """ Class that implements OTPme client. """
-    def __init__(self, daemon, use_ssl=True, verify_server=True,
-        connect_timeout=None, timeout=None, client=None, username=None,
-        autoconnect=True, auto_auth=True, auto_preauth=False, do_preauth=None,
-        use_dns=False, local_socket=False, socket_uri=None, site_ident=False,
-        site_ident_digest="sha256", trust_site_cert=False,
-        trust_site_cert_fp=None, encrypt_session=True,
+    def __init__(self, daemon, use_ssl=True, cert=None, key=None,
+        ca_data=None, verify_server=True, connect_timeout=None, timeout=None,
+        client=None, username=None, autoconnect=True, auto_auth=True,
+        auto_preauth=False, do_preauth=None, use_dns=False, local_socket=False,
+        socket_uri=None, site_ident=False, site_ident_digest="sha256",
+        trust_site_cert=False, trust_site_cert_fp=None, encrypt_session=True,
         quiet_autoconnect=False, realm=None, site=None, **kwargs):
         # Init parent class.
         super(OTPmeClient, self).__init__(daemon, **kwargs)
@@ -252,6 +252,9 @@ class OTPmeClient(OTPmeClientBase):
         self.use_dns = use_dns
         # Indicates that we should use SSL.
         self.use_ssl = use_ssl
+        self.cert = cert
+        self.key = key
+        self.ca_data = ca_data
         # Will hold cert of daemon we will connect to.
         self.peer_cert = None
         # Will hold peer cert CN.
@@ -334,17 +337,28 @@ class OTPmeClient(OTPmeClientBase):
             ca_data = None
             if self.use_ssl:
                 # Try to get SSL stuff of our host.
-                try:
-                    cert = config.host_data['cert']
-                except:
-                    pass
-                try:
-                    key = config.host_data['key']
-                except:
-                    pass
-                try:
-                    ca_data = config.host_data['ca_data']
-                except:
+                if self.cert:
+                    cert = self.cert
+                else:
+                    try:
+                        cert = config.host_data['cert']
+                    except KeyError:
+                        pass
+                if self.key:
+                    key = self.key
+                else:
+                    try:
+                        key = config.host_data['key']
+                    except KeyError:
+                        pass
+                if self.ca_data:
+                    ca_data = self.ca_data
+                else:
+                    try:
+                        ca_data = config.host_data['ca_data']
+                    except KeyError:
+                        pass
+                if not ca_data:
                     if self.verify_server:
                         raise OTPmeException(_("Host CA data missing."))
 
@@ -3588,6 +3602,7 @@ class OTPmeClient1(OTPmeClientBase):
             sc_types = []
             pass_required = False
             self.use_smartcard = False
+            smartcard_client_handlers = []
             for rel_path in self.smartcard_options:
                 sc_type = self.smartcard_options[rel_path]['token_type']
                 pass_required = self.smartcard_options[rel_path]['pass_required']
@@ -3598,14 +3613,15 @@ class OTPmeClient1(OTPmeClientBase):
                     smartcard_client_handler = config.get_smartcard_handler(sc_type)[0]
                 except NotRegistered:
                     continue
-                self.smartcard_client_handler = smartcard_client_handler(sc_type=sc_type,
+                smartcard_client_handler = smartcard_client_handler(sc_type=sc_type,
                                                                 token_rel_path=rel_path,
                                                                 token_options=self.smartcard_options[rel_path],
                                                                 message_method=self.message_method,
                                                                 error_message_method=self.error_message_method)
+                smartcard_client_handlers.append(smartcard_client_handler)
                 self.use_smartcard = "auto"
                 sc_types.append(sc_type)
-                break
+
             if not self.use_smartcard:
                 if config.debug_level(DEBUG_SLOT) > 0:
                     log_msg = _("Not trying to detect smartcard because no related auth type was offered by peer.", log=True)[1]
@@ -3634,9 +3650,21 @@ class OTPmeClient1(OTPmeClientBase):
                     except Exception as e:
                         self.cleanup()
                         raise AuthFailed(str(e))
-                smartcard_data = self.smartcard_client_handler.handle_preauth(smartcard=self.smartcard,
-                                                                                password=self.sc_pass)
-                command_args['smartcard_data'] = smartcard_data
+                smartcard_error = None
+                for smartcard_client_handler in smartcard_client_handlers:
+                    try:
+                        smartcard_data = smartcard_client_handler.handle_preauth(smartcard=self.smartcard,
+                                                                                        password=self.sc_pass)
+                    except Exception as e:
+                        smartcard_error = e
+                        continue
+                    command_args['smartcard_data'] = smartcard_data
+                    self.smartcard_client_handler = smartcard_client_handler
+                    break
+                if smartcard_error:
+                    msg = _("Smartcard authentication failed: {e}")
+                    msg = msg.format(e=smartcard_error)
+                    raise AuthFailed(msg)
 
             ## FIXME: Workaround to get gpg-agent detect yubikey after
             ##        it was used in HMAC-SHA1 mode.
@@ -4312,6 +4340,13 @@ class OTPmeClient1(OTPmeClientBase):
                 cache_offline_tokens = False
                 keep_offline_session = False
                 config.raise_exception()
+            # Add offline tokens.
+            try:
+                self.handle_offline_token(token_instances, session_uuid)
+            except Exception as e:
+                log_msg = _("Error caching offline tokens: {e}", log=True)[1]
+                log_msg = log_msg.format(e=e)
+                self.logger.critical(log_msg, exc_info=True)
 
         # Add RSP to otpme-agent.
         agent_conn = connections.get("agent",
@@ -4442,15 +4477,6 @@ class OTPmeClient1(OTPmeClientBase):
                 log_msg = log_msg.format(e=e)
                 self.logger.warning(log_msg)
 
-        # Cache offline tokens.
-        if cache_offline_tokens:
-            try:
-                self.handle_offline_token(token_instances, session_uuid)
-            except Exception as e:
-                log_msg = _("Error caching offline tokens: {e}", log=True)[1]
-                log_msg = log_msg.format(e=e)
-                self.logger.critical(log_msg, exc_info=True)
-
         # Release offline token lock
         self._offline_token.unlock()
 
@@ -4550,23 +4576,35 @@ class OTPmeClient1(OTPmeClientBase):
         if sftoken and sftoken.pass_type == "smartcard":
             found_smartcard = True
 
-        # Split off password, OTP and PIN.
-        result = verify_token.split_password(self.connection.password)
-        pin = result['pin']
-        static_pass = result['pass']
-        # Build static password part from password and PIN if given.
-        static_pass_part = static_pass
-        if pin:
-            static_pass_part += pin
-
         # Try to get encryption passphrase from token if needed.
         if self._offline_token.need_encryption:
             if found_smartcard:
-                enc_challenge = stuff.gen_secret(len=16)
+                if self.smartcard_client_handler.enc_challenge:
+                    enc_challenge = self.smartcard_client_handler.enc_challenge
+                else:
+                    enc_challenge = stuff.gen_secret(len=16)
                 enc_pass = self.smartcard_client_handler.handle_offline_token_challenge(smartcard=self.smartcard,
                                                                                         password=self.sc_pass,
                                                                                         enc_challenge=enc_challenge)
             if not enc_pass:
+                # Split off password, OTP and PIN.
+                split_password = False
+                static_pass_part = None
+                if verify_token.pass_type == "static":
+                    split_password = True
+                if verify_token.pass_type == "otp":
+                    split_password = True
+                if verify_token.pass_type == "ssh_key":
+                    split_password = True
+                if split_password:
+                    result = verify_token.split_password(self.connection.password)
+                    pin = result['pin']
+                    static_pass = result['pass']
+                    # Build static password part from password and PIN if given.
+                    static_pass_part = static_pass
+                    if pin:
+                        static_pass_part += pin
+
                 if verify_token.pass_type == "static":
                     enc_pass = static_pass_part
 
@@ -4629,6 +4667,7 @@ class OTPmeClient1(OTPmeClientBase):
                     msg = _("Unable to generate AES key for token offline caching from token '{token_path}': Unsupported token type: {token_type}")
                     msg = msg.format(token_path=verify_token.rel_path, token_type=verify_token.token_type)
                     raise OTPmeException(msg)
+                del static_pass_part
 
             # Finally set offline token encryption passphrase.
             self._offline_token.set_enc_passphrase(passphrase=enc_pass,
@@ -4638,7 +4677,6 @@ class OTPmeClient1(OTPmeClientBase):
                                 check_pass_strength=self.check_offline_pass_strength,
                                 challenge=enc_challenge)
             del enc_pass
-            del static_pass_part
 
         # Save offline tokens to disk. We do this after we have set the
         # encryption passphrase above.

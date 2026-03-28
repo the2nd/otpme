@@ -726,6 +726,8 @@ class OTPmeAgent(UnixDaemon):
                     offline_token.set_user(login_user)
                     # Acquire offline token lock.
                     offline_token.lock()
+                    # Load offline token.
+                    offline_token.load()
                     # Try to update on-disk RSP/session for use with offline tokens.
                     if offline_token.save_rsp(session_id=session_id,
                                             realm=realm,

@@ -143,6 +143,8 @@ def main():
 
     sub.add_parser("compact", help="Compact databases to reclaim disk space")
 
+    sub.add_parser("repair", help="Repair snap-index (fix duplicate entries)")
+
     sub.add_parser("repack", help="Compact partially-dead pack files to reclaim space")
 
     sub.add_parser("rebuild-index", help="Rebuild pack index from pack files")
@@ -240,6 +242,9 @@ def main():
             print(f"{db_name}: reclaimed {_format_size(saved)}")
         if not result:
             print("Nothing to compact.")
+    elif args.command == "repair":
+        result = server.repair()
+        print(f"Fixed {result['duplicates']} duplicates, removed {result['orphans']} orphaned entries")
     elif args.command == "repack":
         from otpme.lib.classes.backup import _format_size
         saved = server.repack()

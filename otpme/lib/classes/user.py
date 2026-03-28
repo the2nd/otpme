@@ -4028,8 +4028,7 @@ class User(OTPmeObject):
                     answer = callback.ask(msg)
                     if answer.lower() != "y":
                         return callback.abort()
-                if not self.add_token(token_name=token_name,
-                                    token_type=token_type,
+                if not self.add_token(new_token=token,
                                     replace=replace,
                                     force=True,
                                     _caller=_caller,
@@ -4112,6 +4111,10 @@ class User(OTPmeObject):
         if self.template_object:
             msg = "Cannot add token to template user."
             return callback.error(msg)
+
+        if new_token:
+            token_name = new_token.name
+            token_type = new_token.type
 
         destination_token_uuid = None
         send_new_token_message = False

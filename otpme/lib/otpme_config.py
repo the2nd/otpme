@@ -258,6 +258,28 @@ class OTPmeConfig(object):
         # Is this host a OTPme backup server?
         self.register_config_var("backup_server", bool, False,
                                 config_file_parameter="BACKUP_SERVER")
+        self.register_config_var("allow_new_backup_repos", [list, bool], False,
+                                config_file_parameter="ALLOW_NEW_BACKUP_REPOS")
+        self.register_config_var("backup_repository", str, None,
+                                config_file_parameter="BACKUP_REPOSITORY")
+        self.register_config_var("backup_mode", str, "pack",
+                                config_file_parameter="BACKUP_MODE")
+        self.register_config_var("backup_repo_pass", str, None,
+                                config_file_parameter="BACKUP_REPO_PASS")
+        self.register_config_var("backup_key", str, None,
+                                config_file_parameter="BACKUP_KEY")
+        self.register_config_var("backup_exclude_special", bool, None,
+                                config_file_parameter="BACKUP_EXCLUDE_SPECIAL")
+        self.register_config_var("backup_excludes", list, None,
+                                config_file_parameter="BACKUP_EXCLUDES")
+        self.register_config_var("backup_includes", list, None,
+                                config_file_parameter="BACKUP_INCLUDES")
+        self.register_config_var("backup_client_cert", str, None,
+                                config_file_parameter="BACKUP_CLIENT_CERT")
+        self.register_config_var("backup_client_key", str, None,
+                                config_file_parameter="BACKUP_CLIENT_KEY")
+        self.register_config_var("backup_client_ca", str, None,
+                                config_file_parameter="BACKUP_CLIENT_CA")
 
         # Inter-daemon communication timeout.
         self.register_config_var("inter_daemon_comm_timeout", int, 2,
@@ -965,7 +987,7 @@ class OTPmeConfig(object):
         try:
             self.index_type = merged_config['INDEX']
         except:
-            error_message(_("Error reading backend parameter from config file."))
+            error_message(_("Error reading index parameter from config file."))
             exit(1)
 
         # If tracebacks are not enabled by command line option try to read config

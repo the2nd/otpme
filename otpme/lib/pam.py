@@ -867,7 +867,6 @@ class PamHandler(object):
         if verify_token.pass_type == "smartcard":
             found_smartcard = verify_token
 
-
         # Try to get SSH agent script from offline tokens.
         try:
             self.ssh_agent_script_path, \
@@ -897,7 +896,10 @@ class PamHandler(object):
         password = None
         static_pass_part = None
         if need_password:
-            password = self.get_password()
+            prompt = None
+            if found_smartcard:
+                prompt = "Smartcard password: "
+            password = self.get_password(prompt=prompt)
             # Split off password, OTP and PIN.
             result = verify_token.split_password(password)
             otp = result['otp']
@@ -929,13 +931,15 @@ class PamHandler(object):
                                                             token_rel_path=found_smartcard.rel_path,
                                                             message_method=self.send_pam_message,
                                                             error_message_method=self.send_pam_error)
+            # Fido2 smartcard auth handles enc challenge (hmac) and authentication in one step.
+            smartcard_data = smartcard_client_handler.get_smartcard_data(smartcard=self.smartcard,
+                                                                        token=found_smartcard,
+                                                                        password=password,
+                                                                        enc_challenge=enc_challenge)
             enc_pass = smartcard_client_handler.handle_offline_challenge(smartcard=self.smartcard,
                                                                         token=found_smartcard,
                                                                         password=password,
                                                                         enc_challenge=enc_challenge)
-            smartcard_data = smartcard_client_handler.get_smartcard_data(smartcard=self.smartcard,
-                                                                        token=found_smartcard,
-                                                                        password=password)
 
         # Handle SSH tokens.
         if verify_token.pass_type == "ssh_key":

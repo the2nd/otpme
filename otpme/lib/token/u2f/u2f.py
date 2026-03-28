@@ -267,10 +267,7 @@ class U2fToken(Token):
     def get_offline_config(self, second_factor_usage: bool=False):
         """ Get offline config of token. (e.g. without PIN). """
         offline_config = self.object_config.copy()
-        # FIXME: implement self.allow_offline_rsp!!!
         need_encryption = False
-        #if self.allow_offline_rsp:
-        #    need_encryption = True
         offline_config['NEED_OFFLINE_ENCRYPTION'] = need_encryption
         return offline_config
 

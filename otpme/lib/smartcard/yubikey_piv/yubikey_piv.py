@@ -39,6 +39,7 @@ class YubikeypivClientHandler(object):
         self.token_rel_path = token_rel_path
         self.token_options = token_options
         self.master_backup_key_file = None
+        self.enc_challenge = None
         self.restore_from_server = False
         self.message_method = message_method
         self.error_message_method = error_message_method
@@ -73,7 +74,7 @@ class YubikeypivClientHandler(object):
                 exception = command_handler.get_help(message=msg)
                 raise ShowHelp(exception)
 
-    def get_pre_deploy_args(self, command_handler):
+    def get_pre_deploy_args(self, command_handler, **kwargs):
         self.parse_syntax(command_handler)
         try:
             self.restore_from_server = self.local_command_args['restore_from_server']

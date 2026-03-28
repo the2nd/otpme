@@ -95,6 +95,8 @@ class OTPmeBackupP1(OTPmeFsServer1):
         # Backukpd does require host authentication on client connect.
         self.require_auth = "host"
         self.require_preauth = True
+        # Allow non-otpme host/node clients.
+        self.require_host = False
         # Instructs parent class to require a client certificate.
         self.require_client_cert = True
         # Auth request are allowed to any node.
@@ -222,6 +224,7 @@ class OTPmeBackupP1(OTPmeFsServer1):
                             "get_snap_index_info",
                             "get_snap_index_size",
                             "get_snap_index_chunk",
+                            "get_snap_entry_ids",
                             "open_entry_cursor",
                             "next_entries",
                             "close_entry_cursor",
@@ -294,7 +297,16 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 self.logger.warning(log_msg)
                 return self.build_response(status, message)
             self.pass_file = os.path.join(self.backup_root, PASS_FILE)
+            allow_new_repos = True
+            if not config.allow_new_backup_repos:
+                allow_new_repos = False
+            elif isinstance(config.allow_new_backup_repos, list):
+                if len(config.allow_new_backup_repos) > 0:
+                    if self.client_cn not in config.allow_new_backup_repos:
+                        allow_new_repos = False
             if not write:
+                allow_new_repos = False
+            if not allow_new_repos:
                 if not os.path.exists(self.backup_root):
                     status = status_codes.UNKNOWN_OBJECT
                     message = _("Unknown repository: {repository}: {root_dir}")
@@ -807,6 +819,24 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 binary_data = self.backup_handler.get_snap_index_chunk(
                     snap_name, offset, chunk_size)
                 message = "Chunk data."
+            except Exception as e:
+                status = False
+                message = f"{command}: {e}"
+                binary_data = None
+            return self.build_response(status, message, binary_data=binary_data)
+
+        elif command == "get_snap_entry_ids":
+            try:
+                snap_name = command_args['snap_name']
+            except KeyError:
+                status = False
+                message = _("Missing arguments.")
+                return self.build_response(status, message)
+            try:
+                binary_data = self.backup_handler.get_snap_entry_ids(snap_name)
+                if not binary_data:
+                    binary_data = None
+                message = "Entry IDs data."
             except Exception as e:
                 status = False
                 message = f"{command}: {e}"

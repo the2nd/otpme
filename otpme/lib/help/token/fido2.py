@@ -28,11 +28,12 @@ cmd_help = {
 
     'deploy' : {
                     '_cmd_usage_help' : _('Usage: otpme-token deploy [-d] [-r] <token>'),
-                    'cmd'   :   '-d :debug=True: -r :replace=True: <|object|>',
+                    'cmd'   :   '-d :debug=True: --uv :uv: -r :replace=True: <|object|>',
                     '_help' :   {
                                     'cmd'                   : _('Deploy fido2 token.'),
                                     '-r'                    : _('Replace existing token.'),
                                     '-d'                    : _('Enable token related debug output.'),
+                                    '--uv <uv>'             : _('Set fido2 user verification.'),
                                 },
                     },
 

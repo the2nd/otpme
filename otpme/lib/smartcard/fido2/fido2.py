@@ -10,6 +10,7 @@ from fido2.client import Fido2Client
 from fido2.client import UserInteraction
 from fido2.webauthn import AttestedCredentialData
 from fido2.client import DefaultClientDataCollector
+from fido2.ctap2.extensions import HmacSecretExtension
 
 try:
     from fido2.pcsc import CtapPcscDevice
@@ -25,6 +26,7 @@ except:
     pass
 
 from otpme.lib import cli
+from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib.help import command_map
 #from otpme.lib.encoding.base import encode
@@ -49,7 +51,7 @@ class CliInteraction(UserInteraction):
 
     def request_pin(self, permissions, rd_id):
         if not self._pin:
-            self._pin = getpass("Enter PIN: ")
+            self._pin = getpass("Enter smartcard password: ")
         return self._pin
 
     def request_uv(self, permissions, rd_id):
@@ -64,7 +66,10 @@ class Fido2ClientHandler(object):
         self.smartcard_type = sc_type
         self.token_rel_path = token_rel_path
         self.token_options = token_options
+        self.uv = "discouraged"
         self.fido2_token = None
+        self.enc_challenge = None
+        self._hmac_output = None
         self.message_method = message_method
         self.error_message_method = error_message_method
         # FIXME: pam message methods from pam.py does not work with sddm
@@ -73,9 +78,48 @@ class Fido2ClientHandler(object):
         self.error_message_method = print
         self.logger = config.logger
 
-    def get_pre_deploy_args(self, **kwargs):
+    def parse_syntax(self, command_handler):
+        # Get command syntax.
+        try:
+            command_syntax = command_map['token']['fido2']['deploy']['cmd']
+        except:
+            msg = _("Unknown token type: {type}")
+            msg = msg.format(type=self.smartcard_type)
+            raise OTPmeException(msg)
+
+        # Parse command line.
+        try:
+            object_cmd, \
+            object_required, \
+            self.object_identifier, \
+            self.local_command_args = cli.get_opts(command_syntax=command_syntax,
+                                            command_line=command_handler.command_line)
+        except Exception as e:
+            if str(e) == "help":
+                exception = command_handler.get_help()
+                raise ShowHelp(exception)
+            elif str(e) != "":
+                msg = str(e)
+                exception = command_handler.get_help(message=msg)
+                raise ShowHelp(exception)
+
+    def get_pre_deploy_args(self, command_handler, **kwargs):
+        self.parse_syntax(command_handler)
+        try:
+            self.uv = self.local_command_args['uv']
+        except KeyError:
+            self.uv = None
+        if self.uv is not None and self.uv not in ['discouraged', 'preferred', 'required']:
+            msg = _("Invalid uv: {uv}")
+            msg = msg.format(uv=self.uv)
+            raise OTPmeException(msg)
         self.detect_fido2_sc()
-        pre_deploy_args = {'uv':self.fido2_token.uv}
+        if self.uv is None:
+            self.uv = self.fido2_token.uv
+        pre_deploy_args = {
+                            'uv'                : self.uv,
+                            'hmac_supported'    : self.fido2_token.hmac_secret_supported,
+                        }
         return pre_deploy_args
 
     def detect_fido2_sc(self):
@@ -84,7 +128,7 @@ class Fido2ClientHandler(object):
         log_msg = _("Trying to detect connected fido2 token...", log=True)[1]
         self.logger.debug(log_msg)
         try:
-            self.fido2_token = Fido2()
+            self.fido2_token = Fido2(uv=self.uv)
         except Exception as e:
             msg = str(e)
             raise OTPmeException(msg)
@@ -118,6 +162,9 @@ class Fido2ClientHandler(object):
 
         # Try to find a locally connected U2F token.
         self.detect_fido2_sc()
+        # Set pin if supported.
+        if self.pin is False:
+            self.setup_pin()
 
         create_options_json = pre_deploy_result['create_options']
         create_options = json.loads(create_options_json)
@@ -138,14 +185,17 @@ class Fido2ClientHandler(object):
         request_options = self.token_options['request_options']
         is_2f_token = self.token_options['is_2f_token']
         pass_required = self.token_options['pass_required']
+        self.enc_challenge = stuff.gen_secret(len=16)
         try:
             auth_response = smartcard.authenticate(rp=rp,
                                             pin=password,
+                                            hmac_salt=self.enc_challenge,
                                             request_options=request_options)
         except Exception as e:
             msg = _("Failed to authenticate with fido2 token: {error}")
             msg = msg.format(error=e)
             raise AuthFailed(msg)
+        self._hmac_output = smartcard._hmac_output
         auth_response_json = json.dumps(dict(auth_response))
         smartcard_data = {
                             'token_rel_path'    : self.token_rel_path,
@@ -171,12 +221,12 @@ class Fido2ClientHandler(object):
         return auth_response_json
 
     def handle_offline_token_challenge(self, **kwargs):
-        return None
+        return self._hmac_output
 
     def handle_offline_challenge(self, **kwargs):
-        return None
+        return self._hmac_output
 
-    def get_smartcard_data(self, smartcard, token, password, **kwargs):
+    def get_smartcard_data(self, smartcard, token, password, enc_challenge, **kwargs):
         credential_data = decode(token.credential_data, "hex")
         credentials = [AttestedCredentialData(credential_data)]
         fido2_server = token.get_fido2_server()
@@ -187,11 +237,13 @@ class Fido2ClientHandler(object):
         try:
             auth_response = smartcard.authenticate(rp=token.rp,
                                                 pin=password,
+                                                hmac_salt=enc_challenge,
                                                 request_options=request_options)
         except Exception as e:
             msg = _("Failed to authenticate with fido2 token: {error}")
             msg = msg.format(error=e)
             raise AuthFailed(msg)
+        self._hmac_output = smartcard._hmac_output
         auth_response_json = json.dumps(dict(auth_response))
         smartcard_data = {
                             'auth_state'    : auth_state,
@@ -231,7 +283,7 @@ class Fido2ServerHandler(object):
 
 class Fido2(object):
     """ Class for fido2 tokens. """
-    def __init__(self, autodetect=True, debug=False):
+    def __init__(self, autodetect=True, uv=None, debug=False):
         # Set supported auth types
         self.otpme_auth_types = [ "fido2" ]
         # Set smartcard type
@@ -242,7 +294,9 @@ class Fido2(object):
         self.dev = None
         self.pin = None
         self._pin = None
-        self.uv = None
+        self.uv = uv
+        self.hmac_secret_supported = False
+        self._hmac_output = None
         if autodetect:
             self.detect()
 
@@ -278,6 +332,9 @@ class Fido2(object):
         pin_supported = info.options.get("clientPin")
         if pin_supported is None:
             # Authenticator does not support PIN.
+            if self.uv == "required":
+                msg = _("Authenticator does not support PIN.")
+                raise OTPmeException(msg)
             self.pin = None
         elif pin_supported:
             # Authenticator has a PIN set.
@@ -285,59 +342,89 @@ class Fido2(object):
         else:
             # Authenticator supports PIN but none is set.
             # Set PIN now.
-            self.pin = self.setup_pin()
+            self.pin = False
 
         # Require UV if PIN is supported.
-        if pin_supported is not None:
-            self.uv = "required"
-        elif info.options.get("uv") or info.options.get("bioEnroll"):
-            self.uv = "preferred"
-        else:
-            self.uv = "discouraged"
+        if self.uv is None:
+            if pin_supported is not None:
+                self.uv = "required"
+            elif info.options.get("uv") or info.options.get("bioEnroll"):
+                self.uv = "preferred"
+            else:
+                self.uv = "discouraged"
+
+        # Check hmac-secret support.
+        if "hmac-secret" in info.extensions:
+            self.hmac_secret_supported = True
 
     def setup_pin(self):
         """ Set PIN on authenticator. """
         client_pin = ClientPin(self.ctap)
         while True:
-            pin = getpass("Enter new PIN: ")
-            pin_confirm = getpass("Confirm new PIN: ")
+            pin = getpass("Enter new smartcard password: ")
+            pin_confirm = getpass("Confirm new smartcard password: ")
             if pin != pin_confirm:
-                print("PINs do not match. Please try again.")
+                print("Passwords do not match. Please try again.")
                 continue
             if len(pin) < 4:
-                print("PIN must be at least 4 characters.")
+                print("Password must be at least 4 characters.")
                 continue
             break
         client_pin.set_pin(pin)
         self._pin = pin
-        print("PIN set successfully.")
+        self.pin = True
+        print("Password set successfully.")
         return True
 
     def get_fido2_client(self, rp, pin=None):
         rp = f"https://{rp}"
         client_data_collector = DefaultClientDataCollector(rp)
+        extensions = [HmacSecretExtension(allow_hmac_secret=True)]
         client = Fido2Client(self.dev,
                             client_data_collector=client_data_collector,
-                            user_interaction=CliInteraction(pin=pin))
+                            user_interaction=CliInteraction(pin=pin),
+                            extensions=extensions)
         return client
 
     def register(self, create_options):
-        rp = create_options['publicKey']['rp']['id']
         pin = None
         if self.pin:
             if self._pin:
                 pin = self._pin
                 self._pin = None
             else:
-                pin = getpass("Enter PIN: ")
+                pin = getpass("Enter smartcard password: ")
+        rp = create_options['publicKey']['rp']['id']
+        # Enable hmac-secret extension for this credential.
+        if self.hmac_secret_supported:
+            extensions = create_options["publicKey"].get("extensions", {})
+            extensions["hmacCreateSecret"] = True
+            create_options["publicKey"]["extensions"] = extensions
         client = self.get_fido2_client(rp, pin=pin)
         result = client.make_credential(create_options["publicKey"])
         result = json.dumps(dict(result))
         return result
 
-    def authenticate(self, rp, request_options, pin=None):
+    def authenticate(self, rp, request_options, pin=None, hmac_salt=None):
         client = self.get_fido2_client(rp, pin=pin)
         request_options = json.loads(request_options)
+        # Add hmac-secret salt to request.
+        if hmac_salt and self.hmac_secret_supported:
+            if isinstance(hmac_salt, str):
+                hmac_salt = hmac_salt.encode()
+            # Pad or hash salt to 32 bytes.
+            if len(hmac_salt) != 32:
+                import hashlib
+                hmac_salt = hashlib.sha256(hmac_salt).digest()
+            extensions = request_options["publicKey"].get("extensions", {})
+            extensions["hmacGetSecret"] = {"salt1": hmac_salt}
+            request_options["publicKey"]["extensions"] = extensions
         results = client.get_assertion(request_options["publicKey"])
         auth_response = results.get_response(0)
+        # Extract hmac-secret output.
+        self._hmac_output = None
+        if hmac_salt and auth_response.client_extension_results:
+            hmac_result = auth_response.client_extension_results.get("hmacGetSecret")
+            if hmac_result:
+                self._hmac_output = hmac_result['output1']
         return auth_response

@@ -109,7 +109,8 @@ Storage layout
       └── <name>/
           ├── meta/              # Only for directories: sha256(rel_path) named files
           │   └── <hash_b>       # standalone file for dirs (metadata carrier)
-          └── snap_index.db       # SQLite snap index (normalized: entries + snap_entries)
+          ├── entry_ids.gz        # Compressed entry_id list (per snapshot)
+          └── snap_index.db       # SQLite: entries table + key index
 
   For directories, meta/ files carry filesystem metadata (permissions, ACLs,
   ownership, timestamps) as actual file attributes.  For non-directory entries,
@@ -215,6 +216,9 @@ def encrypt_path(siv: AESSIV, rel_path: str) -> str:
     """
     if not rel_path or rel_path == '.':
         return rel_path
+    rel_path = rel_path.strip('/')
+    if not rel_path:
+        return '.'
     parts = rel_path.split('/')
     enc_parts = []
     parent_ct = b''  # root has empty parent context
@@ -375,6 +379,7 @@ class BackupServer:
         self._snap_id_cache     = {}    # snap_name -> snap_id
         self._snap_entry_id_cache = {}  # snap_name -> set of entry_ids
         self._active_snap_id    = None  # snap_id of current write session
+        self._active_entry_ids  = None  # set of entry_ids being written
         self._snap_puts_since_commit = 0
         self._chunks_gz         = None  # streaming gzip writer for chunks file
         # Entry cursor state (for chunked iteration)
@@ -446,23 +451,7 @@ class BackupServer:
         """Return cached set of entry_ids for a snapshot."""
         if snap_name in self._snap_entry_id_cache:
             return self._snap_entry_id_cache[snap_name]
-        snap_id = self._resolve_snap_id(snap_name)
-        if snap_id == 0:
-            return set()
-        db = self._snap_db
-        if db is None:
-            db_path = self._snap_index_db_path()
-            if not os.path.exists(db_path):
-                return set()
-            db = sqlite3.connect(db_path)
-            try:
-                ids = set(r[0] for r in db.execute(
-                    "SELECT entry_id FROM snap_entries WHERE snap_id=?", (snap_id,)))
-            finally:
-                db.close()
-        else:
-            ids = set(r[0] for r in db.execute(
-                "SELECT entry_id FROM snap_entries WHERE snap_id=?", (snap_id,)))
+        ids = self._read_snap_entry_ids(snap_name)
         self._snap_entry_id_cache[snap_name] = ids
         return ids
 
@@ -478,20 +467,20 @@ class BackupServer:
                 return None
             db = sqlite3.connect(db_path)
             try:
-                row = db.execute(
-                    "SELECT entry_id, value FROM entries WHERE key=? ORDER BY entry_id DESC LIMIT 1",
-                    (rel_path,)).fetchone()
-                if row is None or row[0] not in entry_ids:
-                    return None
-                return row[1]
+                for row in db.execute(
+                        "SELECT entry_id, value FROM entries WHERE key=? ORDER BY entry_id DESC",
+                        (rel_path,)):
+                    if row[0] in entry_ids:
+                        return row[1]
+                return None
             finally:
                 db.close()
-        row = db.execute(
-            "SELECT entry_id, value FROM entries WHERE key=? ORDER BY entry_id DESC LIMIT 1",
-            (rel_path,)).fetchone()
-        if row is None or row[0] not in entry_ids:
-            return None
-        return row[1]
+        for row in db.execute(
+                "SELECT entry_id, value FROM entries WHERE key=? ORDER BY entry_id DESC",
+                (rel_path,)):
+            if row[0] in entry_ids:
+                return row[1]
+        return None
 
     def _snap_index_get_parsed(self, snap_name: str, rel_path: str) -> dict:
         """Look up a single entry and return parsed dict, or None."""
@@ -792,6 +781,28 @@ class BackupServer:
             return gzip.decompress(raw).decode('utf-8')
         return raw.decode('utf-8')
 
+    def _snap_entry_ids_path(self, snap_name: str) -> Path:
+        """Return path to the entry_ids.gz file for a snapshot."""
+        return self.snap_dir(snap_name) / "entry_ids.gz"
+
+    def _write_snap_entry_ids(self, snap_name: str, entry_ids) -> None:
+        """Write entry_ids set/list to a compressed file."""
+        sorted_ids = sorted(entry_ids)
+        raw = struct.pack(f'>{len(sorted_ids)}Q', *sorted_ids)
+        path = self._snap_entry_ids_path(snap_name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(str(path), 'wb') as f:
+            f.write(zlib.compress(raw))
+
+    def _read_snap_entry_ids(self, snap_name: str) -> set:
+        """Read entry_ids from compressed file. Returns empty set if missing."""
+        path = self._snap_entry_ids_path(snap_name)
+        if not path.exists():
+            return set()
+        raw = zlib.decompress(path.read_bytes())
+        count = len(raw) // 8
+        return set(struct.unpack(f'>{count}Q', raw))
+
     # -- snapshot management --
 
     def snap_meta_dir(self, name: str) -> Path:
@@ -830,10 +841,6 @@ class BackupServer:
                 key TEXT NOT NULL,
                 value BLOB NOT NULL)""")
             db.execute("CREATE INDEX IF NOT EXISTS idx_entries_key ON entries(key)")
-            db.execute("""CREATE TABLE IF NOT EXISTS snap_entries (
-                snap_id INTEGER NOT NULL,
-                entry_id INTEGER NOT NULL,
-                PRIMARY KEY(snap_id, entry_id))""")
             db.execute("""CREATE TABLE IF NOT EXISTS snap_meta (
                 snap_name TEXT PRIMARY KEY,
                 snap_id INTEGER NOT NULL)""")
@@ -895,6 +902,8 @@ class BackupServer:
         self._open_snap_db()
         self._snap_db.execute("BEGIN")
         self._active_snap_id = self._get_snap_id(snap_name)
+        self._active_entry_ids = set()
+        self._active_snap_name = snap_name
         self._snap_puts_since_commit = 0
         # Open streaming gzip writer for chunks file
         chunks_path = self.snap_chunks_path(snap_name)
@@ -905,6 +914,11 @@ class BackupServer:
         if self._chunks_gz is not None:
             self._chunks_gz.close()
             self._chunks_gz = None
+        # Write entry_ids to compressed file
+        if self._active_entry_ids is not None and self._active_snap_name:
+            self._write_snap_entry_ids(self._active_snap_name, self._active_entry_ids)
+            self._active_entry_ids = None
+            self._active_snap_name = None
         if self._snap_db is not None:
             self._snap_db.commit()
             self._snap_db.close()
@@ -937,19 +951,18 @@ class BackupServer:
             "INSERT INTO entries (key, value) VALUES (?, ?)",
             (rel_path, entry_data))
         entry_id = cur.lastrowid
-        self._snap_db.execute(
-            "INSERT OR REPLACE INTO snap_entries (snap_id, entry_id) VALUES (?, ?)",
-            (snap_id, entry_id))
+        self._active_entry_ids.add(entry_id)
         # Stream chunk hashes to chunks file
         if self._chunks_gz is not None:
             for h in _entry_chunk_hashes(entry_data):
                 self._chunks_gz.write(h + '\n')
 
-    def _snap_index_link(self, snap_name: str, rel_path: str) -> None:
+    def _snap_index_link(self, snap_name: str, rel_path: str,
+                         from_snap: str = None) -> None:
         """Link an unchanged entry to a new snapshot.
 
-        Finds the most recent entry_id for the given key and links it
-        to the new snapshot via snap_entries.
+        Finds the entry_id for the given key in from_snap (or the latest
+        entry_id if from_snap is not given) and links it to the new snapshot.
         """
         snap_id = self._active_snap_id
         if snap_id is None:
@@ -957,16 +970,25 @@ class BackupServer:
             if snap_id == 0:
                 raise RuntimeError(f"No snap_id for {snap_name}")
         self._snap_periodic_commit()
-        # Find the latest entry_id for this key
-        row = self._snap_db.execute(
-            "SELECT entry_id FROM entries WHERE key=? ORDER BY entry_id DESC LIMIT 1",
-            (rel_path,)).fetchone()
-        if row is None:
-            return  # entry doesn't exist — skip
-        entry_id = row[0]
-        self._snap_db.execute(
-            "INSERT OR REPLACE INTO snap_entries (snap_id, entry_id) VALUES (?, ?)",
-            (snap_id, entry_id))
+        # Find entry_id: prefer the one from from_snap, fall back to latest
+        entry_id = None
+        if from_snap is not None:
+            from_ids = self._snap_entry_ids(from_snap)
+            if from_ids:
+                for row in self._snap_db.execute(
+                        "SELECT entry_id FROM entries WHERE key=? ORDER BY entry_id DESC",
+                        (rel_path,)):
+                    if row[0] in from_ids:
+                        entry_id = row[0]
+                        break
+        if entry_id is None:
+            row = self._snap_db.execute(
+                "SELECT entry_id FROM entries WHERE key=? ORDER BY entry_id DESC LIMIT 1",
+                (rel_path,)).fetchone()
+            if row is None:
+                return
+            entry_id = row[0]
+        self._active_entry_ids.add(entry_id)
         # Stream chunk hashes to chunks file
         if self._chunks_gz is not None:
             val = self._snap_db.execute(
@@ -977,19 +999,26 @@ class BackupServer:
 
     def _iter_snap_index(self, snap_name: str):
         """Yield (rel_path, entry_data_bytes) tuples for a snapshot from SQLite."""
-        snap_id = self._resolve_snap_id(snap_name)
-        if snap_id == 0:
+        entry_ids = self._snap_entry_ids(snap_name)
+        if not entry_ids:
             return
         db_path = self._snap_index_db_path()
         if not os.path.exists(db_path):
             return
         db = sqlite3.connect(db_path)
         try:
-            for key, val in db.execute(
-                    "SELECT e.key, e.value FROM snap_entries se "
-                    "JOIN entries e ON e.entry_id = se.entry_id "
-                    "WHERE se.snap_id = ? ORDER BY e.key",
-                    (snap_id,)):
+            # Batch-fetch entries by entry_id, sort by key
+            results = []
+            id_list = sorted(entry_ids)
+            for i in range(0, len(id_list), 500):
+                batch = id_list[i:i+500]
+                ph = ",".join("?" * len(batch))
+                for eid, key, val in db.execute(
+                        f"SELECT entry_id, key, value FROM entries "
+                        f"WHERE entry_id IN ({ph})", batch):
+                    results.append((key, val))
+            results.sort(key=lambda x: x[0])
+            for key, val in results:
                 yield key, val
         finally:
             db.close()
@@ -1128,6 +1157,13 @@ class BackupServer:
         mtime = os.path.getmtime(db_path)
         fp = f"{entries}:{size}:{mtime}"
         return {'size': size, 'fingerprint': fp}
+
+    def get_snap_entry_ids(self, snap_name: str) -> bytes:
+        """Return the compressed entry_ids blob for a snapshot, or b'' if missing."""
+        path = self._snap_entry_ids_path(snap_name)
+        if path.exists():
+            return path.read_bytes()
+        return b''
 
     def get_snap_index_size(self, snap_name: str) -> int:
         """Return the file size of the shared snap-index SQLite DB in bytes."""
@@ -1523,7 +1559,7 @@ class BackupServer:
         if self.mode == "pack":
             for rel_path, is_dir in entries:
                 self.file_count += 1
-                self._snap_index_link(to_snap, rel_path)
+                self._snap_index_link(to_snap, rel_path, from_snap=from_snap)
                 linked += 1
         else:
             for rel_path, is_dir in entries:
@@ -1545,7 +1581,7 @@ class BackupServer:
                     os.link(src_tree, dst_tree)
 
                 self.file_count += 1
-                self._snap_index_link(to_snap, rel_path)
+                self._snap_index_link(to_snap, rel_path, from_snap=from_snap)
                 linked += 1
 
         return linked
@@ -1573,7 +1609,7 @@ class BackupServer:
             entry["devminor"] = parsed["devminor"]
 
         if full:
-            if self.mode == "pack":
+            if self.get_mode() == "pack":
                 entry["atime"] = parsed.get("atime", 0.0)
                 entry["acl"] = parsed.get("acl")
                 if parsed["type"] == "file":
@@ -1618,29 +1654,36 @@ class BackupServer:
         if snap_id == 0:
             raise FileNotFoundError(f"Snapshot not found: {snap_name}")
 
+        # Load entry_ids set for this snapshot
+        entry_ids = self._snap_entry_ids(snap_name)
+
         if filter_path is not None:
-            # 1. Get candidate entry_ids from entries by key range (fast via key index)
+            # Get candidate entries by key range, filter by snapshot membership
             candidates = db.execute(
                 "SELECT entry_id, key, value FROM entries "
                 "WHERE key=? OR (key>? AND key<?) ORDER BY key",
                 (filter_path, filter_path + "/", filter_path + "/\xff\xff\xff\xff")).fetchall()
-            # 2. Check only these entry_ids against snap_entries (PK lookups)
-            results = []
+            # Deduplicate by key: keep latest entry_id (highest) per key
+            results = {}
             for eid, key, val in candidates:
-                row = db.execute(
-                    "SELECT 1 FROM snap_entries WHERE snap_id=? AND entry_id=?",
-                    (snap_id, eid)).fetchone()
-                if row is not None:
-                    results.append((key, val))
-            self._entry_cursor_results = iter(results)
+                if eid in entry_ids:
+                    if key not in results or eid > results[key][0]:
+                        results[key] = (eid, val)
+            sorted_results = [(k, v) for k, (_, v) in sorted(results.items())]
+            self._entry_cursor_results = iter(sorted_results)
         else:
-            # Full scan: JOIN is fine here since we read the entire DB anyway
-            cursor = db.execute(
-                "SELECT e.key, e.value FROM snap_entries se "
-                "JOIN entries e ON e.entry_id = se.entry_id "
-                "WHERE se.snap_id = ? ORDER BY e.key",
-                (snap_id,))
-            self._entry_cursor_results = cursor
+            # Full scan: batch-fetch entries by entry_id, sort by key
+            results = []
+            id_list = sorted(entry_ids)
+            for i in range(0, len(id_list), 500):
+                batch = id_list[i:i+500]
+                ph = ",".join("?" * len(batch))
+                for eid, key, val in db.execute(
+                        f"SELECT entry_id, key, value FROM entries "
+                        f"WHERE entry_id IN ({ph})", batch):
+                    results.append((key, val))
+            results.sort(key=lambda x: x[0])
+            self._entry_cursor_results = iter(results)
 
         self._entry_cursor_cur = True  # flag: cursor is open
         self._entry_cursor_snap = snap_name
@@ -1795,28 +1838,53 @@ class BackupServer:
         shutil.rmtree(snap_dir)
 
     def _remove_snap_from_index(self, snap_name: str) -> None:
-        """Remove a snapshot from the snap-index SQLite."""
-        snap_id = self._resolve_snap_id(snap_name)
-        if snap_id == 0:
-            return
+        """Remove a snapshot from the snap-index."""
+        # Collect all entry_ids still referenced by other snapshots
+        live_ids = set()
+        for snap in self.snapshots_dir.iterdir():
+            if snap.name == snap_name:
+                continue
+            ids_path = snap / "entry_ids.gz"
+            if ids_path.exists():
+                live_ids.update(self._read_snap_entry_ids(snap.name))
+
+        # Remove entry_ids file for this snapshot
+        ids_path = self._snap_entry_ids_path(snap_name)
+        deleted_ids = set()
+        if ids_path.exists():
+            deleted_ids = self._read_snap_entry_ids(snap_name)
+            ids_path.unlink()
+
+        # Remove orphaned entries (not referenced by any other snapshot)
+        orphan_ids = deleted_ids - live_ids
+        if orphan_ids:
+            db_path = self._snap_index_db_path()
+            if os.path.exists(db_path):
+                db = sqlite3.connect(db_path)
+                db.execute("PRAGMA journal_mode=WAL")
+                db.execute("PRAGMA synchronous=NORMAL")
+                try:
+                    id_list = sorted(orphan_ids)
+                    for i in range(0, len(id_list), 500):
+                        batch = id_list[i:i+500]
+                        ph = ",".join("?" * len(batch))
+                        db.execute(f"DELETE FROM entries WHERE entry_id IN ({ph})", batch)
+                    db.commit()
+                finally:
+                    db.close()
+
+        # Remove snap metadata
         db_path = self._snap_index_db_path()
-        if not os.path.exists(db_path):
-            return
-        db = sqlite3.connect(db_path)
-        db.execute("PRAGMA journal_mode=WAL")
-        db.execute("PRAGMA synchronous=NORMAL")
-        try:
-            # Remove all links for this snapshot
-            db.execute("DELETE FROM snap_entries WHERE snap_id=?", (snap_id,))
-            # Remove orphaned entries (not referenced by any snapshot)
-            db.execute("DELETE FROM entries WHERE entry_id NOT IN "
-                       "(SELECT entry_id FROM snap_entries)")
-            # Remove snap metadata
-            db.execute("DELETE FROM snap_meta WHERE snap_name=?", (snap_name,))
-            db.commit()
-        finally:
-            db.close()
+        if os.path.exists(db_path):
+            db = sqlite3.connect(db_path)
+            try:
+                db.execute("DELETE FROM snap_meta WHERE snap_name=?", (snap_name,))
+                db.commit()
+            finally:
+                db.close()
+
         self._snap_id_cache.pop(snap_name, None)
+        self._snap_entry_id_cache.pop(snap_name, None)
 
     def delete_snapshot(self, snap_name: str) -> int:
         """Delete a snapshot and run GC.  Returns number of orphaned blocks removed."""
@@ -1877,7 +1945,8 @@ class BackupServer:
             return 0
 
         self._gc_remove_from_index(orphaned)
-        logger.info("GC done: %d orphaned blocks removed", len(orphaned))
+        logger.info("GC done: %d orphaned blocks removed. "
+                    "Run 'repack' to reclaim disk space.", len(orphaned))
         return len(orphaned)
 
     @staticmethod
@@ -2059,8 +2128,11 @@ class BackupServer:
                 self._remove_snapshot(name)
             if orphaned:
                 self._gc_remove_from_index(orphaned)
-                logger.info("Retention GC: %d orphaned blocks removed",
+                logger.info("Retention GC: %d orphaned blocks removed.",
                             len(orphaned))
+                saved = self._repack_locked()
+                if saved:
+                    logger.info("Repack: reclaimed %d bytes.", saved)
 
         return deleted
 
@@ -2164,6 +2236,47 @@ class BackupServer:
                 if name == 'pack_index':
                     self._open_pack_db()
         return result
+
+    def repair(self) -> dict:
+        """Repair snap-index: remove orphaned entries not referenced by any snapshot.
+
+        Returns dict with count of removed orphans.
+        """
+        self.lock_repo()
+        try:
+            return self._repair_locked()
+        finally:
+            self.unlock_repo()
+
+    def _repair_locked(self) -> dict:
+        db_path = self._snap_index_db_path()
+        if not os.path.exists(db_path):
+            return {"orphans": 0}
+        # Collect all live entry_ids from all snapshot gz files
+        live_ids = set()
+        if self.snapshots_dir.exists():
+            for snap in self.snapshots_dir.iterdir():
+                ids_path = snap / "entry_ids.gz"
+                if ids_path.exists():
+                    live_ids.update(self._read_snap_entry_ids(snap.name))
+        # Remove entries not in any snapshot
+        db = sqlite3.connect(db_path)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA synchronous=NORMAL")
+        try:
+            total = db.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
+            orphans = 0
+            # Batch-check entries against live set
+            for entry_id, in db.execute("SELECT entry_id FROM entries"):
+                if entry_id not in live_ids:
+                    db.execute("DELETE FROM entries WHERE entry_id=?", (entry_id,))
+                    orphans += 1
+            db.commit()
+            logger.info("Repair: %d orphaned entries removed (of %d total)",
+                        orphans, total)
+            return {"orphans": orphans}
+        finally:
+            db.close()
 
     def repack(self) -> int:
         """Rewrite partially-dead packs to reclaim space. Returns bytes saved."""
@@ -2416,6 +2529,15 @@ class BackupClient:
                         total, transferred)
         self._prev_db = sqlite3.connect(cached_db)
         self._prev_snap = prev_snap
+        # Download entry_ids for prev_snap
+        entry_ids_blob = self.server.get_snap_entry_ids(prev_snap)
+        if entry_ids_blob:
+            cached_ids = os.path.join(cache_dir, "entry_ids.gz")
+            with open(cached_ids, 'wb') as f:
+                f.write(entry_ids_blob)
+            raw = zlib.decompress(entry_ids_blob)
+            count = len(raw) // 8
+            self._prev_entry_ids = set(struct.unpack(f'>{count}Q', raw))
 
     def _prev_index_get(self, rel_path: str) -> bytes:
         """Look up a path in the previous snapshot's index. Returns entry_data or None."""
@@ -2427,17 +2549,14 @@ class BackupClient:
         # Remote: lookup in local cached copy
         if self._prev_db is None:
             return None
-        # Lazily load entry_ids for the previous snapshot into memory
         if self._prev_entry_ids is None:
-            snap_id = self._resolve_prev_snap_id()
-            self._prev_entry_ids = set(r[0] for r in self._prev_db.execute(
-                "SELECT entry_id FROM snap_entries WHERE snap_id=?", (snap_id,)))
-        row = self._prev_db.execute(
-            "SELECT entry_id, value FROM entries WHERE key=? ORDER BY entry_id DESC LIMIT 1",
-            (rel_path,)).fetchone()
-        if row is None or row[0] not in self._prev_entry_ids:
             return None
-        return row[1]
+        for row in self._prev_db.execute(
+                "SELECT entry_id, value FROM entries WHERE key=? ORDER BY entry_id DESC",
+                (rel_path,)):
+            if row[0] in self._prev_entry_ids:
+                return row[1]
+        return None
 
     def _resolve_prev_snap_id(self) -> int:
         """Get snap_id for prev_snap from the local SQLite copy (remote case)."""
@@ -2680,6 +2799,8 @@ class BackupClient:
                                                             "uid": st.st_uid, "gid": st.st_gid,
                                                             "size": st.st_size, "mtime": st.st_mtime,
                                                             "ctime": st.st_ctime,
+                                                            "acl": cur_acl,
+                                                            "chunk_hashes": chunk_hashes,
                                                         })
                             else:
                                 meta = {
@@ -3055,8 +3176,6 @@ class BackupClient:
                     found = True
                     for line in self.format_contents(filtered_batch):
                         print(line)
-                for line in self.format_contents(batch):
-                    print(line)
             if not found:
                 print("No entries found.")
         finally:

@@ -102,6 +102,10 @@ class OTPmeServer1(object):
             self.require_client_cert = True
 
         try:
+            self.require_host
+        except:
+            self.require_host = True
+        try:
             self.verify_host
         except:
             self.verify_host = True
@@ -537,24 +541,26 @@ class OTPmeServer1(object):
             try:
                 self.peer = self.get_peer_from_cert()
             except Exception as e:
-                config.raise_exception()
-                msg, log_msg = _("Unable to get peer from certificate CN: {error}", log=True)
-                msg = msg.format(error=e)
-                log_msg = log_msg.format(error=e)
-                self.logger.warning(log_msg)
-                raise ServerQuit(msg)
-
-            if not self.peer:
-                msg, log_msg = _("Unknown node/host: {client_cn}", log=True)
-                msg = msg.format(client_cn=self.client_cn)
-                log_msg = log_msg.format(client_cn=self.client_cn)
-                self.logger.warning(log_msg)
-                raise ServerQuit(msg)
-            if config.debug_level() > 3:
-                log_msg = _("Found valid peer {peer_type}: {peer_name}", log=True)[1]
-                log_msg = log_msg.format(peer_type=self.peer.type,
-                                        peer_name=self.peer.name)
-                self.logger.debug(log_msg)
+                if self.require_host:
+                    config.raise_exception()
+                    msg, log_msg = _("Unable to get peer from certificate CN: {error}", log=True)
+                    msg = msg.format(error=e)
+                    log_msg = log_msg.format(error=e)
+                    self.logger.warning(log_msg)
+                    raise ServerQuit(msg)
+            if self.require_host:
+                if not self.peer:
+                    msg, log_msg = _("Unknown node/host: {client_cn}", log=True)
+                    msg = msg.format(client_cn=self.client_cn)
+                    log_msg = log_msg.format(client_cn=self.client_cn)
+                    self.logger.warning(log_msg)
+                    raise ServerQuit(msg)
+            if self.peer:
+                if config.debug_level() > 3:
+                    log_msg = _("Found valid peer {peer_type}: {peer_name}", log=True)[1]
+                    log_msg = log_msg.format(peer_type=self.peer.type,
+                                            peer_name=self.peer.name)
+                    self.logger.debug(log_msg)
 
         # Allow "quit" also for disabled hosts.
         if command == "quit":

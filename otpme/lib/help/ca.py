@@ -95,6 +95,22 @@ cmd_help = {
                                 },
                 },
 
+    'create_client_cert'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-ca create_client_cert {ca} {cn} {cert_out_file} {key_out_file}'),
+                    'cmd'   :   '--country :country: --state :state: --locality :locality: --organization :organization: --ou :ou: --email :email: --valid :valid: --key-len :key_len: <|object|> <cn> <cert_out_file> <key_out_file>',
+                    '_help' :   {
+                                    'cmd'                   : _('Create client certificate.'),
+                                    '--valid'               : _('Certificate validity in days.'),
+                                    '--key-len'             : _('Key length for certificate in bits.'),
+                                    '--country'             : _('Set certificate <country> field.'),
+                                    '--state'               : _('Set certificate <state> field.'),
+                                    '--locality'            : _('Set certificate <locality> field.'),
+                                    '--organization'        : _('Set certificate <organization> field.'),
+                                    '--ou'                  : _('Set certificate <ou> field.'),
+                                    '--email'               : _('Set certificate <email> field.'),
+                                },
+                },
+
     #'rename'    : {
     #                '_cmd_usage_help' : _('Usage: otpme-ca rename {ca} {new_name}'),
     #                'cmd'   :   '<|object|> <new_name>',

@@ -1948,7 +1948,7 @@ class OTPmeObject(OTPmeBaseObject):
                             "EXTENSION_ATTRIBUTES",
                             "POLICIES",
                             "POLICY_OPTIONS",
-                            "CONFIG_PARAMS",
+                            #"CONFIG_PARAMS",
                             "CHECKSUM",
                             "SYNC_CHECKSUM",
                             "SALT",
@@ -1983,7 +1983,7 @@ class OTPmeObject(OTPmeBaseObject):
                             "AUTO_DISABLE_START_TIME",
                             "POLICIES",
                             "POLICY_OPTIONS",
-                            "CONFIG_PARAMS",
+                            #"CONFIG_PARAMS",
                             "CHECKSUM",
                             "SYNC_CHECKSUM",
                             "SALT",
@@ -8619,8 +8619,7 @@ class OTPmeObject(OTPmeBaseObject):
             try:
                 default_genner = parameter_data['default_genner']
                 value = default_genner(config_object=self, callback=callback)
-            except Exception as e:
-                print("eee", e)
+            except:
                 pass
         if value is None:
             msg = _("Cannot determine default value.")

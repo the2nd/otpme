@@ -318,7 +318,7 @@ class CommandHandler(object):
 
         # None means user aborted the action.
         if status is None:
-            message= _("Command aborted")
+            message = _("Command aborted")
             if response:
                 message = _("Command aborted: {response}")
                 message = message.format(response=response)
@@ -646,6 +646,10 @@ class CommandHandler(object):
             if config.realm_init:
                 init_file_dir_perms = True
             backend.init(init_file_dir_perms=init_file_dir_perms)
+
+        if self.command == "ca":
+            if self.subcommand == "create_client_cert":
+                return self.handle_cert_command(command, subcommand, command_line)
 
         if self.command == "auth":
             return self.handle_auth_command(command, subcommand, command_line)
@@ -1217,6 +1221,35 @@ class CommandHandler(object):
             shutil.rmtree(x_path)
 
     def get_backupd_conn(self, host):
+        from otpme.lib import filetools
+        cert = None
+        key = None
+        ca_data = None
+        if config.backup_client_cert:
+            if not config.backup_client_key:
+                msg = _("Missing backup client cert.")
+                raise OTPmeException(msg)
+            if not config.backup_client_ca:
+                msg = _("Missing backup client CA data.")
+                raise OTPmeException(msg)
+            try:
+                cert = filetools.read_file(config.backup_client_cert)
+            except Exception as e:
+                msg = _("Failed to read backup client cert: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg)
+            try:
+                key = filetools.read_file(config.backup_client_key)
+            except Exception as e:
+                msg = _("Failed to read backup client key: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg)
+            try:
+                ca_data = filetools.read_file(config.backup_client_ca)
+            except Exception as e:
+                msg = _("Failed to read backup client CA data: {e}")
+                msg = msg.format(e=e)
+                raise OTPmeException(msg)
         try:
             backupd_conn = connections.get("backupd",
                                         node=host,
@@ -1225,7 +1258,10 @@ class CommandHandler(object):
                                         auto_preauth=True,
                                         encrypt_session=False,
                                         verify_preauth=False,
-                                        interactive=False)
+                                        interactive=False,
+                                        key=key,
+                                        cert=cert,
+                                        ca_data=ca_data)
         except Exception as e:
             msg = _("Failed to get backup connection: {host_name}: {e}")
             msg = msg.format(host_name=host, e=e)
@@ -1233,60 +1269,80 @@ class CommandHandler(object):
         return backupd_conn
 
     def load_backup_object(self, backup_object):
-        # FIXME: make this a constant in config?
-        KEY_LEN = 64
-        try:
-            object_type = backup_object.split(":")[0]
-            object_name = backup_object.split(":")[1]
-        except IndexError as e:
-            msg = _("Invalid backup object: {backup_object}")
-            msg = msg.format(backup_object=backup_object)
-            raise OTPmeException(msg)
-        backup_key = None
-        backup_mode = None
-        backup_repo_password = None
-        if object_type == "share":
-            o = backend.get_object(object_type=object_type,
-                                        name=object_name,
-                                        realm=config.realm,
-                                        site=config.site)
-            if not o:
-                msg = _("Unknown share: {share_name}")
-                msg = msg.format(share_name=object_name)
+        from otpme.lib.classes.backup import KEY_SIZE
+        if backup_object == "localhost":
+            if not config.backup_repository:
+                msg = _("No backup configured.")
                 raise OTPmeException(msg)
-            backup_mode = "tree"
-            source_dir = o.root_dir
-            repository = f"{o.type}/{o.site}/{o.name}"
-        elif object_type == "node":
-            o = backend.get_object(object_type=object_type,
-                                        name=object_name,
-                                        realm=config.realm,
-                                        site=config.site)
-            if not o:
-                msg = _("Unknown node: {node_name}")
-                msg = msg.format(node_name=object_name)
+            try:
+                x = config.backup_repository.split(":")
+                backup_server = x[0]
+                repository = x[1]
+            except ValueError:
+                msg = _("Invalid backup repository: {repository}")
+                msg = msg.format(repository=config.backup_repository)
                 raise OTPmeException(msg)
-            if o.uuid != config.uuid:
-                msg = _("You have to run this command on node: {node_name}")
-                msg = msg.format(node_name=o.name)
-                raise OTPmeException(msg)
-            backup_mode = "pack"
             source_dir = "/"
-            repository = f"{o.type}/{o.site}/{o.name}"
+            backup_key = config.backup_key
+            backup_mode = config.backup_mode
+            backup_excludes = config.backup_excludes
+            backup_includes = config.backup_includes
+            backup_repo_password = config.backup_repo_pass
+            backup_exclude_special = config.backup_exclude_special
+            backup_enabled = True
         else:
-            msg = _("Backup not supported for object type: {object_type}")
-            msg = msg.format(object_type=object_type)
-            raise OTPmeException(msg)
-        mode = o.get_config_parameter("backup_mode")
-        if mode:
-            backup_mode = mode
-        backup_enabled = o.get_config_parameter("backup_enabled")
-        backup_server = o.get_config_parameter("backup_server")
-        backup_key = o.get_config_parameter("backup_key")
-        backup_repo_password = o.get_config_parameter("backup_repo_password")
-        backup_excludes = o.get_config_parameter("backup_excludes")
-        backup_includes = o.get_config_parameter("backup_includes")
-        backup_exclude_special = o.get_config_parameter("backup_exclude_special")
+            try:
+                object_type = backup_object.split(":")[0]
+                object_name = backup_object.split(":")[1]
+            except IndexError as e:
+                msg = _("Invalid backup object: {backup_object}")
+                msg = msg.format(backup_object=backup_object)
+                raise OTPmeException(msg)
+            backup_key = None
+            backup_mode = None
+            backup_repo_password = None
+            if object_type == "share":
+                o = backend.get_object(object_type=object_type,
+                                            name=object_name,
+                                            realm=config.realm,
+                                            site=config.site)
+                if not o:
+                    msg = _("Unknown share: {share_name}")
+                    msg = msg.format(share_name=object_name)
+                    raise OTPmeException(msg)
+                backup_mode = "tree"
+                source_dir = o.root_dir
+                repository = f"{o.type}/{o.site}/{o.name}"
+            elif object_type == "node":
+                o = backend.get_object(object_type=object_type,
+                                            name=object_name,
+                                            realm=config.realm,
+                                            site=config.site)
+                if not o:
+                    msg = _("Unknown node: {node_name}")
+                    msg = msg.format(node_name=object_name)
+                    raise OTPmeException(msg)
+                if o.uuid != config.uuid:
+                    msg = _("You have to run this command on node: {node_name}")
+                    msg = msg.format(node_name=o.name)
+                    raise OTPmeException(msg)
+                backup_mode = "pack"
+                source_dir = "/"
+                repository = f"{o.type}/{o.site}/{o.name}"
+            else:
+                msg = _("Backup not supported for object type: {object_type}")
+                msg = msg.format(object_type=object_type)
+                raise OTPmeException(msg)
+            mode = o.get_config_parameter("backup_mode")
+            if mode:
+                backup_mode = mode
+            backup_enabled = o.get_config_parameter("backup_enabled")
+            backup_server = o.get_config_parameter("backup_server")
+            backup_key = o.get_config_parameter("backup_key")
+            backup_repo_password = o.get_config_parameter("backup_repo_password")
+            backup_excludes = o.get_config_parameter("backup_excludes")
+            backup_includes = o.get_config_parameter("backup_includes")
+            backup_exclude_special = o.get_config_parameter("backup_exclude_special")
         if not backup_server:
             msg = _("No backup server configured for object: {backup_object}")
             msg = msg.format(backup_object=backup_object)
@@ -1299,12 +1355,12 @@ class CommandHandler(object):
             msg = _("No backup key configured for object: {backup_object}")
             msg = msg.format(backup_object=backup_object)
             raise OTPmeException(msg)
-        key_len = len(backup_key)
-        if key_len != KEY_LEN:
-            msg = _("Invalid AES key len: required {KEY_LEN}, got {key_len}")
-            msg = msg.format(KEY_LEN=KEY_LEN, key_len=key_len)
-            raise OTPmeException(msg)
         aes_key = bytes.fromhex(backup_key)
+        key_len = len(aes_key)
+        if key_len != KEY_SIZE:
+            msg = _("Invalid AES key len: required {KEY_SIZE}, got {key_len}")
+            msg = msg.format(KEY_SIZE=KEY_SIZE, key_len=key_len)
+            raise OTPmeException(msg)
         return (repository,
                 source_dir,
                 backup_server,
@@ -1495,7 +1551,7 @@ class CommandHandler(object):
         client.backup(source=source_dir,
                     special_files=special_files,
                     excludes=exclude,
-                   includes=include,
+                    includes=include,
                     dry_run=dry_run)
         if not apply_retention:
             return
@@ -6299,7 +6355,8 @@ class CommandHandler(object):
         self.init()
 
         self.command_args['pre_deploy'] = True
-        pre_deploy_args = smartcard_client_handler.get_pre_deploy_args(command_handler=self)
+        pre_deploy_args = smartcard_client_handler.get_pre_deploy_args(command_handler=self,
+                                                                    command_args=local_command_args)
         self.command_args['pre_deploy_args'] = pre_deploy_args
         # Build command line for "user deploy_token" command
         try:
@@ -7465,6 +7522,64 @@ class CommandHandler(object):
             failover_status = colored(failover_status, 'red')
 
         return failover_status
+
+    def handle_cert_command(self, command, subcommand, command_line):
+        """ Handle auth command. """
+        from otpme.lib import filetools
+        # Get command syntax.
+        try:
+            command_syntax = self.get_command_syntax(command, subcommand)
+        except:
+            msg = _("Unknown command: {subcommand}")
+            msg = msg.format(subcommand=subcommand)
+            return self.get_help(msg)
+        object_cmd, \
+        object_required, \
+        object_list, \
+        command_args = cli.get_opts(command_syntax=command_syntax,
+                                    command_line=command_line,
+                                    command_args=self.command_args)
+        try:
+            cert_out_file = command_args.pop('cert_out_file')
+        except:
+            return self.get_help()
+
+        try:
+            key_out_file = command_args.pop('key_out_file')
+        except:
+            return self.get_help()
+
+        result = self.send_command(daemon="mgmtd",
+                                command=command,
+                                subcommand=subcommand,
+                                object_list=object_list,
+                                command_line=command_line,
+                                command_args=command_args,
+                                parse_command_syntax=False,
+                                interactive=True,
+                                client_type="RAPI")
+        try:
+            client_cert_pem = result[0]
+            client_key_pem = result[1]
+        except:
+            msg = _("Invalid server resonse.")
+            raise OTPmeException(msg)
+        try:
+            filetools.create_file(cert_out_file,
+                                content=client_cert_pem,
+                                mode=0o660)
+        except Exception as e:
+            msg = _("Error writing cert file: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
+        try:
+            filetools.create_file(key_out_file,
+                                content=client_key_pem,
+                                mode=0o600)
+        except Exception as e:
+            msg = _("Error writing key file: {e}")
+            msg = msg.format(e=e)
+            raise OTPmeException(msg)
 
     def handle_auth_command(self, command, subcommand, command_line):
         """ Handle auth command. """

@@ -666,7 +666,7 @@ class OfflineToken(object):
             # encryption.
             if not self.need_encryption:
                 try:
-                    if object_config['NEED_OFFLINE_ENCRYPTION'] == True:
+                    if object_config['NEED_OFFLINE_ENCRYPTION'] is True:
                         self.need_encryption = True
                     else:
                         self.need_encryption = False
@@ -798,8 +798,14 @@ class OfflineToken(object):
                 return
 
             if cur_session_id != session_id:
-                msg = f"Cannot update session: {cur_session_id}: Wrong session id: {session_id}"
+                msg = _("Cannot update session: {cur_session_id}: Wrong session id: {session_id}")
+                msg = msg.format(cur_session_id=cur_session_id, session_id=session_id)
                 raise OTPmeException(msg)
+
+        # Check for encryption.
+        if not self.need_encryption:
+            msg = _("Cannot save RSP without encrypted offline token.")
+            raise OTPmeException(msg)
 
         # Set session key if we got one.
         if session_key:

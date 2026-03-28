@@ -591,6 +591,27 @@ class OTPmeBackupP1(OTPmeFsClient1):
 
         return binary_data
 
+    def get_snap_entry_ids(self, snap_name):
+        command_args = {
+                        'snap_name'     : snap_name,
+                    }
+        try:
+            status, \
+            status_code, \
+            response, \
+            binary_data = self.send(command="get_snap_entry_ids",
+                                    command_args=command_args)
+        except Exception as e:
+            config.raise_exception()
+            status = False
+            response = str(e)
+
+        if status is False:
+            config.raise_exception()
+            raise OTPmeException(response)
+
+        return binary_data or b''
+
     def link_unchanged_entries(self, prev_snap, snap_name, entries):
         command_args = {
                         'prev_snap'     : prev_snap,

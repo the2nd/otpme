@@ -34,6 +34,7 @@ class YubikeygpgClientHandler(object):
         self.smartcard_type = sc_type
         self.token_rel_path = token_rel_path
         self.token_options = token_options
+        self.enc_challenge = None
         self.message_method = message_method
         self.error_message_method = error_message_method
         # FIXME: pam message methods from pam.py does not work with sddm
@@ -42,7 +43,7 @@ class YubikeygpgClientHandler(object):
         self.error_message_method = print
         self.logger = config.logger
 
-    def get_pre_deploy_args(self):
+    def get_pre_deploy_args(self, **kwargs):
         pre_deploy_args = {}
         return pre_deploy_args
 

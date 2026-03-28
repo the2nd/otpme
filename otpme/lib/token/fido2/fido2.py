@@ -200,7 +200,6 @@ class Fido2Token(Token):
         path: Union[str,None]=None,
         **kwargs,
         ):
-
         # Call parent class init.
         super(Fido2Token, self).__init__(object_id=object_id,
                                             realm=realm,
@@ -218,7 +217,6 @@ class Fido2Token(Token):
         self.token_type = "fido2"
         # Set password type.
         self.pass_type = "smartcard"
-        self.uv = "discouraged"
         # Set default values.
         self.credential_data = None
         self.attestation_cert = None
@@ -227,6 +225,8 @@ class Fido2Token(Token):
         self.offline_unused_expiry = 0
         self.keep_session = False
         self.offline_pinnable = True
+        self.uv = "discouraged"
+        self.hmac_supported = False
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
         self.supported_hardware_tokens = [ 'fido2' ]
 
@@ -236,6 +236,11 @@ class Fido2Token(Token):
             'UV'                        : {
                                             'var_name'      : 'uv',
                                             'type'          : str,
+                                            'required'      : False,
+                                        },
+            'HMAC_SUPPORTED'            : {
+                                            'var_name'      : 'hmac_supported',
+                                            'type'          : bool,
                                             'required'      : False,
                                         },
             'REG_STATE'                 : {
@@ -269,11 +274,7 @@ class Fido2Token(Token):
     def get_offline_config(self, second_factor_usage: bool=False):
         """ Get offline config of token. (e.g. without PIN). """
         offline_config = self.object_config.copy()
-        # FIXME: implement self.allow_offline_rsp!!!
-        need_encryption = False
-        #if self.allow_offline_rsp:
-        #    need_encryption = True
-        offline_config['NEED_OFFLINE_ENCRYPTION'] = need_encryption
+        offline_config['NEED_OFFLINE_ENCRYPTION'] = self.hmac_supported
         return offline_config
 
     @property
@@ -304,6 +305,7 @@ class Fido2Token(Token):
         return self._cache(callback=callback)
 
     @object_lock(full_lock=True)
+    @backend.transaction
     def pre_deploy(
         self,
         pre_deploy_args: dict={},
@@ -313,26 +315,35 @@ class Fido2Token(Token):
         ):
         """ Deploy fido2 token. """
         try:
-            self.set_uv(pre_deploy_args['uv'])
+            self.uv = pre_deploy_args['uv']
         except KeyError:
             msg = _("Missing uv.")
+            return callback.error(msg)
+        try:
+            self.hmac_supported = pre_deploy_args['hmac_supported']
+        except KeyError:
+            msg = _("Missing hmac_supported.")
             return callback.error(msg)
         fido2_server = self.get_fido2_server()
         user_id = config.auth_user.name.encode()
         user = {"id": user_id, "name": user_id}
         # Server: create options.
+        extensions = {}
+        if self.hmac_supported:
+            extensions = {"hmacCreateSecret": True}
         create_options, \
         self.reg_state = fido2_server.register_begin(user,
                                 user_verification=self.uv,
-                                authenticator_attachment="cross-platform")
+                                authenticator_attachment="cross-platform",
+                                extensions=extensions)
         create_options_json = json.dumps(dict(create_options))
         response = {'create_options':create_options_json}
-        self._write(callback=callback)
+        self._cache(callback=callback)
         return callback.ok(response)
 
     @object_lock(full_lock=True)
-    @backend.transaction
     @audit_log(ignore_args=['registration_data'])
+    @backend.transaction
     def deploy(
         self,
         registration_data: str,
@@ -346,6 +357,13 @@ class Fido2Token(Token):
         except Exception:
             msg = _("Failed to load registration data.")
             return callback.error(msg)
+        # Set uv.
+        self.set_uv(self.reg_state['user_verification'], callback=callback)
+        # Get hmac supported.
+        try:
+            self.hmac_supported = registration_data['clientExtensionResults']['hmacCreateSecret']
+        except KeyError:
+            self.hmac_supported = False
         fido2_server = self.get_fido2_server()
         try:
             auth_data = fido2_server.register_complete(self.reg_state,
@@ -424,6 +442,7 @@ class Fido2Token(Token):
             callback.send(msg)
         # Set credential data.
         self.credential_data = encode(auth_data.credential_data, "hex")
+        # Clear registration state.
         self.reg_state = {}
         # Write object.
         self._cache(callback=callback)
@@ -519,6 +538,7 @@ class Fido2Token(Token):
         lines = []
 
         lines.append(f'UV="{self.uv}"')
+        lines.append(f'HMAC_SUPPORTED="{self.hmac_supported}"')
 
         if self.verify_acl("view:credential_data"):
             lines.append(f'CREDENTIAL_DATA="{self.credential_data}"')

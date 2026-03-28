@@ -178,6 +178,29 @@ commands = {
                     },
                 },
             },
+    'create_client_cert'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'create_client_cert',
+                    'args'              : [
+                                        'cn',
+                                        ],
+                    'oargs'              : [
+                                        'valid',
+                                        'key_len',
+                                        'cert_req',
+                                        'key',
+                                        'organization',
+                                        'country',
+                                        'state',
+                                        'ou',
+                                        'locality',
+                                        'email',
+                                        ],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'show_config'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -1112,6 +1135,8 @@ class Ca(OTPmeObject):
                             country=country, state=state, locality=locality,
                             email=email, callback=callback,
                             verify_acls=False)
+        if _caller == "RAPI":
+            return callback.ok((cert, key))
         return cert, key
 
     @object_lock(full_lock=True)
