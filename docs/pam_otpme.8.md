@@ -74,51 +74,29 @@ Allow authentication with an empty password.
 
 **send_password=***auto\|false*  
 Controls whether the user's password is sent to the OTPme server.
-
-**auto**  
-Send the password only if the server requests it (default).
-
-**false**  
-Never send the password to the server. Useful for token types that do
-not require the password on the server side (e.g. SSH tokens).
+Values: **auto** - send the password only if the server requests it
+(default); **false** - never send the password to the server (useful for
+token types that do not require the password on the server side, e.g.
+SSH tokens).
 
 **use_smartcard=***auto\|true\|false*  
-Controls smartcard usage (e.g. YubiKey HMAC-SHA1).
-
-**auto**  
-Use a locally connected smartcard if one is detected (default).
-
-**true**  
-Require a smartcard; login without one is not possible.
-
-**false**  
-Ignore any connected smartcard.
+Controls smartcard usage (e.g. YubiKey HMAC-SHA1). Values: **auto** -
+use a locally connected smartcard if one is detected (default);
+**true** - require a smartcard, login without one is not possible;
+**false** - ignore any connected smartcard.
 
 **use_ssh_agent=***auto\|true\|false*  
 Controls authentication via SSH key from an SSH agent (e.g. YubiKey with
-GPG applet used together with an OTPme **ssh** token).
-
-**auto**  
-Use the SSH agent if a suitable key is available (default).
-
-**true**  
-Require a valid SSH key from the agent; login without one is not
-possible.
-
-**false**  
-Do not use and do not start an SSH agent.
+GPG applet used together with an OTPme **ssh** token). Values:
+**auto** - use the SSH agent if a suitable key is available (default);
+**true** - require a valid SSH key from the agent, login without one is
+not possible; **false** - do not use and do not start an SSH agent.
 
 **start_ssh_agent=***auto\|true\|false*  
-Controls whether an SSH agent is started at login.
-
-**auto**  
-Decide based on public keys received from the server (default).
-
-**true**  
-Always start an SSH agent.
-
-**false**  
-Never start an SSH agent.
+Controls whether an SSH agent is started at login. Values: **auto** -
+decide based on public keys received from the server (default);
+**true** - always start an SSH agent; **false** - never start an SSH
+agent.
 
 **unlock_via_offline_token**  
 When set, screen unlock uses the locally cached offline token and does
@@ -127,37 +105,28 @@ not send an authentication request to the OTPme server.
 **offline_key_func=***func***\[;***opt***=***val***,...\]**  
 Key derivation function used to encrypt the locally cached offline
 token. The function name and its options are separated by **;**,
-individual options by **,**, and key/value pairs by **:**.
+individual options by **,**, and key/value pairs by **:**. The only
+supported function is **Argon2_i**. Available options: **iterations** -
+number of iterations (default: 3); **min_mem** - minimum memory in KiB
+(default: 65536); **max_mem** - maximum memory in KiB (default: 262144);
+**threads** - number of threads (default: 4). Example:
 
-> The only supported function is **Argon2_i**. Available options:
->
-> | Option     | Description           | Default |
-> |:-----------|:----------------------|:--------|
-> | iterations | Number of iterations  | 3       |
-> | min_mem    | Minimum memory in KiB | 65536   |
-> | max_mem    | Maximum memory in KiB | 262144  |
-> | threads    | Number of threads     | 4       |
->
-> Example:
->
->     offline_key_func=Argon2_i;min_mem:65536,max_mem:262144,iterations:6,threads:4
+<!-- -->
+
+    offline_key_func=Argon2_i;min_mem:65536,max_mem:262144,iterations:6,threads:4
 
 **check_offline_pass_strength=***policy***;***score***:***iterations***\[,...\]**  
 Dynamically adjust the number of KDF iterations based on the strength of
 the user's password. A weaker password receives more iterations; a
-stronger password needs fewer.
+stronger password needs fewer. The first parameter specifies the OTPme
+password policy used to calculate the strength score. Use **auto** to
+use the policy assigned to the host. The second parameter (after **;**)
+is a comma-separated list of *score***:***iterations* pairs that map a
+strength score to a number of KDF iterations. Example:
 
-> The first parameter specifies the OTPme password policy used to
-> calculate the strength score. Use **auto** to use the policy assigned
-> to the host.
->
-> The second parameter (after **;**) is a comma-separated list of
-> *score***:***iterations* pairs that map a strength score to a number
-> of KDF iterations.
->
-> Example:
->
->     check_offline_pass_strength=password_strength;0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3
+<!-- -->
+
+    check_offline_pass_strength=password_strength;0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3
 
 **offline_greeting**  
 Display a greeting message after a successful offline login.

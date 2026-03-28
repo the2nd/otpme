@@ -85,61 +85,45 @@ Allow authentication with an empty password.
 .TP
 .BI send_password= auto|false
 Controls whether the user's password is sent to the OTPme server.
-.RS
-.TP
+Values:
 .B auto
-Send the password only if the server requests it (default).
-.TP
+\- send the password only if the server requests it (default);
 .B false
-Never send the password to the server.
-Useful for token types that do not require the password on the server side
-(e.g. SSH tokens).
-.RE
+\- never send the password to the server (useful for token types that do
+not require the password on the server side, e.g. SSH tokens).
 .TP
 .BI use_smartcard= auto|true|false
 Controls smartcard usage (e.g. YubiKey HMAC-SHA1).
-.RS
-.TP
+Values:
 .B auto
-Use a locally connected smartcard if one is detected (default).
-.TP
+\- use a locally connected smartcard if one is detected (default);
 .B true
-Require a smartcard; login without one is not possible.
-.TP
+\- require a smartcard, login without one is not possible;
 .B false
-Ignore any connected smartcard.
-.RE
+\- ignore any connected smartcard.
 .TP
 .BI use_ssh_agent= auto|true|false
 Controls authentication via SSH key from an SSH agent (e.g. YubiKey with
 GPG applet used together with an OTPme
 .B ssh
 token).
-.RS
-.TP
+Values:
 .B auto
-Use the SSH agent if a suitable key is available (default).
-.TP
+\- use the SSH agent if a suitable key is available (default);
 .B true
-Require a valid SSH key from the agent; login without one is not possible.
-.TP
+\- require a valid SSH key from the agent, login without one is not possible;
 .B false
-Do not use and do not start an SSH agent.
-.RE
+\- do not use and do not start an SSH agent.
 .TP
 .BI start_ssh_agent= auto|true|false
 Controls whether an SSH agent is started at login.
-.RS
-.TP
+Values:
 .B auto
-Decide based on public keys received from the server (default).
-.TP
+\- decide based on public keys received from the server (default);
 .B true
-Always start an SSH agent.
-.TP
+\- always start an SSH agent;
 .B false
-Never start an SSH agent.
-.RE
+\- never start an SSH agent.
 .TP
 .B unlock_via_offline_token
 When set, screen unlock uses the locally cached offline token and does not
@@ -153,52 +137,42 @@ individual options by
 .BR , ,
 and key/value pairs by
 .BR : .
-.PP
-.RS
 The only supported function is
 .BR Argon2_i .
 Available options:
-.TS
-l l l.
-Option	Description	Default
-_
-iterations	Number of iterations	3
-min_mem	Minimum memory in KiB	65536
-max_mem	Maximum memory in KiB	262144
-threads	Number of threads	4
-.TE
-.PP
+.B iterations
+\- number of iterations (default: 3);
+.B min_mem
+\- minimum memory in KiB (default: 65536);
+.B max_mem
+\- maximum memory in KiB (default: 262144);
+.B threads
+\- number of threads (default: 4).
 Example:
 .PP
 .nf
 offline_key_func=Argon2_i;min_mem:65536,max_mem:262144,iterations:6,threads:4
 .fi
-.RE
 .TP
 .BI check_offline_pass_strength= policy ; score : iterations [,...]
 Dynamically adjust the number of KDF iterations based on the strength of the
 user's password.
 A weaker password receives more iterations; a stronger password needs fewer.
-.PP
-.RS
 The first parameter specifies the OTPme password policy used to calculate the
 strength score.
 Use
 .B auto
 to use the policy assigned to the host.
-.PP
 The second parameter (after
 .BR ; )
 is a comma-separated list of
 .IB score : iterations
 pairs that map a strength score to a number of KDF iterations.
-.PP
 Example:
 .PP
 .nf
 check_offline_pass_strength=password_strength;0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3
 .fi
-.RE
 .TP
 .B offline_greeting
 Display a greeting message after a successful offline login.
