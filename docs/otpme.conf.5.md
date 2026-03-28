@@ -351,6 +351,15 @@ Comma separated list of users denied from login. Optionally with UUID
 **LOGOUT_PASS_LEN**  
 Length of Session-Logout-Password (SLP).
 
+**ALLOW_DYNAMIC_GROUPS**  
+Comma separated list of dynamic groups users are allowed to be assigned
+to. If set to False, no dynamic groups are allowed. If empty, all
+dynamic groups are allowed except those in DENY_DYNAMIC_GROUPS.
+
+**DENY_DYNAMIC_GROUPS**  
+Comma separated list of dynamic groups users are NOT allowed to be
+assigned to.
+
 # SIGNERS
 
 **FORCE_TOKEN_SIGNERS**  
@@ -468,6 +477,9 @@ lead to inconsistent state but helps when objects change frequently.
 
 # DAEMON
 
+**MASTER_FAILOVER_SYNC**  
+Do a sync on master node failover.
+
 **TWO_NODE_TIMEOUT**  
 Seconds to wait for second node in two-node clusters.
 
@@ -546,6 +558,56 @@ Print Python tracebacks.
 
 **SHOW_JOB_TITLE**  
 Show job title in process name.
+
+# BACKUP
+
+**BACKUP_SERVER**  
+If True, backupd is started on this host.
+
+**BACKUP_DIR**  
+Backup root directory. All backup repositories are created here
+(default: /var/backups).
+
+**ALLOW_NEW_BACKUP_REPOS**  
+Allow new repositories from these client certificate CNs. Comma
+separated list or False.
+
+Backup of nodes and shares must be configured via OTPme config
+parameters. The following settings are only used for OTPme hosts or
+non-OTPme hosts.
+
+**BACKUP_REPOSITORY**  
+Backup repository path (e.g.
+backupserver1.site.realm:host_type/site/hostname).
+
+**BACKUP_MODE**  
+Backup mode: "pack" or "tree".
+
+**BACKUP_REPO_PASS**  
+Repository password.
+
+**BACKUP_KEY**  
+AES key to encrypt backup (generate with "openssl rand -hex 32").
+
+**BACKUP_EXCLUDE_SPECIAL**  
+Exclude special files from backup.
+
+**BACKUP_EXCLUDES**  
+Comma separated list of paths to exclude from backup.
+
+**BACKUP_INCLUDES**  
+Comma separated list of paths to include in backup.
+
+**BACKUP_CLIENT_CERT**  
+Client certificate for non-OTPme hosts. Create with: otpme-ca
+create_client_cert SITE_CA hostname cert.pem key.pem
+
+**BACKUP_CLIENT_KEY**  
+Client key for non-OTPme hosts.
+
+**BACKUP_CLIENT_CA**  
+CA certificate for non-OTPme hosts (copy from node:
+/etc/otpme/ssl/ca.pem).
 
 # FILES
 

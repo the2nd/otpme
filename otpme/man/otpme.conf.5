@@ -339,6 +339,12 @@ Comma separated list of users denied from login. Optionally with UUID (username:
 .TP
 .B LOGOUT_PASS_LEN
 Length of Session-Logout-Password (SLP).
+.TP
+.B ALLOW_DYNAMIC_GROUPS
+Comma separated list of dynamic groups users are allowed to be assigned to. If set to False, no dynamic groups are allowed. If empty, all dynamic groups are allowed except those in DENY_DYNAMIC_GROUPS.
+.TP
+.B DENY_DYNAMIC_GROUPS
+Comma separated list of dynamic groups users are NOT allowed to be assigned to.
 .SH SIGNERS
 .TP
 .B FORCE_TOKEN_SIGNERS
@@ -446,6 +452,9 @@ Number of retries to reach consistent state before waiting for SYNC_INTERVAL.
 If True, sync objects as received even if they changed during sync. May lead to inconsistent state but helps when objects change frequently.
 .SH DAEMON
 .TP
+.B MASTER_FAILOVER_SYNC
+Do a sync on master node failover.
+.TP
 .B TWO_NODE_TIMEOUT
 Seconds to wait for second node in two-node clusters.
 .TP
@@ -513,6 +522,49 @@ Print Python tracebacks.
 .TP
 .B SHOW_JOB_TITLE
 Show job title in process name.
+.SH BACKUP
+.TP
+.B BACKUP_SERVER
+If True, backupd is started on this host.
+.TP
+.B BACKUP_DIR
+Backup root directory. All backup repositories are created here (default: /var/backups).
+.TP
+.B ALLOW_NEW_BACKUP_REPOS
+Allow new repositories from these client certificate CNs. Comma separated list or False.
+.PP
+Backup of nodes and shares must be configured via OTPme config parameters.
+The following settings are only used for OTPme hosts or non-OTPme hosts.
+.TP
+.B BACKUP_REPOSITORY
+Backup repository path (e.g. backupserver1.site.realm:host_type/site/hostname).
+.TP
+.B BACKUP_MODE
+Backup mode: "pack" or "tree".
+.TP
+.B BACKUP_REPO_PASS
+Repository password.
+.TP
+.B BACKUP_KEY
+AES key to encrypt backup (generate with "openssl rand \-hex 32").
+.TP
+.B BACKUP_EXCLUDE_SPECIAL
+Exclude special files from backup.
+.TP
+.B BACKUP_EXCLUDES
+Comma separated list of paths to exclude from backup.
+.TP
+.B BACKUP_INCLUDES
+Comma separated list of paths to include in backup.
+.TP
+.B BACKUP_CLIENT_CERT
+Client certificate for non-OTPme hosts. Create with: otpme-ca create_client_cert SITE_CA hostname cert.pem key.pem
+.TP
+.B BACKUP_CLIENT_KEY
+Client key for non-OTPme hosts.
+.TP
+.B BACKUP_CLIENT_CA
+CA certificate for non-OTPme hosts (copy from node: /etc/otpme/ssl/ca.pem).
 .SH FILES
 .TP
 .I /etc/otpme/otpme.conf
