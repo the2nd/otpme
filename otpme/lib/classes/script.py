@@ -858,13 +858,10 @@ class Script(OTPmeObject):
                 msg = msg.format(path=dst_script.rel_path)
                 return callback.error(msg, exception=PermissionDenied)
             # Ask user for confirmation if needed.
-            if not force:
-                if self.confirmation_policy != "force":
-                    msg = _("Replace script '{name}'?: ")
-                    msg = msg.format(name=dst_script.name)
-                    answer = callback.ask(msg)
-                    if answer.lower() != "y":
-                        return callback.abort()
+            msg = _("Replace script '{name}'?: ")
+            msg = msg.format(name=dst_script.name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
             # Copy script to destination script.
             dst_script.script = self.script
         else:
@@ -933,20 +930,8 @@ class Script(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy != "force":
-                if self.confirmation_policy == "paranoid":
-                    msg = _("Please type '{name}' to delete object: ")
-                    msg = msg.format(name=self.name)
-                    answer = callback.ask(msg)
-                    if answer != self.name:
-                        return callback.abort()
-                else:
-                    msg = _("Delete script '{path}'?: ")
-                    msg = msg.format(path=self.rel_path)
-                    answer = callback.ask(msg)
-                    if answer.lower() != "y":
-                        return callback.abort()
+        if not self.ask_delete_confirmation(force=force, callback=callback):
+            return callback.abort()
 
         # Delete object using parent class.
         return OTPmeObject.delete(self, verbose_level=verbose_level,

@@ -1621,20 +1621,8 @@ class Ca(OTPmeObject):
 
         # xxxxxxxxxxxxxxxxx
         # TODO: revoke CA cert via parent CA!!!!
-        if not force:
-            if self.confirmation_policy != "force":
-                if self.confirmation_policy == "paranoid":
-                    msg = _("Please type '{name}' to delete object: ")
-                    msg = msg.format(name=self.name)
-                    answer = callback.ask(msg)
-                    if answer != self.name:
-                        return callback.abort()
-                else:
-                    msg = _("Delete CA '{name}'?: ")
-                    msg = msg.format(name=self.name)
-                    answer = callback.ask(msg)
-                    if answer.lower() != "y":
-                        return callback.abort()
+        if not self.ask_delete_confirmation(force=force, callback=callback):
+            return callback.abort()
 
         # Delete object using parent class.
         return OTPmeObject.delete(self, verbose_level=verbose_level,

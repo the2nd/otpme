@@ -226,6 +226,7 @@ def main():
             sum_stored = sum(s.get('stored_bytes', 0) for s in snaps)
             print("-" * 160)
             print(f"{'TOTAL':<30}  {total_files:>7}  {total_inodes:>7}  {_format_size(sum_data):>10}  {_format_size(sum_stored):>10}")
+            print(f"\n{len(snaps)} snapshot(s)")
     elif args.command == "ls":
         client.print_contents(args.snapshot, args.path,
                               full_path=getattr(args, 'full_path', False),
@@ -244,7 +245,7 @@ def main():
             print("Nothing to compact.")
     elif args.command == "repair":
         result = server.repair()
-        print(f"Fixed {result['duplicates']} duplicates, removed {result['orphans']} orphaned entries")
+        print(f"Removed {result['orphans']} orphaned entries")
     elif args.command == "repack":
         from otpme.lib.classes.backup import _format_size
         saved = server.repack()

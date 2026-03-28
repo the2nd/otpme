@@ -1185,45 +1185,32 @@ class Group(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            exception = ""
-            # List that will hold all roles of this group.
-            role_list = []
-            # Get all roles from this group.
-            for r_uuid in self.roles:
-                role = backend.get_object(object_type="role", uuid=r_uuid)
-                role_list.append(role.name)
+        exception_parts = []
+        # List that will hold all roles of this group.
+        role_list = []
+        # Get all roles from this group.
+        for r_uuid in self.roles:
+            role = backend.get_object(object_type="role", uuid=r_uuid)
+            role_list.append(role.name)
 
-            if role_list:
-                exception = _("Group '{group_name}' has member roles: {role_list}\n")
-                exception = exception.format(group_name=self.name, role_list=', '.join(role_list))
-                exception = f"{exception}"
+        if role_list:
+            msg = _("Group '{group_name}' has member roles: {role_list}")
+            exception_parts.append(msg.format(group_name=self.name, role_list=', '.join(role_list)))
 
-            # List that will hold all tokens that of this group.
-            token_list = []
-            # Get all tokens from this group.
-            for t_uuid in self.tokens:
-                token = backend.get_object(object_type="token", uuid=t_uuid)
-                token_list.append(token.rel_path)
+        # List that will hold all tokens that of this group.
+        token_list = []
+        # Get all tokens from this group.
+        for t_uuid in self.tokens:
+            token = backend.get_object(object_type="token", uuid=t_uuid)
+            token_list.append(token.rel_path)
 
-            if token_list:
-                exception = _("Group '{group_name}' has member tokens: {token_list}\n")
-                exception = exception.format(group_name=self.name, token_list=', '.join(token_list))
-                exception = f"{exception}"
+        if token_list:
+            msg = _("Group '{group_name}' has member tokens: {token_list}")
+            exception_parts.append(msg.format(group_name=self.name, token_list=', '.join(token_list)))
 
-            if self.confirmation_policy != "force":
-                if self.confirmation_policy == "paranoid":
-                    msg = _("{exception}Please type '{group_name}' to delete object: ")
-                    msg = msg.format(exception=exception, group_name=self.name)
-                    answer = callback.ask(msg)
-                    if answer != self.name:
-                        return callback.abort()
-                else:
-                    msg = _("{exception}Delete group?: ")
-                    msg = msg.format(exception=exception)
-                    answer = callback.ask(msg)
-                    if answer.lower() != "y":
-                        return callback.abort()
+        exception = chr(10).join(exception_parts) if exception_parts else None
+        if not self.ask_delete_confirmation(force=force, exception=exception, callback=callback):
+            return callback.abort()
 
         # Delete object using parent class.
         return OTPmeObject.delete(self, verbose_level=verbose_level,
@@ -1280,36 +1267,26 @@ class Group(OTPmeObject):
                 continue
             default_group_users_list.append(i)
 
-        if not force:
-            msg = ""
-            if acl_list:
-                msg = _("{msg}{object_type}|{object_name}: Found the following orphan ACLs: {acl_list}\n")
-                msg = msg.format(msg=msg, object_type=self.type, object_name=self.name, acl_list=','.join(acl_list))
-
-            if policy_list:
-                msg = ""
-                if policy_list:
-                    msg = _("{msg}{object_type}|{object_name}: Found the following orphan policies: {policy_list}\n")
-                    msg = msg.format(msg=msg, object_type=self.type, object_name=self.name, policy_list=','.join(policy_list))
-
-            if token_list:
-                msg = _("{msg}{object_type}|{object_name}: Found the following orphan token UUIDs: {token_list}\n")
-                msg = msg.format(msg=msg, object_type=self.type, object_name=self.name, token_list=','.join(token_list))
-
-            if role_list:
-                msg = _("{msg}{object_type}|{object_name}: Found the following orphan role UUIDs: {role_list}\n")
-                msg = msg.format(msg=msg, object_type=self.type, object_name=self.name, role_list=','.join(role_list))
-
-            if default_group_users_list:
-                msg = _("{msg}{object_type}|{object_name}: Found the following orphan user UUIDs: {user_list}\n")
-                msg = msg.format(msg=msg, object_type=self.type, object_name=self.name, user_list=','.join(default_group_users_list))
-
-            if msg:
-                msg_ask = _("{msg}Remove?: ")
-                msg_ask = msg_ask.format(msg=msg)
-                answer = callback.ask(msg_ask)
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = ""
+        if acl_list:
+            msg += _("{object_type}|{object_name}: Found the following orphan ACLs: {acl_list}\n").format(
+                object_type=self.type, object_name=self.name, acl_list=','.join(acl_list))
+        if policy_list:
+            msg += _("{object_type}|{object_name}: Found the following orphan policies: {policy_list}\n").format(
+                object_type=self.type, object_name=self.name, policy_list=','.join(policy_list))
+        if token_list:
+            msg += _("{object_type}|{object_name}: Found the following orphan token UUIDs: {token_list}\n").format(
+                object_type=self.type, object_name=self.name, token_list=','.join(token_list))
+        if role_list:
+            msg += _("{object_type}|{object_name}: Found the following orphan role UUIDs: {role_list}\n").format(
+                object_type=self.type, object_name=self.name, role_list=','.join(role_list))
+        if default_group_users_list:
+            msg += _("{object_type}|{object_name}: Found the following orphan user UUIDs: {user_list}\n").format(
+                object_type=self.type, object_name=self.name, user_list=','.join(default_group_users_list))
+        if msg:
+            msg = _("{msg}Remove?: ").format(msg=msg)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         object_changed = False
         if acl_list:

@@ -11,6 +11,7 @@ try:
 except:
     pass
 
+from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib.spsc import SPSC
@@ -318,7 +319,7 @@ def register_policy_object():
                     ]
     config.register_config_parameter(name="password_allowed_chars",
                                     ctype=str,
-                                    default_value="0-9A-Za-z!@#$%^&*()_+-={}[]|\:;<>.?/",
+                                    default_value=r"0-9A-Za-z!@#$%^&*()_+\-={}[]|\\:;<>.?/",
                                     object_types=object_types)
 
 class PasswordPolicy(Policy):
@@ -506,9 +507,9 @@ class PasswordPolicy(Policy):
                 msg = msg.format(password_min_len=self.password_min_len)
                 return callback.error(msg, exception=self.policy_exception)
             password_allowed_chars = self.get_config_parameter("password_allowed_chars")
-            password_regex = f'^[{password_allowed_chars}]*$'
-            password_re = re.compile(password_regex)
-            if not password_re.match(password):
+            allowed = stuff.parse_allowed_chars(password_allowed_chars)
+            invalid_chars = set(password) - allowed
+            if invalid_chars:
                 msg = _("Password contains invalid character(s). Allowed characters are: {password_allowed_chars}")
                 msg = msg.format(password_allowed_chars=password_allowed_chars)
                 return callback.error(msg, exception=self.policy_exception)
@@ -750,11 +751,9 @@ class PasswordPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Enable require number?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Enable require number?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.require_number = True
 
@@ -781,11 +780,9 @@ class PasswordPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Enable require number?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Disable require number?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.require_number = False
 
@@ -812,11 +809,9 @@ class PasswordPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Enable require uppercase?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Enable require uppercase?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.require_uppercase = True
 
@@ -843,11 +838,9 @@ class PasswordPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Enable require uppercase?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Disable require uppercase?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.require_uppercase = False
 
@@ -874,11 +867,9 @@ class PasswordPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Enable require lowercase?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Enable require lowercase?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.require_lowercase = True
 
@@ -905,11 +896,9 @@ class PasswordPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Enable require lowercase?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Disable require lowercase?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.require_lowercase = False
 
@@ -936,11 +925,9 @@ class PasswordPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Enable require special character?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Enable require special character?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.require_special = True
 
@@ -967,11 +954,9 @@ class PasswordPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Enable require special character?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Disable require special character?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.require_special = False
 
@@ -998,11 +983,9 @@ class PasswordPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Enable strength checker?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Enable strength checker?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.strength_checker_enabled = True
         return self._cache(callback=callback)
@@ -1028,11 +1011,9 @@ class PasswordPolicy(Policy):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Disable strength checker?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Disable strength checker?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.strength_checker_enabled = False
         return self._cache(callback=callback)

@@ -2414,11 +2414,10 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        if self.private_key is not None and not force:
-            if self.confirmation_policy != "force":
-                ask = callback.ask("Replace existing private key?: ")
-                if str(ask).lower() != "y":
-                    return callback.abort()
+        if self.private_key is not None:
+            msg = _("Replace existing private key?: ")
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         if private_key == "":
             self.private_key = {}
@@ -2456,11 +2455,10 @@ class User(OTPmeObject):
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        if self.public_key is not None and not force:
-            if self.confirmation_policy != "force":
-                ask = callback.ask("Replace existing public key?: ")
-                if str(ask).lower() != "y":
-                    return callback.abort()
+        if self.public_key is not None:
+            msg = _("Replace existing public key?: ")
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         if public_key == "":
             self.public_key = None
@@ -2648,18 +2646,9 @@ class User(OTPmeObject):
                 return callback.error(msg)
 
         if self.private_key or self.public_key:
-            ask_user = True
-            if force:
-                ask_user = False
-            if self.confirmation_policy == "force":
-                ask_user = False
-            if self.confirmation_policy != "paranoid":
-                if force:
-                    ask_user = False
-            if ask_user:
-                ask = callback.ask("Replace existing user keys?: ")
-                if str(ask).lower() != "y":
-                    return callback.abort()
+            msg = _("Replace existing user keys?: ")
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         self.key_mode = key_mode
 
@@ -2795,18 +2784,9 @@ class User(OTPmeObject):
             msg = "No user keys present."
             return callback.error(msg)
 
-        ask_user = True
-        if force:
-            ask_user = False
-        if self.confirmation_policy == "force":
-            ask_user = False
-        if self.confirmation_policy != "paranoid":
-            if force:
-                ask_user = False
-        if ask_user:
-            ask = callback.ask("Remove user keys?: ")
-            if str(ask).lower() != "y":
-                return callback.abort()
+        msg = _("Remove user keys?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.private_key = {}
         self.public_key = None
@@ -2860,18 +2840,9 @@ class User(OTPmeObject):
                 return callback.error(msg)
 
         if self.private_key or self.public_key:
-            ask_user = True
-            if force:
-                ask_user = False
-            if self.confirmation_policy == "force":
-                ask_user = False
-            if self.confirmation_policy != "paranoid":
-                if force:
-                    ask_user = False
-            if ask_user:
-                ask = callback.ask("Replace existing user keys?: ")
-                if str(ask).lower() != "y":
-                    return callback.abort()
+            msg = _("Replace existing user keys?: ")
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         if aes_key and not aes_key_enc:
             msg = "Need 'aes_key_enc' when 'aes_key' is set."
@@ -3005,8 +2976,8 @@ class User(OTPmeObject):
             return callback.error(msg)
 
         if aes_key:
-            answer = callback.ask("Remove key password? ")
-            if answer.lower() == "y":
+            msg = _("Remove key password?: ")
+            if self.ask_change_confirmation(msg, force=False, callback=callback):
                 remove_key_pass = True
 
         if remove_key_pass:
@@ -4023,11 +3994,9 @@ class User(OTPmeObject):
 
         if token.exists():
             if replace:
-                if not force:
-                    msg = _("WARNING. Replacing the token will permanently delete all token data, including private key backups. Replace token?: ")
-                    answer = callback.ask(msg)
-                    if answer.lower() != "y":
-                        return callback.abort()
+                msg = _("WARNING. Replacing the token will permanently delete all token data, including private key backups. Replace token?: ")
+                if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                    return callback.abort()
                 if not self.add_token(new_token=token,
                                     replace=replace,
                                     force=True,
@@ -4039,10 +4008,9 @@ class User(OTPmeObject):
                     msg = _("Existing token '{token_rel_path} ({token_token_type})' does not support hardware token type: {smartcard_type}")
                     msg = msg.format(token_rel_path=token.rel_path, token_token_type=token.token_type, smartcard_type=smartcard_type)
                     return callback.error(msg)
-                if not force:
-                    ask = callback.ask("Re-deploy existing token? ")
-                    if str(ask).lower() != "y":
-                        return callback.abort()
+                msg = _("Re-deploy existing token?: ")
+                if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                    return callback.abort()
         else:
             if pre_deploy:
                 if not self.verify_acl("add:token"):
@@ -4190,11 +4158,9 @@ class User(OTPmeObject):
         if replace:
             if not cur_token:
                 return callback.error("Token does not exist.")
-            if not force:
-                if self.confirmation_policy != "force":
-                    ask = callback.ask("Replace existing token?: ")
-                    if str(ask).lower() != "y":
-                        return callback.abort()
+            msg = _("Replace existing token?: ")
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
             # Add replaced token to trash.
             if config.auth_token:
                 deleted_by = f"token:{config.auth_token.rel_path}"
@@ -5610,28 +5576,12 @@ class User(OTPmeObject):
         token_list = self.get_tokens(return_type="instance")
         token_list_names = [i.name for i in token_list]
 
-        if not force:
-            if token_list:
-                if self.confirmation_policy != "force":
-                    if self.confirmation_policy == "paranoid":
-                        msg = _("User has tokens: {token_list}\nPlease type '{self_name}' to delete object: ")
-                        msg = msg.format(token_list=', '.join(token_list_names), self_name=self.name)
-                        response = callback.ask(msg)
-                        if response != self.name:
-                            return callback.abort()
-                    else:
-                        msg = _("User has tokens: {token_list}\nDelete user '{self_name}'?: ")
-                        msg = msg.format(token_list=', '.join(token_list_names), self_name=self.name)
-                        response = callback.ask(msg)
-                        if str(response).lower() != "y":
-                            return callback.abort()
-            else:
-                if self.confirmation_policy == "paranoid":
-                    msg = _(" Please type '{self_name}' to delete object: ")
-                    msg = msg.format(self_name=self.name)
-                    response = callback.ask(msg)
-                    if response != self.name:
-                        return callback.abort()
+        exception = None
+        if token_list:
+            exception = _("User has tokens: {token_list}")
+            exception = exception.format(token_list=', '.join(token_list_names))
+        if not self.ask_delete_confirmation(force=force, exception=exception, callback=callback):
+            return callback.abort()
 
         # Remove user from group.
         if self.group_uuid:
@@ -5720,26 +5670,20 @@ class User(OTPmeObject):
             if not token_oid:
                 token_list.append(i)
 
-        if not force:
-            msg = ""
-            if acl_list:
-                msg = _("{self_type}|{self_name}: Found the following orphan ACLs: {acl_list}\n")
-                msg = msg.format(self_type=self.type, self_name=self.name, acl_list=','.join(acl_list))
-
-            if policy_list:
-                msg = _("{self_type}|{self_name}: Found the following orphan policies: {policy_list}\n")
-                msg = msg.format(self_type=self.type, self_name=self.name, policy_list=','.join(policy_list))
-
-            if token_list:
-                msg = _("{self_type}|{self_name}: Found the following orphan token UUIDs: {token_list}\n")
-                msg = msg.format(self_type=self.type, self_name=self.name, token_list=','.join(token_list))
-
-            if msg:
-                ask_msg = _("{msg}Remove?: ")
-                ask_msg = ask_msg.format(msg=msg)
-                answer = callback.ask(ask_msg)
-                if answer.lower() != "y":
-                    remove_orphans = False
+        msg = ""
+        if acl_list:
+            msg += _("{self_type}|{self_name}: Found the following orphan ACLs: {acl_list}\n").format(
+                self_type=self.type, self_name=self.name, acl_list=','.join(acl_list))
+        if policy_list:
+            msg += _("{self_type}|{self_name}: Found the following orphan policies: {policy_list}\n").format(
+                self_type=self.type, self_name=self.name, policy_list=','.join(policy_list))
+        if token_list:
+            msg += _("{self_type}|{self_name}: Found the following orphan token UUIDs: {token_list}\n").format(
+                self_type=self.type, self_name=self.name, token_list=','.join(token_list))
+        if msg:
+            msg = _("{msg}Remove?: ").format(msg=msg)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                remove_orphans = False
 
         object_changed = False
         if remove_orphans:

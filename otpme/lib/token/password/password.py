@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import string
 from typing import Union
 
 try:
@@ -487,11 +488,9 @@ class PasswordToken(Token):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask(_("Enable second factor token?: "))
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Enable second factor token?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.second_factor_token_enabled = True
         self.update_index('second_factor_token_enabled', True)
@@ -524,11 +523,9 @@ class PasswordToken(Token):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask(_("Disable second factor token?: "))
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Disable second factor token?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.second_factor_token_enabled = False
         self.update_index('second_factor_token_enabled', False)
@@ -752,8 +749,12 @@ class PasswordToken(Token):
                 pass_policy = result[0]
                 if pass_policy.require_special:
                     symbols = True
-                    # FIXME: make this an policy option.
-                    exclude_chars = '^~`\|'
+                    password_allowed_chars = owner.get_config_parameter("password_allowed_chars")
+                    allowed = stuff.parse_allowed_chars(password_allowed_chars)
+                    pwgen_symbols = set(string.punctuation)
+                    disallowed = pwgen_symbols - allowed
+                    if disallowed:
+                        exclude_chars = ''.join(disallowed)
             new_pass = stuff.gen_password(pass_len,
                                         symbols=symbols,
                                         exclude_chars=exclude_chars)

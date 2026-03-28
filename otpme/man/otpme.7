@@ -243,14 +243,15 @@ The column \fIObject types\fR lists on which object types each parameter can be 
 .PP
 .B otpme-site config mysite parameter \fR[\fIvalue\fR]
 .br
-.B otpme-site config \-d mysite parameter
+.B otpme-site config \-d mysite parameter \fR[\fIvalue\fR]
 .SS General
 .TP
 .B confirmation_policy \fR(str, default: paranoid)
 Controls when OTPme asks for user confirmation.
-Valid values: \fBparanoid\fR (ask for almost anything), \fBnormal\fR (ask in important cases, e.g. when deleting an object will also delete child objects), \fBforce\fR (never ask for confirmation).
+Valid values: \fBparanoid\fR (ask for confirmation on all changes; deleting requires typing the object name), \fBnormal\fR (only ask when deleting objects; requires typing the object name to confirm), \fBforce\fR (never ask for confirmation).
+The \fBforce=True\fR parameter in API calls also skips all confirmations regardless of the policy.
 .br
-Object types: all tree objects
+Object types: site, unit, token
 .TP
 .B auto_sign \fR(bool, default: false)
 If enabled, the user is offered to sign the object after each change.

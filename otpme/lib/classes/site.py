@@ -2052,19 +2052,16 @@ class Site(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            if self.uuid == config.site_uuid:
-                msg = _("Enable authentication for own site? ")
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
-            else:
-                if self.confirmation_policy != "force":
-                    msg = _("Enable authentication with site '{name}'?: ")
-                    msg = msg.format(name=self.name)
-                    answer = callback.ask(msg)
-                    if answer.lower() != "y":
-                        return callback.abort()
+        if not force and self.uuid == config.site_uuid:
+            msg = _("Enable authentication for own site? ")
+            answer = callback.ask(msg)
+            if answer.lower() != "y":
+                return callback.abort()
+        elif self.uuid != config.site_uuid:
+            msg = _("Enable authentication with site '{name}'?: ")
+            msg = msg.format(name=self.name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         self.auth_enabled = True
         self.update_index("auth_enabled", self.auth_enabled)
@@ -2100,19 +2097,16 @@ class Site(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            if self.uuid == config.site_uuid:
-                msg = _("Disable authentication for own site? This will disable ALL logins!: ")
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
-            else:
-                if self.confirmation_policy != "force":
-                    msg = _("Disable authentication with site '{name}'?: ")
-                    msg = msg.format(name=self.name)
-                    answer = callback.ask(msg)
-                    if answer.lower() != "y":
-                        return callback.abort()
+        if not force and self.uuid == config.site_uuid:
+            msg = _("Disable authentication for own site? This will disable ALL logins!: ")
+            answer = callback.ask(msg)
+            if answer.lower() != "y":
+                return callback.abort()
+        elif self.uuid != config.site_uuid:
+            msg = _("Disable authentication with site '{name}'?: ")
+            msg = msg.format(name=self.name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         self.auth_enabled = False
         self.update_index("auth_enabled", self.auth_enabled)
@@ -2146,20 +2140,17 @@ class Site(OTPmeObject):
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
-        if not force:
-            if self.uuid == config.site_uuid:
-                msg = _("Enable synchronization of own site '{name}'?: ")
-                msg = msg.format(name=self.name)
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
-            else:
-                if self.confirmation_policy != "force":
-                    msg = _("Enable synchronization with site '{name}'?: ")
-                    msg = msg.format(name=self.name)
-                    answer = callback.ask(msg)
-                    if answer.lower() != "y":
-                        return callback.abort()
+        if not force and self.uuid == config.site_uuid:
+            msg = _("Enable synchronization of own site '{name}'?: ")
+            msg = msg.format(name=self.name)
+            answer = callback.ask(msg)
+            if answer.lower() != "y":
+                return callback.abort()
+        elif self.uuid != config.site_uuid:
+            msg = _("Enable synchronization with site '{name}'?: ")
+            msg = msg.format(name=self.name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         self.sync_enabled = True
         self.update_index("sync_enabled", self.sync_enabled)
@@ -2198,13 +2189,10 @@ class Site(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy != "force":
-                msg = _("Disable synchronization with site '{name}'?: ")
-                msg = msg.format(name=self.name)
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Disable synchronization with site '{name}'?: ")
+        msg = msg.format(name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.sync_enabled = False
         self.update_index("sync_enabled", self.sync_enabled)
@@ -3660,20 +3648,8 @@ class Site(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy != "force":
-                if self.confirmation_policy == "paranoid":
-                    msg = _("Please type '{name}' to delete object: ")
-                    msg = msg.format(name=self.name)
-                    answer = callback.ask(msg)
-                    if answer != self.name:
-                        return callback.abort()
-                else:
-                    msg = _("Delete site '{name}'?: ")
-                    msg = msg.format(name=self.name)
-                    answer = callback.ask(msg)
-                    if answer.lower() != "y":
-                        return callback.abort()
+        if not self.ask_delete_confirmation(force=force, callback=callback):
+            return callback.abort()
 
         # Get all objects of this site.
         result = backend.search(attribute="uuid",
@@ -3739,18 +3715,11 @@ class Site(OTPmeObject):
 
         remove_orphans = True
         object_changed = False
-        if not force:
-            msg = ""
-            if acl_list:
-                msg = _("{msg}{type}|{name}: Found the following orphan ACLs: {acl_list}\n")
-                msg = msg.format(msg=msg, type=self.type, name=self.name, acl_list=','.join(acl_list))
-
-            if msg:
-                question = _("{msg}Remove?: ")
-                question = question.format(msg=msg)
-                answer = callback.ask(question)
-                if answer.lower() != "y":
-                    remove_orphans = False
+        if acl_list:
+            msg = _("{type}|{name}: Found the following orphan ACLs: {acl_list}\nRemove?: ")
+            msg = msg.format(type=self.type, name=self.name, acl_list=','.join(acl_list))
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                remove_orphans = False
 
         if remove_orphans:
             if self.remove_orphan_acls(force=True, verbose_level=verbose_level,

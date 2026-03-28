@@ -290,11 +290,10 @@ class YubikeypivToken(Token):
                 msg = msg.format(e=e)
                 return callback.error(msg)
 
-        if self.public_key is not None and not force:
-            if self.confirmation_policy != "force":
-                ask = callback.ask("Replace existing public key?: ")
-                if str(ask).lower() != "y":
-                    return callback.abort()
+        if self.public_key is not None:
+            msg = _("Replace existing public key?: ")
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         if public_key == "":
             self.public_key = None

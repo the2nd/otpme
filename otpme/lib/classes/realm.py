@@ -861,18 +861,15 @@ class Realm(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            if self.own:
-                answer = callback.ask(_("Enable authentication for own realm? "))
-                if answer.lower() != "y":
-                    return callback.abort()
-            else:
-                if self.confirmation_policy != "force":
-                    msg = _("Enable authentication with realm '{realm_name}'?: ")
-                    msg = msg.format(realm_name=self.name)
-                    answer = callback.ask(msg)
-                    if answer.lower() != "y":
-                        return callback.abort()
+        if not force and self.own:
+            answer = callback.ask(_("Enable authentication for own realm? "))
+            if answer.lower() != "y":
+                return callback.abort()
+        elif not self.own:
+            msg = _("Enable authentication with realm '{realm_name}'?: ")
+            msg = msg.format(realm_name=self.name)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         self.auth_enabled = True
         self.update_index("auth_enabled", self.auth_enabled)
@@ -912,13 +909,10 @@ class Realm(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy != "force":
-                msg = _("Disable authentication with realm '{realm_name}'?: ")
-                msg = msg.format(realm_name=self.name)
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Disable authentication with realm '{realm_name}'?: ")
+        msg = msg.format(realm_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if not self.auth_enabled:
             msg = _("Authentication with realm '{realm_name}' is already disabled.")
@@ -959,13 +953,10 @@ class Realm(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy != "force":
-                msg = _("Enable synchronization with realm '{realm_name}'?: ")
-                msg = msg.format(realm_name=self.name)
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Enable synchronization with realm '{realm_name}'?: ")
+        msg = msg.format(realm_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.sync_enabled = True
         self.update_index("sync_enabled", self.sync_enabled)
@@ -1005,13 +996,10 @@ class Realm(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy != "force":
-                msg = _("Disable synchronization with realm '{realm_name}'?: ")
-                msg = msg.format(realm_name=self.name)
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Disable synchronization with realm '{realm_name}'?: ")
+        msg = msg.format(realm_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.sync_enabled = False
         self.update_index("sync_enabled", self.sync_enabled)
@@ -1613,13 +1601,8 @@ class Realm(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy != "force":
-                msg = _("Delete realm '{realm_name}'?: ")
-                msg = msg.format(realm_name=self.name)
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
+        if not self.ask_delete_confirmation(force=force, callback=callback):
+            return callback.abort()
 
         # Delete object using parent class.
         return OTPmeObject.delete(self, verbose_level=verbose_level,

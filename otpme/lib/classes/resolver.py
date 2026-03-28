@@ -1866,30 +1866,17 @@ class Resolver(OTPmeObject):
         # Get all objects of this resolver.
         object_names = self.get_resolver_objects(object_types=object_types,
                                                 return_type="name")
-        if not force:
-            exception = []
-            if self.confirmation_policy != "force":
-                for object_type in object_names:
-                    object_count = len(object_names[object_type])
-                    msg = _("Resolver '{name}' added {count} {object_type}ss.")
-                    msg = msg.format(name=self.name, count=object_count, object_type=object_type)
-                    exception.append(msg)
-            if exception:
-                if self.confirmation_policy != "force":
-                    if self.confirmation_policy == "paranoid":
-                        msg = _("{exception_text}\nPlease type '{name}' to delete objects: ")
-                        msg = msg.format(exception_text=chr(10).join(exception), name=self.name)
-                        ask = callback.ask(msg)
-                        if ask != self.name:
-                            del_lock.release_lock()
-                            return callback.abort()
-                    else:
-                        msg = _("{exception_text}\nDelete objects?: ")
-                        msg = msg.format(exception_text=chr(10).join(exception))
-                        ask = callback.ask(msg)
-                        if str(ask).lower() != "y":
-                            del_lock.release_lock()
-                            return callback.abort()
+        exception_parts = []
+        if not force and self.confirmation_policy != "force":
+            for object_type in object_names:
+                object_count = len(object_names[object_type])
+                msg = _("Resolver '{name}' added {count} {object_type}ss.")
+                msg = msg.format(name=self.name, count=object_count, object_type=object_type)
+                exception_parts.append(msg)
+        exception = chr(10).join(exception_parts) if exception_parts else None
+        if not self.ask_delete_confirmation(force=force, exception=exception, callback=callback):
+            del_lock.release_lock()
+            return callback.abort()
 
         all_objects = self.get_resolver_objects(object_types=object_types,
                                                 return_type="uuid")
@@ -1973,19 +1960,18 @@ class Resolver(OTPmeObject):
         except LockWaitTimeout:
             return callback.error("This resolver is currently running.")
 
-        if not force:
-            exception = []
-            if self.confirmation_policy != "force":
-                if not delete_objects:
-                    all_objects = self.get_resolver_objects()
-                    for object_type in all_objects:
-                        object_count = len(all_objects[object_type])
-                        msg = _("Resolver '{name}' added {count}: {object_type}ss")
-                        msg = msg.format(name=self.name, count=object_count, object_type=object_type)
-                        exception.append(msg)
-            if exception:
+        if not force and self.confirmation_policy != "force":
+            exception_parts = []
+            if not delete_objects:
+                all_objects = self.get_resolver_objects()
+                for object_type in all_objects:
+                    object_count = len(all_objects[object_type])
+                    msg = _("Resolver '{name}' added {count}: {object_type}ss")
+                    msg = msg.format(name=self.name, count=object_count, object_type=object_type)
+                    exception_parts.append(msg)
+            if exception_parts:
                 msg = _("{exception_text}\nDelete resolver and all objects?: ")
-                msg = msg.format(exception_text=chr(10).join(exception))
+                msg = msg.format(exception_text=chr(10).join(exception_parts))
                 ask = callback.ask(msg)
                 if str(ask).lower() == "y":
                     delete_objects = True
@@ -1996,14 +1982,10 @@ class Resolver(OTPmeObject):
                     if str(ask).lower() != "y":
                         del_lock.release_lock()
                         return callback.abort()
-            else:
-                if self.confirmation_policy == "paranoid":
-                    msg = _("Delete resolver '{name}'?: ")
-                    msg = msg.format(name=self.name)
-                    ask = callback.ask(msg)
-                    if str(ask).lower() != "y":
-                        del_lock.release_lock()
-                        return callback.abort()
+            exception = chr(10).join(exception_parts) if exception_parts else None
+            if not self.ask_delete_confirmation(force=force, exception=exception, callback=callback):
+                del_lock.release_lock()
+                return callback.abort()
 
         delete_status = True
         if delete_objects:

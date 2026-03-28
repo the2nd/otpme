@@ -1125,57 +1125,31 @@ class Role(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            exception = ""
-            # List that will hold all tokens that uses this role.
-            token_list = []
-            # Get all tokens from this role.
-            for t_uuid in self.tokens:
-                token = backend.get_object(object_type="token", uuid=t_uuid)
-                if token:
-                    token_list.append(token.rel_path)
-                else:
-                    token_list.append(t_uuid)
-
-            if token_list:
-                msg = _("{exception}Role has member tokens: {token_list}\n")
-                exception = msg.format(exception=exception, token_list=', '.join(token_list))
-
-            # List that will hold all groups that uses this role.
-            accessgroup_list = self.get_access_groups()
-
-            if accessgroup_list:
-                msg = _("{exception}Role is member of this access groups: {accessgroup_list}\n")
-                exception = msg.format(exception=exception, accessgroup_list=', '.join(accessgroup_list))
-
-            if exception != "":
-                if self.confirmation_policy != "force":
-                    if self.confirmation_policy == "paranoid":
-                        msg = _("{exception}Please type '{role_name}' to delete object: ")
-                        msg = msg.format(exception=exception, role_name=self.name)
-                        answer = callback.ask(msg)
-                        if answer != self.name:
-                            return callback.abort()
-                    else:
-                        msg = _("{exception}Delete role '{role_name}'?: ")
-                        msg = msg.format(exception=exception, role_name=self.name)
-                        answer = callback.ask(msg)
-                        if answer.lower() != "y":
-                            return callback.abort()
+        exception_parts = []
+        # List that will hold all tokens that uses this role.
+        token_list = []
+        # Get all tokens from this role.
+        for t_uuid in self.tokens:
+            token = backend.get_object(object_type="token", uuid=t_uuid)
+            if token:
+                token_list.append(token.rel_path)
             else:
-                if self.confirmation_policy != "force":
-                    if self.confirmation_policy == "paranoid":
-                        msg = _("Please type '{role_name}' to delete object: ")
-                        msg = msg.format(role_name=self.name)
-                        answer = callback.ask(msg)
-                        if answer != self.name:
-                            return callback.abort()
-                    else:
-                        msg = _("Delete role '{role_name}'?: ")
-                        msg = msg.format(role_name=self.name)
-                        answer = callback.ask(msg)
-                        if answer.lower() != "y":
-                            return callback.abort()
+                token_list.append(t_uuid)
+
+        if token_list:
+            msg = _("Role has member tokens: {token_list}")
+            exception_parts.append(msg.format(token_list=', '.join(token_list)))
+
+        # List that will hold all groups that uses this role.
+        accessgroup_list = self.get_access_groups()
+
+        if accessgroup_list:
+            msg = _("Role is member of this access groups: {accessgroup_list}")
+            exception_parts.append(msg.format(accessgroup_list=', '.join(accessgroup_list)))
+
+        exception = chr(10).join(exception_parts) if exception_parts else None
+        if not self.ask_delete_confirmation(force=force, exception=exception, callback=callback):
+            return callback.abort()
 
         # Delete object using parent class.
         return OTPmeObject.delete(self, verbose_level=verbose_level,
@@ -1223,32 +1197,27 @@ class Role(OTPmeObject):
                 continue
             role_list.append(i)
 
-        if not force:
-            msg = ""
-            if acl_list:
-                msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan ACLs: {acl_list}\n")
-                msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, acl_list=','.join(acl_list))
+        msg = ""
+        if acl_list:
+            msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan ACLs: {acl_list}\n")
+            msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, acl_list=','.join(acl_list))
 
-            if policy_list:
-                msg = ""
-                if policy_list:
-                    msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan policies: {policy_list}\n")
-                    msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, policy_list=','.join(policy_list))
+        if policy_list:
+            msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan policies: {policy_list}\n")
+            msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, policy_list=','.join(policy_list))
 
-            if token_list:
-                msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan token UUIDs: {token_list}\n")
-                msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, token_list=','.join(token_list))
+        if token_list:
+            msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan token UUIDs: {token_list}\n")
+            msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, token_list=','.join(token_list))
 
-            if role_list:
-                msg = _("{msg}{object_type}|{object_name}: Found the following orphan role UUIDs: {role_list}\n")
-                msg = msg.format(msg=msg, object_type=self.type, object_name=self.name, role_list=','.join(role_list))
+        if role_list:
+            msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan role UUIDs: {role_list}\n")
+            msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, role_list=','.join(role_list))
 
-            if msg:
-                msg_part = _("{msg}Remove?: ")
-                msg_ask = msg_part.format(msg=msg)
-                answer = callback.ask(msg_ask)
-                if answer.lower() != "y":
-                    return callback.abort()
+        if msg:
+            msg = _("{msg}Remove?: ").format(msg=msg)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         object_changed = False
         if acl_list:

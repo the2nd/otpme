@@ -1692,18 +1692,8 @@ class Client(OTPmeClientObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                msg = f"Please type '{self.name}' to delete object: "
-                answer = callback.ask(msg)
-                if answer != self.name:
-                    return callback.abort()
-            else:
-                msg = _("Delete client '{client_name}'?: ")
-                msg = msg.format(client_name=self.name)
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
+        if not self.ask_delete_confirmation(force=force, callback=callback):
+            return callback.abort()
 
         # Delete object using parent class.
         result = super(Client, self).delete(verbose_level=verbose_level,

@@ -887,11 +887,9 @@ class SshToken(Token):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask(_("Enable second factor token?: "))
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Enable second factor token?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.second_factor_token_enabled = True
         self.update_index('second_factor_token_enabled', True)
@@ -924,11 +922,9 @@ class SshToken(Token):
             except Exception:
                 return callback.error()
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask(_("Disable second factor token?: "))
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Disable second factor token?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         self.second_factor_token_enabled = False
         self.update_index('second_factor_token_enabled', False)

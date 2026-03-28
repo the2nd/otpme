@@ -350,7 +350,6 @@ def register_config_parameters():
                     'site',
                     'unit',
                     'token',
-                    'script',
                     ]
     # With this setting you can configure when OTPme should ask user for confirmation
     # (e.g. when deleting a user)
@@ -371,7 +370,14 @@ def register_config_parameters():
                                     default_value="paranoid",
                                     setter=confirmation_policy_setter,
                                     valid_values=valid_confirmation_polies,
-                                    object_types=config.tree_object_types)
+                                    object_types=object_types)
+    # Object types our config parameters are valid for.
+    object_types = [
+                    'site',
+                    'unit',
+                    'token',
+                    'script',
+                    ]
     # With the auto sign parameter enabled the user gets offered to sign the object she changes.
     config.register_config_parameter(name="auto_sign",
                                     ctype=bool,
@@ -2633,8 +2639,43 @@ class OTPmeObject(OTPmeBaseObject):
     @property
     def confirmation_policy(self):
         """ The confirmation policy to apply for user requests. """
-        confirmation_policy = self.get_config_parameter("confirmation_policy")
+        if config.auth_token:
+            confirmation_policy = config.auth_token.get_config_parameter("confirmation_policy")
+        else:
+            confirmation_policy = self.get_config_parameter("confirmation_policy")
         return confirmation_policy
+
+    def ask_delete_confirmation(self, force=False, exception=None,
+        callback=default_callback):
+        """ Ask for delete confirmation based on confirmation_policy.
+            Always requires typing the object name.
+        """
+        if force:
+            return True
+        if self.confirmation_policy == "force":
+            return True
+        if exception:
+            msg = _("{exception}\nPlease type '{name}' to delete object: ")
+            msg = msg.format(exception=exception, name=self.name)
+        else:
+            msg = _("Please type '{name}' to delete object: ")
+            msg = msg.format(name=self.name)
+        answer = callback.ask(msg)
+        if answer != self.name:
+            return False
+        return True
+
+    def ask_change_confirmation(self, msg, force=False,
+        callback=default_callback):
+        """ Ask for change confirmation in paranoid mode. """
+        if force:
+            return True
+        if self.confirmation_policy != "paranoid":
+            return True
+        answer = callback.ask(msg)
+        if str(answer).lower() != "y":
+            return False
+        return True
 
     @property
     def auto_sign(self):
@@ -3876,10 +3917,8 @@ class OTPmeObject(OTPmeBaseObject):
                     sign_info = pprint.pformat(sign_info)
                     msg = _("Remove signature?\n{user}:\n{signature}\n[y/n] ")
                     msg = msg.format(user=user_oid, signature=sign_info)
-                    if not force:
-                        answer = callback.ask(msg)
-                        if answer.lower() != "y":
-                            continue
+                    if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                        continue
                     token.del_sign(user_uuid=user_uuid,
                                     tags=signature.tags,
                                     sign_id=sign_id,
@@ -5255,9 +5294,8 @@ class OTPmeObject(OTPmeBaseObject):
             msg = _("{object_type} does not have object class '{object_class}' assigned.")
             msg = msg.format(object_type=object_type, object_class=object_class)
             return callback.error(msg)
-        if not force:
-            if self.confirmation_policy == "force":
-                force = True
+        if self.confirmation_policy == "force":
+            force = True
 
         extension = None
         for e in self._extensions:
@@ -5277,12 +5315,11 @@ class OTPmeObject(OTPmeBaseObject):
                                         callback=callback)
             if force:
                 break
-
-            if not force:
-                answer = callback.ask("Delete object class?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
-                force = True
+            msg = _("Delete object class '{object_class}'?: ")
+            msg = msg.format(object_class=object_class)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
+            force = True
 
         self.object_classes.remove(object_class)
 
@@ -5429,13 +5466,10 @@ class OTPmeObject(OTPmeBaseObject):
             msg = msg.format(object_type=object_type)
             return callback.error(msg)
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                msg = _("Enable {object_type} '{object_name}'?: ")
-                msg = msg.format(object_type=self.type, object_name=self.name)
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Enable {object_type} '{object_name}'?: ")
+        msg = msg.format(object_type=self.type, object_name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -5504,13 +5538,10 @@ class OTPmeObject(OTPmeBaseObject):
             msg = ("Cannot disable base accessgroup.")
             return callback.error(msg)
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                msg = _("Disable {type} '{name}'?: ")
-                msg = msg.format(type=self.type, name=self.name)
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Disable {type} '{name}'?: ")
+        msg = msg.format(type=self.type, name=self.name)
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -5552,11 +5583,9 @@ class OTPmeObject(OTPmeBaseObject):
         if self.acl_inheritance_enabled:
             return callback.error("ACL inheritance already enabled.")
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Enable ACL inheritance?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Enable ACL inheritance?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -5598,11 +5627,9 @@ class OTPmeObject(OTPmeBaseObject):
         if not self.acl_inheritance_enabled:
             return callback.error("ACL inheritance already disabled.")
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Disable ACL inheritance?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Disable ACL inheritance?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -8376,15 +8403,11 @@ class OTPmeObject(OTPmeBaseObject):
         """ Remove orphan ACLs. """
         acl_list = self.get_orphan_acls()
 
-        if not force:
-            msg = None
-            if acl_list:
-                msg = _("{object_type}|{object_name}: Found the following orphan ACLs: {acl_list}\nRemove?: ")
-                msg = msg.format(object_type=self.type, object_name=self.name, acl_list=','.join(acl_list))
-            if msg:
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
+        if acl_list:
+            msg = _("{object_type}|{object_name}: Found the following orphan ACLs: {acl_list}\nRemove?: ")
+            msg = msg.format(object_type=self.type, object_name=self.name, acl_list=','.join(acl_list))
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         object_changed = False
         for i in acl_list:
@@ -8426,15 +8449,11 @@ class OTPmeObject(OTPmeBaseObject):
         """ Remove orphan policies. """
         policy_list = self.get_orphan_policies()
 
-        if not force:
-            msg = ""
-            if policy_list:
-                msg = _("{object_type}|{object_name}: Found the following orphan policies: {policy_list}\nRemove?: ")
-                msg = msg.format(object_type=self.type, object_name=self.name, policy_list=','.join(policy_list))
-            if msg:
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
+        if policy_list:
+            msg = _("{object_type}|{object_name}: Found the following orphan policies: {policy_list}\nRemove?: ")
+            msg = msg.format(object_type=self.type, object_name=self.name, policy_list=','.join(policy_list))
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         object_changed = False
         for i in policy_list:
@@ -8482,16 +8501,11 @@ class OTPmeObject(OTPmeBaseObject):
 
         signers_list = self.get_orphan_signatures()
 
-        if not force:
-            msg = None
-            if signers_list:
-                msg = _("{object_type}|{object_name}: Found the following orphan signer UUIDs: {signers_list}\nRemove?: ")
-                msg = msg.format(object_type=self.type, object_name=self.name, signers_list=','.join(signers_list))
-
-            if msg:
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
-                    return callback.abort()
+        if signers_list:
+            msg = _("{object_type}|{object_name}: Found the following orphan signer UUIDs: {signers_list}\nRemove?: ")
+            msg = msg.format(object_type=self.type, object_name=self.name, signers_list=','.join(signers_list))
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         object_changed = False
         for i in signers_list:
@@ -8603,8 +8617,7 @@ class OTPmeObject(OTPmeBaseObject):
         if warn_if_exists and not append:
             if parameter in self.config_params:
                 msg = _("Warning, parameter already set. Override?: ")
-                answer = callback.ask(msg)
-                if answer.lower() != "y":
+                if not self.ask_change_confirmation(msg, force=False, callback=callback):
                     return callback.abort()
         if value is None:
             # Try to get the default value.

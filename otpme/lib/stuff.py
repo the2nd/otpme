@@ -193,17 +193,6 @@ def gen_md5(string):
     md5sum = hashlib.md5(string).hexdigest()
     return md5sum
 
-def gen_xxhash(string):
-    """ Generate xxhash hash from string. """
-    import xxhash
-    if isinstance(string, str):
-        string = string.encode("utf-8")
-    # FIXME: use xx64() on 64bit hosts??
-    x = xxhash.xxh32()
-    x.update(string)
-    xx_hash = x.hexdigest()
-    return xx_hash
-
 def gen_sha512(string):
     """ Generate SHA512 hash from string. """
     import hashlib
@@ -241,6 +230,25 @@ def gen_secret(len=32, encoding="hex"):
             msg = msg.format(encoding=encoding)
             raise OTPmeException(msg)
     return secret
+
+def parse_allowed_chars(chars_spec):
+    """ Parse an allowed-chars spec with ranges (e.g. '0-9A-Za-z')
+        and escapes (e.g. '\\-') into a set of characters. """
+    # This function was written by claude code.
+    allowed = set()
+    i = 0
+    while i < len(chars_spec):
+        if chars_spec[i] == '\\' and i + 1 < len(chars_spec):
+            allowed.add(chars_spec[i + 1])
+            i += 2
+        elif (i + 2 < len(chars_spec) and chars_spec[i + 1] == '-'):
+            for c in range(ord(chars_spec[i]), ord(chars_spec[i + 2]) + 1):
+                allowed.add(chr(c))
+            i += 3
+        else:
+            allowed.add(chars_spec[i])
+            i += 1
+    return allowed
 
 def gen_password(len=16, capital=True, numbers=True, symbols=False,
     secure=False, ambiguous=False, exclude_chars=None, count=1):

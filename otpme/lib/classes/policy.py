@@ -622,48 +622,27 @@ class Policy(OTPmeObject):
             except Exception as e:
                 return callback.error()
 
-        if not force:
-            exception = []
-            if self.confirmation_policy != "force":
-                policy_users = backend.search(attribute="policy",
-                                            value=self.uuid,
-                                            object_type="user",
-                                            return_type="name")
-                policy_tokens = backend.search(attribute="policy",
-                                            value=self.uuid,
-                                            object_type="token",
-                                            return_type="rel_path")
-                if policy_users:
-                     msg = _("Policy '{name}' is assigned to the following users: {users}")
-                     msg = msg.format(name=self.name, users=', '.join(policy_users))
-                     exception.append(msg)
+        exception_parts = []
+        if not force and self.confirmation_policy != "force":
+            policy_users = backend.search(attribute="policy",
+                                        value=self.uuid,
+                                        object_type="user",
+                                        return_type="name")
+            policy_tokens = backend.search(attribute="policy",
+                                        value=self.uuid,
+                                        object_type="token",
+                                        return_type="rel_path")
+            if policy_users:
+                 msg = _("Policy '{name}' is assigned to the following users: {users}")
+                 exception_parts.append(msg.format(name=self.name, users=', '.join(policy_users)))
 
-                if policy_tokens:
-                     msg = _("Policy '{name}' is assigned to the following tokens: {tokens}")
-                     msg = msg.format(name=self.name, tokens=', '.join(policy_tokens))
-                     exception.append(msg)
+            if policy_tokens:
+                 msg = _("Policy '{name}' is assigned to the following tokens: {tokens}")
+                 exception_parts.append(msg.format(name=self.name, tokens=', '.join(policy_tokens)))
 
-            if exception:
-                if self.confirmation_policy == "paranoid":
-                    msg = _("{exceptions}\nPlease type '{name}' to delete object: ")
-                    msg = msg.format(exceptions=chr(10).join(exception), name=self.name)
-                    answer = callback.ask(msg)
-                    if answer != self.name:
-                        return callback.abort()
-            else:
-                if self.confirmation_policy != "force":
-                    if self.confirmation_policy == "paranoid":
-                        msg = _("Please type '{name}' to delete object: ")
-                        msg = msg.format(name=self.name)
-                        answer = callback.ask(msg)
-                        if answer != self.name:
-                            return callback.abort()
-                    else:
-                        msg = _("Delete policy '{name}'?: ")
-                        msg = msg.format(name=self.name)
-                        ask = callback.ask(msg)
-                        if str(ask).lower() != "y":
-                            return callback.abort()
+        exception = chr(10).join(exception_parts) if exception_parts else None
+        if not self.ask_delete_confirmation(force=force, exception=exception, callback=callback):
+            return callback.abort()
 
         # Delete object using parent class.
         return OTPmeObject.delete(self, verbose_level=verbose_level,

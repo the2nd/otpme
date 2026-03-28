@@ -1813,28 +1813,9 @@ class AccessGroup(OTPmeObject):
                 msg = _("{exception}Group '{name}' is used by this tokens: {token_list}\n")
                 exception = msg.format(exception=exception, name=self.name, token_list=', '.join(token_list))
 
-        if exception != "":
-            if self.confirmation_policy != "force":
-                if self.confirmation_policy == "paranoid":
-                    msg = _("Please type '{name}' to delete object: ")
-                    msg = msg.format(name=self.name)
-                    answer = callback.ask(msg)
-                    if answer != self.name:
-                        return callback.abort()
-                else:
-                    msg = _("{exception}Delete accessgroup? ")
-                    msg = msg.format(exception=exception)
-                    answer = callback.ask(msg)
-                    if answer.lower() != "y":
-                        return callback.abort()
-        else:
-            if not force:
-                if self.confirmation_policy == "paranoid":
-                    msg = _("Please type '{name}' to delete object: ")
-                    msg = msg.format(name=self.name)
-                    answer = callback.ask(msg)
-                    if answer != self.name:
-                        return callback.abort()
+        exception_str = exception if exception != "" else None
+        if not self.ask_delete_confirmation(force=force, exception=exception_str, callback=callback):
+            return callback.abort()
 
         # Remove group from parent groups.
         for parent_group in parent_groups:
@@ -1910,34 +1891,26 @@ class AccessGroup(OTPmeObject):
             if not role_oid:
                 role_list.append(i)
 
-        if not force:
-            msg = ""
-            if acl_list:
-                orphan_msg = _("{msg}{type}|{name}: Found the following orphan ACLs: {acl_list}\n")
-                msg += orphan_msg.format(msg=msg, type=self.type, name=self.name, acl_list=','.join(acl_list))
-
-            if policy_list:
-                orphan_msg = _("{msg}{type}|{name}: Found the following orphan policies: {policy_list}\n")
-                msg += orphan_msg.format(msg=msg, type=self.type, name=self.name, policy_list=','.join(policy_list))
-
-            if token_list:
-                orphan_msg = _("{msg}{type}|{name}: Found the following orphan token UUIDs: {token_list}\n")
-                msg += orphan_msg.format(msg=msg, type=self.type, name=self.name, token_list=','.join(token_list))
-
-            if role_list:
-                orphan_msg = _("{msg}{type}|{name}: Found the following orphan role UUIDs: {role_list}\n")
-                msg += orphan_msg.format(msg=msg, type=self.type, name=self.name, role_list=','.join(role_list))
-
-            if group_list:
-                orphan_msg = _("{msg}{type}|{name}: Found the following orphan group UUIDs: {group_list}\n")
-                msg += orphan_msg.format(msg=msg, type=self.type, name=self.name, group_list=','.join(group_list))
-
-            if msg:
-                ask_msg = _("{msg}Remove? ")
-                ask_msg = ask_msg.format(msg=msg)
-                answer = callback.ask(ask_msg)
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = ""
+        if acl_list:
+            msg += _("{type}|{name}: Found the following orphan ACLs: {acl_list}\n").format(
+                type=self.type, name=self.name, acl_list=','.join(acl_list))
+        if policy_list:
+            msg += _("{type}|{name}: Found the following orphan policies: {policy_list}\n").format(
+                type=self.type, name=self.name, policy_list=','.join(policy_list))
+        if token_list:
+            msg += _("{type}|{name}: Found the following orphan token UUIDs: {token_list}\n").format(
+                type=self.type, name=self.name, token_list=','.join(token_list))
+        if role_list:
+            msg += _("{type}|{name}: Found the following orphan role UUIDs: {role_list}\n").format(
+                type=self.type, name=self.name, role_list=','.join(role_list))
+        if group_list:
+            msg += _("{type}|{name}: Found the following orphan group UUIDs: {group_list}\n").format(
+                type=self.type, name=self.name, group_list=','.join(group_list))
+        if msg:
+            msg = _("{msg}Remove? ").format(msg=msg)
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.abort()
 
         object_changed = False
         if acl_list:

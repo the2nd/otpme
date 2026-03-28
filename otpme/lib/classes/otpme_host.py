@@ -1246,20 +1246,8 @@ class OTPmeHost(OTPmeClientObject):
                     msg = msg.format(name=self.name)
                     return callback.error(msg, exception=PermissionDenied)
 
-        if not force:
-            if self.confirmation_policy != "force":
-                if self.confirmation_policy == "paranoid":
-                    msg = _("Please type '{name}' to delete object: ")
-                    msg = msg.format(name=self.name)
-                    answer = callback.ask(msg)
-                    if answer != self.name:
-                        return callback.abort()
-                else:
-                    msg = _("Delete {host_type} '{name}'?: ")
-                    msg = msg.format(host_type=self.type, name=self.name)
-                    answer = callback.ask(msg)
-                    if answer.lower() != "y":
-                        return callback.abort()
+        if not self.ask_delete_confirmation(force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:

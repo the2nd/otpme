@@ -1335,28 +1335,23 @@ class Session(OTPmeLockObject):
                 s = result[0]
                 child_sessions[s.name] = s
 
-        if not force:
-            if child_sessions:
-                if config.auth_token and config.auth_token.confirmation_policy != "force":
-                    if recursive:
-                        msg = _("Session '{session_name}' has child sessions:\n{child_sessions}\n Delete session and all child sessions?: ")
-                        msg = msg.format(session_name=self.name, child_sessions=chr(10).join(child_sessions))
-                        answer = callback.ask(msg)
-                        if answer.lower() != "y":
-                            return callback.abort()
-                    else:
-                        msg = _("Session '{session_name}' has child sessions:\n{child_sessions}\n Delete session AND LEAVE child sessions?: ")
-                        msg = msg.format(session_name=self.name, child_sessions=chr(10).join(child_sessions))
-                        answer = callback.ask(msg)
-                        if answer.lower() != "y":
-                            return callback.abort()
-            else:
-                if config.auth_token and config.auth_token.confirmation_policy == "paranoid":
-                    msg = _("Delete session '{session_name}'?: ")
-                    msg = msg.format(session_name=self.name)
-                    answer = callback.ask(msg)
-                    if answer.lower() != "y":
-                        return callback.abort()
+        if not force and config.auth_token:
+            _cp = config.auth_token.confirmation_policy
+            if child_sessions and _cp != "force":
+                if recursive:
+                    msg = _("Session '{session_name}' has child sessions:\n{child_sessions}\n Delete session and all child sessions?: ")
+                else:
+                    msg = _("Session '{session_name}' has child sessions:\n{child_sessions}\n Delete session AND LEAVE child sessions?: ")
+                msg = msg.format(session_name=self.name, child_sessions=chr(10).join(child_sessions))
+                answer = callback.ask(msg)
+                if answer.lower() != "y":
+                    return callback.abort()
+            elif not child_sessions and _cp == "paranoid":
+                msg = _("Delete session '{session_name}'?: ")
+                msg = msg.format(session_name=self.name)
+                answer = callback.ask(msg)
+                if answer.lower() != "y":
+                    return callback.abort()
 
         # Remove child sessions.
         if recursive:

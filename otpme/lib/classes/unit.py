@@ -1224,35 +1224,9 @@ class Unit(OTPmeObject):
                 else:
                     exception = x
 
-        if not force:
-            if exception != "":
-                if self.confirmation_policy != "force":
-                    if self.confirmation_policy != "paranoid":
-                        msg = _("{exception}\nPlease type '{unit_name}' to delete object: ")
-                        msg = msg.format(exception=exception, unit_name=self.name)
-                        answer = callback.ask(msg)
-                        if answer != self.name:
-                            return callback.abort()
-                    else:
-                        msg = _("{exception}\nDelete unit?: ")
-                        msg = msg.format(exception=exception)
-                        answer = callback.ask(msg)
-                        if answer.lower() != "y":
-                            return callback.abort()
-            else:
-                if self.confirmation_policy != "force":
-                    if self.confirmation_policy != "paranoid":
-                        msg = _("Please type '{unit_name}' to delete object: ")
-                        msg = msg.format(unit_name=self.name)
-                        answer = callback.ask(msg)
-                        if answer != self.name:
-                            return callback.abort()
-                    else:
-                        msg = _("Delete unit '{unit_name}'?: ")
-                        msg = msg.format(unit_name=self.name)
-                        answer = callback.ask(msg)
-                        if answer.lower() != "y":
-                            return callback.abort()
+        exception_str = exception if exception != "" else None
+        if not self.ask_delete_confirmation(force=force, exception=exception_str, callback=callback):
+            return callback.abort()
 
         # Remove member objects.
         members = self.get_members(return_type="instance")
@@ -1305,15 +1279,11 @@ class Unit(OTPmeObject):
 
         remove_orphans = True
         object_changed = False
-        if not force:
-            msg = ""
-            if acl_list:
-                msg = _("{obj_type}{obj_name}: Found the following orphan ACLs: {acl_list}\n")
-                msg = msg.format(obj_type=self.type, obj_name=self.name, acl_list=','.join(acl_list))
-            if msg:
-                answer = callback.ask(f"{msg}Remove?: ")
-                if answer.lower() != "y":
-                    remove_orphans = False
+        if acl_list:
+            msg = _("{obj_type}{obj_name}: Found the following orphan ACLs: {acl_list}\nRemove?: ")
+            msg = msg.format(obj_type=self.type, obj_name=self.name, acl_list=','.join(acl_list))
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                remove_orphans = False
 
         if remove_orphans:
             if self.remove_orphan_acls(force=True,

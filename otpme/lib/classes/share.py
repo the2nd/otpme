@@ -1352,11 +1352,9 @@ class Share(OTPmeObject):
         if self.read_only:
             return callback.error(_("Share readonly already enabled."))
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Make share readonly?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Make share readonly?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:
@@ -1396,11 +1394,9 @@ class Share(OTPmeObject):
         if not self.read_only:
             return callback.error(_("Share readonly already disabled."))
 
-        if not force:
-            if self.confirmation_policy == "paranoid":
-                answer = callback.ask("Make share read-write?: ")
-                if answer.lower() != "y":
-                    return callback.abort()
+        msg = _("Make share read-write?: ")
+        if not self.ask_change_confirmation(msg, force=force, callback=callback):
+            return callback.abort()
 
         if run_policies:
             try:

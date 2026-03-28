@@ -430,16 +430,18 @@ overridden locally. The column *Object types* lists on which object
 types each parameter can be set.
 
 **otpme-site config mysite parameter \[*value*\]**  
-**otpme-site config -d mysite parameter**
+**otpme-site config -d mysite parameter \[*value*\]**
 
 ## General
 
 **confirmation_policy (str, default: paranoid)**  
 Controls when OTPme asks for user confirmation. Valid values:
-**paranoid** (ask for almost anything), **normal** (ask in important
-cases, e.g. when deleting an object will also delete child objects),
-**force** (never ask for confirmation).  
-Object types: all tree objects
+**paranoid** (ask for confirmation on all changes; deleting requires
+typing the object name), **normal** (only ask when deleting objects;
+requires typing the object name to confirm), **force** (never ask for
+confirmation). The **force=True** parameter in API calls also skips all
+confirmations regardless of the policy.  
+Object types: site, unit, token
 
 **auto_sign (bool, default: false)**  
 If enabled, the user is offered to sign the object after each change.  

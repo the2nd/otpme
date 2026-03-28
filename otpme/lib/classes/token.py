@@ -3472,16 +3472,14 @@ class Token(OTPmeObject):
             if new_owner.default_token == x_token.uuid:
                 is_default_token = True
             if not replace:
-                if not force:
-                    if is_default_token:
-                        msg = _("Override default token: {token_path}: ")
-                        msg = msg.format(token_path=x_token.rel_path)
-                    else:
-                        msg = _("Override existing token: {token_path}: ")
-                        msg = msg.format(token_path=x_token.rel_path)
-                    answer = str(callback.ask(msg))
-                    if answer.lower() != "y":
-                        return callback.abort()
+                if is_default_token:
+                    msg = _("Override default token: {token_path}?: ")
+                    msg = msg.format(token_path=x_token.rel_path)
+                else:
+                    msg = _("Override existing token: {token_path}?: ")
+                    msg = msg.format(token_path=x_token.rel_path)
+                if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                    return callback.abort()
             old_token_uuid = x_token.uuid
             # Delete object from backend instead of calling del_token()
             # to preserve token roles etc.
@@ -3669,36 +3667,9 @@ class Token(OTPmeObject):
              msg = msg.format(token_name=self.name, access_groups=', '.join(_token_accessgroups))
              exception.append(msg)
 
-        if self.confirmation_policy == "force":
-            force = True
-
-        if not force:
-            if exception:
-                if self.confirmation_policy == "paranoid":
-                    msg = _("{exception_list}\nPlease type '{token_name}' to delete object: ")
-                    msg = msg.format(exception_list=chr(10).join(exception), token_name=self.name)
-                    response = callback.ask(msg)
-                    if response != self.name:
-                        return callback.abort()
-                else:
-                    msg = _("{exception_list}\nDelete token?: ")
-                    msg = msg.format(exception_list=chr(10).join(exception))
-                    response = callback.ask(msg)
-                    if str(response).lower() != "y":
-                        return callback.abort()
-            else:
-                if self.confirmation_policy == "paranoid":
-                    msg = _("Please type '{token_name}' to delete object: ")
-                    msg = msg.format(token_name=self.name)
-                    response = callback.ask(msg)
-                    if response != self.name:
-                        return callback.abort()
-                else:
-                    msg = _("Delete token '{token_name}'?: ")
-                    msg = msg.format(token_name=self.name)
-                    response = callback.ask(msg)
-                    if str(response).lower() != "y":
-                        return callback.abort()
+        exception_str = chr(10).join(exception) if exception else None
+        if not self.ask_delete_confirmation(force=force, exception=exception_str, callback=callback):
+            return callback.abort()
 
         # Our parent object is the token owner which may already be locked
         # if this is a token add/del. So we have to acquire no lock.

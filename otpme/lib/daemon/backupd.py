@@ -260,11 +260,12 @@ class BackupDaemon(OTPmeDaemon):
             self.logger.warning(log_msg)
             multiprocessing.cleanup(keep_queues=True)
             sys.exit(1)
+        finally:
+            o.last_backup = backup_start_time
+            o._write(update_last_modified=False,
+                    update_last_modified_by=False)
         if backup_script:
             self.run_backup_script(backup_script, backup_object, "post")
-        o.last_backup = backup_start_time
-        o._write(update_last_modified=False,
-                update_last_modified_by=False)
         multiprocessing.cleanup(keep_queues=True)
         sys.exit()
 

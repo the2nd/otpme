@@ -307,11 +307,11 @@ class OathToken(Token):
                 callback.send(msg)
                 return callback.error()
         else:
-            if pre and not force:
+            if pre:
                 msg = _("WARNING: Changing the secret requires a re-deployment of the token.")
                 callback.send(msg)
-                answer = callback.ask(_("Change token secret?: "))
-                if answer.lower() == "y":
+                msg = _("Change token secret?: ")
+                if self.ask_change_confirmation(msg, force=force, callback=callback):
                     return callback.ok()
                 return callback.error()
             if not pre:
@@ -349,14 +349,11 @@ class OathToken(Token):
             return callback.ok()
 
         if self.mode == "mode2":
-            if not force:
-                msg = _("WARNING: Changing the PIN of a token in mode2 requires a re-deployment of the token.")
-                callback.send(msg)
-                answer = callback.ask(_("Change token PIN?: "))
-                if answer.lower() == "y":
-                    return callback.ok()
-                else:
-                    return callback.error()
+            msg = _("WARNING: Changing the PIN of a token in mode2 requires a re-deployment of the token.")
+            callback.send(msg)
+            msg = _("Change token PIN?: ")
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.error()
             self.server_secret = stuff.gen_secret(self.secret_len, "base32")
             token_secret = self.get_secret(pin=pin,
                                         encoding=self.secret_encoding,
@@ -368,14 +365,11 @@ class OathToken(Token):
             callback.send(msg)
 
         elif self.server_secret:
-            if not force:
-                msg = _("WARNING: This token was previously used in mode2. Changing the PIN requires a re-deployment when changing back to mode2.")
-                callback.send(msg)
-                answer = callback.ask(_("Change token PIN?: "))
-                if answer.lower() == "y":
-                    return callback.ok()
-                else:
-                    return callback.error()
+            msg = _("WARNING: This token was previously used in mode2. Changing the PIN requires a re-deployment when changing back to mode2.")
+            callback.send(msg)
+            msg = _("Change token PIN?: ")
+            if not self.ask_change_confirmation(msg, force=force, callback=callback):
+                return callback.error()
             self.server_secret = None
 
         # Update PIN length.

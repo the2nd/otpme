@@ -24,9 +24,12 @@ parameters at site or unit level.
 
 ## Share Management
 
-**add \[**--force-group** *group*\] \[**--crypt**\] \[**--no-key-gen**\] \[**--block-size** *size*\] \[**--key-len** *len*\] *share***  
-Create a new share. Use **--crypt** to enable encryption,
-**--force-group** to set forced group.
+**add \[**--force-group** *group*\] \[**--force-directory-mode** *mode*\] \[**--force-create-mode** *mode*\] \[**--crypt**\] \[**--no-key-gen**\] \[**--block-size** *size*\] \[**--key-len** *len*\] \[**--restore** *restore_share*\] \[**--restore-token** *token*\] *share***  
+Create a new share. Use **--force-group** to set forced group,
+**--force-directory-mode** and **--force-create-mode** to set
+permissions for new directories and files. Use **--crypt** to enable
+encryption, **--restore** to add a restore share and **--restore-token**
+for encrypted restore shares.
 
 **del *share***  
 Delete a share.
@@ -190,6 +193,12 @@ Remove orphaned object references.
 **--force-group *GROUP***  
 Force group for the share.
 
+**--force-directory-mode *MODE***  
+Force directory creation mode.
+
+**--force-create-mode *MODE***  
+Force file creation mode.
+
 **--crypt**  
 Enable encryption for the share.
 
@@ -201,6 +210,12 @@ Encrypted share block size (default 4096).
 
 **--key-len *LENGTH***  
 AES key length.
+
+**--restore *RESTORE_SHARE***  
+Add restore share.
+
+**--restore-token *TOKEN***  
+Add token restore share.
 
 ## Display Options
 

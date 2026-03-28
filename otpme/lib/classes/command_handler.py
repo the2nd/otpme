@@ -1603,6 +1603,7 @@ class CommandHandler(object):
             sum_stored = sum(s.get('stored_bytes', 0) for s in snaps)
             print("-" * 160)
             print(f"{'TOTAL':<30}  {total_files:>7}  {total_inodes:>7}  {_format_size(sum_data):>10}  {_format_size(sum_stored):>10}")
+            print(f"\n{len(snaps)} snapshot(s)")
 
     def list_backup_snapshot(self, backup_object, snap_name, path=None, full_path=False, recursive=False):
         from otpme.lib.classes.backup import BackupClient
