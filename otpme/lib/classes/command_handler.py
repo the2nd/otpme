@@ -1135,6 +1135,7 @@ class CommandHandler(object):
 
     def restore_object(self, restore_file):
         from otpme.lib import filetools
+        register_module("otpme.lib.backup")
         backend.init()
         self.init()
         file_content = filetools.read_file(restore_file)

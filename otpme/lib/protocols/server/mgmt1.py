@@ -1994,11 +1994,39 @@ class OTPmeMgmtP1(OTPmeServer1):
                 message = _("You need to be admin to run this command.")
                 return self.build_response(status, message)
             try:
-                object_data = command_args['object_data']
+                object_data = command_args.pop('object_data')
             except:
                 message = "MGMT_INCOMPLETE_COMMAND"
                 status = False
                 return self.build_response(status, message)
+
+            try:
+                _args = command_map['backup']['exists']['restore_object']['args']
+            except KeyError:
+                _args = []
+
+            try:
+                _opt_args = command_map['backup']['exists']['restore_object']['oargs']
+            except KeyError:
+                _opt_args = []
+
+            try:
+                job_type = command_map['backup']['exists']['restore_object']['job_type']
+            except:
+                job_type = "thread"
+
+            if job_type == "thread":
+                job_thread = True
+                job_process = False
+            elif job_type == "process":
+                job_process = True
+                job_thread = False
+            elif job_type is None:
+                job_process = False
+            else:
+                msg = _("Unknown job type: {type}")
+                msg = msg.format(type=job_type)
+                raise OTPmeException(msg)
 
             args = {'object_data':object_data}
             try:
@@ -2006,8 +2034,9 @@ class OTPmeMgmtP1(OTPmeServer1):
                 response = self.start_job(name="restore_object",
                                     target_method=backup.restore_object,
                                     args=args, command_args=command_args,
-                                    process=True,
-                                    thread=False)
+                                    _args=_args, _opt_args=_opt_args,
+                                    process=job_process,
+                                    thread=job_thread)
             except Exception as e:
                 config.raise_exception()
                 response = _("Error running command: {command}: {error}")

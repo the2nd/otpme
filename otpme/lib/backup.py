@@ -21,10 +21,29 @@ except:
 from otpme.lib import oid
 from otpme.lib import config
 from otpme.lib import backend
-
+from otpme.lib.protocols.utils import register_commands
 from otpme.lib.exceptions import *
 
 default_callback = config.get_callback()
+
+commands = {
+    'restore_object'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'args'              : [
+                                        'object_data',
+                                        ],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    }
+
+REGISTER_BEFORE = []
+REGISTER_AFTER = []
+
+def register():
+    register_commands("backup", commands)
 
 def backup_object(object_id, decrypt=False):
     x_oc = backend.read_config(object_id, decrypt=decrypt)
