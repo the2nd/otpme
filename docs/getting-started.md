@@ -1020,3 +1020,27 @@ To permanently remove all objects from the trash:
 ```bash
 otpme-trash empty
 ```
+
+## 27. Backup and Restore
+
+OTPme includes a backup tool that exports all OTPme data (excluding trash)
+to a given directory. Additionally you must back up `/etc/otpme` to make a
+full restore possible:
+
+```bash
+otpme-tool backup -d /var/backups/otpme
+```
+
+To perform a disaster recovery, make sure `/etc/otpme` is restored first,
+then run:
+
+```bash
+otpme-tool restore -d /var/backups/otpme/<snapshot>
+```
+
+If you only need to restore a single object, specify the backup file
+directly:
+
+```bash
+otpme-tool restore -f /var/backups/otpme/<snapshot>/user/realm+user1.json
+```
