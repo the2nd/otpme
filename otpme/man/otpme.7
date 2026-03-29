@@ -61,7 +61,7 @@ Join daemon. Handles the process of joining a host or node to an OTPme site.
 LDAP daemon. Provides an LDAP interface so that external services can authenticate users and query directory data against OTPme.
 .TP
 .B httpd
-HTTP daemon. Serves the web management interface.
+HTTP daemon. Serves the web SSO interface.
 .TP
 .B fsd
 File server daemon. Handles file share access for FUSE-mounted OTPme shares.
@@ -137,6 +137,9 @@ Tokens are authentication credentials assigned to users. OTPme supports diverse 
 .B YubiKey
 - HMAC-SHA1 challenge-response
 .IP \(bu 2
+.B YubiKey PIV
+- PIV smart card authentication using a YubiKey. The private key stays on the YubiKey and is used for challenge-response authentication. Can also be used for SSH key management and file encryption/decryption.
+.IP \(bu 2
 .B Link
 - Reference to another user's token
 .IP \(bu 2
@@ -159,9 +162,9 @@ There are built-in default roles:
 .B REALM_USER
 and
 .B SITE_ADMIN.
-By default, every user's default token is added to the REALM_USER role. This allows the user to log in to the realm and automatically makes them a member of the "realmusers" group and the corresponding site group. Adding a "user/token" to the SITE_ADMIN role grants site administrator privileges.
+By default, every user's default token is added to the REALM_USER role. This allows the user to log in to the realm and automatically makes them a member of the "realmusers" group. Adding a "user/token" to the SITE_ADMIN role grants site administrator privileges.
 .PP
-A good example of how roles work: a role "wlan" grants WLAN access, and a role "employee" is added to the role "wlan". Every employee automatically gets WLAN access. A role "marketing" can then be added to the role "employee" and also to the group "marketing". Adding a marketing user's default token to the role "marketing" gives them both WLAN access and membership in the marketing group. If all employees should later get access to an additional service (e.g. webmail), only the role "employee" needs to be added to the corresponding access group (see Access Groups) and the permission is granted for all employees.
+A good example of how roles work: a role "groupware" grants access to the groupware (CalDAV, CardDAV, IMAP), and a role "employee" is added to the role "groupware". Every employee automatically gets groupware access. A role "marketing" can then be added to the role "employee" and also to the group "marketing". Adding a marketing user's default token to the role "marketing" gives them both groupware access and membership in the marketing group. If all employees should later get access to an additional service (e.g. a wiki), only the role "employee" needs to be added to the corresponding access group (see Access Groups) and the permission is granted for all employees.
 .SS Access Groups
 Access groups are used to control access to services and to define session parameters. A client (RADIUS, LDAP) is assigned an access group \- for example, the access point "ap01" gets the access group "wlan". Tokens or roles are then assigned to the access group to grant access to the service. When a WLAN authentication request arrives, the access group determines who is allowed access.
 .PP
@@ -249,14 +252,14 @@ The column \fIObject types\fR lists on which object types each parameter can be 
 .B confirmation_policy \fR(str, default: paranoid)
 Controls when OTPme asks for user confirmation.
 Valid values: \fBparanoid\fR (ask for confirmation on all changes; deleting requires typing the object name), \fBnormal\fR (only ask when deleting objects; requires typing the object name to confirm), \fBforce\fR (never ask for confirmation).
-The \fBforce=True\fR parameter in API calls also skips all confirmations regardless of the policy.
+The \fB\-f\fR command line option also skips all confirmations regardless of the policy.
 .br
 Object types: site, unit, token
 .TP
 .B auto_sign \fR(bool, default: false)
 If enabled, the user is offered to sign the object after each change.
 .br
-Object types: site, unit, token, script
+Object types: site, unit, user, token
 .TP
 .B auto_revoke \fR(bool, default: true)
 If enabled, object signatures are automatically revoked when the object is changed.
@@ -393,7 +396,58 @@ Object types: site, unit
 .B share_root \fR(str, default: /otpme-mounts/)
 Root directory for new shares. A new share automatically gets \fIshare_root\fR/\fIsharename\fR as its root directory (e.g. with \fBshare_root=/otpme-mounts/\fR a share named \fBprojects\fR gets \fB/otpme-mounts/projects\fR as its root directory).
 .br
-Object types: site, unit
+Object types: site, unit, user, token
+.SS Backup
+.TP
+.B backup_enabled \fR(bool)
+Enable or disable backups for this object.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_exclude_special \fR(bool)
+Exclude special files from backup.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_server \fR(str)
+Name of the node or host to use as backup server.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_time \fR(str)
+Backup time window in HH:MM\-HH:MM format (e.g. "02:00\-03:00").
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_interval \fR(int)
+Backup interval (accepts human-readable time values, e.g. 1h, 1D).
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_key \fR(str)
+AES key (64-character hex string) for encrypting backups. Automatically generated if not set.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_repo_password \fR(str)
+Password for authenticating to the backup server.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_mode \fR(str)
+Backup mode. Valid values: \fBpack\fR, \fBtree\fR.
+.br
+Object types: node, share
+.TP
+.B backup_excludes \fR(list)
+Comma-separated list of patterns to exclude from backup.
+.br
+Object types: node, share
+.TP
+.B backup_includes \fR(list)
+Comma-separated list of patterns to include in backup.
+.br
+Object types: node, share
 .SS HOTP Tokens
 .TP
 .B hotp_check_range \fR(int, default: 32)

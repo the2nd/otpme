@@ -497,7 +497,7 @@ the `JOIN` access group and the `hosts` unit:
 ```bash
 otpme-accessgroup add_acl JOIN token joe/login "join:host"
 otpme-accessgroup add_acl JOIN token joe/login "leave:host"
-otpme-unit add_acl hosts token joe/login-piv "add:host"
+otpme-unit add_acl hosts token joe/login "add:host"
 ```
 
 Joe can then join a host on the host itself:
@@ -934,8 +934,8 @@ otpme-tool show_signer
 ### Token Signature Verification (SSH)
 
 Besides scripts, it is also possible to sign tokens. Currently SSH tokens
-are supported. This allows a host to only accept SSH public keys that have
-been signed by a trusted user.
+are supported (note: YubiKey PIV tokens are also SSH tokens). This allows a
+host to only accept SSH public keys that have been signed by a trusted user.
 
 First, add an SSH token and assign it to the host:
 
@@ -985,4 +985,38 @@ to your SSH configuration (e.g. `/etc/ssh/sshd_config.d/otpme.conf`):
 AuthorizedKeysCommand /opt/otpme/bin/otpme-get-authorized-keys
 AuthorizedKeysCommandUser root
 PermitUserEnvironment yes
+```
+
+## 26. Trash
+
+OTPme includes a trash that keeps deleted objects. Every object deleted via
+a tree command (e.g. `otpme-user del`) is moved to the trash instead of
+being permanently removed:
+
+```bash
+# Add and delete a test user.
+otpme-user add user1
+otpme-user del user1
+
+# Show trash contents — user1 and its token are now in trash.
+otpme-trash show
+```
+
+Objects can be restored by their trash ID:
+
+```bash
+# Restore object from trash.
+otpme-trash restore <trash_id>
+
+# Restore but keep a copy in the trash.
+otpme-trash restore --keep <trash_id>
+
+# Restore only specific objects from a trash entry.
+otpme-trash restore --objects "user|realm/site/users/user1" <trash_id>
+```
+
+To permanently remove all objects from the trash:
+
+```bash
+otpme-trash empty
 ```
