@@ -303,7 +303,6 @@ class YubikeyhmacToken(Token):
         # Set password type.
         self.pass_type = "smartcard"
         self.otp_type = "time"
-        self.offset = 0
         self.validity_time = 0
         self.timedrift_tolerance = 0
         self.otp_len = 0
@@ -355,11 +354,6 @@ class YubikeyhmacToken(Token):
                                             'required'      : False,
                                         },
 
-            'OFFSET'                    : {
-                                            'var_name'      : 'offset',
-                                            'type'          : int,
-                                            'required'      : False,
-                                        },
             'VALIDITY_TIME'             : {
                                             'var_name'      : 'validity_time',
                                             'type'          : int,
@@ -569,8 +563,7 @@ class YubikeyhmacToken(Token):
 
         # Calculate times to verify OTP.
         validity_times = motp.get_validity_times(validity_time=validity_time,
-                                        timedrift_tolerance=timedrift_tolerance,
-                                        offset=self.offset)
+                                        timedrift_tolerance=timedrift_tolerance)
         otp_epoch_time = validity_times[0]
         otp_validity_range = validity_times[1]
         otp_validity_start_time = validity_times[4]
@@ -624,8 +617,7 @@ class YubikeyhmacToken(Token):
 
         # Calculate times to verify OTP.
         validity_times = motp.get_validity_times(validity_time=validity_time,
-                                        timedrift_tolerance=timedrift_tolerance,
-                                        offset=self.offset)
+                                        timedrift_tolerance=timedrift_tolerance)
         otp_epoch_time = validity_times[0]
         otp_validity_range = validity_times[1]
 
@@ -704,11 +696,6 @@ class YubikeyhmacToken(Token):
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []
-
-        if self.verify_acl("view:offset"):
-            lines.append(f'OFFSET="{self.offset}"')
-        else:
-            lines.append('OFFSET=""')
 
         if self.verify_acl("view:slot"):
             lines.append(f'SLOT="{self.slot}"')

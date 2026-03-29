@@ -65,7 +65,7 @@ def verify(password_hash, epoch_time=None, validity_range=None,
         validity_times = motp.get_validity_times(
                         validity_time=config.sotp_validity_time,
                         timedrift_tolerance=config.sotp_timedrift_tolerance,
-                        offset=0, full_epoch_time=epoch_time)
+                        full_epoch_time=epoch_time)
         # Get epoch time that honors timedrift values.
         epoch_time = validity_times[0]
         validity_range = validity_times[1]
