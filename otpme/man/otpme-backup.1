@@ -1,0 +1,160 @@
+.TH OTPME-BACKUP 1 "2026-03-29" "OTPme 0.3.0a120" "OTPme Manual"
+.SH NAME
+otpme-backup \- manage OTPme backups
+.SH SYNOPSIS
+.B otpme-backup
+.I command
+[\fIoptions\fR]
+.SH DESCRIPTION
+.B otpme-backup
+manages OTPme backups.  It can start backups, list snapshots, browse
+snapshot contents and restore files or entire snapshots from a backup
+repository.
+.PP
+The \fIbackup_object\fR argument identifies what to back up or restore
+using the format \fItype\fR:\fIname\fR (e.g. \fBnode:node1\fR,
+\fBshare:data\fR).
+.SH COMMANDS
+.TP
+.B start \fR[\fB\-\-dry\-run\fR] [\fB\-\-skip\-special\fR] [\fB\-\-exclude\fR \fIpath\fR] [\fB\-\-include\fR \fIpath\fR] [\fB\-\-apply\-retention\fR] \fIbackup_object\fR
+Start backup for the given backup object.
+.TP
+.B restore \fR[\fB\-\-dry\-run\fR] \fB\-\-snapshot\fR \fIsnapshot\fR [\fB\-\-path\fR \fIpath\fR] \fB\-\-destination\fR \fIdestination_dir\fR \fIbackup_object\fR
+Restore from backup repository.
+.TP
+.B list \fIbackup_object\fR
+List backup snapshots.
+.TP
+.B ls \fR[\fB\-\-full\-path\fR] [\fB\-\-recursive\fR] \fIbackup_object\fR \fIsnapshot\fR [\fIpath\fR]
+List contents of a backup snapshot.
+.SH OPTIONS
+.SS Start Options
+.TP
+.B \-\-dry\-run
+Just print what would be backed up without actually performing the backup.
+.TP
+.B \-\-skip\-special
+Skip special files (device files etc.).
+.TP
+.B \-\-exclude \fIpath\fR
+Exclude \fIpath\fR from backup.  Can be specified multiple times.
+.TP
+.B \-\-include \fIpath\fR
+Include \fIpath\fR in backup.  Can be specified multiple times.
+.TP
+.B \-\-apply\-retention
+Instruct the server to apply backup retention.
+.SS Restore Options
+.TP
+.B \-\-dry\-run
+Just print what would be restored without actually restoring.
+.TP
+.B \-\-snapshot \fIsnapshot\fR
+Snapshot to restore from (required).
+.TP
+.B \-\-path \fIpath\fR
+Restore only the given path from the snapshot.
+.TP
+.B \-\-destination \fIdestination_dir\fR
+Restore to the given destination directory (required).
+.SS List Options
+.TP
+.B \-\-full\-path
+Output full path in listing.
+.TP
+.B \-\-recursive
+List contents recursively.
+.PP
+Global options are available for all commands.  See
+.BR otpme (1)
+for details.
+.SH CONFIG PARAMETERS
+Backup behaviour is controlled by configuration parameters set with the \fBconfig\fR command on the backup object (node, share) or inherited from the parent site or unit.
+.TP
+.B backup_enabled \fR(bool)
+Enable or disable backups for this object.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_exclude_special \fR(bool)
+Exclude special files from backup.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_server \fR(str)
+Name of the node or host to use as backup server.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_time \fR(str)
+Backup time window in HH:MM\-HH:MM format (e.g. "02:00\-03:00").
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_interval \fR(int)
+Backup interval (accepts human-readable time values, e.g. 1h, 1D).
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_key \fR(str)
+AES key (64-character hex string) for encrypting backups. Automatically generated if not set.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_repo_password \fR(str)
+Password for authenticating to the backup server.
+.br
+Object types: site, unit, node, share
+.TP
+.B backup_mode \fR(str)
+Backup mode. Valid values: \fBpack\fR, \fBtree\fR.
+.br
+Object types: node, share
+.TP
+.B backup_excludes \fR(list)
+Comma-separated list of patterns to exclude from backup.
+.br
+Object types: node, share
+.TP
+.B backup_includes \fR(list)
+Comma-separated list of patterns to include in backup.
+.br
+Object types: node, share
+.PP
+For a complete description of all available parameters see
+.BR otpme (7).
+.SH EXAMPLES
+.TP
+.B otpme-backup start node:node1
+Start a backup for node \fBnode1\fR.
+.TP
+.B otpme-backup start \-\-dry\-run \-\-skip\-special node:node1
+Show what would be backed up, skipping special files.
+.TP
+.B otpme-backup start share:data
+Start a backup for share \fBdata\fR.
+.TP
+.B otpme-backup list node:node1
+List all backup snapshots for node \fBnode1\fR.
+.TP
+.B otpme-backup ls node:node1 2026\-03\-29T02:00:00 /etc
+List contents of \fB/etc\fR in the given snapshot.
+.TP
+.B otpme-backup restore \-\-snapshot 2026\-03\-29T02:00:00 \-\-destination /tmp/restore node:node1
+Restore snapshot of node \fBnode1\fR to \fB/tmp/restore\fR.
+.TP
+.B otpme-backup restore \-\-snapshot 2026\-03\-29T02:00:00 \-\-path /etc/otpme \-\-destination /tmp/restore node:node1
+Restore only \fB/etc/otpme\fR from a specific snapshot.
+.TP
+.B otpme-backup restore \-\-snapshot 2026\-03\-29T02:00:00 \-\-destination /tmp/restore share:data
+Restore share \fBdata\fR to \fB/tmp/restore\fR.
+.SH SEE ALSO
+.BR otpme (1),
+.BR otpme-tool (1),
+.BR otpme (7)
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3
