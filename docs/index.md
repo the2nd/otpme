@@ -33,6 +33,7 @@ OTPme is an authentication system supporting hardware tokens, smartcards and one
 | [otpme-pool](otpme-pool.md) | Manage pools |
 | [otpme-tool](otpme-tool.md) | OTPme tools |
 | [otpme-trash](otpme-trash.md) | Manage trash |
+| [otpme-backup](otpme-backup.md) | Manage backups |
 
 ## Reference
 

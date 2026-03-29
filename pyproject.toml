@@ -26,8 +26,9 @@ classifiers = [
 dynamic = ["version", "dependencies"]
 
 [project.urls]
-Homepage = "https://www.otpme.org/redmine"
-#Documentation = "https://readthedocs.org"
+Homepage = "https://github.com/the2nd/otpme"
+#Homepage = "https://www.otpme.org/redmine"
+Documentation = "https://otpme.readthedocs.io/"
 Repository = "https://github.com/the2nd/otpme.git"
 Issues = "https://github.com/the2nd/otpme/issues"
 #Changelog = "https://github.com/me/spam/blob/master/CHANGELOG.md"
@@ -61,9 +62,11 @@ otpme-pool = "otpme.command:otpme_commands"
 otpme-mount = "otpme.command:otpme_commands"
 otpme-job = "otpme.command:otpme_commands"
 otpme-pinentry = "otpme.command:otpme_commands"
+otpme-backup = "otpme.command:otpme_commands"
 otpme-get-authorized-keys = "otpme.command:otpme_commands"
 setreadahead = "otpme.lib.setreadahead:main"
 otpme-install-manpages = "otpme.install_manpages:main"
+local-backup = "otpme.backup_cli:main"
 otpme-yk-piv = "otpme.yk_piv:main"
 
 [tool.setuptools.dynamic]

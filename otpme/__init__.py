@@ -18,14 +18,14 @@
 #now = datetime.datetime.now()
 
 __project_name__ = "otpme"
-#__project_url__ = "http://www.otpme.org"
+#__project_url__ = "https://github.com/the2nd/otpme"
 #__copyright__ = "Copyright 2014-2024 the2nd <the2nd@otpme.org>"
 #__project_description__ = "OTPme: A flexible One-Time-Password system."
 #__author__ = "the2nd"
 #__email__ = "the2nd@otpme.org"
 #__credits__ = []
 #__license__ = "GPLv3"
-__version__ = "0.3.0a177"
+__version__ = "0.3.0a179"
 #__status__ = "Development Status :: 3 - Alpha"
 ## In future versions :D
 ##__status__ = "Development Status :: 4 - Beta"

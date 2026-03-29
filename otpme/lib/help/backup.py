@@ -34,7 +34,7 @@ cmd_help = {
                 },
 
     'restore'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-backup restore [--dry-run] [--snapshot <snapshot>] [--path <path>] [--destination <destination_dir>] {backup_object}'),
+                    '_cmd_usage_help' : _('Usage: otpme-backup restore [--dry-run] --snapshot <snapshot> [--path <path>] --destination <destination_dir> {backup_object}'),
                     'cmd'   :   '--path :path: --destination :destination_dir: --snapshot :snap_name: --dry-run :dry_run=True: <backup_object>',
                     '_help' :   {
                                     'cmd'                               : _('Restore from backup repository.'),
