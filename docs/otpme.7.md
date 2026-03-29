@@ -98,7 +98,7 @@ LDAP daemon. Provides an LDAP interface so that external services can
 authenticate users and query directory data against OTPme.
 
 **httpd**  
-HTTP daemon. Serves the web management interface.
+HTTP daemon. Serves the web SSO interface.
 
 **fsd**  
 File server daemon. Handles file share access for FUSE-mounted OTPme
@@ -225,6 +225,11 @@ diverse token types:
 
 -   **YubiKey** - HMAC-SHA1 challenge-response
 
+-   **YubiKey PIV** - PIV smart card authentication using a YubiKey. The
+    private key stays on the YubiKey and is used for challenge-response
+    authentication. Can also be used for SSH key management and file
+    encryption/decryption.
+
 -   **Link** - Reference to another user's token
 
 -   **Script** - Custom authentication via external scripts
@@ -261,19 +266,19 @@ roles, enabling hierarchical permission structures.
 There are built-in default roles: **REALM_USER** and **SITE_ADMIN.** By
 default, every user's default token is added to the REALM_USER role.
 This allows the user to log in to the realm and automatically makes them
-a member of the "realmusers" group and the corresponding site group.
-Adding a "user/token" to the SITE_ADMIN role grants site administrator
-privileges.
+a member of the "realmusers" group. Adding a "user/token" to the
+SITE_ADMIN role grants site administrator privileges.
 
-A good example of how roles work: a role "wlan" grants WLAN access, and
-a role "employee" is added to the role "wlan". Every employee
-automatically gets WLAN access. A role "marketing" can then be added to
-the role "employee" and also to the group "marketing". Adding a
-marketing user's default token to the role "marketing" gives them both
-WLAN access and membership in the marketing group. If all employees
-should later get access to an additional service (e.g. webmail), only
-the role "employee" needs to be added to the corresponding access group
-(see Access Groups) and the permission is granted for all employees.
+A good example of how roles work: a role "groupware" grants access to
+the groupware (CalDAV, CardDAV, IMAP), and a role "employee" is added to
+the role "groupware". Every employee automatically gets groupware
+access. A role "marketing" can then be added to the role "employee" and
+also to the group "marketing". Adding a marketing user's default token
+to the role "marketing" gives them both groupware access and membership
+in the marketing group. If all employees should later get access to an
+additional service (e.g. a wiki), only the role "employee" needs to be
+added to the corresponding access group (see Access Groups) and the
+permission is granted for all employees.
 
 ## Access Groups
 
@@ -439,13 +444,13 @@ Controls when OTPme asks for user confirmation. Valid values:
 **paranoid** (ask for confirmation on all changes; deleting requires
 typing the object name), **normal** (only ask when deleting objects;
 requires typing the object name to confirm), **force** (never ask for
-confirmation). The **force=True** parameter in API calls also skips all
+confirmation). The **-f** command line option also skips all
 confirmations regardless of the policy.  
 Object types: site, unit, token
 
 **auto_sign (bool, default: false)**  
 If enabled, the user is offered to sign the object after each change.  
-Object types: site, unit, token, script
+Object types: site, unit, user, token
 
 **auto_revoke (bool, default: true)**  
 If enabled, object signatures are automatically revoked when the object
@@ -573,7 +578,50 @@ Root directory for new shares. A new share automatically gets
 *share_root*/*sharename* as its root directory (e.g. with
 **share_root=/otpme-mounts/** a share named **projects** gets
 **/otpme-mounts/projects** as its root directory).  
-Object types: site, unit
+Object types: site, unit, user, token
+
+## Backup
+
+**backup_enabled (bool)**  
+Enable or disable backups for this object.  
+Object types: site, unit, node, share
+
+**backup_exclude_special (bool)**  
+Exclude special files from backup.  
+Object types: site, unit, node, share
+
+**backup_server (str)**  
+Name of the node or host to use as backup server.  
+Object types: site, unit, node, share
+
+**backup_time (str)**  
+Backup time window in HH:MM-HH:MM format (e.g. "02:00-03:00").  
+Object types: site, unit, node, share
+
+**backup_interval (int)**  
+Backup interval (accepts human-readable time values, e.g. 1h, 1D).  
+Object types: site, unit, node, share
+
+**backup_key (str)**  
+AES key (64-character hex string) for encrypting backups. Automatically
+generated if not set.  
+Object types: site, unit, node, share
+
+**backup_repo_password (str)**  
+Password for authenticating to the backup server.  
+Object types: site, unit, node, share
+
+**backup_mode (str)**  
+Backup mode. Valid values: **pack**, **tree**.  
+Object types: node, share
+
+**backup_excludes (list)**  
+Comma-separated list of patterns to exclude from backup.  
+Object types: node, share
+
+**backup_includes (list)**  
+Comma-separated list of patterns to include in backup.  
+Object types: node, share
 
 ## HOTP Tokens
 
