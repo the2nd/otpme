@@ -375,8 +375,8 @@ def register_config_parameters():
     object_types = [
                     'site',
                     'unit',
+                    'user',
                     'token',
-                    'script',
                     ]
     # With the auto sign parameter enabled the user gets offered to sign the object she changes.
     config.register_config_parameter(name="auto_sign",
@@ -2686,7 +2686,10 @@ class OTPmeObject(OTPmeBaseObject):
         # Disable auto-sign while adding a site.
         if config.site_init:
             return False
-        auto_sign = self.get_config_parameter("auto_sign")
+        if config.auth_token:
+            auto_sign = config.auth_token.get_config_parameter("auto_sign")
+        else:
+            auto_sign = self.get_config_parameter("auto_sign")
         return auto_sign
 
     @property
@@ -2695,7 +2698,10 @@ class OTPmeObject(OTPmeBaseObject):
         The auto-revoke config parameter to configre if object signatures should
         be revoked automatically on object delete/update.
         """
-        auto_revoke = self.get_config_parameter("auto_revoke")
+        if config.auth_token:
+            auto_revoke = config.auth_token.get_config_parameter("auto_revoke")
+        else:
+            auto_revoke = self.get_config_parameter("auto_revoke")
         return auto_revoke
 
     def acquire_cached_lock(self, callback: JobCallback=default_callback):

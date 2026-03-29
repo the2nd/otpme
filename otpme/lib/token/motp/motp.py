@@ -56,7 +56,6 @@ read_value_acls = {
                             "secret",
                             "pin",
                             "auth_script",
-                            "offset",
                             "validity_time",
                             "timedrift_tolerance",
                             "offline_status",
@@ -74,7 +73,6 @@ write_value_acls = {
                             "secret",
                             "pin",
                             "auth_script",
-                            "offset",
                             "validity_time",
                             "timedrift_tolerance",
                             "offline_expiry",
@@ -336,7 +334,6 @@ class MotpToken(Token):
         self.need_password = True
         self.send_password = True
         #self.valid_otp_formats = [ '6digit" ]
-        self.offset = 0
         self.validity_time = None
         self.timedrift_tolerance = None
 
@@ -358,12 +355,6 @@ class MotpToken(Token):
 
             'SECRET_LEN'                : {
                                             'var_name'      : 'secret_len',
-                                            'type'          : int,
-                                            'required'      : False,
-                                        },
-
-            'OFFSET'                    : {
-                                            'var_name'      : 'offset',
                                             'type'          : int,
                                             'required'      : False,
                                         },
@@ -596,8 +587,7 @@ class MotpToken(Token):
 
         # Calculate times to verify OTP.
         validity_times = motp.get_validity_times(validity_time=validity_time,
-                                        timedrift_tolerance=timedrift_tolerance,
-                                        offset=self.offset)
+                                        timedrift_tolerance=timedrift_tolerance)
         otp_epoch_time = validity_times[0]
         otp_validity_range = validity_times[1]
         otp_validity_start_time = validity_times[4]
@@ -658,8 +648,7 @@ class MotpToken(Token):
 
         # Calculate times to verify OTP.
         validity_times = motp.get_validity_times(validity_time=validity_time,
-                                        timedrift_tolerance=timedrift_tolerance,
-                                        offset=self.offset)
+                                        timedrift_tolerance=timedrift_tolerance)
         otp_epoch_time = validity_times[0]
         otp_validity_range = validity_times[1]
         otp_validity_start_time = validity_times[4]
@@ -739,8 +728,7 @@ class MotpToken(Token):
 
         # Calculate OTP validity times.
         validity_times = motp.get_validity_times(validity_time=validity_time,
-                                            timedrift_tolerance=timedrift_tolerance,
-                                            offset=self.offset)
+                                            timedrift_tolerance=timedrift_tolerance)
         otp_epoch_time = validity_times[0]
         otp_validity_range = validity_times[1]
 
@@ -802,11 +790,6 @@ class MotpToken(Token):
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []
-
-        if self.verify_acl("view:offset"):
-            lines.append(f'OFFSET="{self.offset}"')
-        else:
-            lines.append('OFFSET=""')
 
         if self.verify_acl("view:timedrift_tolerance"):
             lines.append(f'TIMEDRIFT_TOLERANCE="{self.timedrift_tolerance}"')

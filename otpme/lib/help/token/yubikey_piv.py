@@ -66,4 +66,71 @@ cmd_help = {
                                     'cmd'                   : _('Dump tokens private key backup.'),
                                 },
                 },
+
+    'sign'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token sign --stdin-pass [--tags tag1,tag2...] {name}'),
+                    'cmd'   :   '--stdin-pass :stdin_pass=True: --tags :[tags]: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Sign token.'),
+                                    '--stdin-pass'          : _('Read passphrase for RSA private key from stdin.'),
+                                    '--tags'                : _('Tags to add to the signature.'),
+                                },
+                },
+
+    'resign'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token resign --stdin-pass {name}'),
+                    'cmd'   :   '--stdin-pass :stdin_pass=True: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Resign token signatures.'),
+                                    '--stdin-pass'          : _('Read passphrase for RSA private key from stdin.'),
+                                },
+                },
+
+    'get_sign_data'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token get_sign_data [--tags tag1,tag2...] {name}'),
+                    'cmd'   :   '--tags :[tags]: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Get object data to be signed from token.'),
+                                    '--tags'                : _('Add sign tags to the sign object.'),
+                                },
+                },
+
+    'add_sign'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token add_sign [--tags tag1,tag2...] {name} {signature}'),
+                    'cmd'   :   '--tags :[tags]: <|object|> <signature>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add new signature to token.'),
+                                    '--tags'                : _('Tags included in the signature.'),
+                                },
+                },
+
+    'del_sign'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token del_sign [--user username] [--tags tag1,tag2...] {name}'),
+                    'cmd'   :   '--user :username: --tags :[tags]: <|object|> [username]',
+                    '_help' :   {
+                                    'cmd'                   : _('Delete signature from token.'),
+                                    '--user'                : _('Select signature by username.'),
+                                    '--tags'                : _('Select signature by tags.'),
+                                },
+                },
+
+    'verify_sign'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token verify_sign [--user username] [--tags tag1,tag2...] {name}'),
+                    'cmd'   :   '--user :username: --tags :[tags]: <|object|> [username]',
+                    '_help' :   {
+                                    'cmd'                   : _('Verify token signature(s).'),
+                                    '--user'                : _('Select signature by username.'),
+                                    '--tags'                : _('Select signature by tags.'),
+                                },
+                },
+
+    'get_sign'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token get_sign [--user username] [--tags tag1,tag2...] {name}'),
+                    'cmd'   :   '--user :username: --tags :[tags]: <|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Get token signature(s).'),
+                                    '--user'                : _('Select signature by username.'),
+                                    '--tags'                : _('Select signature by tags.'),
+                                },
+                },
     }

@@ -62,10 +62,20 @@ read_value_acls = {
                             "offline_expiry",
                             "offline_unused_expiry",
                             "session_keep",
+                            "signature",
                             ],
             }
 
 write_value_acls = {
+                "add"       : [
+                            "signature",
+                            ],
+                "delete"    : [
+                            "signature",
+                            ],
+                "verify"    : [
+                            "signature",
+                            ],
                 "edit"      : [
                             "key_type",
                             "public_key",
@@ -143,6 +153,68 @@ commands = {
                     },
                 },
             },
+    'sign'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'sign',
+                    'oargs'             : ['tags', 'stdin_pass'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'resign'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'resign',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_sign'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_sign',
+                    'oargs'             : ['signature', 'tags'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'del_sign'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'del_sign',
+                    'oargs'             : ['username', 'tags'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'verify_sign'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'verify_sign',
+                    'oargs'             : ['username', 'user_uuid', 'tags'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'get_sign_data'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_sign_data',
+                    'oargs'             : ['tags'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'get_sign'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_sign',
+                    'oargs'             : ['username', 'user_uuid', 'tags'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     }
 
 def get_acls(split=False, **kwargs):
@@ -203,6 +275,8 @@ def register_hooks():
     config.register_auth_on_action_hook("token", "public_key")
     config.register_auth_on_action_hook("token", "ssh_public_key")
     config.register_auth_on_action_hook("token", "show_config_parameters")
+    config.register_auth_on_action_hook("token", "add_sign")
+    config.register_auth_on_action_hook("token", "del_sign")
 
 def register_token_type():
     """ Register token type. """
@@ -252,6 +326,8 @@ class YubikeypivToken(Token):
         # Token specific settings.
         self.need_password = True
         self.offline_pinnable = True
+        self.signable = True
+        self.signatures = {}
         # Hardware tokens that we can handle (e.g. on otpme-token deploy).
         self.supported_hardware_tokens = [ 'yubikey_piv' ]
 
@@ -295,6 +371,11 @@ class YubikeypivToken(Token):
                                             'var_name'      : 'key_type',
                                             'type'          : str,
                                             'required'      : False,
+                                        },
+            'SIGNATURES'                : {
+                                            'var_name'  : 'signatures',
+                                            'type'      : dict,
+                                            'required'  : False,
                                         },
             }
 
@@ -461,6 +542,34 @@ class YubikeypivToken(Token):
             msg = _("No backup exists.")
             return callback.error(msg)
         return callback.ok(dict(self.private_key_backup))
+
+    def verify_acl(self, action: str):
+        """ Verify ACLs required to allow <action>. """
+        # Parent class cannot know the ACL to allow verification of signatures
+        # e.g. "view:script" for script objects and "view_public_key" for SSH
+        # tokens.
+        if action == "verify_signature":
+            if self._verify_acl("verify:signature") \
+            or self._verify_acl("view:signature") \
+            or self._verify_acl("view:ssh_public_key"):
+                return True
+
+        if action == "get_signatures":
+            if self._verify_acl("view:signature") \
+            or self.verify_acl("view:ssh_public_key"):
+                return True
+
+        # Finally try to verify ACL via parent class method.
+        if self._verify_acl(action):
+            return True
+
+        return  False
+
+    @check_acls(['view:ssh_public_key'])
+    def get_sign_data(self, callback: JobCallback=default_callback, **kwargs):
+        """ Return public key to be signed by parent class method. """
+        ssh_public_key = self.ssh_public_key
+        return callback.ok(ssh_public_key)
 
     def test(self, callback: JobCallback=default_callback, **kwargs):
         """ Test if smartcard connected to the client can be verfied. """

@@ -60,7 +60,7 @@ def verify(validity_range, secret, otp, pin=None, otp_len=None, epoch_time=None)
 
 
 def get_validity_times(validity_time, timedrift_tolerance=0,
-    offset=0, epoch_time=None, full_epoch_time=None):
+    epoch_time=None, full_epoch_time=None):
     """ Calculate validity start/end time, timestamps etc. """
     # Get epoch time in 10 second timestep.
     if not epoch_time and not full_epoch_time:
