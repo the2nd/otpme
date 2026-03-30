@@ -1004,7 +1004,7 @@ otpme-role add_token REALM_USER joe/totp
 otpme-host add_token <yourhostname> joe/totp
 ```
 
-After syncing (`otpme-tool sync` or waiting for `SYNC_INTERVAL` (default 30s, configurable in `/etc/otpme/otpme.conf`)), enter
+After syncing (`otpme-tool sync` or waiting for `SYNC_INTERVAL` (default 180s, configurable in `/etc/otpme/otpme.conf`)), enter
 PIN+OTP at the login prompt.
 
 ### Using TOTP as Second Factor
@@ -1041,7 +1041,7 @@ otpme-role remove_token REALM_USER joe/totp
 otpme-host remove_token <yourhostname> joe/totp
 ```
 
-After syncing (`otpme-tool sync` or waiting for `SYNC_INTERVAL` (default 30s, configurable in `/etc/otpme/otpme.conf`)), enter
+After syncing (`otpme-tool sync` or waiting for `SYNC_INTERVAL` (default 180s, configurable in `/etc/otpme/otpme.conf`)), enter
 password+PIN+OTP at the login prompt.
 
 ## 27. Trash

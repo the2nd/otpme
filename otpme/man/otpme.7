@@ -434,8 +434,10 @@ Password for authenticating to the backup server.
 .br
 Object types: site, unit, node, share
 .TP
-.B backup_mode \fR(str)
-Backup mode. Valid values: \fBpack\fR, \fBtree\fR.
+.B backup_mode \fR(str, default: pack)
+Backup storage mode. Valid values: \fBpack\fR, \fBtree\fR.
+In \fBpack\fR mode, backup data is stored in pack files (default, more space-efficient).
+In \fBtree\fR mode, backup data is additionally stored in a directory tree that mirrors the original file hierarchy. This allows creating a restore share that can be accessed via FUSE mount.
 .br
 Object types: node, share
 .TP

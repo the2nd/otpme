@@ -136,7 +136,7 @@ Snapshot deletion & garbage collection
   3. Clean up empty tree/ directories (bottom-up)
   4. Scan all remaining snapshot chunks files to collect live hashes
   5. Remove dead hashes from pack index; delete fully empty pack files
-  6. Pack-index LMDB is updated transactionally
+  6. Pack-index is updated transactionally
 
 """
 
@@ -202,7 +202,7 @@ def _derive_path_key(key: bytes) -> bytes:
 def encrypt_path_component(siv: AESSIV, name: str, parent_ct: bytes) -> str:
     """Encrypt a single path component using AES-SIV with parent ciphertext as AD.
 
-    Returns base64url-encoded ciphertext (filesystem/LMDB safe, no padding).
+    Returns base64url-encoded ciphertext (filesystem safe, no padding).
     """
     ct = siv.encrypt(name.encode('utf-8'), [parent_ct])
     return _base64.urlsafe_b64encode(ct).rstrip(b'=').decode('ascii')
@@ -1347,7 +1347,7 @@ class BackupServer:
             if entry_type != "dir":
                 self.file_count += 1
 
-        # Append to snap-index LMDB
+        # Append to snap-index
         idx_meta = dict(meta)
         idx_meta["rel_path"] = rel_path
         self._snap_index_put(snap_name, rel_path,
@@ -1413,7 +1413,7 @@ class BackupServer:
         also file_size, file_mtime, chunk_hashes.  Returns None if not found.
         """
         if self.mode == "pack":
-            # Pack mode: O(1) LMDB lookup
+            # Pack mode: O(1) index lookup
             parsed = self._snap_index_get_parsed(snap_name, rel_path)
             if parsed is None:
                 return None
@@ -1528,7 +1528,7 @@ class BackupServer:
 
         self.file_count += 1
 
-        # Append to snap-index LMDB
+        # Append to snap-index
         if index_val is not None:
             val = index_val
         elif meta is not None:
@@ -1549,7 +1549,7 @@ class BackupServer:
         entries is a list of (rel_path, is_dir) tuples.
 
         For each entry:
-        - Adds the new snapshot's snap_id to the existing entry in the shared LMDB
+        - Adds the new snapshot's snap_id to the existing entry in the shared index
         - For tree mode: also hardlinks tree/meta filesystem entries
 
         Returns the number of successfully linked entries.
@@ -1831,7 +1831,7 @@ class BackupServer:
                         break
                     parent = os.path.dirname(parent)
 
-        # Remove snap_id from shared snap-index LMDB
+        # Remove snap_id from shared snap-index
         self._remove_snap_from_index(snap_name)
 
         # Remove snapshot directory (meta/ + complete + running + chunks)
@@ -2618,7 +2618,7 @@ class BackupClient:
                     prev_snap = s["name"]
                     break
 
-            # Fetch previous index to local LMDB for O(1) lookups
+            # Fetch previous index for O(1) lookups
             self._open_prev_index(prev_snap)
 
             self.server.create_snapshot(snap_name)

@@ -23,6 +23,7 @@ from pathlib import Path
 
 _script_dir = os.path.dirname(os.path.abspath(os.path.realpath(__file__)))
 _package_dir = os.path.dirname(_script_dir)
+_package_dir = os.path.dirname(_package_dir)
 if _package_dir not in sys.path:
     sys.path.insert(0, _package_dir)
 

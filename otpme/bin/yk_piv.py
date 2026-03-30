@@ -10,6 +10,7 @@ import argparse
 # project root (two levels up from otpme/yk_piv.py) to sys.path.
 _script_dir = os.path.dirname(os.path.realpath(__file__))
 _project_root = os.path.dirname(_script_dir)
+_project_root = os.path.dirname(_project_root)
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 

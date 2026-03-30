@@ -145,6 +145,7 @@ if __name__ == "__main__":
     my_path = os.path.realpath(sys.argv[0])
     my_path = os.path.dirname(my_path)
     my_path = os.path.dirname(my_path)
+    my_path = os.path.dirname(my_path)
     sys.path.append(my_path)
 
 # Get command from system command (e.g. otpme-user -> user).

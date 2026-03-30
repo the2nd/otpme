@@ -7,7 +7,10 @@ import shutil
 
 
 def main():
-    man_dir = os.path.join(os.path.dirname(__file__), "man")
+    real_file = os.path.realpath(__file__)
+    man_dir = os.path.dirname(real_file)
+    man_dir = os.path.dirname(man_dir)
+    man_dir = os.path.join(man_dir, "man")
     if not os.path.isdir(man_dir):
         print("Error: manpage source directory not found: %s" % man_dir, file=sys.stderr)
         sys.exit(1)

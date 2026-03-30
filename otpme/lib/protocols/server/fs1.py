@@ -199,6 +199,13 @@ class OTPmeFsP1(OTPmeFsServer1):
                 message = message.format(share=self.share)
                 return self.build_response(status, message)
             share = result[0]
+            if not share.enabled:
+                status = status_codes.PERMISSION_DENIED
+                message, log_msg = _("Share disabled: {share}", log=True)
+                message = message.format(share=self.share)
+                log_msg = log_msg.format(share=self.share)
+                self.logger.warning(log_msg)
+                return self.build_response(status, message)
             self.encrypted = share.encrypted
             if share.restore_share:
                 self.restore_share = True
@@ -431,17 +438,18 @@ class OTPmeFsP1(OTPmeFsServer1):
                         self.logger.warning(log_msg)
                         return self.build_response(status, message)
 
+            # Update last used time.
+            share.update_last_used_time()
             mount_result = {}
-            if self.restore_share:
-                share.update_last_used_time()
-            else:
-                share.update_last_used_time()
-                # Get share node FQDNs to reply.
-                share_nodes = share.get_nodes(include_pools=True,
-                                            return_type="instance")
-                share_node_fqdns = []
-                for node in share_nodes:
-                    share_node_fqdns.append(node.fqdn)
+            # Get share node FQDNs to reply.
+            share_nodes = share.get_nodes(include_pools=True,
+                                        return_type="instance")
+            share_node_fqdns = []
+            for node in share_nodes:
+                share_node_fqdns.append(node.fqdn)
+            mount_result = {'nodes':share_node_fqdns}
+            # Handle non-restore shares stuff.
+            if not self.restore_share:
                 if not self.privileges_dropped:
                     if share.force_group_uuid is not None and self.username != "root":
                         if group.name not in groups:
@@ -461,7 +469,6 @@ class OTPmeFsP1(OTPmeFsServer1):
                         self.logger.warning(log_msg)
                         return self.build_response(status, message)
                     self.privileges_dropped = True
-                mount_result = {'nodes':share_node_fqdns}
             self.set_proctitle(self.username, share)
             if self.encrypted:
                 if self.restore_share:
