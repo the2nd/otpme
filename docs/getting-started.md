@@ -987,7 +987,64 @@ AuthorizedKeysCommandUser root
 PermitUserEnvironment yes
 ```
 
-## 26. Trash
+## 26. TOTP Login and Second Factor Authentication
+
+If you do not have a hardware token or smartcard, you can use a TOTP token
+with any TOTP authenticator app (e.g. Google Authenticator). Add a TOTP
+token and scan the displayed QR code with your authenticator app:
+
+```bash
+# Add TOTP token.
+otpme-token --type totp add joe/totp
+
+# Allow realm logins with the TOTP token.
+otpme-role add_token REALM_USER joe/totp
+
+# Allow login to your host.
+otpme-host add_token <yourhostname> joe/totp
+```
+
+After syncing (`otpme-tool sync` or waiting for `SYNC_INTERVAL` (default 30s, configurable in `/etc/otpme/otpme.conf`)), enter
+PIN+OTP at the login prompt.
+
+### Using TOTP as Second Factor
+
+For offline logins it is recommended to use a password token with the TOTP
+token as second factor. This way the offline token/session data is encrypted
+with the password+PIN, which is more secure than encrypting it with just the
+TOTP PIN:
+
+```bash
+# Add password token.
+otpme-token --type password add joe/pass
+
+# Set TOTP token as second factor of the password token.
+otpme-token --type password 2f_token joe/pass totp
+
+# Enable second factor authentication.
+otpme-token --type password enable_2f joe/pass
+
+# Enable offline token and session keeping.
+otpme-token enable_offline joe/pass
+otpme-token enable_session_keep joe/pass
+
+# Allow realm logins with the password token.
+otpme-role add_token REALM_USER joe/pass
+otpme-host add_token <yourhostname> joe/pass
+```
+
+Since the TOTP token is now used as a second factor of the password token,
+the standalone TOTP permissions are no longer needed:
+
+```bash
+otpme-role remove_token REALM_USER joe/totp
+otpme-host remove_token <yourhostname> joe/totp
+```
+
+After syncing (`otpme-tool sync` or waiting for `SYNC_INTERVAL` (default 30s, configurable in `/etc/otpme/otpme.conf`)), enter
+password+PIN+OTP at the login prompt.
+
+## 27. Trash
 
 OTPme includes a trash that keeps deleted objects. Every object deleted via
 a tree command (e.g. `otpme-user del`) is moved to the trash instead of
@@ -1021,7 +1078,7 @@ To permanently remove all objects from the trash:
 otpme-trash empty
 ```
 
-## 27. Backup and Restore
+## 28. Backup and Restore
 
 OTPme includes a backup tool that exports all OTPme data (excluding trash)
 to a given directory. Additionally you must back up `/etc/otpme` to make a
