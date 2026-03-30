@@ -829,6 +829,14 @@ auto-mount for the user:
 otpme-user enable_auto_mount joe
 ```
 
+A share can be made read-only, and it can be disabled entirely (which
+refuses any new mount request — already mounted shares continue to work):
+
+```bash
+otpme-share enable_ro testshare
+otpme-share disable testshare
+```
+
 ### Encrypted Shares
 
 OTPme supports encrypted shares where file content and path names are
@@ -1044,7 +1052,26 @@ otpme-host remove_token <yourhostname> joe/totp
 After syncing (`otpme-tool sync` or waiting for `SYNC_INTERVAL` (default 180s, configurable in `/etc/otpme/otpme.conf`)), enter
 password+PIN+OTP at the login prompt.
 
-## 27. Trash
+## 27. Confirmation Policy
+
+OTPme asks for confirmation when changing or deleting objects. This
+behaviour is controlled by the `confirmation_policy` config parameter:
+
+- **paranoid** — ask for confirmation on all changes; deleting requires typing the object name (default)
+- **normal** — only ask when deleting objects; requires typing the object name to confirm
+- **force** — never ask for confirmation
+
+The `-f` command line option also skips all confirmations regardless of the
+policy.
+
+The policy can be set on the site (applies globally), on a unit or on
+individual tokens:
+
+```bash
+otpme-site config <site> confirmation_policy force
+```
+
+## 28. Trash
 
 OTPme includes a trash that keeps deleted objects. Every object deleted via
 a tree command (e.g. `otpme-user del`) is moved to the trash instead of
@@ -1078,7 +1105,7 @@ To permanently remove all objects from the trash:
 otpme-trash empty
 ```
 
-## 28. Backup and Restore
+## 29. Backup and Restore
 
 OTPme includes a backup tool that exports all OTPme data (excluding trash)
 to a given directory. Additionally you must back up `/etc/otpme` to make a
