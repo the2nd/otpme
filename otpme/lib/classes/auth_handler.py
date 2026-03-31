@@ -1080,9 +1080,10 @@ class AuthHandler(object):
             log_msg = log_msg.format(access_group=self.access_group)
             self.logger.debug(log_msg)
 
-            select_static_tokens = True
             select_otp_tokens = True
             select_ssh_tokens = True
+            select_static_tokens = True
+            select_smartcard_tokens = True
 
             # Make sure we honor self.require_pass_types when selecting tokens.
             if self.auth_mode == "static" or self.auth_mode == "auto":
@@ -1099,6 +1100,11 @@ class AuthHandler(object):
                 if self.require_pass_types \
                 and "ssh_key" not in self.require_pass_types:
                     select_ssh_tokens = False
+
+            if self.auth_type == "smartcard":
+                if self.require_pass_types \
+                and "smartcard" not in self.require_pass_types:
+                    select_smartcard_tokens = False
 
             valid_ags = [self.auth_group]
             master_group = self.auth_group.get_master_group()
@@ -1157,6 +1163,15 @@ class AuthHandler(object):
                                                 host=self.auth_host,
                                                 client=self.auth_client,
                                                 return_type="instance", quiet=False)
+
+                if select_smartcard_tokens:
+                    self.valid_user_tokens_smartcard += self.user.get_tokens(
+                                                    pass_type="smartcard",
+                                                    token_types=self.require_token_types,
+                                                    access_group=ag,
+                                                    host=self.auth_host,
+                                                    client=self.auth_client,
+                                                    return_type="instance", quiet=False)
 
         if not self.user_default_token:
             for token in list(self.valid_user_tokens_static):
