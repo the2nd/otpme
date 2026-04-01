@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import hmac
 import time
 from typing import Union
 from pyotp.totp import TOTP
@@ -531,7 +532,7 @@ class TotpToken(OathToken):
         if totp_status:
             # Verify PIN.
             if verify_pin:
-                if pin != self.pin:
+                if not hmac.compare_digest(pin, self.pin):
                     log_msg = _("Got wrong token PIN: {rel_path}", log=True)[1]
                     log_msg = log_msg.format(rel_path=self.rel_path)
                     logger.debug(log_msg)

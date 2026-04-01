@@ -2393,7 +2393,8 @@ class AuthHandler(object):
             self.auth_message = "REALM_LOGOUT_FAILED"
 
         # We do not check policies on screen unlock (e.g. to allow screen
-        # unlock while login is restricted by policy).
+        # unlock while login is restricted by policy). Policies were run
+        # on realm login.
         self.check_policies = True
         if self.unlock:
             log_msg = _("This is a screen unlock request.", log=True)[1]
@@ -2711,22 +2712,25 @@ class AuthHandler(object):
             self.logger.debug("AUTHENTICATION DATA OF REQUEST:")
             self.logger.debug(f"AUTH_TYPE:        {self.auth_type}")
             self.logger.debug(f"USERNAME:         {self.user.name}")
-            if self.password:
-                self.logger.debug(f"PASSWORD:         {self.password}")
-            if self.password_hash:
-                self.logger.debug(f"PASSWORD_HASH:    {self.password_hash}")
-            if self.auth_sotp:
-                self.logger.debug(f"SOTP:             {self.auth_sotp}")
-            if self.auth_srp:
-                self.logger.debug(f"SRP:              {self.auth_srp}")
-            if self.auth_slp:
-                self.logger.debug(f"SLP:              {self.auth_slp}")
-            if self.challenge:
-                self.logger.debug(f"CHALLENGE:        {self.challenge}")
-            if self.response:
-                self.logger.debug(f"RESPONSE:         {self.response}")
-            if self.nt_key:
-                self.logger.debug(f"NT_KEY:           {self.nt_key}")
+            # Only log sensitive auth data when not logging to a file
+            # to prevent credentials from being persisted on disk.
+            if not self.logger.logfile:
+                if self.password:
+                    self.logger.debug(f"PASSWORD:         {self.password}")
+                if self.password_hash:
+                    self.logger.debug(f"PASSWORD_HASH:    {self.password_hash}")
+                if self.auth_sotp:
+                    self.logger.debug(f"SOTP:             {self.auth_sotp}")
+                if self.auth_srp:
+                    self.logger.debug(f"SRP:              {self.auth_srp}")
+                if self.auth_slp:
+                    self.logger.debug(f"SLP:              {self.auth_slp}")
+                if self.challenge:
+                    self.logger.debug(f"CHALLENGE:        {self.challenge}")
+                if self.response:
+                    self.logger.debug(f"RESPONSE:         {self.response}")
+                if self.nt_key:
+                    self.logger.debug(f"NT_KEY:           {self.nt_key}")
 
         # If max_sessions is set for this group we have to check if we need to
         # remove other sessions.
@@ -3000,10 +3004,6 @@ class AuthHandler(object):
                 log_msg = _("Cannot count failed login without password hash.", log=True)[1]
                 self.logger.debug(log_msg)
                 self.count_fails = False
-
-        # Do not lock out admin user.
-        if self.user and self.user.name == config.admin_user_name:
-            self.count_fails = False
 
         if self.count_fails:
             # Check if this is an clear-text request as we cannot count logon

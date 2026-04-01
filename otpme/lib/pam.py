@@ -50,6 +50,7 @@ class PamHandler(object):
         self.connection_timeout = 30
         self.login_session_id = None
         self.login_token = None
+        self._login_token_type = None
         self.login_interface = "tty"
         self.offline_login_token = None
         self.offline_verify_token = None
@@ -89,6 +90,7 @@ class PamHandler(object):
         self.pinentry_message_file = None
         self.login_session_dir = None
         self.display = None
+        self.unlock = False
         # Default PAM return value.
         self.retval = self.pamh.PAM_AUTH_ERR
         self.cache_login_tokens = False
@@ -328,6 +330,19 @@ class PamHandler(object):
             user_uuid = self.hostd_conn.get_user_uuid(self.username)
         return user_uuid
 
+    @property
+    def login_token_type(self):
+        if self._login_token_type:
+            return self._login_token_type
+        agent_conn = self.get_agent_connection()
+        try:
+            self._login_token_type = agent_conn.get_login_token_type()
+        except:
+            pass
+        finally:
+            agent_conn.close()
+        return self._login_token_type
+
     def send_pam_message(self, msg):
         """ Send PAM message. """
         self.pamh.conversation(self.pamh.Message(self.pamh.PAM_TEXT_INFO, msg))
@@ -338,8 +353,10 @@ class PamHandler(object):
         self.pamh.conversation(self.pamh.Message(self.pamh.PAM_ERROR_MSG, msg))
         time.sleep(self.message_timeout)
 
-    def get_password(self, prompt="Password:"):
+    def get_password(self, prompt=None):
         """ Get password via PAM message. """
+        if prompt is None:
+            prompt = "Password: "
         if self.password:
             return self.password
         # Try to get password/OTP from a previous stacked module.
@@ -439,6 +456,20 @@ class PamHandler(object):
         home_dir = os.path.expanduser(home_exp)
         return home_dir
 
+    def add_ssh_key(self):
+        if not self.ssh_agent_status():
+            return
+        # Try to get ssh key pass from otpme-agent.
+        agent_conn = self.get_agent_connection()
+        ssh_key_pass = agent_conn.get_ssh_key_pass()[1]
+        if ssh_key_pass:
+            log_msg = _("Adding key to ssh-agent...", log=True)[1]
+            self.logger.debug(log_msg)
+            os.environ['PIN'] = ssh_key_pass
+            self.ssh_agent.add_key()
+            os.environ.pop("PIN")
+        agent_conn.close()
+
     def open_session(self):
         """ Get users DISPLAY etc. """
         if self.pamh.service == "su":
@@ -482,24 +513,18 @@ class PamHandler(object):
                 self.ssh_agent_script_opts = agent_script_data['ssh_agent_script_opts']
                 self.ssh_agent_script_signs = agent_script_data['ssh_agent_script_signs']
                 # Start ssh agent.
-                additional_opts = ['--pinentry', config.pinentry]
+                # We have to use otpme-pinentry to allow screen unlock!
+                #additional_opts = ['--pinentry', config.pinentry]
                 try:
-                    self.start_ssh_agent(additional_opts=additional_opts,
+                    self.start_ssh_agent(
+                                        #additional_opts=additional_opts,
                                         verify_signs=False)
                 except Exception as e:
                     log_msg = _("Failed to start SSH agent: {error}", log=True)[1]
                     log_msg = log_msg.format(error=e)
                     self.logger.warning(log_msg)
-        # Try to get ssh key pass from otpme-agent.
-        if self.ssh_agent_status():
-            agent_conn = self.get_agent_connection()
-            ssh_key_pass = agent_conn.get_ssh_key_pass()[1]
-            if ssh_key_pass:
-                log_msg = _("Adding key to ssh-agent...", log=True)[1]
-                self.logger.debug(log_msg)
-                os.environ['PIN'] = ssh_key_pass
-                self.ssh_agent.add_key()
-                os.environ.pop("PIN")
+        # Add ssh key.
+        self.add_ssh_key()
         self.cleanup()
         return self.pamh.PAM_SUCCESS
 
@@ -676,6 +701,24 @@ class PamHandler(object):
         # Mark SSH agent as already started.
         self.ssh_agent_started = True
 
+    def unlock_ssh_agent(self, verify_signs=None):
+        """ Send "unlock" command to SSH/GPG agent """
+        if verify_signs is None:
+            # In mode "auto" ssh agent script signatures are only checked
+            # if agent scripts signers are configured.
+            if not self.offline:
+                verify_signs = "auto"
+
+        if not self.ssh_agent:
+            self.ssh_agent = self.get_ssh_agent_ctrl()
+
+        try:
+            self.ssh_agent.unlock(verify_signs=verify_signs)
+        except Exception as e:
+            msg = _("Failed to run ssh agent unlock: {e}")
+            msg = msg.format(e=e)
+            self.logger.warning(msg)
+
     def stop_ssh_agent(self, verify_signs=None):
         """ Stop SSH/GPG agent """
         if verify_signs is None:
@@ -690,7 +733,7 @@ class PamHandler(object):
         try:
             self.ssh_agent.stop(verify_signs=verify_signs)
         except Exception as e:
-            msg = _("Failed to run ssh agent status: {e}")
+            msg = _("Failed to run ssh agent stop: {e}")
             msg = msg.format(e=e)
             self.logger.warning(msg)
 
@@ -967,7 +1010,6 @@ class PamHandler(object):
                                                                         token=found_smartcard,
                                                                         password=password,
                                                                         enc_challenge=enc_challenge)
-
         # Handle SSH tokens.
         if verify_token.pass_type == "ssh_key":
             # SSH key password is always the static password entered first.
@@ -1091,10 +1133,11 @@ class PamHandler(object):
             log_msg = _("Setting offline token encryption passphrase...", log=True)[1]
             self.logger.debug(log_msg)
             self.offline_token.set_enc_passphrase(passphrase=enc_pass,
-                                key_function=self.offline_key_func,
-                                key_function_opts=self.offline_key_func_opts,
-                                iterations_by_score=self.iterations_by_score,
-                                check_pass_strength=self.check_offline_pass_strength)
+                                    challenge=enc_challenge,
+                                    key_function=self.offline_key_func,
+                                    key_function_opts=self.offline_key_func_opts,
+                                    iterations_by_score=self.iterations_by_score,
+                                    check_pass_strength=self.check_offline_pass_strength)
             del enc_pass
 
         if reload_offline_token:
@@ -1288,6 +1331,7 @@ class PamHandler(object):
             self.login_token = self.offline_login_token.rel_path
 
             # Set login token to otpme-agent.
+            agent_conn = self.get_agent_connection()
             try:
                 agent_conn.set_login_token(self.offline_login_token.rel_path,
                                             self.offline_login_token.token_type,
@@ -1399,10 +1443,8 @@ class PamHandler(object):
             offline_key_func_opts = {}
 
         if self.login_status:
-            unlock = True
             add_agent_acl = False
         else:
-            unlock = False
             add_agent_acl = True
 
         start_ssh_agent = False
@@ -1426,7 +1468,7 @@ class PamHandler(object):
                                 endpoint=True, change_user=True,
                                 send_password=self.send_password,
                                 auth_only=auth_only,
-                                unlock=unlock,
+                                unlock=self.unlock,
                                 sync_token_data=True,
                                 mount_shares=True,
                                 need_ssh_key_pass=need_ssh_key_pass,
@@ -1691,6 +1733,13 @@ class PamHandler(object):
         if self.login_status is not False:
             log_msg = _("User is already logged in. This is most likely a screen unlock request.", log=True)[1]
             self.logger.info(log_msg)
+            # Set unlock status.
+            self.unlock = True
+            # Dont cache offline tokens on screen unlock.
+            self.cache_offline_tokens = False
+            # Get password first to prevent node connection timeout because
+            # KDE lock screen starts the PAM session before asking for the password.
+            self.get_password()
 
             # Get SSH agent script.
             ssh_agent_script_file = os.path.join(self.login_session_dir, "ssh-agent-script.json")
@@ -1732,15 +1781,15 @@ class PamHandler(object):
                             try_online_auth = False
 
             if try_online_auth:
-                # Make sure ssh agent is restarted on screen unlock.
-                if self.ssh_agent_status():
-                    try:
-                        self.stop_ssh_agent(verify_signs=False)
-                    except Exception as e:
-                        log_msg = _("Failed to run SSH agent script: {error}", log=True)[1]
-                        log_msg = log_msg.format(error=e)
-                        self.logger.warning(log_msg)
-                self.start_ssh_agent()
+                if self.login_token_type == "ssh":
+                    # Make sure ssh agent is prepared for screen unlock (e.g. restart scdaemon).
+                    if self.ssh_agent_status():
+                        try:
+                            self.unlock_ssh_agent(verify_signs=False)
+                        except Exception as e:
+                            log_msg = _("Failed to run SSH agent script: {error}", log=True)[1]
+                            log_msg = log_msg.format(error=e)
+                            self.logger.warning(log_msg)
                 # Try to authenticate user with OTPme servers.
                 try:
                     self.online_auth(login=False)
@@ -2004,7 +2053,7 @@ class PamHandler(object):
 
         # Stop ssh agent. It will be started in open_session where we can get
         # the DISPLAY.
-        if self.ssh_agent_status():
+        if not self.unlock and self.ssh_agent_status():
             try:
                 self.stop_ssh_agent()
             except Exception as e:
@@ -2025,11 +2074,7 @@ class PamHandler(object):
                     raise OTPmeException(msg)
             # For yubikey-piv tokens we unlock the card on login to omit
             # smartcard pin prompts.
-            try:
-                login_token_type = agent_conn.get_login_token_type()
-            finally:
-                agent_conn.close()
-            if login_token_type == "yubikey_piv":
+            if self.login_token_type == "yubikey_piv":
                 os.environ['PIN'] = self.password
                 os.system('otpme-yk-piv --piv-login --pin "env:PIN"')
                 os.environ.pop("PIN")

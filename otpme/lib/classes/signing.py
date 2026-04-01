@@ -29,7 +29,7 @@ logger = config.logger
 
 def hash_sign_data(sign_data):
     """ Create sign data hash. """
-    data_hash = stuff.gen_md5(sign_data)
+    data_hash = stuff.gen_sha512(sign_data)
     return data_hash
 
 def resolve_tags(tags, from_uuid=True):

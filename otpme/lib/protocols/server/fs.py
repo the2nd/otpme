@@ -95,9 +95,15 @@ class OTPmeFsServer1(OTPmeServer1):
         global filehandlers
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
+        old_umask = None
         if self.create_mode:
             mode = self.create_mode
-        fh = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+            old_umask = os.umask(0)
+        try:
+            fh = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+        finally:
+            if old_umask is not None:
+                os.umask(old_umask)
         try:
             fhs = filehandlers[path]
         except KeyError:
@@ -134,9 +140,15 @@ class OTPmeFsServer1(OTPmeServer1):
     def mkdir(self, path: str, mode: int) -> int:
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
+        old_umask = None
         if self.directory_mode:
             mode = self.directory_mode
-        mkdir_result = os.mkdir(path, mode)
+            old_umask = os.umask(0)
+        try:
+            mkdir_result = os.mkdir(path, mode)
+        finally:
+            if old_umask is not None:
+                os.umask(old_umask)
         if self.force_group_gid:
             os.chown(path, -1, self.force_group_gid)
         return mkdir_result
@@ -184,7 +196,10 @@ class OTPmeFsServer1(OTPmeServer1):
     def rename(self, old: str, new: str):
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
-        return os.rename(old, self.root + new)
+        new = os.path.abspath(self.root + new)
+        if not new.startswith(self.root + "/"):
+            raise OSError(errno.ENOENT, "No such file or directory")
+        return os.rename(old, new)
 
     @with_root_path()
     def rmdir(self, path: str) -> int:
@@ -196,6 +211,13 @@ class OTPmeFsServer1(OTPmeServer1):
     def symlink(self, target: str, source: str):
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
+        # Resolve source path relative to target's directory.
+        if not os.path.isabs(source):
+            abs_source = os.path.abspath(os.path.join(os.path.dirname(target), source))
+        else:
+            abs_source = os.path.abspath(self.root + source)
+        if not abs_source.startswith(self.root + "/"):
+            raise OSError(errno.ENOENT, "No such file or directory")
         result = os.symlink(source, target)
         if self.force_group_gid:
             os.lchown(target, -1, self.force_group_gid)
@@ -411,7 +433,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.exists(path)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -425,7 +447,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.get_mtime(path)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -439,7 +461,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.get_ctime(path)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -459,7 +481,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.access(path, amode)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -479,7 +501,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.create(path, mode)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -493,7 +515,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.getattr(path)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -513,7 +535,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.link(target, source)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -539,7 +561,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 binary_data = self.read(path, size, offset)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             else:
                 message = _("File data.")
@@ -555,7 +577,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.readdir(path)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -569,7 +591,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.readlink(path)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -589,7 +611,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.rename(old, new)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -603,7 +625,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.statfs(path)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -623,7 +645,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.symlink(target, source)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -643,7 +665,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.link(target, source)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -663,7 +685,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.truncate(path, length)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -683,7 +705,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.utimens(path, times)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -697,7 +719,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.unlink(path)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -717,7 +739,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.mkdir(path, mode)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -731,7 +753,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.rmdir(path)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -751,7 +773,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.chmod(path, mode)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -777,7 +799,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.chown(path, uid, gid)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -797,7 +819,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.write(path, binary_data, offset)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -817,7 +839,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.open(path, flags)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -831,7 +853,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.release(path)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -853,7 +875,7 @@ class OTPmeFsServer1(OTPmeServer1):
                 binary_data = self.getxattr(path, name, position)
                 message = _("Extended attribute data.")
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
                 binary_data = None
             return self.build_response(status, message, binary_data=binary_data)
@@ -887,7 +909,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.setxattr(path, name, value, options, position)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -901,7 +923,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.listxattr(path)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 
@@ -921,7 +943,7 @@ class OTPmeFsServer1(OTPmeServer1):
             try:
                 message = self.removexattr(path, name)
             except Exception as e:
-                status = e.errno
+                status = getattr(e, 'errno', False)
                 message = str(e)
             return self.build_response(status, message)
 

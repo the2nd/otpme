@@ -601,6 +601,12 @@ class OTPmeServer1(object):
             return self.build_response(ident_status, ident_response, encrypt=False)
 
         if command == "preauth_check":
+            # Reject preauth if already authenticated to prevent
+            # session key reset and user context switching.
+            if self.authenticated:
+                status = False
+                message = _("Already authenticated.")
+                return self.build_response(status, message, encrypt=False)
             if config.debug_level() > 3:
                 log_msg = _("Processing 'preauth_check' command for client: {client}", log=True)[1]
                 log_msg = log_msg.format(client=self.client_name)
@@ -1877,10 +1883,13 @@ class OTPmeServer1(object):
                 if not self.token_challenges:
                     msg = "Got invalid challenge"
                     raise OTPmeException(msg)
+                challenge_valid = False
                 for token_rel_path in self.token_challenges:
                     x_challenge = self.token_challenges[token_rel_path]
                     if x_challenge == smartcard_challenge:
+                        challenge_valid = True
                         break
+                if not challenge_valid:
                     msg = "Got invalid challenge"
                     raise OTPmeException(msg)
             if is_2f_token:
@@ -1939,10 +1948,13 @@ class OTPmeServer1(object):
             if not self.token_challenges:
                 msg = "Got invalid challenge"
                 raise OTPmeException(msg)
+            challenge_valid = False
             for token_rel_path in self.token_challenges:
                 x_challenge = self.token_challenges[token_rel_path]
                 if x_challenge == challenge:
+                    challenge_valid = True
                     break
+            if not challenge_valid:
                 msg = "Got invalid challenge"
                 raise OTPmeException(msg)
 

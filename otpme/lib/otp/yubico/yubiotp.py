@@ -68,7 +68,7 @@ def verify(otp, token_uid, token_counter, token_time, token_aeskey):
         raise Exception("Unable to get encrypted message from OTP.")
 
     try:
-        otp_plaintext_message = decode(aes.decrypt(token_aeskey, otp_aes_message, "hex"))
+        otp_plaintext_message = decode(aes.decrypt(token_aeskey, otp_aes_message, encoding="hex", mode="ECB"))
     except:
         raise Exception("Error decrypting message from OTP.")
 

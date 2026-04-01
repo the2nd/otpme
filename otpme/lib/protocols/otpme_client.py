@@ -287,6 +287,8 @@ class OTPmeClient(OTPmeClientBase):
         self.encrypt_session = encrypt_session
         # The user we will authenticate as.
         self.username = username
+        # Will hold SSH key password.
+        self.ssh_key_pass = None
         # The client that sends this request.
         self.client = client
         self.stop_job = False
@@ -1173,9 +1175,9 @@ class OTPmeClient(OTPmeClientBase):
         if self.ssh_agent_pid and password:
             # Check if SSH token needs a OTP (second factor token enabled)
             if otp_len > 0:
-                ssh_key_pass = password[:-otp_len]
+                self.ssh_key_pass = password[:-otp_len]
             else:
-                ssh_key_pass = password
+                self.ssh_key_pass = password
 
             if not self.agent_conn:
                 self.agent_conn = connections.get("agent",
@@ -1187,7 +1189,7 @@ class OTPmeClient(OTPmeClientBase):
                 # Add SSH key pass to agent.
                 try:
                     self.agent_conn.add_ssh_key_pass(ssh_agent_pid=self.ssh_agent_pid,
-                                                    ssh_key_pass=ssh_key_pass)
+                                                    ssh_key_pass=self.ssh_key_pass)
                 except Exception as e:
                     msg = _("Error adding SSH key passphrase to agent: {error}")
                     msg = msg.format(error=e)
@@ -3654,10 +3656,11 @@ class OTPmeClient1(OTPmeClientBase):
                 for smartcard_client_handler in smartcard_client_handlers:
                     try:
                         smartcard_data = smartcard_client_handler.handle_preauth(smartcard=self.smartcard,
-                                                                                        password=self.sc_pass)
+                                                                                password=self.sc_pass)
                     except Exception as e:
                         smartcard_error = e
                         continue
+                    smartcard_error = None
                     command_args['smartcard_data'] = smartcard_data
                     self.smartcard_client_handler = smartcard_client_handler
                     break
@@ -3682,7 +3685,7 @@ class OTPmeClient1(OTPmeClientBase):
         if self.use_ssh_agent:
             try:
                 self.ssh_agent_pid = os.environ['SSH_AGENT_PID']
-            except:
+            except KeyError:
                 pass
 
         # Make sure we pass on SLP of old session when sending login requests.
@@ -4592,12 +4595,16 @@ class OTPmeClient1(OTPmeClientBase):
                 static_pass_part = None
                 if verify_token.pass_type == "static":
                     split_password = True
+                    password = self.connection.password
                 if verify_token.pass_type == "otp":
                     split_password = True
+                    password = self.connection.password
                 if verify_token.pass_type == "ssh_key":
                     split_password = True
+                    password = self.connection.ssh_key_pass
+
                 if split_password:
-                    result = verify_token.split_password(self.connection.password)
+                    result = verify_token.split_password(password)
                     pin = result['pin']
                     static_pass = result['pass']
                     # Build static password part from password and PIN if given.

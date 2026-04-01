@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import hmac
 from typing import Union
 
 try:
@@ -413,7 +414,7 @@ class OtppushToken(Token):
         """ Verify given password against 'password' token. """
         # Create password hash.
         password_hash = self.gen_password_hash(password=password)
-        if password_hash == self.password_hash:
+        if hmac.compare_digest(password_hash, self.password_hash):
             return True
         return None
         # This point should never be reached.

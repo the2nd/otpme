@@ -96,18 +96,18 @@ def add_agent_key(ssh_key, passphrase=None):
     """ Add SSH private key to SSH agent. """
     import pexpect
     import tempfile
-    from otpme.lib import filetools
     os.environ['LANG'] = ''
     result = None
     connection_error = "Could not open a connection to your authentication agent."
     passphrase_prompt = 'Enter passphrase for .*'
     bad_passphrase = 'Bad passphrase, .*'
     key_added = 'Identity added: .*'
+    fifo_dir = None
     try:
-        # Create FIFO to pass on SSH key to ssh-add(1).
-        fifo = tempfile.mktemp()
-        os.mkfifo(fifo)
-        filetools.set_fs_permissions(path=fifo, mode=0o600)
+        # Create secure temp directory and FIFO to pass SSH key to ssh-add(1).
+        fifo_dir = tempfile.mkdtemp()
+        fifo = os.path.join(fifo_dir, "ssh_key")
+        os.mkfifo(fifo, mode=0o600)
         # The ssh-add command.
         ssh_add_command = f'ssh-add {fifo}'
         # Start command
@@ -136,7 +136,10 @@ def add_agent_key(ssh_key, passphrase=None):
     except Exception as e:
         result = str(e)
     finally:
-        os.remove(fifo)
+        if fifo_dir:
+            if os.path.exists(fifo):
+                os.remove(fifo)
+            os.rmdir(fifo_dir)
         if result == 1:
             raise Exception("Bad passphrase.")
         elif result == 2:

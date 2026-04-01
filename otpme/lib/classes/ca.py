@@ -866,6 +866,7 @@ class Ca(OTPmeObject):
         basic_constraints: List=None,
         key_usage: List=None,
         ext_key_usage: List=None,
+        cn_alt: List=None,
         key: Union[str,None]=None,
         cert_req: Union[str,None]=None,
         organization: Union[str,None]=None,
@@ -932,7 +933,8 @@ class Ca(OTPmeObject):
                                         self_signed=self_signed, country=country,
                                         state=state, locality=locality, ou=ou,
                                         organization=organization,
-                                        email=email, valid=valid)
+                                        email=email, valid=valid,
+                                        cn_alt=cn_alt)
         except Exception as e:
             config.raise_exception()
             msg = _("Failed to create certificate: {e}")
@@ -1205,7 +1207,7 @@ class Ca(OTPmeObject):
 
         # Create cert and key.
         cert, \
-        key = self.create_cert(cn=cn, valid=valid,
+        key = self.create_cert(cn=cn, cn_alt=[cn], valid=valid,
                             self_signed=False, ext_key_usage=ext_key_usage,
                             key=key, key_len=key_len, key_usage=key_usage,
                             basic_constraints=basic_constraints, ou=ou,

@@ -228,7 +228,6 @@ class OTPmeBackupP1(OTPmeFsServer1):
                             "open_entry_cursor",
                             "next_entries",
                             "close_entry_cursor",
-
                             "link_unchanged_entries",
                             "set_running",
                             "finalize_snapshot",
@@ -469,8 +468,12 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 message = _("Repository has no snapshots.")
                 return self.build_response(status, message)
             snap = snaps[-1]['name']
-            tree_dir = f"{self.root}/tree/"
-            data_file = os.path.join(tree_dir, conf_file_name)
+            tree_dir = os.path.realpath(f"{self.root}/tree/")
+            data_file = os.path.realpath(os.path.join(tree_dir, conf_file_name))
+            if not data_file.startswith(tree_dir + "/"):
+                status = False
+                message = _("Invalid path.")
+                return self.build_response(status, message)
             data_file = f"{data_file}-{snap}"
             try:
                 fd = open(data_file, "rb")
@@ -753,7 +756,11 @@ class OTPmeBackupP1(OTPmeFsServer1):
             is_dir = command_args.get('is_dir', None)
             meta = command_args.get('meta', None)
             try:
-                message = self.backup_handler.link_entry(prev_snap, snap_name, rel, is_dir=is_dir, meta=meta)
+                message = self.backup_handler.link_entry(prev_snap,
+                                                        snap_name,
+                                                        rel,
+                                                        is_dir=is_dir,
+                                                        meta=meta)
             except Exception as e:
                 status = False
                 message = f"{command}: {e}"
@@ -815,9 +822,14 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing arguments.")
                 return self.build_response(status, message)
+            if offset < 0 or chunk_size < 0 or chunk_size > 10 * 1024 * 1024:
+                status = False
+                message = _("Invalid offset or chunk_size.")
+                return self.build_response(status, message)
             try:
-                binary_data = self.backup_handler.get_snap_index_chunk(
-                    snap_name, offset, chunk_size)
+                binary_data = self.backup_handler.get_snap_index_chunk(snap_name,
+                                                                    offset,
+                                                                    chunk_size)
                 message = "Chunk data."
             except Exception as e:
                 status = False
@@ -990,11 +1002,9 @@ class OTPmeBackupP1(OTPmeFsServer1):
         entry = os.path.basename(file_path)
         return name, entry, True
 
-    @fix_snapshot_path()
-    def read_restore_file(self, path):
-        restore_file = f"{self.root}/{path}"
+    def _read_restore_file(self, path):
         try:
-            fd = open(restore_file, "rb")
+            fd = open(path, "rb")
         except Exception as e:
             log_msg = _("Failed to open restore file: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
@@ -1015,6 +1025,27 @@ class OTPmeBackupP1(OTPmeFsServer1):
             self.logger.warning(log_msg)
             raise OTPmeException(log_msg)
         return binary_data
+
+    def _resolve_link(self, file_path):
+        """ Resolve HARDLINK/SYMLINK entries to the target file path.
+            Returns the resolved path or the original path if not a link. """
+        try:
+            with gzip.open(file_path, 'rt') as f:
+                f.readline()  # line 0: rel_path
+                header_line = f.readline().strip()
+                if header_line in ("HARDLINK", "SYMLINK"):
+                    dest = f.readline().strip().split()[0]
+                    dest_file = f"{self.root}/tree/{dest}-{self.snapshot}"
+                    return dest_file
+        except (IOError, OSError, ValueError, IndexError):
+            pass
+        return file_path
+
+    @fix_snapshot_path()
+    def read_restore_file(self, path):
+        restore_file = f"{self.root}/{path}"
+        resolved = self._resolve_link(restore_file)
+        return self._read_restore_file(resolved)
 
     def chmod(self, path: str, mode: int) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
@@ -1038,6 +1069,8 @@ class OTPmeBackupP1(OTPmeFsServer1):
         if stat.S_ISREG(mode):
             try:
                 file_path = self.get_full_file_path(path)
+                # Follow links to get the actual file's size.
+                file_path = self._resolve_link(file_path)
                 with gzip.open(file_path, 'rt') as f:
                     f.readline()  # line 0: rel_path (skip)
                     size_line = f.readline()  # line 1: "<size> <mtime>"

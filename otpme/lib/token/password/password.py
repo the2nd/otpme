@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import hmac
 import string
 from typing import Union
 
@@ -685,7 +686,7 @@ class PasswordToken(Token):
             password_hash = self.gen_password_hash(password, quiet=quiet)
 
         # Verify password hash.
-        if password_hash == self.password_hash:
+        if hmac.compare_digest(password_hash, self.password_hash):
             return True
 
         if log_used_otp_warning:

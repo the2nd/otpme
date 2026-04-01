@@ -3,6 +3,7 @@
 import os
 import socket
 import ipaddr
+import subprocess
 import netifaces
 import dns.resolver
 from subprocess import PIPE
@@ -248,8 +249,9 @@ def configure_floating_ip(address, gratuitous_arp=True, ping=False):
         log_msg = _("Pinging address '{ip}'", log=True)[1]
         log_msg = log_msg.format(ip=floating_ip)
         config.logger.info(log_msg)
-        ping_command = f"ping -w 1 -c 1 {floating_ip} > /dev/null 2>&1"
-        response = os.system(ping_command)
+        response = subprocess.run(["ping", "-w", "1", "-c", "1", floating_ip],
+                                  stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL).returncode
         if response == 0:
             msg = _("Cannot add address '{ip}': already in use")
             msg = msg.format(ip=floating_ip)

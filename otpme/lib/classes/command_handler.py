@@ -6,6 +6,7 @@ import time
 import glob
 import pprint
 import datetime
+import subprocess
 #from prettytable import ALL
 from prettytable import FRAME
 from prettytable import NONE
@@ -6226,7 +6227,7 @@ class CommandHandler(object):
             if mount_proc.exitcode != 0:
                 msg = f"Failed to mount share: {share_id}"
                 raise OTPmeException(msg)
-            os.system(f"sudo -n setreadahead {mount_point}")
+            subprocess.run(["sudo", "-n", "setreadahead", mount_point])
         return
 
     def handle_smartcard_detection(self, command, subcommand):

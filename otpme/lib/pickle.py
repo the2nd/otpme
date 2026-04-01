@@ -59,8 +59,6 @@ class PickleHandler(object):
     def loads(self, dump_data, **kwargs):
         if self.encode:
             dump_data = bson.loads(dump_data)
-        pickle_type = dump_data['pickle_type']
         pickle_data = dump_data['pickle_data']
-        pickler = self.get_pickler(pickle_type)
-        instance = pickler.loads(pickle_data, **kwargs)
+        instance = self.pickler.loads(pickle_data, **kwargs)
         return instance

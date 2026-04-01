@@ -1143,6 +1143,29 @@ def register_config():
                                     ctype=int,
                                     default_value=5,
                                     object_types=object_types)
+    # Auth JWT validity (default 24h).
+    def auth_jwt_valid_setter(auth_jwt_valid, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            auth_jwt_valid = units.time2int(auth_jwt_valid, time_unit="s")
+        except Exception:
+            msg = _("Invalid auth JWT validity.")
+            raise ValueError(msg)
+        return auth_jwt_valid
+    def auth_jwt_valid_getter(auth_jwt_valid, **kwargs):
+        from otpme.lib.humanize import units
+        try:
+            auth_jwt_valid = units.int2time(auth_jwt_valid, time_unit="s")[0]
+        except Exception:
+            msg = _("Invalid auth JWT validity.")
+            raise ValueError(msg)
+        return auth_jwt_valid
+    config.register_config_parameter(name="auth_jwt_valid",
+                                    ctype=int,
+                                    setter=auth_jwt_valid_setter,
+                                    getter=auth_jwt_valid_getter,
+                                    default_value=86400,
+                                    object_types=['site'])
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")

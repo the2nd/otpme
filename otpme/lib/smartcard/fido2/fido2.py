@@ -163,8 +163,8 @@ class Fido2ClientHandler(object):
         # Try to find a locally connected U2F token.
         self.detect_fido2_sc()
         # Set pin if supported.
-        if self.pin is False:
-            self.setup_pin()
+        if self.fido2_token.pin is False:
+            self.fido2_token.setup_pin()
 
         create_options_json = pre_deploy_result['create_options']
         create_options = json.loads(create_options_json)

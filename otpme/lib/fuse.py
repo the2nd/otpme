@@ -10,6 +10,7 @@ import random
 import base64
 import struct
 import hashlib
+import subprocess
 import setproctitle
 from typing import List
 from typing import Optional
@@ -1738,7 +1739,7 @@ class EncryptedFS(OTPmeFS):
                 self.logger.error(f"Expected {read_size} bytes, but read {len(encrypted_data)}")
                 raise fuse.FuseOSError(errno.EIO)
         except Exception as e:
-            self.logger.error(f"Read failed: {e}")
+            self.logger.error(f"Read failed: {path}: {e}")
             raise fuse.FuseOSError(errno.EIO) from e
         decrypted_data = self._decrypt_blocks(encrypted_data, block_count)
         del encrypted_data
@@ -2201,7 +2202,7 @@ def mount_share_proc(share, share_site, mount, nodes, encrypted, **kwargs):
         logger.warning(log_msg)
         return False
     try:
-        os.system(f"sudo -n setreadahead {mount}")
+        subprocess.run(["sudo", "-n", "setreadahead", mount])
     except Exception as e:
         log_msg = _("Failed to run setreadahead: {mount}: {error}", log=True)[1]
         log_msg = log_msg.format(mount=mount, error=e)

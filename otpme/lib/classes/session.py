@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import hmac
 import time
 from typing import List
 from typing import Union
@@ -963,7 +964,7 @@ class Session(OTPmeLockObject):
         if check_auth:
             # Try to verify session with given clear-text password.
             if auth_type == "clear-text":
-                if session_hash == password_hash:
+                if hmac.compare_digest(session_hash, password_hash):
                     verify_response = {
                                     'type'      : 'auth',
                                     'status'    : True,

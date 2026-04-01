@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import random
+import hmac
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -25,7 +25,7 @@ def verify(password_hash, challenge, response):
     my_response_bin = mschap.challenge_response(challenge_bin, password_hash_bin)
     # Encode response.
     my_response = encode(my_response_bin, "hex")
-    if my_response == response:
+    if hmac.compare_digest(my_response, response):
         # Generate NT_KEY we need to return.
         nt_key_bin = mschap.hash_nt_password_hash(password_hash_bin)
         # Encode and uppercase NT_KEY.
@@ -36,16 +36,13 @@ def verify(password_hash, challenge, response):
 
 def generate(username, password_hash):
     """ Generate MSCHAP challenge/response and NT_KEY. """
-    from builtins import range
     if not isinstance(username, bytes):
         username = username.encode("ascii")
     # Decode password hash.
     password_hash_bin = decode(password_hash, "hex")
-    # Generate randmon challenges.
-    peer_challenge_bin = "".join(chr(random.randrange(0, 255)) for i in range(16))
-    auth_challenge_bin = "".join(chr(random.randrange(0, 255)) for i in range(16))
-    peer_challenge_bin = peer_challenge_bin.encode()
-    auth_challenge_bin = auth_challenge_bin.encode()
+    # Generate random challenges.
+    peer_challenge_bin = os.urandom(16)
+    auth_challenge_bin = os.urandom(16)
     # Generate NT password hash.
     nt_key_bin = mschap.hash_nt_password_hash(password_hash_bin)
     # Generate challenge.

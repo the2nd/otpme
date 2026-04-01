@@ -129,38 +129,38 @@ class OTPmeClusterP1(OTPmeClient1):
             raise OTPmeException(msg)
         return response
 
-    def acquire_lock(self, lock_type, lock_id, write):
-        """ Acquire lock on peer. """
-        command = "acquire_lock"
-        command_args = {}
-        command_args['lock_type'] = lock_type
-        command_args['lock_id'] = lock_id
-        command_args['write'] = write
-        status, \
-        status_code, \
-        response, \
-        binary_data = self.connection.send(command, command_args)
-        if not status:
-            msg = _("Failed to send lock request: {lock_id}: {response}")
-            msg = msg.format(lock_id=lock_id, response=response)
-            raise LockWaitAbort(msg)
-        return response
+    #def acquire_lock(self, lock_type, lock_id, write):
+    #    """ Acquire lock on peer. """
+    #    command = "acquire_lock"
+    #    command_args = {}
+    #    command_args['lock_type'] = lock_type
+    #    command_args['lock_id'] = lock_id
+    #    command_args['write'] = write
+    #    status, \
+    #    status_code, \
+    #    response, \
+    #    binary_data = self.connection.send(command, command_args)
+    #    if not status:
+    #        msg = _("Failed to send lock request: {lock_id}: {response}")
+    #        msg = msg.format(lock_id=lock_id, response=response)
+    #        raise LockWaitAbort(msg)
+    #    return response
 
-    def release_lock(self, lock_id, write):
-        """ Release lock on peer. """
-        command = "release_lock"
-        command_args = {}
-        command_args['lock_id'] = lock_id
-        command_args['write'] = write
-        status, \
-        status_code, \
-        response, \
-        binary_data = self.connection.send(command, command_args)
-        if not status:
-            msg = _("Failed to send lock release request: {lock_id}: {response}")
-            msg = msg.format(lock_id=lock_id, response=response)
-            raise UnknownLock(msg)
-        return response
+    #def release_lock(self, lock_id, write):
+    #    """ Release lock on peer. """
+    #    command = "release_lock"
+    #    command_args = {}
+    #    command_args['lock_id'] = lock_id
+    #    command_args['write'] = write
+    #    status, \
+    #    status_code, \
+    #    response, \
+    #    binary_data = self.connection.send(command, command_args)
+    #    if not status:
+    #        msg = _("Failed to send lock release request: {lock_id}: {response}")
+    #        msg = msg.format(lock_id=lock_id, response=response)
+    #        raise UnknownLock(msg)
+    #    return response
 
     def get_data_revision(self):
         """ Get data revision from peer. """

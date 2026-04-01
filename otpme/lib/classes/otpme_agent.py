@@ -6,6 +6,7 @@ import time
 import signal
 import psutil
 import random
+import subprocess
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -468,15 +469,16 @@ class OTPmeAgent(UnixDaemon):
                 share_site = shares[share_id]['site']
                 mount_point = get_mount_point(login_user, share_site, share_name)
                 try:
-                    os.system(f"fusermount -u {mount_point}")
+                    subprocess.run(["fusermount", "-u", mount_point])
                 except Exception as e:
                     try:
-                        os.system(f"fusermount -z -u {mount_point}")
+                        subprocess.run(["fusermount", "-z", "-u", mount_point])
                     except Exception as e:
                         log_msg = _("Failed to unmount share: {mount_point}: {error}", log=True)[1]
                         log_msg = log_msg.format(mount_point=mount_point, error=e)
                         messages.append(log_msg)
                         self.logger.warning(log_msg)
+                        continue
                 try:
                     os.rmdir(mount_point)
                 except Exception as e:
@@ -486,7 +488,8 @@ class OTPmeAgent(UnixDaemon):
                 mountpoints.append(mount_point)
                 umounted_shares.append(share_id)
             # Remove user mount dirs.
-            remove_mount_dirs(mountpoints)
+            if len(umounted_shares) == len(shares):
+                remove_mount_dirs(mountpoints)
             if umounted_shares:
                 log_msg = _("Shares unmounted: {shares}", log=True)[1]
                 log_msg = log_msg.format(shares=umounted_shares)

@@ -426,7 +426,7 @@ class OTPmeHostP1(OTPmeServer1):
                 u = backend.get_object(object_type="user",
                                         realm=user_realm,
                                         name=user_name)
-                if u.exists():
+                if u and u.exists():
                     message = u.site
                     status = True
                 else:
@@ -539,7 +539,10 @@ class OTPmeHostP1(OTPmeServer1):
         elif command == "get_host_status":
             myhost = backend.get_object(object_type=self.host_type,
                                             uuid=config.uuid)
-            if myhost.enabled:
+            if not myhost:
+                message = _("Host object not found")
+                status = False
+            elif myhost.enabled:
                 message = _("Host enabled")
                 status = True
             else:
@@ -575,6 +578,8 @@ class OTPmeHostP1(OTPmeServer1):
                     log_msg = _("Internal server error: {error}", log=True)[1]
                     log_msg = log_msg.format(error=e)
                     logger.critical(log_msg)
+                    message = _("Internal server error.")
+                    status = False
 
         elif command == "get_pass_strength":
             status = True

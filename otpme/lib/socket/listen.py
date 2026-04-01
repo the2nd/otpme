@@ -85,7 +85,7 @@ class ListenSocket(object):
         # Indicates if we should verify client certificates.
         self.ssl_verify_client = ssl_verify_client
         # Max simultaneous client connections allowed.
-        self.max_conn=max_conn
+        self.max_conn = max_conn
 
         self.key_file = None
         self.cert_file = None

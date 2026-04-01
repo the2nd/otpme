@@ -3,6 +3,7 @@
 import os
 import time
 import pprint
+import fnmatch
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -488,7 +489,7 @@ def dump_instance_cache(object_id=None, search_regex=None):
         object_ids.append(object_id)
     else:
         if search_regex:
-            search_re = re.compile(search_regex)
+            search_re = re.compile(fnmatch.translate(search_regex))
         for o in multiprocessing.instance_cache:
             add_object = True
             if search_regex:
@@ -601,7 +602,7 @@ def dump_acl_cache(object_id=None, search_regex=None):
             if object_oid != object_id:
                 continue
         if search_regex:
-            search_re = re.compile(search_regex)
+            search_re = re.compile(fnmatch.translate(search_regex))
             if not search_re.match(object_oid):
                 continue
         acls = {}

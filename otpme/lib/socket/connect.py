@@ -24,7 +24,7 @@ from otpme.lib.exceptions import *
 class ConnectSocket(object):
     """ Class to handle connections to TCP or unix sockets. """
     def __init__(self, socket_uri, use_ssl=True, ssl_version=ssl.PROTOCOL_TLSv1_2,
-        cert=None, key=None, ca_data=None, verify_server=False,
+        cert=None, key=None, ca_data=None, verify_server=True,
         blocking=True, socket_handler=None):
         # Will hold certificate infos of peer.
         self.peer_cert = None
@@ -134,7 +134,7 @@ class ConnectSocket(object):
 
                     # Set permissions.
                     filetools.set_fs_permissions(path=tmp_file,
-                                                mode=0o660,
+                                                mode=0o600,
                                                 recursive=False)
                     # Write file content.
                     file_content = str(file_content)

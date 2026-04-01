@@ -203,10 +203,10 @@ def gen_sha512(string):
 
 def gen_pin(pin_len=4):
     """ Generate PIN from length given as arg. """
-    import random
+    import secrets
     pin = ""
     for i in range(0, pin_len):
-        number = random.randint(0,9)
+        number = secrets.randbelow(10)
         pin = f"{pin}{number}"
     return pin
 
@@ -290,8 +290,8 @@ def gen_password(len=16, capital=True, numbers=True, symbols=False,
 
 def get_random_bits(xbits):
     """ Get random bits. """
-    import random
-    random_bits = str(random.getrandbits(xbits))
+    import secrets
+    random_bits = str(secrets.randbits(xbits))
     return random_bits
 
 def get_random_bytes(xbytes):

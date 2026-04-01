@@ -352,10 +352,8 @@ class OTPmeFsP1(OTPmeFsServer1):
                 # Get read-only attribute.
                 self.read_only = share.read_only
                 if share.directory_mode != "0o000":
-                    os.umask(0)
                     self.directory_mode = int(share.directory_mode, 0)
                 if share.create_mode != "0o000":
-                    os.umask(0)
                     self.create_mode = int(share.create_mode, 0)
                 if self.encrypted:
                     self.block_size = share.block_size
@@ -966,10 +964,6 @@ class OTPmeFsP1(OTPmeFsServer1):
             file_data = file_data.decode('utf-8')
             lines = file_data.strip().split("\n")
             header = lines[1].split()
-            if header[0] == "HARDLINK":
-                return True, b''
-            if header[0] == "SYMLINK":
-                return True, b''
             file_info = {
                 "size": int(header[0]),
                 "chunk_hashes": [l for l in lines[2:] if l],

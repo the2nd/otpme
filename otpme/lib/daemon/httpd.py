@@ -157,11 +157,11 @@ class HttpDaemon(OTPmeDaemon):
                 return self.application
 
         def create_ssl_context(config, default_ssl_context_factory):
-            context = ssl.SSLContext(ssl_version=ssl.PROTOCOL_SSLv23)
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
             context.load_cert_chain(certfile=self.cert_file,
                                     keyfile=self.key_file,
                                     password=key_pass)
-            #context.minimum_version = ssl.TLSVersion.TLSv1_2
             return context
 
         gunicorn_logger = self.logger

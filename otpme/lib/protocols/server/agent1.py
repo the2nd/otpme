@@ -4,6 +4,7 @@ import os
 import time
 import psutil
 import signal
+import subprocess
 
 try:
     if os.environ['OTPME_DEBUG_MODULE_LOADING'] == "True":
@@ -583,7 +584,11 @@ class OTPmeAgentP1(object):
                 for share_id in new_mounts:
                     mounted_shares[share_id] = new_mounts[share_id]
                 self.session['mounted_shares'] = mounted_shares
-                self.login_sessions[self.login_pid] = self.session
+                session_lock = self.acquire_session_lock(self.session_id)
+                try:
+                    self.login_sessions[self.login_pid] = self.session
+                finally:
+                    session_lock.release_lock()
                 msg, log_msg = _("Shares mounted: {mounts}", log=True)
                 msg = msg.format(mounts=list(new_mounts.keys()))
                 log_msg = log_msg.format(mounts=list(new_mounts.keys()))
@@ -615,10 +620,10 @@ class OTPmeAgentP1(object):
                     share_name = shares[share_id]['name']
                     mount_point = get_mount_point(login_user, share_site, share_name)
                     try:
-                        os.system(f"fusermount -u {mount_point}")
+                        subprocess.run(["fusermount", "-u", mount_point])
                     except Exception as e:
                         try:
-                            os.system(f"fusermount -z -u {mount_point}")
+                            subprocess.run(["fusermount", "-z", "-u", mount_point])
                         except Exception as e:
                             msg, log_msg = _("Failed to unmount share: {mount_point}: {error}", log=True)
                             msg = msg.format(mount_point=mount_point, error=e)
@@ -644,11 +649,12 @@ class OTPmeAgentP1(object):
                         shares.pop(share_id)
                     except KeyError:
                         pass
+                self.session['mounted_shares'] = shares
+                session_lock = self.acquire_session_lock(self.session_id)
                 try:
-                    self.session['mounted_shares'] = shares
                     self.login_sessions[self.login_pid] = self.session
-                except KeyError:
-                    pass
+                finally:
+                    session_lock.release_lock()
                 msg = _("Shares unmounted: {shares}")
                 msg = msg.format(shares=umounted_shares)
                 messages.append(msg)
@@ -1173,15 +1179,16 @@ class OTPmeAgentP1(object):
                 log_msg = _("Removing empty session ({pid}) for user '{user}'.", log=True)[1]
                 log_msg = log_msg.format(pid=self.login_pid, user=self.login_user)
                 self.logger.info(log_msg)
-                try:
-                    self.session_ids.pop(self.session_id)
-                except:
-                    pass
                 session_lock = self.acquire_session_lock(self.session_id)
                 try:
-                    self.login_sessions.pop(self.login_pid)
-                except:
-                    pass
+                    try:
+                        self.session_ids.pop(self.session_id)
+                    except:
+                        pass
+                    try:
+                        self.login_sessions.pop(self.login_pid)
+                    except:
+                        pass
                 finally:
                     session_lock.release_lock()
                 message = _("Empty session removed.")

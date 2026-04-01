@@ -62,7 +62,7 @@ def check_group(group):
 
 class AtomicFile(object):
     def __init__(self, path, user=None, group=None,
-        perms=0o666, mode="r+", flags=None, auto_open=True,
+        perms=0o600, mode="r+", flags=None, auto_open=True,
         create_missing=False, register=None, unregister=None):
         self.path = path
         self.user = user
@@ -140,7 +140,7 @@ class AtomicFile(object):
             pass
 
 class AtomicFileLock(object):
-    def __init__(self, path, user=None, group=None, perms=0o666,
+    def __init__(self, path, user=None, group=None, perms=0o600,
         mode="r+", flags=None, read_lock=False, write_lock=False, auto_open=True,
         block=True, register=None, unregister=None):
         from otpme.lib import config

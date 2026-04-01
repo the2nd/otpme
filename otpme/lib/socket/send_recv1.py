@@ -11,6 +11,7 @@ try:
 except:
     pass
 
+from otpme.lib import config
 from otpme.lib.exceptions import *
 
 def send(socket_handler, data):
@@ -37,6 +38,12 @@ def recv(socket_handler, **kwargs):
         return b""
     # Get data length.
     data_len = struct.unpack(">I", header)[0]
+    # Reject oversized messages to prevent memory exhaustion.
+    max_len = config.socket_receive_buffer
+    if data_len > max_len:
+        msg = _("Message size {data_len} exceeds maximum {max_len}")
+        msg = msg.format(data_len=data_len, max_len=max_len)
+        raise OTPmeException(msg)
     # Receive into pre-allocated buffer to avoid copies.
     buf = memoryview(bytearray(data_len))
     bytes_recvd = 0

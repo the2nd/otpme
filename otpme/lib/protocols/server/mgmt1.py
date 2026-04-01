@@ -153,6 +153,7 @@ class OTPmeMgmtP1(OTPmeServer1):
         while True:
             jobs_stopped = True
             for job_uuid in dict(self.jobs):
+                job = self.jobs[job_uuid]
                 if not job.is_alive():
                     try:
                         self.jobs.pop(job_uuid)
@@ -714,6 +715,7 @@ class OTPmeMgmtP1(OTPmeServer1):
 
         if procs is None:
             procs = int(os.cpu_count() / 2)
+        procs = min(procs, os.cpu_count())
 
         def parse_csv_entry(csv_entry):
             #print(csv_entry)

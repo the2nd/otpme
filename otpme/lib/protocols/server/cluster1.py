@@ -30,7 +30,7 @@ from otpme.lib import stuff
 #from otpme.lib import cache
 from otpme.lib import config
 from otpme.lib import backend
-from otpme.lib import locking
+#from otpme.lib import locking
 from otpme.lib import filetools
 from otpme.lib import connections
 from otpme.lib import multiprocessing
@@ -166,8 +166,8 @@ class OTPmeClusterP1(OTPmeServer1):
                             "trash_empty",
                             "trash_delete",
                             "sync_trash",
-                            "acquire_lock",
-                            "release_lock",
+                            #"acquire_lock",
+                            #"release_lock",
                             "get_checksums",
                             "get_full_checksums",
                             "get_index_checksums",
@@ -211,6 +211,11 @@ class OTPmeClusterP1(OTPmeServer1):
             message = message.format(peer=self.peer, error=e)
             response = self.build_response(status, message, encrypt=False)
             return response
+
+        if not self.authenticated or not self.peer:
+            message = _("Please auth first.")
+            status = status_codes.NEED_HOST_AUTH
+            return self.build_response(status, message)
 
         # Check if we got a valid command
         if not command in valid_commands:
@@ -681,9 +686,12 @@ class OTPmeClusterP1(OTPmeServer1):
                     while True:
                         entry_time = str(time.time_ns())
                         cluster_journal_file = os.path.join(config.cluster_in_journal_dir, entry_time)
-                        if os.path.exists(cluster_journal_file):
+                        try:
+                            fd = os.open(cluster_journal_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                            os.close(fd)
+                            break
+                        except FileExistsError:
                             continue
-                        break
                     object_data = {
                                     'action'            : 'write',
                                     'object_id'         : object_id.read_oid,
@@ -777,9 +785,12 @@ class OTPmeClusterP1(OTPmeServer1):
                 while True:
                     entry_time = str(time.time_ns())
                     cluster_journal_file = os.path.join(config.cluster_in_journal_dir, entry_time)
-                    if os.path.exists(cluster_journal_file):
+                    try:
+                        fd = os.open(cluster_journal_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                        os.close(fd)
+                        break
+                    except FileExistsError:
                         continue
-                    break
                 object_data = {
                                 'action'        : 'delete',
                                 'object_id'     : object_id.read_oid,
@@ -939,79 +950,79 @@ class OTPmeClusterP1(OTPmeServer1):
                     message = message.format(error=e)
                     status = False
 
-        elif command == "acquire_lock":
-            status = True
-            message = "done"
-            try:
-                lock_type = command_args['lock_type']
-            except:
-                message = _("Missing lock type.")
-                status = False
-            try:
-                lock_id = command_args['lock_id']
-            except:
-                message = _("Missing lock ID.")
-                status = False
-            try:
-                write = command_args['write']
-            except:
-                message = _("Missing write lock flag.")
-                status = False
-            if write:
-                if lock_id in multiprocessing.cluster_write_locks:
-                    status = False
-                    message = _("Write lock exits: {lock_id}")
-                    message = message.format(lock_id=lock_id)
-            else:
-                if lock_id in multiprocessing.cluster_read_locks:
-                    status = False
-                    message = _("Read lock exits: {lock_id}")
-                    message = message.format(lock_id=lock_id)
-            if status:
-                try:
-                    lock = locking.acquire_lock(lock_type=lock_type,
-                                                lock_id=lock_id,
-                                                write=write,
-                                                timeout=0)
-                except LockWaitTimeout:
-                    status = False
-                    message = _("Failed to acquire lock.")
-                else:
-                    if write:
-                        multiprocessing.cluster_write_locks[lock_id] = lock
-                    else:
-                        multiprocessing.cluster_read_locks[lock_id] = lock
+        #elif command == "acquire_lock":
+        #    status = True
+        #    message = "done"
+        #    try:
+        #        lock_type = command_args['lock_type']
+        #    except:
+        #        message = _("Missing lock type.")
+        #        status = False
+        #    try:
+        #        lock_id = command_args['lock_id']
+        #    except:
+        #        message = _("Missing lock ID.")
+        #        status = False
+        #    try:
+        #        write = command_args['write']
+        #    except:
+        #        message = _("Missing write lock flag.")
+        #        status = False
+        #    if write:
+        #        if lock_id in multiprocessing.cluster_write_locks:
+        #            status = False
+        #            message = _("Write lock exits: {lock_id}")
+        #            message = message.format(lock_id=lock_id)
+        #    else:
+        #        if lock_id in multiprocessing.cluster_read_locks:
+        #            status = False
+        #            message = _("Read lock exits: {lock_id}")
+        #            message = message.format(lock_id=lock_id)
+        #    if status:
+        #        try:
+        #            lock = locking.acquire_lock(lock_type=lock_type,
+        #                                        lock_id=lock_id,
+        #                                        write=write,
+        #                                        timeout=0)
+        #        except LockWaitTimeout:
+        #            status = False
+        #            message = _("Failed to acquire lock.")
+        #        else:
+        #            if write:
+        #                multiprocessing.cluster_write_locks[lock_id] = lock
+        #            else:
+        #                multiprocessing.cluster_read_locks[lock_id] = lock
 
-        elif command == "release_lock":
-            status = True
-            message = "done"
-            try:
-                lock_id = command_args['lock_id']
-            except:
-                message = _("Missing lock ID.")
-                status = False
-            try:
-                write = command_args['write']
-            except:
-                message = _("Missing lock ID.")
-                status = False
-            if status:
-                if write:
-                    try:
-                        lock = multiprocessing.cluster_write_locks.pop(lock_id)
-                    except KeyError:
-                        status = False
-                        message = _("Unknown write lock: {lock_id}")
-                        message = message.format(lock_id=lock_id)
-                else:
-                    try:
-                        lock = multiprocessing.cluster_read_locks.pop(lock_id)
-                    except KeyError:
-                        status = False
-                        message = _("Unknown read lock: {lock_id}")
-                        message = message.format(lock_id=lock_id)
-                if status:
-                    lock.release_lock()
+        #elif command == "release_lock":
+        #    status = True
+        #    message = "done"
+        #    try:
+        #        lock_id = command_args['lock_id']
+        #    except:
+        #        message = _("Missing lock ID.")
+        #        status = False
+        #    try:
+        #        write = command_args['write']
+        #    except:
+        #        message = _("Missing lock ID.")
+        #        status = False
+        #    if status:
+        #        if write:
+        #            try:
+        #                lock = multiprocessing.cluster_write_locks.pop(lock_id)
+        #            except KeyError:
+        #                status = False
+        #                message = _("Unknown write lock: {lock_id}")
+        #                message = message.format(lock_id=lock_id)
+        #        else:
+        #            try:
+        #                lock = multiprocessing.cluster_read_locks.pop(lock_id)
+        #            except KeyError:
+        #                status = False
+        #                message = _("Unknown read lock: {lock_id}")
+        #                message = message.format(lock_id=lock_id)
+        #        if status:
+        #            lock.release_lock()
 
         elif command == "deconfigure_floating_ip":
             status = True

@@ -87,14 +87,19 @@ class OTPmeAuthP1(OTPmeServer1):
             msg = _("Access denied")
             raise AccessDenied(msg)
 
+        # Get JWT validity from site config.
+        auth_jwt_valid = user_site.get_config_parameter("auth_jwt_valid")
+
         # Build JWT.
+        now = time.time()
         jwt_data = {
                 'realm'             : config.realm,
                 'site'              : config.site,
                 'reason'            : reason,
                 'message'           : "JWT signed by authd.",
                 'challenge'         : challenge,
-                'login_time'        : time.time(),
+                'login_time'        : now,
+                'exp'               : now + auth_jwt_valid,
                 'login_token'       : token.uuid,
                 'auth_type'         : config.auth_type,
                 'accessgroup'       : access_group,
@@ -258,6 +263,7 @@ class OTPmeAuthP1(OTPmeServer1):
 
         # Set auth mode.
         if command == "verify" \
+        or command == "verify_static" \
         or command == "verify_mschap" \
         or command == "token_verify" \
         or command == "token_verify_mschap":
@@ -265,6 +271,8 @@ class OTPmeAuthP1(OTPmeServer1):
 
         # Set auth type.
         if command == "verify":
+            auth_type = "clear-text"
+        if command == "verify_static":
             auth_type = "clear-text"
         if command == "token_verify":
             auth_type = "clear-text"
@@ -374,6 +382,7 @@ class OTPmeAuthP1(OTPmeServer1):
                         'site'          : config.site,
                         'reason'        : jwt_reason,
                         'challenge'     : challenge,
+                        'exp'           : time.time() + 60,
                     }
             redirect_challenge = jwt.encode(payload=jwt_data,
                                             key=site_key,
