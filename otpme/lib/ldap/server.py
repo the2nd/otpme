@@ -941,6 +941,7 @@ class LDIFTreeEntry(entry.BaseLDAPEntry,
                 if not self.auth_token.is_admin():
                     verify_acls = True
 
+        # FIXME: when to verify ACLs?
         if not config.ldap_verify_acls:
             verify_acls = False
 

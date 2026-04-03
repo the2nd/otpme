@@ -62,6 +62,7 @@ read_value_acls =    {
                                 "sso_name",
                                 "helper_url",
                                 "address",
+                                "dot1x_auth",
                                 ],
                     "dump"      : [
                                 "sso_logo",
@@ -81,11 +82,13 @@ write_value_acls = {
                                 "sso",
                                 "sso_popup",
                                 "auth_cache",
+                                "dot1x_auth",
                                 ],
                     "disable"   : [
                                 "sso",
                                 "sso_popup",
                                 "auth_cache",
+                                "dot1x_auth",
                                 ],
                     "edit"      : [
                                 "config",
@@ -191,6 +194,22 @@ commands = {
                 'exists'    : {
                     'method'            : 'show_config_parameters',
                     'oargs'              : ['parameter'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'enable_dot1x'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_dot1x',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_dot1x'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_dot1x',
                     'job_type'          : 'thread',
                     },
                 },
@@ -734,6 +753,8 @@ def register_hooks():
     config.register_auth_on_action_hook("client", "add_address")
     config.register_auth_on_action_hook("client", "del_address")
     config.register_auth_on_action_hook("client", "change_secret")
+    config.register_auth_on_action_hook("client", "enable_dot1x")
+    config.register_auth_on_action_hook("client", "disable_dot1x")
     config.register_auth_on_action_hook("client", "enable_auth_cache")
     config.register_auth_on_action_hook("client", "disable_auth_cache")
     config.register_auth_on_action_hook("client", "change_auth_cache_timeout")
@@ -866,6 +887,7 @@ class Client(OTPmeClientObject):
         self.helper_url = None
         self.auth_cache_timeout = 60
         self.auth_cache_enabled = False
+        self.dot1x_auth = False
 
         self._sync_fields = {
                     'node'  : {
@@ -921,6 +943,11 @@ class Client(OTPmeClientObject):
                                                         'type'      : str,
                                                         'required'  : False,
                                                         'encryption': config.disk_encryption,
+                                                    },
+                        'DOT1X_AUTH'        : {
+                                                        'var_name'  : 'dot1x_auth',
+                                                        'type'      : bool,
+                                                        'required'  : False,
                                                     },
                         'AUTH_CACHE_ENABLED'        : {
                                                         'var_name'  : 'auth_cache_enabled',
@@ -1139,6 +1166,68 @@ class Client(OTPmeClientObject):
 
         self.auth_cache_timeout = timeout
         self.update_index("auth_cache_timeout", self.auth_cache_timeout)
+
+        return self._write(callback=callback)
+
+    @check_acls(['enable:dot1x_auth'])
+    @object_lock()
+    @audit_log()
+    def enable_dot1x(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Enable dot1x auth. """
+        if self.dot1x_auth:
+            msg = (_("Dot1x auth already enabled."))
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_dot1x",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.dot1x_auth = True
+        self.update_index("dot1x_auth", self.dot1x_auth)
+
+        return self._write(callback=callback)
+
+    @check_acls(['disable:dot1x_auth'])
+    @object_lock()
+    @audit_log()
+    def disable_dot1x(
+        self,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Disable auth cache. """
+        if not self.dot1x_auth:
+            msg = (_("Dot1x auth already disabled."))
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_dot1x",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.dot1x_auth = False
+        self.update_index("dot1x_auth", self.dot1x_auth)
 
         return self._write(callback=callback)
 
@@ -1754,11 +1843,18 @@ class Client(OTPmeClientObject):
         lines.append(f'TOKENS="{token_list}"')
 
         auth_cache_enabled = ""
-        if self.verify_acl("view:auth_cacahe") \
-        or self.verify_acl("enable:auth_cacahe") \
-        or self.verify_acl("disable:auth_cacahe"):
+        if self.verify_acl("view:auth_cache") \
+        or self.verify_acl("enable:auth_cache") \
+        or self.verify_acl("disable:auth_cache"):
             auth_cache_enabled = self.auth_cache_enabled
         lines.append(f'AUTH_CACHE_ENABLED="{auth_cache_enabled}"')
+
+        dot1x_auth = ""
+        if self.verify_acl("view:auth_cache") \
+        or self.verify_acl("enable:auth_cache") \
+        or self.verify_acl("disable:auth_cache"):
+            dot1x_auth = self.dot1x_auth
+        lines.append(f'DOT1X_AUTH="{dot1x_auth}"')
 
         sso_name = ""
         if self.verify_acl("view:sso_name"):

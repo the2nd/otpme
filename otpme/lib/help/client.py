@@ -390,6 +390,22 @@ cmd_help = {
                                 },
                 },
 
+    'enable_dot1x'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-client enable_dot1x {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Enable dot1x auth for this client.'),
+                                },
+                },
+
+    'disable_dot1x'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-client disable_dot1x {client}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable dot1x auth for this client.'),
+                                },
+                },
+
     'enable_auth_cache'    : {
                     '_cmd_usage_help' : _('Usage: otpme-client enable_auth_cache {client}'),
                     'cmd'   :   '<|object|>',

@@ -21,6 +21,7 @@ except:
 from otpme.lib import re
 from otpme.lib import oid
 from otpme.lib import cli
+from otpme.lib import sotp
 from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
@@ -950,6 +951,8 @@ class Token(OTPmeObject):
         self.valid_token_options = []
         self.supports_qrcode = False
         self.offline_pinnable = False
+        self.support_dot1x = False
+        self.dot1x_secret = None
 
         self.track_last_used = True
         self.acl_inheritance_enabled = True
@@ -2943,6 +2946,37 @@ class Token(OTPmeObject):
         callback.send(msg)
 
         return self._cache(callback=callback)
+
+    def verify_dot1x(self, auth_type: str, **kwargs):
+        """ Call default verify method. """
+        if auth_type == "mschap":
+            return self.verify_dot1x_mschap(**kwargs)
+        return self.verify_dot1x_static(**kwargs)
+
+    def verify_dot1x_mschap(self, challenge=None, response=None, **kwargs):
+        if not self.support_dot1x:
+            log_msg = _("Token does not support dot1x: {token}", log=True)[1]
+            logger.info(log_msg)
+            return None, False, False
+        if not self.dot1x_secret:
+            log_msg = _("Token does not have a dot1x secret: {token}", log=True)[1]
+            logger.info(log_msg)
+            return None, False, False
+        try:
+            sotp_verify_status, \
+            nt_key, \
+            _sotp, \
+            _sotp_hash = sotp.verify(password_hash=self.dot1x_secret,
+                                    challenge=challenge,
+                                    response=response)
+        except Exception as e:
+            nt_key = None
+            _sotp_hash = None
+            sotp_verify_status = None
+            log_msg = _("Error verifying MSCHAP request (dot1x): {e}", log=True)[1]
+            log_msg = log_msg.format(e=e)
+            logger.warning(log_msg)
+        return sotp_verify_status, nt_key, _sotp_hash
 
     @object_lock()
     @audit_log()

@@ -2441,6 +2441,25 @@ class BackupClient:
             return enc_path
         return decrypt_path(self._siv, enc_path)
 
+    def encrypt_symlink_target(self, target: str) -> str:
+        """Encrypt a symlink target path using AES-SIV.
+
+        Preserves leading '/' for absolute symlinks.
+        """
+        if self._siv is None or not target:
+            return target
+        absolute = target.startswith('/')
+        enc = encrypt_path(self._siv, target.lstrip('/'))
+        return ('/' + enc) if absolute else enc
+
+    def decrypt_symlink_target(self, enc_target: str) -> str:
+        """Decrypt an encrypted symlink target path."""
+        if self._siv is None or not enc_target:
+            return enc_target
+        absolute = enc_target.startswith('/')
+        dec = decrypt_path(self._siv, enc_target.lstrip('/'))
+        return ('/' + dec) if absolute else dec
+
     @staticmethod
     def hash_block(plaintext: bytes) -> str:
         """Return the SHA-256 hex digest of a plaintext block."""
@@ -2868,7 +2887,7 @@ class BackupClient:
                         "uid": st.st_uid, "gid": st.st_gid,
                         "atime": st.st_atime, "mtime": st.st_mtime,
                         "ctime": st.st_ctime,
-                        "symlink_target": os.readlink(fpath),
+                        "symlink_target": self.encrypt_symlink_target(os.readlink(fpath)),
                     }
                     if (prev
                             and prev["uid"] == st.st_uid
@@ -3033,6 +3052,8 @@ class BackupClient:
                 entry["rel_path"] = self.decrypt_rel_path(entry["rel_path"])
                 if entry.get("link_target"):
                     entry["link_target"] = self.decrypt_rel_path(entry["link_target"])
+                if entry.get("symlink_target"):
+                    entry["symlink_target"] = self.decrypt_symlink_target(entry["symlink_target"])
                 # Compute display-relative paths after decryption
                 if filter_path is not None:
                     entry["rel_path"] = os.path.relpath(entry["rel_path"], filter_path) if entry["rel_path"] != filter_path else "."
@@ -3172,6 +3193,8 @@ class BackupClient:
                         continue
                     if entry.get("link_target"):
                         entry["link_target"] = self.decrypt_rel_path(entry["link_target"])
+                    if entry.get("symlink_target"):
+                        entry["symlink_target"] = self.decrypt_symlink_target(entry["symlink_target"])
                     filtered_batch.append(entry)
                 if filtered_batch:
                     found = True

@@ -1103,7 +1103,7 @@ class Session(OTPmeLockObject):
                                                 challenge=challenge,
                                                 response=response)
                 except Exception as e:
-                    verify_status = None
+                    sotp_verify_status = None
                     log_msg = _("Error verifying MSCHAP request (SOTP): {session_id}: {e}", log=True)[1]
                     log_msg = log_msg.format(session_id=self.session_id, e=e)
                     logger.critical(log_msg)

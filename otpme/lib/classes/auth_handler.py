@@ -1293,41 +1293,30 @@ class AuthHandler(object):
 
         # Set auth data depending on token type.
         token_verify_parms = {}
+        token_verify_parms['auth_type'] = self.auth_type
         if _verify_token.pass_type == "otp":
-            token_verify_parms = {
-                    'auth_type'         : self.auth_type,
-                    'challenge'         : self.challenge,
-                    'response'          : self.response,
-                    'otp'               : self.password,
-                    }
+            token_verify_parms['challenge'] = self.challenge
+            token_verify_parms['response'] = self.response
+            token_verify_parms['otp'] = self.password
 
         if _verify_token.pass_type == "static":
-            token_verify_parms = {
-                    'auth_type'         : self.auth_type,
-                    'challenge'         : self.challenge,
-                    'response'          : self.response,
-                    'password'          : self.password,
-                    }
+            token_verify_parms['challenge'] = self.challenge
+            token_verify_parms['response'] = self.response
+            token_verify_parms['password'] = self.password
 
         if _verify_token.pass_type == "ssh_key":
             if self.auth_type == "mschap":
                 return None
-            token_verify_parms = {
-                    'auth_type'         : self.auth_type,
-                    'challenge'         : self.challenge,
-                    'response'          : self.response,
-                    'otp'               : self.password,
-                    }
+            token_verify_parms['challenge'] = self.challenge
+            token_verify_parms['response'] = self.response
+            token_verify_parms['otp'] = self.password
 
         if _verify_token.token_type.startswith("script_"):
-            token_verify_parms = {
-                    'auth_type'         : self.auth_type,
-                    'auth_user'         : self.user.name,
-                    'auth_group'        : self.access_group,
-                    'auth_token'        : _verify_token.name,
-                    'auth_client'       : self.client,
-                    'auth_client_ip'    : self.client_ip,
-                    }
+            token_verify_parms['auth_user'] = self.user.name
+            token_verify_parms['auth_group'] = self.access_group
+            token_verify_parms['auth_token'] = _verify_token.name
+            token_verify_parms['auth_client'] = self.client
+            token_verify_parms['auth_client_ip'] = self.client_ip
             if self.auth_type == "clear-text":
                 if _verify_token.token_type == "script_otp":
                     token_verify_parms['auth_otp'] = self.password
@@ -1338,12 +1327,16 @@ class AuthHandler(object):
                 token_verify_parms['auth_response'] = self.response
 
         if _verify_token.pass_type == "otp_push":
-            token_verify_parms = {
-                    'auth_type'         : self.auth_type,
-                    'challenge'         : self.challenge,
-                    'response'          : self.response,
-                    'password'          : self.password,
-                    }
+            token_verify_parms['challenge'] = self.challenge
+            token_verify_parms['response'] = self.response
+            token_verify_parms['password'] = self.password
+
+        if self.auth_client and self.auth_client.dot1x_auth:
+            if self.auth_type == "clear-text":
+                token_verify_parms['password'] = self.password
+            if self.auth_type == "mschap":
+                token_verify_parms['challenge'] = self.challenge
+                token_verify_parms['response'] = self.response
 
         # Handle smartcard tokens.
         found_smartcard_token = False
@@ -1367,13 +1360,26 @@ class AuthHandler(object):
                                             token_verify_parms)
         # Try normal token verify.
         if verify_status is None:
-            try:
-                verify_status = _verify_token.verify(**token_verify_parms)
-            except Exception as e:
-                log_msg = _("Verification of token '{token_name}' returned error: {error}", log=True)[1]
-                log_msg = log_msg.format(token_name=token.name, error=e)
-                self.logger.critical(log_msg)
-                config.raise_exception()
+            do_dot1x_auth = False
+            if self.auth_client and self.auth_client.dot1x_auth:
+                if _verify_token.support_dot1x:
+                    do_dot1x_auth = True
+            if do_dot1x_auth:
+                try:
+                    verify_status = _verify_token.verify_dot1x(**token_verify_parms)
+                except Exception as e:
+                    log_msg = _("Verification of token '{token_name}' returned error: {error}", log=True)[1]
+                    log_msg = log_msg.format(token_name=token.name, error=e)
+                    self.logger.critical(log_msg)
+                    config.raise_exception()
+            else:
+                try:
+                    verify_status = _verify_token.verify(**token_verify_parms)
+                except Exception as e:
+                    log_msg = _("Verification of token '{token_name}' returned error: {error}", log=True)[1]
+                    log_msg = log_msg.format(token_name=token.name, error=e)
+                    self.logger.critical(log_msg)
+                    config.raise_exception()
 
         if self.auth_type == "mschap":
             # For OTP tokens verify() returns a tuple with verify status,
@@ -1499,6 +1505,10 @@ class AuthHandler(object):
             # For static password tokens mschap_status contains the password
             # hash instead of the used clear-text password.
             if self.verify_token.pass_type == "static":
+                self.password_hash = mschap_status[2]
+            # For dot1x auth tokens mschap_status contains the password
+            # hash instead of the used clear-text password.
+            if self.auth_client and self.auth_client.dot1x_auth:
                 self.password_hash = mschap_status[2]
 
         # Check if the user has an auth script enabled.

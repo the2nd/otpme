@@ -57,6 +57,7 @@ read_value_acls = {
                             "auth_script",
                             "public_key",
                             "ssh_public_key",
+                            "dot1x_secret",
                             "private_key_backup",
                             "offline_status",
                             "offline_expiry",
@@ -317,6 +318,8 @@ class YubikeypivToken(Token):
         # Set SSH key type.
         self.ssh_public_key = None
         self.key_type = "rsa"
+        self.dot1x_secret = None
+        self.support_dot1x = True
         self.valid_key_types = [ "rsa", "dsa" ]
         self.auth_script_enabled = False
         self.allow_offline = False
@@ -365,6 +368,11 @@ class YubikeypivToken(Token):
             'PRIVATE_KEY_BACKUP'        : {
                                             'var_name'      : 'private_key_backup',
                                             'type'          : dict,
+                                            'required'      : False,
+                                        },
+            'DOT1X_SECRET'            : {
+                                            'var_name'      : 'dot1x_secret',
+                                            'type'          : str,
                                             'required'      : False,
                                         },
             'KEY_TYPE'                  : {
@@ -653,6 +661,7 @@ class YubikeypivToken(Token):
         add_user_key: bool=False,
         ssh_public_key: str=None,
         ssh_public_key_type: str=None,
+        dot1x_secret: str=None,
         private_key_backup: Union[dict,None]=None,
         _caller: str="API",
         verbose_level: int=0,
@@ -682,6 +691,8 @@ class YubikeypivToken(Token):
         if ssh_public_key:
             self.ssh_public_key = ssh_public_key
             self.key_type = ssh_public_key_type
+        if dot1x_secret:
+            self.dot1x_secret = dot1x_secret
         return self._cache(callback=callback)
 
     @object_lock(full_lock=True)
@@ -712,6 +723,11 @@ class YubikeypivToken(Token):
             lines.append(f'KEY_TYPE="{self.key_type}"')
         else:
             lines.append('KEY_TYPE=""')
+
+        if self.verify_acl("view:dot1x_secret"):
+            lines.append(f'DOT1X_SECRET="{self.dot1x_secret}"')
+        else:
+            lines.append('DOT1X_SECRET=""')
 
         return Token.show_config(self,
                                 config_lines=lines,

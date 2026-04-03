@@ -335,7 +335,10 @@ class OTPmeFsServer1(OTPmeServer1):
     def link(self, target: str, source: str):
         if self.read_only:
             raise PermissionError(errno.EROFS, "Permission denied")
-        return os.link(self.root + source, target)
+        source = os.path.abspath(self.root + source)
+        if not source.startswith(self.root + "/"):
+            raise OSError(errno.ENOENT, "No such file or directory")
+        return os.link(source, target)
 
     @with_root_path(allow_symlinks=True)
     def exists(self, path: str) -> int:

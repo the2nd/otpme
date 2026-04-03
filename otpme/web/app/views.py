@@ -47,6 +47,9 @@ def load_user(id):
     session = backend.get_object(uuid=session_uuid)
     if not session:
         return user
+    # Verify session belongs to the authenticated user.
+    if session.user_uuid != user.uuid:
+        return user
     result = backend.search(object_type="token",
                             attribute="uuid",
                             value=session.auth_token,
@@ -95,7 +98,7 @@ def login():
       client_ip = request.remote_addr
     # Get username/password.
     username = escape(request.form['username'])
-    password = escape(request.form['password'])
+    password = request.form['password']
 
     result = backend.search(object_type="user",
                             attribute="name",
@@ -150,7 +153,8 @@ def login():
         return redirect(url_for('login', _external=True, _scheme='https'))
     config.auth_token = auth_token
     resp = make_response(redirect(url_for('index', _external=True, _scheme='https')))
-    resp.set_cookie('otpme_sso_session', session_uuid)
+    resp.set_cookie('otpme_sso_session', session_uuid,
+                    httponly=True, secure=True, samesite='Lax')
     login_user(user)
     return resp
 
@@ -165,6 +169,9 @@ def logout():
     # Remove session cookie on logout.
     resp = make_response(redirect(url_for('login', _external=True, _scheme='https')))
     resp.set_cookie('otpme_sso_session', '', expires=0)
+    # Verify session belongs to the authenticated user.
+    if session and session.user_uuid != g.user.uuid:
+        session = None
     # Without session we cannot logout user from otpme.
     if not session:
         logout_user()
@@ -232,6 +239,9 @@ def get_sotp():
     session_uuid = request.cookies.get('otpme_sso_session')
     session = backend.get_object(uuid=session_uuid)
     if not session:
+        return jsonify(sotp_data)
+    # Verify session belongs to the authenticated user.
+    if session.user_uuid != g.user.uuid:
         return jsonify(sotp_data)
     # Gen SOTP.
     result = backend.search(object_type="accessgroup",

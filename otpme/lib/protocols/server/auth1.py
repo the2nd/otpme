@@ -18,6 +18,7 @@ from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import connections
+from otpme.lib.humanize import units
 from otpme.lib import multiprocessing
 from otpme.lib.audit import get_audit_logger
 
@@ -89,6 +90,11 @@ class OTPmeAuthP1(OTPmeServer1):
 
         # Get JWT validity from site config.
         auth_jwt_valid = user_site.get_config_parameter("auth_jwt_valid")
+        try:
+            auth_jwt_valid = units.time2int(auth_jwt_valid, time_unit="s")
+        except Exception:
+            msg = _("Invalid auth JWT validity.")
+            raise ValueError(msg)
 
         # Build JWT.
         now = time.time()

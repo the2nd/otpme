@@ -263,14 +263,12 @@ class ForcetokenPolicy(Policy):
             if verify_token.token_type not in self.force_token_types:
                 msg = _("Token type denied by policy: {}: {}")
                 msg = msg.format(self.name, hook_object.rel_path)
-                return callback.error(msg,
-                                        exception=self.policy_exception)
+                raise self.policy_exception(msg)
         if self.force_pass_types:
             if verify_token.pass_type not in self.force_pass_types:
                 msg = _("Token pass type denied by policy: {}: {}")
                 msg = msg.format(self.name, hook_object.rel_path)
-                return callback.error(msg,
-                                        exception=self.policy_exception)
+                raise self.policy_exception(msg)
 
     def test(self, force=False, verbose_level=0,
         _caller="API", callback=default_callback):

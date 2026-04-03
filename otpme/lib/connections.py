@@ -446,11 +446,16 @@ def get(daemon, **kwargs):
         try:
             site_fqdn = stuff.get_site_fqdn(realm, site, mgmt=mgmt)
         except ConnectionError as e:
-            msg = _("Unable to get site address: {e}")
+            msg = _("Unable to get site FQDN: {e}")
             msg = msg.format(e=e)
             raise ConnectionError(msg)
         if site_fqdn:
-            connect_addresses = net.query_dns(site_fqdn, 'A')
+            try:
+                connect_addresses = net.query_dns(site_fqdn, 'A')
+            except Exception as e:
+                msg = _("Unable to resolve site FQDN: {e}")
+                msg = msg.format(e=e)
+                raise ConnectionError(msg)
         else:
             try:
                 site_address = stuff.get_site_address(realm, site)
@@ -465,7 +470,12 @@ def get(daemon, **kwargs):
         else:
             site_fqdn = config.site_auth_fqdn
         if site_fqdn:
-            connect_addresses = net.query_dns(site_fqdn, 'A')
+            try:
+                connect_addresses = net.query_dns(site_fqdn, 'A')
+            except Exception as e:
+                msg = _("Unable to resolve site FQDN: {e}")
+                msg = msg.format(e=e)
+                raise ConnectionError(msg)
         else:
             if not config.site_address:
                 raise OTPmeException(_("Unable to get site address."))

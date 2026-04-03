@@ -3456,7 +3456,8 @@ class OTPmeObject(OTPmeBaseObject):
             # FIXME: Maybe we should check role ACLs here? e.g. check if role
             #        has any view:secret, generate:otp or any other "dangerous" ACL
             #        that allows other users to gain permissions for this role!?
-            msg = _("WARNING: Please make sure role ACLs do not allow any privilege escalation when adding a role to a role!")
+            warn_msg = _("WARNING: Please make sure role ACLs do not allow any privilege escalation when adding a role to a role!")
+            callback.send(warn_msg)
             # Detect role loops.
             child_roles = get_roles(role_uuid=self.uuid,
                                     recursive=True,

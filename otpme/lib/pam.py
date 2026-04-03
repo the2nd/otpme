@@ -7,6 +7,7 @@ import grp
 import json
 import time
 import shutil
+import subprocess
 
 # FIXME: This is a workaround to prevent pinentry module from loading some
 #        modules that will crash sddm.
@@ -81,6 +82,9 @@ class PamHandler(object):
         self.use_ssh_agent = "auto"
         self.use_smartcard = "auto"
         self.smartcard = None
+        self.do_dot1x = False
+        self.dot1x_timeout = 10
+        self.dot1x_token_type = None
         self.failed_message = "Login failed"
         self.auth_message = ""
         self.login_message = None
@@ -209,6 +213,26 @@ class PamHandler(object):
                 self.create_home_directory = True
             if arg == "home_skel":
                 self.home_skeleton = val
+            if arg == "do_dot1x":
+                if val.lower() == "force":
+                    self.do_dot1x = val.lower()
+                elif val.lower() == "false":
+                    self.do_dot1x = False
+                elif val.lower() == "auto":
+                    self.do_dot1x = "auto"
+                else:
+                    log_msg = _("Ignoring unknown value for do_dot1x: {value}", log=True)[1]
+                    log_msg = log_msg.format(value=val)
+                    self.logger.warning(log_msg)
+            if arg == "dot1x_timeout":
+                try:
+                    self.dot1x_timeout = int(val)
+                except ValueError:
+                    log_msg = _("Ignoring unknown value for dot1x_timeout: {value}", log=True)[1]
+                    log_msg = log_msg.format(value=val)
+                    self.logger.warning(log_msg)
+            if arg == "dot1x_token_type":
+                self.dot1x_token_type = val
             if arg == "use_smartcard":
                 if val.lower() == "true":
                     self.use_smartcard = True
@@ -562,9 +586,9 @@ class PamHandler(object):
     def pam_sm_setcred(self):
         """ Set users groups. """
         if config.system_user() != "root":
-            return
+            return self.pamh.PAM_SUCCESS
         if not self.login_token:
-            return
+            return self.pamh.PAM_SUCCESS
         # Handle dynamic groups
         if config.allow_dynamic_groups is not False:
             log_msg = _("Getting dynamic groups from hostd.", log=True)[1]
@@ -855,6 +879,60 @@ class PamHandler(object):
                 retry_count += 1
                 time.sleep(0.01)
         return agent_conn
+
+    def do_dot1x_auth(self, force_auth=True, set_otp=True):
+        """ Do 802.1x port authentication. """
+        if not self.do_dot1x:
+            return
+        if not self.dot1x_token_type:
+            msg = _("Please add PAM module config parameter <dot1x_token_type>")
+            self.logger.critical(msg)
+            return
+        # If connection link is down, do nothing (e.g. wlan or offline auth)..
+        if not stuff.get_link_status("dot1x-lan"):
+            return
+        # In "auto" mode skip dot1x auth if network is up.
+        if self.do_dot1x == "auto" or force_auth is False:
+            if stuff.network_up():
+                return
+        # Get smartcard password.
+        supported_smartcards = config.get_supported_smartcards()
+        if self.dot1x_token_type in supported_smartcards:
+            password = self.get_password(prompt="Smartcard password: ")
+            try:
+                smartcard = detect_smartcard(sc_types=[self.dot1x_token_type])
+            except Exception as e:
+                msg = _("Error detecting smartcard: {error}")
+                msg = msg.format(error=e)
+                raise OTPmeException(msg)
+            # Get smartcard handler.
+            try:
+                smartcard_client_handler = config.get_smartcard_handler(self.dot1x_token_type)[0]
+            except NotRegistered:
+                msg = _("Invalid smartcard type: {sc_type}")
+                msg = msg.format(sc_type=self.dot1x_token_type)
+                self.logger.critical(msg)
+                return
+            smartcard_client_handler = smartcard_client_handler(sc_type=self.dot1x_token_type,
+                                                            token_rel_path=f"{self.username}/1dox-dummy",
+                                                            message_method=self.send_pam_message,
+                                                            error_message_method=self.send_pam_error)
+            # Gen OTP via smartcard.
+            dot1x_pass = smartcard_client_handler.handle_dot1x(smartcard=smartcard,
+                                                        password=password)
+        else:
+            dot1x_pass = self.get_password(prompt="Password: ")
+        if self.do_dot1x == "force":
+            if force_auth:
+                subprocess.run(["nmcli", "connection", "down", "dot1x-lan"])
+        if set_otp:
+            subprocess.run(['nmcli', 'connection',
+                            'modify', 'dot1x-lan',
+                            '802-1x.identity', self.username,
+                            '802-1x.password', dot1x_pass])
+        #subprocess.run(["nmcli", "connection", "up", "dot1x-lan"])
+        subprocess.run(["timeout", str(self.dot1x_timeout), "nmcli", "connection", "up", "dot1x-lan"],
+                        capture_output=True)
 
     def load_offline_tokens(self, reload_token=False):
         """ Load offline tokens. """
@@ -1733,6 +1811,8 @@ class PamHandler(object):
         if self.login_status is not False:
             log_msg = _("User is already logged in. This is most likely a screen unlock request.", log=True)[1]
             self.logger.info(log_msg)
+            # Check for 802.1x port authentication.
+            self.do_dot1x_auth(force_auth=False, set_otp=False)
             # Set unlock status.
             self.unlock = True
             # Dont cache offline tokens on screen unlock.
@@ -1842,6 +1922,8 @@ class PamHandler(object):
                         self.auth_message = ""
 
         else:
+            # Check for 802.1x port authentication.
+            self.do_dot1x_auth()
             # Get agent connection.
             agent_conn = self.get_agent_connection()
             # Add login session to otpme-agent.
@@ -1895,21 +1977,25 @@ class PamHandler(object):
                 self.online_auth(login=True)
             except Exception:
                 # Try to get realm/site to connect to via DNS.
-                x = net.get_otpme_site(config.realm)
                 try:
-                    realm = x['realm']
-                    site = x['site']
-                except KeyError:
+                    x = net.get_otpme_site(config.realm)
+                except Exception as e:
                     pass
                 else:
-                    if realm == config.realm:
-                        if site != config.site:
-                            try:
-                                self.online_auth(realm=realm,
-                                                site=site,
-                                                login=True)
-                            except Exception:
-                                pass
+                    try:
+                        realm = x['realm']
+                        site = x['site']
+                    except KeyError:
+                        pass
+                    else:
+                        if realm == config.realm:
+                            if site != config.site:
+                                try:
+                                    self.online_auth(realm=realm,
+                                                    site=site,
+                                                    login=True)
+                                except Exception:
+                                    pass
 
             if not self.auth_status:
                 if not self.auth_failed and self.offline_token.status():

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import hmac
 import time
 
 try:
@@ -593,7 +594,7 @@ class OTPmeJoinP1(OTPmeServer1):
                 msg = msg.format(host=host)
                 raise OTPmeException(msg)
             # Make sure we compare JOTP as string.
-            if host.jotp != str(jotp):
+            if not hmac.compare_digest(host.jotp, str(jotp)):
                 msg = (_("Permission denied: Wrong JOTP"))
                 raise OTPmeException(msg)
 
@@ -771,7 +772,7 @@ class OTPmeJoinP1(OTPmeServer1):
                 msg = msg.format(host=host)
                 raise OTPmeException(msg)
             # Make sure we compare LOTP as string.
-            if host.lotp != str(lotp):
+            if not hmac.compare_digest(host.lotp, str(lotp)):
                 msg = (_("Access denied: Wrong LOTP"))
                 raise OTPmeException(msg)
 

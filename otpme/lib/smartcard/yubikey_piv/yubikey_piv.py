@@ -14,6 +14,7 @@ except:
 
 from otpme.lib import cli
 from otpme.lib import json
+from otpme.lib import sotp
 from otpme.lib import config
 from otpme.lib.help import command_map
 from otpme.lib.encryption.rsa import RSAKey
@@ -109,6 +110,7 @@ class YubikeypivClientHandler(object):
         public_key = None
         private_key_backup = None
         if no_token_write:
+            token_password = cli.read_pass(prompt='Smartcard password: ')
             if self.restore_from_server:
                 msg = _("-n conflicts with --restore-from-server")
                 raise OTPmeException(msg)
@@ -160,6 +162,9 @@ class YubikeypivClientHandler(object):
                     msg = _("Backup file already exists: {backup_file}")
                     msg = msg.format(backup_file=backup_file)
                     raise OTPmeException(msg)
+
+            # Get token password.
+            token_password = cli.get_password(prompt='Smartcard password: ', min_len=8)
 
             if self.restore_from_server:
                 # Get key backup and parameters.
@@ -242,6 +247,7 @@ class YubikeypivClientHandler(object):
                 # Get private key as PEM.
                 private_key_pem = token_key.export_private_key(encoding='PEM')
             else:
+                # Gen RSA key.
                 try:
                     token_key = RSAKey(bits=key_len)
                 except Exception as e:
@@ -314,9 +320,6 @@ class YubikeypivClientHandler(object):
                 msg = _("Aborted.")
                 raise OTPmeException(msg)
 
-            # Get token password.
-            token_password = cli.get_password(prompt='Token password: ', min_len=8)
-
             # Set PIN/PUK.
             piv.change_pin(old_pin=piv.DEFAULT_PIN, new_pin=token_password)
             piv.change_puk(old_puk=piv.DEFAULT_PUK, new_puk=token_password)
@@ -335,12 +338,23 @@ class YubikeypivClientHandler(object):
         if not public_key:
             msg = (_("Cannot continue without public key."))
             raise OTPmeException(msg)
+        try:
+            dot1x_secret = piv.derive_password(challenge="dot1x",
+                                    pin=token_password,
+                                    slot="AUTHENTICATION",
+                                    length=32)
+        except Exception as e:
+            msg = _("Error deriving dot1x secret: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg)
         # Add SSH public key to deployment args.
         deploy_args = {}
         deploy_args['public_key'] = public_key
         deploy_args['add_user_key'] = add_user_key
         deploy_args['ssh_public_key'] = ssh_public_key
         deploy_args['ssh_public_key_type'] = ssh_public_key_type
+        if dot1x_secret:
+            deploy_args['dot1x_secret'] = dot1x_secret
         if private_key_backup:
             deploy_args['private_key_backup'] = private_key_backup
 
@@ -413,6 +427,18 @@ class YubikeypivClientHandler(object):
                         'signature' : signature,
                         }
         return smartcard_data
+
+    def handle_dot1x(self, smartcard, password, **kwargs):
+        try:
+            secret = smartcard.derive_password(challenge="dot1x",
+                                            pin=password,
+                                            slot="AUTHENTICATION")
+        except Exception as e:
+            msg = _("Error sending offline encryption challenge to smartcard: {error}")
+            msg = msg.format(error=e)
+            raise OTPmeException(msg)
+        otp = sotp.gen(password_hash=secret)
+        return otp
 
 class YubikeypivServerHandler(object):
     def __init__(self):

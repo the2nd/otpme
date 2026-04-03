@@ -283,12 +283,6 @@ class LogintimesPolicy(Policy):
 
         found_match = False
         for entry in login_times.split("|"):
-            if entry.startswith("!"):
-                entry = entry.replace("!", "")
-                negated = True
-            else:
-                negated = False
-
             entry_times = {
                     'minute'    : entry.split()[0],
                     'hour'      : entry.split()[1],
@@ -320,11 +314,7 @@ class LogintimesPolicy(Policy):
                 break
 
         if found_match:
-            if not negated:
-                return callback.ok()
-        else:
-            if negated:
-                return callback.ok()
+            return callback.ok()
 
         msg = _("Login times restricted by policy: {}: {}")
         msg = msg.format(self.name, hook_object.rel_path)
@@ -409,9 +399,6 @@ class LogintimesPolicy(Policy):
 
         # Walk through all login times we got.
         for x in login_times.split("|"):
-            # Check if we got a negated login times string.
-            if x.startswith("!"):
-                x = x.replace("!", "")
             # Check if given login times are valid.
             login_times_entries = x.split()
             if len(login_times_entries) != 5:
@@ -436,11 +423,11 @@ class LogintimesPolicy(Policy):
                     lower_mark = 1
                     upper_mark = 31
                 # Month.
-                if entry_count == 3:
+                if entry_count == 4:
                     lower_mark = 1
                     upper_mark = 12
                 # Day of week.
-                if entry_count == 4:
+                if entry_count == 5:
                     lower_mark = 1
                     upper_mark = 7
                 for x in entry.split(","):

@@ -134,7 +134,7 @@ write_value_acls = {
                                 "autosign",
                                 "auth_script",
                                 "login_script",
-                                "token"
+                                "token",
                                 "auto_mount",
                                 ],
                     "disable"   : [

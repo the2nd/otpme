@@ -2212,7 +2212,7 @@ class OTPmeClient1(OTPmeClientBase):
         mount_shares=False, offline_token=None, login_session_id=None,
         cache_login_tokens=False, sc_pass=None, send_password="auto",
         password_method=None, password=None, cleanup_method=None,
-        check_offline_pass_strength=False, offline_iterations_by_score={},
+        check_offline_pass_strength=None, offline_iterations_by_score={},
         offline_key_derivation_func=None, offline_key_func_opts=None,
         sync_token_data=False, request_jwt=None, verify_jwt=None,
         jwt_challenge=None, jwt_key=None, jwt_auth=False,
@@ -4589,6 +4589,9 @@ class OTPmeClient1(OTPmeClientBase):
                 enc_pass = self.smartcard_client_handler.handle_offline_token_challenge(smartcard=self.smartcard,
                                                                                         password=self.sc_pass,
                                                                                         enc_challenge=enc_challenge)
+                # If enc pass is derived from a smartcard, no strength checking is required.
+                if enc_pass:
+                    self.check_offline_pass_strength = False
             if not enc_pass:
                 # Split off password, OTP and PIN.
                 split_password = False

@@ -363,8 +363,11 @@ def get_shm_string(name, size=1024, value=None):
             return value
         @value.setter
         def value(self, new_val):
-            new_val_len = len(new_val)
             new_val = new_val.encode()
+            new_val_len = len(new_val)
+            if new_val_len + 1 > len(self._value):
+                msg = f"SharedString value too long ({new_val_len} bytes, max {len(self._value) - 1})"
+                raise ValueError(msg)
             self._value[:new_val_len+1] = new_val + b'\0'
         def close(self):
             self._value.close()

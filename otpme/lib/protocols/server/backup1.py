@@ -822,7 +822,7 @@ class OTPmeBackupP1(OTPmeFsServer1):
                 status = False
                 message = _("Missing arguments.")
                 return self.build_response(status, message)
-            if offset < 0 or chunk_size < 0 or chunk_size > 10 * 1024 * 1024:
+            if offset < 0 or chunk_size < 0 or chunk_size > 100 * 1024 * 1024:
                 status = False
                 message = _("Invalid offset or chunk_size.")
                 return self.build_response(status, message)
@@ -1002,9 +1002,29 @@ class OTPmeBackupP1(OTPmeFsServer1):
         entry = os.path.basename(file_path)
         return name, entry, True
 
-    def _read_restore_file(self, path):
+    def _resolve_link(self, file_path):
+        """ Resolve HARDLINK/SYMLINK entries to the target file path.
+            Returns the resolved path or the original path if not a link. """
         try:
-            fd = open(path, "rb")
+            with gzip.open(file_path, 'rt') as f:
+                f.readline()  # line 0: rel_path
+                header_line = f.readline().strip()
+                if header_line == "SYMLINK":
+                    return file_path, True
+                if header_line == "HARDLINK":
+                    dest = f.readline().strip().split()[0]
+                    dest_file = f"{self.root}/tree/{dest}-{self.snapshot}"
+                    return dest_file, False
+        except (IOError, OSError, ValueError, IndexError):
+            pass
+        return file_path, False
+
+    @fix_snapshot_path()
+    def read_restore_file(self, path):
+        restore_file = f"{self.root}/{path}"
+        resolved = self._resolve_link(restore_file)[0]
+        try:
+            fd = open(resolved, "rb")
         except Exception as e:
             log_msg = _("Failed to open restore file: {e}", log=True)[1]
             log_msg = log_msg.format(e=e)
@@ -1025,27 +1045,6 @@ class OTPmeBackupP1(OTPmeFsServer1):
             self.logger.warning(log_msg)
             raise OTPmeException(log_msg)
         return binary_data
-
-    def _resolve_link(self, file_path):
-        """ Resolve HARDLINK/SYMLINK entries to the target file path.
-            Returns the resolved path or the original path if not a link. """
-        try:
-            with gzip.open(file_path, 'rt') as f:
-                f.readline()  # line 0: rel_path
-                header_line = f.readline().strip()
-                if header_line in ("HARDLINK", "SYMLINK"):
-                    dest = f.readline().strip().split()[0]
-                    dest_file = f"{self.root}/tree/{dest}-{self.snapshot}"
-                    return dest_file
-        except (IOError, OSError, ValueError, IndexError):
-            pass
-        return file_path
-
-    @fix_snapshot_path()
-    def read_restore_file(self, path):
-        restore_file = f"{self.root}/{path}"
-        resolved = self._resolve_link(restore_file)
-        return self._read_restore_file(resolved)
 
     def chmod(self, path: str, mode: int) -> int:
         raise PermissionError(errno.EROFS, "Permission denied")
@@ -1070,18 +1069,23 @@ class OTPmeBackupP1(OTPmeFsServer1):
             try:
                 file_path = self.get_full_file_path(path)
                 # Follow links to get the actual file's size.
-                file_path = self._resolve_link(file_path)
-                with gzip.open(file_path, 'rt') as f:
-                    f.readline()  # line 0: rel_path (skip)
-                    size_line = f.readline()  # line 1: "<size> <mtime>"
-                original_size = int(size_line.split()[0])
-                result["st_size"] = original_size
-                # fuse.py recalculates: new_blocks = (st_blocks * st_blksize) // PREFERRED_BLOCK_SIZE
-                # du interprets final st_blocks as 512-byte units.
-                # By setting st_blksize = PREFERRED_BLOCK_SIZE (4 MiB), the division
-                # becomes a no-op and st_blocks passes through unchanged.
-                result["st_blocks"] = (original_size + 511) // 512
-                result["st_blksize"] = 4194304
+                file_path, symlink = self._resolve_link(file_path)
+                if symlink:
+                    result["st_size"] = 0
+                    result["st_blocks"] = 0
+                    result["st_blksize"] = 4194304
+                else:
+                    with gzip.open(file_path, 'rt') as f:
+                        f.readline()  # line 0: rel_path (skip)
+                        size_line = f.readline()  # line 1: "<size> <mtime>"
+                    original_size = int(size_line.split()[0])
+                    result["st_size"] = original_size
+                    # fuse.py recalculates: new_blocks = (st_blocks * st_blksize) // PREFERRED_BLOCK_SIZE
+                    # du interprets final st_blocks as 512-byte units.
+                    # By setting st_blksize = PREFERRED_BLOCK_SIZE (4 MiB), the division
+                    # becomes a no-op and st_blocks passes through unchanged.
+                    result["st_blocks"] = (original_size + 511) // 512
+                    result["st_blksize"] = 4194304
             except (IOError, OSError, ValueError, IndexError) as e:
                 pass
         return result

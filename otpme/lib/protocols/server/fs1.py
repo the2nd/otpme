@@ -964,6 +964,8 @@ class OTPmeFsP1(OTPmeFsServer1):
             file_data = file_data.decode('utf-8')
             lines = file_data.strip().split("\n")
             header = lines[1].split()
+            if header[0] == "SYMLINK":
+                return True, b''
             file_info = {
                 "size": int(header[0]),
                 "chunk_hashes": [l for l in lines[2:] if l],

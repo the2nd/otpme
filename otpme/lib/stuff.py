@@ -109,6 +109,52 @@ def get_newest_object():
                                 }
     return newest_object_data
 
+def otpme_reachable(timeout=2):
+    import socket
+    from otpme.lib import config
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect((config.site_auth_fqdn, int(config.default_ports['authd'])))
+        s.close()
+        return True
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        return False
+
+def network_up(timeout=2):
+    import subprocess
+    result = subprocess.run(["ip", "route", "show", "default"],
+                            capture_output=True, text=True)
+    if not result.stdout.strip():
+        return False
+    gw = result.stdout.split()[2]
+    iface = result.stdout.split()[4]
+    result = subprocess.run(["ping", "-I", iface, "-c", "1", "-W", str(timeout), gw], capture_output=True)
+    return result.returncode == 0
+
+def get_link_status(connection="dot1x-lan"):
+    """Check if the interface of a NM connection has link."""
+    import subprocess
+    # Get interface name from connection
+    result = subprocess.run(
+        ["nmcli", "-t", "-f", "connection.interface-name",
+         "connection", "show", connection],
+        capture_output=True, text=True)
+    if result.returncode != 0:
+        return False
+    iface = result.stdout.strip().split(":")[-1]
+    if not iface:
+        return False
+    # Check carrier on interface
+    result = subprocess.run(
+        ["nmcli", "-t", "-f", "WIRED-PROPERTIES.CARRIER",
+         "device", "show", iface],
+        capture_output=True, text=True)
+    if result.returncode != 0:
+        return False
+    link_status = result.stdout.strip().split(":")[-1] == "on"
+    return link_status
+
 def update_reload_file():
     """ Update reload file. """
     from otpme.lib import config

@@ -336,6 +336,7 @@ class PasswordToken(Token):
         self.keep_session = False
         self.mschap_enabled = False
         self.offline_pinnable = True
+        self.support_dot1x = True
         # Hardware tokens that we can handle (e.g. on otpme-token deploy)
         # FIXME: implement deployment of yubikey in static mode (e.g. password via usb keyboard presses)
         self.supported_hardware_tokens = [ 'yubikey-static' ]
@@ -593,6 +594,10 @@ class PasswordToken(Token):
             return callback.error(error_message)
 
         return callback.ok(ok_message)
+
+    def verify_dot1x(self, **kwargs):
+        """ Call default verify method. """
+        return self.verify(**kwargs)
 
     def verify(self, auth_type: str, **kwargs):
         """ Call default verify method. """

@@ -228,16 +228,6 @@ class JoinHandler(object):
         if site is None:
             site = dns_site
 
-        ## Make sure we connect to the correct realm/site.
-        #if realm:
-        #    if realm != dns_realm:
-        #        msg = f"Got wrong realm from DNS: {dns_realm}"
-        #        raise OTPmeException(msg)
-        #if site:
-        #    if site != dns_site:
-        #        msg = f"Got wrong site from DNS: {dns_site}"
-        #        raise OTPmeException(msg)
-
         # Get username.
         if not username:
             if config.login_user:
