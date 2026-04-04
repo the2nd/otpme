@@ -1080,9 +1080,11 @@ class CommandHandler(object):
                 except Exception as e:
                     msg = f"Failed to backup object: {x_oid}: {e}"
                     print(msg)
+                    continue
                 filetools.create_file(path=backup_file, content=backup_data)
 
     def full_restore(self, restore_dir):
+        from otpme.lib import nsscache
         from otpme.lib import filetools
         _index = config.get_index_module()
         if not _index.is_available():
@@ -1131,6 +1133,17 @@ class CommandHandler(object):
         msg = "Creating DB indexes..."
         print(msg)
         _index.command("create_db_indices")
+        # Make sure cache is started.
+        _cache = config.get_cache_module()
+        if not _cache.status():
+            _cache.start()
+        self.init()
+        my_site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        master_site = my_site.get_master_site()
+        nsscache.update(config.realm, config.site)
+        nsscache.update(config.realm, master_site.name)
+        # Enable nsscache symlinks.
+        nsscache.enable()
         for x in failed_restores:
             print(x)
 

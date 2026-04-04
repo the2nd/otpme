@@ -591,6 +591,14 @@ class OTPmeLockObject(object):
 @match_class_typing
 class OTPmeBaseObject(OTPmeLockObject):
     """ Generic OTPme object. """
+    @classmethod
+    def get_backup_data(cls, object_id, object_uuid, object_config, file_content):
+        return file_content
+
+    @classmethod
+    def restore_object_data(cls, object_id, object_uuid, object_data, callback):
+        pass
+
     def __init__(
         self,
         object_config: Union[ObjectConfig,dict,None]=None,
@@ -8343,7 +8351,7 @@ class OTPmeObject(OTPmeBaseObject):
                     deleted_by = f"token:{config.auth_token.rel_path}"
                 else:
                     deleted_by = "API"
-            trash.add(self.oid, deleted_by)
+            trash.add(self.oid, deleted_by, callback=callback)
 
         # Make sure all signatures are revoked before deleting the object.
         if self.auto_revoke and len(self.signatures) > 0:
@@ -8744,7 +8752,12 @@ class OTPmeObject(OTPmeBaseObject):
                 para_getter = None
             value = self.config_params[para]
             if para_getter:
-                value = para_getter(value)
+                try:
+                    value = para_getter(value)
+                except Exception as e:
+                    msg = _("Invalid config parameter: {e}")
+                    msg = msg.format(e=e)
+                    callback.error(msg)
             config_params[para] = value
         return callback.ok(config_params)
 

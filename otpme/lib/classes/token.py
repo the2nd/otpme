@@ -878,6 +878,87 @@ def register_sync_settings():
 class Token(OTPmeObject):
     """ Generic OTPme token object. """
     commands = commands
+
+    @classmethod
+    def get_backup_data(cls, object_id, object_uuid, object_config, file_content):
+        # Get token roles.
+        token_roles = backend.search(object_type="role",
+                                    attribute="token",
+                                    value=object_uuid,
+                                    realm=config.realm,
+                                    site=config.site)
+        x_token_roles_opts = []
+        for x in token_roles:
+            x_token_role = backend.get_object(uuid=x)
+            try:
+                x_token_opts = x_token_role.token_options[object_uuid]
+            except KeyError:
+                x_token_opts = None
+            try:
+                x_token_login_interfaces = x_token_role.token_login_interfaces[object_uuid]
+            except KeyError:
+                x_token_login_interfaces = []
+            x_token_roles_opts.append((x, x_token_opts, x_token_login_interfaces))
+        file_content['token_roles'] = x_token_roles_opts
+        # Get token groups.
+        token_groups = backend.search(object_type="group",
+                                    attribute="token",
+                                    value=object_uuid,
+                                    realm=config.realm,
+                                    site=config.site)
+        x_token_groups_opts = []
+        for x in token_groups:
+            x_token_group = backend.get_object(uuid=x)
+            try:
+                x_token_opts = x_token_group.token_options[object_uuid]
+            except KeyError:
+                x_token_opts = None
+            try:
+                x_token_login_interfaces = x_token_group.token_login_interfaces[object_uuid]
+            except KeyError:
+                x_token_login_interfaces = []
+            x_token_groups_opts.append((x, x_token_opts, x_token_login_interfaces))
+        file_content['token_groups'] = x_token_groups_opts
+        return file_content
+
+    @classmethod
+    def restore_object_data(cls, object_id, object_uuid, object_data, callback):
+        token = backend.get_object(uuid=object_uuid)
+        if token:
+            owner = backend.get_object(uuid=token.owner_uuid)
+            if token.uuid not in owner.tokens:
+                owner.tokens.append(token.uuid)
+                owner._write()
+        token_groups = object_data['token_groups']
+        for x in token_groups:
+            x_group_uuid = x[0]
+            x_token_opts = x[1]
+            x_token_login_interfaces = x[2]
+            x_group = backend.get_object(uuid=x_group_uuid)
+            if not x_group:
+                msg = _("Unknown group: {x_group_uuid}")
+                msg = msg.format(x_group_uuid=x_group_uuid)
+                return callback.error(msg)
+            x_group.add_token(token_path=object_id.rel_path,
+                            token_options=x_token_opts,
+                            login_interfaces=x_token_login_interfaces,
+                            callback=callback,
+                            verify_acls=False)
+        x_token_roles = object_data['token_roles']
+        for x in x_token_roles:
+            x_role_uuid = x[0]
+            x_token_opts = x[1]
+            x_token_login_interfaces = x[2]
+            x_role = backend.get_object(uuid=x_role_uuid)
+            if not x_role:
+                msg = _("Unknown role: {x_role_uuid}")
+                msg = msg.format(x_role_uuid=x_role_uuid)
+                return callback.error(msg)
+            x_role.add_token(token_path=object_id.rel_path,
+                            token_options=x_token_opts,
+                            login_interfaces=x_token_login_interfaces,
+                            callback=callback,
+                            verify_acls=False)
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,

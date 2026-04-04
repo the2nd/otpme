@@ -50,6 +50,7 @@ read_value_acls = {
                 "view"      : [
                             "token",
                             "role",
+                            "host",
                             "child_group",
                             "child_session",
                             "sessions_enabled",
@@ -75,12 +76,14 @@ write_value_acls = {
                 "add"       : [
                             "token",
                             "role",
+                            "host",
                             "child_group",
                             "child_session",
                             ],
                 "remove"    : [
                             "token",
                             "role",
+                            "host",
                             "child_group",
                             "child_session",
                             ],
@@ -375,6 +378,24 @@ commands = {
                     },
                 },
             },
+    'add_host'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_host',
+                    'args'              : ['host_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_host'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_host',
+                    'args'              : ['host_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'add_child_group'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -436,6 +457,14 @@ commands = {
                 'exists'    : {
                     'method'            : 'get_roles',
                     'oargs'             : ['recursive'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'list_hosts'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_hosts',
                     'job_type'          : 'process',
                     },
                 },
@@ -688,6 +717,7 @@ def register():
     register_sync_settings()
     register_commands("accessgroup", commands)
     # Register index attributes.
+    config.register_index_attribute("host")
     config.register_index_attribute("child_group")
     config.register_index_attribute("child_session")
     config.register_index_attribute("max_fail")
@@ -903,6 +933,12 @@ class AccessGroup(OTPmeObject):
                                                         'required'  : False,
                                                     },
 
+                        'HOSTS'                     : {
+                                                        'var_name'  : 'hosts',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+
                         'CHILD_GROUPS'              : {
                                                         'var_name'  : 'child_groups',
                                                         'type'      : list,
@@ -1004,6 +1040,140 @@ class AccessGroup(OTPmeObject):
             if group.is_assigned_token(token_uuid):
                 return group
         return False
+
+    @check_acls(['add:host'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def add_host(
+        self,
+        host_name: str=None,
+        host_uuid: str=None,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Adds a host to this group. """
+        if not host_uuid:
+            host = backend.get_object(object_type="host",
+                                    realm=config.realm,
+                                    site=self.site,
+                                    name=host_name)
+            if not host:
+                msg = _("Host does not exist: {host_name}")
+                msg = msg.format(host_name=host_name)
+                return callback.error(msg)
+            host_uuid = host.uuid
+
+        if host_uuid in self.hosts:
+            msg = _("Host already added to acccessgroup.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_host",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        # Append host UUID to hosts.
+        self.hosts.append(host_uuid)
+        # Update index.
+        self.add_index("host", host_uuid)
+
+        return self._cache(callback=callback)
+
+    @check_acls(['remove:host'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def remove_host(
+        self,
+        host_name: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Removes a host from this group. """
+        host = backend.get_object(object_type="host",
+                                realm=config.realm,
+                                site=self.site,
+                                name=host_name)
+        if not host:
+            msg = _("Host does not exist: {host_name}")
+            msg = msg.format(host_name=host_name)
+            return callback.error(msg)
+
+        if host.uuid not in self.hosts:
+            msg = _("Host not in acccessgroup.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("remove_host",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        # Remove host UUID from group.
+        self.hosts.remove(host.uuid)
+        # Update index.
+        self.del_index("host", host.uuid)
+
+        return self._cache(callback=callback)
+
+    @cli.check_rapi_opts()
+    def get_hosts(
+        self,
+        return_type: str="name",
+        _caller: str="API",
+        skip_disabled: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Return list with all hosts assigned to this object. """
+        result = []
+        if not self.hosts:
+            return result
+
+        search_attr = {}
+        if skip_disabled:
+            search_attr['enabled'] = {}
+            search_attr['enabled']['value'] = True
+        return_attributes = ['site', return_type]
+        search_result = backend.search(object_type="host",
+                                    attribute="uuid",
+                                    values=self.hosts,
+                                    attributes=search_attr,
+                                    return_attributes=return_attributes)
+        for uuid in search_result:
+            try:
+                x_result = search_result[uuid][return_type]
+            except:
+                continue
+            if return_type == "name":
+                x_site = search_result[uuid]['site']
+                if x_site != config.site:
+                    x_result = f"{x_site}/{x_result}"
+            result.append(x_result)
+
+        result.sort()
+
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+        return callback.ok(result)
 
     def parents(
         self,
@@ -1891,6 +2061,18 @@ class AccessGroup(OTPmeObject):
             if not role_oid:
                 role_list.append(i)
 
+        group_list = []
+        for i in self.child_groups:
+            ag_oid = backend.get_oid(object_type="accessgroup", uuid=i)
+            if not ag_oid:
+                group_list.append(i)
+
+        host_list = []
+        for i in self.hosts:
+            host_oid = backend.get_oid(object_type="host", uuid=i)
+            if not host_oid:
+                host_list.append(i)
+
         msg = ""
         if acl_list:
             msg += _("{type}|{name}: Found the following orphan ACLs: {acl_list}\n").format(
@@ -1907,6 +2089,9 @@ class AccessGroup(OTPmeObject):
         if group_list:
             msg += _("{type}|{name}: Found the following orphan group UUIDs: {group_list}\n").format(
                 type=self.type, name=self.name, group_list=','.join(group_list))
+        if host_list:
+            msg += _("{type}|{name}: Found the following orphan host UUIDs: {host_list}\n").format(
+                type=self.type, name=self.name, host_list=','.join(host_list))
         if msg:
             msg = _("{msg}Remove? ").format(msg=msg)
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -1941,6 +2126,22 @@ class AccessGroup(OTPmeObject):
                 callback.send(msg)
             object_changed = True
             self.roles.remove(i)
+
+        for i in group_list:
+            if verbose_level > 0:
+                msg = _("Removing orphan group UUID: {uuid}")
+                msg = msg.format(uuid=i)
+                callback.send(msg)
+            object_changed = True
+            self.child_groups.remove(i)
+
+        for i in host_list:
+            if verbose_level > 0:
+                msg = _("Removing orphan host UUID: {uuid}")
+                msg = msg.format(uuid=i)
+                callback.send(msg)
+            object_changed = True
+            self.hosts.remove(i)
 
         if not object_changed:
             msg = None
@@ -1992,6 +2193,24 @@ class AccessGroup(OTPmeObject):
             role_list.sort()
         else:
             role_list = ""
+
+        if self.verify_acl("view:host") \
+        or self.verify_acl("add:host") \
+        or self.verify_acl("remove:host"):
+            host_list = []
+            for i in self.hosts:
+                host_oid = backend.get_oid(uuid=i,
+                                        object_type="host",
+                                        instance=True)
+                # Add UUIDs of orphan hosts.
+                if not host_oid:
+                    host_list.append(i)
+                    continue
+                host_name = host_oid.name
+                host_list.append(host_name)
+            host_list.sort()
+        else:
+            host_list = ""
 
         lines = []
 
@@ -2054,6 +2273,7 @@ class AccessGroup(OTPmeObject):
 
         lines.append(f'ROLES="{",".join(role_list)}"')
         lines.append(f'TOKENS="{",".join(token_list)}"')
+        lines.append(f'HOSTS="{",".join(host_list)}"')
 
         token_options = {}
         for uuid in self.token_options:

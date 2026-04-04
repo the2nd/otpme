@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
+import time
 from typing import Union
 
 try:
@@ -13,6 +14,7 @@ except:
 
 from otpme.lib import oid
 from otpme.lib import cli
+from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
@@ -48,6 +50,7 @@ write_acls =  [
 
 read_value_acls = {
                 "view"      : [
+                                "mac",
                                 "sync_users",
                                 "sync_groups",
                                 "dynamic_groups",
@@ -60,6 +63,7 @@ write_value_acls = {
                                 "dynamic_group",
                             ],
                 "edit"       : [
+                                "mac",
                                 "config",
                             ],
                 "remove"    : [
@@ -250,6 +254,15 @@ commands = {
                 'exists'    : {
                     'method'            : 'get_ca_chain',
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'mac'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_mac',
+                    'args'              : ['mac_address'],
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -800,6 +813,7 @@ def register():
     register_object_unit()
     register_sync_settings()
     register_commands("host", commands)
+    config.register_index_attribute("mac_address")
     config.register_recursive_default_acl("site", "+host")
     config.register_default_acl("unit", "+host")
     config.register_recursive_default_acl("unit", "+host")
@@ -888,6 +902,29 @@ def register_sync_settings():
 class Host(OTPmeHost):
     """ OTPme host object. """
     commands = commands
+
+    @classmethod
+    def get_backup_data(cls, object_id, object_uuid, object_config, file_content):
+        result = backend.search(object_type="accessgroup",
+                                attribute="host",
+                                value=object_uuid,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="uuid")
+        file_content['accessgroups'] = result
+        return file_content
+
+    @classmethod
+    def restore_object_data(cls, object_id, object_uuid, object_data, callback):
+        try:
+            ags = object_data['accessgroups']
+        except KeyError:
+            return
+        for uuid in ags:
+            ag = backend.get_object(uuid=uuid)
+            ag.add_host(object_id.name, verify_acl=False, callback=callback)
+            ag._write(callback=callback)
+
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid, None]=None,
@@ -918,6 +955,7 @@ class Host(OTPmeHost):
         self.logins_limited = True
         self.sync_by_login_token = True
         self.sync_groups_enabled = False
+        self.mac_address = None
 
         self.handle_cert_loading = True
         self.handle_key_loading = True
@@ -959,6 +997,12 @@ class Host(OTPmeHost):
     def _get_object_config(self):
         """ Get object config dict. """
         host_config = {
+                        'MAC_ADDRESS'               : {
+                                                        'var_name'  : 'mac_address',
+                                                        'type'      : str,
+                                                        'required'  : False,
+                                                    },
+
                         'SYNC_USERS'                 : {
                                                         'var_name'  : 'sync_users',
                                                         'type'      : list,
@@ -1129,6 +1173,36 @@ class Host(OTPmeHost):
         sync_params['object_types'] = sync_object_types
         sync_params['checksum_only_types'] = checksum_only_types
         return sync_params
+
+    @check_acls(['edit:mac_address'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def change_mac(
+        self,
+        mac_address: str,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Set hosts MAC address. """
+        if not stuff.is_mac_address(mac_address):
+            msg = _("Invalid MAC address.")
+            return callback.error(msg)
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_mac",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        self.mac_address = mac_address
+        self.update_index('mac_address', mac_address)
+        return self._cache(callback=callback)
 
     @check_acls(['enable:sync_by_login_token'])
     @object_lock()
@@ -1371,6 +1445,68 @@ class Host(OTPmeHost):
 
         return callback.ok(result)
 
+    @object_lock(full_lock=True)
+    @backend.transaction
+    def add(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Add a host. """
+        # Add host.
+        add_result = super(Host, self).add(callback=callback, **kwargs)
+        # Check for default accessgroup.
+        host_ag = self.get_config_parameter("hosts_accessgroup")
+        if host_ag:
+            result = backend.search(object_type="accessgroup",
+                                    attribute="name",
+                                    value=host_ag,
+                                    realm=config.realm,
+                                    site=config.site,
+                                    return_type="instance")
+            if result:
+                ag = result[0]
+                ag.add_host(self.name, verify_acl=False, callback=callback)
+                ag._cache(callback=callback)
+            else:
+                msg = _("Unknown accessgroup: {ag}")
+                msg = msg.format(ag=host_ag)
+                callback.error(msg)
+        return add_result
+
+    @object_lock(full_lock=True)
+    @backend.transaction
+    def delete(
+        self,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Delete a host. """
+        # Check for default accessgroup.
+        result = backend.search(object_type="accessgroup",
+                                attribute="host",
+                                value=self.uuid,
+                                realm=config.realm,
+                                site=config.site,
+                                return_type="instance")
+        for ag in result:
+            ag.remove_host(self.name, verify_acl=False, callback=callback)
+            ag._cache(callback=callback)
+        return super(Host, self).delete(callback=callback, **kwargs)
+
+    def authenticate(self, **kwargs):
+        """ Wrapper to call auth handler. """
+        from otpme.lib.classes.auth_handler import AuthHandler
+        auth_handler = AuthHandler()
+        start_time = time.time()
+        auth_status = auth_handler.authenticate(user=self, **kwargs)
+        end_time = time.time()
+        duration = float(end_time - start_time)
+        log_msg = _("Authentication took {duration} seconds.", log=True)[1]
+        log_msg = log_msg.format(duration=duration)
+        logger.debug(log_msg)
+        return auth_status
+
     def show_config( self, callback: JobCallback=default_callback, **kwargs):
         """ Show host config. """
         if not self.verify_acl("view_public:object"):
@@ -1378,6 +1514,12 @@ class Host(OTPmeHost):
             return callback.error(msg, exception=PermissionDenied)
 
         lines = []
+        if self.verify_acl("view:mac_address"):
+            mac_address = self.mac_address
+        else:
+            mac_address = "-"
+        lines.append(f'MAC_ADDRESS="{mac_address}"')
+
         if self.verify_acl("view:tokens") \
         or self.verify_acl("add:token") \
         or self.verify_acl("remove:token"):

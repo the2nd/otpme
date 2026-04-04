@@ -800,6 +800,47 @@ def get_roles(role_uuid=None, skip_disabled=False, parent=False,
 class Role(OTPmeObject):
     """ Role object """
     commands = commands
+
+    @classmethod
+    def get_backup_data(cls, object_id, object_uuid, object_config, file_content):
+        # Get role roles.
+        role_roles = backend.search(object_type="role",
+                                    attribute="role",
+                                    value=object_uuid,
+                                    realm=config.realm,
+                                    site=config.site)
+        file_content['role_roles'] = role_roles
+        # Get role groups.
+        role_groups = backend.search(object_type="group",
+                                    attribute="role",
+                                    value=object_uuid,
+                                    realm=config.realm,
+                                    site=config.site)
+        file_content['role_groups'] = role_groups
+        return file_content
+
+    @classmethod
+    def restore_object_data(cls, object_id, object_uuid, object_data, callback):
+        role_roles = object_data['role_groups']
+        for x_group_uuid in role_roles:
+            x_group = backend.get_object(uuid=x_group_uuid)
+            if not x_group:
+                msg = _("Unknown group: {x_group_uuid}")
+                msg = msg.format(x_group_uuid=x_group_uuid)
+                return callback.error(msg)
+            x_group.add_role(role_uuid=object_uuid,
+                            callback=callback,
+                            verify_acls=False)
+        role_roles = object_data['role_roles']
+        for x_role_uuid in role_roles:
+            x_role = backend.get_object(uuid=x_role_uuid)
+            if not x_role:
+                msg = _("Unknown role: {x_role_uuid}")
+                msg = msg.format(x_role_uuid=x_role_uuid)
+                return callback.error(msg)
+            x_role.add_role(role_uuid=object_uuid,
+                            callback=callback,
+                            verify_acls=False)
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,

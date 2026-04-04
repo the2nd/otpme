@@ -61,6 +61,13 @@ Remove a role from the access group.
 .TP
 .B list_roles \fIaccessgroup\fR
 List roles assigned to the access group.
+.SS Host Assignment
+.TP
+.B add_host \fIaccessgroup\fR \fIhost\fR
+Add a host to the access group. This is useful for MAC Authentication Bypass (MAB) port authentication, where hosts are granted network access based on their access group membership.
+.TP
+.B remove_host \fIaccessgroup\fR \fIhost\fR
+Remove a host from the access group.
 .SS Session Management
 .TP
 .B enable_sessions \fIaccessgroup\fR

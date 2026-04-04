@@ -851,7 +851,7 @@ class OTPmeAgent(UnixDaemon):
                                             timeout=self.timeout, endpoint=False)
             except ConnectionError:
                 time.sleep(0.01)
-                continue
+                break
             except Exception as e:
                 msg = _("Error connecting to auth daemon to logout: {e}")
                 msg = msg.format(e=e)

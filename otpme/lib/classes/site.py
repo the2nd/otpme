@@ -933,11 +933,22 @@ def register_config():
             msg = msg.format(backup_server=backup_server)
             raise ValueError(msg)
         backup_server = result[0]
-        fqdn = backup_server.fqdn
-        return fqdn
+        return backup_server.uuid
+    def backup_server_getter(uuid, callback=JobCallback, **kwargs):
+        result = backend.search(object_types=['node', 'host'],
+                                attribute="uuid",
+                                value=uuid,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown backup server: {uuid}")
+            msg = msg.format(uuid=uuid)
+            raise ValueError(msg)
+        backup_server = result[0]
+        return backup_server.fqdn
     config.register_config_parameter(name="backup_server",
                                     ctype=str,
                                     setter=backup_server_setter,
+                                    getter=backup_server_getter,
                                     object_types=object_types)
     # Backup time.
     def backup_time_setter(backup_time, **kwargs):
@@ -1166,6 +1177,34 @@ def register_config():
                                     getter=auth_jwt_valid_getter,
                                     default_value=86400,
                                     object_types=['site'])
+    # Hosts accessgroup.
+    def hosts_ag_setter(ag, callback=JobCallback, **kwargs):
+        result = backend.search(object_type='accessgroup',
+                                attribute="name",
+                                value=ag,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown accessgroup: {ag}")
+            msg = msg.format(ag=ag)
+            raise ValueError(msg)
+        ag = result[0]
+        return ag.uuid
+    def hosts_ag_getter(uuid, callback=JobCallback, **kwargs):
+        result = backend.search(object_type='accessgroup',
+                                attribute="uuid",
+                                value=uuid,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown accessgroup: {uuid}")
+            msg = msg.format(uuid=uuid)
+            raise ValueError(msg)
+        ag = result[0]
+        return ag.name
+    config.register_config_parameter(name="hosts_accessgroup",
+                                    ctype=str,
+                                    setter=hosts_ag_setter,
+                                    getter=hosts_ag_getter,
+                                    object_types=['site', 'unit'])
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")

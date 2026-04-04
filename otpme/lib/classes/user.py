@@ -1364,6 +1364,36 @@ def user_is_blocked(user_uuid, access_group, realm, site):
 class User(OTPmeObject):
     """ Class that implements OTPmeUser. """
     commands = commands
+
+    @classmethod
+    def get_backup_data(cls, object_id, object_uuid, object_config, file_content):
+        result = backend.search(object_type="group",
+                                attribute="user",
+                                value=object_uuid,
+                                realm=config.realm,
+                                site=config.site)
+        if not result:
+            return file_content
+        file_content['user_group'] = result[0]
+        return file_content
+
+    @classmethod
+    def restore_object_data(cls, object_id, object_uuid, object_data, callback):
+        try:
+            user_group_uuid = object_data['user_group']
+        except KeyError:
+            msg = _("Backup data of user does not contain users default group.")
+            callback.error(msg)
+        else:
+            user_group = backend.get_object(uuid=user_group_uuid)
+            if not user_group:
+                msg = _("Unknown group: {user_group_uuid}")
+                msg = msg.format(user_group_uuid=user_group_uuid)
+                return callback.error(msg)
+            user_group.add_default_group_user(user_uuid=object_uuid,
+                                            callback=callback,
+                                            verify_acls=False)
+
     def __init__(
         self,
         object_id: Union[oid.OTPmeOid,None]=None,

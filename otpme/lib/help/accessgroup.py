@@ -320,6 +320,13 @@ cmd_help = {
                                     '--policy-types <type1,type2>'  : _('Policy types to list.'),
                                 },
                     },
+    'list_hosts'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list_hosts {accessgroup}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List assigned hosts.'),
+                                },
+                    },
     'add_role'   : {
                     '_cmd_usage_help' : _('Usage: otpme-accessgroup add_role {accessgroup} {role}'),
                     'cmd'   :   '<|object|> <role_name>',
@@ -333,6 +340,22 @@ cmd_help = {
                     'cmd'   :   '<|object|> <role_name>',
                     '_help' :   {
                                     'cmd'                   : _('Remove role from accessgroup'),
+                                },
+                },
+
+    'add_host'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup add_host {accessgroup} {host}'),
+                    'cmd'   :   '<|object|> <host_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add host to accessgroup'),
+                                },
+                },
+
+    'remove_host'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup remove_host {accessgroup} {host}'),
+                    'cmd'   :   '<|object|> <host_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove host from accessgroup'),
                                 },
                 },
 

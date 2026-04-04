@@ -90,6 +90,14 @@ cmd_help = {
                                 },
                 },
 
+    'mac'       : {
+                    '_cmd_usage_help' : _('Usage: otpme-host mac {host} {mac_address}'),
+                    'cmd'   :   '<|object|> <mac_address>',
+                    '_help' :   {
+                                    'cmd'                   : _('Set hosts MAC address.'),
+                                },
+                },
+
     'config'    : {
                     '_cmd_usage_help' : _('Usage: otpme-host config -d -a {host} {param} [value]'),
                     'cmd'   :   '-d :delete=True: -a :append=True: <|object|> <parameter> [value]',

@@ -534,12 +534,9 @@ class OTPmeJoinP1(OTPmeServer1):
                         verify_acls=False,
                         callback=callback)
         except Exception as e:
-            message, log_msg = _("Error enabling {host_type}: {error}", log=True)
-            message = message.format(host_type=host.type, error=e)
+            log_msg = _("Error enabling {host_type}: {error}", log=True)[1]
             log_msg = log_msg.format(host_type=host.type, error=e)
             self.logger.debug(log_msg)
-            status = False
-            return self.build_response(status, message)
 
         # Write changed objects.
         cache.flush()

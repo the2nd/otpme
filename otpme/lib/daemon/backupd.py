@@ -43,6 +43,10 @@ def register_config_params():
                         'node',
                     ]
     def script_setter(script_path, **kwargs):
+        if config.auth_token:
+            if config.auth_token.is_admin():
+                msg = _("You must be admin to set <backup_script>.")
+                raise OTPmeException(msg)
         result = backend.search(object_type="script",
                                 attribute="rel_path",
                                 value=script_path,

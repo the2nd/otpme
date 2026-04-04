@@ -155,6 +155,10 @@ def get_link_status(connection="dot1x-lan"):
     link_status = result.stdout.strip().split(":")[-1] == "on"
     return link_status
 
+def is_mac_address(s):
+    import re
+    return bool(re.fullmatch(r'([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}', s))
+
 def update_reload_file():
     """ Update reload file. """
     from otpme.lib import config

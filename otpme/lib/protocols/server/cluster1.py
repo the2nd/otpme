@@ -652,6 +652,11 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = False
             if status:
                 object_id = oid.get(object_id)
+                if object_id in config.tree_object_types:
+                    if config.master_node:
+                        message = _("Cannot write tree object on master node.")
+                        status = False
+            if status:
                 checksum = object_config['CHECKSUM']
                 log_msg = _("Writing object: {id} ({checksum})", log=True)[1]
                 log_msg = log_msg.format(id=object_id, checksum=checksum)
@@ -727,6 +732,11 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = False
             if status:
                 object_id = oid.get(object_id)
+                if object_id in config.tree_object_types:
+                    if config.master_node:
+                        message = _("Cannot rename tree object on master node.")
+                        status = False
+            if status:
                 new_object_id = oid.get(new_object_id)
                 our_object = backend.get_object(object_id)
                 if our_object.oid.full_oid == object_id.full_oid:
@@ -765,6 +775,11 @@ class OTPmeClusterP1(OTPmeServer1):
                 status = False
             if status:
                 object_id = oid.get(object_id)
+                if object_id in config.tree_object_types:
+                    if config.master_node:
+                        message = _("Cannot delete tree object on master node.")
+                        status = False
+            if status:
                 try:
                     backend.delete_object(object_id=object_id)
                 except UnknownObject:

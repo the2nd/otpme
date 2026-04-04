@@ -2134,6 +2134,8 @@ class AuthHandler(object):
             log_token_name = self.auth_token.name
             if self.temp_password_auth:
                 log_token_name = f"{log_token_name} (temp)"
+        if self.user.type == "host":
+            log_token_name = self.user.mac_address
         if self.auth_group:
             log_access_group = self.auth_group.name
         if self.client:
@@ -2502,7 +2504,7 @@ class AuthHandler(object):
 
         # Make sure authentication of our site is not disabled.
         if not self.auth_failed:
-            if not self.user.is_admin() and not self.realm_logout:
+            if self.user.type == "user" and not self.user.is_admin() and not self.realm_logout:
                 my_site = backend.get_object(object_type="site",
                                             uuid=config.site_uuid)
                 if not my_site.auth_enabled:
@@ -2516,7 +2518,8 @@ class AuthHandler(object):
         # Check if we got a valid client/host.
         self.get_client()
         # Check user status.
-        self.check_user()
+        if self.user.type == "user":
+            self.check_user()
         # Handle accessgroup.
         self.check_accessgroup()
 
@@ -2567,8 +2570,9 @@ class AuthHandler(object):
                 # secure manner (see offline_data_key below).
                 self.new_session_uuid = stuff.gen_uuid()
             if not self.auth_failed and self.auth_status is False:
-                # Get user tokens that are valid for this request.
-                self.get_user_tokens()
+                if self.user.type == "user":
+                    # Get user tokens that are valid for this request.
+                    self.get_user_tokens()
 
         # Handle JWT (cross-site) authentication.
         if self.auth_type == "jwt":
@@ -2576,23 +2580,39 @@ class AuthHandler(object):
             self.count_fails = False
             self.verify_jwt()
 
-        if self.client_offline_enc_type:
-            # Generate key used to encrypt used OTPs/token counters
-            # on client side when doing offline logins. This key is
-            # also added to the server session and used by syncd to
-            # en-/decrypt objects when syncing with client hosts.
-            try:
-                enc_mod = config.get_encryption_module(self.client_offline_enc_type)
-            except Exception as e:
-                msg = _("Unable to load offline encryption: {error}")
-                msg = msg.format(error=e)
-                raise OTPmeException(msg)
-            try:
-                self.offline_data_key = enc_mod.gen_key()
-            except Exception as e:
-                msg = _("Failed to generate offline encryption key: {error}")
-                msg = msg.format(error=e)
-                raise OTPmeException(msg)
+        if self.user.type == "user":
+            if self.client_offline_enc_type:
+                # Generate key used to encrypt used OTPs/token counters
+                # on client side when doing offline logins. This key is
+                # also added to the server session and used by syncd to
+                # en-/decrypt objects when syncing with client hosts.
+                try:
+                    enc_mod = config.get_encryption_module(self.client_offline_enc_type)
+                except Exception as e:
+                    msg = _("Unable to load offline encryption: {error}")
+                    msg = msg.format(error=e)
+                    raise OTPmeException(msg)
+                try:
+                    self.offline_data_key = enc_mod.gen_key()
+                except Exception as e:
+                    msg = _("Failed to generate offline encryption key: {error}")
+                    msg = msg.format(error=e)
+                    raise OTPmeException(msg)
+
+        if not self.auth_failed and self.auth_status is False:
+            if self.user.type == "host":
+                if self.user.mac_address == password:
+                    if self.user.uuid in self.auth_group.hosts:
+                        self.auth_status = True
+                        self.count_fails = False
+                        self.create_sessions = False
+                        self.auth_message = "AUTH_OK_MAC"
+                    else:
+                        self.auth_failed = True
+                        self.auth_message = "AUTH_FAILED_MAC"
+                else:
+                    self.auth_failed = True
+                    self.auth_message = "AUTH_FAILED_MAC"
 
         # Verify default token first.
         if not self.auth_failed and self.auth_status is False:
@@ -2659,14 +2679,15 @@ class AuthHandler(object):
                 self.verify_user_tokens(tokens=self.valid_user_tokens_script_otp)
 
         # Check if we have a auth token.
-        if not self.auth_token and not self.auth_failed:
-            log_msg = _("Found no valid auth token.", log=True)[1]
-            self.logger.error(log_msg)
-            self.auth_failed = True
-            if self.realm_login:
-                self.auth_message = "LOGIN_FAILED_NO_TOKEN"
-            else:
-                self.auth_message = "AUTH_FAILED_NO_TOKEN"
+        if self.user.type == "user":
+            if not self.auth_token and not self.auth_failed:
+                log_msg = _("Found no valid auth token.", log=True)[1]
+                self.logger.error(log_msg)
+                self.auth_failed = True
+                if self.realm_login:
+                    self.auth_message = "LOGIN_FAILED_NO_TOKEN"
+                else:
+                    self.auth_message = "AUTH_FAILED_NO_TOKEN"
 
         # Check policies.
         if not self.auth_failed:
@@ -2677,6 +2698,8 @@ class AuthHandler(object):
                         authorize_token = True
                 if self.auth_client:
                     authorize_token = True
+                if self.user.type == "host":
+                    authorize_token = False
             if authorize_token:
                 try:
                     # Check token policies.
@@ -2840,7 +2863,8 @@ class AuthHandler(object):
                 auth_response['offline_data_key'] = self.offline_data_key
 
             # Reset failed login counter for this user/group.
-            self.reset_user_fail_counter()
+            if self.user.type == "user":
+                self.reset_user_fail_counter()
 
             # Get users login token.
             login_token_uuid = None
@@ -2927,21 +2951,23 @@ class AuthHandler(object):
                     auth_response['shares'] = shares
 
             # Get SSH private key from token.
-            ssh_private_key = None
-            if self.verify_token.token_type == "ssh":
-                if self.verify_token._ssh_private_key:
-                    log_msg = _("Got SSH private key from token: {token_path}", log=True)[1]
-                    log_msg = log_msg.format(token_path=self.verify_token.rel_path)
-                    self.logger.debug(log_msg)
-                    ssh_private_key = self.verify_token._ssh_private_key
-            auth_response['ssh_private_key'] = ssh_private_key
+            if self.user.type == "user":
+                ssh_private_key = None
+                if self.verify_token.token_type == "ssh":
+                    if self.verify_token._ssh_private_key:
+                        log_msg = _("Got SSH private key from token: {token_path}", log=True)[1]
+                        log_msg = log_msg.format(token_path=self.verify_token.rel_path)
+                        self.logger.debug(log_msg)
+                        ssh_private_key = self.verify_token._ssh_private_key
+                auth_response['ssh_private_key'] = ssh_private_key
             auth_response['request_cacheable'] = self.request_cacheable
             if self.auth_session:
                 auth_response['slp'] = self.auth_session.slp
 
             # Update last used timestamps for user and token.
             self.user.update_last_used_time()
-            self.auth_token.update_last_used_time()
+            if self.auth_token:
+                self.auth_token.update_last_used_time()
 
             if self.realm_login:
                 log_msg = _("Realm login successful with token '{token_name}'", log=True)[1]

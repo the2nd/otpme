@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
 import time
@@ -337,11 +338,29 @@ class OTPmeAuthP1(OTPmeServer1):
             return self.build_response(status, message)
 
         # Check if user exists.
-        user = backend.get_object(object_type="user",
-                                name=username,
-                                realm=config.realm,
-                                run_policies=True,
-                                _no_func_cache=True)
+        if stuff.is_mac_address(username):
+            result = backend.search(object_type="host",
+                                    attribute="mac_address",
+                                    value=username,
+                                    realm=config.realm,
+                                    run_policies=True,
+                                    return_type="instance",
+                                    _no_func_cache=True)
+            if not result:
+                status = False
+                command_error = "AUTH_UNKOWN_USER"
+                auth_response = {'message':'AUTH_FAILED', 'status':False}
+                log_msg = _("{command_error}: user={log_username} access_group={log_access_group} client={log_client} client_ip={log_client_ip} auth_mode={log_auth_mode} auth_type={log_auth_type} session={log_session_id}", log=True)[1]
+                log_msg = log_msg.format(command_error=command_error, log_username=log_username, log_access_group=log_access_group, log_client=log_client, log_client_ip=log_client_ip, log_auth_mode=log_auth_mode, log_auth_type=log_auth_type, log_session_id=log_session_id)
+                self.logger.warning(log_msg)
+                return self.build_response(status, auth_response)
+            user = result[0]
+        else:
+            user = backend.get_object(object_type="user",
+                                    name=username,
+                                    realm=config.realm,
+                                    run_policies=True,
+                                    _no_func_cache=True)
         if not user:
             status = False
             command_error = "AUTH_UNKOWN_USER"
