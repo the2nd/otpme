@@ -505,7 +505,7 @@ cmd_help = {
 
     'auth_fqdn'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site auth_fqdn {site} {fqdn}'),
-                    'cmd'   :   '<|object|> {fqdn}',
+                    'cmd'   :   '<|object|> <fqdn>',
                     '_help' :   {
                                     'cmd'                   : _('Change site\'s auth fqdn.'),
                                 },
@@ -513,7 +513,7 @@ cmd_help = {
 
     'mgmt_fqdn'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site mgmt_fqdn {site} {fqdn}'),
-                    'cmd'   :   '<|object|> {fqdn}',
+                    'cmd'   :   '<|object|> <fqdn>',
                     '_help' :   {
                                     'cmd'                   : _('Change site\'s mgmt fqdn.'),
                                 },
