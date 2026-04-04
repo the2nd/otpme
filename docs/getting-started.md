@@ -1071,7 +1071,81 @@ individual tokens:
 otpme-site config <site> confirmation_policy force
 ```
 
-## 28. Trash
+## 28. 802.1x and MAB Port Authentication
+
+OTPme supports 802.1x and MAC Authentication Bypass (MAB) port
+authentication. To use either method, configure your switch to send RADIUS
+requests to the OTPme nodes.
+
+Both MAB and 802.1x require an access group and a client for the switch:
+
+```bash
+# Create an access group for LAN access.
+otpme-accessgroup add lan
+
+# Add the switch as an OTPme client. If the switch sends a NAS-Identifier
+# the client name must match it; otherwise use the switch IP.
+otpme-client add switch1 192.168.1.20
+
+# Assign the access group to the client.
+otpme-client access_group switch1 lan
+```
+
+### MAB (MAC Authentication Bypass)
+
+For MAB, add the host's MAC address to the host object and then add the
+host to the access group:
+
+```bash
+otpme-host mac <yourhostname> 90:1b:0e:46:46:15
+otpme-accessgroup add_host lan <yourhostname>
+```
+
+### 802.1x Authentication
+
+For 802.1x you do not need to add the host to the access group. Instead,
+add the user's token to the access group. Currently only `password` and
+`yubikey_piv` tokens support 802.1x authentication:
+
+```bash
+otpme-accessgroup add_token lan joe/login
+```
+
+You also need to enable 802.1x authentication on the client:
+
+```bash
+otpme-client enable_dot1x switch1
+```
+
+On the host side, enable 802.1x in the PAM module configuration. The
+relevant PAM options are:
+
+- `do_dot1x=auto|force` — *auto* performs dot1x only when the default gateway is unreachable; *force* always performs dot1x on login (restarts the network connection)
+- `dot1x_token_type` — token type used for 802.1x OTP generation (e.g. `yubikey_piv`, `password`)
+- `dot1x_timeout` — seconds to wait for 802.1x authentication to complete
+
+A typical PAM configuration line:
+
+```
+auth [success=1 default=ignore] pam_python.so pam_otpme.py try_first_pass \
+    do_dot1x=force dot1x_token_type=yubikey_piv dot1x_timeout=10 \
+    cache_login_tokens use_smartcard=auto use_ssh_agent=auto start_ssh_agent=auto \
+    check_offline_pass_strength=password_strength;0:6,1:6,2:6,3:5,4:5,5:5,6:3,7:3,8:3,9:3,10:3
+```
+
+Before enabling dot1x, configure a Network Manager dummy connection on the
+host. The user/password values are placeholders and will be set by the PAM
+module on login:
+
+```bash
+nmcli connection add type ethernet con-name "dot1x-lan" ifname enp0s25 \
+    802-1x.eap peap \
+    802-1x.phase2-auth mschapv2 \
+    802-1x.identity "user" \
+    802-1x.password "pass"
+```
+
+## 29. Trash
 
 OTPme includes a trash that keeps deleted objects. Every object deleted via
 a tree command (e.g. `otpme-user del`) is moved to the trash instead of
@@ -1105,7 +1179,7 @@ To permanently remove all objects from the trash:
 otpme-trash empty
 ```
 
-## 29. Backup and Restore
+## 30. Backup and Restore
 
 OTPme includes a backup tool that exports all OTPme data (excluding trash)
 to a given directory. Additionally you must back up `/etc/otpme` to make a
