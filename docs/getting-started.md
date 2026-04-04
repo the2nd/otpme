@@ -1253,6 +1253,8 @@ otpme-site config <site> backup_time "22:00-05:00"
 otpme-site config <site> backup_interval 1D
 # Add an extra backup exclude for a specific node.
 otpme-node config -a <node> backup_excludes some/dir
+# Generate a site-wide backup key.
+otpme-site config <site> backup_key
 # Set backup server.
 otpme-site config <site> backup_server backup-host
 ```
