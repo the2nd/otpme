@@ -17,7 +17,7 @@ synchronization.
 
 ## Site Management
 
-**add \[*options*\] *site* *node_name* *site_fqdn* \[*site_address*\]**  
+**add \[*options*\] *site* *node_name* *site_fqdn* *site_address***  
 Create a new site with a master node.
 
 **del *site***  
@@ -43,10 +43,10 @@ Re-index the object to fix potential index problems.
 **address *site* \[*ip_address*\]**  
 Change site IP address.
 
-**auth_fqdn *site* \[*fqdn*\]**  
+**auth_fqdn *site* *fqdn***  
 Change site auth FQDN.
 
-**mgmt_fqdn *site* \[*fqdn*\]**  
+**mgmt_fqdn *site* *fqdn***  
 Change site management FQDN.
 
 **config \[**-d**\] *site* *parameter* \[*value*\]**  

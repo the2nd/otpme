@@ -56,8 +56,8 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-site add {site} {node_name} {site_fqdn} [site_address]'),
-                    'cmd'   :   '--country :ca_country: --state :ca_state: --locality :ca_locality: --organization :ca_organization: --ou :ca_ou: --email :ca_email: --ca-valid :ca_valid: --ca-key-len :ca_key_len: --site-valid :site_valid: --site-key-len :site_key_len: --node-valid :node_valid: --node-key-len :node_key_len: --no-dicts :no_dicts=True: --dicts :[dictionaries]: --id-ranges ::id_ranges:: <|object|> <node_name> <site_fqdn> [site_address]',
+                    '_cmd_usage_help' : _('Usage: otpme-site add {site} {node_name} {site_fqdn} {site_address}'),
+                    'cmd'   :   '--country :ca_country: --state :ca_state: --locality :ca_locality: --organization :ca_organization: --ou :ca_ou: --email :ca_email: --ca-valid :ca_valid: --ca-key-len :ca_key_len: --site-valid :site_valid: --site-key-len :site_key_len: --node-valid :node_valid: --node-key-len :node_key_len: --no-dicts :no_dicts=True: --dicts :[dictionaries]: --id-ranges ::id_ranges:: <|object|> <node_name> <site_fqdn> <site_address>',
                     '_help' :   {
                                     'cmd'                               : _('Add new site.'),
                                     '--ca-valid'                        : _('CA certificates validity in days.'),
@@ -504,16 +504,16 @@ cmd_help = {
                 },
 
     'auth_fqdn'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-site auth_fqdn {site} [fqdn]'),
-                    'cmd'   :   '<|object|> [fqdn]',
+                    '_cmd_usage_help' : _('Usage: otpme-site auth_fqdn {site} {fqdn}'),
+                    'cmd'   :   '<|object|> {fqdn}',
                     '_help' :   {
                                     'cmd'                   : _('Change site\'s auth fqdn.'),
                                 },
                 },
 
     'mgmt_fqdn'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-site mgmt_fqdn {site} [fqdn]'),
-                    'cmd'   :   '<|object|> [fqdn]',
+                    '_cmd_usage_help' : _('Usage: otpme-site mgmt_fqdn {site} {fqdn}'),
+                    'cmd'   :   '<|object|> {fqdn}',
                     '_help' :   {
                                     'cmd'                   : _('Change site\'s mgmt fqdn.'),
                                 },
