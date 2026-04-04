@@ -53,7 +53,7 @@ cmd_help = {
                 },
 
     'add'    : {
-                    '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--force-directory-mode <mode>] [--force-create-mode <mode>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--key-len <key_len>] [--restore <restore_share>] {share}'),
+                    '_cmd_usage_help' : _('Usage: otpme-share add [--force-group <group>] [--force-directory-mode <mode>] [--force-create-mode <mode>] [--crypt] [--no-key-gen] [--block-size <block_size>] [--key-len <key_len>] [--restore <restore_share>] [--restore-token <token>] share}'),
                     'cmd'   :   '--force-group :force_group: --force-directory-mode :force_directory_mode: --force-create-mode :force_create_mode: --crypt :encrypted=True: --no-key-gen :no_key_gen=True: --block-size :block_size: --key-len :key_len: --restore :restore_share: --restore-token :restore_token: <|object|>',
                     '_help' :   {
                                     'cmd'                           : _('Add new share.'),

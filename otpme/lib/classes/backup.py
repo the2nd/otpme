@@ -2453,11 +2453,17 @@ class BackupClient:
         return ('/' + enc) if absolute else enc
 
     def decrypt_symlink_target(self, enc_target: str) -> str:
-        """Decrypt an encrypted symlink target path."""
+        """Decrypt an encrypted symlink target path.
+
+        Falls back to returning the value as-is for legacy unencrypted targets.
+        """
         if self._siv is None or not enc_target:
             return enc_target
         absolute = enc_target.startswith('/')
-        dec = decrypt_path(self._siv, enc_target.lstrip('/'))
+        try:
+            dec = decrypt_path(self._siv, enc_target.lstrip('/'))
+        except Exception:
+            return enc_target
         return ('/' + dec) if absolute else dec
 
     @staticmethod
