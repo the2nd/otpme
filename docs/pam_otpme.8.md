@@ -102,6 +102,31 @@ agent.
 When set, screen unlock uses the locally cached offline token and does
 not send an authentication request to the OTPme server.
 
+**do_dot1x=***auto\|force*  
+Perform 802.1x port authentication on login. Requires a Network Manager
+dummy connection to be configured beforehand, for example:
+
+<!-- -->
+
+    nmcli connection add type ethernet con-name "dot1x-lan" ifname enp0s25 \
+        802-1x.eap peap \
+        802-1x.phase2-auth mschapv2 \
+        802-1x.identity "user" \
+        802-1x.password "pass"
+
+> Values: **auto** - perform dot1x authentication only when the default
+> gateway is unreachable (ICMP ping must be allowed); **force** - always
+> perform dot1x authentication on login (restarts the network
+> connection). The option **dot1x_token_type** must also be set.
+
+**dot1x_token_type=***type*  
+Token type used to generate the OTP for 802.1x port authentication.
+Currently supported types: **yubikey_piv** and **password**.
+
+**dot1x_timeout=***seconds*  
+Number of seconds to wait for the 802.1x port authentication to
+complete.
+
 **offline_key_func=***func***\[;***opt***=***val***,...\]**  
 Key derivation function used to encrypt the locally cached offline
 token. The function name and its options are separated by **;**,

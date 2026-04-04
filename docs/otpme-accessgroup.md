@@ -71,6 +71,16 @@ Remove a role from the access group.
 **list_roles *accessgroup***  
 List roles assigned to the access group.
 
+## Host Assignment
+
+**add_host *accessgroup* *host***  
+Add a host to the access group. This is useful for MAC Authentication
+Bypass (MAB) port authentication, where hosts are granted network access
+based on their access group membership.
+
+**remove_host *accessgroup* *host***  
+Remove a host from the access group.
+
 ## Session Management
 
 **enable_sessions *accessgroup***  

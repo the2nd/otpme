@@ -580,6 +580,15 @@ Root directory for new shares. A new share automatically gets
 **/otpme-mounts/projects** as its root directory).  
 Object types: site, unit, user, token
 
+## Hosts
+
+**hosts_accessgroup (str)**  
+Access group that new hosts are automatically added to when they are
+created. This is useful for MAC Authentication Bypass (MAB) port
+authentication, where hosts need to be assigned to an access group upon
+registration. The value must be the name of an existing access group.  
+Object types: site, unit
+
 ## Backup
 
 **backup_enabled (bool)**  
@@ -611,8 +620,12 @@ Object types: site, unit, node, share
 Password for authenticating to the backup server.  
 Object types: site, unit, node, share
 
-**backup_mode (str)**  
-Backup mode. Valid values: **pack**, **tree**.  
+**backup_mode (str, default: pack)**  
+Backup storage mode. Valid values: **pack**, **tree**. In **pack** mode,
+backup data is stored in pack files (default, more space-efficient). In
+**tree** mode, backup data is additionally stored in a directory tree
+that mirrors the original file hierarchy. This allows creating a restore
+share that can be accessed via FUSE mount.  
 Object types: node, share
 
 **backup_excludes (list)**  

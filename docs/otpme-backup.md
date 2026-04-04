@@ -109,8 +109,13 @@ Object types: site, unit, node, share
 Password for authenticating to the backup server.  
 Object types: site, unit, node, share
 
-**backup_mode (str)**  
-Backup mode. Valid values: **pack**, **tree**.  
+**backup_mode (str, default: pack)**  
+Backup storage mode. Valid values: **pack**, **tree**. In **pack** mode,
+backup data is stored in pack files. This is the default and more
+space-efficient mode. In **tree** mode, backup data is additionally
+stored in a directory tree that mirrors the original file hierarchy.
+This allows creating a restore share that can be accessed via FUSE
+mount.  
 Object types: node, share
 
 **backup_excludes (list)**  
