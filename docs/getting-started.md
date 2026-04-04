@@ -1202,3 +1202,91 @@ directly:
 ```bash
 otpme-tool restore -f /var/backups/otpme/<snapshot>/user/realm+user1.json
 ```
+
+## 31. Integrated Deduplication Backup Service
+
+OTPme includes a built-in deduplication backup service. Any node or host
+can act as the backup server. There are two backup modes:
+
+- **pack** — backup data (chunks) is written to pack files of approximately 512 MB each. File and directory metadata is stored in an SQLite database. This is the default for nodes and more space-efficient.
+- **tree** — in addition to pack files, the full directory tree including files is stored on the backup server. This allows mounting the backup repository from any host (e.g. via a restore share). This is the default for shares.
+
+### Backup Server Configuration
+
+On the host that will act as backup server, add the following settings to
+`/etc/otpme/otpme.conf` and restart the daemons (`otpme-controld restart`):
+
+```
+# Enable the backup service on this host.
+BACKUP_SERVER="True"
+# Root directory for all backup repositories.
+BACKUP_DIR="/var/backups"
+# Allow new repositories from these client certificate CNs (comma-separated, or False).
+ALLOW_NEW_BACKUP_REPOS="node1.site.realm,node2.site.realm"
+```
+
+### Backup Configuration Parameters
+
+On the master node, all backup settings are managed via config parameters.
+They can be set on sites, units, nodes, and shares (unless noted otherwise):
+
+| Parameter | Description |
+|---|---|
+| `backup_enabled` | Enable or disable backups (`True`/`False`) |
+| `backup_interval` | Backup interval (e.g. `1D`, defaults to 24h) |
+| `backup_key` | AES backup key (64-character hex string; auto-generated if not set) |
+| `backup_repo_password` | Repository password |
+| `backup_script` | OTPme backup script (e.g. `scripts/backup_script.sh`) |
+| `backup_server` | Backup node or host name (e.g. `backup-host`) |
+| `backup_time` | Time window for starting backups (e.g. `22:00-05:00`) |
+| `backup_excludes` | Directories/files to exclude (nodes and shares only) |
+| `backup_includes` | Directories/files to include (nodes and shares only) |
+| `backup_exclude_special` | Exclude special files such as device files |
+| `backup_mode` | `pack` or `tree` (nodes and shares only) |
+
+```bash
+# Enable backup for all nodes and shares.
+otpme-site config <site> backup_enabled True
+# Set backup time window.
+otpme-site config <site> backup_time "22:00-05:00"
+# Set backup interval.
+otpme-site config <site> backup_interval 1D
+# Add an extra backup exclude for a specific node.
+otpme-node config -a <node> backup_excludes some/dir
+# Set backup server.
+otpme-site config <site> backup_server backup-host
+```
+
+### Running Backups
+
+You can test a backup in dry-run mode before running it for real:
+
+```bash
+# Dry run for a node.
+otpme-backup start --dry-run node:node1
+# Dry run for a share.
+otpme-backup start --dry-run share:testshare
+# Start backup with debug output to see progress.
+otpme-backup -dd start node:node1
+```
+
+### Listing and Restoring Backups
+
+```bash
+# List available snapshots.
+otpme-backup list node:node1
+# List contents of a snapshot.
+otpme-backup ls node:node1 2026-04-03T23-00-26 usr/bin
+# Restore a specific path from a snapshot.
+otpme-backup -dd restore --snapshot 2026-04-03T23-00-26 --path usr/bin --destination /tmp/restore node:node1
+```
+
+### Restore Shares
+
+When a share has been backed up in tree mode, you can create a restore
+share that allows mounting the backup repository on any host — including
+for encrypted shares:
+
+```bash
+otpme-share add --restore testshare --restore-token joe/login testshare-restore
+```
