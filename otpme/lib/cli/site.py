@@ -28,6 +28,7 @@ table_headers = [
                 "address",
                 "auth_fqdn",
                 "mgmt_fqdn",
+                "sso_fqdn",
                 "policies",
                 "description",
                 ]
@@ -40,6 +41,7 @@ def register():
                         'name',
                         'auth_fqdn',
                         'mgmt_fqdn',
+                        'sso_fqdn',
                         'address',
                         'enabled',
                         'description',
@@ -84,6 +86,10 @@ def row_getter(realm, site, site_order, site_data, acls,
             site_mgmt_fqdn = site_data[site_uuid]['mgmt_fqdn'][0]
         except KeyError:
             site_mgmt_fqdn = "Unknown"
+        try:
+            site_sso_fqdn = site_data[site_uuid]['sso_fqdn'][0]
+        except KeyError:
+            site_sso_fqdn = "Unknown"
         site_address = site_data[site_uuid]['address'][0]
         try:
             enabled = site_data[site_uuid]['enabled'][0]
@@ -180,6 +186,12 @@ def row_getter(realm, site, site_order, site_data, acls,
             if check_acl("view:mgmt_fqdn") \
             or check_acl("edit:mgmt_fqdn"):
                 row.append(site_mgmt_fqdn)
+            else:
+                row.append("-")
+        if "sso_fqdn" in output_fields:
+            if check_acl("view:sso_fqdn") \
+            or check_acl("edit:sso_fqdn"):
+                row.append(site_sso_fqdn)
             else:
                 row.append("-")
         # Policies.

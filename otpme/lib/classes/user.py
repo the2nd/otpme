@@ -1150,6 +1150,11 @@ def register_config_parameters():
                                     default_value="hotp",
                                     setter=default_token_setter,
                                     object_types=object_types)
+    # Name of default SSO token to add.
+    config.register_config_parameter(name="default_sso_token_name",
+                                    ctype=str,
+                                    default_value="sso",
+                                    object_types=object_types)
     # Length for user RSA keys.
     object_types = [
                         'realm',
@@ -4396,8 +4401,9 @@ class User(OTPmeObject):
                 return callback.error()
 
         # Del ACL with view access to the token owner for the deleted token.
+        kwargs['verify_acls'] = False
         acl = f"token:{token.uuid}:view"
-        self.del_acl(acl=acl, verify_acls=False, callback=callback, **kwargs)
+        self.del_acl(acl=acl, callback=callback, **kwargs)
 
         # Remove token UUID from tokens variable of this user.
         try:

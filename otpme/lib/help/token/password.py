@@ -87,6 +87,22 @@ cmd_help = {
                                 },
                 },
 
+    'enable_sso_deploy'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token enable_sso_deploy {token} [deploy_token_type]'),
+                    'cmd'   :   '<|object|> [deploy_token_type]',
+                    '_help' :   {
+                                    'cmd'                   : _('Enable deployment of token on first SSO login.'),
+                                },
+                },
+
+    'disable_sso_deploy'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-token disable_sso_deploy {token}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('Disable deployment of token on first SSO login.'),
+                                },
+                },
+
     'enable_mschap'    : {
                     '_cmd_usage_help' : _('Usage: otpme-token enable_mschap {token}'),
                     'cmd'   :   '<|object|>',

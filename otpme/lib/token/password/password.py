@@ -180,6 +180,23 @@ commands = {
                     },
                 },
             },
+    'enable_sso_deploy'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'enable_sso_deploy',
+                    'oargs'             : ['deploy_token_type'],
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
+    'disable_sso_deploy'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'disable_sso_deploy',
+                    'job_type'          : 'thread',
+                    },
+                },
+            },
     'enable_mschap'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -337,6 +354,7 @@ class PasswordToken(Token):
         self.mschap_enabled = False
         self.offline_pinnable = True
         self.support_dot1x = True
+        self.sso_deploy = False
         # Hardware tokens that we can handle (e.g. on otpme-token deploy)
         # FIXME: implement deployment of yubikey in static mode (e.g. password via usb keyboard presses)
         self.supported_hardware_tokens = [ 'yubikey-static' ]

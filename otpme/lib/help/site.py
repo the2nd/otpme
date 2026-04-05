@@ -519,6 +519,14 @@ cmd_help = {
                                 },
                 },
 
+    'sso_fqdn'    : {
+                    '_cmd_usage_help' : _('Usage: otpme-site sso_fqdn {site} {fqdn}'),
+                    'cmd'   :   '<|object|> <fqdn>',
+                    '_help' :   {
+                                    'cmd'                   : _('Change site\'s SSO fqdn.'),
+                                },
+                },
+
     'enable_auth'    : {
                     '_cmd_usage_help' : _('Usage: otpme-site enable_auth {site}'),
                     'cmd'   :   '<|object|>',

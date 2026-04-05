@@ -22,7 +22,6 @@ try:
 except:
     pass
 
-from otpme.lib import config
 from otpme.lib.exceptions import *
 
 cn_attribute_order = [
@@ -667,10 +666,8 @@ def revoke_certificate(ca_cert, ca_key, cert=None, sn=None,
     return serial_number, revoke_until, crl_data
 
 def check_ssl_cert_key(cert, key):
-    from otpme.lib import backend
     from otpme.lib.pki.cert import SSLCert
-    site = backend.get_object(uuid=config.site_uuid)
-    cert = SSLCert(cert=site.radius_cert, key=site.radius_key)
+    cert = SSLCert(cert=cert, key=key)
     message = "test"
     try:
         signature = cert.sign(message)

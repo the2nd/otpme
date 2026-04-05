@@ -975,6 +975,7 @@ class Token(OTPmeObject):
         self.type = "token"
 
         self.mode = None
+        self.sso_deploy = None
 
         # Needed for set_path in parent class init.
         self.rel_path = None
@@ -1212,6 +1213,12 @@ class Token(OTPmeObject):
                         'DYNAMIC_GROUPS'            : {
                                                         'var_name'      : 'dynamic_groups',
                                                         'type'          : list,
+                                                        'required'      : False,
+                                                    },
+
+                        'SSO_DEPLOY'                : {
+                                                        'var_name'      : 'sso_deploy',
+                                                        'type'          : [str,bool],
                                                         'required'      : False,
                                                     },
                         }
@@ -2137,6 +2144,81 @@ class Token(OTPmeObject):
 
         return self._cache(callback=callback)
 
+    @check_acls(['enable:sso_deploy'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def enable_sso_deploy(
+        self,
+        deploy_token_type: str=True,
+        run_policies: bool=True,
+        force: bool=False,
+        quiet: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Enable SSO token deploy. """
+        if self.sso_deploy is None:
+            msg = _("SSO deploy not supported by this token.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("enable_sso_deploy",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        if isinstance(deploy_token_type, str):
+            token_types = config.get_sub_object_types("token")
+            if deploy_token_type not in token_types:
+                msg = _("Unknown token type: {token_type}")
+                msg = msg.format(token_type=deploy_token_type)
+                return callback.error(msg)
+
+        self.sso_deploy = deploy_token_type
+
+        return self._cache(callback=callback)
+
+    @check_acls(['disable:sso_deploy'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def disable_sso_deploy(
+        self,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Disable optional MSCHAP authentication. """
+        if self.sso_deploy is None:
+            msg = _("SSO deploy not supported by this token.")
+            return callback.error(msg)
+
+        if not self.sso_deploy:
+            return callback.error(_("SSO deploy is already disabled for this token."))
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("disable_sso_deploy",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        self.sso_deploy = False
+
+        return self._cache(callback=callback)
+
     @check_acls(['enable:mschap'])
     @object_lock()
     @backend.transaction
@@ -2811,6 +2893,7 @@ class Token(OTPmeObject):
                                             callback=callback,
                                             **kwargs)
         if self.password_hash is False and not temp:
+            print("IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
             msg = _("Token type '{token_type}' does not have a password.")
             msg = msg.format(token_type=self.token_type)
             return callback.error(msg)
@@ -3965,6 +4048,14 @@ class Token(OTPmeObject):
                 lines.append(f'MODE="{self.mode}"')
             else:
                 lines.append('MODE=""')
+
+        if self.sso_deploy is not None:
+            if self.verify_acl("view:sso_deploy") \
+                or self.verify_acl("enable:sso_deploy") \
+                or self.verify_acl("disable:sso_deploy"):
+                lines.append(f'SSO_DEPLOY="{self.sso_deploy}"')
+            else:
+                lines.append('SSO_DEPLOY=""')
 
         lines.append(f'CROSS_SITE_LINKS="{self.cross_site_links}"')
 

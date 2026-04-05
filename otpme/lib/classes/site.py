@@ -67,6 +67,9 @@ read_value_acls = {
                                 "mgmt_fqdn",
                                 "mgmt_cert",
                                 "mgmt_key",
+                                "sso_fqdn",
+                                "sso_cert",
+                                "sso_key",
                                 "auth",
                                 "sync",
                                 "ca",
@@ -110,6 +113,7 @@ write_value_acls = {
                                 "address",
                                 "auth_fqdn",
                                 "mgmt_fqdn",
+                                "sso_fqdn",
                                 "radius_cert",
                                 "radius_key",
                                 "sso_cert",
@@ -432,6 +436,15 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'change_mgmt_fqdn',
+                    'args'              : ['fqdn'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'sso_fqdn'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'change_sso_fqdn',
                     'args'              : ['fqdn'],
                     'job_type'          : 'process',
                     },
@@ -1308,6 +1321,7 @@ class Site(OTPmeObject):
         self.mgmt_fqdn = None
         self.mgmt_cert = None
         self.mgmt_key = None
+        self.sso_fqdn = None
         self.address = None
         self.auth_enabled = True
         self.sync_enabled = True
@@ -1468,7 +1482,13 @@ class Site(OTPmeObject):
                                             'encryption': config.disk_encryption,
                                         },
 
-            'AUTH_FQDN'                      : {
+            'SSO_FQDN'                 : {
+                                            'var_name'  : 'sso_fqdn',
+                                            'type'      : str,
+                                            'required'  : False,
+                                        },
+
+            'AUTH_FQDN'                 : {
                                             'var_name'  : 'auth_fqdn',
                                             'type'      : str,
                                             'required'  : False,
@@ -1757,6 +1777,49 @@ class Site(OTPmeObject):
 
         return callback.ok()
 
+    def gen_sso_cert(
+        self,
+        force: bool=False,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        # Load site CA.
+        site = backend.get_object(object_type="site", uuid=config.site_uuid)
+        site_ca = backend.get_object(object_type="ca", uuid=site.ca)
+        if not site_ca:
+            msg = _("Problem loading site CA '{site_ca_path}'.")
+            msg = msg.format(site_ca_path=config.site_ca_path)
+            return callback.error(msg)
+
+        msg, log_msg = _("Generating new certificate...", log=True)
+        logger.debug(log_msg)
+        callback.send(msg)
+        # Wait a moment before starting CPU intensive job to prevent delay
+        # when transmitting above message to user.
+        time.sleep(0.01)
+
+        # Try to create cert.
+        cert_valid = config.default_node_validity
+        try:
+            cert, \
+            key = site_ca.create_host_cert(cn=self.sso_fqdn,
+                                        host_type="node",
+                                        valid=cert_valid,
+                                        verify_acls=False,
+                                        callback=callback,
+                                        _caller=_caller)
+        except Exception as e:
+            config.raise_exception()
+            msg = _("Unable to create new certificate: {error}")
+            msg = msg.format(error=e)
+            return callback.error(msg)
+
+        self.sso_cert = cert
+        self.sso_key = key
+
+        return callback.ok()
+
     @check_acls(['edit:mgmt_fqdn'])
     @object_lock()
     @backend.transaction
@@ -1793,6 +1856,44 @@ class Site(OTPmeObject):
         self.update_index("mgmt_fqdn", self.mgmt_fqdn)
         # Gen mgmt fqdn cert/key.
         self.gen_mgmt_cert(callback=callback)
+        return self._write(callback=callback)
+
+    @check_acls(['edit:sso_fqdn'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def change_sso_fqdn(
+        self,
+        fqdn: str,
+        force: bool=False,
+        run_policies: bool=True,
+        callback: JobCallback=default_callback,
+        _caller: str="API",
+        **kwargs,
+        ):
+        """ Change site sso FQDN. """
+        if not force:
+            if fqdn == self.sso_fqdn:
+                msg = _("Fqdn already set to: {fqdn}")
+                msg = msg.format(fqdn=fqdn)
+                return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("change_sso_fqdn",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+        # FIXME: Check if we got a valid FQDN.
+        self.sso_fqdn = fqdn
+        # Update index.
+        self.update_index("sso_fqdn", self.sso_fqdn)
+        # Gen SSO fqdn cert/key.
+        self.gen_sso_cert(callback=callback)
         return self._write(callback=callback)
 
     @check_acls(['edit:radius_cert'])

@@ -502,6 +502,7 @@ class OathToken(Token):
         self.server_secret = stuff.gen_secret(self.secret_len, "base32")
         # Gen PIN.
         pin = stuff.gen_pin(self.default_pin_len)
+        self.pin = pin
         self.pin_len = self.default_pin_len
         # Get token secret.
         token_secret = self.get_secret(pin=pin,

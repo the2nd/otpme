@@ -289,10 +289,10 @@ class Fido2Token(Token):
 
     @property
     def rp(self):
-        return config.realm
+        return config.site_sso_fqdn
 
     def get_fido2_server(self):
-        rp_data = {"id": config.realm, "name": "OTPme RP"}
+        rp_data = {"id": self.rp, "name": "OTPme RP"}
         fido2_server = Fido2Server(rp_data, attestation="direct")
         return fido2_server
 
@@ -496,6 +496,8 @@ class Fido2Token(Token):
         **kwargs,
         ):
         """ Verify signature. """
+        if not smartcard_data:
+            return None
         self.auth_state = smartcard_data['auth_state']
         auth_response = smartcard_data['auth_response']
         try:

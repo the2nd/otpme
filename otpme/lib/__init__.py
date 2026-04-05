@@ -96,7 +96,8 @@ def set_realm_site():
                         uuid=_site.uuid,
                         address=_site.address,
                         auth_fqdn=_site.auth_fqdn,
-                        mgmt_fqdn=_site.mgmt_fqdn)
+                        mgmt_fqdn=_site.mgmt_fqdn,
+                        sso_fqdn=_site.sso_fqdn)
     else:
         if config.tool_name !=  f"{config.my_name.lower()}-site" \
         and config.tool_name != f"{config.my_name.lower()}-realm" \
@@ -210,13 +211,15 @@ def do_hostd_init(load_host_data=True):
     site_address = realm_data['site_address']
     site_auth_fqdn = realm_data['site_auth_fqdn']
     site_mgmt_fqdn = realm_data['site_mgmt_fqdn']
+    site_sso_fqdn = realm_data['site_sso_fqdn']
 
     config.set_realm(name=realm, uuid=realm_uuid)
     config.set_site(name=site,
                     uuid=site_uuid,
                     address=site_address,
                     auth_fqdn=site_auth_fqdn,
-                    mgmt_fqdn=site_mgmt_fqdn)
+                    mgmt_fqdn=site_mgmt_fqdn,
+                    sso_fqdn=site_sso_fqdn)
 
 def init_otpme(use_backend=None, load_host_data=True):
     """ Init OTPme. """

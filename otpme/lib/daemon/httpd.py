@@ -77,19 +77,15 @@ class HttpDaemon(OTPmeDaemon):
 
         # Create cert/key files for flask.
         own_site = backend.get_object(uuid=config.site_uuid)
-        sso_cert_ready = False
         if own_site.sso_cert and own_site.sso_key:
             try:
                 check_ssl_cert_key(own_site.sso_cert, own_site.sso_key)
-                sso_cert_ready = True
-            except:
-                sso_cert_ready = False
-        if sso_cert_ready:
-            ssl_cert = own_site.sso_cert
-            ssl_key = own_site.sso_key
-        else:
-            ssl_cert = own_site.mgmt_cert
-            ssl_key = own_site.mgmt_key
+            except Exception as e:
+                msg = _("SSO cert/key mismatch.")
+                raise OTPmeException(msg)
+
+        ssl_cert = own_site.sso_cert
+        ssl_key = own_site.sso_key
 
         # Encrypt cert private key with password.
         key_pass = stuff.gen_secret(len=32)

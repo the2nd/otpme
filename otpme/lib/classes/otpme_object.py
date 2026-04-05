@@ -1387,25 +1387,37 @@ class OTPmeBaseObject(OTPmeLockObject):
         if update:
             # Make sure we got a value of the wanted type.
             type_ok = False
-            if type(type_wanted) == type \
-            or type(type_wanted) == type(str):
-                if isinstance(val, type_wanted):
-                    type_ok = True
-                else:
-                    if force_type:
-                        # None type values will always stay None.
-                        if val is None:
-                            type_ok = True
-                        else:
-                            try:
-                                val = type_wanted(val)
+            wanted_types = [type_wanted]
+            if isinstance(type_wanted, list):
+                wanted_types = type_wanted
+            for x_wanted in wanted_types:
+                if type(x_wanted) == type \
+                or type(x_wanted) == type(str):
+                    if isinstance(val, x_wanted):
+                        type_ok = True
+                        type_wanted = x_wanted
+                        break
+                    else:
+                        if force_type:
+                            # None type values will always stay None.
+                            if val is None:
                                 type_ok = True
-                            except:
-                                pass
+                                type_wanted = x_wanted
+                                break
+                            else:
+                                try:
+                                    val = x_wanted(val)
+                                    type_ok = True
+                                    type_wanted = x_wanted
+                                    break
+                                except:
+                                    pass
 
-            elif type_wanted == "uuid":
-                if isinstance(val, str) and stuff.is_uuid(val):
-                    type_ok = True
+                elif x_wanted == "uuid":
+                    if isinstance(val, str) and stuff.is_uuid(val):
+                        type_ok = True
+                        type_wanted = x_wanted
+                        break
 
             # If the attribute is None and not required remove it from the
             # current object config.
@@ -1448,40 +1460,56 @@ class OTPmeBaseObject(OTPmeLockObject):
                 except OTPmeTypeError:
                     pass
             type_ok = False
-            if type_wanted is list:
-                if isinstance(val, list):
-                    type_ok = True
-            elif type_wanted is dict:
-                if isinstance(val, dict):
-                    type_ok = True
-            elif type_wanted == "uuid":
-                if isinstance(val, str) and stuff.is_uuid(val):
-                    type_ok = True
-            elif type(type_wanted) is type \
-            or type(type_wanted) is type(str):
-                if isinstance(val, type_wanted):
-                    type_ok = True
-                elif force_type:
-                    # None type values will always stay None.
-                    if val is None:
+            wanted_types = [type_wanted]
+            if isinstance(type_wanted, list):
+                wanted_types = type_wanted
+            for x_wanted in wanted_types:
+                if x_wanted is list:
+                    if isinstance(val, list):
                         type_ok = True
-                    else:
-                        try:
-                            val = type_wanted(val)
+                        type_wanted = x_wanted
+                        break
+                elif x_wanted is dict:
+                    if isinstance(val, dict):
+                        type_ok = True
+                        type_wanted = x_wanted
+                        break
+                elif x_wanted == "uuid":
+                    if isinstance(val, str) and stuff.is_uuid(val):
+                        type_ok = True
+                        type_wanted = x_wanted
+                        break
+                elif type(x_wanted) is type \
+                or type(x_wanted) is type(str):
+                    if isinstance(val, x_wanted):
+                        type_ok = True
+                        type_wanted = x_wanted
+                        break
+                    elif force_type:
+                        # None type values will always stay None.
+                        if val is None:
                             type_ok = True
-                        except:
-                            pass
+                            type_wanted = x_wanted
+                            break
+                        else:
+                            try:
+                                val = x_wanted(val)
+                                type_ok = True
+                                type_wanted = x_wanted
+                                break
+                            except:
+                                pass
+                    else:
+                        type_ok = False
                 else:
-                    type_ok = False
-            else:
-                msg = _("Got unknown value type: {value_type}")
-                msg = msg.format(value_type=type_wanted)
-                raise OTPmeException(msg)
+                    msg = _("Got unknown value type: {value_type}")
+                    msg = msg.format(value_type=type_wanted)
+                    raise OTPmeException(msg)
 
             if not type_ok:
                 if val is not None:
                     log_msg = _("Got wrong value for '{attribute}': {oid}: Wanted: {type_wanted} Got: {val}", log=True)[1]
-                    log_msg = log_msg.format(oid=self.oid, type_wanted=type_wanted, val=repr(type(val)))
+                    log_msg = log_msg.format(attribute=attribute, oid=self.oid, type_wanted=type_wanted, val=repr(type(val)))
                     logger.warning(log_msg)
 
             # Set class variable.

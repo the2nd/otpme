@@ -193,6 +193,7 @@ class OTPmeConfig(object):
         self.register_config_var("site_uuid", str, None)
         self.register_config_var("site_auth_fqdn", str, None)
         self.register_config_var("site_mgmt_fqdn", str, None)
+        self.register_config_var("site_sso_fqdn", str, None)
         self.register_config_var("site_address", str, None)
 
         # Users otpme config.
@@ -2675,13 +2676,14 @@ class OTPmeConfig(object):
         self.realm = name
         self.realm_uuid = uuid
 
-    def set_site(self, name, uuid, address, auth_fqdn=None, mgmt_fqdn=None):
+    def set_site(self, name, uuid, address, auth_fqdn=None, mgmt_fqdn=None, sso_fqdn=None):
         """ Set our site. """
         self.site = name
         self.site_uuid = uuid
         self.site_address = address
         self.site_auth_fqdn = auth_fqdn
         self.site_mgmt_fqdn = mgmt_fqdn
+        self.site_sso_fqdn = sso_fqdn
 
     @property
     def node_vote(self):
@@ -2934,6 +2936,7 @@ class OTPmeConfig(object):
                     'site_address'  : self.site_address,
                     'site_auth_fqdn': self.site_auth_fqdn,
                     'site_mgmt_fqdn': self.site_mgmt_fqdn,
+                    'site_sso_fqdn' : self.site_sso_fqdn,
                     }
         realm_data = json.dumps(realm_data, sort_keys=True, indent=4)
         try:

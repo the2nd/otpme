@@ -633,6 +633,7 @@ class TotpToken(OathToken):
         self,
         pin: Union[str,None]=None,
         qrcode_file: Union[str,None]=None,
+        fmt: str="terminal",
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -665,9 +666,10 @@ class TotpToken(OathToken):
         oath_uri = oath_uri.provisioning_uri(name=user_string,
                                             issuer_name=config.my_name)
         # Generate QRcode.
-        _qrcode = qrcode.gen_qrcode(oath_uri, "terminal")
+        _qrcode = qrcode.gen_qrcode(oath_uri, fmt)
 
-        # FIXME: how to create png/svg image without writing to file?
+        if _caller == "API":
+            return _qrcode
         return callback.ok(_qrcode)
 
     def add_used_otp(

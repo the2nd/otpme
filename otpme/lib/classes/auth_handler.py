@@ -508,8 +508,11 @@ class AuthHandler(object):
         if master_group:
             master_sessions = backend.get_sessions(user=self.user.uuid,
                                                 access_group=master_group.uuid,
-                                                return_attributes=return_attributes,
-                                                session_type=self.auth_type)
+                                                return_attributes=return_attributes)
+                                                # We have to check all sessions here because
+                                                # e.g. a smartcard session will do SOTP auth
+                                                # when connecting to mgmtd.
+                                                #session_type=self.auth_type)
             for session_uuid in master_sessions:
                 # Get session instance.
                 session_id = master_sessions[session_uuid]['session_id'][0]
@@ -1235,7 +1238,7 @@ class AuthHandler(object):
             try:
                 verify_status = verify_token.verify(temp=True, **token_verify_parms)
             except Exception as e:
-                log_msg = _("Verification of token '{token_name}' returned error: {error}", log=True)[1]
+                log_msg = _("Verification of token (temp) '{token_name}' returned error: {error}", log=True)[1]
                 log_msg = log_msg.format(token_name=token.name, error=e)
                 self.logger.critical(log_msg)
                 config.raise_exception()
@@ -2416,6 +2419,14 @@ class AuthHandler(object):
         if self.realm_logout:
             self.check_policies = False
 
+        # Check if we got a valid client/host.
+        self.get_client()
+        # Check user status.
+        if self.user.type == "user":
+            self.check_user()
+        # Handle accessgroup.
+        self.check_accessgroup()
+
         if self.host_type:
             if self.host_type != "node" and self.host_type != "host":
                 msg = _("Unknown host type: {host_type}")
@@ -2471,8 +2482,10 @@ class AuthHandler(object):
             # When doing smartcard authentication we cannot verify sessions.
             self.verify_sessions = False
             # We can only create sessions when using smartcard tokens to do realm
-            # logins.
+            # logins or SSO logins.
             self.create_sessions = False
+            if self.access_group == config.sso_access_group:
+                self.create_sessions = True
             if not self.smartcard_data:
                 self.auth_message = "AUTH_MISSING_SMARTCARD_DATA"
                 self.auth_failed = True
@@ -2514,14 +2527,6 @@ class AuthHandler(object):
                     self.auth_failed = True
                     self.count_fails = False
                     self.auth_message = "AUTH_DISABLED"
-
-        # Check if we got a valid client/host.
-        self.get_client()
-        # Check user status.
-        if self.user.type == "user":
-            self.check_user()
-        # Handle accessgroup.
-        self.check_accessgroup()
 
         # FIXME: do we need a better solution for this? do we want to allow sessions in REALM accessgroup other client types than hosts/nodes??
         # Do not create sessions for REALM group if this is not a realm_login

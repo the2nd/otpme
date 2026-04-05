@@ -762,6 +762,7 @@ class HotpToken(OathToken):
     @check_acls(['generate:qrcode'])
     def gen_qrcode(
         self,
+        fmt: str="terminal",
         pin: Union[str,None]=None,
         qrcode_file: Union[str,None]=None,
         run_policies: bool=True,
@@ -799,9 +800,7 @@ class HotpToken(OathToken):
                                             issuer_name=config.my_name,
                                             initial_count=token_counter_start)
         # Generate QRcode.
-        _qrcode = qrcode.gen_qrcode(oath_uri, "terminal")
-        # xxxxxxxxxxxxx
-        # FIXME: How to create png/svg image without writing to file?
+        _qrcode = qrcode.gen_qrcode(oath_uri, fmt)
         return callback.ok(_qrcode)
 
     @check_acls(['resync'])
