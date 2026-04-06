@@ -116,11 +116,7 @@ Display only specified fields.
 **--policy-limit *N***  
 Limit number of policies shown.
 
-**--token-limit *N***  
-Limit number of tokens shown.
-
-**--role-limit *N***  
-Limit number of roles shown.
+<!-- -->
 
 **--sort-by *FIELD***  
 Sort output by field.

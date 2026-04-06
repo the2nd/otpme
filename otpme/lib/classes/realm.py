@@ -1444,6 +1444,8 @@ class Realm(OTPmeObject):
 
         # Gen mgmt fqdn cert/key.
         master_site.gen_mgmt_cert()
+        # Gen sso fqdn cert/key.
+        master_site.gen_sso_cert()
 
         # Write objects.
         cache.flush()

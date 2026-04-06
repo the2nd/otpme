@@ -589,6 +589,15 @@ authentication, where hosts need to be assigned to an access group upon
 registration. The value must be the name of an existing access group.  
 Object types: site, unit
 
+## Devices
+
+**devices_accessgroup (str)**  
+Access group that new devices are automatically added to when they are
+created. This is useful for MAC Authentication Bypass (MAB) of network
+devices such as IP phones or printers. The value must be the name of an
+existing access group.  
+Object types: site, unit
+
 ## VLAN
 
 **vlan (str)**  

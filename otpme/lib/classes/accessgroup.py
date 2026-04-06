@@ -747,6 +747,7 @@ def register():
     register_commands("accessgroup", commands)
     # Register index attributes.
     config.register_index_attribute("host")
+    config.register_index_attribute("device")
     config.register_index_attribute("child_group")
     config.register_index_attribute("child_session")
     config.register_index_attribute("max_fail")

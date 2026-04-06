@@ -102,7 +102,28 @@ authenticating to OTPme), set the following option in the configuration file:
 USE_MGMTD_SOCKET="True"
 ```
 
-## 4. Configure WLAN Access
+## 4. Configure Management and SSO FQDNs
+
+If you use OTPme with hosts and clients and have not initialized the realm
+with `localhost`, you should configure the management and SSO FQDNs. Both
+need DNS records pointing to the floating IP. The management FQDN is used
+by `mgmtd` and `ldapd`; the SSO FQDN is used by `httpd` for the SSO
+portal. The commands create the corresponding certificates automatically:
+
+```bash
+otpme-site mgmt_fqdn <site> <mgmt_fqdn>
+otpme-site sso_fqdn <site> <sso_fqdn>
+```
+
+If you do not want to use the self-signed certificate for the SSO portal,
+you can add your own certificate and key:
+
+```bash
+otpme-site sso_cert <site> /path/to/cert.pem
+otpme-site sso_key <site> /path/to/key.pem
+```
+
+## 5. Configure WLAN Access
 
 A common use case is authenticating WLAN clients via RADIUS. Create an access
 group and a RADIUS client (the access point). When a client is added, OTPme
@@ -118,7 +139,7 @@ otpme-client add ap01 192.168.1.10
 otpme-client access_group ap01 wlan
 ```
 
-## 5. Add a User
+## 6. Add a User
 
 ```bash
 otpme-user add alice
@@ -132,7 +153,7 @@ QR code and PIN. This token is used for realm logins and group/role membership
 otpme-user show alice
 ```
 
-## 6. Add a WLAN Token
+## 7. Add a WLAN Token
 
 Additional tokens can be created for specific services. The following creates a
 password token with MS-CHAPv2 support (required by most RADIUS/WLAN setups):
@@ -143,7 +164,7 @@ otpme-token --type password add --enable-mschap alice/notebook-wlan
 otpme-token --type password password alice/notebook-wlan
 ```
 
-## 7. Grant WLAN Access Directly via Token
+## 8. Grant WLAN Access Directly via Token
 
 The simplest way to grant access is to add the token directly to the access
 group:
@@ -156,7 +177,7 @@ otpme-accessgroup list_tokens wlan
 otpme-auth verify --socket alice <password> ap01
 ```
 
-## 8. Grant WLAN Access via Role (Recommended)
+## 9. Grant WLAN Access via Role (Recommended)
 
 Directly assigning tokens to access groups does not scale well. Using roles
 makes it easy to grant or revoke access for groups of users at once. Remove the
@@ -179,7 +200,7 @@ otpme-role add_token wlan-user alice/notebook-wlan
 otpme-auth verify --socket alice <password> ap01
 ```
 
-## 9. Restrict Login Times with Policies
+## 10. Restrict Login Times with Policies
 
 Policies can restrict when logins are allowed. The built-in `workhours_login`
 policy (and the `weekend_login` policy) are good examples. Policies can be
@@ -197,7 +218,7 @@ otpme-auth verify --socket alice <password> ap01
 otpme-user remove_policy alice workhours_login
 ```
 
-## 10. Disable and Enable Users and Tokens
+## 11. Disable and Enable Users and Tokens
 
 Disabling a user prevents all logins for that user. Individual tokens can also
 be disabled independently:
@@ -214,7 +235,7 @@ otpme-auth verify --socket alice <password> ap01
 otpme-token -f enable alice/notebook-wlan
 ```
 
-## 11. Login Failure Limits
+## 12. Login Failure Limits
 
 You can configure a maximum number of failed login attempts per access group.
 After the limit is reached the user is blocked for that access group:
@@ -235,7 +256,7 @@ otpme-user unblock alice wlan
 otpme-accessgroup max_fail_reset wlan 1m
 ```
 
-## 12. Auto Disable
+## 13. Auto Disable
 
 Users and tokens can be configured to disable themselves automatically after a
 given time. This is useful for temporary accounts or time-limited access:
@@ -253,7 +274,7 @@ otpme-user -f enable alice
 
 Time suffixes: `m` = minutes, `h` = hours, `D` = days, `W` = weeks.
 
-## 13. Groups
+## 14. Groups
 
 Groups map to POSIX groups on the node. The default group of a user becomes
 their primary group. It takes a moment for `otpme-hostd` to sync changes to
@@ -280,7 +301,7 @@ otpme-group list_tokens staff
 otpme-group list_users staff
 ```
 
-## 14. Role-Based Group Membership (Recommended)
+## 15. Role-Based Group Membership (Recommended)
 
 Managing group membership via tokens directly does not scale well. Using roles
 allows you to control group membership for many users at once:
@@ -336,7 +357,7 @@ add the role directly to that group as well:
 otpme-group add_role management management-user
 ```
 
-## 15. Units
+## 16. Units
 
 Units are organisational containers for users, groups and other objects (tokens are bound to users, not to units).
 They can be used to delegate administration — e.g. allowing department
@@ -352,7 +373,7 @@ otpme-user move alice management/users
 otpme-group move management management/groups
 ```
 
-## 16. Delegate Unit Administration
+## 17. Delegate Unit Administration
 
 To allow a dedicated manager user to administer objects within a unit, create
 the manager user inside the unit and grant them the necessary ACLs.
@@ -409,7 +430,7 @@ otpme-token --type password add user1/wlan
 otpme-tool logout
 ```
 
-## 17. Simplify User Creation with Policies
+## 18. Simplify User Creation with Policies
 
 Having to specify `--group` and `--role` on every `otpme-user add` call is
 tedious. Policies can automate these assignments so that new users created
@@ -479,7 +500,7 @@ Joe can now create users with a simple `otpme-user add <username>` and they
 will automatically land in `management/users`, get `management` as their
 default group and be assigned the `management-user` role.
 
-## 18. Joining a Host to the Realm
+## 19. Joining a Host to the Realm
 
 Before a host can authenticate users via OTPme, it must be joined to the realm.
 The join command must always be run as root on the host itself. It creates the
@@ -578,7 +599,7 @@ otpme-host enable_sync_groups <yourhostname>
 otpme-host disable_sync_by_login_token <yourhostname>
 ```
 
-## 19. Configure the PAM Module
+## 20. Configure the PAM Module
 
 To enable OTPme logins on a host, the PAM module must be deployed. Copy the
 module and the OTPme PAM configuration files into place:
@@ -613,7 +634,7 @@ You should now be able to log in as user joe from any TTY. To test, use
 login joe
 ```
 
-## 20. Offline Logins
+## 21. Offline Logins
 
 Offline login support must be enabled per token. Once enabled, the token
 credentials are cached locally after a successful online login and can be
@@ -658,7 +679,7 @@ VALID_LOGIN_USERS="joe,alice"
 DENY_LOGIN_USERS="alice"
 ```
 
-## 21. Dynamic Groups
+## 22. Dynamic Groups
 
 Dynamic groups allow OTPme to add users to local POSIX groups (via
 `setgroups()`) at login time — for example to grant access to `plugdev` for
@@ -692,7 +713,7 @@ ALLOW_DYNAMIC_GROUPS=""
 DENY_DYNAMIC_GROUPS="wheel"
 ```
 
-## 22. Extending the Cluster
+## 23. Extending the Cluster
 
 To achieve high availability and load balancing you can add more nodes to
 the OTPme cluster. Install OTPme on the additional server (see README) and
@@ -732,7 +753,7 @@ target node and run:
 otpme-cluster master_failover --wait
 ```
 
-## 23. Fileserver and Shares
+## 24. Fileserver and Shares
 
 OTPme provides fileserver capabilities using FUSE mounts on the client side.
 Files and directories in the share root (default: `/otpme-mounts/`, see
@@ -891,7 +912,7 @@ confirmation add `--no-confirm`:
 otpme-user agent_script joe scripts/agent_script.sh -- --yubikey-piv --no-confirm
 ```
 
-## 24. Encrypting, Decrypting and Signing Files
+## 25. Encrypting, Decrypting and Signing Files
 
 After logging in as a user with a key pair (see above), you can use
 `otpme-tool` to encrypt, decrypt, sign and verify files:
@@ -984,7 +1005,7 @@ otpme-tool sync
 otpme-get-authorized-keys joe
 ```
 
-## 25. SSH Login Configuration
+## 26. SSH Login Configuration
 
 To allow SSH logins using OTPme-managed authorized keys, add the following
 to your SSH configuration (e.g. `/etc/ssh/sshd_config.d/otpme.conf`):
@@ -995,7 +1016,7 @@ AuthorizedKeysCommandUser root
 PermitUserEnvironment yes
 ```
 
-## 26. TOTP Login and Second Factor Authentication
+## 27. TOTP Login and Second Factor Authentication
 
 If you do not have a hardware token or smartcard, you can use a TOTP token
 with any TOTP authenticator app (e.g. Google Authenticator). Add a TOTP
@@ -1052,7 +1073,7 @@ otpme-host remove_token <yourhostname> joe/totp
 After syncing (`otpme-tool sync` or waiting for `SYNC_INTERVAL` (default 180s, configurable in `/etc/otpme/otpme.conf`)), enter
 password+PIN+OTP at the login prompt.
 
-## 27. Confirmation Policy
+## 28. Confirmation Policy
 
 OTPme asks for confirmation when changing or deleting objects. This
 behaviour is controlled by the `confirmation_policy` config parameter:
@@ -1071,7 +1092,7 @@ individual tokens:
 otpme-site config <site> confirmation_policy force
 ```
 
-## 28. 802.1x and MAB Port Authentication
+## 29. 802.1x and MAB Port Authentication
 
 OTPme supports 802.1x and MAC Authentication Bypass (MAB) port
 authentication. To use either method, configure your switch to send RADIUS
@@ -1099,6 +1120,44 @@ host to the access group:
 ```bash
 otpme-host mac <yourhostname> 90:1b:0e:46:46:15
 otpme-accessgroup add_host lan <yourhostname>
+```
+
+You can define a default access group that new hosts are automatically
+added to:
+
+```bash
+otpme-site config <site> hosts_accessgroup lan
+```
+
+### MAB for Network Devices (IP Phones etc.)
+
+For non-host devices such as IP phones or printers, use the `otpme-device`
+command instead:
+
+```bash
+otpme-device add <devicename>
+otpme-device mac <devicename> 90:1b:0e:46:46:16
+otpme-accessgroup add_device lan <devicename>
+```
+
+Similarly to hosts, you can define a default access group for new devices:
+
+```bash
+otpme-site config <site> devices_accessgroup lan
+```
+
+### VLAN Assignment
+
+To assign a VLAN during MAB or 802.1x authentication, set the `vlan`
+config parameter. It can be set at different levels — the most specific
+match wins:
+
+```bash
+# VLAN based on token authentication.
+otpme-token config joe/login vlan <vlan_name>
+# VLAN based on host or device.
+otpme-host config <yourhostname> vlan <vlan_name>
+otpme-device config <devicename> vlan <vlan_name>
 ```
 
 ### 802.1x Authentication
@@ -1145,7 +1204,7 @@ nmcli connection add type ethernet con-name "dot1x-lan" ifname enp0s25 \
     802-1x.password "pass"
 ```
 
-## 29. Trash
+## 30. Trash
 
 OTPme includes a trash that keeps deleted objects. Every object deleted via
 a tree command (e.g. `otpme-user del`) is moved to the trash instead of
@@ -1179,7 +1238,7 @@ To permanently remove all objects from the trash:
 otpme-trash empty
 ```
 
-## 30. Backup and Restore
+## 31. Backup and Restore
 
 OTPme includes a backup tool that exports all OTPme data (excluding trash)
 to a given directory. Additionally you must back up `/etc/otpme` to make a
@@ -1203,7 +1262,7 @@ directly:
 otpme-tool restore -f /var/backups/otpme/<snapshot>/user/realm+user1.json
 ```
 
-## 31. Integrated Deduplication Backup Service
+## 32. Integrated Deduplication Backup Service
 
 OTPme includes a built-in deduplication backup service. Any node or host
 can act as the backup server. There are two backup modes:

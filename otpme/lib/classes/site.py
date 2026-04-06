@@ -1218,6 +1218,34 @@ def register_config():
                                     setter=hosts_ag_setter,
                                     getter=hosts_ag_getter,
                                     object_types=['site', 'unit'])
+    # Devices accessgroup.
+    def device_ag_setter(ag, callback=JobCallback, **kwargs):
+        result = backend.search(object_type='accessgroup',
+                                attribute="name",
+                                value=ag,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown accessgroup: {ag}")
+            msg = msg.format(ag=ag)
+            raise ValueError(msg)
+        ag = result[0]
+        return ag.uuid
+    def device_ag_getter(uuid, callback=JobCallback, **kwargs):
+        result = backend.search(object_type='accessgroup',
+                                attribute="uuid",
+                                value=uuid,
+                                return_type="instance")
+        if not result:
+            msg = _("Unknown accessgroup: {uuid}")
+            msg = msg.format(uuid=uuid)
+            raise ValueError(msg)
+        ag = result[0]
+        return ag.name
+    config.register_config_parameter(name="devices_accessgroup",
+                                    ctype=str,
+                                    setter=device_ag_setter,
+                                    getter=device_ag_getter,
+                                    object_types=['site', 'unit'])
     # VLAN.
     object_types = [
                     'site',
@@ -2240,7 +2268,6 @@ class Site(OTPmeObject):
 
         self.auth_enabled = True
         self.update_index("auth_enabled", self.auth_enabled)
-
         return self._write(callback=callback)
 
     @check_acls(['disable:auth'])
@@ -2797,6 +2824,7 @@ class Site(OTPmeObject):
         self.update_index("address", self.address)
         self.update_index("auth_fqdn", self.auth_fqdn)
         self.update_index("mgmt_fqdn", self.mgmt_fqdn)
+        self.update_index("sso_fqdn", self.sso_fqdn)
         self.update_index("auth_enabled", self.auth_enabled)
         self.update_index("sync_enabled", self.sync_enabled)
         callback.send(_("Site added successful."))
@@ -2943,6 +2971,7 @@ class Site(OTPmeObject):
         # Set site FQDN.
         self.auth_fqdn = site_fqdn
         self.mgmt_fqdn = site_fqdn
+        self.sso_fqdn = site_fqdn
 
         # Set site address.
         self.address = site_address

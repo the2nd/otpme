@@ -282,6 +282,7 @@ def authenticate(authData):
             do_auth = True
             cache_auth = False
             auth_status = False
+            auth_response = None
             if result:
                 auth_client = result[0]
                 if auth_client.auth_cache_enabled:
@@ -320,6 +321,7 @@ def authenticate(authData):
                         logger.warning(log_msg)
 
             session_uuid = None
+            vlan = None
             if do_auth:
                 # Try to authenticate user.
                 daemon_conn = connections.get("authd",
@@ -339,14 +341,15 @@ def authenticate(authData):
 
             # Check if user was authenticated successful.
             if auth_status:
-                try:
-                    session_uuid = auth_response['session']
-                except KeyError:
-                    session_uuid = None
-                try:
-                    vlan = auth_response['vlan']
-                except KeyError:
-                    vlan = None
+                if auth_response:
+                    try:
+                        session_uuid = auth_response['session']
+                    except KeyError:
+                        pass
+                    try:
+                        vlan = auth_response['vlan']
+                    except KeyError:
+                        pass
 
                 response_tuple = (
                             ('Reply-Message', _("Authentication successful")),

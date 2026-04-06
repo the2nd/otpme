@@ -1231,7 +1231,7 @@ class OTPmeHost(OTPmeClientObject):
         ):
         """ Delete host. """
         if not self.exists():
-            return callback.error("Host does not exist exists.")
+            return callback.error("Host does not exist.")
 
         if self.uuid == config.uuid and not force:
             return callback.error("Cannot delete ourselves.")

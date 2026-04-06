@@ -7,6 +7,7 @@ from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric import padding
 
 try:
@@ -226,13 +227,17 @@ class SSLCert(object):
             msg = msg.format(digest=digest)
             raise OTPmeException(msg)
 
-        _padding = padding.PSS(mgf=padding.MGF1(_digest),
-                            salt_length=padding.PSS.MAX_LENGTH)
         if isinstance(data, str):
             data = data.encode()
         # Sign data.
         try:
-            signature = self._key.sign(data=data,
+            if isinstance(self._key, ec.EllipticCurvePrivateKey):
+                signature = self._key.sign(data,
+                                        ec.ECDSA(_digest))
+            else:
+                _padding = padding.PSS(mgf=padding.MGF1(_digest),
+                                    salt_length=padding.PSS.MAX_LENGTH)
+                signature = self._key.sign(data=data,
                                         padding=_padding,
                                         algorithm=_digest)
         except Exception as e:
@@ -262,15 +267,17 @@ class SSLCert(object):
         if isinstance(data, str):
             data = data.encode()
 
-        _padding = padding.PSS(mgf=padding.MGF1(_digest),
-                            salt_length=padding.PSS.MAX_LENGTH)
-
         public_key = self._cert.public_key()
         try:
-            public_key.verify(signature=signature,
-                            data=data,
-                            padding=_padding,
-                            algorithm=_digest)
+            if isinstance(public_key, ec.EllipticCurvePublicKey):
+                public_key.verify(signature, data, ec.ECDSA(_digest))
+            else:
+                _padding = padding.PSS(mgf=padding.MGF1(_digest),
+                                    salt_length=padding.PSS.MAX_LENGTH)
+                public_key.verify(signature=signature,
+                                data=data,
+                                padding=_padding,
+                                algorithm=_digest)
             return True
         except Exception as e:
             config.raise_exception()
