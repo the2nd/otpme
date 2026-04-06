@@ -371,6 +371,11 @@ class AuthHandler(object):
 
         # Set auth token from session.
         self.auth_token = token
+
+        # Get VLAN.
+        if self.auth_token.support_dot1x:
+            self.vlan = self.auth_token.get_config_parameter("vlan")
+
         if self.found_sotp:
             config.auth_type = "sotp"
         else:
@@ -530,8 +535,11 @@ class AuthHandler(object):
         if self.auth_group.uuid != realm_access_group_uuid:
             group_session_ids = backend.get_sessions(user=self.user.uuid,
                                             access_group=self.auth_group.uuid,
-                                            return_attributes=return_attributes,
-                                            session_type=self.auth_type)
+                                            return_attributes=return_attributes)
+                                            # We have to check all sessions here because
+                                            # e.g. a smartcard session will do SOTP auth
+                                            # when connecting to mgmtd.
+                                            #session_type=self.auth_type)
             # For clear-text requests we have to check JWT sessions too because
             # this may be an SLP request for a JWT session.
             if self.auth_type == "clear-text":
@@ -1362,8 +1370,8 @@ class AuthHandler(object):
         verify_status = self.try_temp_pass_auth(_verify_token,
                                             token_verify_parms)
         # Try normal token verify.
+        do_dot1x_auth = False
         if verify_status is None:
-            do_dot1x_auth = False
             if self.auth_client and self.auth_client.dot1x_auth:
                 if _verify_token.support_dot1x:
                     do_dot1x_auth = True
@@ -1397,6 +1405,10 @@ class AuthHandler(object):
             # but is also not failed and we can check next token.
             return None
 
+        # Ignore failed tokens, continue processing available tokens.
+        if verify_status is False:
+            return None
+
         # If status is not None we found token of this request.
         self.auth_token = token
         self.verify_token = _verify_token
@@ -1404,6 +1416,10 @@ class AuthHandler(object):
             config.auth_type = "sotp"
         else:
             config.auth_type = "token"
+
+        # Get VLAN we will return in rlm_python module.
+        if do_dot1x_auth:
+            self.vlan = self.verify_token.get_config_parameter("vlan")
 
         # Verify auth token.
         if not self.auth_failed:
@@ -2129,6 +2145,7 @@ class AuthHandler(object):
         log_client = None
         log_client_ip = None
         log_session_id = None
+        log_vlan = None
         if self.user:
             log_username = self.user.name
         if self.auth_type:
@@ -2137,7 +2154,7 @@ class AuthHandler(object):
             log_token_name = self.auth_token.name
             if self.temp_password_auth:
                 log_token_name = f"{log_token_name} (temp)"
-        if self.user.type == "host":
+        if self.user.type != "user":
             log_token_name = self.user.mac_address
         if self.auth_group:
             log_access_group = self.auth_group.name
@@ -2151,9 +2168,11 @@ class AuthHandler(object):
             log_client_ip = self.host_ip
         if self.auth_session:
             log_session_id = self.auth_session.session_id
+        if self.vlan:
+            log_vlan = self.vlan
 
         # Final success message.
-        log_message = f"{self.auth_message}: user={log_username} token={log_token_name} access_group={log_access_group} client={log_client} client_ip={log_client_ip} auth_type={log_auth_type} session={log_session_id}"
+        log_message = f"{self.auth_message}: user={log_username} token={log_token_name} access_group={log_access_group} client={log_client} client_ip={log_client_ip} auth_type={log_auth_type} session={log_session_id} vlan={log_vlan}"
         return log_message
 
     def authenticate(self, user, ecdh_curve=None, auth_type="clear-text",
@@ -2241,6 +2260,7 @@ class AuthHandler(object):
         self.auth_mode = string_vars['auth_mode']
         self.verify_jwt_ag = verify_jwt_ag
         self.smartcard_data = smartcard_data
+        self.vlan = None
         self.realm_login = realm_login
         self.realm_logout = realm_logout
         self.unlock = unlock
@@ -2605,13 +2625,23 @@ class AuthHandler(object):
                     raise OTPmeException(msg)
 
         if not self.auth_failed and self.auth_status is False:
-            if self.user.type == "host":
+            if self.user.type != "user":
+                self.count_fails = False
                 if self.user.mac_address == password:
-                    if self.user.uuid in self.auth_group.hosts:
+                    if self.user.type == "host":
+                        valid_devs = self.auth_group.hosts
+                    elif self.user.type == "device":
+                        valid_devs = self.auth_group.devices
+                    else:
+                        msg = _("Unknown MAC auth device type: {dev_type}")
+                        msg = msg.format(dev_type=self.user.type)
+                        raise OTPmeException(msg)
+                    if self.user.uuid in valid_devs:
                         self.auth_status = True
-                        self.count_fails = False
                         self.create_sessions = False
                         self.auth_message = "AUTH_OK_MAC"
+                        # Get VLAN we will return in rlm_python module.
+                        self.vlan = self.user.get_config_parameter("vlan")
                     else:
                         self.auth_failed = True
                         self.auth_message = "AUTH_FAILED_MAC"
@@ -2703,7 +2733,7 @@ class AuthHandler(object):
                         authorize_token = True
                 if self.auth_client:
                     authorize_token = True
-                if self.user.type == "host":
+                if self.user.type != "user":
                     authorize_token = False
             if authorize_token:
                 try:
@@ -2965,7 +2995,13 @@ class AuthHandler(object):
                         self.logger.debug(log_msg)
                         ssh_private_key = self.verify_token._ssh_private_key
                 auth_response['ssh_private_key'] = ssh_private_key
+
+            # Return request cachable status.
             auth_response['request_cacheable'] = self.request_cacheable
+            # Return VLAN to be returned by rlm_python.
+            if self.vlan:
+                auth_response['vlan'] = self.vlan
+            # Return SLP.
             if self.auth_session:
                 auth_response['slp'] = self.auth_session.slp
 

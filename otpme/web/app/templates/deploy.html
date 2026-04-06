@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="login-wrapper">
+  <div class="deploy-card">
+    <h1>Token Enrollment</h1>
+    <p class="deploy-desc">Your account requires a new authentication token.</p>
+
+    <!-- Step 1: Choose token type and start -->
+    <div id="step-start">
+      {% if deploy_token_types|length > 1 %}
+      <p class="deploy-hint" style="margin-bottom:14px;">Choose your preferred authentication method:</p>
+      <div class="token-choice">
+        {% for tt in deploy_token_types %}
+        <button type="button" class="btn btn-secondary token-choice-btn" onclick="startDeploy('{{ tt }}')" id="btn-{{ tt }}">
+          {% if tt == "totp" %}
+          Authenticator App (TOTP)
+          {% elif tt == "fido2" %}
+          Security Key (FIDO2)
+          {% else %}
+          {{ tt|upper }}
+          {% endif %}
+        </button>
+        {% endfor %}
+      </div>
+      {% else %}
+      <button type="button" id="deployBtn" onclick="startDeploy('{{ deploy_token_types[0] }}')" class="btn btn-primary" style="width:100%;">
+        {% if deploy_token_types[0] == "fido2" %}
+        Register Security Key
+        {% else %}
+        Set Up Authenticator App
+        {% endif %}
+      </button>
+      {% endif %}
+    </div>
+
+    <!-- Step 2a: QR code for OATH tokens -->
+    <div id="step-qrcode" style="display:none;">
+      <div class="qr-container"><img id="qrcodeImg" src="" alt="QR Code" style="image-rendering:pixelated;"></div>
+      <div class="deploy-info">
+        <div class="info-row">
+          <span class="info-label">PIN:</span>
+          <code class="info-value" id="pinDisplay"></code>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Secret:</span>
+          <code class="info-value info-secret" id="secretDisplay"></code>
+        </div>
+      </div>
+      <p class="deploy-hint">Scan the QR code with your authenticator app (e.g. Google Authenticator, Authy). Then enter the OTP shown in your app to verify.</p>
+
+      <label for="otpInput">One-Time Password</label>
+      <input type="text" id="otpInput" maxlength="10" autocomplete="one-time-code" placeholder="Enter OTP from app">
+      <button type="button" id="verifyBtn" onclick="verifyOtp()" class="btn btn-primary" style="width:100%;">Verify &amp; Activate</button>
+    </div>
+
+    <div class="status-msg" id="deployStatus"></div>
+    <div class="error-msg" id="deployError"></div>
+  </div>
+</div>
+
+<script>
+    function base64urlToBuffer(base64url) {
+        const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+        const padding = '='.repeat((4 - base64.length % 4) % 4);
+        const binary = atob(base64 + padding);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
+    }
+
+    function bufferToBase64url(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (const byte of bytes) {
+            binary += String.fromCharCode(byte);
+        }
+        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    async function startDeploy(tokenType) {
+        const statusEl = document.getElementById('deployStatus');
+        const errorEl = document.getElementById('deployError');
+        statusEl.textContent = '';
+        errorEl.textContent = '';
+
+        // Disable all buttons.
+        document.querySelectorAll('#step-start button').forEach(b => b.disabled = true);
+        statusEl.textContent = 'Creating token...';
+
+        try {
+            const resp = await fetch("{{ url_for('deploy_begin', _external=True, _scheme='https') }}", {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({token_type: tokenType}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || 'Deployment failed.');
+            }
+
+            if (result.token_type === 'fido2') {
+                await deployFido2();
+            } else {
+                // Show QR code.
+                document.getElementById('step-start').style.display = 'none';
+                document.getElementById('step-qrcode').style.display = 'block';
+                document.getElementById('qrcodeImg').src = result.qrcode_img;
+                document.getElementById('pinDisplay').textContent = result.pin;
+                document.getElementById('secretDisplay').textContent = result.secret;
+                statusEl.textContent = 'Scan the QR code, then enter the OTP below.';
+            }
+        } catch (e) {
+            errorEl.textContent = e.message || 'Deployment failed.';
+            statusEl.textContent = '';
+            document.querySelectorAll('#step-start button').forEach(b => b.disabled = false);
+        }
+    }
+
+    async function deployFido2() {
+        const statusEl = document.getElementById('deployStatus');
+
+        if (!window.isSecureContext) {
+            throw new Error('WebAuthn requires HTTPS.');
+        }
+        if (!window.PublicKeyCredential) {
+            throw new Error('WebAuthn is not supported in this browser.');
+        }
+
+        statusEl.textContent = 'Preparing security key registration...';
+        const beginResp = await fetch("{{ url_for('fido2_register_begin', _external=True, _scheme='https') }}", {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({}),
+        });
+        if (!beginResp.ok) {
+            const err = await beginResp.json();
+            throw new Error(err.error || 'Failed to start registration.');
+        }
+        const options = await beginResp.json();
+
+        const publicKey = options.publicKey;
+        publicKey.challenge = base64urlToBuffer(publicKey.challenge);
+        publicKey.user.id = base64urlToBuffer(publicKey.user.id);
+        if (publicKey.excludeCredentials) {
+            publicKey.excludeCredentials = publicKey.excludeCredentials.map(cred => ({
+                ...cred,
+                id: base64urlToBuffer(cred.id),
+            }));
+        }
+
+        statusEl.textContent = 'Please touch your security key...';
+        const credential = await navigator.credentials.create({publicKey: publicKey});
+
+        const regResponse = {
+            id: credential.id,
+            rawId: bufferToBase64url(credential.rawId),
+            type: credential.type,
+            response: {
+                attestationObject: bufferToBase64url(credential.response.attestationObject),
+                clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+            },
+            clientExtensionResults: credential.getClientExtensionResults(),
+        };
+
+        statusEl.textContent = 'Completing registration...';
+        const completeResp = await fetch("{{ url_for('fido2_register_complete', _external=True, _scheme='https') }}", {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(regResponse),
+        });
+        if (!completeResp.ok) {
+            const err = await completeResp.json();
+            throw new Error(err.error || 'Registration failed.');
+        }
+
+        // Key registered - now move the token to replace the login token.
+        statusEl.textContent = 'Finalizing deployment...';
+        const verifyResp = await fetch("{{ url_for('deploy_verify', _external=True, _scheme='https') }}", {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({}),
+        });
+        const verifyResult = await verifyResp.json();
+        if (!verifyResp.ok) {
+            throw new Error(verifyResult.error || 'Deployment failed.');
+        }
+        statusEl.textContent = verifyResult.message + ' Redirecting...';
+        document.getElementById('step-start').style.display = 'none';
+        setTimeout(() => {
+            window.location.href = verifyResult.redirect;
+        }, 1500);
+    }
+
+    async function verifyOtp() {
+        const statusEl = document.getElementById('deployStatus');
+        const errorEl = document.getElementById('deployError');
+        statusEl.textContent = '';
+        errorEl.textContent = '';
+
+        const otp = document.getElementById('otpInput').value.trim();
+        if (!otp) {
+            errorEl.textContent = 'Please enter the OTP from your authenticator app.';
+            return;
+        }
+
+        const btn = document.getElementById('verifyBtn');
+        btn.disabled = true;
+        statusEl.textContent = 'Verifying OTP...';
+
+        try {
+            const resp = await fetch("{{ url_for('deploy_verify', _external=True, _scheme='https') }}", {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({otp: otp}),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || 'Verification failed.');
+            }
+
+            statusEl.textContent = result.message + ' Redirecting...';
+            setTimeout(() => {
+                window.location.href = result.redirect;
+            }, 1500);
+        } catch (e) {
+            errorEl.textContent = e.message || 'Verification failed.';
+            statusEl.textContent = '';
+            btn.disabled = false;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const otpInput = document.getElementById('otpInput');
+        if (otpInput) {
+            otpInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') verifyOtp();
+            });
+        }
+    });
+</script>
+{% endblock %}

@@ -6,6 +6,7 @@ import time
 import copy
 import gettext
 import datetime
+import threading
 import importlib
 import collections
 
@@ -55,6 +56,15 @@ class OTPmeConfig(object):
         self._post_register_methods = []
         # Valid config variables and their type.
         self.config_var_types = {}
+        # Processing mode.
+        self.register_config_var("proc_mode", str, "multiprocessing")
+        # Used in httpd/gunicron.
+        self.register_config_var("thread_data", None, threading.local())
+        # Users (instance) of the authenticated user.
+        self.register_config_var("_auth_user", None, None)
+        # Users token (instance) that was used to authenticate the user of the current
+        # connection.
+        self.register_config_var("_auth_token", None, None)
         # Main config file parameters.
         self.register_config_var("main_config", dict, None)
         # User config file path.
@@ -398,11 +408,6 @@ class OTPmeConfig(object):
         # Base CA paths.
         #self.register_config_var("realm_ca_path", str, None)
         #self.register_config_var("site_ca_path", str, None)
-        # Users (instance) of the authenticated user.
-        self.register_config_var("_auth_user", None, None)
-        # Users token (instance) that was used to authenticate the user of the current
-        # connection.
-        self.register_config_var("auth_token", None, None)
         # Which auth type the user authenticated (e.g. sotp)
         self.register_config_var("auth_type", None, None)
         # Token with realm admin rights.
@@ -2140,25 +2145,78 @@ class OTPmeConfig(object):
     @property
     def auth_user(self):
         from otpme.lib import backend
-        if not self._auth_user:
-            return
+        if self.proc_mode == "threading":
+            if not hasattr(self.thread_data, "auth_user"):
+                self.thread_data.auth_user = None
+            if not self.thread_data.auth_user:
+                return
+            auth_user = self.thread_data.auth_user
+        else:
+            if not self._auth_user:
+                return
+            auth_user = self._auth_user
         result = backend.search(object_type="user",
                                 attribute="uuid",
-                                value=self._auth_user.uuid,
+                                value=auth_user.uuid,
                                 return_attributes=['last_modified'])
         last_modified = result[0]
-        if self._auth_user.last_modified == last_modified:
-            return self._auth_user
+        if auth_user.last_modified == last_modified:
+            return auth_user
         result = backend.search(object_type="user",
                                 attribute="uuid",
-                                value=self._auth_user.uuid,
+                                value=auth_user.uuid,
                                 return_type="instance")
-        self._auth_user = result[0]
-        return self._auth_user
+        auth_user = result[0]
+        if self.proc_mode == "threading":
+            self.thread_data.auth_user = auth_user
+        else:
+            self._auth_user = auth_user
+        return auth_user
 
     @auth_user.setter
     def auth_user(self, auth_user):
-        self._auth_user = auth_user
+        if self.proc_mode == "threading":
+            self.thread_data.auth_user = auth_user
+        else:
+            self._auth_user = auth_user
+
+    @property
+    def auth_token(self):
+        from otpme.lib import backend
+        if self.proc_mode == "threading":
+            if not hasattr(self.thread_data, "auth_token"):
+                self.thread_data.auth_token = None
+            if not self.thread_data.auth_token:
+                return
+            auth_token = self.thread_data.auth_token
+        else:
+            if not self._auth_token:
+                return
+            auth_token = self._auth_token
+        result = backend.search(object_type="token",
+                                attribute="uuid",
+                                value=auth_token.uuid,
+                                return_attributes=['last_modified'])
+        last_modified = result[0]
+        if auth_token.last_modified == last_modified:
+            return auth_token
+        result = backend.search(object_type="token",
+                                attribute="uuid",
+                                value=auth_token.uuid,
+                                return_type="instance")
+        auth_token = result[0]
+        if self.proc_mode == "threading":
+            self.thread_data.auth_token = auth_token
+        else:
+            self._auth_token = auth_token
+        return auth_token
+
+    @auth_token.setter
+    def auth_token(self, auth_token):
+        if self.proc_mode == "threading":
+            self.thread_data.auth_token = auth_token
+        else:
+            self._auth_token = auth_token
 
     def get_login_user(self):
         """ Get login user. """

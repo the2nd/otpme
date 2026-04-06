@@ -403,6 +403,12 @@ Object types: site, unit, user, token
 Access group that new hosts are automatically added to when they are created. This is useful for MAC Authentication Bypass (MAB) port authentication, where hosts need to be assigned to an access group upon registration. The value must be the name of an existing access group.
 .br
 Object types: site, unit
+.SS VLAN
+.TP
+.B vlan \fR(str)
+VLAN identifier to assign. This is used for VLAN assignment during 802.1x or MAB port authentication. The parameter can be set at various levels; the most specific match wins (e.g. a VLAN set on a token overrides the one set on the user or site).
+.br
+Object types: site, unit, host, device, user, token
 .SS Backup
 .TP
 .B backup_enabled \fR(bool)

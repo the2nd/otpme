@@ -62,6 +62,9 @@ from otpme.lib.register import register_module
 # Get logger.
 logger = config.logger
 
+# Cache for VLAN attributes per user session (used to pass from inner tunnel to outer).
+_vlan_cache = {}
+
 register_module("otpme.lib.protocols.otpme_client")
 
 def log(level, s):
@@ -101,6 +104,7 @@ def authenticate(authData):
     password = None
     nasid = None
     client_ip = None
+    calling_station_id = None
     eap_type = None
     auth_type = None
     eap_message = None
@@ -132,6 +136,8 @@ def authenticate(authData):
             client_ip = t[1]
         elif t[0] == 'Client-IP-Address':
             client_ip = t[1]
+        elif t[0] == 'Calling-Station-Id':
+            calling_station_id = t[1]
         elif t[0] == 'Tmp-Octets-0':
             client_ip = re.sub('^0x', '', t[1])
             client_ip = decode(client_ip, "hex")
@@ -275,6 +281,7 @@ def authenticate(authData):
                                         return_type="instance")
             do_auth = True
             cache_auth = False
+            auth_status = False
             if result:
                 auth_client = result[0]
                 if auth_client.auth_cache_enabled:
@@ -329,28 +336,39 @@ def authenticate(authData):
                 auth_response, \
                 binary_data = daemon_conn.send("verify", command_args)
                 auth_message = auth_response['message']
+
+            # Check if user was authenticated successful.
+            if auth_status:
                 try:
                     session_uuid = auth_response['session']
                 except KeyError:
                     session_uuid = None
+                try:
+                    vlan = auth_response['vlan']
+                except KeyError:
+                    vlan = None
 
-            # Check if user was authenticated successful.
-            if auth_status:
-                # Build responseTuple for rlm_python.
                 response_tuple = (
                             ('Reply-Message', _("Authentication successful")),
-                            #('Session-Timeout', "30"),
-                            #('Idle-Timeout', "15"),
-                            #('Tunnel-Password', "otp"),
                             )
+                # Build responseTuple for rlm_python.
+                if vlan:
+                    response_tuple = response_tuple + (
+                                                        ('Tunnel-Type', '13'),           # VLAN
+                                                        ('Tunnel-Medium-Type', '6'),     # IEEE-802
+                                                        ('Tunnel-Private-Group-Id', vlan),  # VLAN-ID
+                                                    )
+                    if calling_station_id:
+                        _vlan_cache[calling_station_id] = vlan
+
 
                 # Build configTuple for rlm_python.
                 config_tuple = (
                                 ('Auth-Type', 'python_otpme'),
                             )
 
-                log_msg = _("Radius {auth_type} request successful: user={username},client={nasid},client_ip={client_ip}", log=True)[1]
-                log_msg = log_msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip)
+                log_msg = _("Radius {auth_type} request successful: user={username}, client={nasid}, client_ip={client_ip}, vlan={vlan}", log=True)[1]
+                log_msg = log_msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip, vlan=vlan)
                 logger.info(log_msg)
 
                 # Cache auth request.
@@ -422,6 +440,11 @@ def authenticate(authData):
                 nt_key = auth_response['nt_key']
                 # Encode nt_key we got from User().authenticate()
                 nt_key_bin = decode(nt_key, "hex")
+                # Get VLAN.
+                try:
+                    vlan = auth_response['vlan']
+                except KeyError:
+                    vlan = None
 
                 # Generate authenticator response.
                 auth_response = mschap.generate_authenticator_response(peer_nt_response_bin,
@@ -481,6 +504,15 @@ def authenticate(authData):
                                 ('MS-MPPE-Send-Key', f"0x{master_send_key}"),
                                 ('MS-MPPE-Recv-Key', f"0x{master_recv_key}"),
                             )
+                if vlan:
+                    response_tuple = response_tuple + (
+                                                        ('Tunnel-Type', '13'),           # VLAN
+                                                        ('Tunnel-Medium-Type', '6'),     # IEEE-802
+                                                        ('Tunnel-Private-Group-Id', vlan),  # VLAN-ID
+                                                    )
+                    # Cache VLAN for post_auth.
+                    if calling_station_id:
+                        _vlan_cache[calling_station_id] = vlan
 
                 log_msg = _("adding Auth-Type: 'MS-CHAP'", log=True)[1]
                 log(radiusd.L_DBG, log_msg)
@@ -490,8 +522,8 @@ def authenticate(authData):
                                     ('Auth-Type', 'MS-CHAP'),
                                 )
 
-                log_msg = _("Radius {auth_type} request successful: user={username},client={nasid},client_ip={client_ip}", log=True)[1]
-                log_msg = log_msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip)
+                log_msg = _("Radius {auth_type} request successful: user={username}, client={nasid}, client_ip={client_ip}, vlan={vlan}", log=True)[1]
+                log_msg = log_msg.format(auth_type=auth_type, username=username, nasid=nasid, client_ip=client_ip, vlan=vlan)
                 logger.info(log_msg)
 
                 # Set return code.
@@ -533,20 +565,30 @@ def authenticate(authData):
     return (return_code, response_tuple, config_tuple)
 
 def post_auth(authData):
-    """ Post-Auth - Add attributes to final reply for iOS compatibility """
-    # This is especially important for PEAP: iOS expects MPPE encryption
-    # attributes in the final Access-Accept, not just in the inner tunnel.
+    """ Post-Auth - Add VLAN and MPPE attributes to final Access-Accept. """
+    calling_station_id = None
+    username = None
+    for t in authData:
+        if t[0] == 'Calling-Station-Id':
+            calling_station_id = t[1]
+        elif t[0] == 'User-Name':
+            username = t[1]
 
-    # Build response tuple with iOS-required attributes
-    response_tuple = (
-        ('MS-MPPE-Encryption-Policy', '0x00000001'),  # Encryption-Allowed
-        ('MS-MPPE-Encryption-Types', '0x00000006'),   # RC4-40or128-bit-Allowed
-    )
+    response_tuple = ()
 
-    log_msg = _("post_auth: Adding MPPE encryption attributes for iOS compatibility", log=True)[1]
-    log(radiusd.L_DBG, log_msg)
+    # Add cached VLAN attributes.
+    if calling_station_id and calling_station_id in _vlan_cache:
+        vlan = _vlan_cache.pop(calling_station_id)
+        response_tuple = response_tuple + (
+            ('Tunnel-Type', '13'),
+            ('Tunnel-Medium-Type', '6'),
+            ('Tunnel-Private-Group-Id', vlan),
+        )
+        log_msg = _("post_auth: Adding VLAN attributes for user {username} ({calling_station_id}): vlan={vlan}", log=True)[1]
+        log_msg = log_msg.format(username=username, calling_station_id=calling_station_id, vlan=vlan)
+        log(radiusd.L_INFO, log_msg)
 
-    return (radiusd.RLM_MODULE_OK, response_tuple, ())
+    return (radiusd.RLM_MODULE_UPDATED, response_tuple, ())
 
 def detach():
     """ Detach and clean up."""

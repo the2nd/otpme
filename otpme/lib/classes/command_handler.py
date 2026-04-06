@@ -627,6 +627,9 @@ class CommandHandler(object):
             if command == "pool":
                 register_module('otpme.lib.classes.pool')
                 register_module('otpme.lib.cli.pool')
+            if command == "device":
+                register_module('otpme.lib.classes.device')
+                register_module('otpme.lib.cli.device')
 
             if subcommand == "show":
                 register_module("otpme.lib.cli")

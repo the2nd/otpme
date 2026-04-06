@@ -48,6 +48,7 @@ modules = [
             'otpme.lib.cli.group',
             'otpme.lib.cli.host',
             'otpme.lib.cli.node',
+            'otpme.lib.cli.device',
             'otpme.lib.cli.policy',
             'otpme.lib.cli.realm',
             'otpme.lib.cli.resolver',

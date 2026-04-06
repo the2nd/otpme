@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="portal-wrapper">
+    <h2>Settings</h2>
+
+    <!-- Password Change -->
+    {% if show_password_change %}
+    <div class="settings-card">
+        <h3>Change Password</h3>
+        <div class="settings-form">
+            <label for="currentPassword">Current Password</label>
+            <input type="password" id="currentPassword" autocomplete="current-password">
+
+            <label for="newPassword">New Password</label>
+            <input type="password" id="newPassword" autocomplete="new-password">
+
+            <label for="confirmPassword">Confirm New Password</label>
+            <input type="password" id="confirmPassword" autocomplete="new-password">
+
+            <button type="button" id="changePwBtn" onclick="changePassword()" class="btn btn-primary" style="margin-top:8px;">Change Password</button>
+            <div class="status-msg" id="pwStatus"></div>
+            <div class="error-msg" id="pwError"></div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- FIDO2 Key Management -->
+    <div class="settings-card">
+        <h3>Security Keys</h3>
+        <p class="settings-desc">Register a FIDO2 security key. This will replace your current login token.</p>
+        <button type="button" id="fido2RegisterBtn" onclick="fido2Deploy()" class="btn btn-secondary btn-small">Register Security Key</button>
+        <div class="status-msg" id="fido2RegStatus"></div>
+        <div class="error-msg" id="fido2RegError"></div>
+    </div>
+</div>
+
+<script>
+    async function changePassword() {
+        const statusEl = document.getElementById('pwStatus');
+        const errorEl = document.getElementById('pwError');
+        statusEl.textContent = '';
+        errorEl.textContent = '';
+
+        const currentPassword = document.getElementById('currentPassword').value;
+        const newPassword = document.getElementById('newPassword').value;
+        const confirmPassword = document.getElementById('confirmPassword').value;
+
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            errorEl.textContent = 'All fields are required.';
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            errorEl.textContent = 'New passwords do not match.';
+            return;
+        }
+
+        const btn = document.getElementById('changePwBtn');
+        btn.disabled = true;
+        statusEl.textContent = 'Changing password...';
+
+        try {
+            const resp = await fetch("{{ url_for('change_password', _external=True, _scheme='https') }}", {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    current_password: currentPassword,
+                    new_password: newPassword,
+                    confirm_password: confirmPassword,
+                }),
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                throw new Error(result.error || 'Password change failed.');
+            }
+            statusEl.textContent = result.message || 'Password changed successfully.';
+            document.getElementById('currentPassword').value = '';
+            document.getElementById('newPassword').value = '';
+            document.getElementById('confirmPassword').value = '';
+        } catch (e) {
+            errorEl.textContent = e.message || 'Password change failed.';
+            statusEl.textContent = '';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function base64urlToBuffer(base64url) {
+        const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+        const padding = '='.repeat((4 - base64.length % 4) % 4);
+        const binary = atob(base64 + padding);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
+    }
+
+    function bufferToBase64url(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (const byte of bytes) {
+            binary += String.fromCharCode(byte);
+        }
+        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    async function fido2Deploy() {
+        const statusEl = document.getElementById('fido2RegStatus');
+        const errorEl = document.getElementById('fido2RegError');
+        statusEl.textContent = '';
+        errorEl.textContent = '';
+
+        if (!window.isSecureContext) {
+            errorEl.textContent = 'WebAuthn requires HTTPS.';
+            return;
+        }
+        if (!window.PublicKeyCredential) {
+            errorEl.textContent = 'WebAuthn is not supported in this browser.';
+            return;
+        }
+
+        const btn = document.getElementById('fido2RegisterBtn');
+        btn.disabled = true;
+
+        try {
+            // Step 1: Create sso-deploy FIDO2 token.
+            statusEl.textContent = 'Preparing...';
+            const createResp = await fetch("{{ url_for('settings_fido2_begin', _external=True, _scheme='https') }}", {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({}),
+            });
+            if (!createResp.ok) {
+                const err = await createResp.json();
+                throw new Error(err.error || 'Failed to create token.');
+            }
+
+            // Step 2: WebAuthn registration.
+            statusEl.textContent = 'Starting registration...';
+            const beginResp = await fetch("{{ url_for('fido2_register_begin', _external=True, _scheme='https') }}", {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({}),
+            });
+            if (!beginResp.ok) {
+                const err = await beginResp.json();
+                throw new Error(err.error || 'Failed to start registration.');
+            }
+            const options = await beginResp.json();
+
+            const publicKey = options.publicKey;
+            publicKey.challenge = base64urlToBuffer(publicKey.challenge);
+            publicKey.user.id = base64urlToBuffer(publicKey.user.id);
+            if (publicKey.excludeCredentials) {
+                publicKey.excludeCredentials = publicKey.excludeCredentials.map(cred => ({
+                    ...cred,
+                    id: base64urlToBuffer(cred.id),
+                }));
+            }
+
+            statusEl.textContent = 'Please touch your security key...';
+            const credential = await navigator.credentials.create({publicKey: publicKey});
+
+            const regResponse = {
+                id: credential.id,
+                rawId: bufferToBase64url(credential.rawId),
+                type: credential.type,
+                response: {
+                    attestationObject: bufferToBase64url(credential.response.attestationObject),
+                    clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                },
+                clientExtensionResults: credential.getClientExtensionResults(),
+            };
+
+            statusEl.textContent = 'Completing registration...';
+            const completeResp = await fetch("{{ url_for('fido2_register_complete', _external=True, _scheme='https') }}", {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(regResponse),
+            });
+            if (!completeResp.ok) {
+                const err = await completeResp.json();
+                throw new Error(err.error || 'Registration failed.');
+            }
+
+            // Step 3: Move sso-deploy token to replace login token.
+            statusEl.textContent = 'Finalizing...';
+            const verifyResp = await fetch("{{ url_for('deploy_verify', _external=True, _scheme='https') }}", {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({}),
+            });
+            const verifyResult = await verifyResp.json();
+            if (!verifyResp.ok) {
+                throw new Error(verifyResult.error || 'Deployment failed.');
+            }
+
+            statusEl.textContent = 'Security key registered successfully! Reloading...';
+            setTimeout(() => { window.location.reload(); }, 1500);
+        } catch (e) {
+            errorEl.textContent = e.message || 'Registration failed.';
+            statusEl.textContent = '';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+</script>
+{% endblock %}

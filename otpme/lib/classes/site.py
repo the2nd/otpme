@@ -1218,6 +1218,18 @@ def register_config():
                                     setter=hosts_ag_setter,
                                     getter=hosts_ag_getter,
                                     object_types=['site', 'unit'])
+    # VLAN.
+    object_types = [
+                    'site',
+                    'unit',
+                    'host',
+                    'device',
+                    'user',
+                    'token',
+                    ]
+    config.register_config_parameter(name="vlan",
+                                    ctype=str,
+                                    object_types=object_types)
 
 def register_hooks():
     config.register_auth_on_action_hook("site", "add_unit")

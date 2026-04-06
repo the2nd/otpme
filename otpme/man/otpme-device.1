@@ -1,0 +1,173 @@
+.TH OTPME-DEVICE 1 "2026" "OTPme" "OTPme Manual"
+.SH NAME
+otpme-device \- manage OTPme network devices for MAB port authentication
+.SH SYNOPSIS
+.B otpme-device
+.I command
+[\fIoptions\fR] [\fIdevice\fR]
+.SH DESCRIPTION
+.B otpme-device
+manages network devices in the OTPme system. Devices represent network
+equipment such as IP phones or printers that authenticate via MAC
+Authentication Bypass (MAB). Each device has a MAC address and can be
+assigned to an access group to control network access.
+.PP
+To use a device for MAB port authentication, add it with
+.BR otpme-device ,
+set its MAC address and add it to the appropriate access group with
+.BR otpme-accessgroup (1).
+.SH COMMANDS
+.SS Device Management
+.TP
+.B add \fIdevice\fR
+Create a new device.
+.TP
+.B del \fIdevice\fR
+Delete a device.
+.TP
+.B show \fR[\fIdevice\fR]
+Display device information.
+.TP
+.B list \fR[\fIregex\fR]
+List devices, optionally filtered by regex pattern.
+.TP
+.B enable \fIdevice\fR
+Enable a disabled device.
+.TP
+.B disable \fIdevice\fR
+Disable a device without deleting it.
+.TP
+.B touch \fIdevice\fR
+Re-index the device to fix potential index problems.
+.TP
+.B move \fR[\fB\-\-keep\-acls\fR] \fIdevice\fR \fIunit\fR
+Move device to a different unit.
+.SS MAC Address
+.TP
+.B mac \fIdevice\fR \fImac_address\fR
+Set the MAC address of the device. The MAC address is used for MAB port
+authentication.
+.SS Configuration
+.TP
+.B config \fR[\fB\-d\fR] [\fB\-a\fR] \fIdevice\fR \fIparameter\fR \fR[\fIvalue\fR]
+Set a configuration parameter. Use \fB\-d\fR to delete (reset to
+default), \fB\-a\fR to append a value.
+.TP
+.B show_config \fIdevice\fR [\fIparameter\fR]
+Show all configuration parameters.
+.TP
+.B description \fIdevice\fR \fR[\fIdescription\fR]
+Set device description.
+.SS Policy Management
+.TP
+.B add_policy \fIdevice\fR \fIpolicy\fR
+Attach a policy to the device.
+.TP
+.B remove_policy \fIdevice\fR \fIpolicy\fR
+Remove a policy from the device.
+.TP
+.B list_policies \fIdevice\fR
+List policies attached to the device.
+.SS ACL Management
+.TP
+.B add_acl \fIdevice\fR \fIowner_type\fR \fIowner\fR \fIacl\fR
+Add an access control entry.
+.TP
+.B del_acl \fIdevice\fR \fIacl\fR
+Remove an access control entry.
+.TP
+.B show_acls \fIdevice\fR
+Display all ACLs for the device.
+.TP
+.B enable_acl_inheritance \fIdevice\fR
+Enable ACL inheritance from parent objects.
+.TP
+.B disable_acl_inheritance \fIdevice\fR
+Disable ACL inheritance.
+.SS Import/Export
+.TP
+.B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIdevice\fR
+Export device configuration.
+.TP
+.B remove_orphans \fIdevice\fR
+Remove orphaned object references.
+.SH OPTIONS
+.SS Display Options
+.TP
+.B \-a
+Show all devices (across all units).
+.TP
+.B \-z \fISIZE\fR
+Limit output size.
+.TP
+.B \-\-fields \fIFIELD1,FIELD2\fR
+Display only specified fields.
+.TP
+.B \-\-policy\-limit \fIN\fR
+Limit number of policies shown.
+.TP
+.B \-\-token\-limit \fIN\fR
+Limit number of tokens shown.
+.TP
+.B \-\-role\-limit \fIN\fR
+Limit number of roles shown.
+.TP
+.B \-\-sort\-by \fIFIELD\fR
+Sort output by field.
+.TP
+.B \-\-reverse
+Reverse sort order.
+.TP
+.B \-\-raw
+Output without headers/borders.
+.TP
+.B \-\-csv
+Output as CSV.
+.TP
+.B \-\-csv\-sep \fISEP\fR
+CSV separator character.
+.TP
+.B \-\-attribute \fIATTR\fR
+Display specific attribute in list command.
+.SS General Options
+.TP
+.B \-\-keep\-acls
+Preserve ACLs when moving device.
+.TP
+.B \-\-password \fIPASS\fR
+Password for encrypting exports.
+.PP
+Global options are available for all commands. See
+.BR otpme (1)
+for details.
+.SH EXAMPLES
+.TP
+.B otpme-device add ip-phone-1
+Create a device for an IP phone
+.TP
+.B otpme-device mac ip-phone-1 90:1b:0e:46:46:15
+Set the MAC address
+.TP
+.B otpme-accessgroup add_device lan ip-phone-1
+Add device to access group for MAB
+.TP
+.B otpme-device description ip-phone-1 "Reception IP Phone"
+Set description
+.TP
+.B otpme-device show ip-phone-1
+Show device details
+.SH FILES
+.TP
+.I /var/lib/otpme/
+OTPme data directory
+.SH SEE ALSO
+.BR otpme (7),
+.BR otpme-accessgroup (1),
+.BR otpme-host (1),
+.BR otpme-client (1)
+.SH AUTHOR
+the2nd <the2nd@otpme.org>
+.SH NOTE
+This manual page was created with AI assistance.
+.SH COPYRIGHT
+Copyright \(co 2014-2025 the2nd. License: GPLv3

@@ -2285,8 +2285,10 @@ class OTPmeMgmtP1(OTPmeServer1):
         # Check if we got a valid command
         if command not in valid_commands:
             status = False
-            message = _("Unknown command: {cmd}")
+            message = _("Unknown OTPme command: {cmd}")
             message = message.format(cmd=command)
+            from otpme.lib import debug
+            debug.trace()
             return self.build_response(status, message)
 
         # Try to auth socket user.

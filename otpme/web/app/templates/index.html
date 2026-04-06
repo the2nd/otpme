@@ -60,7 +60,7 @@
                       .then(response => response.json())
                       .then(sotp => {
                         const login_data = {
-                          username: '{{ g.user.name }}',
+                          username: {{ g.user.name|tojson }},
                           password: sotp,
                           redirect_url: item.login_url,
                           sso_popup: item.sso_popup,

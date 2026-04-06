@@ -339,7 +339,7 @@ class OTPmeAuthP1(OTPmeServer1):
 
         # Check if user exists.
         if stuff.is_mac_address(username):
-            result = backend.search(object_type="host",
+            result = backend.search(object_types=['host', 'device'],
                                     attribute="mac_address",
                                     value=username,
                                     realm=config.realm,

@@ -292,41 +292,6 @@ cmd_help = {
                                 },
                     },
 
-    'list_tokens'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list_tokens {accessgroup}'),
-                    'cmd'   :   '--return-type :return_type: --token-types :[token_types]: [|object|]',
-                    '_help' :   {
-                                    'cmd'                   : _('List assigned tokens.'),
-                                    '--return-type'             : _('Attribute to return.'),
-                                    '--token-types <hotp,totp>' : _('Token types to list.'),
-                                },
-                    },
-    'list_roles'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list_roles {accessgroup}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('List assigned roles.'),
-                                },
-                    },
-    'list_policies'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list_policies {accessgroup}'),
-                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
-                    'ovals' :   {
-                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
-                                },
-                    '_help' :   {
-                                    'cmd'                           : _('List assigned policies.'),
-                                    '--return-type'                 : _('Attribute to return.'),
-                                    '--policy-types <type1,type2>'  : _('Policy types to list.'),
-                                },
-                    },
-    'list_hosts'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list_hosts {accessgroup}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('List assigned hosts.'),
-                                },
-                    },
     'add_role'   : {
                     '_cmd_usage_help' : _('Usage: otpme-accessgroup add_role {accessgroup} {role}'),
                     'cmd'   :   '<|object|> <role_name>',
@@ -340,6 +305,22 @@ cmd_help = {
                     'cmd'   :   '<|object|> <role_name>',
                     '_help' :   {
                                     'cmd'                   : _('Remove role from accessgroup'),
+                                },
+                },
+
+    'add_token'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup add_token {accessgroup} {token} [token_options]'),
+                    'cmd'   :   '<|object|> <token_path> [token_options]',
+                    '_help' :   {
+                                    'cmd'                   : _('Add token to accessgroup.'),
+                                },
+                },
+
+    'remove_token'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup remove_token {accessgroup} {token}'),
+                    'cmd'   :   '<|object|> <token_path>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove token from accessgroup.'),
                                 },
                 },
 
@@ -359,21 +340,68 @@ cmd_help = {
                                 },
                 },
 
-    'add_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup add_token {accessgroup} {token} [token_options]'),
-                    'cmd'   :   '<|object|> <token_path> [token_options]',
+    'add_device'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup add_device {accessgroup} {device}'),
+                    'cmd'   :   '<|object|> <device_name>',
                     '_help' :   {
-                                    'cmd'                   : _('Add token to accessgroup.'),
+                                    'cmd'                   : _('Add device to accessgroup'),
                                 },
                 },
 
-    'remove_token'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-accessgroup remove_token {accessgroup} {token}'),
-                    'cmd'   :   '<|object|> <token_path>',
+    'remove_device'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup remove_device {accessgroup} {device}'),
+                    'cmd'   :   '<|object|> <device_name>',
                     '_help' :   {
-                                    'cmd'                   : _('Remove token from accessgroup.'),
+                                    'cmd'                   : _('Remove device from accessgroup'),
                                 },
                 },
+
+    'list_tokens'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list_tokens {accessgroup}'),
+                    'cmd'   :   '--return-type :return_type: --token-types :[token_types]: [|object|]',
+                    '_help' :   {
+                                    'cmd'                   : _('List assigned tokens.'),
+                                    '--return-type'             : _('Attribute to return.'),
+                                    '--token-types <hotp,totp>' : _('Token types to list.'),
+                                },
+                    },
+
+    'list_roles'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list_roles {accessgroup}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List assigned roles.'),
+                                },
+                    },
+
+    'list_policies'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list_policies {accessgroup}'),
+                    'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',
+                    'ovals' :   {
+                                'return_type'   : ['name', 'read_oid', 'full_oid', 'uuid'],
+                                },
+                    '_help' :   {
+                                    'cmd'                           : _('List assigned policies.'),
+                                    '--return-type'                 : _('Attribute to return.'),
+                                    '--policy-types <type1,type2>'  : _('Policy types to list.'),
+                                },
+                    },
+
+    'list_hosts'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list_hosts {accessgroup}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List assigned hosts.'),
+                                },
+                    },
+
+    'list_devices'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-accessgroup list_devices {accessgroup}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List assigned devices.'),
+                                },
+                    },
 
     'enable_sessions'    : {
                     '_cmd_usage_help' : _('Usage: otpme-accessgroup enable_sessions {accessgroup}'),

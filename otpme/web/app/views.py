@@ -21,7 +21,7 @@ from flask_login import login_required
 from fido2.server import Fido2Server
 from fido2.webauthn import AttestedCredentialData
 
-from markupsafe import escape
+#from markupsafe import escape
 
 from otpme.web.app import lm
 from otpme.web.app import app
@@ -109,7 +109,19 @@ def load_user(id):
 
 @app.before_request
 def before_request():
+    config.proc_mode = "threading"
+    config.auth_token = None
     g.user = current_user
+
+@app.after_request
+def set_security_headers(response):
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:;"
+    )
+    return response
 
 @app.errorhandler(404)
 def not_found_error(error):
@@ -384,7 +396,7 @@ def login():
     else:
       client_ip = request.remote_addr
     # Get username/password.
-    username = escape(request.form['username'])
+    username = request.form['username']
     password = request.form['password']
 
     result = backend.search(object_type="user",
@@ -395,9 +407,6 @@ def login():
         flash("Login failed.")
         return redirect(url_for('login', _external=True, _scheme='https'))
     user = result[0]
-    if not user:
-        flash("Login failed.")
-        return redirect(url_for('login', _external=True, _scheme='https'))
     # Check if we have users secrets.
     try:
         stuff.get_site_trust_status(user.realm, user.site)
@@ -427,14 +436,15 @@ def login():
             logger.critical(log_msg)
             flash("Internal error while authenticating user.")
             return redirect(url_for('login', _external=True, _scheme='https'))
-        try:
-            auth_token = auth_response['token']
-            session_uuid = auth_response['session']
-        except KeyError:
-            log_msg = _("Invalid auth response.", log=True)[1]
-            logger.warning(log_msg)
-            flash("Login failed.")
-            return redirect(url_for('login', _external=True, _scheme='https'))
+        if auth_status:
+            try:
+                auth_token = auth_response['token']
+                session_uuid = auth_response['session']
+            except KeyError:
+                log_msg = _("Invalid auth response.", log=True)[1]
+                logger.warning(log_msg)
+                flash("Login failed.")
+                return redirect(url_for('login', _external=True, _scheme='https'))
     if not auth_status:
         flash("Login failed.")
         return redirect(url_for('login', _external=True, _scheme='https'))
@@ -715,7 +725,7 @@ def fido2_auth_begin():
     data = request.json
     if not data or 'username' not in data:
         return jsonify({"error": "Username required"}), 400
-    username = escape(str(data['username']))
+    username = str(data['username'])
     # Find user.
     result = backend.search(object_type="user",
                             attribute="name",

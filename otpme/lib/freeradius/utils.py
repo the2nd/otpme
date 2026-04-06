@@ -85,8 +85,8 @@ PYTHON_MOD_CONFIG_TEMPLATE = '''
     	#mod_post_proxy = ${.module}
     	#func_post_proxy = post_proxy
 
-    	#mod_post_auth = ${.module}
-    	#func_post_auth = post_auth
+        mod_post_auth = ${.module}
+        func_post_auth = post_auth
 
     	#mod_recv_coa = ${.module}
     	#func_recv_coa = recv_coa
@@ -279,6 +279,9 @@ def create_freeradius_conf():
                 }
             }
         }
+        post-auth {
+          python_otpme
+      }
     }
     '''
 

@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2014 the2nd <the2nd@otpme.org>
 import os
-import time
 from typing import Union
 
 try:
@@ -14,7 +13,6 @@ except:
 
 from otpme.lib import oid
 from otpme.lib import cli
-from otpme.lib import stuff
 from otpme.lib import config
 from otpme.lib import backend
 from otpme.lib import otpme_acl
@@ -23,6 +21,7 @@ from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
+from otpme.lib.classes.device import OTPmeDevice
 from otpme.lib.classes.otpme_host import OTPmeHost
 from otpme.lib.protocols.utils import register_commands
 
@@ -178,6 +177,16 @@ commands = {
                 'exists'    : {
                     'method'            : 'delete',
                     'job_type'          : 'process',
+                    },
+                },
+            },
+    'config'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'set_config_param',
+                    'args'              : ['parameter'],
+                    'oargs'             : ['value', 'append', 'delete'],
+                    'job_type'          : 'thread',
                     },
                 },
             },
@@ -743,16 +752,6 @@ commands = {
                     },
                 },
             },
-    'config'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'set_config_param',
-                    'args'              : ['parameter'],
-                    'oargs'             : ['value', 'append', 'delete'],
-                    'job_type'          : 'thread',
-                    },
-                },
-            },
     }
 
 def get_acls(split=False, **kwargs):
@@ -899,7 +898,7 @@ def register_sync_settings():
     config.register_object_sync(host_type="host", object_type="host")
 
 @match_class_typing
-class Host(OTPmeHost):
+class Host(OTPmeHost, OTPmeDevice):
     """ OTPme host object. """
     commands = commands
 
@@ -1173,36 +1172,6 @@ class Host(OTPmeHost):
         sync_params['object_types'] = sync_object_types
         sync_params['checksum_only_types'] = checksum_only_types
         return sync_params
-
-    @check_acls(['edit:mac_address'])
-    @object_lock()
-    @backend.transaction
-    @audit_log()
-    def change_mac(
-        self,
-        mac_address: str,
-        run_policies: bool=True,
-        callback: JobCallback=default_callback,
-        _caller: str="API",
-        **kwargs,
-        ):
-        """ Set hosts MAC address. """
-        if not stuff.is_mac_address(mac_address):
-            msg = _("Invalid MAC address.")
-            return callback.error(msg)
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("change_mac",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-        self.mac_address = mac_address
-        self.update_index('mac_address', mac_address)
-        return self._cache(callback=callback)
 
     @check_acls(['enable:sync_by_login_token'])
     @object_lock()
@@ -1493,19 +1462,6 @@ class Host(OTPmeHost):
             ag.remove_host(self.name, verify_acl=False, callback=callback)
             ag._cache(callback=callback)
         return super(Host, self).delete(callback=callback, **kwargs)
-
-    def authenticate(self, **kwargs):
-        """ Wrapper to call auth handler. """
-        from otpme.lib.classes.auth_handler import AuthHandler
-        auth_handler = AuthHandler()
-        start_time = time.time()
-        auth_status = auth_handler.authenticate(user=self, **kwargs)
-        end_time = time.time()
-        duration = float(end_time - start_time)
-        log_msg = _("Authentication took {duration} seconds.", log=True)[1]
-        log_msg = log_msg.format(duration=duration)
-        logger.debug(log_msg)
-        return auth_status
 
     def show_config( self, callback: JobCallback=default_callback, **kwargs):
         """ Show host config. """

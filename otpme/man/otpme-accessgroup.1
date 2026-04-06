@@ -68,6 +68,13 @@ Add a host to the access group. This is useful for MAC Authentication Bypass (MA
 .TP
 .B remove_host \fIaccessgroup\fR \fIhost\fR
 Remove a host from the access group.
+.SS Device Assignment
+.TP
+.B add_device \fIaccessgroup\fR \fIdevice\fR
+Add a device to the access group. This is used for MAC Authentication Bypass (MAB) port authentication of network devices such as IP phones.
+.TP
+.B remove_device \fIaccessgroup\fR \fIdevice\fR
+Remove a device from the access group.
 .SS Session Management
 .TP
 .B enable_sessions \fIaccessgroup\fR
@@ -143,7 +150,7 @@ Disable ACL inheritance.
 .SS Configuration and Attributes
 .TP
 .B config \fR[\fB\-d\fR] \fIaccessgroup\fR \fIparameter\fR \fR[\fIvalue\fR]
-Set or display a configuration parameter. Use \fB\-d\fR to delete (reset to default).
+Set a configuration parameter. Use \fB\-d\fR to delete (reset to default).
 .TP
 .B show_config \fIaccessgroup\fR [\fIparameter\fR]
 Show all configuration parameters.

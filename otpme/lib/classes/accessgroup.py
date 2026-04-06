@@ -51,6 +51,7 @@ read_value_acls = {
                             "token",
                             "role",
                             "host",
+                            "device",
                             "child_group",
                             "child_session",
                             "sessions_enabled",
@@ -77,6 +78,7 @@ write_value_acls = {
                             "token",
                             "role",
                             "host",
+                            "device",
                             "child_group",
                             "child_session",
                             ],
@@ -84,6 +86,7 @@ write_value_acls = {
                             "token",
                             "role",
                             "host",
+                            "device",
                             "child_group",
                             "child_session",
                             ],
@@ -396,6 +399,24 @@ commands = {
                     },
                 },
             },
+    'add_device'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_device',
+                    'args'              : ['device_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_device'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_device',
+                    'args'              : ['device_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'add_child_group'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -465,6 +486,14 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'get_hosts',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'list_devices'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_devices',
                     'job_type'          : 'process',
                     },
                 },
@@ -939,6 +968,12 @@ class AccessGroup(OTPmeObject):
                                                         'required'  : False,
                                                     },
 
+                        'DEVICES'                   : {
+                                                        'var_name'  : 'devices',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+
                         'CHILD_GROUPS'              : {
                                                         'var_name'  : 'child_groups',
                                                         'type'      : list,
@@ -1154,6 +1189,140 @@ class AccessGroup(OTPmeObject):
         search_result = backend.search(object_type="host",
                                     attribute="uuid",
                                     values=self.hosts,
+                                    attributes=search_attr,
+                                    return_attributes=return_attributes)
+        for uuid in search_result:
+            try:
+                x_result = search_result[uuid][return_type]
+            except:
+                continue
+            if return_type == "name":
+                x_site = search_result[uuid]['site']
+                if x_site != config.site:
+                    x_result = f"{x_site}/{x_result}"
+            result.append(x_result)
+
+        result.sort()
+
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+        return callback.ok(result)
+
+    @check_acls(['add:device'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def add_device(
+        self,
+        device_name: str=None,
+        device_uuid: str=None,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Adds a device to this group. """
+        if not device_uuid:
+            device = backend.get_object(object_type="device",
+                                    realm=config.realm,
+                                    site=self.site,
+                                    name=device_name)
+            if not device:
+                msg = _("Host does not exist: {device_name}")
+                msg = msg.format(device_name=device_name)
+                return callback.error(msg)
+            device_uuid = device.uuid
+
+        if device_uuid in self.devices:
+            msg = _("Host already added to acccessgroup.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_device",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        # Append device UUID to devices.
+        self.devices.append(device_uuid)
+        # Update index.
+        self.add_index("device", device_uuid)
+
+        return self._cache(callback=callback)
+
+    @check_acls(['remove:device'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def remove_device(
+        self,
+        device_name: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Removes a device from this group. """
+        device = backend.get_object(object_type="device",
+                                realm=config.realm,
+                                site=self.site,
+                                name=device_name)
+        if not device:
+            msg = _("Host does not exist: {device_name}")
+            msg = msg.format(device_name=device_name)
+            return callback.error(msg)
+
+        if device.uuid not in self.devices:
+            msg = _("Host not in acccessgroup.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("remove_device",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        # Remove device UUID from group.
+        self.devices.remove(device.uuid)
+        # Update index.
+        self.del_index("device", device.uuid)
+
+        return self._cache(callback=callback)
+
+    @cli.check_rapi_opts()
+    def get_devices(
+        self,
+        return_type: str="name",
+        _caller: str="API",
+        skip_disabled: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Return list with all devices assigned to this object. """
+        result = []
+        if not self.devices:
+            return result
+
+        search_attr = {}
+        if skip_disabled:
+            search_attr['enabled'] = {}
+            search_attr['enabled']['value'] = True
+        return_attributes = ['site', return_type]
+        search_result = backend.search(object_type="device",
+                                    attribute="uuid",
+                                    values=self.devices,
                                     attributes=search_attr,
                                     return_attributes=return_attributes)
         for uuid in search_result:
@@ -2073,6 +2242,12 @@ class AccessGroup(OTPmeObject):
             if not host_oid:
                 host_list.append(i)
 
+        device_list = []
+        for i in self.devices:
+            device_oid = backend.get_oid(object_type="device", uuid=i)
+            if not device_oid:
+                device_list.append(i)
+
         msg = ""
         if acl_list:
             msg += _("{type}|{name}: Found the following orphan ACLs: {acl_list}\n").format(
@@ -2092,6 +2267,9 @@ class AccessGroup(OTPmeObject):
         if host_list:
             msg += _("{type}|{name}: Found the following orphan host UUIDs: {host_list}\n").format(
                 type=self.type, name=self.name, host_list=','.join(host_list))
+        if device_list:
+            msg += _("{type}|{name}: Found the following orphan device UUIDs: {device_list}\n").format(
+                type=self.type, name=self.name, device_list=','.join(device_list))
         if msg:
             msg = _("{msg}Remove? ").format(msg=msg)
             if not self.ask_change_confirmation(msg, force=force, callback=callback):
@@ -2134,6 +2312,14 @@ class AccessGroup(OTPmeObject):
                 callback.send(msg)
             object_changed = True
             self.child_groups.remove(i)
+
+        for i in device_list:
+            if verbose_level > 0:
+                msg = _("Removing orphan device UUID: {uuid}")
+                msg = msg.format(uuid=i)
+                callback.send(msg)
+            object_changed = True
+            self.devices.remove(i)
 
         for i in host_list:
             if verbose_level > 0:
@@ -2212,6 +2398,24 @@ class AccessGroup(OTPmeObject):
         else:
             host_list = ""
 
+        if self.verify_acl("view:device") \
+        or self.verify_acl("add:device") \
+        or self.verify_acl("remove:device"):
+            devices_list = []
+            for i in self.devices:
+                device_oid = backend.get_oid(uuid=i,
+                                        object_type="device",
+                                        instance=True)
+                # Add UUIDs of orphan devices.
+                if not device_oid:
+                    devices_list.append(i)
+                    continue
+                device_name = device_oid.name
+                devices_list.append(device_name)
+            devices_list.sort()
+        else:
+            devices_list = ""
+
         lines = []
 
         sessions_enabled = ""
@@ -2274,6 +2478,7 @@ class AccessGroup(OTPmeObject):
         lines.append(f'ROLES="{",".join(role_list)}"')
         lines.append(f'TOKENS="{",".join(token_list)}"')
         lines.append(f'HOSTS="{",".join(host_list)}"')
+        lines.append(f'DEVICES="{",".join(devices_list)}"')
 
         token_options = {}
         for uuid in self.token_options:

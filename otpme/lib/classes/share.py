@@ -47,7 +47,6 @@ REGISTER_AFTER = [
                 "otpme.lib.classes.unit",
                 "otpme.lib.classes.script",
                 ]
-SHARES_DIR = os.path.join(config.data_dir, "data", "shares")
 
 ADD_SCRIPT_NAME = "add_share.sh"
 MOUNT_SCRIPT_NAME = "mount_share.sh"
@@ -2199,7 +2198,7 @@ class Share(OTPmeObject):
             raise OTPmeException(msg)
 
     def show_config(self, callback: JobCallback=default_callback, **kwargs):
-        """ Show role config. """
+        """ Show share config. """
         if not self.verify_acl("view_public:object"):
             msg = _("Permission denied.")
             return callback.error(msg, exception=PermissionDenied)
@@ -2361,7 +2360,7 @@ class Share(OTPmeObject):
                                     **kwargs)
 
     def show(self, **kwargs):
-        """ Show role details. """
+        """ Show share details. """
         #if not self.verify_acl("view_public:object"):
         #    msg = ("Permission denied.")
         #    return callback.error(msg, exception=PermissionDenied)

@@ -139,20 +139,18 @@ def show_compgen():
     word_counter = 0
     found_subcommand = False
     sub_commands = list(help_dict)
-    comp_words_rev = list(reversed(comp_words))
-    for word in comp_words_rev:
+    for word in comp_words:
+        word_counter += 1
+        if word_counter >= len(comp_words):
+            break
         if word not in sub_commands:
-            word_counter += 1
             continue
-        prev_subcommand_word = comp_words_rev[word_counter+1]
-        # Parameter to the --type option may conflict with subcommands.
-        if prev_subcommand_word == "--type":
-            break
-        if cur == word:
-            break
+        #prev_subcommand_word = comp_words[word_counter-1]
+        ## Parameter to the --type option may conflict with subcommands.
+        #if prev_subcommand_word == "--type":
+        #    break
         sub_command = word
         found_subcommand = True
-        word_counter += 1
 
     # Check for global options.
     global_opts_done = True

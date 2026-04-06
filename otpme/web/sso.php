@@ -34,16 +34,23 @@ if (is_string($sso_popup)) {
 
 		function checkForLoginForm() {
 			const forms = newTab.document.getElementsByTagName('form');
-			if (forms) {
+			if (forms.length > 0) {
 				return forms;
 			}
+			return null;
 		}
 
-		while (1 == 1) {
+		const maxWait = 10000;
+		const interval = 200;
+		let waited = 0;
+		while (!forms && waited < maxWait) {
+			await new Promise(r => setTimeout(r, interval));
 			forms = checkForLoginForm();
-			if (forms) {
-				break;
-			}
+			waited += interval;
+		}
+		if (!forms) {
+			console.error('No login form found within timeout.');
+			return;
 		}
 
 		//sleepThenDo(() => {
@@ -101,7 +108,7 @@ if (is_string($sso_popup)) {
 			openAndCheckWindow();
 		</script>
 	<?php else: ?>
-		<button onclick="openAndCheckWindow()">Open <?php echo $app_name;?></button>
+		<button onclick="openAndCheckWindow()">Open <?php echo htmlspecialchars($app_name, ENT_QUOTES, 'UTF-8');?></button>
 	<?php endif; ?>
 </body>
 </html>
