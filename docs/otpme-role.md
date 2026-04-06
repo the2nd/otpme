@@ -147,8 +147,7 @@ attributes.
 ## Configuration and Attributes
 
 **config \[**-d**\] *role* *parameter* \[*value*\]**  
-Set or display a configuration parameter. Use **-d** to delete (reset to
-default).
+Set a configuration parameter. Use **-d** to delete (reset to default).
 
 **show_config *role* \[*parameter*\]**  
 Show all configuration parameters.

@@ -89,8 +89,7 @@ Re-index the object to fix potential index problems.
 ## Token Configuration
 
 **config \[**-d**\] *token* *parameter* \[*value*\]**  
-Set or display a configuration parameter. Use **-d** to delete (reset to
-default).
+Set a configuration parameter. Use **-d** to delete (reset to default).
 
 **show_config *token* \[*parameter*\]**  
 Show all configuration parameters.

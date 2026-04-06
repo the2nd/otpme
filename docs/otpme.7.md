@@ -589,6 +589,15 @@ authentication, where hosts need to be assigned to an access group upon
 registration. The value must be the name of an existing access group.  
 Object types: site, unit
 
+## VLAN
+
+**vlan (str)**  
+VLAN identifier to assign. This is used for VLAN assignment during
+802.1x or MAB port authentication. The parameter can be set at various
+levels; the most specific match wins (e.g. a VLAN set on a token
+overrides the one set on the user or site).  
+Object types: site, unit, host, device, user, token
+
 ## Backup
 
 **backup_enabled (bool)**  

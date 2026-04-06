@@ -99,8 +99,7 @@ List policies attached to the user.
 ## User Configuration
 
 **config \[**-d**\] *user* *parameter* \[*value*\]**  
-Set or display a configuration parameter. Use **-d** to delete (reset to
-default).
+Set a configuration parameter. Use **-d** to delete (reset to default).
 
 **show_config *user* \[*parameter*\]**  
 Show all configuration parameters.

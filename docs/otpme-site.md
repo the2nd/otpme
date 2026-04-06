@@ -50,8 +50,7 @@ Change site auth FQDN.
 Change site management FQDN.
 
 **config \[**-d**\] *site* *parameter* \[*value*\]**  
-Set or display a configuration parameter. Use **-d** to delete (reset to
-default).
+Set a configuration parameter. Use **-d** to delete (reset to default).
 
 **show_config *site* \[*parameter*\]**  
 Show all configuration parameters.

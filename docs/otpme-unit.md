@@ -47,8 +47,7 @@ Re-index the object to fix potential index problems.
 ## Unit Configuration
 
 **config \[**-d**\] *unit* *parameter* \[*value*\]**  
-Set or display a configuration parameter. Use **-d** to delete (reset to
-default).
+Set a configuration parameter. Use **-d** to delete (reset to default).
 
 **show_config *unit* \[*parameter*\]**  
 Show unit config parameters.

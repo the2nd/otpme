@@ -33,6 +33,7 @@ nav:
     - otpme-host: otpme-host.md
     - otpme-node: otpme-node.md
     - otpme-client: otpme-client.md
+    - otpme-device: otpme-device.md
     - otpme-script: otpme-script.md
     - otpme-share: otpme-share.md
     - otpme-pool: otpme-pool.md

@@ -193,8 +193,7 @@ Disable ACL inheritance.
 ## Configuration and Attributes
 
 **config \[**-d**\] *host* *parameter* \[*value*\]**  
-Set or display a configuration parameter. Use **-d** to delete (reset to
-default).
+Set a configuration parameter. Use **-d** to delete (reset to default).
 
 **show_config *host* \[*parameter*\]**  
 Show all configuration parameters.

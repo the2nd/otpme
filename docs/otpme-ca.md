@@ -68,8 +68,7 @@ Remove outdated certificates from the CRL.
 ## Configuration
 
 **config \[**-d**\] *ca* *parameter* \[*value*\]**  
-Set or display a configuration parameter. Use **-d** to delete (reset to
-default).
+Set a configuration parameter. Use **-d** to delete (reset to default).
 
 **show_config *ca* \[*parameter*\]**  
 Show all configuration parameters.

@@ -104,8 +104,7 @@ Move policy to a different unit.
 Show all policy configuration parameters.
 
 **config \[**-d**\] *policy* *parameter* \[*value*\]**  
-Set or display a configuration parameter. Use **-d** to delete (reset to
-default).
+Set a configuration parameter. Use **-d** to delete (reset to default).
 
 **description *policy* \[*description*\]**  
 Set policy description.

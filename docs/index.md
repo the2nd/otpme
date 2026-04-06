@@ -28,6 +28,7 @@ OTPme is an authentication system supporting hardware tokens, smartcards and one
 | [otpme-host](otpme-host.md) | Manage hosts |
 | [otpme-node](otpme-node.md) | Manage nodes |
 | [otpme-client](otpme-client.md) | Manage clients |
+| [otpme-device](otpme-device.md) | Manage network devices |
 | [otpme-script](otpme-script.md) | Manage scripts |
 | [otpme-share](otpme-share.md) | Manage shares |
 | [otpme-pool](otpme-pool.md) | Manage pools |

@@ -81,6 +81,15 @@ based on their access group membership.
 **remove_host *accessgroup* *host***  
 Remove a host from the access group.
 
+## Device Assignment
+
+**add_device *accessgroup* *device***  
+Add a device to the access group. This is used for MAC Authentication
+Bypass (MAB) port authentication of network devices such as IP phones.
+
+**remove_device *accessgroup* *device***  
+Remove a device from the access group.
+
 ## Session Management
 
 **enable_sessions *accessgroup***  
@@ -167,8 +176,7 @@ Disable ACL inheritance.
 ## Configuration and Attributes
 
 **config \[**-d**\] *accessgroup* *parameter* \[*value*\]**  
-Set or display a configuration parameter. Use **-d** to delete (reset to
-default).
+Set a configuration parameter. Use **-d** to delete (reset to default).
 
 **show_config *accessgroup* \[*parameter*\]**  
 Show all configuration parameters.
