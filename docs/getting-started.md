@@ -1115,7 +1115,8 @@ otpme-client access_group switch1 lan
 ### MAB (MAC Authentication Bypass)
 
 For MAB, add the host's MAC address to the host object and then add the
-host to the access group:
+host to the access group. You can also add hosts to roles and roles to the
+access group:
 
 ```bash
 otpme-host mac <yourhostname> 90:1b:0e:46:46:15
@@ -1132,7 +1133,8 @@ otpme-site config <site> hosts_accessgroup lan
 ### MAB for Network Devices (IP Phones etc.)
 
 For non-host devices such as IP phones or printers, use the `otpme-device`
-command instead:
+command instead. You can also add devices to roles and roles to the access
+group:
 
 ```bash
 otpme-device add <devicename>
