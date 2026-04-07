@@ -539,7 +539,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'args'              : ['acl'],
+                    'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -689,7 +690,7 @@ def get_acls(split=False, **kwargs):
     _acls = otpme_acl.merge_acls(_acls, otpme_host_acls)
     return _acls
 
-def get_value_acls(split=False, **kwargs):
+def __get_value_acls(split=False, **kwargs):
     """ Get all supported object value ACLs """
     if split:
         otpme_host_read_value_acls, \
@@ -703,6 +704,22 @@ def get_value_acls(split=False, **kwargs):
     _acls = otpme_acl.merge_value_acls(read_value_acls, write_value_acls)
     _acls = otpme_acl.merge_value_acls(_acls, otpme_host_value_acls)
     return _acls
+
+def get_value_acls(split=False, **kwargs):
+    result = __get_value_acls(split=split, **kwargs)
+    config_params = config.get_config_parameters("node")
+    if split:
+        read_acls = result[0]['view']
+        write_acls = result[1]['edit']
+    else:
+        read_acls = result['view']
+        write_acls = result['edit']
+    for x in config_params:
+        acl = f"config:{x}"
+        read_acls.append(acl)
+        write_acls.append(acl)
+    return result
+
 
 def get_default_acls():
     """ Get all supported object default ACLs """

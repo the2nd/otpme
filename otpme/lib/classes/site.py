@@ -70,6 +70,9 @@ read_value_acls = {
                                 "sso_fqdn",
                                 "sso_cert",
                                 "sso_key",
+                                "radius_cert",
+                                "radius_key",
+                                "radius_ca_cert",
                                 "auth",
                                 "sync",
                                 "ca",
@@ -86,6 +89,9 @@ read_value_acls = {
         }
 
 write_value_acls = {
+                    "view"      : [
+                                "config",
+                                ],
                     "add"       : [
                                 "unit",
                                 "trust",
@@ -116,6 +122,7 @@ write_value_acls = {
                                 "sso_fqdn",
                                 "radius_cert",
                                 "radius_key",
+                                "radius_ca_cert",
                                 "sso_cert",
                                 "sso_key",
                                 "sso_secret",
@@ -390,7 +397,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl', 'recursive_acls', 'apply_default_acls', 'object_types',],
+                    'args'              : ['acl'],
+                    'pargs'              : ['recursive_acls', 'apply_default_acls', 'object_types'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -529,7 +537,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'change_radius_cert',
-                    'args'              : ['radius_cert'],
+                    'oargs'              : ['radius_cert', 'radius_key', 'radius_ca_cert'],
                     'job_type'          : 'process',
                     },
                 },
@@ -538,23 +546,16 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'change_radius_key',
-                    'args'              : ['radius_key'],
+                    'oargs'              : ['radius_key'],
                     'job_type'          : 'process',
                     },
                 },
             },
-    'del_radius_cert'   : {
+    'radius_ca_cert'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
-                    'method'            : 'del_radius_cert',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'del_radius_key'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'del_radius_key',
+                    'method'            : 'change_radius_ca_cert',
+                    'oargs'              : ['radius_ca_cert'],
                     'job_type'          : 'process',
                     },
                 },
@@ -563,7 +564,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'change_sso_cert',
-                    'args'              : ['sso_cert'],
+                    'oargs'              : ['sso_cert', 'sso_key'],
                     'job_type'          : 'process',
                     },
                 },
@@ -572,23 +573,7 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'change_sso_key',
-                    'args'              : ['sso_key'],
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'del_sso_cert'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'del_sso_cert',
-                    'job_type'          : 'process',
-                    },
-                },
-            },
-    'del_sso_key'   : {
-            'OTPme-mgmt-1.0'    : {
-                'exists'    : {
-                    'method'            : 'del_sso_key',
+                    'oargs'              : ['sso_key'],
                     'job_type'          : 'process',
                     },
                 },
@@ -802,8 +787,20 @@ commands = {
 def get_acls(**kwargs):
     return _get_acls(read_acls, write_acls, **kwargs)
 
-def get_value_acls(**kwargs):
-    return _get_value_acls(read_value_acls, write_value_acls, **kwargs)
+def get_value_acls(split=False, **kwargs):
+    result = _get_value_acls(read_value_acls, write_value_acls, split=split, **kwargs)
+    config_params = config.get_config_parameters("site")
+    if split:
+        read_acls = result[0]['view']
+        write_acls = result[1]['edit']
+    else:
+        read_acls = result['view']
+        write_acls = result['edit']
+    for x in config_params:
+        acl = f"config:{x}"
+        read_acls.append(acl)
+        write_acls.append(acl)
+    return result
 
 def get_default_acls(**kwargs):
     acls = _get_default_acls(default_acls, **kwargs)
@@ -1373,6 +1370,7 @@ class Site(OTPmeObject):
         #self.handle_private_key_loading = True
         self.radius_cert = None
         self.radius_key = None
+        self.radius_ca_cert = None
         self.radius_reload = False
         self.sso_cert = None
         self.sso_key = None
@@ -1564,6 +1562,13 @@ class Site(OTPmeObject):
                                             'type'      : str,
                                             'required'  : False,
                                             'encryption'    : config.disk_encryption,
+                                        },
+
+            'RADIUS_CA_CERT'            : {
+                                            'var_name'  : 'radius_ca_cert',
+                                            'type'      : str,
+                                            'required'  : False,
+                                            'encoding'  : 'BASE64',
                                         },
 
             'SSO_CERT'                  : {
@@ -1942,7 +1947,9 @@ class Site(OTPmeObject):
     @audit_log()
     def change_radius_cert(
         self,
-        radius_cert: str,
+        radius_cert: str=None,
+        radius_key: str=None,
+        radius_ca_cert: str=None,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -1960,33 +1967,11 @@ class Site(OTPmeObject):
             except Exception as e:
                 return callback.error()
         self.radius_cert = radius_cert
-        # Make sure radius gets reloaded.
-        self.radius_reload = True
-        return self._cache(callback=callback)
-
-    @check_acls(['edit:radius_cert'])
-    @object_lock()
-    @backend.transaction
-    @audit_log()
-    def del_radius_cert(
-        self,
-        run_policies: bool=True,
-        callback: JobCallback=default_callback,
-        _caller: str="API",
-        **kwargs,
-        ):
-        """ Delete radius cert. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("del_radius_cert",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-        self.radius_cert = None
+        if radius_key:
+            self.radius_key = radius_key
+        if radius_ca_cert:
+            self.radius_ca_cert = radius_ca_cert
+        self.radius_cert = radius_cert
         # Make sure radius gets reloaded.
         self.radius_reload = True
         return self._cache(callback=callback)
@@ -1997,7 +1982,7 @@ class Site(OTPmeObject):
     @audit_log(ignore_args=['radius_key'])
     def change_radius_key(
         self,
-        radius_key: str,
+        radius_key: str=None,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2019,29 +2004,30 @@ class Site(OTPmeObject):
         self.radius_reload = True
         return self._cache(callback=callback)
 
-    @check_acls(['edit:radius_cert'])
+    @check_acls(['edit:radius_ca_cert'])
     @object_lock()
     @backend.transaction
     @audit_log()
-    def del_radius_key(
+    def change_radius_ca_cert(
         self,
+        radius_ca_cert: str=None,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
         **kwargs,
         ):
-        """ Delete radius key. """
+        """ Change radius cert. """
         if run_policies:
             try:
                 self.run_policies("modify",
                                 callback=callback,
                                 _caller=_caller)
-                self.run_policies("del_radius_key",
+                self.run_policies("change_radius_cert",
                                 callback=callback,
                                 _caller=_caller)
             except Exception as e:
                 return callback.error()
-        self.radius_key = None
+        self.radius_ca_cert = radius_ca_cert
         # Make sure radius gets reloaded.
         self.radius_reload = True
         return self._cache(callback=callback)
@@ -2052,7 +2038,8 @@ class Site(OTPmeObject):
     @audit_log()
     def change_sso_cert(
         self,
-        sso_cert: str,
+        sso_cert: str=None,
+        sso_key: str=None,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2070,31 +2057,8 @@ class Site(OTPmeObject):
             except Exception as e:
                 return callback.error()
         self.sso_cert = sso_cert
-        return self._cache(callback=callback)
-
-    @check_acls(['edit:sso_cert'])
-    @object_lock()
-    @backend.transaction
-    @audit_log()
-    def del_sso_cert(
-        self,
-        run_policies: bool=True,
-        callback: JobCallback=default_callback,
-        _caller: str="API",
-        **kwargs,
-        ):
-        """ Delete sso cert. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("del_sso_cert",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-        self.sso_cert = None
+        if sso_key:
+            self.sso_key = sso_key
         return self._cache(callback=callback)
 
     @check_acls(['edit:sso_key'])
@@ -2103,7 +2067,7 @@ class Site(OTPmeObject):
     @audit_log(ignore_args=['sso_key'])
     def change_sso_key(
         self,
-        sso_key: str,
+        sso_key: str=None,
         run_policies: bool=True,
         callback: JobCallback=default_callback,
         _caller: str="API",
@@ -2121,31 +2085,6 @@ class Site(OTPmeObject):
             except Exception as e:
                 return callback.error()
         self.sso_key = sso_key
-        return self._cache(callback=callback)
-
-    @check_acls(['edit:sso_cert'])
-    @object_lock()
-    @backend.transaction
-    @audit_log()
-    def del_sso_key(
-        self,
-        run_policies: bool=True,
-        callback: JobCallback=default_callback,
-        _caller: str="API",
-        **kwargs,
-        ):
-        """ Delete sso key. """
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("del_sso_key",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-        self.sso_key = None
         return self._cache(callback=callback)
 
     @check_acls(['edit:sso_secret'])
@@ -4062,6 +4001,31 @@ class Site(OTPmeObject):
             lines.append(f'MGMT_KEY="{self.mgmt_key}"')
         else:
             lines.append('MGMT_KEY=""')
+
+        if self.verify_acl("view:sso_cert"):
+            lines.append(f'SSO_CERT="{self.sso_cert}"')
+        else:
+            lines.append('SSO_CERT=""')
+
+        if self.verify_acl("view:sso_key"):
+            lines.append(f'SSO_KEY="{self.sso_key}"')
+        else:
+            lines.append('SSO_KEY=""')
+
+        if self.verify_acl("view:radius_cert"):
+            lines.append(f'RADIUS_CERT="{self.radius_cert}"')
+        else:
+            lines.append('RADIUS_CERT=""')
+
+        if self.verify_acl("view:radius_key"):
+            lines.append(f'RADIUS_KEY="{self.radius_key}"')
+        else:
+            lines.append('RADIUS_KEY=""')
+
+        if self.verify_acl("view:radius_ca_cert"):
+            lines.append(f'RADIUS_CA_CERT="{self.radius_ca_cert}"')
+        else:
+            lines.append('RADIUS_CA_CERT=""')
 
         lines.append(f'CA="{site_ca}"')
         lines.append(f'ADMIN_ROLE="{admin_role}"')

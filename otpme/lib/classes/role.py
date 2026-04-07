@@ -47,6 +47,7 @@ write_acls = []
 
 read_value_acls = {
                     "view"      : [
+                                    "host",
                                     "user",
                                     "token",
                                     "accessgroup",
@@ -62,6 +63,8 @@ write_value_acls = {
                                     "user",
                                     "token",
                                     "role",
+                                    "device",
+                                    "host",
                                     "dynamic_group",
                                 ],
                     "edit"       : [
@@ -71,6 +74,8 @@ write_value_acls = {
                                     "user",
                                     "token",
                                     "role",
+                                    "device",
+                                    "host",
                                     "dynamic_group",
                                 ],
             }
@@ -266,6 +271,58 @@ commands = {
                     },
                 },
             },
+    'add_host'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_host',
+                    'args'              : ['host_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_host'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_host',
+                    'args'              : ['host_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'add_device'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'add_device',
+                    'args'              : ['device_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'remove_device'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'remove_device',
+                    'args'              : ['device_name'],
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'list_hosts'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_hosts',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
+    'list_devices'   : {
+            'OTPme-mgmt-1.0'    : {
+                'exists'    : {
+                    'method'            : 'get_devices',
+                    'job_type'          : 'process',
+                    },
+                },
+            },
     'add_dynamic_group'   : {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
@@ -429,7 +486,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'args'              : ['acl'],
+                    'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -578,8 +636,20 @@ commands = {
 def get_acls(**kwargs):
     return _get_acls(read_acls, write_acls, **kwargs)
 
-def get_value_acls(**kwargs):
-    return _get_value_acls(read_value_acls, write_value_acls, **kwargs)
+def get_value_acls(split=False, **kwargs):
+    result = _get_value_acls(read_value_acls, write_value_acls, split=split, **kwargs)
+    config_params = config.get_config_parameters("role")
+    if split:
+        read_acls = result[0]['view']
+        write_acls = result[1]['edit']
+    else:
+        read_acls = result['view']
+        write_acls = result['edit']
+    for x in config_params:
+        acl = f"config:{x}"
+        read_acls.append(acl)
+        write_acls.append(acl)
+    return result
 
 def get_default_acls(**kwargs):
     acls = _get_default_acls(default_acls, **kwargs)
@@ -928,6 +998,18 @@ class Role(OTPmeObject):
                                                         'required'  : False,
                                                     },
 
+                        'HOSTS'                     : {
+                                                        'var_name'  : 'hosts',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+
+                        'DEVICES'                   : {
+                                                        'var_name'  : 'devices',
+                                                        'type'      : list,
+                                                        'required'  : False,
+                                                    },
+
                         'DYNAMIC_GROUPS'            : {
                                                         'var_name'  : 'dynamic_groups',
                                                         'type'      : list,
@@ -1238,6 +1320,18 @@ class Role(OTPmeObject):
                 continue
             role_list.append(i)
 
+        host_list = []
+        for i in self.hosts:
+            host_oid = backend.get_oid(object_type="host", uuid=i)
+            if not host_oid:
+                host_list.append(i)
+
+        device_list = []
+        for i in self.devices:
+            device_oid = backend.get_oid(object_type="device", uuid=i)
+            if not device_oid:
+                device_list.append(i)
+
         msg = ""
         if acl_list:
             msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan ACLs: {acl_list}\n")
@@ -1254,6 +1348,13 @@ class Role(OTPmeObject):
         if role_list:
             msg_part = _("{msg}{object_type}|{object_name}: Found the following orphan role UUIDs: {role_list}\n")
             msg = msg_part.format(msg=msg, object_type=self.type, object_name=self.name, role_list=','.join(role_list))
+
+        if host_list:
+            msg += _("{type}|{name}: Found the following orphan host UUIDs: {host_list}\n").format(
+                type=self.type, name=self.name, host_list=','.join(host_list))
+        if device_list:
+            msg += _("{type}|{name}: Found the following orphan device UUIDs: {device_list}\n").format(
+                type=self.type, name=self.name, device_list=','.join(device_list))
 
         if msg:
             msg = _("{msg}Remove?: ").format(msg=msg)
@@ -1302,6 +1403,22 @@ class Role(OTPmeObject):
             # Update index.
             self.del_index('role', i)
 
+        for i in device_list:
+            if verbose_level > 0:
+                msg = _("Removing orphan device UUID: {uuid}")
+                msg = msg.format(uuid=i)
+                callback.send(msg)
+            object_changed = True
+            self.devices.remove(i)
+
+        for i in host_list:
+            if verbose_level > 0:
+                msg = _("Removing orphan host UUID: {uuid}")
+                msg = msg.format(uuid=i)
+                callback.send(msg)
+            object_changed = True
+            self.hosts.remove(i)
+
         if not object_changed:
             msg = _("No orphan objects found for {object_type}: {object_name}")
             msg = msg.format(object_type=self.type, object_name=self.name)
@@ -1349,6 +1466,42 @@ class Role(OTPmeObject):
                     role_list.append(role_name)
             role_list.sort()
 
+        if self.verify_acl("view:host") \
+        or self.verify_acl("add:host") \
+        or self.verify_acl("remove:host"):
+            host_list = []
+            for i in self.hosts:
+                host_oid = backend.get_oid(uuid=i,
+                                        object_type="host",
+                                        instance=True)
+                # Add UUIDs of orphan hosts.
+                if not host_oid:
+                    host_list.append(i)
+                    continue
+                host_name = host_oid.name
+                host_list.append(host_name)
+            host_list.sort()
+        else:
+            host_list = ""
+
+        if self.verify_acl("view:device") \
+        or self.verify_acl("add:device") \
+        or self.verify_acl("remove:device"):
+            devices_list = []
+            for i in self.devices:
+                device_oid = backend.get_oid(uuid=i,
+                                        object_type="device",
+                                        instance=True)
+                # Add UUIDs of orphan devices.
+                if not device_oid:
+                    devices_list.append(i)
+                    continue
+                device_name = device_oid.name
+                devices_list.append(device_name)
+            devices_list.sort()
+        else:
+            devices_list = ""
+
         lines = []
 
         if self.verify_acl("view:role"):
@@ -1371,6 +1524,9 @@ class Role(OTPmeObject):
             lines.append(f'TOKENS="{",".join(token_list)}"')
         else:
             lines.append('TOKENS=""')
+
+        lines.append(f'HOSTS="{",".join(host_list)}"')
+        lines.append(f'DEVICES="{",".join(devices_list)}"')
 
         token_options = {}
         for uuid in self.token_options:

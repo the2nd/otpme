@@ -1452,6 +1452,15 @@ class OTPmeConfig(object):
             raise NotRegistered(msg)
         return parameter_data
 
+    def get_config_parameters(self, object_type):
+        config_parameters = []
+        for name in self.valid_config_params:
+            object_types = self.valid_config_params[name]['object_types']
+            if object_type not in object_types:
+                continue
+            config_parameters.append(name)
+        return config_parameters
+
     def register_ssh_token(self, token_type):
         """ Register ssh token. """
         if token_type in self.ssh_token_types:

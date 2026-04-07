@@ -94,6 +94,8 @@ object_list_cache = FuncCache(name="object_list_cache")
 ldap_search_cache = FuncCache(name="ldap_search_cache")
 supported_acls_cache = FuncCache(name="supported_acls")
 assigned_role_cache = FuncCache(name="assigned_role", shared=True)
+assigned_host_cache = FuncCache(name="assigned_host", shared=True)
+assigned_device_cache = FuncCache(name="assigned_device", shared=True)
 assigned_token_cache = FuncCache(name="assigned_token", shared=True)
 index_search_cache = FuncCache(name="index_search_cache", copy_cache=True)
 
@@ -119,8 +121,10 @@ def init():
     global object_list_cache
     global index_search_cache
     global assigned_role_cache
+    global assigned_host_cache
     global assigned_token_cache
     global supported_acls_cache
+    global assigned_device_cache
     ## Add instance cache with per object type caching.
     #def get_object_type(func_args, func_kwargs):
     #    """ Get object type from function args. """
@@ -238,6 +242,14 @@ def init():
     assigned_role_cache.cache_key_func = get_uniq_method_name
     assigned_role_cache._cache_kwargs['ignore_args'] = ['callback']
     assigned_role_cache._cache_kwargs['ignore_classes'] = ['OTPmeBaseObject']
+    # Assigned host cache.
+    assigned_host_cache.cache_key_func = get_uniq_method_name
+    assigned_host_cache._cache_kwargs['ignore_args'] = ['callback']
+    assigned_host_cache._cache_kwargs['ignore_classes'] = ['OTPmeBaseObject']
+    # Assigned device cache.
+    assigned_device_cache.cache_key_func = get_uniq_method_name
+    assigned_device_cache._cache_kwargs['ignore_args'] = ['callback']
+    assigned_device_cache._cache_kwargs['ignore_classes'] = ['OTPmeBaseObject']
     # Assigned token cache.
     assigned_token_cache.cache_key_func = get_uniq_method_name
     assigned_token_cache._cache_kwargs['ignore_args'] = ['callback']

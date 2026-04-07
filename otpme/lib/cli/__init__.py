@@ -466,20 +466,29 @@ def get_opts(command_syntax, command_line, command_args={},
             except:
                 pass
 
+            # Check for file.
+            try:
+                val = check_string(val, "file:")
+                found_file_opt = True
+            except:
+                found_file_opt = False
+
             if required_opt:
                 #cmd_list.pop(0)
                 cmd_opts[opt] = {
-                                'type' : val_type,
-                                'value': val,
-                                'multi': multi_opt,
+                                'type'  : val_type,
+                                'value' : val,
+                                'multi' : multi_opt,
+                                'file'  : found_file_opt,
                                 }
 
             if optional_opt:
                 #cmd_list.pop(0)
                 cmd_opt_opts[opt] = {
-                                    'type' : val_type,
-                                    'value': val,
-                                    'multi': multi_opt,
+                                    'type'  : val_type,
+                                    'value' : val,
+                                    'multi' : multi_opt,
+                                    'file'  : found_file_opt,
                                     }
             continue
 
@@ -510,9 +519,9 @@ def get_opts(command_syntax, command_line, command_args={},
         # Check for file.
         try:
             para = check_string(para, "file:")
-            found_file_opt = True
+            file_para_found = True
         except:
-            found_file_opt = False
+            file_para_found = False
 
         # Check if we got an object command line.
         try:
@@ -535,7 +544,7 @@ def get_opts(command_syntax, command_line, command_args={},
             else:
                 cmd_paras[para_count] = {}
                 cmd_paras[para_count]['para'] = para
-                cmd_paras[para_count]['file'] = found_file_opt
+                cmd_paras[para_count]['file'] = file_para_found
                 para_count += 1
             #cmd_list.pop(0)
             continue
@@ -544,7 +553,7 @@ def get_opts(command_syntax, command_line, command_args={},
             if not found_object_string:
                 cmd_opt_paras[para_count] = {}
                 cmd_opt_paras[para_count]['para'] = para
-                cmd_opt_paras[para_count]['file'] = found_file_opt
+                cmd_opt_paras[para_count]['file'] = file_para_found
                 para_count += 1
             #cmd_list.pop(0)
             continue
@@ -590,6 +599,7 @@ def get_opts(command_syntax, command_line, command_args={},
                 var = opt['value']
                 var_type = opt['type']
                 multi_opt = opt['multi']
+                file_opt = opt['file']
                 if multi_opt:
                     found_multi_opts[command_line[0]] = opt
                 if "=" in var:
@@ -619,6 +629,7 @@ def get_opts(command_syntax, command_line, command_args={},
                         raise OTPmeException(msg)
                     opt_var = opt['value']
                     var_type = opt['type']
+                    file_opt = opt['file']
                     command_line.pop(0)
                     opt_val = command_line[0]
                     if var_type == list:
@@ -633,6 +644,20 @@ def get_opts(command_syntax, command_line, command_args={},
                         opt_val = args_dict
                     elif var_type == str:
                         opt_val = str(opt_val)
+                    elif file_opt:
+                        file_is_binary = is_binary(opt_val)
+                        if file_is_binary:
+                            fd = open(opt_val, "rb")
+                        else:
+                            fd = open(opt_val, "r")
+                        try:
+                            file_content = fd.read()
+                        finally:
+                            fd.close()
+                        if file_is_binary:
+                            file_content = base64.b64encode(file_content)
+                            file_content = file_content.decode()
+                        opt_val = file_content
                     else:
                         opt_val = stuff.string_to_type(opt_val)
 

@@ -501,7 +501,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'args'              : ['acl'],
+                    'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -684,8 +685,20 @@ commands = {
 def get_acls(**kwargs):
     return _get_acls(read_acls, write_acls, **kwargs)
 
-def get_value_acls(**kwargs):
-    return _get_value_acls(read_value_acls, write_value_acls, **kwargs)
+def get_value_acls(split=False, **kwargs):
+    result = _get_value_acls(read_value_acls, write_value_acls, split=split, **kwargs)
+    config_params = config.get_config_parameters("share")
+    if split:
+        read_acls = result[0]['view']
+        write_acls = result[1]['edit']
+    else:
+        read_acls = result['view']
+        write_acls = result['edit']
+    for x in config_params:
+        acl = f"config:{x}"
+        read_acls.append(acl)
+        write_acls.append(acl)
+    return result
 
 def get_default_acls(**kwargs):
     acls = _get_default_acls(default_acls, **kwargs)

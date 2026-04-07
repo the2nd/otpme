@@ -311,12 +311,12 @@ def create_cert_files():
     filetools.create_file(freeradius_key_file,
                         content=radius_key,
                         mode=0o660)
-    realm = backend.get_object(object_type="realm",
-                            uuid=config.realm_uuid)
-    ca_data = realm.ca_data
-    # FIXME: add radius CA cert to site.
-    #if site.radius_ca_cert:
-    #    ca_data = site.radius_ca_cert
+    if site.radius_ca_cert:
+        ca_data = site.radius_ca_cert
+    else:
+        realm = backend.get_object(object_type="realm",
+                                uuid=config.realm_uuid)
+        ca_data = realm.ca_data
     filetools.create_file(freeradius_ca_cert_file,
                         content=ca_data,
                         mode=0o660)

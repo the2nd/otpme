@@ -339,6 +339,38 @@ cmd_help = {
                                 },
                 },
 
+    'add_host'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role add_host {role} {host}'),
+                    'cmd'   :   '<|object|> <host_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add host to role'),
+                                },
+                },
+
+    'remove_host'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role remove_host {role} {host}'),
+                    'cmd'   :   '<|object|> <host_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove host from role'),
+                                },
+                },
+
+    'add_device'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role add_device {role} {device}'),
+                    'cmd'   :   '<|object|> <device_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Add device to role'),
+                                },
+                },
+
+    'remove_device'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role remove_device {role} {device}'),
+                    'cmd'   :   '<|object|> <device_name>',
+                    '_help' :   {
+                                    'cmd'                   : _('Remove device from role'),
+                                },
+                },
+
     'add_dynamic_group'   : {
                     '_cmd_usage_help' : _('Usage: otpme-role add_dynamic_group {role} {group_name}'),
                     'cmd'   :   '<|object|> <group_name>',
@@ -403,6 +435,21 @@ cmd_help = {
                                     '-r'                    : _('List roles recursive.'),
                                 },
                 },
+    'list_hosts'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role list_hosts {role}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List assigned hosts.'),
+                                },
+                    },
+
+    'list_devices'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-role list_devices {role}'),
+                    'cmd'   :   '<|object|>',
+                    '_help' :   {
+                                    'cmd'                   : _('List assigned devices.'),
+                                },
+                    },
     'list_policies'   : {
                     '_cmd_usage_help' : _('Usage: otpme-role list_policies {role}'),
                     'cmd'   :   '--return-type :return_type: --policy-types :[policy_types]: [|object|]',

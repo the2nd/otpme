@@ -2629,14 +2629,22 @@ class AuthHandler(object):
                 self.count_fails = False
                 if self.user.mac_address == password:
                     if self.user.type == "host":
-                        valid_devs = self.auth_group.hosts
+                        dev_is_valid = self.auth_group.is_assigned_host(self.user.uuid)
+                        if not dev_is_valid:
+                            log_msg = _("Host '{host_name}' is not in accessgroup '{access_group}'. Authentication will fail.", log=True)[1]
+                            log_msg = log_msg.format(host_name=self.user.name, access_group=self.access_group)
+                            self.logger.warning(log_msg)
                     elif self.user.type == "device":
-                        valid_devs = self.auth_group.devices
+                        dev_is_valid = self.auth_group.is_assigned_device(self.user.uuid)
+                        if not dev_is_valid:
+                            log_msg = _("Device '{dev_name}' is not in accessgroup '{access_group}'. Authentication will fail.", log=True)[1]
+                            log_msg = log_msg.format(dev_name=self.user.name, access_group=self.access_group)
+                            self.logger.warning(log_msg)
                     else:
                         msg = _("Unknown MAC auth device type: {dev_type}")
                         msg = msg.format(dev_type=self.user.type)
                         raise OTPmeException(msg)
-                    if self.user.uuid in valid_devs:
+                    if dev_is_valid:
                         self.auth_status = True
                         self.create_sessions = False
                         self.auth_message = "AUTH_OK_MAC"

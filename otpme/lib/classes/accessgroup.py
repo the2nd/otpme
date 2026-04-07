@@ -21,6 +21,8 @@ from otpme.lib.locking import object_lock
 from otpme.lib.otpme_acl import check_acls
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
+from otpme.lib.cache import assigned_host_cache
+from otpme.lib.cache import assigned_device_cache
 from otpme.lib.cache import assigned_token_cache
 from otpme.lib.protocols.utils import register_commands
 from otpme.lib.classes.otpme_object import OTPmeObject
@@ -568,7 +570,8 @@ commands = {
             'OTPme-mgmt-1.0'    : {
                 'exists'    : {
                     'method'            : 'del_acl',
-                    'args'              : ['acl', 'recursive_acls', 'apply_default_acls',],
+                    'args'              : ['acl'],
+                    'oargs'             : ['recursive_acls', 'apply_default_acls'],
                     'dargs'             : {'recursive_acls':False, 'apply_default_acls':False},
                     'job_type'          : 'process',
                     },
@@ -717,8 +720,20 @@ commands = {
 def get_acls(**kwargs):
     return _get_acls(read_acls, write_acls, **kwargs)
 
-def get_value_acls(**kwargs):
-    return _get_value_acls(read_value_acls, write_value_acls, **kwargs)
+def get_value_acls(split=False, **kwargs):
+    result = _get_value_acls(read_value_acls, write_value_acls, split=split, **kwargs)
+    config_params = config.get_config_parameters("accessgroup")
+    if split:
+        read_acls = result[0]['view']
+        write_acls = result[1]['edit']
+    else:
+        read_acls = result['view']
+        write_acls = result['edit']
+    for x in config_params:
+        acl = f"config:{x}"
+        read_acls.append(acl)
+        write_acls.append(acl)
+    return result
 
 def get_default_acls(**kwargs):
     acls = _get_default_acls(default_acls, **kwargs)
@@ -1077,273 +1092,71 @@ class AccessGroup(OTPmeObject):
                 return group
         return False
 
-    @check_acls(['add:host'])
-    @object_lock()
-    @backend.transaction
-    @audit_log()
-    def add_host(
+    @assigned_host_cache.cache_method()
+    def is_assigned_host(
         self,
-        host_name: str=None,
-        host_uuid: str=None,
-        run_policies: bool=True,
-        _caller: str="API",
-        callback: JobCallback=default_callback,
-        **kwargs,
+        host_uuid: str,
+        skip_disabled_roles: bool=True,
+        skip_disabled_groups: bool=True,
+        check_parent_groups: bool=False,
         ):
-        """ Adds a host to this group. """
-        if not host_uuid:
-            host = backend.get_object(object_type="host",
-                                    realm=config.realm,
-                                    site=self.site,
-                                    name=host_name)
-            if not host:
-                msg = _("Host does not exist: {host_name}")
-                msg = msg.format(host_name=host_name)
-                return callback.error(msg)
-            host_uuid = host.uuid
-
+        """ Check if host is assigned to this acccessgroup. """
         if host_uuid in self.hosts:
-            msg = _("Host already added to acccessgroup.")
-            return callback.error(msg)
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("add_host",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-
-        # Append host UUID to hosts.
-        self.hosts.append(host_uuid)
-        # Update index.
-        self.add_index("host", host_uuid)
-
-        return self._cache(callback=callback)
-
-    @check_acls(['remove:host'])
-    @object_lock()
-    @backend.transaction
-    @audit_log()
-    def remove_host(
-        self,
-        host_name: str,
-        run_policies: bool=True,
-        _caller: str="API",
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Removes a host from this group. """
-        host = backend.get_object(object_type="host",
-                                realm=config.realm,
-                                site=self.site,
-                                name=host_name)
-        if not host:
-            msg = _("Host does not exist: {host_name}")
-            msg = msg.format(host_name=host_name)
-            return callback.error(msg)
-
-        if host.uuid not in self.hosts:
-            msg = _("Host not in acccessgroup.")
-            return callback.error(msg)
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("remove_host",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-
-        # Remove host UUID from group.
-        self.hosts.remove(host.uuid)
-        # Update index.
-        self.del_index("host", host.uuid)
-
-        return self._cache(callback=callback)
-
-    @cli.check_rapi_opts()
-    def get_hosts(
-        self,
-        return_type: str="name",
-        _caller: str="API",
-        skip_disabled: bool=False,
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Return list with all hosts assigned to this object. """
-        result = []
-        if not self.hosts:
-            return result
-
-        search_attr = {}
-        if skip_disabled:
-            search_attr['enabled'] = {}
-            search_attr['enabled']['value'] = True
-        return_attributes = ['site', return_type]
-        search_result = backend.search(object_type="host",
-                                    attribute="uuid",
-                                    values=self.hosts,
-                                    attributes=search_attr,
-                                    return_attributes=return_attributes)
-        for uuid in search_result:
-            try:
-                x_result = search_result[uuid][return_type]
-            except:
+            return True
+        for role_uuid in self.roles:
+            role = backend.get_object(object_type="role", uuid=role_uuid)
+            if not role:
                 continue
-            if return_type == "name":
-                x_site = search_result[uuid]['site']
-                if x_site != config.site:
-                    x_result = f"{x_site}/{x_result}"
-            result.append(x_result)
+            if skip_disabled_roles:
+                if not role.enabled:
+                    continue
+            if role.is_assigned_host(host_uuid):
+                return role
+        if not check_parent_groups:
+            return False
+        parent_groups = self.parents(recursive=False,
+                                    return_type="instance",
+                                    skip_disabled=skip_disabled_groups)
+        for group in parent_groups:
+            if skip_disabled_groups:
+                if not group.enabled:
+                    continue
+            if group.is_assigned_host(host_uuid):
+                return group
+        return False
 
-        result.sort()
-
-        if _caller == "RAPI":
-            result = ",".join(result)
-        if _caller == "CLIENT":
-            result = "\n".join(result)
-        return callback.ok(result)
-
-    @check_acls(['add:device'])
-    @object_lock()
-    @backend.transaction
-    @audit_log()
-    def add_device(
+    @assigned_device_cache.cache_method()
+    def is_assigned_device(
         self,
-        device_name: str=None,
-        device_uuid: str=None,
-        run_policies: bool=True,
-        _caller: str="API",
-        callback: JobCallback=default_callback,
-        **kwargs,
+        device_uuid: str,
+        skip_disabled_roles: bool=True,
+        skip_disabled_groups: bool=True,
+        check_parent_groups: bool=False,
         ):
-        """ Adds a device to this group. """
-        if not device_uuid:
-            device = backend.get_object(object_type="device",
-                                    realm=config.realm,
-                                    site=self.site,
-                                    name=device_name)
-            if not device:
-                msg = _("Host does not exist: {device_name}")
-                msg = msg.format(device_name=device_name)
-                return callback.error(msg)
-            device_uuid = device.uuid
-
+        """ Check if device is assigned to this acccessgroup. """
         if device_uuid in self.devices:
-            msg = _("Host already added to acccessgroup.")
-            return callback.error(msg)
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("add_device",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-
-        # Append device UUID to devices.
-        self.devices.append(device_uuid)
-        # Update index.
-        self.add_index("device", device_uuid)
-
-        return self._cache(callback=callback)
-
-    @check_acls(['remove:device'])
-    @object_lock()
-    @backend.transaction
-    @audit_log()
-    def remove_device(
-        self,
-        device_name: str,
-        run_policies: bool=True,
-        _caller: str="API",
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Removes a device from this group. """
-        device = backend.get_object(object_type="device",
-                                realm=config.realm,
-                                site=self.site,
-                                name=device_name)
-        if not device:
-            msg = _("Host does not exist: {device_name}")
-            msg = msg.format(device_name=device_name)
-            return callback.error(msg)
-
-        if device.uuid not in self.devices:
-            msg = _("Host not in acccessgroup.")
-            return callback.error(msg)
-
-        if run_policies:
-            try:
-                self.run_policies("modify",
-                                callback=callback,
-                                _caller=_caller)
-                self.run_policies("remove_device",
-                                callback=callback,
-                                _caller=_caller)
-            except Exception as e:
-                return callback.error()
-
-        # Remove device UUID from group.
-        self.devices.remove(device.uuid)
-        # Update index.
-        self.del_index("device", device.uuid)
-
-        return self._cache(callback=callback)
-
-    @cli.check_rapi_opts()
-    def get_devices(
-        self,
-        return_type: str="name",
-        _caller: str="API",
-        skip_disabled: bool=False,
-        callback: JobCallback=default_callback,
-        **kwargs,
-        ):
-        """ Return list with all devices assigned to this object. """
-        result = []
-        if not self.devices:
-            return result
-
-        search_attr = {}
-        if skip_disabled:
-            search_attr['enabled'] = {}
-            search_attr['enabled']['value'] = True
-        return_attributes = ['site', return_type]
-        search_result = backend.search(object_type="device",
-                                    attribute="uuid",
-                                    values=self.devices,
-                                    attributes=search_attr,
-                                    return_attributes=return_attributes)
-        for uuid in search_result:
-            try:
-                x_result = search_result[uuid][return_type]
-            except:
+            return True
+        for role_uuid in self.roles:
+            role = backend.get_object(object_type="role", uuid=role_uuid)
+            if not role:
                 continue
-            if return_type == "name":
-                x_site = search_result[uuid]['site']
-                if x_site != config.site:
-                    x_result = f"{x_site}/{x_result}"
-            result.append(x_result)
-
-        result.sort()
-
-        if _caller == "RAPI":
-            result = ",".join(result)
-        if _caller == "CLIENT":
-            result = "\n".join(result)
-        return callback.ok(result)
+            if skip_disabled_roles:
+                if not role.enabled:
+                    continue
+            if role.is_assigned_device(device_uuid):
+                return role
+        if not check_parent_groups:
+            return False
+        parent_groups = self.parents(recursive=False,
+                                    return_type="instance",
+                                    skip_disabled=skip_disabled_groups)
+        for group in parent_groups:
+            if skip_disabled_groups:
+                if not group.enabled:
+                    continue
+            if group.is_assigned_device(device_uuid):
+                return group
+        return False
 
     def parents(
         self,
@@ -2478,6 +2291,7 @@ class AccessGroup(OTPmeObject):
 
         lines.append(f'ROLES="{",".join(role_list)}"')
         lines.append(f'TOKENS="{",".join(token_list)}"')
+
         lines.append(f'HOSTS="{",".join(host_list)}"')
         lines.append(f'DEVICES="{",".join(devices_list)}"')
 

@@ -49,6 +49,8 @@ from otpme.lib.cache import ldap_search_cache
 from otpme.lib.job.callback import JobCallback
 from otpme.lib.typing import match_class_typing
 from otpme.lib.cache import assigned_role_cache
+from otpme.lib.cache import assigned_host_cache
+from otpme.lib.cache import assigned_device_cache
 from otpme.lib.cache import assigned_token_cache
 from otpme.lib.policy import one_time_policy_run
 from otpme.lib.cache import supported_acls_cache
@@ -140,6 +142,7 @@ global_write_value_acls = {
                                 "policy",
                                 ],
                     "edit"      : [
+                                "config",
                                 "attribute",
                                 "description",
                                 ],
@@ -1942,6 +1945,8 @@ class OTPmeObject(OTPmeBaseObject):
         self.roles = None
         self.tokens = None
         self.nodes = None
+        self.hosts = None
+        self.devices = None
         self.dynamic_groups = None
 
         # Make sure we have at least empty ACL variables.
@@ -3987,6 +3992,303 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._cache(callback=callback)
 
+    @check_acls(['add:host'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def add_host(
+        self,
+        host_name: str=None,
+        host_uuid: str=None,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Adds a host to this group. """
+        if self.hosts is None:
+            msg = _("Object does not support hosts.")
+            raise OTPmeException(msg)
+
+        if not host_uuid:
+            host = backend.get_object(object_type="host",
+                                    realm=config.realm,
+                                    site=self.site,
+                                    name=host_name)
+            if not host:
+                msg = _("Host does not exist: {host_name}")
+                msg = msg.format(host_name=host_name)
+                return callback.error(msg)
+            host_uuid = host.uuid
+
+        if host_uuid in self.hosts:
+            msg = _("Host already added to acccessgroup.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_host",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        # Append host UUID to hosts.
+        self.hosts.append(host_uuid)
+        # Update index.
+        self.add_index("host", host_uuid)
+        # Clear cache.
+        assigned_host_cache.invalidate()
+        return self._cache(callback=callback)
+
+    @check_acls(['remove:host'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def remove_host(
+        self,
+        host_name: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Removes a host from this group. """
+        if self.hosts is None:
+            msg = _("Object does not support hosts.")
+            raise OTPmeException(msg)
+
+        host = backend.get_object(object_type="host",
+                                realm=config.realm,
+                                site=self.site,
+                                name=host_name)
+        if not host:
+            msg = _("Host does not exist: {host_name}")
+            msg = msg.format(host_name=host_name)
+            return callback.error(msg)
+
+        if host.uuid not in self.hosts:
+            msg = _("Host not in acccessgroup.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("remove_host",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        # Remove host UUID from group.
+        self.hosts.remove(host.uuid)
+        # Update index.
+        self.del_index("host", host.uuid)
+        # Clear cache.
+        assigned_host_cache.invalidate()
+
+        return self._cache(callback=callback)
+
+    @cli.check_rapi_opts()
+    def get_hosts(
+        self,
+        return_type: str="name",
+        _caller: str="API",
+        skip_disabled: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Return list with all hosts assigned to this object. """
+        if self.hosts is None:
+            msg = _("Object does not support hosts.")
+            raise OTPmeException(msg)
+
+        result = []
+        if not self.hosts:
+            return result
+
+        search_attr = {}
+        if skip_disabled:
+            search_attr['enabled'] = {}
+            search_attr['enabled']['value'] = True
+        return_attributes = ['site', return_type]
+        search_result = backend.search(object_type="host",
+                                    attribute="uuid",
+                                    values=self.hosts,
+                                    attributes=search_attr,
+                                    return_attributes=return_attributes)
+        for uuid in search_result:
+            try:
+                x_result = search_result[uuid][return_type]
+            except:
+                continue
+            if return_type == "name":
+                x_site = search_result[uuid]['site']
+                if x_site != config.site:
+                    x_result = f"{x_site}/{x_result}"
+            result.append(x_result)
+
+        result.sort()
+
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+        return callback.ok(result)
+
+    @check_acls(['add:device'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def add_device(
+        self,
+        device_name: str=None,
+        device_uuid: str=None,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Adds a device to this group. """
+        if self.devices is None:
+            msg = _("Object does not support devices.")
+            raise OTPmeException(msg)
+
+        if not device_uuid:
+            device = backend.get_object(object_type="device",
+                                    realm=config.realm,
+                                    site=self.site,
+                                    name=device_name)
+            if not device:
+                msg = _("Host does not exist: {device_name}")
+                msg = msg.format(device_name=device_name)
+                return callback.error(msg)
+            device_uuid = device.uuid
+
+        if device_uuid in self.devices:
+            msg = _("Host already added to acccessgroup.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("add_device",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        # Append device UUID to devices.
+        self.devices.append(device_uuid)
+        # Update index.
+        self.add_index("device", device_uuid)
+        # Clear cache.
+        assigned_device_cache.invalidate()
+        return self._cache(callback=callback)
+
+    @check_acls(['remove:device'])
+    @object_lock()
+    @backend.transaction
+    @audit_log()
+    def remove_device(
+        self,
+        device_name: str,
+        run_policies: bool=True,
+        _caller: str="API",
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Removes a device from this group. """
+        if self.devices is None:
+            msg = _("Object does not support devices.")
+            raise OTPmeException(msg)
+
+        device = backend.get_object(object_type="device",
+                                realm=config.realm,
+                                site=self.site,
+                                name=device_name)
+        if not device:
+            msg = _("Host does not exist: {device_name}")
+            msg = msg.format(device_name=device_name)
+            return callback.error(msg)
+
+        if device.uuid not in self.devices:
+            msg = _("Host not in acccessgroup.")
+            return callback.error(msg)
+
+        if run_policies:
+            try:
+                self.run_policies("modify",
+                                callback=callback,
+                                _caller=_caller)
+                self.run_policies("remove_device",
+                                callback=callback,
+                                _caller=_caller)
+            except Exception as e:
+                return callback.error()
+
+        # Remove device UUID from group.
+        self.devices.remove(device.uuid)
+        # Update index.
+        self.del_index("device", device.uuid)
+        # Clear cache.
+        assigned_device_cache.invalidate()
+        return self._cache(callback=callback)
+
+    @cli.check_rapi_opts()
+    def get_devices(
+        self,
+        return_type: str="name",
+        _caller: str="API",
+        skip_disabled: bool=False,
+        callback: JobCallback=default_callback,
+        **kwargs,
+        ):
+        """ Return list with all devices assigned to this object. """
+        if self.devices is None:
+            msg = _("Object does not support devices.")
+            raise OTPmeException(msg)
+
+        result = []
+        if not self.devices:
+            return result
+
+        search_attr = {}
+        if skip_disabled:
+            search_attr['enabled'] = {}
+            search_attr['enabled']['value'] = True
+        return_attributes = ['site', return_type]
+        search_result = backend.search(object_type="device",
+                                    attribute="uuid",
+                                    values=self.devices,
+                                    attributes=search_attr,
+                                    return_attributes=return_attributes)
+        for uuid in search_result:
+            try:
+                x_result = search_result[uuid][return_type]
+            except:
+                continue
+            if return_type == "name":
+                x_site = search_result[uuid]['site']
+                if x_site != config.site:
+                    x_result = f"{x_site}/{x_result}"
+            result.append(x_result)
+
+        result.sort()
+
+        if _caller == "RAPI":
+            result = ",".join(result)
+        if _caller == "CLIENT":
+            result = "\n".join(result)
+        return callback.ok(result)
+
     @object_lock()
     def add_node(
         self,
@@ -4912,6 +5214,48 @@ class OTPmeObject(OTPmeBaseObject):
             if role.is_assigned_token(token_uuid, checked_roles=checked_roles):
                 return True
             checked_roles.append((x_uuid, token_uuid))
+        return False
+
+    @assigned_host_cache.cache_method()
+    def is_assigned_host(
+        self,
+        host_uuid: str,
+        checked_roles: list=[],
+        ):
+        if host_uuid in self.hosts:
+            return True
+        for x_uuid in self.roles:
+            if (x_uuid, host_uuid) in checked_roles:
+                break
+            role = backend.get_object(object_type="role", uuid=x_uuid)
+            if not role:
+                continue
+            if not role.enabled:
+                continue
+            if role.is_assigned_host(host_uuid, checked_roles=checked_roles):
+                return True
+            checked_roles.append((x_uuid, host_uuid))
+        return False
+
+    @assigned_device_cache.cache_method()
+    def is_assigned_device(
+        self,
+        device_uuid: str,
+        checked_roles: list=[],
+        ):
+        if device_uuid in self.devices:
+            return True
+        for x_uuid in self.roles:
+            if (x_uuid, device_uuid) in checked_roles:
+                break
+            role = backend.get_object(object_type="role", uuid=x_uuid)
+            if not role:
+                continue
+            if not role.enabled:
+                continue
+            if role.is_assigned_device(device_uuid, checked_roles=checked_roles):
+                return True
+            checked_roles.append((x_uuid, device_uuid))
         return False
 
     @assigned_role_cache.cache_method()
@@ -8594,7 +8938,6 @@ class OTPmeObject(OTPmeBaseObject):
             return_status = status
         return return_status
 
-    @check_acls(acls=['add:config'])
     @audit_log()
     def set_config_param(
         self,
@@ -8612,6 +8955,9 @@ class OTPmeObject(OTPmeBaseObject):
         except NotRegistered:
             msg = _("Invalid parameter: {obj}: {param}")
             msg = msg.format(obj=self, param=parameter)
+            return callback.error(msg)
+        if not self.verify_acl(f'edit:config:{parameter}'):
+            msg = _("Permission denied.")
             return callback.error(msg)
         # Delete config parameter.
         if delete:
@@ -8731,7 +9077,6 @@ class OTPmeObject(OTPmeBaseObject):
 
         return self._write(callback=callback)
 
-    @check_acls(acls=['view:config'])
     def show_config_parameters(
         self,
         parameter: str=None,
@@ -8740,6 +9085,16 @@ class OTPmeObject(OTPmeBaseObject):
         callback: JobCallback=default_callback,
         **kwargs,
         ):
+        if parameter is not None:
+            try:
+                para_data = config.get_config_parameter(parameter)
+            except NotRegistered:
+                msg = _("Unknown parameter: {parameter}")
+                msg = msg.format(parameter=parameter)
+                return callback.error(msg)
+            if not self.verify_acl(f'view:config:{parameter}'):
+                msg = "<hidden>"
+                return callback.error(msg)
         if run_policies:
             try:
                 self.run_policies("show_config_parameters",
@@ -8749,12 +9104,6 @@ class OTPmeObject(OTPmeBaseObject):
                 msg = str(e)
                 return callback.error(msg)
         if parameter is not None:
-            try:
-                para_data = config.get_config_parameter(parameter)
-            except NotRegistered:
-                msg = _("Unknown parameter: {parameter}")
-                msg = msg.format(parameter=parameter)
-                return callback.error(msg)
             try:
                 para_getter = para_data['getter']
             except:
@@ -8770,6 +9119,9 @@ class OTPmeObject(OTPmeBaseObject):
             return callback.ok(value)
         config_params = {}
         for para in sorted(self.config_params):
+            if not self.verify_acl(f'view:config:{para}'):
+                config_params[para] = "<hidden>"
+                continue
             try:
                 para_data = config.get_config_parameter(para)
             except NotRegistered:
@@ -8846,6 +9198,13 @@ class OTPmeObject(OTPmeBaseObject):
                 lines.append(f'CERT="{self.cert}"')
             else:
                 lines.append('CERT=""')
+
+        if self.key:
+            if self.verify_acl("view:key") \
+            or self.verify_acl("edit:key"):
+                lines.append(f'KEY="{self.key}"')
+            else:
+                lines.append('KEY=""')
 
         # Include config lines from child class.
         if config_lines:
@@ -8927,16 +9286,6 @@ class OTPmeObject(OTPmeBaseObject):
             if self.verify_acl("view:dynamic_groups"):
                 dynamic_groups = ",".join(self.dynamic_groups)
             lines.append(f'DYNAMIC_GROUPS="{dynamic_groups}"')
-
-        config_params = ""
-        if self.verify_acl("view:config") \
-        or self.verify_acl("add:config") \
-        or self.verify_acl("del:config") \
-        or self.verify_acl("edit:config"):
-            if self.config_params:
-                config_params = self.config_params
-        lines.append(f'CONFIG_PARAMS="{config_params}"')
-
 
         if self.verify_acl("view:description") \
         or self.verify_acl("edit:description"):

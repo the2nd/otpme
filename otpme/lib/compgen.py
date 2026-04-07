@@ -140,11 +140,11 @@ def show_compgen():
     found_subcommand = False
     sub_commands = list(help_dict)
     for word in comp_words:
-        word_counter += 1
-        if word_counter >= len(comp_words):
-            break
         if word not in sub_commands:
             continue
+        #word_counter += 1
+        #if word_counter > len(comp_words):
+        #    break
         #prev_subcommand_word = comp_words[word_counter-1]
         ## Parameter to the --type option may conflict with subcommands.
         #if prev_subcommand_word == "--type":

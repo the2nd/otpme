@@ -323,66 +323,42 @@ cmd_help = {
                 },
 
     'radius_cert'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-site radius_cert {site} {radius_cert}'),
-                    'cmd'   :   '<|object|> <file:radius_cert>',
+                    '_cmd_usage_help' : _('Usage: otpme-site radius_cert [--key {radius_key}] {--ca-cert {radius_ca_cert}] {site} [radius_cert]'),
+                    'cmd'   :   '--key :file:radius_key: --ca-cert :file:radius_ca_cert: <|object|> [file:radius_cert]',
                     '_help' :   {
                                     'cmd'                   : _('Change radius certificate.'),
                                 },
                 },
 
     'radius_key'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-site radius_key {site} {radius_key}'),
-                    'cmd'   :   '<|object|> <file:radius_key>',
+                    '_cmd_usage_help' : _('Usage: otpme-site radius_key {site} [radius_key]'),
+                    'cmd'   :   '<|object|> [file:radius_key]',
                     '_help' :   {
                                     'cmd'                   : _('Change radius certificate key.'),
                                 },
                 },
 
-    'del_radius_cert'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-site del_radius_cert {site}'),
-                    'cmd'   :   '<|object|>',
+    'radius_ca_cert'   : {
+                    '_cmd_usage_help' : _('Usage: otpme-site radius_ca_cert {site} [radius_ca_cert]'),
+                    'cmd'   :   '<|object|> [file:radius_ca_cert]',
                     '_help' :   {
-                                    'cmd'                   : _('Delete radius certificate.'),
-                                },
-                },
-
-    'del_radius_key'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-site del_radius_key {site}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete radius key.'),
+                                    'cmd'                   : _('Change radius CA certificate.'),
                                 },
                 },
 
     'sso_cert'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-site sso_cert {site} {sso_cert}'),
-                    'cmd'   :   '<|object|> <file:sso_cert>',
+                    '_cmd_usage_help' : _('Usage: otpme-site sso_cert --key {sso_key} {site} [sso_cert]'),
+                    'cmd'   :   '--key :file:sso_key: <|object|> [file:sso_cert]',
                     '_help' :   {
                                     'cmd'                   : _('Change SSO certificate.'),
                                 },
                 },
 
     'sso_key'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-site sso_key {site} {sso_key}'),
-                    'cmd'   :   '<|object|> <file:sso_key>',
+                    '_cmd_usage_help' : _('Usage: otpme-site sso_key {site} [sso_key]'),
+                    'cmd'   :   '<|object|> [file:sso_key]',
                     '_help' :   {
                                     'cmd'                   : _('Change SSO certificate key.'),
-                                },
-                },
-
-    'del_sso_cert'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-site del_sso_cert {site}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete SSO certificate.'),
-                                },
-                },
-
-    'del_sso_key'   : {
-                    '_cmd_usage_help' : _('Usage: otpme-site del_sso_key {site}'),
-                    'cmd'   :   '<|object|>',
-                    '_help' :   {
-                                    'cmd'                   : _('Delete SSO key.'),
                                 },
                 },
 

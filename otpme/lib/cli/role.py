@@ -27,11 +27,13 @@ table_headers = [
                 "status",
                 "roles",
                 "tokens",
+                "hosts",
+                "devices",
                 "sync_users",
                 "accessgroups",
                 "groups",
                 "policies",
-                "inherit",
+                #"inherit",
                 "description",
                 ]
 
@@ -45,7 +47,7 @@ def register():
                         'enabled',
                         'description',
                         'unit',
-                        'acl_inheritance_enabled',
+                        #'acl_inheritance_enabled',
                         ]
     read_acls, write_acls = get_acls(split=True)
     read_value_acls, write_value_acls = get_value_acls(split=True)
@@ -69,8 +71,9 @@ def register():
                 max_len=10)
 
 def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
-    max_tokens=5, max_sync_users=5, max_ags=5, max_groups=5, max_policies=5,
-    output_fields=[], acl_checker=None, **kwargs):
+    max_tokens=5, max_hosts=5, max_devices=5, max_sync_users=5,
+    max_ags=5, max_groups=5, max_policies=5, output_fields=[],
+    acl_checker=None, **kwargs):
     """ Build table rows for roles. """
     _result = []
     for role_uuid in role_order:
@@ -85,10 +88,10 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
             description = role_data[role_uuid]['description'][0]
         except:
             description = None
-        try:
-            acl_inheritance_enabled = role_data[role_uuid]['acl_inheritance_enabled'][0]
-        except:
-            acl_inheritance_enabled = False
+        #try:
+        #    acl_inheritance_enabled = role_data[role_uuid]['acl_inheritance_enabled'][0]
+        #except:
+        #    acl_inheritance_enabled = False
 
         # Get object ACLs.
         try:
@@ -196,7 +199,83 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 row.append("\n".join(role_tokens))
             else:
                 row.append("-")
-        # Tokens.
+        # Hosts.
+        if "hosts" in output_fields:
+            if check_acl("view:host") \
+            or check_acl("add:host") \
+            or check_acl("remove:host"):
+                # Get all hosts of this role.
+                return_attrs = ['name', 'enabled']
+                hosts_count, \
+                role_hosts_result = backend.search(object_type="host",
+                                            join_object_type="role",
+                                            join_search_attr="uuid",
+                                            join_search_val=role_uuid,
+                                            join_attribute="host",
+                                            attribute="uuid",
+                                            value="*",
+                                            max_results=max_hosts,
+                                            return_query_count=True,
+                                            return_attributes=return_attrs)
+                role_hosts = []
+                for x in role_hosts_result:
+                    host_status_string = ""
+                    x_host_name = role_hosts_result[x]['name']
+                    x_host_enabled = role_hosts_result[x]['enabled'][0]
+                    if not x_host_enabled:
+                        host_status_string = " (D)"
+                    host_string = f"{x_host_name}{host_status_string}"
+                    role_hosts.append(host_string)
+                    processed_hosts = len(role_hosts)
+                    if processed_hosts == max_hosts:
+                        if hosts_count > max_hosts:
+                            msg = _("({processed_hosts} of {hosts_count} hosts total)")
+                            msg = msg.format(processed_hosts=processed_hosts, hosts_count=hosts_count)
+                            x = msg
+                            role_hosts.append(x)
+                        break
+                row.append("\n".join(role_hosts))
+            else:
+                row.append("-")
+        # Devices.
+        if "devices" in output_fields:
+            if check_acl("view:device") \
+            or check_acl("add:device") \
+            or check_acl("remove:device"):
+                # Get all devices of this role.
+                return_attrs = ['name', 'enabled']
+                devices_count, \
+                role_devices_result = backend.search(object_type="device",
+                                            join_object_type="role",
+                                            join_search_attr="uuid",
+                                            join_search_val=role_uuid,
+                                            join_attribute="device",
+                                            attribute="uuid",
+                                            value="*",
+                                            max_results=max_devices,
+                                            return_query_count=True,
+                                            return_attributes=return_attrs)
+                role_devices = []
+                for x in role_devices_result:
+                    device_status_string = ""
+                    x_device_name = role_devices_result[x]['name']
+                    x_device_enabled = role_devices_result[x]['enabled'][0]
+                    if not x_device_enabled:
+                        device_status_string = " (D)"
+                    device_string = f"{x_device_name}{device_status_string}"
+                    role_devices.append(device_string)
+                    processed_devices = len(role_devices)
+                    if processed_devices == max_devices:
+                        if devices_count > max_devices:
+                            msg = _("({processed_devices} of {devices_count} devices total)")
+                            msg = msg.format(processed_devices=processed_devices, devices_count=devices_count)
+                            x = msg
+                            role_devices.append(x)
+                        break
+                row.append("\n".join(role_devices))
+            else:
+                row.append("-")
+        # Sync users.
         if "sync_users" in output_fields:
             if check_acl("view:sync_user") \
             or check_acl("add:sync_user") \
@@ -407,18 +486,18 @@ def row_getter(realm, site, role_order, role_data, acls, max_roles=5,
                 row.append(policies_string)
             else:
                 row.append("-")
-        # Inherit.
-        if "inherit" in output_fields:
-            if check_acl("view:acl_inheritance") \
-            or check_acl("enable:acl_inheritance") \
-            or check_acl("disable:acl_inheritance"):
-                if acl_inheritance_enabled:
-                    acl_inheritance_string = _("Enabled")
-                else:
-                    acl_inheritance_string = _("Disabled")
-                row.append(acl_inheritance_string)
-            else:
-                row.append("-")
+        ## Inherit.
+        #if "inherit" in output_fields:
+        #    if check_acl("view:acl_inheritance") \
+        #    or check_acl("enable:acl_inheritance") \
+        #    or check_acl("disable:acl_inheritance"):
+        #        if acl_inheritance_enabled:
+        #            acl_inheritance_string = _("Enabled")
+        #        else:
+        #            acl_inheritance_string = _("Disabled")
+        #        row.append(acl_inheritance_string)
+        #    else:
+        #        row.append("-")
         # Description.
         if "description" in output_fields:
             if check_acl("view:description") \
