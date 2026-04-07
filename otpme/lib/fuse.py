@@ -181,7 +181,8 @@ class OTPmeFS(fuse.Operations):
                                     use_ssh_agent=False,
                                     use_smartcard=False,
                                     encrypt_session=False,
-                                    timeout=300)
+                                    connect_timeout=3,
+                                    timeout=None)
         except Exception as e:
             msg = _("Failed to get daemon connection: {e}")
             msg = msg.format(e=e)

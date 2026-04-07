@@ -52,7 +52,7 @@ class LoginHandler(object):
         add_login_session=True, check_login_status=True, cache_login_tokens=False,
         sync_token_data=False, auth_only=False, start_otpme_agent=True, jwt_auth=False,
         jwt_method=None, message_method=None, error_message_method=None, connect_timeout=3,
-        timeout=30, node=None, offline_key_derivation_func=None, offline_token=None,
+        timeout=None, node=None, offline_key_derivation_func=None, offline_token=None,
         mount_shares=False, offline_key_func_opts={}, check_offline_pass_strength=False,
         offline_iterations_by_score={}, login_session_id=None, add_agent_acl=False,
         cleanup_method=None, socket_uri=None, login_use_dns=False, use_dns=False):

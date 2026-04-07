@@ -38,6 +38,7 @@ class ConnectSocket(object):
         self.key_pass = None
         self.cert_file = None
         self.ca_data_file = None
+        self.timeout = None
         self.connected = False
         self.logger = config.logger
 
@@ -175,8 +176,11 @@ class ConnectSocket(object):
                                             server_hostname=None)
                 self.remove_cert_files()
 
-        # Set blocking mode.
-        self.set_blocking()
+        if not hasattr(self, '_socket'):
+            msg = _("Unsupported socket URI: {uri}")
+            msg = msg.format(uri=self.socket_uri)
+            raise OTPmeException(msg)
+
         # Init socket handler
         if socket_handler is None:
             self.socket_handler = None
@@ -257,21 +261,21 @@ class ConnectSocket(object):
 
     def set_timeout(self, timeout):
         """ Set socket timeout. """
-        # If timeout is None we do not change the current timeout.
-        if timeout is None:
-            return
         # settimeout() requires None for no timeout.
         if timeout == 0:
             timeout = None
         # Set timeout.
         self._socket.settimeout(timeout)
+        self.timeout = timeout
 
     def send(self, data, blocking=None, timeout=None, **kwargs):
         """ Send data. """
+        org_timeout = self.timeout
+        if timeout is not None:
+            self.set_timeout(timeout)
         try:
             # Set socket stuff.
             #self.set_blocking(blocking)
-            self.set_timeout(timeout)
             if self.socket_handler:
                 # Send quit command without any encoding.
                 if data == "quit":
@@ -292,13 +296,18 @@ class ConnectSocket(object):
             msg = _("Error sending data: {error} ({socket_uri})")
             msg = msg.format(error=e, socket_uri=self.socket_uri)
             raise OTPmeException(msg)
+        finally:
+            if timeout is not None:
+                self.set_timeout(org_timeout)
 
     def sendall(self, data, blocking=None, timeout=None, **kwargs):
         """ Send data. """
+        org_timeout = self.timeout
+        if timeout is not None:
+            self.set_timeout(timeout)
         try:
             # Set socket stuff.
             #self.set_blocking(blocking)
-            self.set_timeout(timeout)
             if self.socket_handler:
                 return self.socket_handler.sendall(data=data)
             else:
@@ -315,13 +324,18 @@ class ConnectSocket(object):
             msg = _("Error sending all data: {error} ({socket_uri})")
             msg = msg.format(error=e, socket_uri=self.socket_uri)
             raise ConnectionError(msg)
+        finally:
+            if timeout is not None:
+                self.set_timeout(org_timeout)
 
     def recv(self, recv_buffer=config.socket_receive_buffer, blocking=None, timeout=None, **kwargs):
         """ Receive data. """
+        org_timeout = self.timeout
+        if timeout is not None:
+            self.set_timeout(timeout)
         try:
             # Set socket stuff.
             #self.set_blocking(blocking)
-            self.set_timeout(timeout)
             if self.socket_handler:
                 data = self.socket_handler.recv(recv_buffer=recv_buffer)
             else:
@@ -342,6 +356,9 @@ class ConnectSocket(object):
             msg = msg.format(error=e)
             config.raise_exception()
             raise ConnectionError(msg)
+        finally:
+            if timeout is not None:
+                self.set_timeout(org_timeout)
         return data
 
     def remove_cert_files(self):

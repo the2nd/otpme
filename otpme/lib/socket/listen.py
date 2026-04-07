@@ -30,7 +30,7 @@ from otpme.lib.exceptions import *
 class ListenSocket(object):
     """ Class to start and stop TCP or unix socket. """
     def __init__(self, socket_uri, connection_handler, name,
-        blocking=True, timeout=1, banner=None, socket_handler=None, user=None,
+        timeout=1, banner=None, socket_handler=None, user=None,
         group=None, mode=0o600, use_ssl=False, ssl_version=ssl.PROTOCOL_TLSv1_2,
         ssl_cert=None, ssl_key=None, ssl_ca_data=None, ssl_verify_client=False,
         proctitle=None, logger=None, max_conn=100):
@@ -53,8 +53,6 @@ class ListenSocket(object):
         else:
             self.got_logger = False
             self.logger = config.logger
-        # Set socket blocking.
-        self.blocking = blocking
         # Our timeout.
         self.timeout = timeout
         # Our socket URI string. e.g. tcp://127.0.0.1:8080
@@ -158,15 +156,11 @@ class ListenSocket(object):
             if self.protocol == "tcp":
                 self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-        if not self.blocking:
-            self._socket.setblocking(0)
-
+        # Set connection timeout.
         if self.timeout > 0:
             _timeout = self.timeout
         else:
             _timeout = None
-
-        # Set connect timeout.
         self._socket.settimeout(_timeout)
 
         # Bind socket (in case of unix socket create socket file).
@@ -623,7 +617,6 @@ class ListenSocket(object):
         # Create conncection instance.
         connection = Connection(connection=client_conn,
                                 client=client,
-                                blocking=self.blocking,
                                 peer_cert=peer_cert,
                                 logger=self.logger,
                                 socket_handler=self.socket_handler)
@@ -801,12 +794,11 @@ class ListenSocket(object):
 
 class Connection(object):
     """ Class to handle send/recv data. """
-    def __init__(self, connection, client, blocking,
-        socket_handler=None, peer_cert=None, logger=None):
+    def __init__(self, connection, client, socket_handler=None, peer_cert=None, logger=None):
         # Our connection.
         self.connection = connection
-        # Blocking.
-        self.blocking = blocking
+        # Connection timeout.
+        self.timeout = None
         # Init socket handler.
         self.socket_handler = socket_handler("server", connection)
         # Connected client.
@@ -824,15 +816,21 @@ class Connection(object):
         """ Map to original attributes. """
         return getattr(self.connection, name)
 
+    def set_timeout(self, timeout):
+        """ Set connection timeout. """
+        # settimeout() requires None for no timeout.
+        if timeout == 0:
+            timeout = None
+        # Set timeout.
+        self.connection.settimeout(timeout)
+        self.timeout = timeout
+
     def sendall(self, data, timeout=None):
         """ Send data. """
-        if timeout > 0:
-            _timeout = timeout
-        else:
-            _timeout = None
+        org_timeout = self.timeout
+        if timeout is not None:
+            self.set_timeout(timeout)
         try:
-            # Set connect timeout.
-            self.connection.settimeout(_timeout)
             if self.socket_handler:
                 return self.socket_handler.sendall(data)
             else:
@@ -850,16 +848,16 @@ class Connection(object):
             msg = _("Connection with client '{client}' closed while sending data.")
             msg = msg.format(client=self.client)
             raise Exception(msg)
+        finally:
+            if timeout is not None:
+                self.set_timeout(org_timeout)
 
     def send(self, data, timeout=None):
         """ Send data. """
-        _timeout = None
+        org_timeout = self.timeout
         if timeout is not None:
-            if timeout > 0:
-                _timeout = timeout
+            self.set_timeout(timeout)
         try:
-            # Set connect timeout.
-            self.connection.settimeout(_timeout)
             if self.socket_handler:
                 if data == "quit":
                     return self.socket_handler.raw_send(data=data)
@@ -880,16 +878,16 @@ class Connection(object):
             msg = _("Connection with client '{client}' closed while sending data.")
             msg = msg.format(client=self.client)
             raise Exception(msg)
+        finally:
+            if timeout is not None:
+                self.set_timeout(org_timeout)
 
     def recv(self, recv_buffer=config.socket_receive_buffer, timeout=None):
         """ Receive data from connection. """
-        _timeout = None
+        org_timeout = self.timeout
         if timeout is not None:
-            if timeout > 0:
-                _timeout = timeout
+            self.set_timeout(timeout)
         try:
-            # Set connect timeout.
-            self.connection.settimeout(_timeout)
             if self.socket_handler:
                 data = self.socket_handler.recv(recv_buffer=recv_buffer)
             else:
@@ -908,6 +906,9 @@ class Connection(object):
             msg = msg.format(client=self.client)
             self._close()
             raise Exception(msg)
+        finally:
+            if timeout is not None:
+                self.set_timeout(org_timeout)
 
     def close(self):
         """ Close connection. """
