@@ -119,6 +119,10 @@ dummy connection to be configured beforehand, for example:
 > perform dot1x authentication on login (restarts the network
 > connection). The option **dot1x_token_type** must also be set.
 
+**dot1x_connection=***name*  
+Name of the Network Manager connection to use for 802.1x port
+authentication. Defaults to **dot1x-lan**.
+
 **dot1x_token_type=***type*  
 Token type used to generate the OTP for 802.1x port authentication.
 Currently supported types: **yubikey_piv** and **password**.

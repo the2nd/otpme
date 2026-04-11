@@ -50,6 +50,13 @@ Show all configuration parameters.
 .TP
 .B description \fIsite\fR \fR[\fIdescription\fR]
 Set site description.
+.TP
+.B info \fIsite\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fIsite\fR
+Dump the info text to stdout.
 .SS Trust Relationships
 .TP
 .B add_trust \fIsite\fR \fItrusted_site\fR
@@ -118,6 +125,24 @@ Change SSO secret.
 .TP
 .B sso_csrf_secret \fIsite\fR \fIsecret\fR
 Change SSO CSRF secret.
+.TP
+.B add_sso_host \fIsite\fR \fIhost_name\fR
+Mark a host as SSO host. An SSO host is a host that can provide the SSO
+portal. The following SSO related data will be synchronized to this host:
+.RS
+.IP \fBSSO_SECRET\fR
+Flask session secret used by the SSO portal to sign session cookies.
+.IP \fBSSO_CSRF_SECRET\fR
+Secret used by the SSO portal for CSRF token protection.
+.IP \fBSSO_CERT\fR
+TLS certificate presented by the SSO portal (\fBhttpd\fR).
+.IP \fBSSO_KEY\fR
+Private key matching the SSO TLS certificate.
+.RE
+.TP
+.B del_sso_host \fIsite\fR \fIhost_name\fR
+Remove the SSO host role from a host. The SSO data will no longer be
+synchronized to this host.
 .SS Cluster
 .TP
 .B cluster_key \fIsite\fR \fIcluster_key\fR

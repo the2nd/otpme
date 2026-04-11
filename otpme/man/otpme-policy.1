@@ -83,6 +83,13 @@ Set a configuration parameter. Use \fB\-d\fR to delete (reset to default).
 .TP
 .B description \fIpolicy\fR \fR[\fIdescription\fR]
 Set policy description.
+.TP
+.B info \fIpolicy\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fIpolicy\fR
+Dump the info text to stdout.
 .SS Policy Assignment
 Policies can be assigned to other policies (policy chaining):
 .TP

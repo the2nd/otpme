@@ -77,6 +77,13 @@ Disable ACL inheritance.
 .TP
 .B description \fIpool\fR \fR[\fIdescription\fR]
 Set pool description.
+.TP
+.B info \fIpool\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fIpool\fR
+Dump the info text to stdout.
 .SS Import/Export
 .TP
 .B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIpool\fR

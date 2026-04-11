@@ -122,6 +122,13 @@ Show all configuration parameters.
 **description *group* \[*description*\]**  
 Set group description.
 
+**info *group* \[*info*\]**  
+Set free-form info text. If *info* is omitted, the current info text is
+opened in the editor specified by the **EDITOR** environment variable.
+
+**dump_info *group***  
+Dump the info text to stdout.
+
 **add_extension *group* *extension***  
 Add an extension to the group.
 

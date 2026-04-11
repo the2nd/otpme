@@ -76,6 +76,13 @@ Show all configuration parameters.
 **description *ca* \[*description*\]**  
 Set CA description.
 
+**info *ca* \[*info*\]**  
+Set free-form info text. If *info* is omitted, the current info text is
+opened in the editor specified by the **EDITOR** environment variable.
+
+**dump_info *ca***  
+Dump the info text to stdout.
+
 ## Policy Management
 
 **add_policy *ca* *policy***  

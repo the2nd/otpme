@@ -54,8 +54,31 @@ Link to another user's token.
 .SH COMMANDS
 .SS Token Management
 .TP
-.B add \fItoken\fR
+.B add \fR[\fB\-r\fR] \fItoken\fR
 Add a new token. Requires \fB\-\-type\fR before the command.
+.IP
+For
+.B hotp
+and
+.B totp
+tokens the following extra options are available:
+.RS
+.IP "\fB\-\-mode\fR \fImode\fR"
+Token mode. Defaults to
+.BR mode2 .
+In
+.B mode2
+neither the OTP secret nor the PIN are stored in the token object; the
+effective OTP secret is derived from the server-side secret together with the
+PIN. This mode is compatible with the SSO portal, but changing the PIN
+requires redeploying the token (a new QR code must be scanned).
+In
+.B mode1
+the OTP secret is stored directly in the token object, so PIN changes do not
+require redeployment.
+.IP \fB\-\-no\-qrcode\fR
+Do not display the QR code on token creation.
+.RE
 .TP
 .B del \fItoken\fR
 Delete a token.
@@ -93,6 +116,13 @@ Set auto-disable time (e.g. "1d" or "09:53 13.06.2023"). Use \fB\-u\fR to disabl
 .TP
 .B description \fItoken\fR \fR[\fIdescription\fR]
 Set token description.
+.TP
+.B info \fItoken\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fItoken\fR
+Dump the info text to stdout.
 .TP
 .B test \fItoken\fR \fR[\fIotp|password\fR]
 Test if given OTP/password can be verified by the token.

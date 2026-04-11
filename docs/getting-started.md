@@ -1182,6 +1182,7 @@ On the host side, enable 802.1x in the PAM module configuration. The
 relevant PAM options are:
 
 - `do_dot1x=auto|force` — *auto* performs dot1x only when the default gateway is unreachable; *force* always performs dot1x on login (restarts the network connection)
+- `dot1x_connection` — Network Manager connection to use for 802.1x (defaults to `dot1x-lan`)
 - `dot1x_token_type` — token type used for 802.1x OTP generation (e.g. `yubikey_piv`, `password`)
 - `dot1x_timeout` — seconds to wait for 802.1x authentication to complete
 

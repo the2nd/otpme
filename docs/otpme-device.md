@@ -64,6 +64,13 @@ Show all configuration parameters.
 **description *device* \[*description*\]**  
 Set device description.
 
+**info *device* \[*info*\]**  
+Set free-form info text. If *info* is omitted, the current info text is
+opened in the editor specified by the **EDITOR** environment variable.
+
+**dump_info *device***  
+Dump the info text to stdout.
+
 ## Policy Management
 
 **add_policy *device* *policy***  

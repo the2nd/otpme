@@ -61,6 +61,13 @@ Make share read-write.
 .TP
 .B description \fIshare\fR \fR[\fIdescription\fR]
 Set share description.
+.TP
+.B info \fIshare\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fIshare\fR
+Dump the info text to stdout.
 .SS Mount Script
 A mount script is executed each time the share is mounted by a user. It can be used to perform custom actions during mount, such as preparing the share directory or checking prerequisites. The mount script must be enabled separately after being configured.
 .TP

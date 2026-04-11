@@ -110,6 +110,13 @@ Show all configuration parameters.
 .B description \fIgroup\fR \fR[\fIdescription\fR]
 Set group description.
 .TP
+.B info \fIgroup\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fIgroup\fR
+Dump the info text to stdout.
+.TP
 .B add_extension \fIgroup\fR \fIextension\fR
 Add an extension to the group.
 .TP

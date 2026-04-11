@@ -157,6 +157,13 @@ Show all configuration parameters.
 .B description \fIclient\fR \fR[\fIdescription\fR]
 Set client description.
 .TP
+.B info \fIclient\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fIclient\fR
+Dump the info text to stdout.
+.TP
 .B add_extension \fIclient\fR \fIextension\fR
 Add an extension to the client.
 .TP

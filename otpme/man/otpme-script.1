@@ -102,6 +102,13 @@ Disable ACL inheritance.
 .TP
 .B description \fIscript\fR \fR[\fIdescription\fR]
 Set script description.
+.TP
+.B info \fIscript\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fIscript\fR
+Dump the info text to stdout.
 .SS Import/Export
 .TP
 .B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIscript\fR

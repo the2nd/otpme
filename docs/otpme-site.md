@@ -58,6 +58,13 @@ Show all configuration parameters.
 **description *site* \[*description*\]**  
 Set site description.
 
+**info *site* \[*info*\]**  
+Set free-form info text. If *info* is omitted, the current info text is
+opened in the editor specified by the **EDITOR** environment variable.
+
+**dump_info *site***  
+Dump the info text to stdout.
+
 ## Trust Relationships
 
 **add_trust *site* *trusted_site***  
@@ -130,6 +137,27 @@ Change SSO secret.
 
 **sso_csrf_secret *site* *secret***  
 Change SSO CSRF secret.
+
+**add_sso_host *site* *host_name***  
+Mark a host as SSO host. An SSO host is a host that can provide the SSO
+portal. The following SSO related data will be synchronized to this
+host:
+
+SSO_SECRET  
+Flask session secret used by the SSO portal to sign session cookies.
+
+SSO_CSRF_SECRET  
+Secret used by the SSO portal for CSRF token protection.
+
+SSO_CERT  
+TLS certificate presented by the SSO portal (**httpd**).
+
+SSO_KEY  
+Private key matching the SSO TLS certificate.
+
+**del_sso_host *site* *host_name***  
+Remove the SSO host role from a host. The SSO data will no longer be
+synchronized to this host.
 
 ## Cluster
 

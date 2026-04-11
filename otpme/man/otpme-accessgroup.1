@@ -158,6 +158,13 @@ Show all configuration parameters.
 .B description \fIaccessgroup\fR \fR[\fIdescription\fR]
 Set access group description.
 .TP
+.B info \fIaccessgroup\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fIaccessgroup\fR
+Dump the info text to stdout.
+.TP
 .B add_extension \fIaccessgroup\fR \fIextension\fR
 Add an extension to the access group.
 .TP

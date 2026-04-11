@@ -84,6 +84,13 @@ Disable ACL inheritance.
 .TP
 .B description \fIdictionary\fR \fR[\fIdescription\fR]
 Set dictionary description.
+.TP
+.B info \fIdictionary\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fIdictionary\fR
+Dump the info text to stdout.
 .SS Import/Export
 .TP
 .B export \fR[\fB\-\-password\fR \fIPASS\fR] \fIdictionary\fR

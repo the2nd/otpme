@@ -167,6 +167,14 @@ Remove an LDAP object class from the user.
 **show_ldif *user***  
 Display LDAP LDIF representation of the user.
 
+**info *user* \[*info*\]**  
+Set free-form user info text. If *info* is omitted, the current info
+text is opened in the editor specified by the **EDITOR** environment
+variable.
+
+**dump_info *user***  
+Dump the user info text to stdout.
+
 ## Extension Management
 
 **add_extension *user* *extension***  
@@ -212,7 +220,11 @@ Specify name for the default token (default: "login").
 Specify type for the default token (default: system default).
 
 **--no-qrcode**  
-Do not generate QR code for default TOTP token.
+Do not generate default token QR code (TOTP/HOTP only).
+
+**--mode *MODE***  
+Mode for the default token (TOTP/HOTP only). See **otpme-token**(1) for
+the difference between **mode1** and **mode2**.
 
 **-t, --template**  
 Create user as a template object.

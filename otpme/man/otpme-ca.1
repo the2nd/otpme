@@ -63,6 +63,13 @@ Show all configuration parameters.
 .TP
 .B description \fIca\fR \fR[\fIdescription\fR]
 Set CA description.
+.TP
+.B info \fIca\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fIca\fR
+Dump the info text to stdout.
 .SS Policy Management
 .TP
 .B add_policy \fIca\fR \fIpolicy\fR

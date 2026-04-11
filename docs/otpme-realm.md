@@ -106,6 +106,13 @@ attributes.
 **description *realm* \[*description*\]**  
 Set realm description.
 
+**info *realm* \[*info*\]**  
+Set free-form info text. If *info* is omitted, the current info text is
+opened in the editor specified by the **EDITOR** environment variable.
+
+**dump_info *realm***  
+Dump the info text to stdout.
+
 **touch *realm***  
 Re-index the object to fix potential index problems.
 

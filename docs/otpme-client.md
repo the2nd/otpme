@@ -173,6 +173,13 @@ Show all configuration parameters.
 **description *client* \[*description*\]**  
 Set client description.
 
+**info *client* \[*info*\]**  
+Set free-form info text. If *info* is omitted, the current info text is
+opened in the editor specified by the **EDITOR** environment variable.
+
+**dump_info *client***  
+Dump the info text to stdout.
+
 **add_extension *client* *extension***  
 Add an extension to the client.
 

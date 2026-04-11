@@ -86,6 +86,13 @@ Disable ACL inheritance.
 **description *pool* \[*description*\]**  
 Set pool description.
 
+**info *pool* \[*info*\]**  
+Set free-form info text. If *info* is omitted, the current info text is
+opened in the editor specified by the **EDITOR** environment variable.
+
+**dump_info *pool***  
+Dump the info text to stdout.
+
 ## Import/Export
 
 **export \[**--password** *PASS*\] *pool***  

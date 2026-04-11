@@ -47,6 +47,13 @@ Show unit config parameters.
 .TP
 .B description \fIunit\fR \fR[\fIdescription\fR]
 Set unit description.
+.TP
+.B info \fIunit\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fIunit\fR
+Dump the info text to stdout.
 .SS Policy Management
 .TP
 .B add_policy \fIunit\fR \fIpolicy\fR

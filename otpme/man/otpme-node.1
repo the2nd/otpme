@@ -157,6 +157,13 @@ Show all configuration parameters.
 .TP
 .B description \fInode\fR \fR[\fIdescription\fR]
 Set node description.
+.TP
+.B info \fInode\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fInode\fR
+Dump the info text to stdout.
 .SS Import/Export
 .TP
 .B export \fR[\fB\-\-password\fR \fIPASS\fR] \fInode\fR

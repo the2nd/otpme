@@ -184,6 +184,13 @@ Show all configuration parameters.
 **description *accessgroup* \[*description*\]**  
 Set access group description.
 
+**info *accessgroup* \[*info*\]**  
+Set free-form info text. If *info* is omitted, the current info text is
+opened in the editor specified by the **EDITOR** environment variable.
+
+**dump_info *accessgroup***  
+Dump the info text to stdout.
+
 **add_extension *accessgroup* *extension***  
 Add an extension to the access group.
 

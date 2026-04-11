@@ -93,6 +93,13 @@ Disable ACL inheritance.
 **description *dictionary* \[*description*\]**  
 Set dictionary description.
 
+**info *dictionary* \[*info*\]**  
+Set free-form info text. If *info* is omitted, the current info text is
+opened in the editor specified by the **EDITOR** environment variable.
+
+**dump_info *dictionary***  
+Dump the info text to stdout.
+
 ## Import/Export
 
 **export \[**--password** *PASS*\] *dictionary***  

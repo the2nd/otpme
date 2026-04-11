@@ -544,7 +544,7 @@ Object types: site, unit, user
 If enabled, temporary passwords can be set on tokens.  
 Object types: site, unit, user, token
 
-**password_allowed_chars (str, default: 0-9A-Za-z!@#$%^&\*()\_+-={}\[\]\|\\:;\<\>.?/)**  
+**password_allowed_chars (str, default: 0-9A-Za-z!@#$%&\*()\_+-={}\[\]:;\<\>.?/)**  
 Character set allowed in passwords (used by the password policy).  
 Object types: site, unit, user
 
@@ -606,6 +606,19 @@ VLAN identifier to assign. This is used for VLAN assignment during
 levels; the most specific match wins (e.g. a VLAN set on a token
 overrides the one set on the user or site).  
 Object types: site, unit, host, device, user, token
+
+## SSO Portal
+
+**sso_token_role (str)**  
+Name of the role that device tokens created via the SSO portal are
+automatically added to. When a user registers a new device token through
+the SSO portal, the token is added to this role so that the associated
+access group memberships and permissions apply. The role's info text is
+displayed in the SSO portal settings to inform users about the purpose
+and scope of the role. The value must be the name of an existing role.
+The parameter is resolved per user, and the most specific match wins
+(user overrides unit overrides site).  
+Object types: site, unit, user
 
 ## Backup
 

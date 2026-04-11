@@ -149,6 +149,16 @@ Remove an LDAP object class from the user.
 .TP
 .B show_ldif \fIuser\fR
 Display LDAP LDIF representation of the user.
+.TP
+.B info \fIuser\fR \fR[\fIinfo\fR]
+Set free-form user info text. If
+.I info
+is omitted, the current info text is opened in the editor specified by the
+.B EDITOR
+environment variable.
+.TP
+.B dump_info \fIuser\fR
+Dump the user info text to stdout.
 .SS Extension Management
 .TP
 .B add_extension \fIuser\fR \fIextension\fR
@@ -191,7 +201,15 @@ Specify name for the default token (default: "login").
 Specify type for the default token (default: system default).
 .TP
 .B \-\-no\-qrcode
-Do not generate QR code for default TOTP token.
+Do not generate default token QR code (TOTP/HOTP only).
+.TP
+.B \-\-mode \fIMODE\fR
+Mode for the default token (TOTP/HOTP only). See
+.BR otpme-token (1)
+for the difference between
+.B mode1
+and
+.BR mode2 .
 .TP
 .B \-t, \-\-template
 Create user as a template object.

@@ -109,6 +109,13 @@ Set a configuration parameter. Use **-d** to delete (reset to default).
 **description *policy* \[*description*\]**  
 Set policy description.
 
+**info *policy* \[*info*\]**  
+Set free-form info text. If *info* is omitted, the current info text is
+opened in the editor specified by the **EDITOR** environment variable.
+
+**dump_info *policy***  
+Dump the info text to stdout.
+
 ## Policy Assignment
 
 Policies can be assigned to other policies (policy chaining):

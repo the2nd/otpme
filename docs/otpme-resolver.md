@@ -155,6 +155,13 @@ Set a configuration parameter. Use **-d** to delete (reset to default).
 **description *resolver* \[*description*\]**  
 Set resolver description.
 
+**info *resolver* \[*info*\]**  
+Set free-form info text. If *info* is omitted, the current info text is
+opened in the editor specified by the **EDITOR** environment variable.
+
+**dump_info *resolver***  
+Dump the info text to stdout.
+
 ## Import/Export
 
 **export *resolver***  

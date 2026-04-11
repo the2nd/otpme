@@ -58,8 +58,23 @@ Link to another user's token.
 
 ## Token Management
 
-**add *token***  
+**add \[**-r**\] *token***  
 Add a new token. Requires **--type** before the command.
+
+For **hotp** and **totp** tokens the following extra options are
+available:
+
+--mode mode  
+Token mode. Defaults to **mode2**. In **mode2** neither the OTP secret
+nor the PIN are stored in the token object; the effective OTP secret is
+derived from the server-side secret together with the PIN. This mode is
+compatible with the SSO portal, but changing the PIN requires
+redeploying the token (a new QR code must be scanned). In **mode1** the
+OTP secret is stored directly in the token object, so PIN changes do not
+require redeployment.
+
+--no-qrcode  
+Do not display the QR code on token creation.
 
 **del *token***  
 Delete a token.
@@ -100,6 +115,13 @@ disable if unused for the given time.
 
 **description *token* \[*description*\]**  
 Set token description.
+
+**info *token* \[*info*\]**  
+Set free-form info text. If *info* is omitted, the current info text is
+opened in the editor specified by the **EDITOR** environment variable.
+
+**dump_info *token***  
+Dump the info text to stdout.
 
 **test *token* \[*otp\|password*\]**  
 Test if given OTP/password can be verified by the token.

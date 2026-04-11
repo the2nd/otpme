@@ -58,6 +58,13 @@ Show all configuration parameters.
 .TP
 .B description \fIdevice\fR \fR[\fIdescription\fR]
 Set device description.
+.TP
+.B info \fIdevice\fR \fR[\fIinfo\fR]
+Set free-form info text. If \fIinfo\fR is omitted, the current info text is
+opened in the editor specified by the \fBEDITOR\fR environment variable.
+.TP
+.B dump_info \fIdevice\fR
+Dump the info text to stdout.
 .SS Policy Management
 .TP
 .B add_policy \fIdevice\fR \fIpolicy\fR

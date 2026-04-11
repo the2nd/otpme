@@ -78,6 +78,13 @@ Make share read-write.
 **description *share* \[*description*\]**  
 Set share description.
 
+**info *share* \[*info*\]**  
+Set free-form info text. If *info* is omitted, the current info text is
+opened in the editor specified by the **EDITOR** environment variable.
+
+**dump_info *share***  
+Dump the info text to stdout.
+
 ## Mount Script
 
 A mount script is executed each time the share is mounted by a user. It
